@@ -4,16 +4,20 @@
 #pragma once
 
 #include <string>
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
 #include "core/framework/allocator.h"
 #include "core/framework/data_types.h"
 #include "core/framework/tensor.h"
+#include "core/framework/TensorSeq.h"
 
 namespace onnxruntime {
 class SparseTensor;
-class TensorSeq;
 }  // namespace onnxruntime
+
+#endif
+
 
 /**
    Represents both tensors and non-tensors.
@@ -28,6 +32,11 @@ struct OrtValue {
   }
 
   void Init(void* pData, onnxruntime::MLDataType type, onnxruntime::DeleteFunc deleter) {
+    data_.reset(pData, deleter);
+    type_ = type;
+  }
+
+  void Init(void* pData, onnxruntime::MLDataType type, const std::function<void(void*)>& deleter) {
     data_.reset(pData, deleter);
     type_ = type;
   }
@@ -118,5 +127,3 @@ inline onnxruntime::SparseTensor* OrtValue::GetMutable<onnxruntime::SparseTensor
   return static_cast<onnxruntime::SparseTensor*>(data_.get());
 }
 
-//TODO: remove the following line
-#define MLValue OrtValue

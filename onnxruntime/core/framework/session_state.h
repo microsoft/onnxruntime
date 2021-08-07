@@ -19,6 +19,7 @@
 #include "core/framework/execution_providers.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/framework_common.h"
+#include "core/framework/prepacked_weights_container.h"
 #include "core/framework/fuse_nodes_funcs.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/mem_pattern.h"
@@ -86,7 +87,9 @@ class SessionState {
                const DataTransferManager& data_transfer_mgr,
                const logging::Logger& logger,
                profiling::Profiler& profiler,
-               bool use_deterministic_compute = false)
+               bool use_deterministic_compute = false,
+               bool enable_mem_reuse = true,
+               PrepackedWeightsContainer* prepacked_weights_container = nullptr)
       : graph_(graph),
         execution_providers_(execution_providers),
         logger_(logger),
@@ -95,7 +98,9 @@ class SessionState {
         thread_pool_(thread_pool),
         inter_op_thread_pool_(inter_op_thread_pool),
         data_transfer_mgr_(data_transfer_mgr),
-        use_deterministic_compute_(use_deterministic_compute) {
+        use_deterministic_compute_(use_deterministic_compute),
+        enable_mem_reuse_(enable_mem_reuse),
+        prepacked_weights_container_(prepacked_weights_container) {
     SetupAllocators();
   }
 
@@ -139,8 +144,10 @@ class SessionState {
      * execution frame to setup the appropriate OrtValue vectors.
      * This function will take a shallow copy of d if d is not NULL.
      * If 'constant' is true the tensor value cannot be overridden by an input at runtime.
+     * If 'sparse' is true the tensor value represents a densified weight that was initially stored in the model
+     * as sparse tensor.
      */
-  Status AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d, bool constant);
+  Status AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d, bool constant, bool sparse);
 
   /**
      * Gets the map of ort_value_index to initialized tensors (weights) so that it can be used by the
@@ -155,6 +162,8 @@ class SessionState {
      * The lifetime of returned OrtValues are limited by this SessionState object.
      */
   const std::unordered_map<int, OrtValue>& GetConstantInitializedTensors() const;
+
+  bool IsSparseInitializer(int ort_value_index) const;
 
 #ifdef ENABLE_TRAINING
   /**
@@ -211,6 +220,12 @@ class SessionState {
   Get enable memory pattern flag
   */
   bool GetEnableMemoryPattern() const;
+
+  /**
+  Get enable memory re-use flag.
+  */
+
+  bool GetEnableMemoryReuse() const;
 
   /**
   Update enable_mem_pattern_ flag according to the presence of graph inputs' shape
@@ -294,6 +309,14 @@ class SessionState {
     return parent_;
   }
 
+  size_t GetNumberOfPrepacksCounter() const {
+    return number_of_prepacks_counter_;
+  }
+
+  size_t GetUsedSharedPrePackedWeightCounter() const {
+    return used_shared_pre_packed_weights_counter_;
+  }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
@@ -313,7 +336,8 @@ class SessionState {
   * Prepack the constant initialized tensors for better performance.
   * The original constant initialized tensors will be removed to save memory.
   */
-  Status PrepackConstantInitializedTensors(std::unordered_map<std::string, size_t>& constant_initializers_use_count);
+  Status PrepackConstantInitializedTensors(std::unordered_map<std::string, size_t>& constant_initializers_use_count,
+                                           const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map);
 
   SessionState* GetMutableSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name);
 
@@ -401,6 +425,12 @@ class SessionState {
   // subset of initialized_tensors_ that are constant and cannot be overridden at runtime
   std::unordered_map<int, OrtValue> constant_initialized_tensors_;
 
+  // This is an auxiliary lookup to check if the OrtValue was actually a sparse tensor
+  // this is needed because we currently convert all sparse initializer into dense Tensors
+  // if and when we actually place SparseTensor instances (we should) into OrtValues, we
+  // will not need this structure.
+  std::unordered_set<int> sparse_initialized_tensors_;
+
   // This data structure is for uninitializing string tensors and
   // munmap memory region and close file descriptor
   std::unordered_map<int, OrtCallback> deleter_for_initialized_tensors_;
@@ -438,9 +468,15 @@ class SessionState {
   const DataTransferManager& data_transfer_mgr_;
 
   bool use_deterministic_compute_;
-
+  bool enable_mem_reuse_;
   std::unique_ptr<NodeIndexInfo> node_index_info_;
   std::multimap<int, std::unique_ptr<FeedsFetchesManager>> cached_feeds_fetches_managers_;
+
+  // Container to store pre-packed weights to share between sessions.
+  // The life-cycle of the cache itself is maintained by the user and the user will ensure
+  // the cache is valid until any session reliant on it is still in scope.
+  // prepacked_weights_container_ can be nullptr if no caching is required for prepacked weights
+  PrepackedWeightsContainer* const prepacked_weights_container_{};
 
 #if !defined(ORT_MINIMAL_BUILD)
   std::map<std::vector<int>, std::unordered_set<NodeIndex>> to_be_executed_nodes_;
@@ -458,6 +494,14 @@ class SessionState {
     graph_id_ = p->next_graph_id_++;
   }
 #endif
+
+  // Counter for number of times pre-packing of weights was performed across kernels
+  // part the model
+  size_t number_of_prepacks_counter_ = 0;
+
+  // Counter for number of times a shared version of the pre-packed weight corresponding to
+  // a constant initialized weight was used by the session state
+  size_t used_shared_pre_packed_weights_counter_ = 0;
 };
 
 }  // namespace onnxruntime

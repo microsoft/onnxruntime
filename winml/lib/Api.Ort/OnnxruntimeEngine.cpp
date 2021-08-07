@@ -1121,6 +1121,14 @@ HRESULT OnnxruntimeEngine::GetNumberOfIntraOpThreads(uint32_t* num_threads)
   return S_OK;
 }
 
+HRESULT OnnxruntimeEngine::GetIntraOpThreadSpinning(bool* allow_spinning) {
+  auto ort_api = engine_factory_->UseOrtApi();
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->SessionGetIntraOpThreadSpinning(session_.get(), allow_spinning), ort_api);
+  return S_OK;
+}
+
+
 HRESULT OnnxruntimeEngine::GetNamedDimensionOverrides(wfc::IMapView<winrt::hstring, uint32_t>& overrides) {
   auto ort_api = engine_factory_->UseOrtApi();
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
@@ -1320,7 +1328,7 @@ STDMETHODIMP OnnxruntimeEngineFactory::CreateModel(_In_ void* data, _In_ size_t 
   RETURN_IF_FAILED(EnsureEnvironment());
   OrtModel* ort_model = nullptr;
   if (auto status = winml_adapter_api_->CreateModelFromData(data, size, &ort_model)) {
-    return E_INVALIDARG;
+    return __HRESULT_FROM_WIN32(ERROR_FILE_CORRUPT);
   }
 
   auto model = UniqueOrtModel(ort_model, winml_adapter_api_->ReleaseModel);

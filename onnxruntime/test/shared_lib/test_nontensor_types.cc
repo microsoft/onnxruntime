@@ -6,7 +6,6 @@
 #include <set>
 
 #include "core/common/common.h"
-#include "core/common/make_unique.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test_allocator.h"
 
@@ -32,7 +31,7 @@ struct RelAllocations {
 #if !defined(DISABLE_ML_OPS)
 TEST(CApiTest, CreateGetVectorOfMapsInt64Float) {  // support zipmap output type seq(map(int64, float))
   // Creation
-  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
   const size_t N = 3;
@@ -96,7 +95,7 @@ TEST(CApiTest, CreateGetVectorOfMapsInt64Float) {  // support zipmap output type
 
 TEST(CApiTest, CreateGetVectorOfMapsStringFloat) {  // support zipmap output type seq(map(string, float))
   // Creation
-  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
   const size_t N = 3;
@@ -162,7 +161,7 @@ TEST(CApiTest, CreateGetVectorOfMapsStringFloat) {  // support zipmap output typ
 
 TEST(CApiTest, TypeInfoMap) {
   // Creation
-  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
   const int64_t NUM_KV_PAIRS = 4;
@@ -213,7 +212,7 @@ TEST(CApiTest, TypeInfoMap) {
 
 TEST(CApiTest, CreateGetSeqTensors) {
   // Creation
-  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
   std::vector<Ort::Value> in;
@@ -240,7 +239,7 @@ TEST(CApiTest, CreateGetSeqTensors) {
 
 TEST(CApiTest, CreateGetSeqStringTensors) {
   // Creation
-  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
   std::vector<Ort::Value> in;
@@ -280,7 +279,7 @@ TEST(CApiTest, CreateGetSeqStringTensors) {
 
 TEST(CApiTest, TypeInfoSequence) {
   // Creation
-  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
   std::vector<Ort::Value> in;

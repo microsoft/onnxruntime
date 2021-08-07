@@ -51,10 +51,10 @@ struct PreCalc {
 };
 
 template <typename T>
-void pre_calc_for_bilinear_interpolate(const int64_t height, const int64_t width, const int64_t pooled_height,
-                                       const int64_t pooled_width, const int64_t iy_upper, const int64_t ix_upper,
-                                       T roi_start_h, T roi_start_w, T bin_size_h, T bin_size_w, int64_t roi_bin_grid_h,
-                                       int64_t roi_bin_grid_w, std::vector<PreCalc<T>>& pre_calc) {
+static void PreCalcForBilinearInterpolate(const int64_t height, const int64_t width, const int64_t pooled_height,
+                                          const int64_t pooled_width, const int64_t iy_upper, const int64_t ix_upper,
+                                          T roi_start_h, T roi_start_w, T bin_size_h, T bin_size_w, int64_t roi_bin_grid_h,
+                                          int64_t roi_bin_grid_w, std::vector<PreCalc<T>>& pre_calc) {
   int64_t pre_calc_index = 0;
   for (int64_t ph = 0; ph < pooled_height; ph++) {
     for (int64_t pw = 0; pw < pooled_width; pw++) {
@@ -69,8 +69,7 @@ void pre_calc_for_bilinear_interpolate(const int64_t height, const int64_t width
           T y = yy;
           // deal with: inverse elements are out of feature map boundary
           if (y < -1.0 || y > height || x < -1.0 || x > width) {
-            // empty
-            PreCalc<T> pc;
+            auto& pc = pre_calc[pre_calc_index];
             pc.pos1 = 0;
             pc.pos2 = 0;
             pc.pos3 = 0;
@@ -79,7 +78,6 @@ void pre_calc_for_bilinear_interpolate(const int64_t height, const int64_t width
             pc.w2 = 0;
             pc.w3 = 0;
             pc.w4 = 0;
-            pre_calc[pre_calc_index] = pc;
             pre_calc_index += 1;
             continue;
           }
@@ -170,9 +168,7 @@ void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, floa
       T bin_size_w = static_cast<T>(roi_width) / static_cast<T>(pooled_width);
 
       // We use roi_bin_grid to sample the grid and mimic integral
-      int64_t roi_bin_grid_h = (sampling_ratio > 0) ?
-                                   sampling_ratio :
-                                   static_cast<int64_t>(std::ceil(roi_height / pooled_height));  // e.g., = 2
+      int64_t roi_bin_grid_h = (sampling_ratio > 0) ? sampling_ratio : static_cast<int64_t>(std::ceil(roi_height / pooled_height));  // e.g., = 2
       int64_t roi_bin_grid_w =
           (sampling_ratio > 0) ? sampling_ratio : static_cast<int64_t>(std::ceil(roi_width / pooled_width));
 
@@ -182,9 +178,9 @@ void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, floa
       // we want to precalculate indices and weights shared by all channels,
       // this is the key point of optimization
       std::vector<PreCalc<T>> pre_calc(roi_bin_grid_h * roi_bin_grid_w * pooled_width * pooled_height);
-      pre_calc_for_bilinear_interpolate(height, width, pooled_height, pooled_width, roi_bin_grid_h, roi_bin_grid_w,
-                                        roi_start_h, roi_start_w, bin_size_h, bin_size_w, roi_bin_grid_h,
-                                        roi_bin_grid_w, pre_calc);
+      PreCalcForBilinearInterpolate(height, width, pooled_height, pooled_width, roi_bin_grid_h, roi_bin_grid_w,
+                                    roi_start_h, roi_start_w, bin_size_h, bin_size_w, roi_bin_grid_h,
+                                    roi_bin_grid_w, pre_calc);
 
       for (int64_t c = 0; c < channels; c++) {
         int64_t index_n_c = index_n + c * pooled_width * pooled_height;
@@ -200,7 +196,7 @@ void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, floa
             if (mode == RoiAlignMode::avg) {  // avg pooling
               for (int64_t iy = 0; iy < roi_bin_grid_h; iy++) {
                 for (int64_t ix = 0; ix < roi_bin_grid_w; ix++) {
-                  PreCalc<T> pc = pre_calc[pre_calc_index];
+                  const auto& pc = pre_calc[pre_calc_index];
                   output_val += pc.w1 * offset_bottom_data[pc.pos1] + pc.w2 * offset_bottom_data[pc.pos2] +
                                 pc.w3 * offset_bottom_data[pc.pos3] + pc.w4 * offset_bottom_data[pc.pos4];
 
@@ -212,7 +208,7 @@ void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, floa
               bool max_flag = false;
               for (int64_t iy = 0; iy < roi_bin_grid_h; iy++) {
                 for (int64_t ix = 0; ix < roi_bin_grid_w; ix++) {
-                  PreCalc<T> pc = pre_calc[pre_calc_index];
+                  const auto& pc = pre_calc[pre_calc_index];
                   T val = std::max(
                       std::max(std::max(pc.w1 * offset_bottom_data[pc.pos1], pc.w2 * offset_bottom_data[pc.pos2]),
                                pc.w3 * offset_bottom_data[pc.pos3]),

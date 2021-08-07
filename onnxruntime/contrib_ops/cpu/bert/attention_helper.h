@@ -7,6 +7,7 @@
 #include "core/util/math_cpuonly.h"
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
+#include "core/providers/common.h"
 #include "core/mlas/inc/mlas.h"
 
 using onnxruntime::concurrency::ThreadPool;
@@ -63,7 +64,6 @@ template <typename T>
 void PrepareMask(const int32_t* mask_index,
                  const std::vector<int64_t>* mask_index_dims,
                  T* mask_data,
-                 bool is_unidirectional,
                  int batch_size,
                  int sequence_length,
                  int past_sequence_length) {
@@ -72,23 +72,17 @@ void PrepareMask(const int32_t* mask_index,
   // mask_data has been filled with 0, and its shape is BxSxS*
   T* p_mask = mask_data;
 
+  // 4D mask in Megatron GPT2 is currently not support in CPU kernel
+  if (nullptr != mask_index_dims && mask_index_dims->size() == 4) {
+    ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "4D mask in attention cpu kernel is not supported");
+    return;
+  }
+
   // For 3D mask, convert values 0 to -10000.0, and 1 to 0.0, then apply unidirectional mask if any.
   if (nullptr != mask_index_dims && mask_index_dims->size() == 3) {
     for (int i = 0; i < batch_size * sequence_length * all_sequence_length; i++) {
       p_mask[i] = (mask_index[i] > 0) ? static_cast<T>(0.0f) : static_cast<T>(-10000.0f);
     }
-
-    if (is_unidirectional) {
-      for (int b_i = 0; b_i < batch_size; b_i++) {
-        for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
-          for (int m_i = past_sequence_length + s_i + 1; m_i < all_sequence_length; m_i++) {
-            p_mask[s_i * all_sequence_length + m_i] += static_cast<T>(-10000.0f);
-          }
-        }
-        p_mask += sequence_length * all_sequence_length;
-      }
-    }
-
     return;
   }
 
@@ -126,15 +120,6 @@ void PrepareMask(const int32_t* mask_index,
     // Broadcast mask from (Bx)S* to (Bx)SxS*
     for (int s_i = 1; s_i < sequence_length; s_i++) {
       memcpy(p_mask + s_i * all_sequence_length, p_mask, all_sequence_length * sizeof(T));
-    }
-
-    // Apply unidirectional mask.
-    if (is_unidirectional) {
-      for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
-        for (int m_i = past_sequence_length + s_i + 1; m_i < all_sequence_length; m_i++) {
-          p_mask[s_i * all_sequence_length + m_i] += static_cast<T>(-10000.0f);
-        }
-      }
     }
 
     p_mask += sequence_length * all_sequence_length;

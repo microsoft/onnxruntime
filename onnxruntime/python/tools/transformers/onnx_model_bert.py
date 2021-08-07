@@ -49,7 +49,7 @@ class BertOptimizationOptions:
 class BertOnnxModel(OnnxModel):
     def __init__(self, model: ModelProto, num_heads: int = 0, hidden_size: int = 0):
         """Initialize BERT ONNX Model.
-           
+
         Args:
             model (ModelProto): the ONNX model
             num_heads (int, optional): number of attentioin heads. Defaults to 0, and we will detect the parameter automatically.
@@ -212,12 +212,13 @@ class BertOnnxModel(OnnxModel):
                             expand_shape_value) is 2 and len(
                                 shape_value) is 1 and expand_shape_value[1] == shape_value[0]:
                         node.input[0] = slice_node.output[0]
-        self.remove_nodes(nodes_to_remove)
-        logger.info(f"Removed Reshape and Expand count: {len(nodes_to_remove)}")
+
+        if nodes_to_remove:
+            self.remove_nodes(nodes_to_remove)
+            logger.info(f"Removed Reshape and Expand count: {len(nodes_to_remove)}")
 
     def clean_graph(self):
         output_name_to_node = self.output_name_to_node()
-        nodes_to_add = []
         nodes_to_remove = []
         for node in self.nodes():
             # Before:
@@ -255,10 +256,9 @@ class BertOnnxModel(OnnxModel):
                                                           name=node.name + "_remove_mask")
                         attention_node.domain = "com.microsoft"
                         attention_node.attribute.extend([helper.make_attribute("num_heads", self.num_heads)])
-                        nodes_to_add.append(attention_node)
+                        self.add_node(attention_node, self.get_graph_by_node(attention_node).name)
                         nodes_to_remove.append(node)
         self.remove_nodes(nodes_to_remove)
-        self.add_nodes(nodes_to_add)
 
     def postprocess(self):
         self.clean_graph()
@@ -286,7 +286,9 @@ class BertOnnxModel(OnnxModel):
         if (options is None) or options.enable_embed_layer_norm:
             self.fuse_embed_layer()
 
-        # Post-processing like removing extra reshape nodes.
+        # Remove reshape nodes that having same shape of input and output based on symbolic shape inference.
+        FusionUtils.remove_useless_reshape_nodes(self)
+
         self.postprocess()
 
         # Bias fusion is done after postprocess to avoid extra Reshape between bias and Gelu/FastGelu/SkipLayerNormalization

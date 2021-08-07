@@ -6,12 +6,11 @@ jobs:
   workspace:
     clean: all
   pool:
-    vmImage: 'macOS-10.14'
+    vmImage: 'macOS-10.15'
   dependsOn:
   - NuGet_Packaging
   condition: succeeded()
   variables:
-  - group: ORT_TEST_DATA_SAS
   - name: OnnxRuntimeBuildDirectory
     value: '$(Build.BinariesDirectory)'
   steps:
@@ -32,11 +31,8 @@ jobs:
       packageFolder: '$(Build.BinariesDirectory)/nuget-artifact'
 
   - script: |
-     brew install libomp
      $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
                $(Build.BinariesDirectory)/nuget-artifact \
-               $(Build.SourcesDirectory) \
-               $(Build.BinariesDirectory) \
                $(NuGetPackageVersionNumber) \
                ${{ parameters.IsMacOS }}
 

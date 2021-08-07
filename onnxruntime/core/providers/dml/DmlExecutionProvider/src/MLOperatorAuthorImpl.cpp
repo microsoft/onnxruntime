@@ -1876,12 +1876,13 @@ bool TryGetStaticOutputShapes(const onnxruntime::Node& node, EdgeShapes& outputS
   return true;
 }
 
-bool ContainsEmptyDimensions(const EdgeShapes& shapes) {
+bool ContainsEmptyDimensions(const EdgeShapes& shapes, gsl::span<const uint32_t> ignoredShapeIndices) {
   for (size_t i = 0; i < shapes.EdgeCount(); i++) {
     const std::vector<uint32_t>& shape = shapes.GetShape(i);
 
-    if (std::find(shape.begin(), shape.end(), 0) != shape.end()) {
-      return true;
+    if (std::find(shape.begin(), shape.end(), 0) != shape.end() && 
+        std::find(ignoredShapeIndices.begin(), ignoredShapeIndices.end(), i) == ignoredShapeIndices.end()) {
+          return true;
     }
   }
 

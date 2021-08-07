@@ -71,18 +71,18 @@ class DnnlRelu : public DnnlKernel {
       ort_source_desc_ = dnnl::memory::desc(
           {src_dims}, DnnnType<T>(), ort_source_format_);
       source_desc_ = ort_source_desc_;
-      src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+      src_md_ = std::make_unique<dnnl::memory::desc>(
           dnnl::memory::desc({src_dims}, DnnnType<T>(), ort_source_format_));
-      src_mem_ = onnxruntime::make_unique<dnnl::memory>(
+      src_mem_ = std::make_unique<dnnl::memory>(
           dnnl::memory({{src_dims}, DnnnType<T>(), ort_source_format_}, cpu_engine, nullptr));
       if (gpu_available_) {
-        src_mem_gpu_ = onnxruntime::make_unique<dnnl::memory>(*src_md_, gpu_engine);
+        src_mem_gpu_ = std::make_unique<dnnl::memory>(*src_md_, gpu_engine);
         net.push_back(mkldnn::reorder(*src_mem_, *src_mem_gpu_));
         net_args.push_back({{MKLDNN_ARG_SRC, *src_mem_},
                             {MKLDNN_ARG_DST, *src_mem_gpu_}});
       }
     } else {
-      src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+      src_md_ = std::make_unique<dnnl::memory::desc>(
           dnnl::memory::desc(parents_[0].get()->primitive_dst_desc_));
       if (!gpu_available_) {
         src_mem_ = parents_[0].get()->primitive_dst_mem_;
@@ -99,9 +99,9 @@ class DnnlRelu : public DnnlKernel {
 
     dnnl::memory::dims dst_dims_mkl(primitive_dst_shape_.GetDims().begin(), primitive_dst_shape_.GetDims().end());
     dnnl::algorithm algo = dnnl::algorithm::eltwise_relu;
-    fwd_desc_ = onnxruntime::make_unique<dnnl::eltwise_forward::desc>(
+    fwd_desc_ = std::make_unique<dnnl::eltwise_forward::desc>(
         dnnl::eltwise_forward::desc(dnnl::prop_kind::forward_inference, algo, *src_md_, 0));
-    relu_fwd_pd_ = onnxruntime::make_unique<dnnl::eltwise_forward::primitive_desc>(
+    relu_fwd_pd_ = std::make_unique<dnnl::eltwise_forward::primitive_desc>(
         dnnl::eltwise_forward::primitive_desc(*fwd_desc_, engine_to_use));
 
     primitive_src_desc_ = relu_fwd_pd_.get()->src_desc();
@@ -127,7 +127,7 @@ class DnnlRelu : public DnnlKernel {
       primitive_dst_mem_ = std::make_shared<dnnl::memory>(dnnl::memory(relu_fwd_pd_.get()->dst_desc(), gpu_engine));
     }
 
-    relu_fwd_ = onnxruntime::make_unique<dnnl::eltwise_forward>(
+    relu_fwd_ = std::make_unique<dnnl::eltwise_forward>(
         dnnl::eltwise_forward(*relu_fwd_pd_));
 
     if (!gpu_available_) {

@@ -4,7 +4,6 @@
 // if we can't load an ORT format model we can't really test anything
 #if defined(ENABLE_ORT_FORMAT_LOAD)
 
-#include "core/common/make_unique.h"
 #include "core/framework/data_types.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
@@ -38,13 +37,19 @@ struct OrtModelTestInfo {
   std::function<void(const std::vector<OrtValue>&)> output_verifier;
   std::vector<std::pair<std::string, std::string>> configs;
   bool run_use_buffer{false};
+  bool disable_copy_ort_buffer{false};
 };
 
 static void RunOrtModel(const OrtModelTestInfo& test_info) {
   SessionOptions so;
   so.session_logid = test_info.logid;
-  for (const auto& config : test_info.configs)
-    so.AddConfigEntry(config.first.c_str(), config.second.c_str());
+  for (const auto& config : test_info.configs) {
+    so.config_options.AddConfigEntry(config.first.c_str(), config.second.c_str());
+  }
+
+  if (test_info.disable_copy_ort_buffer) {
+    so.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseORTModelBytesDirectly, "1");
+  }
 
   std::vector<char> model_data;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
@@ -194,12 +199,37 @@ static void CompareGraphAndSessionState(const InferenceSessionWrapper& session_o
   }
 }
 
+static void CompareSessionMetadata(const InferenceSessionWrapper& session_object_1,
+                                   const InferenceSessionWrapper& session_object_2) {
+  const auto pair_1 = session_object_1.GetModelMetadata();
+  ASSERT_STATUS_OK(pair_1.first);
+  const auto& metadata_1 = *pair_1.second;
+  const auto& model_1 = session_object_1.GetModel();
+
+  const auto pair_2 = session_object_2.GetModelMetadata();
+  ASSERT_STATUS_OK(pair_2.first);
+  const auto& metadata_2 = *pair_2.second;
+  const auto& model_2 = session_object_2.GetModel();
+
+  ASSERT_EQ(metadata_1.producer_name, metadata_2.producer_name);
+  // ORT format does not have graph name
+  // ASSERT_EQ(metadata_1.graph_name, metadata_2.graph_name);
+  ASSERT_EQ(metadata_1.domain, metadata_2.domain);
+  ASSERT_EQ(metadata_1.description, metadata_2.description);
+  ASSERT_EQ(metadata_1.graph_description, metadata_2.graph_description);
+  ASSERT_EQ(metadata_1.version, metadata_2.version);
+  ASSERT_EQ(metadata_1.custom_metadata_map, metadata_2.custom_metadata_map);
+
+  ASSERT_EQ(model_1.IrVersion(), model_2.IrVersion());
+  ASSERT_EQ(model_1.ProducerVersion(), model_2.ProducerVersion());
+}
+
 static void SaveAndCompareModels(const std::string& onnx_file, const std::basic_string<ORTCHAR_T>& ort_file) {
   SessionOptions so;
   so.session_logid = "SerializeToOrtFormat";
   so.optimized_model_filepath = ort_file;
   // not strictly necessary - type should be inferred from the filename
-  so.AddConfigEntry(kOrtSessionOptionsConfigSaveModelFormat, "ORT");
+  so.config_options.AddConfigEntry(kOrtSessionOptionsConfigSaveModelFormat, "ORT");
   InferenceSessionWrapper session_object{so, GetEnvironment()};
 
   // create .ort file during Initialize due to values in SessionOptions
@@ -210,13 +240,14 @@ static void SaveAndCompareModels(const std::string& onnx_file, const std::basic_
   so2.session_logid = "LoadOrtFormat";
   // not strictly necessary - type should be inferred from the filename, but to be sure we're testing what we
   // think we're testing set it.
-  so2.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT");
+  so2.config_options.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT");
 
   // load serialized version
   InferenceSessionWrapper session_object2{so2, GetEnvironment()};
   ASSERT_STATUS_OK(session_object2.Load(ort_file));
   ASSERT_STATUS_OK(session_object2.Initialize());
 
+  CompareSessionMetadata(session_object, session_object2);
   CompareGraphAndSessionState(session_object, session_object2);
 }
 
@@ -241,14 +272,13 @@ static void DumpOrtModelAsJson(const std::string& model_uri) {
 }
 */
 
-/* 
+/*
 Validate we don't run optimizers on an ORT format model in a full build. The optimizers will remove nodes,
-which will create a mismatch with the saved kernel information and result in a runtime error. 
-We could take steps to handle this scenario in a full build, but for consistency we choose to not run optimizers 
+which will create a mismatch with the saved kernel information and result in a runtime error.
+We could take steps to handle this scenario in a full build, but for consistency we choose to not run optimizers
 on any ORT format model.
 */
 TEST(OrtModelOnlyTests, ValidateOrtFormatModelDoesNotRunOptimizersInFullBuild) {
-  // we have tests that use a pre-created minst.onnx.ort, so make the naming for the unit test generated file clearer
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/mnist.onnx.test_output.ort");
   SaveAndCompareModels("testdata/mnist.onnx", ort_file);
 
@@ -327,6 +357,12 @@ TEST(OrtModelOnlyTests, TensorAttributeSerialization) {
   SaveAndCompareModels("testdata/ort_minimal_test_models/tensor_attribute.onnx", ort_file);
 }
 
+TEST(OrtModelOnlyTests, MetadataSerialization) {
+  const std::basic_string<ORTCHAR_T> ort_file =
+      ORT_TSTR("testdata/model_with_metadata.onnx.test_output.ort");
+  SaveAndCompareModels("testdata/model_with_metadata.onnx", ort_file);
+}
+
 #if !defined(DISABLE_ML_OPS)
 TEST(OrtModelOnlyTests, SerializeToOrtFormatMLOps) {
   const std::basic_string<ORTCHAR_T> ort_file =
@@ -375,10 +411,10 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormatMLOps) {
 
 // test loading ORT format model with sparse initializers
 TEST(OrtModelOnlyTests, LoadSparseInitializersOrtFormat) {
-  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/sparse_initializer_handling.onnx.ort");
+  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/ort_minimal_test_models/sparse_initializer_handling.onnx.ort");
   SessionOptions so;
   so.session_logid = "LoadOrtFormat";
-  so.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT");
+  so.config_options.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT");
   InferenceSessionWrapper session_object{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object.Load(ort_file));
   ASSERT_STATUS_OK(session_object.Initialize());
@@ -415,6 +451,14 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModel) {
 TEST(OrtModelOnlyTests, LoadOrtFormatModelFromBuffer) {
   OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModel();
   test_info.run_use_buffer = true;
+  RunOrtModel(test_info);
+}
+
+// Load the model from a buffer instead of a file path, and not copy the buffer in session creation
+TEST(OrtModelOnlyTests, LoadOrtFormatModelFromBufferNoCopy) {
+  OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModel();
+  test_info.run_use_buffer = true;
+  test_info.disable_copy_ort_buffer = true;
   RunOrtModel(test_info);
 }
 
@@ -469,6 +513,14 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOps) {
 TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOpsFromBuffer) {
   OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModelMLOps();
   test_info.run_use_buffer = true;
+  RunOrtModel(test_info);
+}
+
+// Load the model from a buffer instead of a file path, and not copy the buffer in session creation
+TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOpsFromBufferNoCopy) {
+  OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModelMLOps();
+  test_info.run_use_buffer = true;
+  test_info.disable_copy_ort_buffer = true;
   RunOrtModel(test_info);
 }
 

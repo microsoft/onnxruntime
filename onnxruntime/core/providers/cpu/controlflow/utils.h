@@ -7,18 +7,20 @@
 #include <string>
 #include <vector>
 
-#include "core/common/common.h"
 #include "core/framework/feeds_fetches_manager.h"
+#ifdef SHARED_PROVIDER
+#include "core/framework/ml_value.h"
+#else
 #include "core/framework/op_kernel.h"
+#endif
 
 namespace onnxruntime {
-class Graph;
 
 // Creates a scalar MLValue based on given value and allocator.
 template <typename T>
 OrtValue MakeScalarMLValue(const AllocatorPtr& allocator, T value, bool is_1d) {
   auto* data_type = DataTypeImpl::GetType<T>();
-  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(data_type,
+  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(data_type,
                                                                       is_1d ? TensorShape({1}) : TensorShape({}),
                                                                       allocator);
 

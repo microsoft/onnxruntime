@@ -1,0 +1,86 @@
+[
+  {
+    "name": "Exp with no attributes",
+    "operator": "Exp",
+    "attributes": [],
+    "cases": [
+      {
+        "name": "T[0]",
+        "inputs": [
+          {
+            "data": [3],
+            "dims": [1],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [20.08553692],
+            "dims": [1],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "T[1]",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4],
+            "dims": [4],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [2.71828183, 7.3890561, 20.08553692, 54.59815003],
+            "dims": [4],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "T[2,4] T[2,4]",
+        "inputs": [
+          {
+            "data": [1, 2, 1, 3, 2, 3, 1, 2],
+            "dims": [2, 4],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [
+              2.71828183,
+              7.3890561,
+              2.71828183,
+              20.08553692,
+              7.3890561,
+              20.08553692,
+              2.71828183,
+              7.3890561
+            ],
+            "dims": [2, 4],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "Scalar",
+        "inputs": [
+          {
+            "data": [1],
+            "dims": [],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [2.71828183],
+            "dims": [],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  }
+]

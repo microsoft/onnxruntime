@@ -28,7 +28,7 @@ class CUDAExternalAllocator : public CUDAAllocator {
   typedef void (*ExternalFree)(void* p);
 
  public:
-  CUDAExternalAllocator(OrtDevice::DeviceId device_id, const char* name, const void* alloc, const void* free)
+  CUDAExternalAllocator(OrtDevice::DeviceId device_id, const char* name, void* alloc, void* free)
       : CUDAAllocator(device_id, name) {
     alloc_ = reinterpret_cast<ExternalAlloc>(alloc);
     free_ = reinterpret_cast<ExternalFree>(free);

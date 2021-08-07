@@ -8,7 +8,13 @@
 #include <vector>
 
 #include "core/graph/basic_types.h"
-#include "core/graph/onnx_protobuf.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "onnx/defs/schema.h"
+#else
+#include "onnx/defs/data_type_utils.h"
+#endif
+#include "onnx/onnx_pb.h"
+#include "onnx/onnx-operators_pb.h"
 
 namespace onnxruntime {
 
@@ -36,6 +42,10 @@ struct IndexedSubGraph {
     NodeAttributes attributes;         ///< Attributes of customized SubGraph/FunctionProto.
 
     std::string doc_string;  ///< Doc string of customized SubGraph/FunctionProto.
+#if !defined(ORT_MINIMAL_BUILD)
+    /** Type and shape inference function that can optionally be defined for the fused node */
+    std::function<void (ONNX_NAMESPACE::InferenceContext&)> type_and_shape_inference_function;
+#endif
   };
 
   /** Nodes covered by this subgraph. The NodeIndex values are from the parent Graph.*/

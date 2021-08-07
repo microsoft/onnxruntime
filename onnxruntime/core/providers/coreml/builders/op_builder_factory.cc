@@ -52,6 +52,31 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateConcatOpBuilder("Concat", op_registrations);
   }
 
+  {  // Resize
+    CreateResizeOpBuilder("Resize", op_registrations);
+  }
+
+  {  // Gemm/MatMul
+    CreateGemmOpBuilder("Gemm", op_registrations);
+    CreateGemmOpBuilder("MatMul", op_registrations);
+  }
+
+  {  // Clip
+    CreateClipOpBuilder("Clip", op_registrations);
+  }
+
+  {  // Squeeze
+    CreateSqueezeOpBuilder("Squeeze", op_registrations);
+  }
+
+  {  // ArgMax
+    CreateArgMaxOpBuilder("ArgMax", op_registrations);
+  }
+
+  {  // Cast
+    CreateCastOpBuilder("Cast", op_registrations);
+  }
+
   return op_registrations;
 }
 

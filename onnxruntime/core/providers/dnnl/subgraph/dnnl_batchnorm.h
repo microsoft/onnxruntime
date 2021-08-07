@@ -138,10 +138,10 @@ class DnnlBatchNorm : public DnnlKernel {
       ort_source_desc_ = dnnl::memory::desc(
           {src_dims}, DnnnType<T>(), ort_source_format_);
       source_desc_ = ort_source_desc_;
-      src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+      src_md_ = std::make_unique<dnnl::memory::desc>(
           dnnl::memory::desc({src_dims}, DnnnType<T>(), ort_source_format_));
     } else {
-      src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+      src_md_ = std::make_unique<dnnl::memory::desc>(
           dnnl::memory::desc(parents_[0].get()->primitive_dst_desc_));
       x_shape = parents_[0].get()->primitive_dst_shape_;
       ort_source_format_ = parents_[0].get()->ort_source_format_;
@@ -210,35 +210,35 @@ class DnnlBatchNorm : public DnnlKernel {
     dnnl::memory::dims dst_dims_mkl(
         primitive_dst_shape_.GetDims().begin(), primitive_dst_shape_.GetDims().end());
 
-    scale_shift_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+    scale_shift_md_ = std::make_unique<dnnl::memory::desc>(
         dnnl::memory::desc({2, scale_dims_mkl[0]}, DnnnType<T>(), dnnl::memory::format_tag::nc));
-    mean_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+    mean_md_ = std::make_unique<dnnl::memory::desc>(
         dnnl::memory::desc({mean_dims_mkl}, DnnnType<T>(), dnnl::memory::format_tag::x));
-    var_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+    var_md_ = std::make_unique<dnnl::memory::desc>(
         dnnl::memory::desc({var_dims_mkl}, DnnnType<T>(), dnnl::memory::format_tag::x));
-    primitive_dst_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+    primitive_dst_md_ = std::make_unique<dnnl::memory::desc>(
         dnnl::memory::desc({dst_dims_mkl}, DnnnType<T>(), dnnl::memory::format_tag::any));
 
     // scale_shift_mem will allocate 2*C*sizeof(float) buffer
     //
-    scale_shift_mem_ = onnxruntime::make_unique<dnnl::memory>(
+    scale_shift_mem_ = std::make_unique<dnnl::memory>(
         dnnl::memory({*scale_shift_md_, cpu_engine}));
 
-    mean_mem_ = onnxruntime::make_unique<dnnl::memory>(
+    mean_mem_ = std::make_unique<dnnl::memory>(
         dnnl::memory(*mean_md_, cpu_engine, nullptr));
-    var_mem_ = onnxruntime::make_unique<dnnl::memory>(
+    var_mem_ = std::make_unique<dnnl::memory>(
         dnnl::memory(*var_md_, cpu_engine, nullptr));
 
     if (gpu_available_) {
-      scale_shift_mem_gpu_ = onnxruntime::make_unique<dnnl::memory>(
+      scale_shift_mem_gpu_ = std::make_unique<dnnl::memory>(
           dnnl::memory({*scale_shift_md_, gpu_engine}));
-      mean_mem_gpu_ = onnxruntime::make_unique<dnnl::memory>(
+      mean_mem_gpu_ = std::make_unique<dnnl::memory>(
           dnnl::memory(*mean_md_, gpu_engine));
-      var_mem_gpu_ = onnxruntime::make_unique<dnnl::memory>(
+      var_mem_gpu_ = std::make_unique<dnnl::memory>(
           dnnl::memory(*var_md_, gpu_engine));
     }
 
-    batchnorm_fwd_ = onnxruntime::make_unique<dnnl::batch_normalization_forward::desc>(
+    batchnorm_fwd_ = std::make_unique<dnnl::batch_normalization_forward::desc>(
         dnnl::batch_normalization_forward::desc(
             dnnl::prop_kind::forward_inference, *src_md_, epsilon_,
             dnnl::normalization_flags::use_scale_shift |
@@ -255,10 +255,10 @@ class DnnlBatchNorm : public DnnlKernel {
       ops.append_eltwise(ops_scale, dnnl::algorithm::eltwise_relu, ops_alpha, ops_beta);
       attr.set_post_ops(ops);
 
-      batchnorm_fwd_pd_ = onnxruntime::make_unique<dnnl::batch_normalization_forward::primitive_desc>(
+      batchnorm_fwd_pd_ = std::make_unique<dnnl::batch_normalization_forward::primitive_desc>(
           dnnl::batch_normalization_forward::primitive_desc(*batchnorm_fwd_, attr, engine_to_use));
     } else {
-      batchnorm_fwd_pd_ = onnxruntime::make_unique<dnnl::batch_normalization_forward::primitive_desc>(
+      batchnorm_fwd_pd_ = std::make_unique<dnnl::batch_normalization_forward::primitive_desc>(
           dnnl::batch_normalization_forward::primitive_desc(
               *batchnorm_fwd_, engine_to_use));
     }
@@ -271,16 +271,16 @@ class DnnlBatchNorm : public DnnlKernel {
 
     if (!gpu_available_) {
       if (mklnode_ptr_->parent_nodes.empty()) {
-        src_mem_ = onnxruntime::make_unique<dnnl::memory>(
+        src_mem_ = std::make_unique<dnnl::memory>(
             dnnl::memory(batchnorm_fwd_pd_.get()->src_desc(), cpu_engine, nullptr));
       } else {
         src_mem_ = parents_[0].get()->primitive_dst_mem_;
       }
     } else {  // gpu_available_
       if (mklnode_ptr_->parent_nodes.empty()) {
-        src_mem_ = onnxruntime::make_unique<dnnl::memory>(
+        src_mem_ = std::make_unique<dnnl::memory>(
             dnnl::memory(batchnorm_fwd_pd_.get()->src_desc(), cpu_engine, nullptr));
-        src_mem_gpu_ = onnxruntime::make_unique<dnnl::memory>(
+        src_mem_gpu_ = std::make_unique<dnnl::memory>(
             dnnl::memory(batchnorm_fwd_pd_.get()->src_desc(), gpu_engine));
         net.push_back(dnnl::reorder(*src_mem_, *src_mem_gpu_));
         net_args.push_back({{DNNL_ARG_SRC, *src_mem_},
@@ -294,19 +294,19 @@ class DnnlBatchNorm : public DnnlKernel {
       if (mklnode_ptr_->output_index >= 0) {
         // Use Dnnl's internal output buffer
         if (primitive_dst_desc_ != ort_source_desc_) {
-          primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
+          primitive_dst_mem_ = std::make_unique<dnnl::memory>(
               dnnl::memory(batchnorm_fwd_pd_->dst_desc(), cpu_engine));
         } else {
-          primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
+          primitive_dst_mem_ = std::make_unique<dnnl::memory>(
               dnnl::memory(batchnorm_fwd_pd_->dst_desc(), cpu_engine, nullptr));
         }
       } else {
         // last node of sub-graph. need to allocate memory for output_tensor
-        primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
+        primitive_dst_mem_ = std::make_unique<dnnl::memory>(
             dnnl::memory(batchnorm_fwd_pd_->dst_desc(), cpu_engine));
       }
     } else {  // gpu_available_
-      primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
+      primitive_dst_mem_ = std::make_unique<dnnl::memory>(
           dnnl::memory(batchnorm_fwd_pd_->dst_desc(), gpu_engine));
     }
 

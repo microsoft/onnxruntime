@@ -25,7 +25,7 @@ namespace {
 void ApplyCse(Model& model, unsigned num_steps = 1) {
   GraphTransformerManager graph_transformation_mgr(num_steps);
   ASSERT_TRUE(
-      graph_transformation_mgr.Register(onnxruntime::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1).IsOK());
+      graph_transformation_mgr.Register(std::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1).IsOK());
   ASSERT_TRUE(
       graph_transformation_mgr.ApplyTransformers(model.MainGraph(), TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger()).IsOK());
 }
@@ -279,11 +279,11 @@ TEST(CseTests, MergeConstants) {
   GraphTransformerManager graph_transformation_mgr(1);
   // In current implementation, equal constants are not merged. So CSE must precede constant folding, otherwise we end up
   // with multiple copies of the same constant.
-  std::unique_ptr<CPUExecutionProvider> e = onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   ASSERT_TRUE(
-      graph_transformation_mgr.Register(onnxruntime::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1).IsOK());
+      graph_transformation_mgr.Register(std::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1).IsOK());
   ASSERT_TRUE(
-      graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/), TransformerLevel::Level1).IsOK());
+      graph_transformation_mgr.Register(std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/), TransformerLevel::Level1).IsOK());
   ASSERT_TRUE(
       graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger()).IsOK());
 

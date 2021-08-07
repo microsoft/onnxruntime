@@ -4,7 +4,6 @@
 #include "core/platform/Barrier.h"
 #include "core/platform/threadpool.h"
 
-#include <core/common/make_unique.h>
 
 #include "gtest/gtest.h"
 

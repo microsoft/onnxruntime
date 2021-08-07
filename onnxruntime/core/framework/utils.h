@@ -10,7 +10,9 @@
 #include "core/framework/iexecutor.h"
 #include "core/framework/session_state.h"
 #include "core/framework/session_options.h"
-
+#ifdef ENABLE_TRAINING
+#include "core/framework/partial_graph_execution_state.h"
+#endif
 namespace ONNX_NAMESPACE {
 class TensorShapeProto;
 class TensorProto;
@@ -29,6 +31,7 @@ class KernelRegistryManager;
 class IExecutionProvider;
 class Node;
 class Tensor;
+struct KernelCreateInfo;
 
 namespace logging {
 class Logger;
@@ -37,6 +40,22 @@ class Logger;
 namespace utils {
 void* DefaultAlloc(size_t size);
 void DefaultFree(void* p);
+
+/// <summary>
+// Do the placement new for strings on pre-allocated buffer
+// `elements` times.
+/// </summary>
+/// <param name="p_data"></param>
+/// <param name="elements"></param>
+void ConstructStrings(void* p_data, int64_t elements);
+
+/// <summary>
+/// Destroy std::string objects in the contiquous chunk of memory
+/// by explicitely invoking ~string();
+/// </summary>
+/// <param name="p_data"></param>
+/// <param name="elements"></param>
+void DestroyStrings(void* p_data, int64_t elements);
 
 const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info);
 
@@ -72,12 +91,20 @@ common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManag
                             ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
                             bool only_execute_path_to_fetches = false);
 
+#ifdef ENABLE_TRAINING
+common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
+                                   const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                                   const logging::Logger& logger, PartialGraphExecutionState& state);
+#endif
+
 // Execute a subgraph. The feeds_fetches_manager should have been finalized prior to calling this function.
 // See IControlFlowNode::SetupSubgraphExecutionInfo usage in the control flow kernels.
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
                                const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger);
+
+bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index);
 
 template <typename T>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType() {

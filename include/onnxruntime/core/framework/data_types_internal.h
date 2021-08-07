@@ -16,7 +16,13 @@
 #ifndef SHARED_PROVIDER
 #include "core/common/type_list.h"
 #include "core/framework/data_types.h"
-#include "core/graph/onnx_protobuf.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "onnx/defs/schema.h"
+#else
+#include "onnx/defs/data_type_utils.h"
+#endif
+#include "onnx/onnx_pb.h"
+#include "onnx/onnx-operators_pb.h"
 #endif
 
 namespace onnxruntime {
@@ -350,10 +356,12 @@ class MLTypeCallDispatcher {
   }
 
   /**
-   * Invokes Fn<..., T> with leading template arguments and the specified arguments.
+   * Invokes Fn<..., T> with leading template arguments and the specified
+   * arguments.
    *
    * @tparam Fn The function object template.
-   * @tparam LeadingTemplateArgTypeList A type list of the leading template arguments.
+   * @tparam LeadingTemplateArgTypeList A type list of the leading template
+   *         arguments.
    * @tparam Args The argument types.
    */
   template <template <typename...> class Fn, typename LeadingTemplateArgTypeList, typename... Args>
@@ -403,11 +411,55 @@ class MLTypeCallDispatcher {
    */
   template <class Ret, template <typename...> class Fn, class UnsupportedPolicy, typename... Args>
   Ret InvokeRetWithUnsupportedPolicy(Args&&... args) const {
+    return InvokeRetWithUnsupportedPolicyAndLeadingTemplateArgs<
+        Ret, Fn, UnsupportedPolicy, TypeList<>>(
+        std::forward<Args>(args)...);
+  }
+
+  /**
+   * Invokes Fn<..., T> with leading template arguments and the specified
+   * arguments and returns the result.
+   *
+   * @tparam Ret The return type. Fn should return a type convertible to Ret.
+   * @tparam Fn The function object template.
+   * @tparam LeadingTemplateArgTypeList A type list of the leading template
+   *         arguments.
+   * @tparam Args The argument types.
+   */
+  template <class Ret, template <typename...> class Fn, typename LeadingTemplateArgTypeList, typename... Args>
+  Ret InvokeRetWithLeadingTemplateArgs(Args&&... args) const {
+    return InvokeRetWithUnsupportedPolicyAndLeadingTemplateArgs<
+        Ret, Fn, mltype_dispatcher_internal::UnsupportedTypeDefaultPolicy<Ret>, LeadingTemplateArgTypeList>(
+        std::forward<Args>(args)...);
+  }
+
+  /**
+   * Invokes Fn<..., T> with leading template arguments and the specified
+   * arguments and returns the result.
+   *
+   * @tparam Ret The return type. Fn should return a type convertible to Ret.
+   * @tparam Fn The function object template.
+   * @tparam UnsupportedPolicy The policy used to handle unsupported types.
+   *         See mltype_dispatcher_internal::UnsupportedTypeDefaultPolicy
+   *         for an example.
+   * @tparam LeadingTemplateArgTypeList A type list of the leading template
+   *         arguments.
+   * @tparam Args The argument types.
+   */
+  template <class Ret,
+            template <typename...> class Fn,
+            class UnsupportedPolicy,
+            typename LeadingTemplateArgTypeList,
+            typename... Args>
+  Ret InvokeRetWithUnsupportedPolicyAndLeadingTemplateArgs(Args&&... args) const {
     mltype_dispatcher_internal::CallableDispatchableRetHelper<Ret, UnsupportedPolicy> helper(dt_type_);
 
-    // call helper.Invoke() with Fn<T> for each T in Types
+    // given LeadingTemplateArgTypeList is a type list L<U1, U2, ...>,
+    //   call helper.Invoke() with Fn<U1, U2, ..., T> for each T in Types
     static_cast<void>(std::array<int, sizeof...(Types)>{
-        helper.template Invoke<Types>(Fn<Types>(), std::forward<Args>(args)...)...});
+        helper.template Invoke<Types>(
+            boost::mp11::mp_apply<Fn, boost::mp11::mp_push_back<LeadingTemplateArgTypeList, Types>>(),
+            std::forward<Args>(args)...)...});
 
     // avoid "unused parameter" warning for the case where Types is empty
     static_cast<void>(std::array<int, sizeof...(Args)>{(ORT_UNUSED_PARAMETER(args), 0)...});
@@ -506,7 +558,7 @@ class ContainerChecker {
         ORT_ENFORCE(++index < c.size(), "Sequence is missing type entry for its element");
         constexpr int32_t prim_type = ToTensorProtoElementType<T>();
         // Check if this is a primitive type and it matches
-        if (prim_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
+        ORT_IF_CONSTEXPR (prim_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
           return c[index].IsType(data_types_internal::ContainerType::kTensor) &&
                  c[index].IsPrimType(prim_type);
         } else {
@@ -535,11 +587,10 @@ class ContainerChecker {
       }
       ORT_ENFORCE(++index < c.size(), "Map is missing type entry for its value");
       constexpr int32_t val_type = ToTensorProtoElementType<V>();
-      if (val_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
+      ORT_IF_CONSTEXPR (val_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
         return c[index].IsType(data_types_internal::ContainerType::kTensor) &&
                c[index].IsPrimType(val_type);
-      }
-      return IsContainerOfType<V>::check(c, index);
+      } else return IsContainerOfType<V>::check(c, index);
     }
   };
 

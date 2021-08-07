@@ -17,7 +17,8 @@ if (onnxruntime_MINIMAL_BUILD)
     "${ONNXRUNTIME_ROOT}/core/graph/schema_registry.cc"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/*defs.h"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/*defs.cc"
-
+    "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/onnx_function_util.h"
+    "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/onnx_function_util.cc"
   )
 
   # no Function support initially
@@ -59,6 +60,12 @@ file(GLOB_RECURSE onnxruntime_ir_defs_src CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/defs/*.cc"
 )
 
+if (onnxruntime_ENABLE_TRAINING_OPS AND NOT onnxruntime_ENABLE_TRAINING)
+  set(orttraining_graph_src
+      "${ORTTRAINING_SOURCE_DIR}/core/graph/training_op_defs.cc"
+      "${ORTTRAINING_SOURCE_DIR}/core/graph/training_op_defs.h"
+      )
+endif()
 if (onnxruntime_ENABLE_TRAINING)
   file(GLOB_RECURSE orttraining_graph_src CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/core/graph/*.h"
@@ -67,22 +74,25 @@ if (onnxruntime_ENABLE_TRAINING)
 endif()
 
 set(onnxruntime_graph_lib_src ${onnxruntime_graph_src} ${onnxruntime_ir_defs_src})
-if (onnxruntime_ENABLE_TRAINING)
+if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
     list(APPEND onnxruntime_graph_lib_src ${orttraining_graph_src})
 endif()
 
-add_library(onnxruntime_graph ${onnxruntime_graph_lib_src})
+onnxruntime_add_static_library(onnxruntime_graph ${onnxruntime_graph_lib_src})
 add_dependencies(onnxruntime_graph onnx_proto flatbuffers)
-onnxruntime_add_include_to_target(onnxruntime_graph onnxruntime_common onnx onnx_proto protobuf::libprotobuf flatbuffers)
-
+onnxruntime_add_include_to_target(onnxruntime_graph onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
+if(NOT MSVC)
+  target_compile_options(onnxruntime_graph PRIVATE "-Wno-parentheses")
+endif()
 if (onnxruntime_ENABLE_TRAINING)
   #TODO: the graph library should focus on ONNX IR, it shouldn't depend on math libraries like MKLML/OpenBlas
   target_include_directories(onnxruntime_graph PRIVATE ${MKLML_INCLUDE_DIR})
+  target_link_libraries(onnxruntime_graph PRIVATE nlohmann_json::nlohmann_json)
 endif()
 
 target_include_directories(onnxruntime_graph PRIVATE ${ONNXRUNTIME_ROOT})
 
-if (onnxruntime_ENABLE_TRAINING)
+if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
     target_include_directories(onnxruntime_graph PRIVATE ${ORTTRAINING_ROOT})
 
     if (onnxruntime_USE_NCCL)
@@ -94,7 +104,7 @@ set_target_properties(onnxruntime_graph PROPERTIES FOLDER "ONNXRuntime")
 set_target_properties(onnxruntime_graph PROPERTIES LINKER_LANGUAGE CXX)
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/graph  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_graph_src} ${onnxruntime_ir_defs_src})
-if (onnxruntime_ENABLE_TRAINING)
+if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
     source_group(TREE ${ORTTRAINING_ROOT} FILES ${orttraining_graph_src})
 endif()
 

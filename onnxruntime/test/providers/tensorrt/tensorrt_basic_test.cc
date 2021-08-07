@@ -27,7 +27,9 @@ void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64
 }
 
 TEST(TensorrtExecutionProviderTest, EngineCachingTest) {
-  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_TENSORRT_ENGINE_CACHE_ENABLE", {"1"}},}};
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
+      {"ORT_TENSORRT_ENGINE_CACHE_ENABLE", {"1"}},
+  }};
   onnxruntime::Model model("enginecachingtest", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   std::vector<onnxruntime::NodeArg*> inputs;
@@ -68,7 +70,7 @@ TEST(TensorrtExecutionProviderTest, EngineCachingTest) {
   run_options.run_tag = so.session_logid;
   InferenceSession session_object{so, GetEnvironment()};
   auto allocator_manager = session_object.GetAllocatorManager();
-  auto cuda_provider = TestCudaExecutionProvider();
+  auto cuda_provider = DefaultCudaExecutionProvider();
   cuda_provider->RegisterAllocator(allocator_manager);
   auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
   // First run with input shape {1, 3, 2}
@@ -180,7 +182,7 @@ TEST(TensorrtExecutionProviderTest, FunctionTest) {
   InferenceSession session_object{so, GetEnvironment()};
 
   auto allocator_manager = session_object.GetAllocatorManager();
-  auto cuda_provider = TestCudaExecutionProvider();
+  auto cuda_provider = DefaultCudaExecutionProvider();
   cuda_provider->RegisterAllocator(allocator_manager);
   auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
 
@@ -292,7 +294,7 @@ TEST(TensorrtExecutionProviderTest, NodeIndexMappingTest) {
   InferenceSession session_object{so, GetEnvironment()};
 
   auto allocator_manager = session_object.GetAllocatorManager();
-  auto cuda_provider = TestCudaExecutionProvider();
+  auto cuda_provider = DefaultCudaExecutionProvider();
   cuda_provider->RegisterAllocator(allocator_manager);
   auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
 
@@ -413,7 +415,7 @@ TEST(TensorrtExecutionProviderTest, RemoveCycleTest) {
   InferenceSession session_object{so, GetEnvironment()};
 
   auto allocator_manager = session_object.GetAllocatorManager();
-  auto cuda_provider = TestCudaExecutionProvider();
+  auto cuda_provider = DefaultCudaExecutionProvider();
   cuda_provider->RegisterAllocator(allocator_manager);
   auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
 

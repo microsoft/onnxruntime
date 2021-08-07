@@ -19,7 +19,7 @@ Due to CUDA implementation of Attention kernel, maximum number of attention head
 ## Export a transformer model to ONNX
 
 PyTorch could export model to ONNX. The tf2onnx and keras2onnx tools can be used to convert model that trained by Tensorflow.
-Huggingface transformers has a [notebook](https://github.com/huggingface/transformers/blob/master/notebooks/04-onnx-export.ipynb) shows an example of exporting a pretrained model to ONNX.
+Huggingface transformers has a [notebook](https://github.com/huggingface/notebooks/blob/master/examples/onnx-export.ipynb) shows an example of exporting a pretrained model to ONNX.
 For Keras2onnx, please refer to its [example script](https://github.com/onnx/keras-onnx/blob/master/applications/nightly_build/test_transformers.py).
 For tf2onnx, please refer to its [BERT tutorial](https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/BertTutorial.ipynb).
 
@@ -31,7 +31,7 @@ You can use commands like the following to convert a pre-trained PyTorch GPT-2 m
 ```
 python -m onnxruntime.transformers.convert_to_onnx -m gpt2 --model_class GPT2LMHeadModel --output gpt2.onnx -p fp32
 python -m onnxruntime.transformers.convert_to_onnx -m distilgpt2 --model_class GPT2LMHeadModel --output distilgpt2.onnx -p fp16 --use_gpu --optimize_onnx
-python -m onnxruntime.transformers.convert_to_onnx -m [path_to_gpt2_pytorch_model_directory] --output quantized.onnx -p int32 --optimize_onnx
+python -m onnxruntime.transformers.convert_to_onnx -m [path_to_gpt2_pytorch_model_directory] --output quantized.onnx -p fp32 --optimize_onnx
 ```
 
 The tool will also verify whether the ONNX model and corresponding PyTorch model generate same outputs given same random inputs.

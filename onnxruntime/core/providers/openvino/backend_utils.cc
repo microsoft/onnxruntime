@@ -9,6 +9,12 @@
 
 #include <inference_engine.hpp>
 
+#ifdef OPENVINO_2021_4
+using Exception = InferenceEngine::Exception;
+#else
+using Exception = InferenceEngine::details::InferenceEngineException;
+#endif
+
 #include <ngraph/frontend/onnx_import/onnx.hpp>
 #include <ngraph/pass/convert_fp32_to_fp16.hpp>
 #include <ngraph/pass/constant_folding.hpp>
@@ -23,22 +29,68 @@ namespace backend_utils {
 
 #ifndef NDEBUG
 bool IsDebugEnabled() {
-#ifdef _WIN32
-  size_t env_name_len = 0;
-  char* env_name = nullptr;
-  bool res = (_dupenv_s(&env_name, &env_name_len, "ORT_OPENVINO_ENABLE_DEBUG") == 0 && env_name != nullptr);
-  free(env_name);
-  return res;
-#else
-  return (std::getenv("ORT_OPENVINO_ENABLE_DEBUG") != nullptr);
-#endif
+  const std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_ENABLE_DEBUG");
+  if (!env_name.empty()) {
+    return true;
+  }
+  return false;
 }
-void DumpOnnxModelProto(const Provider_ModelProto& model_proto, std::string file_name) {
+void DumpOnnxModelProto(const ONNX_NAMESPACE::ModelProto& model_proto, std::string file_name) {
   std::fstream outfile(file_name, std::ios::out | std::ios::trunc | std::ios::binary);
   model_proto.SerializeToOstream(outfile);
 }
 
 #endif
+
+bool UseCompiledNetwork() {
+  const std::string env_name = onnxruntime::GetEnvironmentVar("OV_USE_COMPILED_NETWORK");
+  if (!env_name.empty()) {
+    return true;
+  }
+  return false;
+}
+
+std::string GetCurrentWorkingDir() {
+  std::string curr_dir;
+  ORT_UNUSED_PARAMETER(curr_dir);
+  char buff[FILENAME_MAX];
+  curr_dir = GetCurrentDir(buff, FILENAME_MAX);
+  std::string current_working_dir(buff);
+  return current_working_dir;
+}
+
+bool IsDirExists(const std::string& pathname) {
+  struct stat info;
+  if(stat(pathname.c_str(), &info) != 0) {
+    LOGS_DEFAULT(INFO) << log_tag << "cannot access pathname: " << pathname;
+	  return false;
+  } else if(info.st_mode & S_IFDIR) {
+      LOGS_DEFAULT(INFO) << log_tag << "pathname exists: " << pathname;
+	    return true;
+  } else {
+      LOGS_DEFAULT(INFO) << log_tag << "pathname: " << pathname << ": doesn't contain the directory 'ov_compiled_blobs' ";
+  }
+  return false;
+}
+
+void CreateDirectory(const std::string& ov_compiled_blobs_dir) {
+  LOGS_DEFAULT(INFO) << log_tag << "'ov_compiled_blobs' directory doesn't exist at the executable path, so creating one";
+#if defined(_WIN32)
+  if (_mkdir(ov_compiled_blobs_dir.c_str()) == 0) { // Creating a directory 
+	  LOGS_DEFAULT(INFO) << log_tag << "created a directory named 'ov_compiled_blobs' at the executable path";
+  } else {
+    LOGS_DEFAULT(INFO) << log_tag << "Error creating a directory named 'ov_compiled_blobs' at the executable path";
+    throw std::runtime_error("Could not create the directory");
+  }
+#else
+  if (mkdir(ov_compiled_blobs_dir.c_str(), 0777) == 0) { // Creating a directory
+    LOGS_DEFAULT(INFO) << log_tag << "created a directory named 'ov_compiled_blobs' at the executable path";
+  } else {
+    LOGS_DEFAULT(INFO) << log_tag << "Error creating a directory named 'ov_compiled_blobs' at the executable path";
+    throw std::runtime_error("Could not create the directory");
+  }
+#endif
+}
 
 struct static_cast_int64 {
   template <typename T1>  // T1 models type statically convertible to T
@@ -46,12 +98,7 @@ struct static_cast_int64 {
 };
 
 std::shared_ptr<InferenceEngine::CNNNetwork>
-CreateCNNNetwork(const Provider_ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
-#if defined OPENVINO_2020_3
-  ORT_UNUSED_PARAMETER(const_outputs_map);
-#endif
-
-  std::istringstream model_stream{model_proto.SerializeAsString()};
+CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
   std::shared_ptr<ngraph::Function> ng_function;
 
 #ifndef NDEBUG
@@ -60,6 +107,9 @@ CreateCNNNetwork(const Provider_ModelProto& model_proto, const GlobalContext& gl
   }
 #endif
 
+#if (defined OPENVINO_2020_3) || (defined OPENVINO_2021_1) || (defined OPENVINO_2021_2) || (defined OPENVINO_2021_3)
+  ORT_UNUSED_PARAMETER(const_outputs_map);
+  std::istringstream model_stream{model_proto.SerializeAsString()};
   try {
     ng_function = ngraph::onnx_import::import_onnx_model(model_stream);
     LOGS_DEFAULT(INFO) << "ONNX Import Done";
@@ -68,6 +118,21 @@ CreateCNNNetwork(const Provider_ModelProto& model_proto, const GlobalContext& gl
   } catch (...) {
     ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while importing model to nGraph Func");
   }
+#else
+  //ReadNetwork() API flow will be used in OpenVINO-EP starting from OpenVINO 2021.4
+  InferenceEngine::CNNNetwork cnn_network;
+  const std::string model = model_proto.SerializeAsString();
+  InferenceEngine::Blob::Ptr blob = {nullptr};
+  try {
+    cnn_network = global_context.ie_core.ReadNetwork(model, blob);
+    LOGS_DEFAULT(INFO) << "Read network Done";
+  } catch (const Exception& e) {
+    ORT_THROW(log_tag + "[OpenVINO-EP] Exception while Reading network: " + std::string(e.what()));
+  } catch (...) {
+    ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while Reading network");
+  }
+  ng_function = cnn_network.getFunction();
+#endif
 
   if (global_context.device_type.find("GPU") != std::string::npos &&
       subgraph_context.precision == InferenceEngine::Precision::FP16) {
@@ -76,7 +141,7 @@ CreateCNNNetwork(const Provider_ModelProto& model_proto, const GlobalContext& gl
     ng_function->validate_nodes_and_infer_types();
   }
 
-#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1) || (defined OPENVINO_2021_2)
+#if (defined OPENVINO_2021_1) || (defined OPENVINO_2021_2) || (defined OPENVINO_2021_3) || (defined OPENVINO_2021_4)
   if (!global_context.is_wholly_supported_graph) {
     std::map<std::string, std::string> result_to_output;
     for (auto& result : ng_function->get_results()) {
@@ -98,14 +163,14 @@ CreateCNNNetwork(const Provider_ModelProto& model_proto, const GlobalContext& gl
 
   try {
     return std::make_shared<InferenceEngine::CNNNetwork>(ng_function);
-  } catch (const InferenceEngine::details::InferenceEngineException& e) {
+  } catch (const Exception& e) {
     ORT_THROW(log_tag + " Exception thrown while making IE::CNNNetwork: " + e.what());
   } catch (...) {
     ORT_THROW(log_tag + " Exception thrown while making IE::CNNNetwork");
   }
 }
 
-InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const Provider_TypeProto& onnx_type, std::string device) {
+InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type, std::string device) {
   ONNX_NAMESPACE::DataType type_string = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(onnx_type);
   if (*type_string == "float" || *type_string == "tensor(float)") {
     return InferenceEngine::Precision::FP32;
@@ -134,7 +199,7 @@ InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const Provider_TypePro
   }
 }
 
-void SetIODefs(const Provider_ModelProto& model_proto,
+void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
                std::shared_ptr<InferenceEngine::CNNNetwork> network,
                std::unordered_map<std::string, int> output_names,
                std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map,
@@ -157,7 +222,7 @@ void SetIODefs(const Provider_ModelProto& model_proto,
   auto outputInfo = network->getOutputsInfo();
   for (auto iter = outputInfo.begin(); iter != outputInfo.end(); ++iter) {
     auto output_name = iter->first;
-#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1) || (defined OPENVINO_2021_2)
+#if (defined OPENVINO_2021_1) || (defined OPENVINO_2021_2) || (defined OPENVINO_2021_3) || (defined OPENVINO_2021_4)
     auto it = const_outputs_map.find(output_name);
     //Output is constant and don't need to set precision
     if (it != const_outputs_map.end())
@@ -201,7 +266,7 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_s
   return output_tensor;
 }
 
-#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1) || (defined OPENVINO_2021_2)
+#if (defined OPENVINO_2021_1) || (defined OPENVINO_2021_2) || (defined OPENVINO_2021_3) || (defined OPENVINO_2021_4)
 OrtValue*
 GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context,
                 std::string output_name,
@@ -249,7 +314,7 @@ int GetFirstAvailableDevice(GlobalContext& global_context) {
   return i;
 }
 
-#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1) || (defined OPENVINO_2021_2)
+#if (defined OPENVINO_2021_1) || (defined OPENVINO_2021_2) || (defined OPENVINO_2021_3) || (defined OPENVINO_2021_4)
 void FillOutputsWithConstantData(Ort::CustomOpApi& ort, std::shared_ptr<ngraph::Node> node, OrtValue* out_tensor) {
   switch (node->get_element_type()) {
     case ngraph::element::Type_t::f32: {
@@ -268,13 +333,17 @@ void FillOutputsWithConstantData(Ort::CustomOpApi& ort, std::shared_ptr<ngraph::
       FillOutputHelper<int64_t>(ort, out_tensor, node);
       break;
     }
+    case ngraph::element::Type_t::f16: {
+      FillOutputHelper<float>(ort, out_tensor, node);
+      break;
+    }
     default:
       ORT_THROW(log_tag + "Unsupported output data type");
   }
 }
 #endif
 
-#if (defined OPENVINO_2020_4) || (defined OPENVINO_2021_1) || (defined OPENVINO_2021_2)
+#if (defined OPENVINO_2021_1) || (defined OPENVINO_2021_2) || (defined OPENVINO_2021_3) || (defined OPENVINO_2021_4)
 template <typename T>
 void FillOutputHelper(Ort::CustomOpApi& ort, OrtValue* out_tensor, std::shared_ptr<ngraph::Node> node) {
   auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>(node);

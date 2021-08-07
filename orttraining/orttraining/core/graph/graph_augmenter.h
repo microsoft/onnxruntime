@@ -169,7 +169,7 @@ class GraphAugmenter {
     // When adding ArgDef, if new TypeProto is needed, call this func to get a new one
     // So that the life cycle is managed by GraphDefs.
     TypeProto* CreateTypeProto() {
-      graph_type_protos_.push_back(onnxruntime::make_unique<TypeProto>());
+      graph_type_protos_.push_back(std::make_unique<TypeProto>());
       return graph_type_protos_.back().get();
     }
 

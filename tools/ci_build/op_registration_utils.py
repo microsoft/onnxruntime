@@ -26,6 +26,7 @@ def map_ort_constant_to_domain(ort_constant_name: str):
     constant_to_domain_map = {'kOnnxDomain': 'ai.onnx',
                               'kMLDomain': 'ai.onnx.ml',
                               'kMSDomain': 'com.microsoft',
+                              'kMSExperimentalDomain': 'com.microsoft.experimental',
                               'kMSNchwcDomain': 'com.microsoft.nchwc',
                               'kMSFeaturizersDomain': 'com.microsoft.mlfeaturizers',
                               'kMSDmlDomain': 'com.microsoft.dml',

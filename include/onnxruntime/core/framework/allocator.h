@@ -5,6 +5,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/fence.h"
+#include "core/framework/allocator_stats.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "ortdevice.h"
 #include "ortmemoryinfo.h"
@@ -12,10 +13,24 @@
 // This configures the arena based allocator used by ORT
 // See docs/C_API.md for details on what these mean and how to choose these values
 struct OrtArenaCfg {
-  size_t max_mem;                // use 0 to allow ORT to choose the default
-  int arena_extend_strategy;     // use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
-  int initial_chunk_size_bytes;  // use -1 to allow ORT to choose the default
-  int max_dead_bytes_per_chunk;  // use -1 to allow ORT to choose the default
+  OrtArenaCfg() : max_mem(0),
+                  arena_extend_strategy(-1),
+                  initial_chunk_size_bytes(-1),
+                  max_dead_bytes_per_chunk(-1),
+                  initial_growth_chunk_size_bytes(-1) {}
+  OrtArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
+              int max_dead_bytes_per_chunk, int initial_growth_chunk_size_bytes)
+      : max_mem(max_mem),
+        arena_extend_strategy(arena_extend_strategy),
+        initial_chunk_size_bytes(initial_chunk_size_bytes),
+        max_dead_bytes_per_chunk(max_dead_bytes_per_chunk),
+        initial_growth_chunk_size_bytes(initial_growth_chunk_size_bytes) {}
+
+  size_t max_mem;                       // use 0 to allow ORT to choose the default
+  int arena_extend_strategy;            // use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
+  int initial_chunk_size_bytes;         // use -1 to allow ORT to choose the default
+  int max_dead_bytes_per_chunk;         // use -1 to allow ORT to choose the default
+  int initial_growth_chunk_size_bytes;  // use -1 to allow ORT to choose the default
 };
 
 namespace onnxruntime {
@@ -41,8 +56,22 @@ class IAllocator {
   @remarks Use SafeInt when calculating the size of memory to allocate using Alloc.
   */
   virtual void* Alloc(size_t size) = 0;
+
   virtual void Free(void* p) = 0;
+
+  // TODO: Find a better name than Reserve() and update in all places.
+  // Reserve() is an interface exposed for an implementation of IAllocator
+  // to optionally implement some allocation logic that by-passes any arena-based
+  // logic that may be housed in the Alloc() implementation.
+  // There are SessionOptions config(s) that allow users to allocate some memory
+  // by-passing arena-based logic.
+  // By default, the base implementation  just calls Alloc().
+  virtual void* Reserve(size_t size) { return Alloc(size); }
+
   const OrtMemoryInfo& Info() const { return memory_info_; };
+
+  // Each implementation of IAllocator can override and provide their own implementation
+  virtual void GetStats(AllocatorStats* /*stats*/) { return; }
 
   /**
      optional CreateFence interface, as provider like DML has its own fence

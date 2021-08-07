@@ -144,6 +144,7 @@ function(target_cppwinrt
                 /metadata_dir ${sdk_metadata_directory}
                 /W1 /char signed /nomidl /nologo /winrt
                 /no_settings_comment /no_def_idir /target "NT60"
+                /I ${CMAKE_CURRENT_BINARY_DIR}/winml_api
                 /I ${idl_source_directory}
                 /I ${um_sdk_directory}
                 /I ${shared_sdk_directory}

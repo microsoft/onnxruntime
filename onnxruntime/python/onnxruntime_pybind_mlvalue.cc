@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include "onnxruntime_pybind_mlvalue.h"
+#include "python/onnxruntime_pybind_state_common.h"
+#include "pybind11/numpy.h"
 
 #define NO_IMPORT_ARRAY
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
@@ -16,7 +18,12 @@
 #include "core/framework/data_types.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 
-using namespace std;
+#include "core/framework/data_transfer_utils.h"
+#include "core/framework/data_types_internal.h"
+#include "core/providers/get_execution_providers.h"
+#include "core/framework/kernel_registry.h"
+#include "core/framework/provider_options_utils.h"
+
 namespace onnxruntime {
 namespace python {
 
@@ -30,11 +37,19 @@ static bool PyObjectCheck_NumpyArray(PyObject* o) {
   return PyObject_HasAttrString(o, "__array_finalize__");
 }
 
+bool IsNumpyArray(py::object& obj) {
+  return PyObjectCheck_NumpyArray(obj.ptr());
+}
+
 bool IsNumericNumpyType(int npy_type) {
   return npy_type < NPY_OBJECT || npy_type == NPY_HALF;
 }
 
-bool IsNumericNumpyArray(py::object& py_object) {
+int GetNumpyArrayType(const py::object& obj) {
+  return PyArray_TYPE(reinterpret_cast<PyArrayObject*>(obj.ptr()));
+}
+
+bool IsNumericNumpyArray(const py::object& py_object) {
   if (PyObjectCheck_NumpyArray(py_object.ptr())) {
     int npy_type = PyArray_TYPE(reinterpret_cast<PyArrayObject*>(py_object.ptr()));
     return IsNumericNumpyType(npy_type);
@@ -43,13 +58,34 @@ bool IsNumericNumpyArray(py::object& py_object) {
   return false;
 }
 
+namespace {
+template <typename... T>
+std::vector<py::dtype> MakeTypes() {
+  std::vector<py::dtype> result = {py::dtype::of<T>()...};
+  return result;
+}
+}  // namespace
+
+bool IsNumericDType(const py::dtype& dtype) {
+  static const std::vector<py::dtype> numeric =
+      MakeTypes<int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t, float, double>();
+  return std::any_of(numeric.cbegin(), numeric.cend(), [&dtype](const py::dtype& dt) {
+    return dtype.is(dt);
+  });
+}
+
 static TensorShape GetArrayShape(PyArrayObject* pyObject) {
-  int ndim = PyArray_NDIM(pyObject);
+  const int ndim = PyArray_NDIM(pyObject);
   const npy_intp* npy_dims = PyArray_DIMS(pyObject);
-  std::vector<int64_t> dims(ndim);
-  for (int i = 0; i < ndim; ++i) {
-    dims[i] = npy_dims[i];
-  }
+  auto span = gsl::make_span(npy_dims, ndim);
+  std::vector<int64_t> dims(span.cbegin(), span.cend());
+  TensorShape shape(std::move(dims));
+  return shape;
+}
+
+TensorShape GetShape(const py::array& arr) {
+  auto span = gsl::make_span(arr.shape(), arr.ndim());
+  std::vector<int64_t> dims(span.cbegin(), span.cend());
   TensorShape shape(std::move(dims));
   return shape;
 }
@@ -57,6 +93,126 @@ static TensorShape GetArrayShape(PyArrayObject* pyObject) {
 void CpuToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
   memcpy(dst, src, num_bytes);
 }
+
+OrtMemoryInfo GetMemoryInfoPerDeviceType(const OrtDevice& ort_device) {
+  OrtMemoryInfo mem_info;
+  if (ort_device.Type() == OrtDevice::CPU) {
+    mem_info = GetAllocator()->Info();
+  }
+#if USE_CUDA
+  else if (ort_device.Type() == OrtDevice::GPU) {
+    if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), ort_device.Id())) {
+      ORT_THROW("The provided device id doesn't match any available GPUs on the machine: ", ort_device.Id());
+    }
+    mem_info = GetCudaAllocator(ort_device.Id())->Info();
+  }
+#endif
+  else {
+    ORT_THROW("Unsupported OrtDevice type: ", ort_device.Type());
+  }
+  return mem_info;
+}
+
+#ifdef USE_CUDA
+void CpuToCudaMemCpy(void* dst, const void* src, size_t num_bytes) {
+  GetProviderInfo_CUDA().cudaMemcpy_HostToDevice(dst, src, num_bytes);
+}
+
+void CudaToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
+  GetProviderInfo_CUDA().cudaMemcpy_DeviceToHost(dst, src, num_bytes);
+}
+
+const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCudaToHostMemCpyFunction() {
+  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
+      {OrtDevice::GPU, CudaToCpuMemCpy}};
+
+  return &map;
+}
+
+bool IsCudaDeviceIdValid(const onnxruntime::logging::Logger& logger, int id) {
+  int num_devices = GetProviderInfo_CUDA().cudaGetDeviceCount();
+
+  if (0 == num_devices) {
+    LOGS(logger, WARNING) << "your system does not have a CUDA capable device.";
+    return false;
+  }
+
+  if (id < 0 || id >= num_devices) {
+    LOGS(logger, WARNING) << "cuda_device=" << id << " is invalid, must choose device ID between 0 and " << num_devices - 1;
+    return false;
+  }
+
+  return true;
+}
+
+AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
+  // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
+  // multi-threaded CUDA allocation work we need to maintain a per-thread CUDA allocator
+
+  static auto* id_to_allocator_map = new std::unordered_map<OrtDevice::DeviceId, AllocatorPtr>();
+
+  if (id_to_allocator_map->find(id) == id_to_allocator_map->end()) {
+    // TODO: Expose knobs so that users can set fields associated with OrtArenaCfg so that we can pass it to the following method
+    id_to_allocator_map->insert({id, GetProviderInfo_CUDA().CreateCudaAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, nullptr)});
+  }
+
+  return (*id_to_allocator_map)[id];
+}
+
+std::unique_ptr<IDataTransfer> GetGPUDataTransfer() {
+  // Using default stream
+  return GetProviderInfo_CUDA().CreateGPUDataTransfer(nullptr);
+}
+
+#endif
+
+#ifdef USE_ROCM
+
+bool IsRocmDeviceIdValid(const onnxruntime::logging::Logger& logger, int id) {
+  int num_devices = 0;
+  HIP_CALL_THROW(hipGetDeviceCount(&num_devices));
+
+  if (0 == num_devices) {
+    LOGS(logger, WARNING) << "your system does not have a ROCM capable device.";
+    return false;
+  }
+
+  if (id < 0 || id >= num_devices) {
+    LOGS(logger, WARNING) << "rocm_device=" << id << " is invalid, must choose device ID between 0 and " << num_devices - 1;
+    return false;
+  }
+
+  return true;
+}
+
+AllocatorPtr GetRocmAllocator(OrtDevice::DeviceId id) {
+  // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
+  // multi-threaded ROCM allocation work we need to maintain a per-thread ROCM allocator
+  static std::unordered_map<OrtDevice::DeviceId, AllocatorPtr> id_to_allocator_map;
+
+  if (id_to_allocator_map.find(id) == id_to_allocator_map.end()) {
+    id_to_allocator_map.insert({id, ROCMExecutionProvider::CreateRocmAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info)});
+  }
+
+  return id_to_allocator_map[id];
+}
+
+void CpuToRocmMemCpy(void* dst, const void* src, size_t num_bytes) {
+  HIP_CALL_THROW(hipMemcpy(dst, src, num_bytes, hipMemcpyHostToDevice));
+}
+
+void RocmToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
+  HIP_CALL_THROW(hipMemcpy(dst, src, num_bytes, hipMemcpyDeviceToHost));
+}
+
+const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetRocmToHostMemCpyFunction() {
+  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
+      {OrtDevice::GPU, RocmToCpuMemCpy}};
+
+  return &map;
+}
+
+#endif
 
 int OnnxRuntimeTensorToNumpyType(const DataTypeImpl* tensor_type) {
   static std::map<MLDataType, int> type_map{
@@ -97,7 +253,7 @@ MLDataType NumpyTypeToOnnxRuntimeType(int numpy_type) {
       {NPY_UINT, DataTypeImpl::GetType<uint32_t>()},
       {NPY_LONGLONG, DataTypeImpl::GetType<int64_t>()},
       {NPY_ULONGLONG, DataTypeImpl::GetType<uint64_t>()},
-      {NPY_OBJECT, DataTypeImpl::GetType<std::string>()},
+      {NPY_OBJECT, DataTypeImpl::GetType<std::string>()}
   };
   const auto it = type_map.find(numpy_type);
   if (it == type_map.end()) {
@@ -107,7 +263,7 @@ MLDataType NumpyTypeToOnnxRuntimeType(int numpy_type) {
   }
 }
 
-const DataTypeImpl* NumpyToOnnxRuntimeTensorType(int numpy_type) {
+MLDataType NumpyToOnnxRuntimeTensorType(int numpy_type) {
   static std::map<int, MLDataType> type_map{
       {NPY_BOOL, DataTypeImpl::GetType<bool>()},
       {NPY_FLOAT, DataTypeImpl::GetType<float>()},
@@ -217,13 +373,13 @@ using OrtPybindSingleUseAllocatorPtr = std::shared_ptr<OrtPybindSingleUseAllocat
 // Expects p_tensor properly created
 // Does not manage darray life-cycle
 
-static void CopyDataToTensor(PyArrayObject* darray, int npy_type, std::unique_ptr<Tensor>& p_tensor,
+static void CopyDataToTensor(PyArrayObject* darray, int npy_type, Tensor& tensor,
                              MemCpyFunc mem_cpy_to_device = CpuToCpuMemCpy) {
-  const auto total_items = p_tensor->Shape().Size();
+  const auto total_items = tensor.Shape().Size();
   if (npy_type == NPY_UNICODE) {
     // Copy string data which needs to be done after Tensor is allocated.
     // Strings are Python strings or numpy.unicode string.
-    std::string* dst = p_tensor->MutableData<std::string>();
+    std::string* dst = tensor.MutableData<std::string>();
     const auto item_size = PyArray_ITEMSIZE(darray);
     const auto num_chars = item_size / PyUnicode_4BYTE_KIND;
     const char* src = reinterpret_cast<const char*>(PyArray_DATA(darray));
@@ -245,7 +401,7 @@ static void CopyDataToTensor(PyArrayObject* darray, int npy_type, std::unique_pt
     // Strings are given as bytes (encoded strings).
     // NPY_VOID does not trim final 0.
     // NPY_STRING assumes bytes string ends with a final 0.
-    std::string* dst = p_tensor->MutableData<std::string>();
+    std::string* dst = tensor.MutableData<std::string>();
     const auto item_size = PyArray_ITEMSIZE(darray);
     const char* src = reinterpret_cast<const char*>(PyArray_DATA(darray));
     for (int i = 0; i < total_items; i++, src += item_size) {
@@ -257,7 +413,7 @@ static void CopyDataToTensor(PyArrayObject* darray, int npy_type, std::unique_pt
     }
   } else if (npy_type == NPY_OBJECT) {
     // Converts object into string.
-    std::string* dst = p_tensor->MutableData<std::string>();
+    std::string* dst = tensor.MutableData<std::string>();
     const auto item_size = PyArray_ITEMSIZE(darray);
     const char* src = reinterpret_cast<const char*>(PyArray_DATA(darray));
     for (int i = 0; i < total_items; ++i, src += item_size) {
@@ -268,13 +424,22 @@ static void CopyDataToTensor(PyArrayObject* darray, int npy_type, std::unique_pt
       dst[i] = py::reinterpret_borrow<py::str>(pStr);
     }
   } else {
-    void* buffer = p_tensor->MutableDataRaw();
+    void* buffer = tensor.MutableDataRaw();
     size_t len;
-    if (!IAllocator::CalcMemSizeForArray(p_tensor->DataType()->Size(), p_tensor->Shape().Size(), &len)) {
+    if (!IAllocator::CalcMemSizeForArray(tensor.DataType()->Size(), tensor.Shape().Size(), &len)) {
       throw std::runtime_error("length overflow");
     }
     mem_cpy_to_device(buffer, PyArray_DATA(darray), len);
   }
+}
+
+inline void CopyDataToTensor(PyArrayObject* darray, int npy_type, std::unique_ptr<Tensor>& p_tensor,
+                             MemCpyFunc mem_cpy_to_device = CpuToCpuMemCpy) {
+  CopyDataToTensor(darray, npy_type, *p_tensor, mem_cpy_to_device);
+}
+
+void CopyDataToTensor(const py::array& py_array, int npy_type, Tensor& tensor, MemCpyFunc mem_cpy_to_device) {
+  CopyDataToTensor(reinterpret_cast<PyArrayObject*>(py_array.ptr()), npy_type, tensor, mem_cpy_to_device);
 }
 
 // Setting `use_numpy_data_memory` to `true` will ensure that the underlying numpy array buffer is directly used
@@ -297,15 +462,15 @@ static std::unique_ptr<Tensor> CreateTensor(const AllocatorPtr& alloc, const std
       // Use the memory of numpy array directly. The ownership belongs to the calling
       // python code. In this case, the incoming pyObject must itself be contiguous (pyObject == darray).
       // darray reference will be decremented but the original array is still alive
-      p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, PyArray_DATA(darray), alloc->Info());
+      p_tensor = std::make_unique<Tensor>(element_type, shape, PyArray_DATA(darray), alloc->Info());
     } else {
       // This is the case when a contiguous array is a copy. We still can use it directly with OrtPybindSingleUseAllocator
       // which takes ownership of the array.
       auto pybind_alloc = std::make_shared<OrtPybindSingleUseAllocator>(std::move(darray_guard), name_input, alloc->Info());
-      p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, std::move(pybind_alloc));
+      p_tensor = std::make_unique<Tensor>(element_type, shape, std::move(pybind_alloc));
     }
   } else {
-    p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
+    p_tensor = std::make_unique<Tensor>(element_type, shape, alloc);
     CopyDataToTensor(darray, npy_type, p_tensor, mem_cpy_to_device);
   }
 
@@ -357,7 +522,7 @@ static void CreateSequenceOfTensors(AllocatorPtr alloc, const std::string& name_
   // set the seq type
   MLDataType seq_dtype = OrtTypeInfo::ElementTypeFromProto(
       static_cast<ONNX_NAMESPACE::TensorProto_DataType>(type_proto.sequence_type().elem_type().tensor_type().elem_type()));
-  auto p_seq_tensors = onnxruntime::make_unique<TensorSeq>(seq_dtype);
+  auto p_seq_tensors = std::make_unique<TensorSeq>(seq_dtype);
   p_seq_tensors->SetElements(std::move(tensors));
   auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
   p_mlvalue->Init(p_seq_tensors.release(),
@@ -391,10 +556,10 @@ static void CreateTensorMLValueOwned(const OrtPybindSingleUseAllocatorPtr& pybin
       npy_type != NPY_VOID && npy_type != NPY_OBJECT) {
     // We are able to reuse the memory of the contiguous python buffer and avoid
     // extra copy using OrtPybindAllocator which will take care of the memory
-    p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, pybind_alloc);
+    p_tensor = std::make_unique<Tensor>(element_type, shape, pybind_alloc);
   } else {
     // We still need to copy elements properly from the contiguous buffer
-    p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
+    p_tensor = std::make_unique<Tensor>(element_type, shape, alloc);
     CopyDataToTensor(pybind_alloc->GetContiguous(), npy_type, p_tensor);
   }
 
@@ -460,7 +625,7 @@ static void CreateMapMLValue_Map(Py_ssize_t& pos, PyObject*& key, const std::str
                                  PyObject* item, AllocatorPtr /*alloc*/, OrtValue* p_mlvalue, KeyGetterType keyGetter,
                                  ValueGetterType valueGetter) {
   std::unique_ptr<std::map<KeyType, ValueType>> dst;
-  dst = onnxruntime::make_unique<std::map<KeyType, ValueType>>();
+  dst = std::make_unique<std::map<KeyType, ValueType>>();
   CreateMapMLValue_LoopIntoMap(pos, key, name_input, value, item, *dst, keyGetter, valueGetter);
   p_mlvalue->Init(dst.release(), DataTypeImpl::GetType<std::map<KeyType, ValueType>>(),
                   DataTypeImpl::GetType<std::map<KeyType, ValueType>>()->GetDeleteFunc());
@@ -471,7 +636,7 @@ void CreateMapMLValue_VectorMap(Py_ssize_t& pos, PyObject*& key, const std::stri
                                 PyObject* iterator, PyObject* item, AllocatorPtr /*alloc*/, OrtValue* p_mlvalue,
                                 KeyGetterType keyGetter, ValueGetterType valueGetter) {
   std::unique_ptr<std::vector<std::map<KeyType, ValueType>>> dstVector;
-  dstVector = onnxruntime::make_unique<std::vector<std::map<KeyType, ValueType>>>();
+  dstVector = std::make_unique<std::vector<std::map<KeyType, ValueType>>>();
   int index = 0;
   do {
     dstVector->push_back(std::map<KeyType, ValueType>());
@@ -618,7 +783,7 @@ static void CreateGenericIterableMLValue(PyObject* iterator, AllocatorPtr alloc,
 // as the backing data buffer for the ORT Tensor where applicable (for numeric tensors)
 // The numpy object owns the memory and needs to be alive until the corresponding OrtValue is in scope
 void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const AllocatorPtr& alloc, const std::string& name_input,
-                          py::object& value, OrtValue* p_mlvalue, bool accept_only_numpy_array,
+                          const py::object& value, OrtValue* p_mlvalue, bool accept_only_numpy_array,
                           bool use_numpy_data_memory, MemCpyFunc mem_cpy_to_device) {
   onnx::TypeProto type_proto;
   if (PyObjectCheck_NumpyArray(value.ptr())) {

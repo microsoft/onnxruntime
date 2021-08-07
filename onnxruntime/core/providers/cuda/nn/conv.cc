@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/common.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/nn/conv.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
@@ -12,22 +11,22 @@ namespace cuda {
 
 // Op Set 11 for Conv only update document to clearify default dilations and strides value.
 // which are already convered by op set 11 cpu versoin, so simply add declaration.
-#define REGISTER_KERNEL_TYPED(T)                                                \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      Conv,                                                                     \
-      kOnnxDomain,                                                              \
-      1, 10,                                                                    \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Conv<T>);                                                                 \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      Conv,                                                                     \
-      kOnnxDomain,                                                              \
-      11,                                                                       \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define REGISTER_KERNEL_TYPED(T)                                                           \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      Conv,                                                                                \
+      kOnnxDomain,                                                                         \
+      1, 10,                                                                               \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Conv<T>);                                                                            \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      Conv,                                                                                \
+      kOnnxDomain,                                                                         \
+      11,                                                                                  \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Conv<T>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -35,8 +34,7 @@ REGISTER_KERNEL_TYPED(double)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 Status SliceOutUnwantedOutputSection(cudaStream_t stream,
-                                     const void* input_data,
-                                     const std::vector<int64_t>& input_dims,
+                                     const void* input_data, const std::vector<int64_t>& input_dims,
                                      void* output_data,
                                      const std::vector<int64_t>& output_dims,
                                      std::vector<int64_t> starts,
@@ -158,7 +156,11 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
     std::vector<int64_t> x_dims_cudnn = x_dims;
     std::vector<int64_t> y_dims_cudnn = !post_slicing_required ? y_dims : y_dims_with_adjusted_pads;
     if (rank < 2) {
-      // cudnn only takes 4D or 5D input, so pad dimensions if needed
+      // TODO: Explore padding the provided input shape [N, C, D] to [N, C, 1, D]
+      // especially for EXHAUSTIVE algo search which may result in a better algo selection.
+      // Currently, we are padding it to [N, C, D, 1] as this seems to be the sweet spot
+      // for all algo search options: EXHAUSTIVE, HEURISTIC, and DEFAULT.
+      // See PR #7348 for more context.
       x_dims_cudnn.push_back(1);
       y_dims_cudnn.push_back(1);
       w_dims.push_back(1);
@@ -175,8 +177,8 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
     ORT_RETURN_IF_ERROR(s_.x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
     ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
     ORT_RETURN_IF_ERROR(s_.conv_desc.Set(kernel_shape.size(), pads, strides, dilations,
+                                         gsl::narrow_cast<int>(conv_attrs_.group),
                                          CUDNN_CROSS_CORRELATION, CudnnTensor::GetDataType<CudaT>()));
-    CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionGroupCount(s_.conv_desc, gsl::narrow_cast<int>(conv_attrs_.group)));
 
     if (context->InputCount() >= 3) {
       const Tensor* B = context->Input<Tensor>(2);
@@ -200,8 +202,6 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
     }
 
     if (!s_.cached_benchmark_results.contains(x_dims_cudnn)) {
-      IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(AlgoSearchWorkspaceSize);
-
       // set math type to tensor core before algorithm search
       if (std::is_same<T, MLFloat16>::value)
         CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, CUDNN_TENSOR_OP_MATH));
@@ -212,7 +212,8 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       int cudnn_conv_algo = cuda_ep->GetCudnnConvAlgo();
       ORT_ENFORCE(cudnn_conv_algo > -1 && cudnn_conv_algo < 3, "cudnn_conv_algo should be 0, 1 or 2, but got ", cudnn_conv_algo);
       switch (cudnn_conv_algo) {
-        case 0:
+        case 0: {
+          IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(AlgoSearchWorkspaceSize);
           CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionForwardAlgorithmEx(
               CudnnHandle(),
               s_.x_tensor,
@@ -222,13 +223,13 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
               s_.conv_desc,
               s_.y_tensor,
               s_.y_data,
-              1,
-              &algo_count,
+              1,            // requestedAlgoCount
+              &algo_count,  // returnedAlgoCount
               &perf,
               algo_search_workspace.get(),
               AlgoSearchWorkspaceSize));
           break;
-
+        }
         case 1:
           CUDNN_RETURN_IF_ERROR(cudnnGetConvolutionForwardAlgorithm_v7(
               CudnnHandle(),
@@ -236,8 +237,8 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
               s_.w_desc,
               s_.conv_desc,
               s_.y_tensor,
-              1,
-              &algo_count,
+              1,            // requestedAlgoCount
+              &algo_count,  // returnedAlgoCount
               &perf));
           break;
 
@@ -330,6 +331,7 @@ Status CudnnConvolutionDescriptor::Set(
     const std::vector<int64_t>& pads,
     const std::vector<int64_t>& strides,
     const std::vector<int64_t>& dilations,
+    int groups,
     cudnnConvolutionMode_t mode,
     cudnnDataType_t data_type) {
   if (!desc_)
@@ -344,6 +346,10 @@ Status CudnnConvolutionDescriptor::Set(
     dilation_dims[i] = gsl::narrow_cast<int>(dilations[i]);
   }
 
+  // This piece of code is copied from /pytorch/aten/src/ATen/cudnn/Descriptors.h
+  // Setting math_type to CUDNN_DATA_FLOAT for half input
+  cudnnDataType_t math_type = data_type;
+  if (data_type == CUDNN_DATA_HALF) math_type = CUDNN_DATA_FLOAT;
   CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionNdDescriptor(
       desc_,
       gsl::narrow_cast<int>(rank),
@@ -351,7 +357,16 @@ Status CudnnConvolutionDescriptor::Set(
       stride_dims.data(),
       dilation_dims.data(),
       mode,
-      data_type));
+      math_type));
+
+  CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionGroupCount(desc_, groups));
+
+  // Copied from /pytorch/aten/src/ATen/cudnn/Descriptors.h
+  // See Note [behavior of cudnnFind and cudnnGet] at /pytorch/aten/src/ATen/native/cudnn/Conv_v7.cpp
+  CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_DEFAULT_MATH));
+  if (data_type == CUDNN_DATA_HALF) {
+    CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(desc_, CUDNN_TENSOR_OP_MATH));
+  }
 
   return Status::OK();
 }

@@ -412,8 +412,8 @@ namespace ROOT_NS.AI.MachineLearning
         Windows.Graphics.Imaging.BitmapAlphaMode BitmapAlphaMode{ get; };
         [contract(MachineLearningContract, 5)]
         {
-        	//！Specifies the nominal pixel range of pixel data.
-        	LearningModelPixelRange PixelRange{ get; };
+            //！Specifies the nominal pixel range of pixel data.
+            LearningModelPixelRange PixelRange{ get; };
         }
 
         //! The width of the image.

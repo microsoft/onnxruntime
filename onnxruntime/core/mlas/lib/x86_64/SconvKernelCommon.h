@@ -344,8 +344,7 @@ Return Value:
 
 --*/
 
-        .globl  C_UNDERSCORE(MlasConv\KernelType\()FloatKernel\Isa\())
-C_UNDERSCORE(MlasConv\KernelType\()FloatKernel\Isa\()):
+        FUNCTION_ENTRY MlasConv\KernelType\()FloatKernel\Isa\()
 
         push    rbp
         push    rbx
@@ -511,8 +510,7 @@ Return Value:
 
 --*/
 
-        .globl  C_UNDERSCORE(MlasConvDepthwiseFloatKernel\Isa\())
-C_UNDERSCORE(MlasConvDepthwiseFloatKernel\Isa\()):
+        FUNCTION_ENTRY MlasConvDepthwiseFloatKernel\Isa\()
 
         push    rbp
         push    rbx
@@ -707,8 +705,7 @@ Return Value:
 
 --*/
 
-        .globl  C_UNDERSCORE(MlasConvPointwiseFloatKernel\Isa\())
-C_UNDERSCORE(MlasConvPointwiseFloatKernel\Isa\()):
+        FUNCTION_ENTRY MlasConvPointwiseFloatKernel\Isa\()
 
         push    rbp
         push    rbx

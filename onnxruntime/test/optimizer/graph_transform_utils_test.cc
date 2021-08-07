@@ -20,19 +20,13 @@ TEST(GraphTransformerUtilsTests, TestGenerateRewriterules) {
   auto rewrite_rules = optimizer_utils::GenerateRewriteRules(TransformerLevel::Level1);
   ASSERT_TRUE(rewrite_rules.size() != 0);
 
-  // Rule name match test
-  std::vector<std::string> custom_list = {"EliminateIdentity", "ConvAddFusion", "ConvMulFusion", "abc", "def"};
-  rewrite_rules = optimizer_utils::GenerateRewriteRules(TransformerLevel::Level1, custom_list);
-  // validate each rule returned is present in the custom list
+  // Disable rule name match test
+  std::unordered_set<std::string> disable_list = {"EliminateIdentity", "ConvAddFusion"};
+  rewrite_rules = optimizer_utils::GenerateRewriteRules(TransformerLevel::Level1, disable_list);
+  // validate each rule returned is not present in the custom list
   for (const auto& rule : rewrite_rules) {
-    ASSERT_TRUE(std::find(custom_list.begin(), custom_list.end(), rule->Name()) != custom_list.end());
+    ASSERT_TRUE(std::find(disable_list.begin(), disable_list.end(), rule->Name()) == disable_list.end());
   }
-
-  // Rule name no match test. Test to validate empty rules list is returned when
-  // there is no match in custom list
-  custom_list = {"abc"};
-  rewrite_rules = optimizer_utils::GenerateRewriteRules(TransformerLevel::Level1, custom_list);
-  ASSERT_TRUE(rewrite_rules.size() == 0);
 }
 
 TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
@@ -40,50 +34,37 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
   std::string l1_rule1 = "EliminateIdentity";
   std::string l1_transformer = "ConstantFolding";
   std::string l2_transformer = "ConvActivationFusion";
-  std::vector<std::string> custom_list = {l1_rule1, l1_transformer, l2_transformer};
-  std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
-      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
-  auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, {}, *cpu_execution_provider.get(), custom_list);
-  ASSERT_TRUE(transformers.size() == 2);
+  std::unordered_set<std::string> disabled = {l1_rule1, l1_transformer, l2_transformer};
+  CPUExecutionProvider cpu_ep(CPUExecutionProviderInfo{});
 
+  auto all_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, {}, cpu_ep);
+  auto filtered_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, {}, cpu_ep, disabled);
+
+  // check ConstantFolding transformer was removed
+  ASSERT_TRUE(filtered_transformers.size() == all_transformers.size() - 1);
+
+  // check EliminateIdentity rule was removed from inside the rule based transformer
   auto l1_rule_transformer_name = optimizer_utils::GenerateRuleBasedTransformerName(TransformerLevel::Level1);
   RuleBasedGraphTransformer* rule_transformer = nullptr;
-  for (const auto& transformer : transformers) {
+  for (const auto& transformer : filtered_transformers) {
     if (transformer->Name() == l1_rule_transformer_name) {
-      rule_transformer = static_cast<RuleBasedGraphTransformer*>(transformers[0].get());
+      rule_transformer = static_cast<RuleBasedGraphTransformer*>(transformer.get());
+
+      // get the full set of rules and check EliminateIdentity was correctly removed
+      auto l1_rewrite_rules = optimizer_utils::GenerateRewriteRules(TransformerLevel::Level1);
+      ASSERT_TRUE(rule_transformer->RulesCount() == l1_rewrite_rules.size() - 1);
+      break;
     }
   }
-  ASSERT_TRUE(rule_transformer && rule_transformer->RulesCount() == 1);
 
-  transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, *cpu_execution_provider.get(), custom_list);
+  ASSERT_TRUE(rule_transformer) << "RuleBased transformer should have been added by GenerateTransformers";
+
 #ifndef DISABLE_CONTRIB_OPS
-  ASSERT_TRUE(transformers.size() == 1);
-#else
-  ASSERT_TRUE(transformers.size() == 0);
+  // check that ConvActivationFusion was removed
+  all_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, cpu_ep);
+  filtered_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, cpu_ep, disabled);
+  ASSERT_TRUE(filtered_transformers.size() == all_transformers.size() - 1);
 #endif
 }
-
-TEST(GraphTransformerUtilsTests, TestCustomOnlyTransformers) {
-  // Transformers that are disabled by default. They can only be enabled by custom list.
-  std::string l2_transformer = "GeluApproximation";
-  std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
-      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
-
-  std::vector<std::string> default_list = {};
-  auto default_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, *cpu_execution_provider.get(), default_list);
-  for (auto& transformer : default_transformers) {
-    ASSERT_TRUE(transformer->Name() != l2_transformer);
-  }
-
-  std::vector<std::string> custom_list = {l2_transformer};
-  auto custom_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, *cpu_execution_provider.get(), custom_list);
-#ifndef DISABLE_CONTRIB_OPS
-  ASSERT_TRUE(custom_transformers.size() == 1);
-  ASSERT_TRUE(custom_transformers[0]->Name() == l2_transformer);
-#else
-  ASSERT_TRUE(custom_transformers.size() == 0);
-#endif
-}
-
 }  // namespace test
 }  // namespace onnxruntime

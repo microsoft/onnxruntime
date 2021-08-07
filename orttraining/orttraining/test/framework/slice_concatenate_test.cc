@@ -7,10 +7,15 @@
 #include "core/session/inference_session.h"
 #include "gtest/gtest.h"
 #include "orttraining/core/session/tensor_helper.h"
+#include "test/util/include/default_providers.h"
 #include "test/framework/test_utils.h"
 #include "test/test_environment.h"
 
 namespace onnxruntime {
+#ifdef USE_CUDA
+void cudaMemcpy_HostToDevice(void* dst, const void* src, size_t count);
+#endif
+
 namespace test {
 
 typedef std::vector<onnxruntime::NodeArg*> ArgMap;
@@ -18,14 +23,14 @@ typedef std::vector<onnxruntime::NodeArg*> ArgMap;
 // Create ML value.
 OrtValue CreateTensorValue(const std::vector<int64_t>& shape, const std::vector<float>& initializer, const bool allocate_on_gpu) {
 #ifdef USE_CUDA
-  auto cpu_allocator = allocate_on_gpu ? TestCudaExecutionProvider()->GetAllocator(0, OrtMemTypeDefault) : TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+  auto cpu_allocator = allocate_on_gpu ? DefaultCudaExecutionProvider()->GetAllocator(0, OrtMemTypeDefault) : TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
 #else
   ORT_ENFORCE(allocate_on_gpu != true);
   auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
 #endif
   auto element_type = onnxruntime::DataTypeImpl::GetType<float>();
 
-  std::unique_ptr<onnxruntime::Tensor> p_tensor = onnxruntime::make_unique<Tensor>(
+  std::unique_ptr<onnxruntime::Tensor> p_tensor = std::make_unique<Tensor>(
       element_type,
       onnxruntime::TensorShape(shape),
       cpu_allocator);
@@ -34,7 +39,7 @@ OrtValue CreateTensorValue(const std::vector<int64_t>& shape, const std::vector<
     memcpy(p_tensor->MutableData<float>(), initializer.data(), initializer.size() * sizeof(float));
   } else {
 #ifdef USE_CUDA
-    cudaMemcpy(p_tensor->MutableData<float>(), initializer.data(), initializer.size() * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy_HostToDevice(p_tensor->MutableData<float>(), initializer.data(), initializer.size() * sizeof(float));
 #else
     ORT_THROW("Cannot use CUDA function when ORT is not built with CUDA.");
 #endif
@@ -79,8 +84,7 @@ void InitializeSession(onnxruntime::InferenceSession& session, onnxruntime::Mode
 
 // Initialize the session.
 #if defined(USE_CUDA)
-  onnxruntime::CUDAExecutionProviderInfo xp_info;
-  ASSERT_STATUS_OK(session.RegisterExecutionProvider(onnxruntime::make_unique<onnxruntime::CUDAExecutionProvider>(xp_info)));
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #endif
   ASSERT_STATUS_OK(session.Initialize());
 }
@@ -93,7 +97,7 @@ void CompareVector(const std::vector<float>& result, const std::vector<float>& e
 }
 
 TEST(PipelineParallel, FloatTensorSlice2d) {
-  std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  std::unique_ptr<onnxruntime::Model> model = std::make_unique<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
 
   CreateFakeGraph(model->MainGraph());
 
@@ -129,7 +133,7 @@ TEST(PipelineParallel, FloatTensorSlice2d) {
 }
 
 TEST(PipelineParallel, FloatTensorSlice1d) {
-  std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  std::unique_ptr<onnxruntime::Model> model = std::make_unique<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
 
   CreateFakeGraph(model->MainGraph());
 
@@ -196,7 +200,7 @@ TEST(PipelineParallel, FloatTensorSlice1d) {
 }
 
 TEST(PipelineParallel, FloatTensorSlice3d) {
-  std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  std::unique_ptr<onnxruntime::Model> model = std::make_unique<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
 
   CreateFakeGraph(model->MainGraph());
 
@@ -219,7 +223,7 @@ TEST(PipelineParallel, FloatTensorSlice3d) {
 
 #ifdef USE_CUDA
 TEST(PipelineParallel, FloatTensorSlice3dGpu) {
-  std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  std::unique_ptr<onnxruntime::Model> model = std::make_unique<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
 
   CreateFakeGraph(model->MainGraph());
 
@@ -242,7 +246,7 @@ TEST(PipelineParallel, FloatTensorSlice3dGpu) {
 #endif
 
 TEST(PipelineParallel, FloatTensorConcat1d) {
-  std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  std::unique_ptr<onnxruntime::Model> model = std::make_unique<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
 
   CreateFakeGraph(model->MainGraph());
 
@@ -265,7 +269,7 @@ TEST(PipelineParallel, FloatTensorConcat1d) {
 }
 
 TEST(PipelineParallel, FloatTensorConcat2d) {
-  std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  std::unique_ptr<onnxruntime::Model> model = std::make_unique<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
 
   CreateFakeGraph(model->MainGraph());
 
@@ -291,7 +295,7 @@ TEST(PipelineParallel, FloatTensorConcat2d) {
 }
 
 TEST(PipelineParallel, FloatTensorConcat3d) {
-  std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  std::unique_ptr<onnxruntime::Model> model = std::make_unique<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
 
   CreateFakeGraph(model->MainGraph());
 
@@ -320,7 +324,7 @@ TEST(PipelineParallel, FloatTensorConcat3d) {
 }
 
 TEST(PipelineParallel, FloatTensorConcat3dMore) {
-  std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  std::unique_ptr<onnxruntime::Model> model = std::make_unique<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
 
   CreateFakeGraph(model->MainGraph());
 
@@ -354,7 +358,7 @@ TEST(PipelineParallel, FloatTensorConcat3dMore) {
 
 #ifdef USE_CUDA
 TEST(PipelineParallel, FloatTensorConcat1dGpu) {
-  std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  std::unique_ptr<onnxruntime::Model> model = std::make_unique<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
 
   CreateFakeGraph(model->MainGraph());
 

@@ -4,9 +4,10 @@
 #--------------------------------------------------------------------------
 
 from logging import getLogger
-from onnx import helper, numpy_helper
+from onnx import helper
 from onnx_model import OnnxModel
 from fusion_base import Fusion
+from fusion_utils import NumpyHelper
 
 logger = getLogger(__name__)
 
@@ -38,8 +39,12 @@ class FusionSkipLayerNormalization(Fusion):
 
         if self.shape_infer_helper is not None:
             if not self.shape_infer_helper.compare_shape(add.input[0], add.input[1]):
+                logger.debug(
+                    f"skip skiplayernorm fusion since shape of inputs ({add.input[0]}, {add.input[1]}) are not same")
                 return
         else:
+            # shape_infer_helper can not handle subgraphs. Current work around is to disable skiplayernorm fusion
+            # longterm todo: support subgraph in symbolic_shape_infer or support add broadcasting in skiplayernorm op
             logger.warning(
                 "symbolic shape infer failed. it's safe to ignore this message if there is no issue with optimized model"
             )
@@ -71,6 +76,7 @@ class FusionSkipLayerNormalization(Fusion):
                 normalize_node.attribute.extend([helper.make_attribute("epsilon", 1.0E-12)])
 
             self.nodes_to_add.append(normalize_node)
+            self.node_name_to_graph_name[normalize_node.name] = self.this_graph_name
 
 
 class FusionBiasSkipLayerNormalization(Fusion):
@@ -99,7 +105,7 @@ class FusionBiasSkipLayerNormalization(Fusion):
             if initializer is None:
                 continue
             bias_index = i
-            bias_weight = numpy_helper.to_array(initializer)
+            bias_weight = NumpyHelper.to_array(initializer)
             break
         if bias_weight is None:
             logger.debug(f"Bias weight not found")
@@ -135,3 +141,4 @@ class FusionBiasSkipLayerNormalization(Fusion):
             new_node.attribute.extend([helper.make_attribute("epsilon", 1.0E-12)])
 
         self.nodes_to_add.append(new_node)
+        self.node_name_to_graph_name[new_node.name] = self.this_graph_name

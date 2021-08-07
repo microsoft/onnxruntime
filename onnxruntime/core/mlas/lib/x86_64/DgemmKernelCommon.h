@@ -21,7 +21,6 @@ Abstract:
 
         .equ    .LFgemmElementShift, 3
         .equ    .LFgemmElementSize, 1 << .LFgemmElementShift
-        .equ    .LFgemmMaskMoveVector, C_UNDERSCORE(MlasMaskMoveAvx64)
 
 #include "FgemmKernelCommon.h"
 
@@ -42,7 +41,6 @@ FGEMM_TYPED_INSTRUCTION(vmovapf, vmovapd)
 FGEMM_TYPED_INSTRUCTION(vmovsf, vmovsd)
 FGEMM_TYPED_INSTRUCTION(vmovupf, vmovupd)
 FGEMM_TYPED_INSTRUCTION(vmulpf, vmulpd)
-FGEMM_TYPED_INSTRUCTION(vpcmpgtf, vpcmpgtq)
 FGEMM_TYPED_INSTRUCTION(vxorpf, vxorpd)
 
         .macro vfmadd231pf_bcst DestReg, SrcReg, Address

@@ -3,9 +3,12 @@
 
 #pragma once
 
-#include "gsl/gsl"
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#endif
+
+#include "gsl/gsl"
 #include <sstream>
 
 namespace onnxruntime {

@@ -18,13 +18,13 @@ __global__ void _AdamOptimizer_mode0(
     const T4* moment_2,
     const T3* loss_scale,
     const T_GRAD_NORM* grad_norm,
-    const T4 alpha,
-    const T4 beta,
-    const T4 lambda,
-    const T4 epsilon,
-    const T4 max_norm,
-    const T4 alpha_correction,
-    const T4 beta_correction,
+    const float alpha,
+    const float beta,
+    const float lambda,
+    const float epsilon,
+    const float max_norm,
+    const float alpha_correction,
+    const float beta_correction,
     T4* moment_1_out,
     T4* moment_2_out,
     T3* weights_out,
@@ -32,26 +32,26 @@ __global__ void _AdamOptimizer_mode0(
     T_MIXED_PRECISION_FP* mixed_precision_weights_out,
     CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  const T4 actual_scale = _ComputeGradScale<T3, T_GRAD_NORM, T4>(loss_scale, grad_norm, max_norm);
+  const float actual_scale = _ComputeGradScale<T3, T_GRAD_NORM, float>(loss_scale, grad_norm, max_norm);
 
   // Gradient scaling/clipping.
-  const T4 g = T4(grads[id]) / actual_scale;
+  const float g = static_cast<float>(grads[id]) / actual_scale;
   // A shared constant.
-  const T4 one = T4(1.0f);
+  const float one = 1.0f;
 
   // Compute exponentially-averaged historical gradient.
-  const T4 m1o = alpha * moment_1[id] + (one - alpha) * g;
-  const T4 m1o_corrected = m1o / alpha_correction;
+  const float m1o = alpha * static_cast<float>(moment_1[id]) + (one - alpha) * g;
+  const float m1o_corrected = m1o / alpha_correction;
 
   // Compute exponentially-averaged historical squared gradient.
-  const T4 m2o = beta * moment_2[id] + (one - beta) * g * g;
-  const T4 m2o_corrected = m2o / beta_correction;
+  const float m2o = beta * static_cast<float>(moment_2[id]) + (one - beta) * g * g;
+  const float m2o_corrected = m2o / beta_correction;
 
   // Compute weight update.
-  const T4 denom = _Sqrt(m2o_corrected) + epsilon;
-  const T4 update = (m1o_corrected / denom) + (lambda * T4(weights[id]));
+  const float denom = _Sqrt(m2o_corrected) + epsilon;
+  const float update = (m1o_corrected / denom) + (lambda * weights[id]);
 
-  const T4 delta = -T4(*eta) * update;
+  const float delta = -static_cast<float>(*eta) * update;
 
   // Compute the new gradient.
   if (grads_out) {
@@ -80,13 +80,13 @@ __global__ void _AdamOptimizer_mode1(
     const T4* moment_2,
     const T3* loss_scale,
     const T_GRAD_NORM* grad_norm,
-    const T4 alpha,
-    const T4 beta,
-    const T4 lambda,
-    const T4 epsilon,
-    const T4 max_norm,
-    const T4 alpha_correction,
-    const T4 beta_correction,
+    const float alpha,
+    const float beta,
+    const float lambda,
+    const float epsilon,
+    const float max_norm,
+    const float alpha_correction,
+    const float beta_correction,
     T4* moment_1_out,
     T4* moment_2_out,
     T3* weights_out,
@@ -94,30 +94,30 @@ __global__ void _AdamOptimizer_mode1(
     T_MIXED_PRECISION_FP* mixed_precision_weights_out,
     CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  const T4 actual_scale = _ComputeGradScale<T3, T_GRAD_NORM, T4>(loss_scale, grad_norm, max_norm);
+  const float actual_scale = _ComputeGradScale<T3, T_GRAD_NORM, float>(loss_scale, grad_norm, max_norm);
 
   // Gradient scaling/clipping.
-  const T4 g = T4(grads[id]) / actual_scale;
+  const float g = static_cast<float>(grads[id]) / actual_scale;
   // A shared constant.
-  const T4 one = T4(1.0f);
+  const float one = 1.0f;
 
   // Compute exponentially-averaged historical gradient.
-  const T4 m1o = alpha * moment_1[id] + (one - alpha) * g;
+  const float m1o = alpha * static_cast<float>(moment_1[id]) + (one - alpha) * g;
 
   // Compute exponentially-averaged historical squared gradient.
-  const T4 m2o = beta * moment_2[id] + (one - beta) * g * g;
+  const float m2o = beta * static_cast<float>(moment_2[id]) + (one - beta) * g * g;
 
-  const T4 denom = _Sqrt(m2o) + epsilon;
+  const float denom = _Sqrt(m2o) + epsilon;
 
   // Apply bias correction terms on learning rate
-  const T4 step_size = T4(*eta) * _Sqrt(beta_correction) / alpha_correction;
+  const float step_size = static_cast<float>(*eta) * _Sqrt(beta_correction) / alpha_correction;
 
   // Huggingface updates weights in the following logic:
   // param' = param - step_size * m1o / denom
   // param_out = param' - original_lr * lambda * param'
   // then param_out = param - step_size * m1o / denom - original_lr * lambda * (param - step_size * m1o / denom)
   // so delta = -step_size * m1o / denom - original_lr * lambda * (param - step_size * m1o / denom)
-  const T4 delta = -step_size * m1o / denom - T4(*eta) * lambda * (T4(weights[id]) - step_size * m1o / denom);
+  const float delta = -step_size * m1o / denom - static_cast<float>(*eta) * lambda * (weights[id] - step_size * m1o / denom);
 
   // Compute the new gradient.
   if (grads_out) {
@@ -148,11 +148,11 @@ void AdamOptimizerImpl(
     const T4* moment_2,
     const T3* loss_scale,
     const T_GRAD_NORM* grad_norm,
-    const T4 alpha,
-    const T4 beta,
-    const T4 lambda,
-    const T4 epsilon,
-    const T4 max_norm,
+    const float alpha,
+    const float beta,
+    const float lambda,
+    const float epsilon,
+    const float max_norm,
     const bool do_bias_correction,
     const int64_t weight_decay_mode,
     T4* moment_1_out,
@@ -164,10 +164,10 @@ void AdamOptimizerImpl(
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   // If bias correction coefficients are set to 1s, it's equivalent to disabling bias correction. 
-  const T4 alpha_correction = do_bias_correction ? 
-    onnxruntime::contrib::compute_bias_correction_coefficient(alpha, update_count) : T4(1.f);
-  const T4 beta_correction = do_bias_correction ?
-    onnxruntime::contrib::compute_bias_correction_coefficient(beta, update_count) : T4(1.f);
+  const float alpha_correction = do_bias_correction ?
+    onnxruntime::contrib::compute_bias_correction_coefficient(alpha, update_count) : 1.f;
+  const float beta_correction = do_bias_correction ?
+    onnxruntime::contrib::compute_bias_correction_coefficient(beta, update_count) : 1.f;
   
   // Currently two modes of Adamw are supported:
   // Mode 0: Pytorch https://pytorch.org/docs/stable/_modules/torch/optim/adamw.html#AdamW,
@@ -240,11 +240,11 @@ void AdamOptimizerImpl(
       const T4* moment_2,                                                                         \
       const T3* loss_scale,                                                                       \
       const T_GRAD_NORM* grad_norm,                                                               \
-      const T4 alpha,                                                                             \
-      const T4 beta,                                                                              \
-      const T4 lambda,                                                                            \
-      const T4 epsilon,                                                                           \
-      const T4 max_norm,                                                                          \
+      const float alpha,                                                                          \
+      const float beta,                                                                           \
+      const float lambda,                                                                         \
+      const float epsilon,                                                                        \
+      const float max_norm,                                                                       \
       const bool do_bias_correction,                                                              \
       const int64_t weight_decay_mode,                                                            \
       T4* moment_1_out,                                                                           \

@@ -1,0 +1,86 @@
+[
+  {
+    "name": "log with no attributes",
+    "operator": "Log",
+    "attributes": [],
+    "cases": [
+      {
+        "name": "T[0]",
+        "inputs": [
+          {
+            "data": [3],
+            "dims": [1],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1.09861229],
+            "dims": [1],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "T[1]",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4],
+            "dims": [4],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.0, 0.69314718, 1.09861229, 1.38629436],
+            "dims": [4],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "T[2,4]",
+        "inputs": [
+          {
+            "data": [1, 2, 1, 3, 2, 3, 1, 2],
+            "dims": [2, 4],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [
+              0.0,
+              0.69314718,
+              0.0,
+              1.09861229,
+              0.69314718,
+              1.09861229,
+              0.0,
+              0.69314718
+            ],
+            "dims": [2, 4],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "Scalar",
+        "inputs": [
+          {
+            "data": [1],
+            "dims": [],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0],
+            "dims": [],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  }
+]

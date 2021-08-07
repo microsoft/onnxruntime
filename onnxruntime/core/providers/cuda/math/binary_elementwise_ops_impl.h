@@ -85,7 +85,10 @@ BINARY_ELEMENTWISE_IMPL_DECLARATION_T1(Pow);
 #define BINARY_OPS2()                    \
   BINARY_OP_NAME_EXPR2(Greater, (a > b)) \
   BINARY_OP_NAME_EXPR2(Equal, (a == b))  \
-  BINARY_OP_NAME_EXPR2(Less, (a < b))
+  BINARY_OP_NAME_EXPR2(Less, (a < b)) \
+  BINARY_OP_NAME_EXPR2(GreaterOrEqual, (a >= b)) \
+  BINARY_OP_NAME_EXPR2(LessOrEqual, (a <= b))
+
 
 #define BINARY_OP_NAME_EXPR2(name, expr) BINARY_ELEMENTWISE_IMPL_DECLARATION_T2(name);
 BINARY_OPS2()

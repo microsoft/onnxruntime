@@ -18,7 +18,7 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
     --parallel \
     --android \
     --android_sdk_path /android_home \
-    --android_ndk_path /android_home/ndk-bundle \
+    --android_ndk_path /ndk_home \
     --android_abi=arm64-v8a \
     --android_api=29 \
     --minimal_build \
@@ -28,9 +28,11 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
     --disable_exceptions \
     --include_ops_by_config /home/onnxruntimedev/.test_data/include_no_operators.config
 
-# set current size limit to 1165KB.
+# set current size limit to BINARY_SIZE_LIMIT_IN_BYTES.
+BINARY_SIZE_LIMIT_IN_BYTES=1235000
+echo "The current preset binary size limit is $BINARY_SIZE_LIMIT_IN_BYTES"
 python3 /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/check_build_binary_size.py \
-    --threshold=1165000 \
+    --threshold=$BINARY_SIZE_LIMIT_IN_BYTES \
     /build/MinSizeRel/libonnxruntime.so
 
 # Post the binary size info to ort mysql DB

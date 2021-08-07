@@ -32,6 +32,10 @@ class ModelBuilder {
   // The initializer will be processed separately, skip it as an initializer
   void AddInitializerToSkip(const std::string& tensor_name);
 
+  // There are some input which will not be used, add it to a list which will not
+  // be added to CoreML model, since CoreML does not like input unused
+  void AddInputToSkip(const std::string& input_name);
+
   std::string GetUniqueName(const std::string& base_name);
 
  private:
@@ -41,9 +45,11 @@ class ModelBuilder {
 
   std::unique_ptr<CoreML::Specification::Model> coreml_model_;
   std::unordered_set<std::string> scalar_outputs_;
+  std::unordered_set<std::string> int64_outputs_;
   std::unordered_map<std::string, OnnxTensorInfo> input_output_info_;
 
   std::unordered_set<std::string> skipped_initializers_;
+  std::unordered_set<std::string> skipped_inputs_;
 
   uint32_t name_token_{0};
   std::unordered_set<std::string> unique_names_;
@@ -64,6 +70,9 @@ class ModelBuilder {
 
   // Record the onnx scalar output names
   void AddScalarOutput(const std::string& output_name);
+
+  // Record the onnx int64 type output names
+  void AddInt64Output(const std::string& output_name);
 
   static const IOpBuilder* GetOpBuilder(const Node& node);
 };

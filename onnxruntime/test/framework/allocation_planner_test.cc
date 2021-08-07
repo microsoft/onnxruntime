@@ -156,6 +156,7 @@ class PlannerTest : public ::testing::Test {
 
   std::unique_ptr<::onnxruntime::KernelDef> std_kernel_;       // a unary kernel with no-aliasing and no-in-place
   std::unique_ptr<::onnxruntime::KernelDef> in_place_kernel_;  // a unary kernel with in-place
+  std::unique_ptr<::onnxruntime::KernelDef> external_outputs_kernel_; // an unary kernel with external outputs
 
   std::unordered_map<std::string, onnxruntime::NodeArg*> name_to_arg_;
   std::vector<std::unique_ptr<UnaryNode>> nodes_;
@@ -178,8 +179,10 @@ class PlannerTest : public ::testing::Test {
     std_kernel_ = KernelDefBuilder().SetName("Transpose").Provider(kCpuExecutionProvider).SinceVersion(1, 10).Build();
     in_place_kernel_ =
         KernelDefBuilder().SetName("Relu").Provider(kCpuExecutionProvider).SinceVersion(1, 10).MayInplace(0, 0).Build();
+    external_outputs_kernel_ =
+        KernelDefBuilder().SetName("Tanh").Provider(kCpuExecutionProvider).SinceVersion(1, 10).ExternalOutputs().Build();
     CPUExecutionProviderInfo epi;
-    auto execution_provider = onnxruntime::make_unique<CPUExecutionProvider>(epi);
+    auto execution_provider = std::make_unique<CPUExecutionProvider>(epi);
     execution_providers_.Add("CPUExecutionProvider", std::move(execution_provider));
 
     state_.reset(new SessionState(graph_, execution_providers_, false, tp_.get(), nullptr, dtm_,
@@ -193,7 +196,7 @@ class PlannerTest : public ::testing::Test {
   }
 
   onnxruntime::Node* AddNode(::onnxruntime::KernelDef& kernel_def, std::string& input, std::string& output) {
-    auto node = onnxruntime::make_unique<UnaryNode>(graph_, kernel_def.OpName(), Arg(input), Arg(output));
+    auto node = std::make_unique<UnaryNode>(graph_, kernel_def.OpName(), Arg(input), Arg(output));
     auto* p_node = node->p_node;
     p_node->SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
     nodes_.push_back(std::move(node));
@@ -209,18 +212,22 @@ class PlannerTest : public ::testing::Test {
     return AddNode(*in_place_kernel_, input, output);
   }
 
+  onnxruntime::Node* AddExternalOutputsNode(std::string& input, std::string& output) {
+    return AddNode(*external_outputs_kernel_, input, output);
+  }
+
   void BindKernel(onnxruntime::Node* p_node, ::onnxruntime::KernelDef& kernel_def, KernelRegistry* reg,
                   std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map) {
     const IExecutionProvider* ep = execution_providers_.Get(*p_node);
     ASSERT_NE(ep, nullptr);
-    auto info = onnxruntime::make_unique<OpKernelInfo>(
+    auto info = std::make_unique<OpKernelInfo>(
         *p_node, kernel_def, *ep, state_->GetInitializedTensors(), state_->GetOrtValueNameIdxMap(),
         state_->GetFuncMgr(), state_->GetDataTransferMgr());
 
     op_kernel_infos_.push_back(std::move(info));
     if (!KernelRegistry::HasImplementationOf(*reg, *p_node, onnxruntime::kCpuExecutionProvider)) {
       auto st = reg->Register(
-          KernelCreateInfo(onnxruntime::make_unique<KernelDef>(kernel_def),
+          KernelCreateInfo(std::make_unique<KernelDef>(kernel_def),
                            [](const OpKernelInfo& info) -> OpKernel* { return new DummyOpKernel(info); }));
       ORT_ENFORCE(st.IsOK(), st.ErrorMessage());
     }
@@ -248,7 +255,7 @@ class PlannerTest : public ::testing::Test {
       BindKernel(binding.first, binding.second, reg.get(), kernel_create_info_map);
     }
 
-    auto cpu_execution_provider = onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+    auto cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
     KernelRegistryManager kernel_registry_manager;
     kernel_registry_manager.RegisterKernelRegistry(reg);
     auto status = kernel_registry_manager.RegisterKernels(execution_providers_);
@@ -401,6 +408,35 @@ TEST_F(PlannerTest, InPlaceTest) {
   CheckFreed(0, {});
   CheckFreed(1, {});
   CheckFreed(2, {X2});
+}
+
+TEST_F(PlannerTest, ExternalOutputsTest) {
+  // tensor variables:
+  std::string X1("X1"), X2("X2"), X3("X3"), X4("X4");
+
+  // graph structure:
+  AddExternalOutputsNode(X1, X2);   // external-outputs operator; X1: input; X2: temporary
+  AddNormalNode(X2, X3);  // normal operator; X3: temporary
+  AddNormalNode(X3, X4);   // normal operator; X4: output
+
+  // simulate shape-inference results:
+  Shape shape1{"M", "N"};
+  auto shape = &shape1.value;
+  SetShape({{X1, shape}, {X2, shape}, {X3, shape}, {X4, shape}});
+
+  CreatePlan();
+
+  // check allocation kind:
+  CheckAllocKind(X1, AllocKind::kPreExisting);
+  CheckAllocKind(X2, AllocKind::kAllocatedExternally);
+  CheckAllocKind(X3, AllocKind::kAllocate);
+  CheckAllocKind(X4, AllocKind::kAllocateOutput);
+
+  // check each ml-value is freed at appropriate step
+  // X2 will not be reused and will not be freed. X3 will be allocated and will be freed.
+  CheckFreed(0, {});
+  CheckFreed(1, {});
+  CheckFreed(2, {X3});
 }
 
 // InPlaceSizeMismatchTest: Check that Inplace reuse is not allowed when sizes don't match.

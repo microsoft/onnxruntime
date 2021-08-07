@@ -27,6 +27,14 @@ class ConvTranspose : public OpKernel {
  public:
   ConvTranspose(const OpKernelInfo& info) : OpKernel(info), conv_transpose_attrs_(info) {}
 
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed,
+                 /*out*/ PrePackedWeights* prepacked_weights) override;
+
+  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   int input_idx,
+                                   /*out*/ bool& used_shared_buffers) override;
+
   Status Compute(OpKernelContext* context) const override;
 
  protected:
@@ -34,6 +42,10 @@ class ConvTranspose : public OpKernel {
 
  private:
   ConvTransposeAttributes conv_transpose_attrs_;
+
+  // for pre-packing usage
+  TensorShape filter_shape_;
+  BufferUniquePtr transposed_filter_;
 };
 
 }  // namespace onnxruntime

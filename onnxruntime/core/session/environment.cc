@@ -2,13 +2,15 @@
 // Licensed under the MIT License.
 
 #include "core/session/environment.h"
+#include "core/session/allocator_adapters.h"
 #include "core/framework/allocatormgr.h"
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
+
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/operator_sets.h"
 #include "onnx/defs/operator_sets_ml.h"
-#if defined(ENABLE_TRAINING)
+#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
 #include "onnx/defs/operator_sets_training.h"
 #endif
 #endif
@@ -24,14 +26,15 @@
 
 #include "core/platform/env.h"
 #include "core/util/thread_utils.h"
-#include "core/session/allocator_impl.h"
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
 #include "core/platform/tracing.h"
 #endif
 
-#ifdef ENABLE_TRAINING
+#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
 #include "orttraining/core/graph/training_op_defs.h"
+#endif
+#ifdef ENABLE_TRAINING
 #include "orttraining/core/graph/gradient_builder_registry.h"
 #include "orttraining/core/graph/loss_function_registry.h"
 #include "orttraining/core/graph/optimizer_builder.h"
@@ -53,16 +56,54 @@ Status Environment::Create(std::unique_ptr<logging::LoggingManager> logging_mana
   return status;
 }
 
+// Ugly but necessary for instances where we want to check equality of two OrtMemoryInfos
+// without accounting for OrtAllocatorType in the equality checking process.
+// TODO: Should we remove the OrtAllocatorType field from the OrtMemoryInfo struct to
+// avoid such problems and also remove the unintuitive phenomenon of binding an allocator
+// type to OrtMemoryInfo (which loosely is just device info) ?
+static bool AreOrtMemoryInfosEquivalent(
+    const OrtMemoryInfo& left, const OrtMemoryInfo& right,
+    bool include_allocator_type_for_equivalence_checking = true) {
+  if (include_allocator_type_for_equivalence_checking) {
+    return left == right;
+  } else {
+    return left.mem_type == right.mem_type &&
+           left.id == right.id &&
+           strcmp(left.name, right.name) == 0;
+  }
+}
+
 Status Environment::RegisterAllocator(AllocatorPtr allocator) {
   const auto& mem_info = allocator->Info();
+
+  if (mem_info.device.Type() != OrtDevice::CPU) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Only CPU allocators can be shared between "
+                           "multiple sessions for now.");
+  }
+
   // We don't expect millions of allocators getting registered. Hence linear search should be fine.
   auto ite = std::find_if(std::begin(shared_allocators_),
                           std::end(shared_allocators_),
-                          [&mem_info](const AllocatorPtr& alloc_ptr) { return alloc_ptr->Info() == mem_info; });
+                          [&mem_info](const AllocatorPtr& alloc_ptr) {
+                            // We want to do the equality checking of 2 OrtMemoryInfos sans the OrtAllocatorType field.
+                            // This is because we want to avoid registering two allocators for the same device that just
+                            // differ on OrtAllocatorType.
+                            // To be more specific, we want to avoid the scenario where the user calls CreateAndRegiserAllocator()
+                            // and registers the ORT-internal arena allocator and then tries to register their own custom
+                            // allocator using RegisterAllocator() for the same device that has an OrtAllocatorType as
+                            // OrtDeviceAllocator (which is the only accepted value while registering a custom allocator).
+                            // If we allowed this, it could potentially cause a lot of confusion as to which shared allocator
+                            // to use for that device and we want to avoid having any ugly logic around this.
+                            return AreOrtMemoryInfosEquivalent(alloc_ptr->Info(), mem_info, false);
+                          });
+
   if (ite != shared_allocators_.end()) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Allocator with this OrtMemoryInfo is already registered.");
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "An allocator for this device has already been registered for sharing.");
   }
+
   shared_allocators_.insert(ite, allocator);
+
   return Status::OK();
 }
 
@@ -94,6 +135,7 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
     int arena_extend_strategy = -1;
     int initial_chunk_size_bytes = -1;
     int max_dead_bytes_per_chunk = -1;
+    int initial_growth_chunk_size_bytes = -1;
 
     // override with values from the user supplied arena_cfg object
     if (arena_cfg) {
@@ -109,22 +151,43 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
 
       initial_chunk_size_bytes = arena_cfg->initial_chunk_size_bytes;
       max_dead_bytes_per_chunk = arena_cfg->max_dead_bytes_per_chunk;
+      initial_growth_chunk_size_bytes = arena_cfg->initial_growth_chunk_size_bytes;
     }
 
-    OrtArenaCfg l_arena_cfg{max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk};
+    OrtArenaCfg l_arena_cfg{max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk,
+                            initial_growth_chunk_size_bytes};
     AllocatorCreationInfo alloc_creation_info{
-        [mem_info](int) { return onnxruntime::make_unique<TAllocator>(mem_info); },
+        [mem_info](int) { return std::make_unique<TAllocator>(mem_info); },
         0,
         create_arena,
         l_arena_cfg};
     allocator_ptr = CreateAllocator(alloc_creation_info);
   } else {
-    AllocatorCreationInfo alloc_creation_info{[](int) { return onnxruntime::make_unique<TAllocator>(); },
+    AllocatorCreationInfo alloc_creation_info{[](int) { return std::make_unique<TAllocator>(); },
                                               0, create_arena};
     allocator_ptr = CreateAllocator(alloc_creation_info);
   }
 
   return RegisterAllocator(allocator_ptr);
+}
+
+Status Environment::UnregisterAllocator(const OrtMemoryInfo& mem_info) {
+  auto ite = std::find_if(std::begin(shared_allocators_),
+                          std::end(shared_allocators_),
+                          [&mem_info](const AllocatorPtr& alloc_ptr) {
+                            // See comment in RegisterAllocator() as to why we
+                            // use this method of OrtMemoryInfo equality checking
+                            return AreOrtMemoryInfosEquivalent(alloc_ptr->Info(), mem_info, false);
+                          });
+
+  if (ite == shared_allocators_.end()) {
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
+                  "No allocator for this device has been registered for sharing.");
+  }
+
+  shared_allocators_.erase(ite);
+
+  return Status::OK();
 }
 
 Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_manager,
@@ -177,30 +240,44 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       RegisterOnnxMLOperatorSetSchema();
 #endif
 
-#ifdef ENABLE_TRAINING
+#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
       RegisterOnnxTrainingOperatorSetSchema();
 #endif
 
-#ifdef ENABLE_TRAINING
-      // preserve this order: this depends on operatorsetschema registration.
+#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
+      // preserve this order until <training schemas>: this depends on operatorsetschema registration.
       training::RegisterTrainingOpSchemas();
+#endif
+#ifdef ENABLE_TRAINING
       training::GradientBuilderRegistry::GetInstance().RegisterGradientBuilders();
       training::LossFunctionRegistry::GetInstance().RegisterNonOperatorLossFunctions();
       training::OptimizerBuilderRegistry::GetInstance().RegisterBuilders();
       training::OptimizerGraphBuilderRegistry::GetInstance().RegisterGraphBuilders();
+      // <training schemas>
 #endif
     });
 
     // Register MemCpy schema;
 
     // These ops are internal-only, so register outside of onnx
+    static std::vector<std::string> all_fixed_size_types = []() {
+      std::vector<std::string> all_types;
+      std::vector<std::string> all_tensor_types = OpSchema::all_tensor_types_with_bfloat();
+      std::vector<std::string> all_sequence_types = OpSchema::all_tensor_sequence_types();
+      all_types.insert(all_types.end(), all_tensor_types.begin(), all_tensor_types.end());
+      all_types.insert(all_types.end(), all_sequence_types.begin(), all_sequence_types.end());
+      all_types.emplace_back("seq(tensor(bfloat16))");
+      all_types.erase(std::remove_if(all_types.begin(), all_types.end(), 
+                      [](const std::string& s) { return s.find("string") != std::string::npos; }), all_types.end());
+      return all_types; }();
+
     ORT_ATTRIBUTE_UNUSED ONNX_OPERATOR_SCHEMA(MemcpyFromHost)
         .Input(0, "X", "input", "T")
         .Output(0, "Y", "output", "T")
         .TypeConstraint(
             "T",
-            OpSchema::all_tensor_types_with_bfloat(),
-            "Constrain to any tensor type. If the dtype attribute is not provided this must be a valid output type.")
+            all_fixed_size_types,
+            "Constrain to all fixed size tensor and sequence types. If the dtype attribute is not provided this must be a valid output type.")
         .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
         .SetDoc(R"DOC(
 Internal copy node
@@ -211,8 +288,8 @@ Internal copy node
         .Output(0, "Y", "output", "T")
         .TypeConstraint(
             "T",
-            OpSchema::all_tensor_types_with_bfloat(),
-            "Constrain to any tensor type. If the dtype attribute is not provided this must be a valid output type.")
+            all_fixed_size_types,
+            "Constrain to all fixed size tensor and sequence types. If the dtype attribute is not provided this must be a valid output type.")
         .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
         .SetDoc(R"DOC(
 Internal copy node

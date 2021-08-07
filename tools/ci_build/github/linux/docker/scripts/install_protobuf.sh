@@ -34,9 +34,9 @@ function GetFile {
   return $?
 }
 
-GetFile https://github.com/protocolbuffers/protobuf/archive/v3.13.0.tar.gz /tmp/src/v3.13.0.tar.gz
-tar -xf /tmp/src/v3.13.0.tar.gz -C /tmp/src
-cd /tmp/src/protobuf-3.13.0
+GetFile https://github.com/protocolbuffers/protobuf/archive/v3.16.0.tar.gz /tmp/src/v3.16.0.tar.gz
+tar -xf /tmp/src/v3.16.0.tar.gz -C /tmp/src
+cd /tmp/src/protobuf-3.16.0
 cmake ./cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_SYSCONFDIR=/etc -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Relwithdebinfo
 make -j$(getconf _NPROCESSORS_ONLN)
 make install

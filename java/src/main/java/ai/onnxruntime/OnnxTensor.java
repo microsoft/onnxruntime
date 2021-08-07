@@ -19,7 +19,6 @@ import java.nio.ShortBuffer;
  * returned as outputs.
  */
 public class OnnxTensor implements OnnxValue {
-
   static {
     try {
       OnnxRuntime.init();
@@ -79,6 +78,7 @@ public class OnnxTensor implements OnnxValue {
           return getFloat(OnnxRuntime.ortApiHandle, nativeHandle, info.onnxType.value);
         case DOUBLE:
           return getDouble(OnnxRuntime.ortApiHandle, nativeHandle);
+        case UINT8:
         case INT8:
           return getByte(OnnxRuntime.ortApiHandle, nativeHandle, info.onnxType.value);
         case INT16:
@@ -98,7 +98,13 @@ public class OnnxTensor implements OnnxValue {
     } else {
       Object carrier = info.makeCarrier();
       getArray(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle, carrier);
-      return carrier;
+      if ((info.type == OnnxJavaType.STRING) && (info.shape.length != 1)) {
+        // We read the strings out from native code in a flat array and then reshape
+        // to the desired output shape.
+        return OrtUtil.reshape((String[]) carrier, info.shape);
+      } else {
+        return carrier;
+      }
     }
   }
 
@@ -302,8 +308,9 @@ public class OnnxTensor implements OnnxValue {
   }
 
   /**
-   * Create a Tensor from a Java primitive or String multidimensional array. The shape is inferred
-   * from the array using reflection. The default allocator is used.
+   * Create a Tensor from a Java primitive, primitive multidimensional array or String
+   * multidimensional array. The shape is inferred from the object using reflection. The default
+   * allocator is used.
    *
    * @param env The current OrtEnvironment.
    * @param data The data to store in a tensor.
@@ -315,8 +322,8 @@ public class OnnxTensor implements OnnxValue {
   }
 
   /**
-   * Create a Tensor from a Java primitive or String multidimensional array. The shape is inferred
-   * from the array using reflection.
+   * Create a Tensor from a Java primitive, String, primitive multidimensional array or String
+   * multidimensional array. The shape is inferred from the object using reflection.
    *
    * @param env The current OrtEnvironment.
    * @param allocator The allocator to use.
@@ -346,7 +353,14 @@ public class OnnxTensor implements OnnxValue {
         }
       } else {
         if (info.shape.length == 0) {
-          data = OrtUtil.convertBoxedPrimitiveToArray(data);
+          data = OrtUtil.convertBoxedPrimitiveToArray(info.type, data);
+          if (data == null) {
+            throw new OrtException(
+                "Failed to convert a boxed primitive to an array, this is an error with the ORT Java API, please report this message & stack trace. JavaType = "
+                    + info.type
+                    + ", object = "
+                    + data);
+          }
         }
         return new OnnxTensor(
             createTensor(
@@ -558,7 +572,6 @@ public class OnnxTensor implements OnnxValue {
       OrtEnvironment env, OrtAllocator allocator, ByteBuffer data, long[] shape, OnnxJavaType type)
       throws OrtException {
     if ((!env.isClosed()) && (!allocator.isClosed())) {
-      int bufferSize = data.capacity();
       return createTensor(type, allocator, data, shape);
     } else {
       throw new IllegalStateException("Trying to create an OnnxTensor on a closed OrtAllocator.");
@@ -732,6 +745,7 @@ public class OnnxTensor implements OnnxValue {
         case DOUBLE:
           tmp = buffer.asDoubleBuffer().put((DoubleBuffer) data);
           break;
+        case UINT8:
         case INT8:
           // buffer is already a ByteBuffer, no cast needed.
           tmp = buffer.put((ByteBuffer) data);

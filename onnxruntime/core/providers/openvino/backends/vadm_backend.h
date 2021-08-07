@@ -14,7 +14,7 @@ namespace openvino_ep {
 
 class VADMBackend : public IBackend {
  public:
-  VADMBackend(const Provider_ModelProto& model_proto,
+  VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
               GlobalContext& global_context,
               const SubGraphContext& subgraph_context);
 

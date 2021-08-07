@@ -7,11 +7,12 @@
 #include <float.h>
 #include <cmath>
 
+#ifndef SHARED_PROVIDER
 #include "core/framework/tensor.h"
 #include "core/framework/op_kernel.h"
+#endif
 
 #include "orttraining/core/graph/optimizer_config.h"
-
 #include "orttraining/core/framework/distributed_run_context.h"
 
 #ifdef ENABLE_CPU_FP16_TRAINING_OPS
@@ -21,16 +22,14 @@
 namespace onnxruntime {
 namespace training {
 
-static inline bool IsPowerOfTwo(ulong x)
-{
+static inline bool IsPowerOfTwo(unsigned x) {
   return (x != 0) && ((x & (x - 1)) == 0);
 }
 
 // Interface for Adasum algorithm
 template <typename Communicator_type>
 class AdasumInterface {
-public:
-
+ public:
   Status DispatchFusedAllreduce(void* grad_buffer, void* recv_buffer,
                                 std::vector<int>& tensor_counts, int start_level,
                                 Communicator_type communicator, int tag,
@@ -44,7 +43,7 @@ public:
       FusedAllreduce((float*)grad_buffer, (float*)recv_buffer,
                      data_type, tensor_counts, start_level, communicator, tag,
                      reduction_comms);
-    } else if(data_type == DataTypeImpl::GetType<double>()) {
+    } else if (data_type == DataTypeImpl::GetType<double>()) {
       FusedAllreduce((double*)grad_buffer, (double*)recv_buffer,
                      data_type, tensor_counts, start_level, communicator, tag,
                      reduction_comms);
@@ -61,7 +60,9 @@ public:
 
   virtual const Communicator_type* GetReductionComms() = 0;
 
-protected:
+  virtual ~AdasumInterface() = default;
+
+ protected:
   // Communication primitives required for Adasum algorithm
   virtual void PointToPointSendRecv(void* input_data_buffer,
                                     int64_t input_buffer_bytes,
@@ -113,7 +114,7 @@ protected:
     }
   }
 
-private:
+ private:
   // Allocator for temporary buffer allocations
   AllocatorPtr allocator_ = nullptr;
 
@@ -161,7 +162,7 @@ private:
 
     if (IsPowerOfTwo(size) == false) {
       ORT_THROW(
-        "Adasum doesn't currently support reduction among non-power-of-2 number of ranks.");
+          "Adasum doesn't currently support reduction among non-power-of-2 number of ranks.");
     }
 
     std::vector<std::vector<int>> nghrCountVec;
@@ -213,10 +214,10 @@ private:
               tensor_counts[i] = 0;
             } else {
               nghrCountVec[nghrCountVec_index][i] =
-                  nghrCount - nghrCountSoFar; // should not be negative
+                  nghrCount - nghrCountSoFar;  // should not be negative
               tensor_counts[i] =
                   tensor_counts[i] -
-                  (nghrCount - nghrCountSoFar); // should not be negative
+                  (nghrCount - nghrCountSoFar);  // should not be negative
             }
           } else {
             tensor_counts[i] = tensor_counts[i];
@@ -240,9 +241,9 @@ private:
               assert((myCount - myCountSoFar) >= 0);
               nghrCountVec[nghrCountVec_index][i] =
                   tensor_counts[i] -
-                  (myCount - myCountSoFar); // should not be negative
+                  (myCount - myCountSoFar);  // should not be negative
               tensor_counts[i] =
-                  myCount - myCountSoFar; // should not be negative
+                  myCount - myCountSoFar;  // should not be negative
             }
           } else {
             nghrCountVec[nghrCountVec_index][i] = tensor_counts[i];
@@ -264,8 +265,8 @@ private:
         recv_buffer = &recv_buffer[nghrCount];
       }
       FusedPairwiseReduceWithComm((uint8_t*)grad_buffer, (uint8_t*)recv_buffer,
-          data_type, tensor_counts, reduction_comms[comm_index],
-          (rank & level) == 0, normAndDots);
+                                  data_type, tensor_counts, reduction_comms[comm_index],
+                                  (rank & level) == 0, normAndDots);
     }
 
     for (level = (size >> 1); level > 0; level = (level >> 1)) {
@@ -383,5 +384,5 @@ private:
   }
 };
 
-} // namespace training
-} // namespace onnxruntime
+}  // namespace training
+}  // namespace onnxruntime

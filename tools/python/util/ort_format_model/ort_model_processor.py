@@ -8,7 +8,7 @@ from .operator_type_usage_processors import OperatorTypeUsageManager
 class OrtFormatModelProcessor:
     'Class to process an ORT format model and determine required operators and types.'
 
-    def __init__(self, model_path: str, required_ops: dict,  processors: OperatorTypeUsageManager):
+    def __init__(self, model_path: str, required_ops: dict, processors: OperatorTypeUsageManager):
         '''
         Initialize ORT format model processor
         :param model_path: Path to model to load
@@ -18,6 +18,8 @@ class OrtFormatModelProcessor:
         self._required_ops = required_ops  # dictionary of {domain: {opset:[operators]}}
         self._file = open(model_path, 'rb').read()
         self._buffer = bytearray(self._file)
+        if not fbs.InferenceSession.InferenceSession.InferenceSessionBufferHasIdentifier(self._buffer, 0):
+            raise RuntimeError("File does not appear to be a valid ORT format model: '{}'".format(model_path))
         self._model = fbs.InferenceSession.InferenceSession.GetRootAsInferenceSession(self._buffer, 0).Model()
         self._op_type_processors = processors
 

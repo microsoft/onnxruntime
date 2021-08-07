@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netstandard1.1</TargetFramework>
+    <TargetFrameworks>netstandard1.1;netstandard2.0</TargetFrameworks>
     <Platforms>AnyCPU;x86</Platforms>
     <LangVersion>7.2</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -66,13 +66,6 @@
           Visible="false"
     />
     <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\cpu\cpu_provider_factory.h"
-          PackagePath="\build\native\include"
-          Pack="false"
-          CopyToOutputDirectory="Never"
-          Visible="false"
-    />
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\cuda\cuda_provider_factory.h"
-          Condition="'$(OrtPackageId)' != 'Microsoft.ML.OnnxRuntime.DirectML'"
           PackagePath="\build\native\include"
           Pack="false"
           CopyToOutputDirectory="Never"

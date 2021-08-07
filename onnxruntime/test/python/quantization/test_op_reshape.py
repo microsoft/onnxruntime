@@ -10,8 +10,9 @@ import unittest
 import onnx
 import numpy as np
 from onnx import helper, TensorProto
-from onnxruntime.quantization import quantize_static
-from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count
+from onnxruntime.quantization import quantize_static, QuantFormat
+from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_op_nodes
+
 
 class TestOpReshape(unittest.TestCase):
     def input_feeds(self, n, name2shape):
@@ -55,7 +56,6 @@ class TestOpReshape(unittest.TestCase):
         initializers.append(onnx.numpy_helper.from_array(np.array(output_shape, dtype=np.int64), name=reshape_shape))
         reshape_node = onnx.helper.make_node('Reshape', reshape_inputs, reshape_output, name=reshape_name)
 
-
         # make graph
         input_tensor = helper.make_tensor_value_info(input_name, TensorProto.FLOAT, input_shape)
         output_tensor = helper.make_tensor_value_info(output_name, TensorProto.FLOAT, output_shape)
@@ -63,7 +63,7 @@ class TestOpReshape(unittest.TestCase):
         graph = helper.make_graph([matmul_node, reshape_node], graph_name,
                                   [input_tensor], [output_tensor], initializer=initializers)
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 11)])
-        model.ir_version = onnx.IR_VERSION
+        model.ir_version = 7 # use stable onnx ir version
 
         onnx.save(model, output_model_path)
 
@@ -71,19 +71,31 @@ class TestOpReshape(unittest.TestCase):
         np.random.seed(1)
         model_fp32_path = 'reshape_fp32.onnx'
         model_uint8_path = 'reshape_uint8.onnx'
-        data_reader = self.input_feeds(1, {'input': [3, 7]})
+        model_uint8_qdq_path = 'reshape_uint8_qdq.onnx'
+
         self.construct_model_matmul_reshape(model_fp32_path,
-                                  [3, 7],
-                                  [7, 3],
-                                  [1, 9])
-        quantize_static(model_fp32_path,
-                        model_uint8_path,
-                        data_reader
-                        )
+                                            [3, 7],
+                                            [7, 3],
+                                            [1, 9])
+
+        # Verify QOperator mode
+        data_reader = self.input_feeds(1, {'input': [3, 7]})
+        quantize_static(model_fp32_path, model_uint8_path, data_reader)
+        # make sure transpose become xint8 operator, its input name could tell that
+        check_op_nodes(self, model_uint8_path, lambda node: (node.name != "reshape_node" or node.input[0] != 'matmul_output'))
+        qnode_counts = {'QLinearMatMul': 1, 'QuantizeLinear': 1, 'DequantizeLinear': 1, 'Reshape': 1}
+        check_op_type_count(self, model_uint8_path, **qnode_counts)
         data_reader.rewind()
-        qdq_nodes = {'QLinearMatMul': 1, 'QuantizeLinear': 1, 'DequantizeLinear': 1, 'Reshape': 1}
-        check_op_type_count(self, model_uint8_path, **qdq_nodes)
         check_model_correctness(self, model_fp32_path, model_uint8_path, data_reader.get_next())
+
+        # Verify QDQ mode
+        data_reader.rewind()
+        quantize_static(model_fp32_path, model_uint8_qdq_path, data_reader, quant_format=QuantFormat.QDQ)
+        qdqnode_counts = {'MatMul': 1, 'QuantizeLinear': 2, 'DequantizeLinear': 3, 'Reshape': 1}
+        check_op_type_count(self, model_uint8_qdq_path, **qdqnode_counts)
+        data_reader.rewind()
+        check_model_correctness(self, model_fp32_path, model_uint8_qdq_path, data_reader.get_next())
+
 
 if __name__ == '__main__':
     unittest.main()

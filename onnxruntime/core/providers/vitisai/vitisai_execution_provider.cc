@@ -30,10 +30,12 @@ typedef std::shared_ptr<pyxir::graph::XGraph> XGraphHolder;
 typedef std::shared_ptr<pyxir::graph::XLayer> XLayerHolder;
 
 VitisAIExecutionProvider::VitisAIExecutionProvider(const VitisAIExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kVitisAIExecutionProvider}, backend_type_(info.backend_type), device_id_(info.device_id) {
+    : IExecutionProvider{onnxruntime::kVitisAIExecutionProvider}, backend_type_(info.backend_type),
+      device_id_(info.device_id), export_runtime_module_(info.export_runtime_module),
+      load_runtime_module_(info.load_runtime_module) {
   AllocatorCreationInfo default_memory_info{
       [](int) {
-        return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(VITISAI, OrtAllocatorType::OrtDeviceAllocator));
+        return std::make_unique<CPUAllocator>(OrtMemoryInfo(VITISAI, OrtAllocatorType::OrtDeviceAllocator));
       }};
 
   InsertAllocator(CreateAllocator(default_memory_info));
@@ -197,7 +199,7 @@ static void AppendClusterToSubGraph(const std::vector<NodeIndex>& nodes,
                                     std::vector<std::unique_ptr<ComputeCapability>>& result) {
   static size_t op_counter = 0;
 
-  auto meta_def = onnxruntime::make_unique<IndexedSubGraph::MetaDef>();
+  auto meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
   meta_def->name = "VitisAICustomOp_" + std::to_string(++op_counter);
   meta_def->domain = kVitisAIDomain;
   meta_def->since_version = 1;
@@ -205,10 +207,10 @@ static void AppendClusterToSubGraph(const std::vector<NodeIndex>& nodes,
   meta_def->inputs = inputs;
   meta_def->outputs = outputs;
 
-  std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
+  std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
   sub_graph->nodes = nodes;
   sub_graph->SetMetaDef(std::move(meta_def));
-  result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
+  result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
@@ -276,7 +278,8 @@ common::Status VitisAIExecutionProvider::Compile(const std::vector<onnxruntime::
   for (const auto& fused_node : fused_nodes) {
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [this, fused_node, logger = GetLogger()](ComputeContext* context, FunctionState* state) {
-      auto* p = new vitisai_ep::VitisAICustomOp(context, fused_node, backend_type_, logger);
+      auto* p = new vitisai_ep::VitisAICustomOp(context, fused_node, backend_type_, export_runtime_module_,
+                                                load_runtime_module_, logger);
       *state = p;
       return 0;
     };

@@ -24,16 +24,16 @@ nuget_root/
 *.code-workspace
 __pycache__
 onnxruntime_profile*.json
-/docs/python/*.md
-/docs/python/auto_examples/*
-/docs/python/media/*
-/docs/python/examples/*.onnx
-/docs/python/examples/graph.*
+/docs/python/inference/*.md
+/docs/python/inference/auto_examples/*
+/docs/python/inference/media/*
+/docs/python/inference/examples/*.onnx
+/docs/python/inference/examples/graph.*
 /docs/python/*_LICENSE
 /csharp/**/obj/
 /csharp/**/bin/
 /csharp/Directory.Build.props
-docs/python/*.onnx
+docs/python/inference/*.onnx
 *.onnx
 onnxprofile_profile_test_*.json
 /csharp/packages
@@ -51,3 +51,4 @@ onnxruntime/python/version_info.py
 /tools/perf_util/send_perf_metrics.iml
 /tools/perf_util/target/classes
 /tools/perf_util/src/main/resources
+/orttraining/orttraining/eager/ort_aten.g.cpp

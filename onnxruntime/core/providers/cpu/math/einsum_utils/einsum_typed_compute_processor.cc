@@ -70,6 +70,26 @@ void EinsumTypedComputeProcessor<T>::FinalizeOutput(const Tensor& candidate_outp
   }
 }
 
+static bool IsTransposeReshapeForEinsum(const std::vector<size_t>& perm,
+                                        const std::vector<int64_t>& input_dims,
+                                        std::vector<int64_t>& new_shape) {
+  // As long as the dims with values > 1 stay in the same order, it's a reshape.
+  // Example: Shape=(1,1,1024,4096) -> perm=(2,0,3,1).
+  size_t last_permuted_axis = 0;
+  for (size_t i = 0; i < perm.size(); ++i) {
+    if (input_dims[perm[i]] == 1)
+      continue;
+    if (perm[i] < last_permuted_axis)
+      return false;
+    last_permuted_axis = perm[i];
+  }
+  new_shape = input_dims;
+  for (size_t i = 0; i < perm.size(); ++i) {
+    new_shape[i] = input_dims[perm[i]];
+  }
+  return true;
+}
+
 template <typename T>
 std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(const Tensor& left,
                                                                                const TensorShape& left_shape_override,
@@ -128,7 +148,8 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
     bool has_left_dim = left_dim > 1;    // non-trivial dimension (dim_value != 1)
     bool has_right_dim = right_dim > 1;  // non-trivial dimension (dim_value != 1)
 
-    if (reduce_dims_iter < reduce_dims_size && reduce_dims[reduce_dims_iter] == i) {  // This dimension is to be reduced after this pair-wise operation
+    if (reduce_dims_iter < reduce_dims_size && reduce_dims[reduce_dims_iter] == i) {
+      // This dimension is to be reduced after this pair-wise operation
       ++reduce_dims_iter;
       if (has_left_dim && has_right_dim) {  // Both inputs have non-trivial dim values along this dimension
         // Both the left and right operands have non-trivial dimension value along this axis
@@ -136,12 +157,20 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
         ORT_ENFORCE(left_dim == right_dim,
                     "Einsum op: Input dimensions must be equal along an axis to be reduced across all inputs");
         reduced_size *= left_dim;
-      } else if (has_left_dim) {  // if it is only in one of left and right, we can reduce right away
+      } else if (has_left_dim) {  // if the dim to be reduced is only in one of left and right, we can reduce right away
+        const Tensor& tensor_to_be_reduced = current_left ? *current_left : left;
+        const std::vector<int64_t>& tensor_to_be_reduced_dims =
+            current_left ? current_left->Shape().GetDims() : left_dims;
+
         current_left = EinsumOp::ReduceSum<T>(
-            left, left_dims, {i}, allocator_, tp_, einsum_ep_assets_, device_reduce_sum_func_);
+            tensor_to_be_reduced, tensor_to_be_reduced_dims, {i}, allocator_, tp_, einsum_ep_assets_, device_reduce_sum_func_);
       } else if (has_right_dim) {
+        const Tensor& tensor_to_be_reduced = current_right ? *current_right : right;
+        const std::vector<int64_t>& tensor_to_be_reduced_dims =
+            current_right ? current_right->Shape().GetDims() : right_dims;
+
         current_right = EinsumOp::ReduceSum<T>(
-            right, right_dims, {i}, allocator_, tp_, einsum_ep_assets_, device_reduce_sum_func_);
+            tensor_to_be_reduced, tensor_to_be_reduced_dims, {i}, allocator_, tp_, einsum_ep_assets_, device_reduce_sum_func_);
       }
     } else {  // This dimension is not reduced (i.e.) it appears in the output after processing these 2 operands
       // Both the left and right operands have non-trivial dimension value along this axis
@@ -165,6 +194,7 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
   }
 
   // Permutate the left operand so that the axes order go like this: [lro, lo, reduce_dims, ro]
+  std::vector<int64_t> reshaped_dims;
   std::vector<size_t> left_permutation;
   left_permutation.reserve(lro.size() + lo.size() + reduce_dims.size() + ro.size());
   left_permutation.insert(left_permutation.end(), lro.begin(), lro.end());
@@ -173,10 +203,21 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
   left_permutation.insert(left_permutation.end(), ro.begin(), ro.end());
   if (EinsumOp::IsTransposeRequired(current_left ? current_left->Shape().GetDims().size() : left_dims.size(),
                                     left_permutation)) {
-    current_left = EinsumOp::Transpose(current_left ? *current_left : left,
-                                       current_left ? current_left->Shape().GetDims() : left_dims,
-                                       left_permutation, allocator_, einsum_ep_assets_,
-                                       device_transpose_func_);
+    if (current_left && IsTransposeReshapeForEinsum(left_permutation,
+                                                    current_left->Shape().GetDims(),
+                                                    reshaped_dims)) {
+      // This can be done because curent_* tensors (if they exist) and output tensors are
+      // intermediate tensors and cannot be input tensors to the Einsum node itself
+      // (which are immutable).
+      // Covered by ExplicitEinsumAsTensorContractionReshapeLeft.
+      current_left->Reshape(reshaped_dims);
+    } else {
+      // Covered by ExplicitEinsumAsTensorContraction, DiagonalWithMatmul, ...
+      current_left = EinsumOp::Transpose(current_left ? *current_left : left,
+                                         current_left ? current_left->Shape().GetDims() : left_dims,
+                                         left_permutation, allocator_, einsum_ep_assets_,
+                                         device_transpose_func_);
+    }
   }
 
   // Permutate the right operand so that the axes order go like this: [lro, reduce_dims, ro, lo]
@@ -188,10 +229,19 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
   right_permutation.insert(right_permutation.end(), lo.begin(), lo.end());
   if (EinsumOp::IsTransposeRequired(current_right ? current_right->Shape().GetDims().size() : right_dims.size(),
                                     right_permutation)) {
-    current_right = EinsumOp::Transpose(current_right ? *current_right : right,
-                                        current_right ? current_right->Shape().GetDims() : right_dims,
-                                        right_permutation, allocator_, einsum_ep_assets_,
-                                        device_transpose_func_);
+    if (current_right && IsTransposeReshapeForEinsum(right_permutation,
+                                                     current_right->Shape().GetDims(),
+                                                     reshaped_dims)) {
+      // See note following the previous call of function IsTransposeReshapeForEinsum.
+      // Covered by ExplicitEinsumAsBatchedMatmulWithBroadcasting_1, ExplicitEinsumAsMatmul_2, ...
+      current_right->Reshape(reshaped_dims);
+    } else {
+      // Covered by DiagonalWithMatmul, ExplicitEinsumAsBatchedMatmul, ...
+      current_right = EinsumOp::Transpose(current_right ? *current_right : right,
+                                          current_right ? current_right->Shape().GetDims() : right_dims,
+                                          right_permutation, allocator_, einsum_ep_assets_,
+                                          device_transpose_func_);
+    }
   }
 
   // Calculate output size
@@ -258,8 +308,16 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
 
   if (!is_final_pair) {  // This is not the final pair - so bring the axes order to what the inputs conformed to
     if (EinsumOp::IsTransposeRequired(output_dims.size(), output_permutation)) {
-      output = EinsumOp::Transpose(*output, output_dims, output_permutation, allocator_,
-                                   einsum_ep_assets_, device_transpose_func_);
+      if (IsTransposeReshapeForEinsum(output_permutation,
+                                      output_dims,
+                                      reshaped_dims)) {
+        // See note following the previous call of function IsTransposeReshapeForEinsum.
+        // Covered by ExplicitEinsumAsTensorContractionReshapeFinal.
+        output->Reshape(reshaped_dims);
+      } else {
+        output = EinsumOp::Transpose(*output, output_dims, output_permutation, allocator_,
+                                     einsum_ep_assets_, device_transpose_func_);
+      }
     }
   } else {  // This is the final pair - Transpose directly to the output ordering required and copy the contents to the op's output
     FinalizeOutput(*output, current_subscript_order);

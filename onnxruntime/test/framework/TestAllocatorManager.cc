@@ -3,22 +3,19 @@
 
 #include "test/framework/TestAllocatorManager.h"
 #include "core/framework/allocatormgr.h"
-#ifdef USE_CUDA
-#include "core/providers/cuda/cuda_allocator.h"
-#endif  //  USE_CUDA
 
 namespace onnxruntime {
 namespace test {
 
 // Dummy Arena which just call underline device allocator directly.
-class DummyArena : public IArenaAllocator {
+class DummyArena : public IAllocator {
  public:
   explicit DummyArena(std::unique_ptr<IAllocator> resource_allocator)
-      : IArenaAllocator(OrtMemoryInfo(resource_allocator->Info().name,
-                                      OrtAllocatorType::OrtArenaAllocator,
-                                      resource_allocator->Info().device,
-                                      resource_allocator->Info().id,
-                                      resource_allocator->Info().mem_type)),
+      : IAllocator(OrtMemoryInfo(resource_allocator->Info().name,
+                                 OrtAllocatorType::OrtDeviceAllocator,
+                                 resource_allocator->Info().device,
+                                 resource_allocator->Info().id,
+                                 resource_allocator->Info().mem_type)),
         allocator_(std::move(resource_allocator)) {
   }
 
@@ -32,18 +29,6 @@ class DummyArena : public IArenaAllocator {
 
   void Free(void* p) override {
     allocator_->Free(p);
-  }
-
-  void* Reserve(size_t size) override {
-    return Alloc(size);
-  }
-
-  size_t Used() const override {
-    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
-  }
-
-  size_t Max() const override {
-    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
  private:
@@ -91,16 +76,8 @@ AllocatorManager::AllocatorManager() {
 }
 
 Status AllocatorManager::InitializeAllocators() {
-  auto cpu_alocator = onnxruntime::make_unique<CPUAllocator>();
+  auto cpu_alocator = std::make_unique<CPUAllocator>();
   ORT_RETURN_IF_ERROR(RegisterAllocator(map_, std::move(cpu_alocator), std::numeric_limits<size_t>::max(), true));
-#ifdef USE_CUDA
-  auto cuda_alocator = onnxruntime::make_unique<CUDAAllocator>(static_cast<OrtDevice::DeviceId>(0), CUDA);
-  ORT_RETURN_IF_ERROR(RegisterAllocator(map_, std::move(cuda_alocator), std::numeric_limits<size_t>::max(), true));
-
-  auto cuda_pinned_alocator = onnxruntime::make_unique<CUDAPinnedAllocator>(static_cast<OrtDevice::DeviceId>(0), CUDA_PINNED);
-  ORT_RETURN_IF_ERROR(RegisterAllocator(map_, std::move(cuda_pinned_alocator), std::numeric_limits<size_t>::max(), true));
-#endif  // USE_CUDA
-
   return Status::OK();
 }
 

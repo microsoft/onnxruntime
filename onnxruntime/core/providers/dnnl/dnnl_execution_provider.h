@@ -11,6 +11,7 @@
 #include "core/platform/ort_mutex.h"
 #include "core/providers/dnnl/subgraph/subgraph.h"
 #include "core/platform/ort_mutex.h"
+#include "dnnl_op_manager.h"
 
 namespace dnnl {
 struct memory;
@@ -165,37 +166,6 @@ class DNNLExecutionProvider : public IExecutionProvider {
 
   bool UseSubgraph(const GraphViewer& graph_viewer) const;
 
-  // Some dimensions are not supported by DNNL
-  // example: Pool with NumDimensions <= 3 is not supported
-  // Fall back to CPU implementation
-  bool IsDimensionSupported(const Node* node) const {
-    bool supported = true;
-    if (node->OpType() == "BatchNormalization") {
-      auto node_inputs = node->InputDefs();
-      if (node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() == 3) {
-        supported = false;
-      }
-    }
-    if (node->OpType().find("Pool") != std::string::npos) {
-      auto node_inputs = node->InputDefs();
-#ifdef ENABLE_TRAINING
-      if (node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() < 3) {
-#else
-      if (node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() <= 3) {
-#endif  // ENABLE_TRAINING
-        supported = false;
-      }
-
-#ifdef ENABLE_TRAINING
-      if (node->OutputDefs().size() > 2)
-        supported = false;
-#else
-      if (node->OutputDefs().size() > 1)
-        supported = false;
-#endif  // ENABLE_TRAINING
-    }
-    return supported;
-  }
 
   void CreateOrUpdateDnnlNode(const Node* node,
                               std::shared_ptr<ort_dnnl::Subgraph>& subgraph_ptr,
@@ -218,15 +188,8 @@ class DNNLExecutionProvider : public IExecutionProvider {
   }
 
  private:
-// supported Dnnl Operators
-#ifdef ENABLE_TRAINING
-  std::set<std::string> dnnl_ops_ = {"Conv", "ConvGrad", "BatchNormalization", "Relu", "ReluGrad", "Sum",
-                                     "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "MaxPoolGrad", "LRN"};
-#else
-  std::set<std::string> dnnl_ops_ = {"Conv", "BatchNormalization", "Relu", "Sum",
-                                     "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "LRN"};
-#endif  // ENABLE_TRAINING
-
+  // DnnlOpManager contains information about supported Dnnl Operators
+  DnnlOpManager opManager_;
   mutable std::unordered_map<std::string, std::shared_ptr<ort_dnnl::Subgraph>> mkl_subgraphs_;
 };
 

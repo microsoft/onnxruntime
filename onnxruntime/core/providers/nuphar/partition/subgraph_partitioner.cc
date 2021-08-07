@@ -231,7 +231,7 @@ Status SubgraphPartitioner::Partition(
   ORT_RETURN_IF_ERROR(ShapeInference(graph_viewer, *whole_partition_shape_infer));
 
   // construct graph stats
-  graph_stats_ = onnxruntime::make_unique<SubgraphPartitionStats>();
+  graph_stats_ = std::make_unique<SubgraphPartitionStats>();
   Promote<SubgraphPartitionStats>(graph_stats_)->SetShapeInference(whole_partition_shape_infer);
   graph_stats_->Evaluate(graph_viewer);
 

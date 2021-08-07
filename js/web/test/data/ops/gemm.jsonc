@@ -1,0 +1,41 @@
+[
+  {
+    "name": "gemm tests",
+    "operator": "Gemm",
+    "attributes": [
+      { "name": "alpha", "data": 1.0, "type": "float" },
+      { "name": "beta", "data": 1.0, "type": "float" },
+      { "name": "transA", "data": 0, "type": "int" },
+      { "name": "transB", "data": 0, "type": "int" }
+    ],
+    "cases": [
+      {
+        "name": "gemm 2D tensors",
+        "inputs": [
+          {
+            "data": [1, 2, 1, 3, 2, 3, 1, 2],
+            "dims": [2, 4],
+            "type": "float32"
+          },
+          {
+            "data": [2, 1, 1, 2, 2, 3, 0, 4],
+            "dims": [4, 2],
+            "type": "float32"
+          },
+          {
+            "data": [1],
+            "dims": [1],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [7, 21, 10, 20],
+            "dims": [2, 2],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  }
+]

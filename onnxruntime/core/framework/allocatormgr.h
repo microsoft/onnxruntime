@@ -19,14 +19,14 @@ using MemoryInfoSet = std::set<OrtMemoryInfo>;
 const int DEFAULT_CPU_ALLOCATOR_DEVICE_ID = 0;
 
 struct AllocatorCreationInfo {
-  AllocatorCreationInfo(AllocatorFactory device_alloc_factory0,
-                        OrtDevice::DeviceId device_id0 = 0,
-                        bool use_arena0 = true,
-                        OrtArenaCfg arena_cfg0 = {0, -1, -1, -1})
-      : device_alloc_factory(device_alloc_factory0),
-        device_id(device_id0),
-        use_arena(use_arena0),
-        arena_cfg(arena_cfg0) {
+  AllocatorCreationInfo(AllocatorFactory device_alloc_factory,
+                        OrtDevice::DeviceId device_id = 0,
+                        bool use_arena = true,
+                        OrtArenaCfg arena_cfg = {0, -1, -1, -1, -1})
+      : device_alloc_factory(device_alloc_factory),
+        device_id(device_id),
+        use_arena(use_arena),
+        arena_cfg(arena_cfg) {
   }
 
   AllocatorFactory device_alloc_factory;
@@ -35,7 +35,7 @@ struct AllocatorCreationInfo {
   OrtArenaCfg arena_cfg;
 };
 
-// Returns an allocator based on the creation info provided.
+// Returns an allocator (an instance of IAllocator) based on the creation info provided.
 // Returns nullptr if an invalid value of info.arena_cfg.arena_extend_strategy is supplied.
 // Valid values can be found in onnxruntime_c_api.h.
 AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info);
@@ -54,7 +54,7 @@ class AllocatorManager {
   AllocatorMap allocators_;
   // to ensure only allocators with unique OrtMemoryInfo are registered in the provider.
   MemoryInfoSet mem_info_set_;
-  
+
   // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time
   // contains the same instances as allocators_
   std::vector<AllocatorPtr> allocator_list_;

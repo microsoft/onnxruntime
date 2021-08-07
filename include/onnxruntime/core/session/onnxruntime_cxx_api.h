@@ -284,6 +284,8 @@ struct RunOptions : Base<OrtRunOptions> {
   RunOptions& SetRunTag(const char* run_tag);
   const char* GetRunTag() const;
 
+  RunOptions& AddConfigEntry(const char* config_key, const char* config_value);
+
   // terminate ALL currently executing Session::Run calls that were made using this RunOptions instance
   RunOptions& SetTerminate();
   // unset the terminate flag so this RunOptions instance can be used in a new Session::Run call
@@ -308,6 +310,8 @@ struct SessionOptions : Base<OrtSessionOptions> {
 
   SessionOptions& EnableProfiling(const ORTCHAR_T* profile_file_prefix);
   SessionOptions& DisableProfiling();
+
+  SessionOptions& EnableOrtCustomOps();
 
   SessionOptions& EnableMemPattern();
   SessionOptions& DisableMemPattern();
@@ -347,6 +351,7 @@ struct ModelMetadata : Base<OrtModelMetadata> {
 struct Session : Base<OrtSession> {
   explicit Session(std::nullptr_t) {}
   Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options);
+  Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options, OrtPrepackedWeightsContainer* prepacked_weights_container);
   Session(Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options);
 
   // Run that will allocate the output values
@@ -469,8 +474,8 @@ struct MemoryAllocation {
   ~MemoryAllocation();
   MemoryAllocation(const MemoryAllocation&) = delete;
   MemoryAllocation& operator=(const MemoryAllocation&) = delete;
-  MemoryAllocation(MemoryAllocation&&);
-  MemoryAllocation& operator=(MemoryAllocation&&);
+  MemoryAllocation(MemoryAllocation&&) noexcept;
+  MemoryAllocation& operator=(MemoryAllocation&&) noexcept;
 
   void* get() { return p_; }
   size_t size() const { return size_; }
@@ -566,7 +571,6 @@ struct ArenaCfg : Base<OrtArenaCfg> {
   * \param arena_extend_strategy -  use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
   * \param initial_chunk_size_bytes - use -1 to allow ORT to choose the default
   * \param max_dead_bytes_per_chunk - use -1 to allow ORT to choose the default
-  * \return an instance of ArenaCfg
   * See docs/C_API.md for details on what the following parameters mean and how to choose these values
   */
   ArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes, int max_dead_bytes_per_chunk);

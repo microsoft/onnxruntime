@@ -132,7 +132,7 @@ class PosixThread : public EnvThread {
                        new Param{name_prefix, index, start_address, param, thread_options});
     if (s != 0)
       ORT_THROW("pthread_create failed");
-#if !defined(__APPLE__) && !defined(__ANDROID__)
+#if !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__)
     if (!thread_options.affinity.empty()) {
       cpu_set_t cpuset;
       CPU_ZERO(&cpuset);
@@ -154,11 +154,6 @@ class PosixThread : public EnvThread {
 #endif
   }
 
-  // This function is called when the threadpool is cancelled.
-  // TODO: Find a way to avoid calling TerminateThread
-  void OnCancel() override {
-  }
-
  private:
   static void* ThreadMain(void* param) {
     std::unique_ptr<Param> p((Param*)param);
@@ -167,7 +162,7 @@ class PosixThread : public EnvThread {
       p->start_address(p->index, p->param);
     }
     ORT_CATCH(const std::exception&) {
-      p->param->Cancel();
+      //ignore any exceptions
     }
     return nullptr;
   }
@@ -416,9 +411,9 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  common::Status LoadDynamicLibrary(const std::string& library_filename, void** handle) const override {
+  common::Status LoadDynamicLibrary(const std::string& library_filename, bool global_symbols, void** handle) const override {
     dlerror();  // clear any old error_str
-    *handle = dlopen(library_filename.c_str(), RTLD_NOW | RTLD_LOCAL);
+    *handle = dlopen(library_filename.c_str(), RTLD_NOW | (global_symbols ? RTLD_GLOBAL : RTLD_LOCAL));
     char* error_str = dlerror();
     if (!*handle) {
       return common::Status(common::ONNXRUNTIME, common::FAIL,

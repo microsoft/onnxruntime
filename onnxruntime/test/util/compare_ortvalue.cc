@@ -9,32 +9,12 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wignored-qualifiers"
 #pragma GCC diagnostic ignored "-Wunused-parameter"
-#else
-#pragma warning(push)
-#pragma warning(disable : 4018) /*'expression' : signed/unsigned mismatch */
-#pragma warning(disable : 4065) /*switch statement contains 'default' but no 'case' labels*/
-#pragma warning(disable : 4100)
-#pragma warning(disable : 4146) /*unary minus operator applied to unsigned type, result still unsigned*/
-#pragma warning(disable : 4244) /*'conversion' conversion from 'type1' to 'type2', possible loss of data*/
-#pragma warning(disable : 4251) /*'identifier' : class 'type' needs to have dll-interface to be used by clients of class 'type2'*/
-#pragma warning(disable : 4267) /*'var' : conversion from 'size_t' to 'type', possible loss of data*/
-#pragma warning(disable : 4305) /*'identifier' : truncation from 'type1' to 'type2'*/
-#pragma warning(disable : 4307) /*'operator' : integral constant overflow*/
-#pragma warning(disable : 4309) /*'conversion' : truncation of constant value*/
-#pragma warning(disable : 4334) /*'operator' : result of 32-bit shift implicitly converted to 64 bits (was 64-bit shift intended?)*/
-#pragma warning(disable : 4355) /*'this' : used in base member initializer list*/
-#pragma warning(disable : 4506) /*no definition for inline function 'function'*/
-#pragma warning(disable : 4800) /*'type' : forcing value to bool 'true' or 'false' (performance warning)*/
-#pragma warning(disable : 4996) /*The compiler encountered a deprecated declaration.*/
-#pragma warning(disable : 4805) /*Unsafe mix of type 'const bool' and type 'int' in operation*/
 #endif
 #include <google/protobuf/message_lite.h>
 #include <Eigen/Core>
 #include <Eigen/src/Core/arch/Default/Half.h>
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
-#else
-#pragma warning(pop)
 #endif
 
 #include "core/graph/onnx_protobuf.h"
@@ -53,7 +33,25 @@ using __half_raw = ::Eigen::half_impl::__half;
 }  // namespace Eigen
 #endif
 
+#define TEST_RETURN_IF_NOT(condition, compare_result, ...)                                                    \
+  if (!(condition)) {                                                                                         \
+    return std::make_pair(compare_result, ::onnxruntime::MakeString(ORT_WHERE.ToString(), " ", __VA_ARGS__)); \
+  }
+
+#define TEST_RETURN_IF_ERROR(stmt, ...)                                                                                \
+  {                                                                                                                    \
+    auto result_pair = (stmt);                                                                                         \
+    if (result_pair.first != COMPARE_RESULT::SUCCESS) {                                                                \
+      result_pair.second = ::onnxruntime::MakeString(ORT_WHERE.ToString(), " ", __VA_ARGS__, " ", result_pair.second); \
+      return result_pair;                                                                                              \
+    }                                                                                                                  \
+  }
+
 namespace {
+
+const char* ElementTypeToString(MLDataType type) {
+  return DataTypeImpl::ToString(type);
+}
 
 template <typename T>
 bool IsResultCloselyMatch(const T& outvalue, const T& expected_value, const double diff, const double tol) {
@@ -129,6 +127,8 @@ std::pair<COMPARE_RESULT, std::string> CompareFloat16Result(const Tensor& outval
   const size_t size1 = static_cast<size_t>(expected_value.Shape().Size());
   const MLFloat16* expected_output = expected_value.template Data<MLFloat16>();
   const MLFloat16* real_output = outvalue.template Data<MLFloat16>();
+  std::ostringstream oss;
+  COMPARE_RESULT result = COMPARE_RESULT::SUCCESS;
   for (size_t di = 0; di != size1; ++di) {
     float expected = Eigen::half_impl::half_to_float(Eigen::half_impl::__half_raw(expected_output[di].val));
     float real = Eigen::half_impl::half_to_float(Eigen::half_impl::__half_raw(real_output[di].val));
@@ -136,13 +136,11 @@ std::pair<COMPARE_RESULT, std::string> CompareFloat16Result(const Tensor& outval
     const double diff = std::fabs(expected - real);
     const double rtol = per_sample_tolerance + relative_per_sample_tolerance * std::fabs(expected);
     if (!IsResultCloselyMatch<float>(real, expected, diff, rtol)) {
-      std::ostringstream oss;
-      oss << "expected " << expected << ", got " << real << ", diff: " << diff << ", tol=" << rtol;
-
-      return std::make_pair(COMPARE_RESULT::RESULT_DIFFERS, oss.str());
+      oss << "idx: " << di << "expected " << expected << ", got " << real << ", diff: " << diff << ", tol=" << rtol << "\n";
+      result = COMPARE_RESULT::RESULT_DIFFERS;
     }
   }
-  return std::make_pair(COMPARE_RESULT::SUCCESS, "");
+  return std::make_pair(result, oss.str());
 }
 
 std::pair<COMPARE_RESULT, std::string> CompareBFloat16Result(const Tensor& outvalue, const Tensor& expected_value,
@@ -252,8 +250,44 @@ std::pair<COMPARE_RESULT, std::string> CompareSeqOfMapToFloat(const T& real_outp
   return std::make_pair(COMPARE_RESULT::SUCCESS, "");
 }
 
-const char* ElementTypeToString(MLDataType type) {
-  return DataTypeImpl::ToString(type);
+std::pair<COMPARE_RESULT, std::string> CompareSparseTensors(const SparseTensor& actual, const SparseTensor& expected,
+                                                            double per_sample_tolerance, double relative_per_sample_tolerance,
+                                                            bool post_processing) {
+  TEST_RETURN_IF_NOT(actual.DataType() == expected.DataType(), COMPARE_RESULT::TYPE_MISMATCH,
+                     "Expected type: ", ElementTypeToString(expected.DataType()),
+                     " actual: ", ElementTypeToString(actual.DataType()));
+
+  TEST_RETURN_IF_NOT(actual.DenseShape() == expected.DenseShape(), COMPARE_RESULT::SHAPE_MISMATCH,
+                     "Expected dense shape: ", expected.DenseShape(),
+                     " Actual: ", actual.DenseShape());
+
+  TEST_RETURN_IF_NOT(actual.Format() == expected.Format(), COMPARE_RESULT::TYPE_MISMATCH,
+                     "Expected sparse format", expected.Format(),
+                     " actual: ", actual.Format());
+
+  TEST_RETURN_IF_ERROR(CompareTwoTensors(actual.Values(), expected.Values(),
+                                         per_sample_tolerance, relative_per_sample_tolerance, post_processing),
+                       "While comparing sparse values");
+
+  if (actual.Format() == SparseFormat::kCoo) {
+    auto actual_view = actual.AsCoo();
+    auto expected_view = expected.AsCoo();
+
+    TEST_RETURN_IF_ERROR(CompareTwoTensors(actual_view.Indices(), expected_view.Indices(),
+                                           per_sample_tolerance, relative_per_sample_tolerance, post_processing),
+                         "Comparing COO indices");
+  } else if (actual.Format() == SparseFormat::kCsrc) {
+    auto actual_view = actual.AsCsr();
+    auto expected_view = expected.AsCsr();
+    TEST_RETURN_IF_ERROR(CompareTwoTensors(actual_view.Inner(), expected_view.Inner(),
+                                           per_sample_tolerance, relative_per_sample_tolerance, post_processing),
+                         "Comparing Csr(c) inner indices");
+    TEST_RETURN_IF_ERROR(CompareTwoTensors(actual_view.Outer(), expected_view.Outer(),
+                                           per_sample_tolerance, relative_per_sample_tolerance, post_processing),
+                         "Comparing Csr(c) outer indices");
+  }
+
+  return std::make_pair(COMPARE_RESULT::SUCCESS, "");
 }
 
 // The expected_shape could contain unknown dimensions, but the real_shape cannot
@@ -317,6 +351,14 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& o, const 
     }
     return CompareTwoTensors(outvalue, expected_tensor, per_sample_tolerance, relative_per_sample_tolerance,
                              post_processing);
+  } else if (o.IsSparseTensor()) {
+    TEST_RETURN_IF_NOT(expected_mlvalue.IsSparseTensor(), COMPARE_RESULT::TYPE_MISMATCH,
+                       "SparseTensor is not expected as output");
+    TEST_RETURN_IF_ERROR(CompareSparseTensors(o.Get<SparseTensor>(), expected_mlvalue.Get<SparseTensor>(),
+                                              per_sample_tolerance, relative_per_sample_tolerance,
+                                              post_processing),
+                         "while comaring sparse tensors");
+    return std::make_pair(COMPARE_RESULT::SUCCESS, "");
   } else if (o.IsTensorSequence()) {
     auto& expected_tensor_seq = expected_mlvalue.Get<TensorSeq>();
     auto expected_tensor_count = expected_tensor_seq.Size();

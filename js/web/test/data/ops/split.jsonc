@@ -1,0 +1,79 @@
+[
+  {
+    "name": "Split on Axis 0",
+    "operator": "Split",
+    "attributes": [
+      { "name": "axis", "data": 0, "type": "int" },
+      { "name": "split", "data": [2, 4], "type": "ints" }
+    ],
+    "cases": [
+      {
+        "name": "T[6]",
+        "inputs": [
+          {
+            "data": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            "dims": [6],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1.0, 2.0],
+            "dims": [2],
+            "type": "float32"
+          },
+          {
+            "data": [3.0, 4.0, 5.0, 6.0],
+            "dims": [4],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Split on Axis 1 - 2D",
+    "operator": "Split",
+    "attributes": [
+      { "name": "axis", "data": 1, "type": "int" },
+      { "name": "split", "data": [2, 4], "type": "ints" }
+    ],
+    "cases": [
+      {
+        "name": "T[6]",
+        "inputs": [
+          {
+            "data": [
+              1.0,
+              2.0,
+              3.0,
+              4.0,
+              5.0,
+              6.0,
+              7.0,
+              8.0,
+              9.0,
+              10.0,
+              11.0,
+              12.0
+            ],
+            "dims": [2, 6],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1.0, 2.0, 7.0, 8.0],
+            "dims": [2, 2],
+            "type": "float32"
+          },
+          {
+            "data": [3.0, 4.0, 5.0, 6.0, 9.0, 10.0, 11.0, 12.0],
+            "dims": [2, 4],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  }
+]

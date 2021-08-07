@@ -16,17 +16,27 @@
 
 #pragma once
 
-// This is a simple translation from the old Caffe math interfaces. We aim to
-// still keep it simple, so all platforms would be able to support it fairly
-// easily.
-
-// We include the cblas header here so that we can obtain the macros from cblas.
-extern "C" {
-#include "core/framework/cblas.h"
-}
-
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
+#endif
+
+#ifndef CBLAS_ENUM_DEFINED_H
+#define CBLAS_ENUM_DEFINED_H
+enum CBLAS_ORDER { CblasRowMajor = 101,
+                   CblasColMajor = 102 };
+enum CBLAS_TRANSPOSE {
+  CblasNoTrans = 111,
+  CblasTrans = 112,
+  CblasConjTrans = 113
+};
+enum CBLAS_UPLO { CblasUpper = 121,
+                  CblasLower = 122 };
+enum CBLAS_DIAG { CblasNonUnit = 131,
+                  CblasUnit = 132 };
+enum CBLAS_SIDE { CblasLeft = 141,
+                  CblasRight = 142 };
+#endif
 
 namespace onnxruntime {
 namespace concurrency {
@@ -339,43 +349,13 @@ constexpr T roundUp(T a, T b) {
   return divUp<T>(a, b) * b;
 }
 
-// Returns true if the given integer type is a power-of-2 (positive only)
-// Note(jiayq): windows reported an error per
-//     https://github.com/caffe2/caffe2/issues/997
-// and as a result will make it a macro.
-#ifdef _MSC_VER
-#define integerIsPowerOf2(v) ((v) && !((v) & ((v)-1)))
-#else   // _MSC_VER
-template <typename T>
-constexpr bool integerIsPowerOf2(T v) {
-  return (v && !(v & (v - 1)));
-}
-#endif  // _MSC_VER
-
-// Returns log2(n) for a positive integer type
-template <typename T>
-constexpr int integerLog2(T n, int p = 0) {
-  return (n <= 1) ? p : integerLog2(n / 2, p + 1);
-}
-
-// Returns the next highest power-of-2 for an integer type
-template <typename T>
-constexpr T integerNextHighestPowerOf2(T v) {
-  return (integerIsPowerOf2(v) ? (T)2 * v : ((T)1 << (integerLog2(v) + 1)));
-}
-
-// Rounds a up to the next highest multiple of b, which is power-of-2. User must be careful
-// to ensure that there is no overflow or underflow in the calculation
-// of divUp.
-template <typename T, T b>
-constexpr T roundUpPow2(T a) {
-  return (a + (b - 1)) & (~(b - 1));
-}
-
+// Converts a float32 to a float16 value.
 uint16_t floatToHalf(float f);
 
+// Converts a double (float64) to a float16 value.
 uint16_t doubleToHalf(double f);
 
+// Converts a float16 to a float32 value.
 float halfToFloat(uint16_t h);
 
 }  // namespace math

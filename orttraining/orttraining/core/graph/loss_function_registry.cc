@@ -47,7 +47,7 @@ void LossFunctionRegistry::RegisterOperatorLossFunction(const std::string& op_na
               "Failed to register loss function using op, the same name exists:", op_name);
   Register<LossFunctionUsingOperator>(op_name,
                                       []() -> std::unique_ptr<LossFunctionUsingOperator> {
-                                        return onnxruntime::make_unique<LossFunctionUsingOperator>();
+                                        return std::make_unique<LossFunctionUsingOperator>();
                                       });
 }
 

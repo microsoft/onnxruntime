@@ -50,7 +50,7 @@ void PerformanceResult::DumpToFile(const std::basic_string<ORTCHAR_T>& path, boo
     outfile.open(path, std::ofstream::out | std::ofstream::app);
     if (!outfile.good()) {
       // at least provide some info on the run
-      std::cerr << "failed to open result file '" << path.c_str() << "'. will dump stats to output.\n";
+      std::cerr << "failed to open result file '" << ToMBString(path.c_str()) << "'. will dump stats to output.\n";
       have_file = false;
       f_include_statistics = true;
     }
@@ -201,7 +201,7 @@ Status PerformanceRunner::ForkJoinRepeat() {
   const auto& run_config = performance_test_config_.run_config;
 
   // create a threadpool with one thread per concurrent request
-  auto tpool = onnxruntime::make_unique<DefaultThreadPoolType>(run_config.concurrent_session_runs);
+  auto tpool = std::make_unique<DefaultThreadPoolType>(run_config.concurrent_session_runs);
   std::atomic<int> counter{0}, requests{0};
   OrtMutex m;
   OrtCondVar cv;

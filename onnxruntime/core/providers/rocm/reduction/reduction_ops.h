@@ -143,8 +143,7 @@ class ReduceMean final : public ReduceKernel<true> {
   ReduceMean(const OpKernelInfo& info) : ReduceKernel<true>(info) {}
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
-    //return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_AVG);
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MIOpen does not yet support reduce avg.");
+    return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_AVG);
   }
 };
 

@@ -16,7 +16,7 @@ namespace cuda {
 template <typename T>
 class FFTBase : public ::onnxruntime::cuda::CudaKernel {
  public:
-  FFTBase(const OpKernelInfo info) : ::onnxruntime::cuda::CudaKernel{info}, normalized_{0}, onesided_{1} {
+  FFTBase(const OpKernelInfo& info) : ::onnxruntime::cuda::CudaKernel{info}, normalized_{0}, onesided_{1} {
     ORT_ENFORCE((info.GetAttr("signal_ndim", &signal_ndim_)).IsOK(),
                 "Attribute signal_ndim is missing in Node ", info.node().Name());
     ORT_ENFORCE(signal_ndim_ >= 1 && signal_ndim_ <= 3,
@@ -36,14 +36,14 @@ class FFTBase : public ::onnxruntime::cuda::CudaKernel {
 template <typename T>
 class Rfft final : public FFTBase<T> {
  public:
-  Rfft(const OpKernelInfo info) : FFTBase<T>{info} {}
+  Rfft(const OpKernelInfo& info) : FFTBase<T>{info} {}
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
 template <typename T>
 class Irfft final : public FFTBase<T> {
  public:
-  Irfft(const OpKernelInfo info) : FFTBase<T>{info} {}
+  Irfft(const OpKernelInfo& info) : FFTBase<T>{info} {}
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 

@@ -187,6 +187,9 @@ IEngine : IUnknown {
   STDMETHOD(GetNumberOfIntraOpThreads)
   (uint32_t * num_threads) PURE;
 
+  STDMETHOD(GetIntraOpThreadSpinning)
+  (bool* allow_spinning) PURE;
+
   STDMETHOD(GetNamedDimensionOverrides)
   (wfc::IMapView<winrt::hstring, uint32_t>& overrides) PURE;
 };
@@ -213,6 +216,9 @@ IEngineBuilder : IUnknown {
 
   STDMETHOD(SetIntraOpNumThreadsOverride)
   (uint32_t intra_op_num_threads) PURE;
+
+  STDMETHOD(SetIntraOpThreadSpinning)
+  (bool allow_spinning) PURE;
 
   STDMETHOD(CreateEngine)
   (IEngine **out) PURE;

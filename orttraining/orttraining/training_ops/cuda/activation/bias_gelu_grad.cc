@@ -21,7 +21,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", BuildKernelDefConstraints<ALL_IEEE_FLOAT_DATA_TYPES>())
         .MayInplace(0, 0),
     BiasGeluGrad_dX<gelu_computation_mode::Default>);
@@ -31,7 +31,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", BuildKernelDefConstraints<ALL_IEEE_FLOAT_DATA_TYPES>())
         .MayInplace(0, 0),
     BiasGeluGrad_dX<gelu_computation_mode::Approximation>);

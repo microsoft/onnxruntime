@@ -151,7 +151,7 @@ add_dependencies(winml_api_native_internal RESTORE_NUGET_PACKAGES)
 ###########################
 
 # Add static library that will be archived/linked for both static/dynamic library
-add_library(winml_lib_telemetry STATIC
+onnxruntime_add_static_library(winml_lib_telemetry
   ${winml_lib_telemetry_dir}/inc/TelemetryEvent.h
   ${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfig.h
   ${winml_lib_common_dir}/inc/WinMLTelemetryHelper.h
@@ -169,6 +169,7 @@ if (onnxruntime_USE_TELEMETRY)
 endif()
 
 # Compiler flags
+target_compile_definitions(winml_lib_telemetry PRIVATE WINML_ROOT_NS=${winml_root_ns})
 target_compile_definitions(winml_lib_telemetry PRIVATE PLATFORM_WINDOWS)
 target_compile_definitions(winml_lib_telemetry PRIVATE _SCL_SECURE_NO_WARNINGS)      # remove warnings about unchecked iterators
 target_compile_definitions(winml_lib_telemetry PRIVATE BINARY_NAME=\"${BINARY_NAME}\")
@@ -177,7 +178,10 @@ target_compile_definitions(winml_lib_telemetry PRIVATE BINARY_NAME=\"${BINARY_NA
 target_precompiled_header(winml_lib_telemetry pch.h)
 
 # Includes
-target_include_directories(winml_lib_telemetry PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)
+target_include_directories(winml_lib_telemetry PRIVATE ${CMAKE_CURRENT_BINARY_DIR})                             # windows machine learning generated component headers
+target_include_directories(winml_lib_telemetry PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
+target_include_directories(winml_lib_telemetry PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
+target_include_directories(winml_lib_telemetry PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)  # sdk cppwinrt headers
 target_include_directories(winml_lib_telemetry PRIVATE ${CMAKE_SOURCE_DIR}/common/inc)
 target_include_directories(winml_lib_telemetry PRIVATE ${winml_lib_telemetry_dir})
 target_include_directories(winml_lib_telemetry PRIVATE ${winml_lib_common_dir}/inc)
@@ -188,6 +192,12 @@ set_target_properties(winml_lib_telemetry
   PROPERTIES
   FOLDER
   ${target_folder})
+
+# Add deps
+add_dependencies(winml_lib_telemetry winml_sdk_cppwinrt)
+add_dependencies(winml_lib_telemetry winml_api)
+add_dependencies(winml_lib_telemetry winml_api_native)
+add_dependencies(winml_lib_telemetry winml_api_native_internal)
 
 # Link libraries
 target_link_libraries(winml_lib_telemetry PRIVATE wil)
@@ -222,7 +232,7 @@ if (onnxruntime_USE_DML)
 endif()
 
 # Add static library that will be archived/linked for both static/dynamic library
-add_library(winml_lib_ort STATIC ${winml_lib_api_ort_files})
+onnxruntime_add_static_library(winml_lib_ort ${winml_lib_api_ort_files})
 
 # Compiler options
 target_compile_features(winml_lib_ort PRIVATE cxx_std_17)
@@ -297,7 +307,7 @@ if (onnxruntime_USE_DML)
     )
 endif()
 
-add_library(winml_adapter ${winml_adapter_files})
+onnxruntime_add_static_library(winml_adapter ${winml_adapter_files})
 
 if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
   target_compile_definitions(winml_adapter PRIVATE "BUILD_INBOX=1")
@@ -308,7 +318,7 @@ set_target_properties(winml_adapter PROPERTIES CXX_STANDARD 17)
 set_target_properties(winml_adapter PROPERTIES CXX_STANDARD_REQUIRED ON)
 
 # Compiler definitions
-onnxruntime_add_include_to_target(winml_adapter onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)
+onnxruntime_add_include_to_target(winml_adapter onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
 target_include_directories(winml_adapter PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
 add_dependencies(winml_adapter ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
@@ -339,7 +349,7 @@ list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES winml_adapter)
 ###########################
 
 # Add static library that will be archived/linked for both static/dynamic library
-add_library(winml_lib_image STATIC
+onnxruntime_add_static_library(winml_lib_image
   ${winml_lib_api_image_dir}/inc/ConverterResourceStore.h
   ${winml_lib_api_image_dir}/inc/D3DDeviceCache.h
   ${winml_lib_api_image_dir}/inc/DeviceHelpers.h
@@ -426,7 +436,7 @@ endif(onnxruntime_USE_DML)
 ###########################
 
 # Add static library that will be archived/linked for both static/dynamic library
-add_library(winml_lib_api STATIC
+onnxruntime_add_static_library(winml_lib_api
   ${winml_lib_api_dir}/impl/FeatureCompatibility.h
   ${winml_lib_api_dir}/impl/IData.h
   ${winml_lib_api_dir}/impl/IMapFeatureValue.h
@@ -540,7 +550,7 @@ endif(onnxruntime_USE_DML)
 ###########################
 
 # Add static library that will be archived/linked for both static/dynamic library
-add_library(winml_lib_api_experimental STATIC
+onnxruntime_add_static_library(winml_lib_api_experimental
   ${winml_lib_api_experimental_dir}/LearningModelBuilder.cpp
   ${winml_lib_api_experimental_dir}/LearningModelBuilder.h
   ${winml_lib_api_experimental_dir}/LearningModelInputs.cpp
@@ -630,7 +640,7 @@ endif(onnxruntime_USE_DML)
 # Add winml_lib_common
 ###########################
 
-add_library(winml_lib_common STATIC
+onnxruntime_add_static_library(winml_lib_common
   ${winml_lib_common_dir}/inc/common.h
   ${winml_lib_common_dir}/inc/CommonDeviceHelpers.h
   ${winml_lib_common_dir}/inc/cppwinrt_onnx.h
@@ -692,7 +702,7 @@ set_source_files_properties(
   TRUE)
 
 # Add library
-add_library(winml_dll SHARED
+onnxruntime_add_shared_library(winml_dll 
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated/module.g.excl.cpp
   ${winml_dll_dir}/winml.def
   ${winml_dll_dir}/winml.rc

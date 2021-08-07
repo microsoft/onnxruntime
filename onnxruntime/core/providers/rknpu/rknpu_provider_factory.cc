@@ -16,7 +16,7 @@ struct RknpuProviderFactory : IExecutionProviderFactory {
 };
 
 std::unique_ptr<IExecutionProvider> RknpuProviderFactory::CreateProvider() {
-  return onnxruntime::make_unique<RknpuExecutionProvider>();
+  return std::make_unique<RknpuExecutionProvider>();
 }
 
 std::shared_ptr<IExecutionProviderFactory>

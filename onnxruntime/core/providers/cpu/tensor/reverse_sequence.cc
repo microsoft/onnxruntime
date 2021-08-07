@@ -18,6 +18,7 @@
 #endif
 
 #include "core/framework/data_types_internal.h"
+#include "core/framework/element_type_lists.h"
 #include "core/framework/utils.h"
 #include "core/framework/tensor.h"
 #include "core/framework/tensor_shape.h"
@@ -27,9 +28,9 @@
 namespace onnxruntime {
 
 namespace op_kernel_type_control {
-ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, ReverseSequence, Input, 0,
-    ORT_OP_KERNEL_TYPE_CTRL_ALL_TENSOR_DATA_TYPES);
+    element_type_lists::All);
 }
 
 using ReverseSequenceDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
@@ -138,8 +139,14 @@ static Status ReverseSequenceImpl(const Tensor& X,
   for (int i = 0; i < batch_size; i++) {
     int64_t seq_len = sequence_lengths[i];
 
-    if (seq_len == 0)
+    if (seq_len == 0) {
       continue;
+    }
+
+    if (seq_len > max_seq_len || seq_len < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid sequence length: ", seq_len,
+                             ". Value must be in range [0,", max_seq_len, "]");
+    }
 
     for (int64_t j = 0; j < seq_len; j++) {
       gsl::span<const T> src = inputs.subspan(input_offset(max_seq_len, batch_size, input_size, i, j), input_size);

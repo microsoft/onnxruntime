@@ -23,4 +23,8 @@
     <Message Text="$([System.String]::Format('$(WindowsAIBinplaceMessage)', '$(WindowsAIBinary)', '$(OnnxRuntimeBinary)'))" />
     <Copy SkipUnchangedFiles="True" SourceFiles="$(WindowsAIBinary);$(OnnxRuntimeBinary)" DestinationFolder="$(OutDir)" />
   </Target>
+
+  <ItemGroup>
+    <ReferenceCopyLocalPaths Include="$(WindowsAIBinary);$(OnnxRuntimeBinary)" />
+  </ItemGroup>
 </Project>

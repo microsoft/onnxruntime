@@ -2,33 +2,6 @@
 # Licensed under the MIT License.
 
 include(pybind11)
-FIND_PACKAGE(NumPy)
-
-if(NOT PYTHON_INCLUDE_DIR)
-  set(PYTHON_NOT_FOUND false)
-  exec_program("${PYTHON_EXECUTABLE}"
-    ARGS "-c \"import distutils.sysconfig; print(distutils.sysconfig.get_python_inc())\""
-    OUTPUT_VARIABLE PYTHON_INCLUDE_DIR
-    RETURN_VALUE PYTHON_NOT_FOUND)
-  if(${PYTHON_NOT_FOUND})
-    message(FATAL_ERROR
-            "Cannot get Python include directory. Is distutils installed?")
-  endif(${PYTHON_NOT_FOUND})
-endif(NOT PYTHON_INCLUDE_DIR)
-
-# 2. Resolve the installed version of NumPy (for numpy/arrayobject.h).
-if(NOT NUMPY_INCLUDE_DIR)
-  set(NUMPY_NOT_FOUND false)
-  exec_program("${PYTHON_EXECUTABLE}"
-    ARGS "-c \"import numpy; print(numpy.get_include())\""
-    OUTPUT_VARIABLE NUMPY_INCLUDE_DIR
-    RETURN_VALUE NUMPY_NOT_FOUND)
-  if(${NUMPY_NOT_FOUND})
-    message(FATAL_ERROR
-            "Cannot get NumPy include directory: Is NumPy installed?")
-  endif(${NUMPY_NOT_FOUND})
-endif(NOT NUMPY_INCLUDE_DIR)
-
 
 # ---[ Python + Numpy
 set(onnxruntime_pybind_srcs_pattern
@@ -46,6 +19,28 @@ endif()
 file(GLOB onnxruntime_pybind_srcs CONFIGURE_DEPENDS
   ${onnxruntime_pybind_srcs_pattern}
   )
+  
+if(NOT onnxruntime_PYBIND_EXPORT_OPSCHEMA)
+  list(REMOVE_ITEM onnxruntime_pybind_srcs  ${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_schema.cc)
+endif()
+
+if (onnxruntime_ENABLE_EAGER_MODE)
+  list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_PREBUILT_PYTORCH_PATH})
+  find_package(Torch REQUIRED)
+  find_library(TORCH_PYTHON_LIBRARY torch_python PATHS "${TORCH_INSTALL_PREFIX}/lib")
+
+  file(GLOB onnxruntime_eager_extension_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_ROOT}/orttraining/eager/*.cpp"
+    )
+
+  if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+    list(APPEND onnxruntime_eager_extension_srcs 
+              "${ORTTRAINING_ROOT}/orttraining/core/framework/torch/dlpack_python.cc")
+  endif()
+
+  list(APPEND onnxruntime_pybind_srcs 
+              ${onnxruntime_eager_extension_srcs})
+endif()
 
 onnxruntime_add_shared_library_module(onnxruntime_pybind11_state ${onnxruntime_pybind_srcs})
 if(MSVC)
@@ -55,23 +50,33 @@ if(HAS_CAST_FUNCTION_TYPE)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-cast-function-type")
 endif()
 
+# We export symbols using linker and the compiler does not know anything about it
+# There is a problem with classes that have pybind types as members.
+# See https://pybind11.readthedocs.io/en/stable/faq.html#someclass-declared-with-greater-visibility-than-the-type-of-its-field-someclass-member-wattributes
+if (NOT MSVC)
+  target_compile_options(onnxruntime_pybind11_state PRIVATE "-fvisibility=hidden")
+endif()
+
 if(onnxruntime_PYBIND_EXPORT_OPSCHEMA)
   target_compile_definitions(onnxruntime_pybind11_state PRIVATE onnxruntime_PYBIND_EXPORT_OPSCHEMA)
 endif()
 
-if (onnxruntime_USE_DNNL)
-  target_compile_definitions(onnxruntime_pybind11_state PRIVATE USE_DNNL=1)
-endif()
 if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     #TODO: fix the warnings
     target_compile_options(onnxruntime_pybind11_state PRIVATE "/wd4244")
 endif()
-target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${PYTHON_INCLUDE_DIR} ${NUMPY_INCLUDE_DIR} ${pybind11_INCLUDE_DIRS})
+
+onnxruntime_add_include_to_target(onnxruntime_pybind11_state Python::Module Python::NumPy)
+target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${pybind11_INCLUDE_DIRS})
 if(onnxruntime_USE_CUDA)
     target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CUDNN_HOME}/include)
 endif()
-if (onnxruntime_ENABLE_TRAINING)
-  target_include_directories(onnxruntime_pybind11_state PRIVATE ${ORTTRAINING_ROOT})
+if(onnxruntime_USE_ROCM)
+  target_compile_options(onnxruntime_pybind11_state PUBLIC -D__HIP_PLATFORM_HCC__=1)
+  target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
+endif()
+if (onnxruntime_USE_NCCL)
+  target_include_directories(onnxruntime_pybind11_state PRIVATE ${NCCL_INCLUDE_DIRS})
 endif()
 
 if(APPLE)
@@ -82,14 +87,33 @@ else()
   set(ONNXRUNTIME_SO_LINK_FLAG "-DEF:${ONNXRUNTIME_ROOT}/python/pybind.def")
 endif()
 
-set(onnxruntime_pybind11_state_libs
+if (onnxruntime_ENABLE_TRAINING)
+  target_include_directories(onnxruntime_pybind11_state PRIVATE ${ORTTRAINING_ROOT})
+  target_include_directories(onnxruntime_pybind11_state PRIVATE ${PROJECT_SOURCE_DIR}/external/dlpack/include)
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_training)
+endif()
+
+if (onnxruntime_ENABLE_EAGER_MODE)
+  # todo: this is because the prebuild pytorch may use a different version of protobuf headers.
+  # force the build to find the protobuf headers ort using.
+  target_include_directories(onnxruntime_pybind11_state PRIVATE "${REPO_ROOT}/cmake/external/protobuf/src")
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_eager ${TORCH_LIBRARIES} ${TORCH_PYTHON_LIBRARY})
+  # the ort_aten.g.cpp is generated from tools. currently it has some limitations.
+  # todo: fix this
+  set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_aten.g.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+  set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_aten.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+  set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_guard.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+  set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_tensor.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+endif()
+
+target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
-    ${PROVIDERS_CUDA}
     ${PROVIDERS_MIGRAPHX}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_VITISAI}
     ${PROVIDERS_NNAPI}
+    ${PROVIDERS_COREML}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
@@ -109,11 +133,7 @@ set(onnxruntime_pybind11_state_libs
 )
 
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  list(APPEND onnxruntime_pybind11_state_libs onnxruntime_language_interop onnxruntime_pyop)
-endif()
-
-if (onnxruntime_ENABLE_TRAINING)
-  list(INSERT onnxruntime_pybind11_state_libs 1 onnxruntime_training)
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_language_interop onnxruntime_pyop)
 endif()
 
 set(onnxruntime_pybind11_state_dependencies
@@ -126,19 +146,18 @@ add_dependencies(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_depende
 if (MSVC)
   set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG}")
   # if MSVC, pybind11 looks for release version of python lib (pybind11/detail/common.h undefs _DEBUG)
-  target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs}
-          ${PYTHON_LIBRARY_RELEASE} ${onnxruntime_EXTERNAL_LIBRARIES})
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE Python::Module)
 elseif (APPLE)
   set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG} -undefined dynamic_lookup")
-  target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs} ${onnxruntime_EXTERNAL_LIBRARIES})
   set_target_properties(onnxruntime_pybind11_state PROPERTIES
     INSTALL_RPATH "@loader_path"
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH_USE_LINK_PATH FALSE)
 else()
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE ${onnxruntime_pybind11_state_libs} ${onnxruntime_EXTERNAL_LIBRARIES})
-  set_property(TARGET onnxruntime_pybind11_state APPEND_STRING PROPERTY LINK_FLAGS " -Xlinker -rpath=\$ORIGIN")
+  set_property(TARGET onnxruntime_pybind11_state APPEND_STRING PROPERTY LINK_FLAGS " -Xlinker -rpath=\\$ORIGIN")
 endif()
+
+target_link_libraries(onnxruntime_pybind11_state PRIVATE ${onnxruntime_EXTERNAL_LIBRARIES})
 
 set_target_properties(onnxruntime_pybind11_state PROPERTIES PREFIX "")
 set_target_properties(onnxruntime_pybind11_state PROPERTIES FOLDER "ONNXRuntime")
@@ -211,6 +230,24 @@ if (onnxruntime_ENABLE_TRAINING)
   file(GLOB onnxruntime_python_optim_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/optim/*.py"
   )
+  file(GLOB onnxruntime_python_ortmodule_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/*.py"
+  )
+  file(GLOB onnxruntime_python_ortmodule_experimental_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/experimental/*.py"
+  )
+  file(GLOB onnxruntime_python_ortmodule_experimental_json_config_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/experimental/json_config/*.py"
+  )
+  file(GLOB onnxruntime_python_ortmodule_torch_cpp_ext_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/*.py"
+  )
+  file(GLOB onnxruntime_python_ortmodule_torch_cpp_ext_aten_op_executor_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/aten_op_executor/*"
+  )
+  file(GLOB onnxruntime_python_ortmodule_torch_cpp_ext_torch_gpu_allocator_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/torch_gpu_allocator/*"
+  )
   file(GLOB onnxruntime_python_train_tools_srcs CONFIGURE_DEPENDS
     "${REPO_ROOT}/tools/python/register_custom_ops_pytorch_exporter.py"
   )
@@ -224,6 +261,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   file(GLOB onnxruntime_python_test_srcs CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/test/python/*.py"
       "${ORTTRAINING_SOURCE_DIR}/test/python/*.py"
+      "${ORTTRAINING_SOURCE_DIR}/test/python/*.json"
   )
   file(GLOB onnxruntime_python_quantization_test_srcs CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/test/python/quantization/*.py"
@@ -233,6 +271,12 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   )
   file(GLOB onnxruntime_python_dhp_parallel_test_srcs CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/test/python/dhp_parallel/*.py"
+  )
+  file(GLOB onnxruntime_python_transformers_test_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/test/python/transformers/*.py"
+  )
+  file(GLOB onnxruntime_python_transformers_testdata_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/test/python/transformers/test_data/models/*.onnx"
   )
 endif()
 
@@ -248,6 +292,9 @@ file(GLOB onnxruntime_python_quantization_src CONFIGURE_DEPENDS
 file(GLOB onnxruntime_python_quantization_operators_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/quantization/operators/*.py"
 )
+file(GLOB onnxruntime_python_quantization_cal_table_flatbuffers_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/quantization/CalTableFlatBuffers/*.py"
+)
 file(GLOB onnxruntime_python_transformers_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/transformers/*.py"
 )
@@ -262,8 +309,16 @@ file(GLOB onnxruntime_python_datasets_data CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/datasets/*.onnx"
 )
 
-set(build_output_target onnxruntime_common)
+# Files needed to convert ONNX model to ORT format
+set(onnxruntime_ort_format_model_conversion_srcs
+    ${REPO_ROOT}/tools/python/util/convert_onnx_models_to_ort.py
+    ${REPO_ROOT}/tools/python/util/logger.py
+)
+file(GLOB onnxruntime_ort_format_model_srcs CONFIGURE_DEPENDS
+    ${REPO_ROOT}/tools/python/util/ort_format_model/*.py)
 
+set(build_output_target onnxruntime_common)
+if(NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
 add_custom_command(
   TARGET onnxruntime_pybind11_state POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/backend
@@ -272,13 +327,19 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/datasets
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/featurizer_ops
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model/ort_flatbuffers_py
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/longformer
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/operators
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/CalTableFlatBuffers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/checkpoint
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/dhp_parallel
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/quantization
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/eager_test
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
@@ -316,11 +377,23 @@ add_custom_command(
       ${onnxruntime_python_tools_featurizers_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/featurizer_ops/
   COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_ort_format_model_conversion_srcs}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_ort_format_model_srcs}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model/
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+      ${ONNXRUNTIME_ROOT}/core/flatbuffers/ort_flatbuffers_py
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model/ort_flatbuffers_py
+  COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_quantization_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_quantization_operators_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/operators/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_quantization_cal_table_flatbuffers_src}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/CalTableFlatBuffers/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_transformers_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/
@@ -331,6 +404,19 @@ add_custom_command(
       ${REPO_ROOT}/VERSION_NUMBER
       $<TARGET_FILE_DIR:${build_output_target}>
 )
+
+if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
+                                  AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
+                                  AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Android")
+                                  AND NOT onnxruntime_USE_ROCM
+				  AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+      $<TARGET_FILE:onnxruntime_providers_shared>
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
+endif()
 
 if (onnxruntime_BUILD_UNIT_TESTS)
   add_custom_command(
@@ -347,6 +433,24 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_dhp_parallel_test_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/dhp_parallel/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_transformers_test_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/transformers/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_transformers_testdata_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/
+  )
+endif()
+
+if (onnxruntime_BUILD_UNIT_TESTS AND onnxruntime_ENABLE_EAGER_MODE)
+  file(GLOB onnxruntime_eager_test_srcs CONFIGURE_DEPENDS
+      "${ORTTRAINING_ROOT}/orttraining/eager/test/*.py"
+  )
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_eager_test_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/eager_test/
   )
 endif()
 
@@ -356,6 +460,12 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/amp
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/optim
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/experimental
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/experimental/json_config
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/aten_op_executor
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/torch_gpu_allocator
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_capi_training_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training/
@@ -368,6 +478,24 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_optim_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/optim/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_ortmodule_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_ortmodule_experimental_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/experimental/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_ortmodule_experimental_json_config_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/experimental/json_config/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_ortmodule_torch_cpp_ext_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_ortmodule_torch_cpp_ext_aten_op_executor_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/aten_op_executor/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_ortmodule_torch_cpp_ext_torch_gpu_allocator_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/torch_gpu_allocator/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_train_tools_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/
@@ -399,6 +527,16 @@ if (onnxruntime_USE_OPENVINO)
       TARGET onnxruntime_pybind11_state POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy
           $<TARGET_FILE:onnxruntime_providers_openvino>
+          $<TARGET_FILE:onnxruntime_providers_shared>
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+    )
+endif()
+
+if (onnxruntime_USE_CUDA)
+    add_custom_command(
+      TARGET onnxruntime_pybind11_state POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy
+          $<TARGET_FILE:onnxruntime_providers_cuda>
           $<TARGET_FILE:onnxruntime_providers_shared>
           $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
     )
@@ -444,6 +582,16 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
   )
 endif()
 
+if (onnxruntime_USE_COREML)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_providers_coreml>
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
+endif()
+endif()
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   include(onnxruntime_language_interop_ops.cmake)
 endif()
+

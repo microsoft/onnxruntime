@@ -18,36 +18,11 @@ Abstract:
 --*/
 
 #include "asmmacro.h"
+#include "TransKernelCommon.h"
 
         .intel_syntax noprefix
 
         .text
-
-//
-// Structure layout for the logistic constants block.
-//
-
-        .equ    LogisticConstants_LowerRange, 0
-        .equ    LogisticConstants_UpperRange, 4
-        .equ    LogisticConstants_alpha_9, 8
-        .equ    LogisticConstants_alpha_7, 12
-        .equ    LogisticConstants_alpha_5, 16
-        .equ    LogisticConstants_alpha_3, 20
-        .equ    LogisticConstants_alpha_1, 24
-        .equ    LogisticConstants_beta_10, 28
-        .equ    LogisticConstants_beta_8, 32
-        .equ    LogisticConstants_beta_6, 36
-        .equ    LogisticConstants_beta_4, 40
-        .equ    LogisticConstants_beta_2, 44
-        .equ    LogisticConstants_beta_0, 48
-        .equ    LogisticConstants_one_half, 52
-
-//
-// Stack frame layout for the logistic kernel.
-//
-
-        .equ    LogisticKernelFrame_CountN, -8
-        .equ    LogisticKernelFrame_ReturnAddress, 0
 
 /*++
 
@@ -69,22 +44,21 @@ Return Value:
 
 --*/
 
-        .globl  C_UNDERSCORE(MlasLogisticKernelFma3)
-C_UNDERSCORE(MlasLogisticKernelFma3):
+        FUNCTION_ENTRY MlasComputeLogisticF32KernelFma3
 
         lea     rax,C_UNDERSCORE(MlasLogisticConstants)[rip]
-        vbroadcastss ymm4,LogisticConstants_LowerRange[rax]
-        vbroadcastss ymm5,LogisticConstants_UpperRange[rax]
-        vbroadcastss ymm6,LogisticConstants_alpha_9[rax]
-        vbroadcastss ymm7,LogisticConstants_alpha_7[rax]
-        vbroadcastss ymm8,LogisticConstants_alpha_5[rax]
-        vbroadcastss ymm9,LogisticConstants_alpha_3[rax]
-        vbroadcastss ymm10,LogisticConstants_alpha_1[rax]
-        vbroadcastss ymm11,LogisticConstants_beta_10[rax]
-        vbroadcastss ymm12,LogisticConstants_beta_6[rax]
-        vbroadcastss ymm13,LogisticConstants_beta_4[rax]
-        vbroadcastss ymm14,LogisticConstants_beta_2[rax]
-        vbroadcastss ymm15,LogisticConstants_beta_0[rax]
+        vbroadcastss ymm4,.LLogisticConstants_LowerRange[rax]
+        vbroadcastss ymm5,.LLogisticConstants_UpperRange[rax]
+        vbroadcastss ymm6,.LLogisticConstants_alpha_9[rax]
+        vbroadcastss ymm7,.LLogisticConstants_alpha_7[rax]
+        vbroadcastss ymm8,.LLogisticConstants_alpha_5[rax]
+        vbroadcastss ymm9,.LLogisticConstants_alpha_3[rax]
+        vbroadcastss ymm10,.LLogisticConstants_alpha_1[rax]
+        vbroadcastss ymm11,.LLogisticConstants_beta_10[rax]
+        vbroadcastss ymm12,.LLogisticConstants_beta_6[rax]
+        vbroadcastss ymm13,.LLogisticConstants_beta_4[rax]
+        vbroadcastss ymm14,.LLogisticConstants_beta_2[rax]
+        vbroadcastss ymm15,.LLogisticConstants_beta_0[rax]
 
         sub     rdx,8
         jb      .LProcessRemainingCount
@@ -94,7 +68,7 @@ C_UNDERSCORE(MlasLogisticKernelFma3):
         vmovaps ymm2,ymm7
         vminps  ymm0,ymm5,ymm0                  # clamp upper bound
         vmulps  ymm1,ymm0,ymm0                  # x2
-        vbroadcastss ymm3,LogisticConstants_beta_8[rax]
+        vbroadcastss ymm3,.LLogisticConstants_beta_8[rax]
         vfmadd231ps ymm2,ymm1,ymm6              # p = x2 * alpha_9 + alpha_7
         vfmadd213ps ymm2,ymm1,ymm8              # p = x2 * p + alpha_5
         vfmadd213ps ymm2,ymm1,ymm9              # p = x2 * p + alpha_3
@@ -105,7 +79,7 @@ C_UNDERSCORE(MlasLogisticKernelFma3):
         vfmadd213ps ymm3,ymm1,ymm14             # q = x2 * q + beta_2
         vfmadd213ps ymm3,ymm1,ymm15             # q = x2 * q + beta_0
         vmulps  ymm2,ymm0,ymm2                  # p = x * p
-        vbroadcastss ymm0,LogisticConstants_one_half[rax]
+        vbroadcastss ymm0,.LLogisticConstants_one_half[rax]
         vdivps  ymm2,ymm2,ymm3
         vxorps  ymm3,ymm3,ymm3
         vaddps  ymm0,ymm2,ymm0                  # logistic = p / q + 0.5
@@ -119,14 +93,14 @@ C_UNDERSCORE(MlasLogisticKernelFma3):
 .LProcessRemainingCount:
         add     rdx,8                           # correct for over-subtract above
         jz      .LExitKernel
-        mov     DWORD PTR LogisticKernelFrame_CountN[rsp],edx
-        vbroadcastss ymm2,DWORD PTR LogisticKernelFrame_CountN[rsp]
-        vpcmpgtd ymm2,ymm2,YMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)[rip]
+        neg     rdx
+        lea     r10,C_UNDERSCORE(MlasMaskMoveTableAvx)[rip+8*4]
+        vmovups ymm2,YMMWORD PTR [r10+rdx*4]
         vmaskmovps ymm0,ymm2,YMMWORD PTR [rdi]
         vmaxps  ymm0,ymm4,ymm0                  # clamp lower bound
         vminps  ymm0,ymm5,ymm0                  # clamp upper bound
         vmulps  ymm1,ymm0,ymm0                  # x2
-        vbroadcastss ymm3,LogisticConstants_beta_8[rax]
+        vbroadcastss ymm3,.LLogisticConstants_beta_8[rax]
         vfmadd231ps ymm7,ymm1,ymm6              # p = x2 * alpha_9 + alpha_7
         vfmadd213ps ymm7,ymm1,ymm8              # p = x2 * p + alpha_5
         vfmadd213ps ymm7,ymm1,ymm9              # p = x2 * p + alpha_3
@@ -137,7 +111,7 @@ C_UNDERSCORE(MlasLogisticKernelFma3):
         vfmadd213ps ymm3,ymm1,ymm14             # q = x2 * q + beta_2
         vfmadd213ps ymm3,ymm1,ymm15             # q = x2 * q + beta_0
         vmulps  ymm7,ymm0,ymm7                  # p = x * p
-        vbroadcastss ymm0,LogisticConstants_one_half[rax]
+        vbroadcastss ymm0,.LLogisticConstants_one_half[rax]
         vdivps  ymm7,ymm7,ymm3
         vxorps  ymm3,ymm3,ymm3
         vaddps  ymm0,ymm7,ymm0                  # logistic = p / q + 0.5

@@ -3,7 +3,9 @@
 
 #pragma once
 
+#ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel.h"
+#endif
 #include <cmath>
 
 namespace onnxruntime {
@@ -16,8 +18,8 @@ constexpr const char* UpsampleModeCubic = "cubic";
 // is a 4x4 matrix
 const size_t CubicModeGridLength = 4;
 
-using GetNearestPixelFunc = std::function<int64_t(float, bool)>;
-using GetOriginalCoordinateFunc = std::function<float(float, float, float, float, float, float)>;
+using GetNearestPixelFunc = int64_t(*)(float, bool);
+using GetOriginalCoordinateFunc = float (*)(float, float, float, float, float, float);
 
 enum UpsampleMode {
   NN = 0,      // nearest neighbour
@@ -46,7 +48,7 @@ enum ResizeNearestMode {
 
 class UpsampleBase {
  protected:
-  UpsampleBase(OpKernelInfo info) : scales_cached_(false), roi_cached_(false), use_extrapolation_(false) {
+  UpsampleBase(const OpKernelInfo& info) : scales_cached_(false), roi_cached_(false), use_extrapolation_(false) {
     const auto& node = info.node();
     auto opset = node.SinceVersion();
     is_resize_ = (opset >= 10);
@@ -64,10 +66,13 @@ class UpsampleBase {
 
     extrapolation_value_ = info.GetAttrOrDefault<float>("extrapolation_value", 0.0f);
 
-    // Coordinate transformation mode attr was introduced in version 11, before that asymmetric mode was the only available transformation mode
-    std::string coordinate_transform_mode_name = opset > 10
-                                                     ? info.GetAttrOrDefault<std::string>("coordinate_transformation_mode", "half_pixel")
-                                                     : "asymmetric";
+    // Coordinate transformation mode attr was introduced in version 11.
+    // before that asymmetric mode was the only available transformation mode
+    std::string coordinate_transform_mode_name =
+        opset > 10
+            ? info.GetAttrOrDefault<std::string>("coordinate_transformation_mode", "half_pixel")
+            : "asymmetric";
+
     coordinate_transform_mode_ = StringToCoordinateTransformationMode(coordinate_transform_mode_name);
     if (opset >= 13 && coordinate_transform_mode_ == TF_HALF_PIXEL_FOR_NN) {
       LOGS_DEFAULT(WARNING)

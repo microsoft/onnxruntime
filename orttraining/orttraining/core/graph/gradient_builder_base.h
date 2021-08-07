@@ -10,6 +10,7 @@
 #include "orttraining/core/graph/graph_augmenter.h"
 #include "orttraining/core/graph/gradient_config.h"
 #include "orttraining/core/graph/recompute_graph_utils.h"
+#include "orttraining/core/graph/gradient_definition_registry.h"
 #include "onnx/defs/attr_proto_util.h"
 #include "onnx/defs/tensor_proto_util.h"
 
@@ -36,6 +37,8 @@ void ComputeBroadcastBackwardAxesDynamic(const ArgDef& a,
 Status GetShape(const ArgDef& arg_def, std::vector<Dimension>& shape);
 
 typedef std::vector<NodeDef> GradientDef;
+
+std::string GetGradientDefinitionKeyByNode(const Node& node);
 
 class GradientBuilderBase {
  public:
@@ -69,6 +72,10 @@ class GradientBuilderBase {
 
   static std::string GradientName(const std::string& name) {
     return name + "_grad";
+  }
+
+  static std::string ExternalOutputName(const std::string& name) {
+    return name + "_external";
   }
 
  protected:
@@ -206,14 +213,19 @@ class GradientBuilderBase {
   }
 
   template <typename T>
-  static NodeDef ConstantScalarNode(T value, std::vector<int64_t> shape, const std::string& arg_name) {
+  static ONNX_NAMESPACE::TensorProto ScalarTensorProto(T value, std::vector<int64_t> shape) {
     ORT_ENFORCE(shape.size() == 0 || (shape.size() == 1 && shape[0] == 1));
-
     auto t_proto = ONNX_NAMESPACE::ToTensor<T>(value);
     for (auto dim : shape) {
       t_proto.add_dims(dim);
     }
 
+    return t_proto;
+  }
+
+  template <typename T>
+  static NodeDef ConstantScalarNode(T value, std::vector<int64_t> shape, const std::string& arg_name) {
+    auto t_proto = ScalarTensorProto(value, shape);
     return NodeDef("Constant",
                    {},
                    {ArgDef(arg_name, nullptr)},
@@ -231,6 +243,18 @@ class GradientBuilderBase {
     }
 
     return ConstantScalarNode(value, {1}, arg_name);
+  }
+
+  static ONNX_NAMESPACE::TensorProto ScalarTensorProtoByElemType(float value, int elem_type) {
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+      return ScalarTensorProto(MLFloat16(math::floatToHalf(value)), {1});
+    }
+
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
+      return ScalarTensorProto(BFloat16(value), {1});
+    }
+
+    return ScalarTensorProto(value, {1});
   }
 
   static NodeDef ZeroConstantNode(int elem_type) {
@@ -272,6 +296,10 @@ class GradientBuilderBase {
     const std::string& node_name) const;
 
   const std::string& NodeName() const { return node_->Name(); }
+
+  std::string GetGradientDefinitionKey() const { return GetGradientDefinitionKeyByNode(*node_); }
+
+  AttributeProto AttributeDefinitionToAttributeProto(const GradientNodeAttributeDefinition& attr_def) const;
 
  private:
   friend class GradientGraphBuilder;

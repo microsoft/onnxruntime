@@ -30,6 +30,12 @@ def write_tensor(f, c, input_name=None):
     body = tensor.SerializeToString()
     f.write(body)
 
+def infer_shapes(model_def):
+    onnx.checker.check_model(model_def)
+    onnx.helper.strip_doc_string(model_def)
+    final_model = onnx.shape_inference.infer_shapes(model_def)
+    onnx.checker.check_model(final_model)
+    return final_model
 
 def generate_abs_op_test(type, X, top_test_folder):
     for is_raw in [True, False]:
@@ -53,7 +59,7 @@ def generate_abs_op_test(type, X, top_test_folder):
         graph_def = helper.make_graph([node_def], 'test-model', [X_INFO], [Y], [tensor_x])
         # Create the model (ModelProto)
         model_def = helper.make_model(graph_def, producer_name='onnx-example')
-        #final_model = onnx.utils.polish_model(model_def)
+        #final_model = infer_shapes(model_def)
         final_model = model_def
         if is_raw:
             onnx.external_data_helper.convert_model_to_external_data(final_model, True)
@@ -78,7 +84,7 @@ def generate_size_op_test(type, X, test_folder):
     graph_def = helper.make_graph([node_def], 'test-model', [X_INFO], [Y], [tensor_x])
     # Create the model (ModelProto)
     model_def = helper.make_model(graph_def, producer_name='onnx-example')
-    final_model = onnx.utils.polish_model(model_def)
+    final_model = infer_shapes(model_def)
     onnx.save(final_model, os.path.join(test_folder, 'model.onnx'))
     expected_output_array = np.int64(X.size)
     expected_output_tensor = numpy_helper.from_array(expected_output_array)
@@ -101,7 +107,7 @@ def generate_reducesum_op_test(X, test_folder):
     graph_def = helper.make_graph([node_def], 'test-model', [X_INFO], [Y], [tensor_x])
     # Create the model (ModelProto)
     model_def = helper.make_model(graph_def, producer_name='onnx-example')
-    final_model = onnx.utils.polish_model(model_def)
+    final_model = infer_shapes(model_def)
     onnx.save(final_model, os.path.join(test_folder, 'model.onnx'))
     expected_output_array = np.sum(X)
     expected_output_tensor = numpy_helper.from_array(expected_output_array)

@@ -37,7 +37,7 @@ class ModelBuilder {
 
   Status Compile(std::unique_ptr<Model>& model) ORT_MUST_USE_RESULT;
 
-  int32_t GetAndroidSdkVer() const;
+  int32_t GetNNAPIFeatureLevel() const;
 
   // Add an NNAPI operation (operator)
   Status AddOperation(int op, const std::vector<uint32_t>& input_indices,
@@ -148,6 +148,10 @@ class ModelBuilder {
 
   std::vector<uint32_t> input_index_vec_;
   std::vector<uint32_t> output_index_vec_;
+
+  // Contains all quantized operators' input and the node(s) using the input
+  // In the form of {input_name, [node(s) using the input]}
+  std::unordered_map<std::string, std::vector<const Node*>> all_quantized_op_inputs_;
 
   std::unordered_set<std::string> unique_names_;
 

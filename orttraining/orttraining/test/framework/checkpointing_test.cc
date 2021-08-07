@@ -112,7 +112,7 @@ TEST(CheckpointingTest, SaveAndLoad) {
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("test_model.onnx"))};
 
   DataTransferManager data_transfer{};
-  data_transfer.RegisterDataTransfer(onnxruntime::make_unique<CPUDataTransfer>());
+  data_transfer.RegisterDataTransfer(std::make_unique<CPUDataTransfer>());
 
   ASSERT_STATUS_OK(SaveModelCheckpoint(
       checkpoint_path, data_transfer, name_to_ort_value, properties));

@@ -1,0 +1,13 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+bindir=${prefix}/@CMAKE_INSTALL_BINDIR@
+mandir=${prefix}/@CMAKE_INSTALL_MANDIR@
+docdir=${prefix}/@CMAKE_INSTALL_DOCDIR@
+libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@/@CMAKE_PROJECT_NAME@
+
+Name: @CMAKE_PROJECT_NAME@
+Description: ONNX runtime
+URL: https://github.com/microsoft/@CMAKE_PROJECT_NAME@
+Version: @ORT_VERSION@
+Libs: -L${libdir} -l@CMAKE_PROJECT_NAME@
+Cflags: -I${includedir}

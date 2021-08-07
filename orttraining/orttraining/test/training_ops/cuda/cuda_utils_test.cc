@@ -1,7 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef USE_CUDA
+#if 0  // TODO: Can't call these directly from external code as Cuda is now a shared library
+//#ifdef USE_CUDA
 
 #include <memory>
 #include <vector>
@@ -33,7 +34,7 @@ void TestFillCorrectness(size_t num_elements, TElement value) {
 
   Fill<TElement>(nullptr, buffer.get(), value, num_elements);
 
-  auto cpu_buffer = onnxruntime::make_unique<TElement[]>(num_elements);
+  auto cpu_buffer = std::make_unique<TElement[]>(num_elements);
   CUDA_CALL_THROW(cudaMemcpy(cpu_buffer.get(), buffer.get(), num_elements * sizeof(TElement), cudaMemcpyKind::cudaMemcpyDeviceToHost));
 
   std::vector<TElement> expected_data(num_elements, value);

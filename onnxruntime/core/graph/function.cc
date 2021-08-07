@@ -8,6 +8,17 @@
 #include "onnx/shape_inference/implementation.h"
 
 namespace onnxruntime {
+
+// Utilify function to get the imported version of domain from opset imports
+// Returns -1 if requested domain is not found in the opset_imports
+static int GetVersionForDomain(const std::string& domain, const std::unordered_map<std::string, int>& opset_imports) {
+  auto it = opset_imports.find(domain);
+  if (it == opset_imports.end()) {
+    return -1;
+  }
+  return it->second;
+}
+
 // Auto inferred and generate an opschema for stand-alone functions
 // TODO: revisit to see if we can eliminate typeconstraint step
 void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_func_proto_,
@@ -19,9 +30,15 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_func_proto
   std::unordered_map<std::string, std::vector<std::string>> type_constraint_map;
   std::unordered_map<std::string, ONNX_NAMESPACE::AttributeProto_AttributeType> attribute_type_map;
   auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
+  std::unordered_map<std::string, int> opset_imports;
+  for (auto& relied_opset : onnx_func_proto_.opset_import()) {
+    opset_imports[relied_opset.domain()] = static_cast<int>(relied_opset.version());
+  }
   for (auto& node : onnx_func_proto_.node()) {
+    int domain_version = GetVersionForDomain(node.domain(), opset_imports);
+    ORT_ENFORCE(domain_version != -1, "No opset registered for domain " + node.domain() + " in function opset imports.");
     const auto node_op_schema =
-        schema_registry->GetSchema(node.op_type(), static_cast<int>(onnx_func_proto_.since_version()), node.domain());
+        schema_registry->GetSchema(node.op_type(), domain_version, node.domain());
     for (int i = 0; i < node.input_size(); ++i) {
       auto& in_name = node.input().Get(i);
       auto iter = input_name_idx_map.find(in_name);
@@ -147,11 +164,16 @@ static void update_subgraphs_within_function_body(ONNX_NAMESPACE::GraphProto& su
 static std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph,
                                                               const IndexedSubGraph& nodes_to_fuse) {
   const auto* meta_def = nodes_to_fuse.GetMetaDef();
-  auto op_schema = onnxruntime::make_unique<ONNX_NAMESPACE::OpSchema>();
+  auto op_schema = std::make_unique<ONNX_NAMESPACE::OpSchema>();
   op_schema->SetName(meta_def->name);
   op_schema->SetDomain(meta_def->domain);
   op_schema->SetDoc(meta_def->doc_string);
   op_schema->SinceVersion(meta_def->since_version);
+
+  if (meta_def->type_and_shape_inference_function) {
+    op_schema->TypeAndShapeInferenceFunction(meta_def->type_and_shape_inference_function);
+  }
+
   int i = 0;
 
   for (auto& input : meta_def->inputs) {
@@ -172,21 +194,14 @@ static std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph
   return op_schema;
 }
 
-// Creates domain to version map for onnx function by merging graph level opset imports with opset imports from 
-// funtion proto
-static std::unordered_map<std::string, int> CreateOpsetImportsForFunction(const ONNX_NAMESPACE::FunctionProto& func_proto,
-                                                                          const std::unordered_map<std::string, int>& graph_opset_imports) {
-  // function inherits all graph level opset imports
-  std::unordered_map<std::string, int> function_opset_imports{graph_opset_imports};
-  // merge with opset imports in function proto
+// Creates domain to version map for onnx function
+static std::unordered_map<std::string, int> GetFunctionOpsetImports(const ONNX_NAMESPACE::FunctionProto& func_proto, const std::unordered_map<std::string, int>& graph_imports) {
+  std::unordered_map<std::string, int> function_opset_imports{graph_imports};
   for (const auto& opset_import : func_proto.opset_import()) {
-    auto result = function_opset_imports.insert({opset_import.domain(), static_cast<int>(opset_import.version())});
-    ORT_ENFORCE(result.second,
-                "ONNX model does not support multiple opset versions for a domain. Model imports opset version ",
-                result.first->second, " for domain ", result.first->first, " and function is trying to import opset version ",
-                opset_import.version(), " for the same domain");
+    // If graph imports does not contain opset_import then insert it otherwise the one in graph imports overrides.
+    // If the opset imports are not compatible then this will be caught during function body inline.
+    function_opset_imports.insert({opset_import.domain(), static_cast<int>(opset_import.version())});
   }
-
   return function_opset_imports;
 }
 
@@ -267,7 +282,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     : parent_graph_(&graph),
       body_(onnx_func_proto.name(), false, onnxruntime::ModelMetaData(),
             graph.ModelPath().ToPathString(), IOnnxRuntimeOpSchemaRegistryList(),
-            CreateOpsetImportsForFunction(onnx_func_proto, graph.DomainToVersionMap()),
+            onnx_func_proto.opset_import_size() != 0 ? GetFunctionOpsetImports(onnx_func_proto, graph.DomainToVersionMap()) : graph.DomainToVersionMap(),
             {}, logger),
       onnx_func_proto_(onnx_func_proto) {
   // Make a copy of the FunctionProto.
@@ -276,11 +291,17 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   // as we might make some modifications to the FunctionProto along the way
 
   const auto* node_in_parent_graph = parent_graph_->GetNode(node_index);
-  op_schema_ = onnxruntime::make_unique<ONNX_NAMESPACE::OpSchema>();
+  // For schema defined functions get the version from the node in parent graph.
+  // For the functions which do not have schema defined (model local functions) 
+  // get the since version from the version in opset imports using the domain.
+  auto since_version = node_in_parent_graph->SinceVersion() == -1 
+      ? GetVersionForDomain(node_in_parent_graph->Domain(), body_.MainGraph().DomainToVersionMap()) 
+      : node_in_parent_graph->SinceVersion();
+  op_schema_ = std::make_unique<ONNX_NAMESPACE::OpSchema>();
   op_schema_->SetName(onnx_func_proto_.name());
   op_schema_->SetDomain(node_in_parent_graph->Domain());
   op_schema_->SetDoc(onnx_func_proto_.doc_string());
-  op_schema_->SinceVersion(static_cast<ONNX_NAMESPACE::OperatorSetVersion>(onnx_func_proto_.since_version()));
+  op_schema_->SinceVersion(static_cast<ONNX_NAMESPACE::OperatorSetVersion>(since_version));
   std::unordered_map<std::string, int> input_name_idx_map;
   std::unordered_map<std::string, int> output_name_idx_map;
   for (int i = 0; i < onnx_func_proto_.input_size(); ++i) {
@@ -322,7 +343,8 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     op_schema_->TypeAndShapeInferenceFunction(
         [this](ONNX_NAMESPACE::InferenceContext& ctx) {
           auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
-          ONNX_NAMESPACE::shape_inference::InferShapeForFunctionNode(&onnx_func_proto_, body_.MainGraph().DomainToVersionMap(), schema_registry, ctx);
+          ONNX_NAMESPACE::ShapeInferenceOptions options {true, 1, false};
+          ONNX_NAMESPACE::shape_inference::InferShapeForFunctionNode(&onnx_func_proto_, body_.MainGraph().DomainToVersionMap(), schema_registry, ctx, options);
         });
   } else {
     op_schema_->TypeAndShapeInferenceFunction(cached_op_schema->GetTypeAndShapeInferenceFunction());
@@ -342,6 +364,10 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   ONNX_NAMESPACE::NodeProto function_op_node_proto;  // NodeProto pertaining to the op with a FunctionBody
   node_in_parent_graph->ToProto(function_op_node_proto);
 
+  ONNX_NAMESPACE::TypeProto tensor_int32;  // dummy type used for unused formal parameters
+  tensor_int32.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+  tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
   // iterate over each node in the FunctionProto and fix inputs/outputs
   for (auto node = onnx_func_proto_.mutable_node()->begin(); node != onnx_func_proto_.mutable_node()->end(); ++node) {
     std::vector<onnxruntime::NodeArg*> inputs;
@@ -358,12 +384,20 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
       auto iter = input_name_idx_map.find(tensor_name);
       if (iter != input_name_idx_map.end()) {
         // Preserving NodeArg and input/output names
-        const onnxruntime::NodeArg* node_arg = parent_graph_->GetNodeArg(function_op_node_proto.input()
-                                                                             .Get(iter->second));
-        auto& n_input = function_body_graph.GetOrCreateNodeArg(
-            function_op_node_proto.input().Get(iter->second), node_arg->TypeAsProto());
-        inputs.push_back(&n_input);
-        graph_inputs[iter->second] = &n_input;
+        const std::string& actual_parameter_name = function_op_node_proto.input().Get(iter->second);
+        if (!actual_parameter_name.empty()) {
+          const onnxruntime::NodeArg* node_arg = parent_graph_->GetNodeArg(actual_parameter_name);
+          const ONNX_NAMESPACE::TypeProto* actual_type = node_arg->TypeAsProto();
+          auto& n_input = function_body_graph.GetOrCreateNodeArg(actual_parameter_name, actual_type);
+          inputs.push_back(&n_input);
+          graph_inputs[iter->second] = &n_input;
+        } else {
+          // Unused optional parameter to function
+          auto& n_input = function_body_graph.GetOrCreateNodeArg(actual_parameter_name, nullptr);
+          inputs.push_back(&n_input);
+          auto& unused_formal_param = function_body_graph.GetOrCreateNodeArg(tensor_name, &tensor_int32);
+          graph_inputs[iter->second] = &unused_formal_param;
+        }
       } else {
         auto& n_input = function_body_graph.GetOrCreateNodeArg(
             tensor_name + "_" + std::to_string(node_index), nullptr);
@@ -375,16 +409,43 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
       auto iter = output_name_idx_map.find(tensor_name);
       if (iter != output_name_idx_map.end()) {
         // Preserving NodeArg and input/output names
-        const onnxruntime::NodeArg* node_arg = parent_graph_->GetNodeArg(function_op_node_proto.output()
-                                                                             .Get(iter->second));
-        auto& n_output = function_body_graph.GetOrCreateNodeArg(
-            function_op_node_proto.output().Get(iter->second), node_arg->TypeAsProto());
-        outputs.push_back(&n_output);
-        graph_outputs[iter->second] = &n_output;
+        const std::string& actual_parameter_name = function_op_node_proto.output().Get(iter->second);
+        if (!actual_parameter_name.empty()) {
+          const onnxruntime::NodeArg* node_arg = parent_graph_->GetNodeArg(actual_parameter_name);
+          const ONNX_NAMESPACE::TypeProto* actual_type = node_arg->TypeAsProto();
+          auto& n_output = function_body_graph.GetOrCreateNodeArg(actual_parameter_name, actual_type);
+          outputs.push_back(&n_output);
+          graph_outputs[iter->second] = &n_output;
+        } else {
+          // Unused optional parameter to function
+          auto& n_output = function_body_graph.GetOrCreateNodeArg(actual_parameter_name, nullptr);
+          outputs.push_back(&n_output);
+          auto& unused_formal_param = function_body_graph.GetOrCreateNodeArg(tensor_name, &tensor_int32);
+          graph_outputs[iter->second] = &unused_formal_param;
+        }
       } else {
         auto& n_output = function_body_graph.GetOrCreateNodeArg(
             tensor_name + "_" + std::to_string(node_index), nullptr);
         outputs.push_back(&n_output);
+      }
+    }
+
+    // Formal parameters unused in function body. For now, we retain them in the graph's input and
+    // output list (with a dummy type).
+    // TODO: Need a proper scheme to generate unique names to avoid name-collision.
+    for (unsigned i = 0; i < graph_inputs.size(); ++i) {
+      if (graph_inputs[i] == nullptr) {
+        auto tensor_name = onnx_func_proto_.input(i) + "_dummy";
+        auto& unused_formal_param = function_body_graph.GetOrCreateNodeArg(tensor_name, &tensor_int32);
+        graph_inputs[i] = &unused_formal_param;
+      }
+    }
+
+    for (unsigned i = 0; i < graph_outputs.size(); ++i) {
+      if (graph_outputs[i] == nullptr) {
+        auto tensor_name = onnx_func_proto_.output(i) + "_dummy";
+        auto& unused_formal_param = function_body_graph.GetOrCreateNodeArg(tensor_name, &tensor_int32);
+        graph_outputs[i] = &unused_formal_param;
       }
     }
 
@@ -441,6 +502,6 @@ ViewerFunctionImpl::~ViewerFunctionImpl() = default;
 std::unique_ptr<Function> MakeFunction(const onnxruntime::Graph& graph,
                                        const IndexedSubGraph& nodes_to_fuse,
                                        const logging::Logger& logger) {
-  return onnxruntime::make_unique<FunctionImpl>(graph, nodes_to_fuse, logger);
+  return std::make_unique<FunctionImpl>(graph, nodes_to_fuse, logger);
 }
 }  // namespace onnxruntime

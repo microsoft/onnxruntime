@@ -38,6 +38,10 @@ class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::Le
 #ifdef USE_DML
     if (m_deviceKind == winml::LearningModelDeviceKind::DirectX) {
       m_relativePerSampleTolerance = 0.009;  // tolerate up to 0.9% difference of expected result.
+      auto gpuSampleTolerancePerTestsItr = gpuSampleTolerancePerTests.find(m_testCase->GetTestCaseName());
+      if (gpuSampleTolerancePerTestsItr != gpuSampleTolerancePerTests.end()) {
+        m_perSampleTolerance = gpuSampleTolerancePerTestsItr->second;
+      }
     }
 #endif
   }
@@ -143,6 +147,10 @@ std::string GetTestDataPath() {
     auto hardcodedModelPath = parentPath.string() + "\\models";
     if (std::filesystem::exists(hardcodedModelPath) && hardcodedModelPath.length() <= MAX_PATH) {
       return hardcodedModelPath;
+    } else {
+      std::string errorStr = "WINML_TEST_DATA_PATH environment variable path not found and \"models\" folder not found in same directory as test exe.\n";
+      std::cerr << errorStr;
+      throw std::exception(errorStr.c_str());
     }
   }
   const std::string testDataPathFolderName = "\\testData\\";

@@ -77,7 +77,7 @@ struct SymbolHelper {
       return;
     }
 
-    _snprintf_s(buffer, _TRUNCATE, "%s(%d): %s", line.FileName, line.LineNumber, symbol.Name);
+    _snprintf_s(buffer, _TRUNCATE, "%s(%d): %s", line.FileName, static_cast<int>(line.LineNumber), symbol.Name);
     string.append(buffer);
   }
 
@@ -233,7 +233,7 @@ Memory_LeakCheck::~Memory_LeakCheck() {
 
     std::string string;
     char buffer[1024];
-    _snprintf_s(buffer, _TRUNCATE, "%d bytes of memory leaked in %d allocations", leaked_bytes, leak_count);
+    _snprintf_s(buffer, _TRUNCATE, "%d bytes of memory leaked in %d allocations", static_cast<int>(leaked_bytes), static_cast<int>(leak_count));
     string.append(buffer);
 
     std::cout << "\n----- MEMORY LEAKS: " << string.c_str() << "\n";
