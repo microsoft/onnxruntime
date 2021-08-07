@@ -11,7 +11,7 @@ namespace contrib {
 namespace cuda {
 
 template <typename T>
-__device__ T denormalize(T n, int64_t length, bool align_corners) {
+__device__ T GsDenormalize(T n, int64_t length, bool align_corners) {
   T x = {};
   if (align_corners) {  // align_corners: true => [-1, 1] to [0, length - 1]
     x = (n + static_cast<T>(1)) / static_cast<T>(2) * (length - 1);
@@ -22,7 +22,7 @@ __device__ T denormalize(T n, int64_t length, bool align_corners) {
 }
 
 template <typename T>
-__device__ T reflect(T x, T x_min, T x_max) {
+__device__ T GsReflect(T x, T x_min, T x_max) {
   T dx = {};
   T range = x_max - x_min;
   if (x < x_min) {
@@ -63,21 +63,18 @@ __device__ T PixelAtGrid(const T* input_data, int64_t bIdx, int64_t cIdx, int64_
     y = max((int64_t)0, min((int64_t)H - 1, (int64_t)y));
     pixel = input_data[bIdx * C * H * W + cIdx * H * W + y * W + x];
   } else {  // Reflection
-    x = (int64_t) reflect<T>(x, border[0], border[2]);
-    y = (int64_t) reflect<T>(y, border[1], border[3]);
+    x = (int64_t) GsReflect<T>(x, border[0], border[2]);
+    y = (int64_t) GsReflect<T>(y, border[1], border[3]);
     pixel = input_data[bIdx * C * H * W + cIdx * H * W + y * W + x];
   }
   return pixel;
 }
 
 template <typename T>
-__device__ void get_cubic_coeffs(T x, T coeffs[4])
+__device__ void GsGetCubicCoeffs(T x, T coeffs[4])
 {
   T cubic_alpha = -0.75f;
-  if (x < 0.0f) {  // abs
-    x = -x;
-  }
-
+  x = abs(x);
   coeffs[0] = (((cubic_alpha * (x + 1) - 5 * cubic_alpha) * (x + 1) + 8 * cubic_alpha) * (x + 1) - 4 * cubic_alpha);
   coeffs[1] = (((cubic_alpha + 2) * x - (cubic_alpha + 3)) * x * x + 1);
   coeffs[2] = (((cubic_alpha + 2) * (1 - x) - (cubic_alpha + 3)) * (1 - x) * (1 - x) + 1);
@@ -85,14 +82,14 @@ __device__ void get_cubic_coeffs(T x, T coeffs[4])
 }
 
 template <typename T>
-__device__ T bicubic(T p[4][4], T x, T y) {
+__device__ T GsBicubicInterpolate(T p[4][4], T x, T y) {
   T v[4] = {};
   T coeffs[4] = {};
-  get_cubic_coeffs(x, coeffs);
+  GsGetCubicCoeffs(x, coeffs);
   for (int64_t i = 0; i < 4; i++) {
     v[i] = coeffs[0] * p[i][0] + coeffs[1] * p[i][1] + coeffs[2] * p[i][2] + coeffs[3] * p[i][3];
   }
-  get_cubic_coeffs(y, coeffs);
+  GsGetCubicCoeffs(y, coeffs);
   T pixel = coeffs[0] * v[0] + coeffs[1] * v[1] + coeffs[2] * v[2] + coeffs[3] * v[3];
   return pixel;
 }
@@ -131,8 +128,8 @@ __global__ void _GridSampleKernel(
     T grid_Y = grid_data[grid_idx * 2 + 1];
     int outIdx = idx;
 
-    T grid_x_imgSpace = denormalize(grid_X, W_in, align_corners == 1);
-    T grid_y_imgSpace = denormalize(grid_Y, H_in, align_corners == 1);
+    T grid_x_imgSpace = GsDenormalize(grid_X, W_in, align_corners == 1);
+    T grid_y_imgSpace = GsDenormalize(grid_Y, H_in, align_corners == 1);
     if (mode == 1) { //nearest
       grid_x_imgSpace = nearbyint(grid_x_imgSpace);
       grid_y_imgSpace = nearbyint(grid_y_imgSpace);
@@ -155,8 +152,8 @@ __global__ void _GridSampleKernel(
         grid_y_imgSpace = max(0.0f, min(grid_y_imgSpace, H_in - 1.0f));
       } 
       else if (padding_mode == 2) {  // Reflection
-        grid_x_imgSpace = reflect(grid_x_imgSpace, x_min, x_max);
-        grid_y_imgSpace = reflect(grid_y_imgSpace, y_min, y_max);
+        grid_x_imgSpace = GsReflect(grid_x_imgSpace, x_min, x_max);
+        grid_y_imgSpace = GsReflect(grid_y_imgSpace, y_min, y_max);
       }
     }
 
@@ -194,7 +191,7 @@ __global__ void _GridSampleKernel(
       output_data[outIdx] = PixelAtGrid(input_data, BIdx, cIdx, y_n, x_n, padding_mode, N, C, H_in, W_in, border);
       return;
     } 
-    if (mode == 2) {//bicubic
+    if (mode == 2) {// bicubic
       int64_t x0 = static_cast<int64_t>(std::floor(grid_x_imgSpace)) - 1;  // top-left corner of the bbox
       int64_t y0 = static_cast<int64_t>(std::floor(grid_y_imgSpace)) - 1;
       T p[4][4] = {};  // [H][W]
@@ -205,7 +202,7 @@ __global__ void _GridSampleKernel(
       }
       T dx = grid_x_imgSpace - x0 - 1;
       T dy = grid_y_imgSpace - y0 - 1;
-      output_data[outIdx] = bicubic(p, dx, dy);
+      output_data[outIdx] = GsBicubicInterpolate(p, dx, dy);
     }
 }
 

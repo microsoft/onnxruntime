@@ -27,7 +27,7 @@ namespace contrib {
 REGISTER_KERNEL_TYPED(float)
 
 template <typename T>
-T denormalize(T n, int64_t length, bool align_corners) {
+T GsDenormalize(T n, int64_t length, bool align_corners) {
   T x = {};
   if (align_corners) { // align_corners: true => [-1, 1] to [0, length - 1]
     x = (n + static_cast<T>(1)) / static_cast<T>(2) * (length - 1);
@@ -39,7 +39,7 @@ T denormalize(T n, int64_t length, bool align_corners) {
 }
 
 template <typename T>
-T reflect(T x, T x_min, T x_max) {
+T GsReflect(T x, T x_min, T x_max) {
   T dx = {};
   T range = x_max - x_min;
   if (x < x_min) {
@@ -68,12 +68,12 @@ T reflect(T x, T x_min, T x_max) {
   return x;
 }
 
+// Calcuate cubic convolution interpolation coefficients 
+// ROBERT G. KEYS https://ieeexplore.ieee.org/document/1163711
 template<typename T>
-void get_cubic_coeffs(T x, T coeffs[4]) {
+void GsGetCubicCoeffs(T x, T coeffs[4]) {
   constexpr T cubic_alpha = -0.75f;
-  if (x < 0) { // abs
-    x = -x;
-  }
+  x = std::abs(x);
   coeffs[0] = static_cast<T>(((cubic_alpha * (x + 1) - 5 * cubic_alpha) * (x + 1) + 8 * cubic_alpha) * (x + 1) - 4 * cubic_alpha);
   coeffs[1] = static_cast<T>(((cubic_alpha + 2) * x - (cubic_alpha + 3)) * x * x + 1);
   coeffs[2] = static_cast<T>(((cubic_alpha + 2) * (1 - x) - (cubic_alpha + 3)) * (1 - x) * (1 - x) + 1);
@@ -81,14 +81,14 @@ void get_cubic_coeffs(T x, T coeffs[4]) {
 }
 
 template<typename T>
-T bicubic(T p[4][4], T x, T y) {
+T GsBicubicInterpolate(T p[4][4], T x, T y) {
 	T v[4] = {};
   T coeffs[4] = {};
-  get_cubic_coeffs(x, coeffs);
+  GsGetCubicCoeffs(x, coeffs);
   for (int64_t i = 0; i < 4; i++) {
     v[i] = coeffs[0] * p[i][0] + coeffs[1] * p[i][1] + coeffs[2] * p[i][2]  + coeffs[3] * p[i][3];
   }
-  get_cubic_coeffs(y, coeffs);
+  GsGetCubicCoeffs(y, coeffs);
   T pixel = coeffs[0] * v[0] + coeffs[1] * v[1] + coeffs[2] * v[2]  + coeffs[3] * v[3];
 	return pixel;
 }
@@ -107,8 +107,8 @@ T GridSample<T>::PixelAtGrid(const T* image, int64_t r, int64_t c, int64_t H, in
     pixel = image[r * W + c];
   }
   else { // (padding_mode_ == Reflection)
-    c = static_cast<int64_t>(reflect(static_cast<T>(c), border[0], border[2]));
-    r = static_cast<int64_t>(reflect(static_cast<T>(r), border[1], border[3]));
+    c = static_cast<int64_t>(GsReflect(static_cast<T>(c), border[0], border[2]));
+    r = static_cast<int64_t>(GsReflect(static_cast<T>(r), border[1], border[3]));
     pixel = image[r * W + c];
   }
   return pixel;
@@ -165,8 +165,8 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
               T* Y_gridpoint = Y_data + oy * W_out + ox;
               auto nx = gridpoint[0]; // normalized location
               auto ny = gridpoint[1];
-              auto x = denormalize<T>(nx, W_in, align_corners_); // actual location
-              auto y = denormalize<T>(ny, H_in, align_corners_);
+              auto x = GsDenormalize<T>(nx, W_in, align_corners_); // actual location
+              auto y = GsDenormalize<T>(ny, H_in, align_corners_);
 
               if (mode_ == Nearest) {
                 x = std::nearbyint(x);
@@ -179,8 +179,8 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
                   y = std::clamp(y, static_cast<T>(0), static_cast<T>(H_in - 1));
                 }
                 else if (padding_mode_== Reflection) {
-                  x = reflect(x, x_min, x_max);
-                  y = reflect(y, y_min, y_max);
+                  x = GsReflect(x, x_min, x_max);
+                  y = GsReflect(y, y_min, y_max);
                 }
               } // out of bound
 
@@ -218,7 +218,7 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
                 }
                 T dx = x - x0 - 1.f;
                 T dy = y - y0 - 1.f;
-                *Y_gridpoint = bicubic(p, dx, dy);
+                *Y_gridpoint = GsBicubicInterpolate(p, dx, dy);
               }
             }
           }
