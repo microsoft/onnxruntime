@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-'use strict';
-
 const bundleMode = require('minimist')(process.argv)['bundle-mode'] || 'dev';  // 'dev'|'perf'|undefined;
 const karmaPlugins = require('minimist')(process.argv)['karma-plugins'] || undefined;
 const timeoutMocha = require('minimist')(process.argv)['timeout-mocha'] || 60000;
@@ -76,8 +74,8 @@ module.exports = function (config) {
     browserSocketTimeout: 60000,
     hostname: getMachineIpAddress(),
     customLaunchers: {
-      ChromeTest: { base: 'Chrome', flags: ['--window-size=1,1'] },
-      ChromeDebug: { debug: true, base: 'Chrome', flags: ['--remote-debugging-port=9333'] },
+      ChromeTest: { base: 'Chrome', flags: ['--window-size=1,1', '--enable-features=SharedArrayBuffer'] },
+      ChromeDebug: { debug: true, base: 'Chrome', flags: ['--remote-debugging-port=9333', '--enable-features=SharedArrayBuffer'] },
       //
       // ==== BrowserStack browsers ====
       //
