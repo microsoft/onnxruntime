@@ -20,7 +20,5 @@ exclude =
     ./onnxruntime/test,
     # TODO enable
     ./orttraining,
-    # TODO enable
-    ./samples/python/pytorch_transformer,
     # ignore server code for now
     ./server,
