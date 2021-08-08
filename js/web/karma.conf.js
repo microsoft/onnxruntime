@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+'use strict';
+
 const bundleMode = require('minimist')(process.argv)['bundle-mode'] || 'dev';  // 'dev'|'perf'|undefined;
 const karmaPlugins = require('minimist')(process.argv)['karma-plugins'] || undefined;
 const timeoutMocha = require('minimist')(process.argv)['timeout-mocha'] || 60000;
