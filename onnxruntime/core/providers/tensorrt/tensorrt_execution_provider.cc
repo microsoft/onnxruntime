@@ -322,7 +322,7 @@ template <>
 bool CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
   return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg);
 }
-
+/* //slx
 class Memcpy final : public OpKernel {
  public:
   Memcpy(const OpKernelInfo& info) : OpKernel(info) {}
@@ -332,6 +332,54 @@ class Memcpy final : public OpKernel {
     Tensor* Y = ctx->Output(0, X->Shape());
     Status retval = Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
     return retval;
+  }
+};
+*/
+
+class Memcpy final : public OpKernel {//slx
+ public:
+  Memcpy(const OpKernelInfo& info) : OpKernel{info} {}
+
+  Status Compute(OpKernelContext* ctx) const override {
+    auto X_type = ctx->InputType(0);
+    if (X_type->IsTensorType()) {
+      const auto* X = ctx->Input<Tensor>(0);
+      ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
+      Tensor* Y = ctx->Output(0, X->Shape());
+      ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor.");
+      return Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
+    } else if (X_type->IsSparseTensorType()) {
+      const auto* X = ctx->Input<SparseTensor>(0);
+      ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
+      SparseTensor* Y = ctx->OutputSparse(0, X->DenseShape());
+      ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output sparse tensor.");
+      return X->Copy(Info().GetDataTransferManager(), Info().GetKernelDef().ExecQueueId(), *Y);
+    } else if (X_type->IsTensorSequenceType()) {
+      const TensorSeq* X = ctx->Input<TensorSeq>(0);
+      ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor sequence is nullptr.");
+      TensorSeq* Y = ctx->Output<TensorSeq>(0);
+      ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor sequence.");
+      auto X_dtype = X->DataType();
+      Y->SetType(X_dtype);
+      AllocatorPtr alloc;
+      auto status = ctx->GetTempSpaceAllocator(&alloc);
+      if (!status.IsOK()) {
+        return Status(common::ONNXRUNTIME, common::FAIL,
+                      "Memcpy cuda: unable to get an allocator.");
+      }
+      auto X_size = X->Size();
+      for (size_t i = 0; i < X_size; ++i) {
+        const Tensor& source_tensor = X->Get(i);
+        std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(), source_tensor.Shape(), alloc);
+        Status retval = Info().GetDataTransferManager().CopyTensor(source_tensor, *target_tensor, Info().GetKernelDef().ExecQueueId());
+        if (!retval.IsOK()) {
+          return retval;
+        }
+        Y->Add(std::move(*target_tensor));
+      }
+      return Status::OK();
+    }
+    return Status(common::ONNXRUNTIME, common::FAIL, "Memcpy: Unsupported input type.");
   }
 };
 
@@ -346,7 +394,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)
         .ExecQueueId(kCudaStreamCopyIn)
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypes()),//slx: AllFixedSizeTensorTypes
     Memcpy);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -357,7 +405,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)
         .ExecQueueId(kCudaStreamCopyOut)
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypes()),//slx: AllFixedSizeTensorTypes
     Memcpy);
 
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
@@ -792,8 +840,14 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
 
 SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollection_t nodes_vector_input, int iterations, const int max_iterations,
                                                                  const GraphViewer& graph, bool* early_termination) const {
-  // Return if iterations are exceeding predefined number
   SubGraphCollection_t nodes_list_output;
+
+  //slx: skip subgraph
+  if (graph.IsSubgraph()) {
+    return nodes_list_output;
+  }
+
+  // Return if iterations are exceeding predefined number
   if (iterations > max_iterations) {
     *early_termination = true;
     return nodes_list_output;
