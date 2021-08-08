@@ -48,14 +48,14 @@ class GradientBuilderBase {
                       const std::unordered_set<std::string>& gradient_inputs,
                       const std::unordered_set<std::string>& gradient_outputs,
                       const logging::Logger& logger,
-                      std::unordered_map<std::string, int>& input_arg_ref_count)
+                      std::unordered_set<std::string>& stashed_tensors)
       : gradient_graph_config_(gradient_graph_config),
         graph_(graph),
         node_(node),
         gradient_inputs_(gradient_inputs),
         gradient_outputs_(gradient_outputs),
         logger_(logger),
-        input_arg_ref_count_(input_arg_ref_count) {
+        stashed_tensors_(stashed_tensors) {
     unique_node_prefix_ = CreateUniqueNodePrefix();
   }
 
@@ -87,6 +87,16 @@ class GradientBuilderBase {
     return gradient_graph_config_;
   }
 
+  void TryRecordStashedForwardGraphTensor(const std::string& name) const {
+    if(stashed_tensors_.find(name) == stashed_tensors_.end()) {
+      stashed_tensors_.insert(name);
+    }
+  }
+
+  bool IsTensorStashed(const std::string& name) const {
+    return stashed_tensors_.find(name) != stashed_tensors_.end();
+  }
+
   // i-th input of forward op
   ArgDef I(const size_t i) const {
     ORT_ENFORCE(i < node_->InputDefs().size());
@@ -96,19 +106,12 @@ class GradientBuilderBase {
     if (recomputed_nodearg) {
       const Node* producer_node = graph_->GetProducerNode(name);
       LOGS(logger_, INFO) << "Recomputed node arg found for " << producer_node->Name();
+      TryRecordStashedForwardGraphTensor(recomputed_nodearg->Name());
       return ArgDef(recomputed_nodearg->Name(), recomputed_nodearg->TypeAsProto());
     }
 
+    TryRecordStashedForwardGraphTensor(node_->InputDefs()[i]->Name());
     return ArgDef(node_->InputDefs()[i]->Name(), node_->InputDefs()[i]->TypeAsProto());
-  }
-
-  int IC(const size_t i) const {
-    auto input_name = I(i).name;
-    if (input_arg_ref_count_.find(input_name) == input_arg_ref_count_.end()) {
-      return -1;
-    }
-
-    return input_arg_ref_count_[input_name];
   }
 
   // i-th output of forward op
@@ -120,9 +123,11 @@ class GradientBuilderBase {
     if (recomputed_nodearg) {
       const Node* producer_node = graph_->GetProducerNode(name);
       LOGS(logger_, INFO) << "Recomputed node arg found for " << producer_node->Name();
+      TryRecordStashedForwardGraphTensor(recomputed_nodearg->Name());
       return ArgDef(recomputed_nodearg->Name(), recomputed_nodearg->TypeAsProto());
     }
 
+    TryRecordStashedForwardGraphTensor(node_->OutputDefs()[i]->Name());
     return ArgDef(node_->OutputDefs()[i]->Name(), node_->OutputDefs()[i]->TypeAsProto());
   }
 
@@ -340,7 +345,7 @@ class GradientBuilderBase {
 
   const logging::Logger& logger_;
 
-  std::unordered_map<std::string, int>& input_arg_ref_count_;
+  std::unordered_set<std::string>& stashed_tensors_;
 };
 
 class EmptyGradientBuilder : public GradientBuilderBase {
