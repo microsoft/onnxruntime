@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <sqlite3.h>
+
 #include "core/common/path.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
@@ -34,12 +36,14 @@ constexpr const char* kNameFilter = "ORT_DEBUG_NODE_IO_NAME_FILTER";
 constexpr const char* kOpTypeFilter = "ORT_DEBUG_NODE_IO_OP_TYPE_FILTER";
 // set to non-zero to dump data to files instead of stdout
 constexpr const char* kDumpDataToFiles = "ORT_DEBUG_NODE_IO_DUMP_DATA_TO_FILES";
-// set to non-zero to dump data to files instead of stdout
+// set to non-zero to dump data to sqlite3 db instead of files
 constexpr const char* kDumpDataToSqlite = "ORT_DEBUG_NODE_IO_DUMP_DATA_TO_SQLITE";
 // set to non-zero to append OpenMPI world rank to filename
 constexpr const char* kAppendRankToFileName = "ORT_DEBUG_NODE_IO_APPEND_RANK_TO_FILE_NAME";
 // specify the output directory for any data files produced
 constexpr const char* kOutputDir = "ORT_DEBUG_NODE_IO_OUTPUT_DIR";
+// specify the file path to sqlite3 db
+constexpr const char* kSqliteDbPath = "ORT_DEBUG_NODE_IO_SQLITE_DB_PATH";
 // set to non-zero to confirm that dumping data files for all nodes is acceptable
 constexpr const char* kDumpingDataToFilesForAllNodesIsOk =
     "ORT_DEBUG_NODE_IO_DUMPING_DATA_TO_FILES_FOR_ALL_NODES_IS_OK";
@@ -89,6 +93,13 @@ struct NodeDumpOptions {
   std::string file_suffix;
   // the output directory for dumped data files
   Path output_dir;
+  // the sqlite3 db to append dumped data
+  Path sqlite_db_path;
+};
+
+struct NodeDumpContext {
+  // which execution pass are we on?
+  int iteration;
 };
 
 // gets NodeDumpOptions instance configured from environment variable values
@@ -109,6 +120,8 @@ void DumpNodeOutputs(
 
 void DumpNodeOutputs(
     OpKernelContext& context, const Node& node, const SessionState& session_state);
+
+sqlite3* SqliteConnection(); 
 
 }  // namespace utils
 }  // namespace onnxruntime

@@ -22,10 +22,9 @@ namespace {
 struct TensorMetadata {
 
   std::string name;
-  std::string intoNode;
-  int intoNodeInputIndex;
-  std::string fromNode;
-  int fromNodeOutputIndex;
+  std::string producer;
+  std::string consumers;
+  int iteration;
 };
 
 bool FilterNode(const NodeDumpOptions& dump_options, const Node& node) {
@@ -132,44 +131,17 @@ void DumpTensorToSqliteDb(const Tensor& tensor, const TensorMetadata& tensor_met
   static int64_t counter = 0;
   counter++;
 
-  std::string sqlitedb_path = "ort-trace.db";
-
-  sqlite3 *db;
-  int rc = sqlite3_open(sqlitedb_path.c_str(), &db);
-  ORT_ENFORCE(rc == 0, "Failed to connect to sqlite3 db ", sqlitedb_path.c_str());
- 
-  const char *sql_create_tensor_table = ;
-    "create table if not exists tensors ( " \
-    "  iteration int not null, " \
-    "  name text not null, " \
-    "  tensorShapeProto blob, " \
-    "  typeProto blob, "  \
-    "  tensorProto blob, " \
-    "  device text, " \
-    "  address int, " \
-    "  size int, " \
-    "  fromNode text, " \
-    "  fromNodeOutputIndex int, " \
-    "  intoNode text, " \
-    "  intoNodeInputIndex int, " \
-    "  primary key (iteration, name) " \
-    ");";
-    
-  char *error_message = 0;
-  rc = sqlite3_exec(db, sql_create_tensor_table, NULL, 0, &error_message);
-  ORT_ENFORCE(rc == SQLITE_OK, 
-    "Failed to create tensors table in sqlite3 db ", sqlitedb_path.c_str(), 
-    " on ", error_message);
+  sqlite3 *db = SqliteConnection();
 
   std::stringstream ss; 
   ss << "insert into tensors (iteration, name, value) ";
   ss << "values ( ";
   ss << counter << ", ";
-  ss << tensor_metadata.name << ", ";
+  ss << "\"" << tensor_metadata.name << "\", ";
   ss << "? );";
 
   sqlite3_stmt *stmt = NULL;
-  rc = sqlite3_prepare_v2(db, ss.str().c_str(), 0, &stmt, NULL);
+  int rc = sqlite3_prepare_v2(db, ss.str().c_str(), -1, &stmt, NULL);
   ORT_ENFORCE(rc == SQLITE_OK, 
     "Failed to prepare sql statement for insertion of tensor ", 
     tensor_metadata.name.c_str(), " into sqlite3 db on ", sqlite3_errmsg(db));
@@ -190,7 +162,6 @@ void DumpTensorToSqliteDb(const Tensor& tensor, const TensorMetadata& tensor_met
     " into sqlite3 db on ", sqlite3_errmsg(db));
 
   sqlite3_finalize(stmt);
-  sqlite3_close(db);
 }
 
 
@@ -294,6 +265,7 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
     }
 
     opts.output_dir = Path::Parse(ToPathString(Env::Default().GetEnvironmentVar(env_vars::kOutputDir)));
+    opts.sqlite_db_path = Path::Parse(ToPathString(Env::Default().GetEnvironmentVar(env_vars::kSqliteDbPath)));
 
     // check for confirmation for dumping data to files for all nodes
     const bool is_input_or_output_requested = ((opts.dump_flags & NodeDumpOptions::DumpFlags::InputData) != 0) ||
@@ -313,6 +285,45 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
   }();
 
   return node_dump_options;
+}
+
+sqlite3* SqliteConnection() {
+
+  static std::unique_ptr<sqlite3, decltype(&sqlite3_close)> sqlite_db(
+    []() {
+
+      const auto& opt = NodeDumpOptionsFromEnvironmentVariables();
+      auto sqlite_db_path = opt.sqlite_db_path.ToPathString();
+  
+      sqlite3 *db;
+      int rc = sqlite3_open(sqlite_db_path.c_str(), &db);
+      ORT_ENFORCE(rc == 0, "Failed to connect to sqlite3 db ", sqlite_db_path.c_str());
+     
+      const char *sql_create_tensor_table = 
+        "create table if not exists Tensors ( " \
+        "  iteration int not null, " \
+        "  name text not null, " \
+        "  shape TensorShapeProto, " \
+        "  type TypeProto, "  \
+        "  value TensorProto, " \
+        "  device text, " \
+        "  address int, " \
+        "  sizeInBytes int, " \
+        "  producer NodeArg, " \
+        "  consumers NodeArgList, " \
+        "  primary key (iteration, name) " \
+        ");";
+        
+      const char *error_message = 0;
+      rc = sqlite3_exec(db, sql_create_tensor_table, NULL, 0, (char**)&error_message);
+      ORT_ENFORCE(rc == SQLITE_OK, 
+        "Failed to create Tensors table in sqlite3 db ", sqlite_db_path.c_str(), 
+        " on ", error_message); 
+  
+      return db;
+    }(), &sqlite3_close);
+
+  return sqlite_db.get();
 }
 
 static bool IsAnyOutputDumped(const NodeDumpOptions& dump_options) {
