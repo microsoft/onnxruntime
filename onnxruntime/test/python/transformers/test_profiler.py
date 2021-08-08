@@ -24,11 +24,13 @@ class TestBertProfiler(unittest.TestCase):
         results = run(args)
         self.assertTrue(len(results) > 1)
 
+    @pytest.mark.slow
     def test_profiler_gpu(self):
         input_model_path = _get_test_model_path('bert_keras_squad')
         if 'CUDAExecutionProvider' in onnxruntime.get_available_providers():
             self.run_profile(f'--model {input_model_path} --batch_size 1 --sequence_length 7 --use_gpu')
 
+    @pytest.mark.slow
     def test_profiler_cpu(self):
         input_model_path = _get_test_model_path('bert_keras_squad')
         self.run_profile(f'--model {input_model_path} --batch_size 1 --sequence_length 7 --dummy_inputs default')
