@@ -374,7 +374,15 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("MIGraphX is not supported in this build\n");
 #endif
-  } else if (!provider_name.empty() && provider_name != onnxruntime::kCpuExecutionProvider) {
+  }
+  else if (provider_name == onnxruntime::kXNNPackExecutionProvider) {
+#ifdef USE_XNNPACK
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_XNNPack(session_options));
+#else
+    ORT_THROW("XNNPack is not supported in this build\n");
+#endif
+  }
+  else if (!provider_name.empty() && provider_name != onnxruntime::kCpuExecutionProvider) {
     ORT_THROW("This backend is not included in perf test runner.\n");
   }
 

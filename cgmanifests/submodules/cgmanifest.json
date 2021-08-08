@@ -435,6 +435,16 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "5916273f79a21551890fd3d56fc5375a78d1598d",
+          "repositoryUrl": "https://github.com/pytorch/cpuinfo.git"
+        },
+        "comments": "git submodule at cmake/external/pytorch_cpuinfo"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "4244cd1cb492fa1d10986ec67f862964c073f844",
           "repositoryUrl": "https://github.com/google/re2.git"
         },
@@ -515,20 +525,20 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "352281313fe1c4313bc222cb9de222afd50c822f",
-          "repositoryUrl": "https://github.com/gabime/spdlog.git"
+          "commitHash": "510b8e0f9af1891588c52bef64248cb72f04c30e",
+          "repositoryUrl": "https://github.com/google/XNNPACK.git"
         },
-        "comments": "git submodule at server/external/spdlog"
+        "comments": "git submodule at cmake/external/xnnpack"
       }
     },
     {
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "5916273f79a21551890fd3d56fc5375a78d1598d",
-          "repositoryUrl": "https://github.com/pytorch/cpuinfo.git"
+          "commitHash": "352281313fe1c4313bc222cb9de222afd50c822f",
+          "repositoryUrl": "https://github.com/gabime/spdlog.git"
         },
-        "comments": "git submodule at cmake/external/pytorch_cpuinfo"
+        "comments": "git submodule at server/external/spdlog"
       }
     }
   ]

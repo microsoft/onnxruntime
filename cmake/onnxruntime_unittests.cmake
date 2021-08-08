@@ -455,6 +455,10 @@ if(onnxruntime_USE_COREML)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_coreml onnxruntime_coreml_proto)
 endif()
 
+if(onnxruntime_USE_XNNPACK)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_xnnpack)
+endif()
+
 file(GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/tvm/*.h"
   "${TEST_SRC_DIR}/tvm/*.cc"
@@ -541,6 +545,11 @@ if(onnxruntime_USE_COREML)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_coreml onnxruntime_coreml_proto)
 endif()
 
+if(onnxruntime_USE_XNNPACK)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_xnnpack)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_xnnpack)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_xnnpack)
+endif()
 
 if(WIN32)
   if (onnxruntime_USE_TVM)
@@ -971,6 +980,10 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
   endif()
   set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
+
+  if (onnxruntime_USE_XNNPACK)
+    target_link_libraries(onnxruntime_perf_test PRIVATE onnxruntime_providers_xnnpack)
+  endif()
 
   if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS AND NOT onnxruntime_BUILD_SHARED_LIB)
     target_link_libraries(onnxruntime_perf_test PRIVATE onnxruntime_language_interop onnxruntime_pyop)

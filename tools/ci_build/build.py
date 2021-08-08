@@ -533,6 +533,10 @@ def parse_arguments():
         "--build_eager_mode", action='store_true',
         help="Build ONNXRuntime micro-benchmarks.")
 
+    parser.add_argument(
+        "--build_xnnpack", action='store_true',
+        help="Build XNNPack EP for ARM.")
+
     return parser.parse_args()
 
 
@@ -762,6 +766,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
         # enable custom operators in onnxruntime-extensions
         "-Donnxruntime_ENABLE_EXTENSION_CUSTOM_OPS=" + ("ON" if args.enable_onnxruntime_extensions else "OFF"),
+        # "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.build_xnnpack and (args.android or args.ios) else "OFF"),
+        "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.build_xnnpack else "OFF"),
     ]
     if args.use_cuda:
         cmake_args += ["-Donnxruntime_USE_CUDA=ON", "-Donnxruntime_CUDA_VERSION=" + args.cuda_version,

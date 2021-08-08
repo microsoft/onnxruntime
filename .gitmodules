@@ -86,3 +86,6 @@
 	path = cmake/external/pytorch_cpuinfo
 	url = https://github.com/pytorch/cpuinfo.git
 
+[submodule "cmake/external/xnnpack"]
+	path = cmake/external/xnnpack
+	url = https://github.com/google/XNNPACK.git

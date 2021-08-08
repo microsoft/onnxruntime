@@ -65,8 +65,8 @@ namespace perftest {
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>'\n\n"
       "\t [Example] [For OpenVINO EP] -e openvino -i \"device_type|CPU_FP32 enable_vpu_fast_compile|true num_of_threads|5 use_compiled_network|true blob_dump_path|\"<path>\"\"\n"
       "\t    [TensorRT only] [trt_max_partition_iterations]: Maximum iterations for TensorRT parser to get capability.\n"
-      "\t    [TensorRT only] [trt_min_subgraph_size]: Minimum size of TensorRT subgraphs.\n"	  
-      "\t    [TensorRT only] [trt_max_workspace_size]: Set TensorRT maximum workspace size in byte.\n"	  
+      "\t    [TensorRT only] [trt_min_subgraph_size]: Minimum size of TensorRT subgraphs.\n"
+      "\t    [TensorRT only] [trt_max_workspace_size]: Set TensorRT maximum workspace size in byte.\n"
       "\t    [TensorRT only] [trt_fp16_enable]: Enable TensorRT FP16 precision.\n"
       "\t    [TensorRT only] [trt_int8_enable]: Enable TensorRT INT8 precision.\n"
       "\t    [TensorRT only] [trt_int8_calibration_table_name]: Specify INT8 calibration table name.\n"
@@ -99,7 +99,8 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
     if (override_val <= 0) {
       return false;
     }
-  } ORT_CATCH (...) {
+  }
+  ORT_CATCH(...) {
     return false;
   }
   return true;
@@ -172,6 +173,8 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
           test_config.machine_config.provider_type_name = onnxruntime::kAclExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("armnn"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kArmNNExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("xnnpack"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kXNNPackExecutionProvider;
         } else {
           return false;
         }

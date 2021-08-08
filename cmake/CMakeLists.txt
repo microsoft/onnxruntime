@@ -156,6 +156,9 @@ option(onnxruntime_BUILD_OPSCHEMA_LIB "Build op schema library" ON)
 # option to enable custom operators in onnxruntime-extensions
 option(onnxruntime_ENABLE_EXTENSION_CUSTOM_OPS "Enable custom operators in onnxruntime-extensions" OFF)
 
+# option to enable XNNPACK
+option(onnxruntime_ENABLE_XNNPACK "Enable XNNPACK as an alternative math library on ARM" OFF)
+
 # Single output director for all binaries
 set (RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE PATH "Single output directory for all binaries.")
 
@@ -755,7 +758,6 @@ if (onnxruntime_USE_CUDA AND "${onnxruntime_CUDNN_HOME}" STREQUAL "")
   message(FATAL_ERROR "onnxruntime_CUDNN_HOME required for onnxruntime_USE_CUDA")
 endif()
 
-
 get_filename_component(ONNXRUNTIME_ROOT "${ONNXRUNTIME_ROOT}" ABSOLUTE)
 get_filename_component(ORTTRAINING_ROOT "${ORTTRAINING_ROOT}" ABSOLUTE)
 get_filename_component(REPO_ROOT "${REPO_ROOT}" ABSOLUTE)
@@ -1028,6 +1030,20 @@ if (onnxruntime_USE_COREML)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_COREML=1)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_COREML=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES coreml)
+endif()
+if (onnxruntime_USE_XNNPACK)
+  list(APPEND ORT_PROVIDER_FLAGS  -DUSE_XNNPACK=1)
+  list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_XNNPACK=1)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES xnnpack)
+  set(XNNPACK_DIR external/xnnpack)
+  set(XNNPACK_INCLUDE_DIR ${XNNPACK_DIR}/include)
+  set(XNNPACK_BUILD_TESTS OFF CACHE INTERNAL "")
+  set(XNNPACK_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
+  set(CLOG_SOURCE_DIR "${PYTORCH_CPUINFO_DIR}/deps/clog")
+  set(CPUINFO_SOURCE_DIR ${PYTORCH_CPUINFO_DIR})
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES xnnpack)
+
+  add_subdirectory(${XNNPACK_DIR})
 endif()
 function(onnxruntime_set_compile_flags target_name)
     if (MSVC)

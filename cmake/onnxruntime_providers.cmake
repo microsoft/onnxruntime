@@ -92,6 +92,9 @@ endif()
 if(onnxruntime_USE_ROCM)
   set(PROVIDERS_ROCM onnxruntime_providers_rocm)
 endif()
+if(onnxruntime_USE_XNNPACK)
+  set(PROVIDERS_XNNPACK onnxruntime_providers_xnnpack)
+endif()
 
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
@@ -1104,4 +1107,24 @@ if (onnxruntime_USE_ROCM)
   add_dependencies(onnxruntime_providers_rocm ${onnxruntime_EXTERNAL_DEPENDENCIES})
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/hip  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_rocm PROPERTIES LINKER_LANGUAGE CXX)
+endif()
+
+if (onnxruntime_USE_XNNPACK)
+  add_compile_definitions(USE_XNNPACK=1)
+
+  file(GLOB_RECURSE onnxruntime_providers_xnnpack_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/xnnpack/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/xnnpack/*.cc"
+  )
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_xnnpack_cc_srcs})
+  onnxruntime_add_static_library(onnxruntime_providers_xnnpack ${onnxruntime_providers_xnnpack_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_xnnpack onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
+  add_dependencies(onnxruntime_providers_xnnpack ${onnxruntime_EXTERNAL_DEPENDENCIES} XNNPACK)
+  target_link_libraries(onnxruntime_providers_xnnpack PRIVATE XNNPACK)
+  set_target_properties(onnxruntime_providers_xnnpack PROPERTIES CXX_STANDARD_REQUIRED ON)
+  set_target_properties(onnxruntime_providers_xnnpack PROPERTIES FOLDER "ONNXRuntime")
+  target_include_directories(onnxruntime_providers_xnnpack PRIVATE ${ONNXRUNTIME_ROOT} ${XNNPACK_INCLUDE_DIR} "${PTHREADPOOL_SOURCE_DIR}/include")
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/xnnpack  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  set_target_properties(onnxruntime_providers_xnnpack PROPERTIES LINKER_LANGUAGE CXX)
 endif()

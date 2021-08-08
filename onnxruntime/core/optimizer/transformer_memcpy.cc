@@ -160,7 +160,8 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
                                         InitializedTensorSet& initializers_consumed) {
   auto node_provider_type = node.GetExecutionProviderType();
   if ((node_provider_type == provider_) ||
-      (node_provider_type == kCudaExecutionProvider && kTensorrtExecutionProvider == provider_)) {
+      (node_provider_type == kCudaExecutionProvider && kTensorrtExecutionProvider == provider_) ||
+      (node_provider_type == kCpuExecutionProvider && kXNNPackExecutionProvider == provider_)) {
     provider_nodes_.insert(&node);
     // note KernelCreateInfo might be nullptr for custom kernel
     const KernelCreateInfo* kci = nullptr;
