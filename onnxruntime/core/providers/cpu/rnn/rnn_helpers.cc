@@ -293,7 +293,7 @@ void ComputeGemm(const int M,
   gemm_shape.N = static_cast<size_t>(N);
   gemm_shape.K = static_cast<size_t>(K);
   gemm_shape.BIsSigned = b_is_signed;
-  
+
   MLAS_GEMM_U8X8_DATA_PARAMS gemm_params;
   gemm_params.A = quantized_A_buffer;
   gemm_params.lda = static_cast<size_t>(K);
@@ -328,9 +328,9 @@ const float sigmoid_bound = 20.0f;
 const float tanh_bound = 10.0f;
 
 #if defined(__GNUC__) && !defined(__wasm__)
-#pragma GCC push_options
-#pragma GCC optimize("tree-vectorize")
-#pragma GCC optimize("unroll-loops")
+#define restrict __restrict__
+#else
+#define restrict
 #endif
 
 inline void clip_for_sigmoid_in_place(float* ps, int c) {
@@ -409,19 +409,16 @@ void clip_ignore_bias(const float b, const float* pb, float* pd, int c) {
   }
 }
 
-void clip_add_bias(const float b, const float* pb, float* pd, int c) {
+void clip_add_bias(const float b, const float* restrict pb, float* restrict pd, int c) {
   for (int i = 0; i < c; i++) {
     float x = pd[i] + pb[i];
-    if (x > b)
-      pd[i] = b;
-    else if (x < -b)
-      pd[i] = -b;
-    else
-      pd[i] = x;
+    x = std::min(b, x);
+    x = std::max(-b, x);
+    pd[i] = x;
   }
 }
 
-void sigmoid_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c,
+void sigmoid_m(const float* restrict ps1, float* restrict ps1_c, const float* restrict ps2, float* restrict pd, int c,
                const float alpha, const float beta) {
   ORT_UNUSED_PARAMETER(alpha);
   ORT_UNUSED_PARAMETER(beta);
@@ -433,7 +430,7 @@ void sigmoid_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int 
   }
 }
 
-void tanh_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c,
+void tanh_m(const float* restrict ps1, float* restrict ps1_c, const float* restrict ps2, float* restrict pd, int c,
             const float alpha, const float beta) {
   ORT_UNUSED_PARAMETER(alpha);
   ORT_UNUSED_PARAMETER(beta);
@@ -445,7 +442,8 @@ void tanh_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c,
   }
 }
 
-void relu_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c, float alpha, float beta) {
+void relu_m(const float* restrict ps1, float* restrict ps1_c, const float* restrict ps2, float* restrict pd, int c,
+            const float alpha, const float beta) {
   ORT_UNUSED_PARAMETER(ps1_c);
   ORT_UNUSED_PARAMETER(alpha);
   ORT_UNUSED_PARAMETER(beta);
@@ -529,11 +527,8 @@ void tanh_exact(float* pd, int c, float alpha, float beta) {
   }
 }
 
-void merge_lstm_gates_to_memory(const float* pprev, const float* pi, const float* pf, const float* pg, float* pcurr,
-                                int c) {
-  #if defined(__GNUC__) && !defined(__wasm__)
-  #pragma GCC ivdep
-  #endif
+void merge_lstm_gates_to_memory(const float* restrict pprev, const float* restrict pi, const float* restrict pf,
+                                const float* restrict pg, float* restrict pcurr, int c) {
   for (int i = 0; i < c; i++) {
     pcurr[i] = pprev[i] * pf[i] + pi[i] * pg[i];
   }
@@ -692,10 +687,6 @@ void composed_gru_output_gate_func(float* ps, int c, std::function<float(float, 
     ps[i] = func(ps[i], alpha, beta);
   }
 }
-
-#if defined(__GNUC__) && !defined(__wasm__)
-#pragma GCC pop_options
-#endif
 
 ActivationFuncPtr ActivationFuncByName(const std::string& func) {
   if (func == "sigmoid")
