@@ -13,6 +13,8 @@
 #include "core/framework/kernel_registry.h"
 #include "core/framework/func_kernel.h"
 #include <iostream>
+#include "core/platform/env.h" //slx
+#include "core/graph/model.h" //slx
 
 // uncomment this line to count non-CUDA ops in ONNX domain
 //#define COUNT_NON_CUDA_OPS
@@ -245,6 +247,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, bool export_dll, FuncMa
       continue;
     }
 
+    //std::cout << "PartitionOnnxFormatModelImpl, capability sub_graph: " << *capability->sub_graph->meta_def->name() << std::endl;//slx
     Node* n = PlaceNode(graph, *capability->sub_graph, kernel_registry_mgr, type, fusion_style, mode, fused_node_unique_id);
     if (n != nullptr) {
       nodes_to_compile.push_back(n);
@@ -253,6 +256,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, bool export_dll, FuncMa
   }
 
   // NOTE: if mode_ is kAssignOnly, nodes_to_compile will be empty at this point due to logic in PlaceNode
+  std::cout << "PartitionOnnxFormatModelImpl, nodes_to_compile empty: " << nodes_to_compile.empty() << ", export_dll: " << export_dll << ", ep type: " << type << std::endl;//slx
   if (!nodes_to_compile.empty()) {
     std::vector<NodeComputeInfo> node_compute_funcs;
 
@@ -284,6 +288,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, bool export_dll, FuncMa
       }
 
       for (auto* node : nodes_to_compile) {
+        std::cout << "1. node to compile: " << node->Name() << std::endl;//slx
         // add the KernelDef instances for the compiled nodes
         KernelDefBuilder builder;
         BuildFusedKernelDef(builder, *node);
@@ -315,6 +320,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, bool export_dll, FuncMa
 
       for (size_t j = 0, end = nodes_to_compile.size(); j < end; j++) {
         auto* node = nodes_to_compile[j];
+        std::cout << "2. node to compile: " << node->Name() << std::endl;//slx
 
         ORT_RETURN_IF_ERROR(func_mgr.AddFuncInfo(node->Name(), std::move(node_compute_funcs[j])));
 
@@ -400,6 +406,7 @@ Status GraphPartitioner::PartitionOnnxFormatModel(Graph& graph, bool export_dll,
   do {
     // process full graph with each EP
     for (const auto& ep : providers_) {
+      std::cout << "-----------PartitionOnnxFormatModel------------, ep: " << ep->Type() << std::endl;//slx
       ORT_RETURN_IF_ERROR(PartitionOnnxFormatModelImpl(graph, export_dll, func_mgr, kernel_registry_mgr_,
                                                        fused_kernel_registry, *ep, mode, fused_node_unique_id));
     }
@@ -410,6 +417,7 @@ Status GraphPartitioner::PartitionOnnxFormatModel(Graph& graph, bool export_dll,
 
     // Resolve and rerun graph partitioning and inlining if there was a change
     if (modified_graph) {
+      std::cout << "modified_graph" << std::endl;//slx
       ORT_RETURN_IF_ERROR(graph.Resolve());
     }
   } while (modified_graph);
@@ -582,6 +590,30 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
   if (!fused_kernel_registry->IsEmpty()) {
     kernel_registry_mgr_.RegisterKernelRegistry(fused_kernel_registry);
   }
+
+{
+///slx
+   //for (auto& node : graph.Nodes()) {
+   // std::cout << "node: " << node.Name() << ", optype:" << node.OpType() << ", ExecutionProvider:" << node.GetExecutionProviderType() << std::endl;
+   //}
+    std::cout << "graph_partitioner.cc: -----------" << std::endl;
+    //::ONNX_NAMESPACE::ModelProto model_proto2;
+    const logging::Logger* run_logger = nullptr;
+    ///onnxruntime::Model model(graph.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap(), std::vector<ONNX_NAMESPACE::FunctionProto>(), *run_logger);//*GetLogger()
+    onnxruntime::Model model(graph.Name(), true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap(), std::vector<ONNX_NAMESPACE::FunctionProto>(), *run_logger);
+    //onnxruntime::Model model("test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
+  
+    ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
+    auto graph_proto = graph.ToGraphProto();
+    model_proto.set_allocated_graph(&graph_proto);
+    model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+
+    //!!!!!!!!!!!test: save ModelProto to file
+    int fd;
+    Env::Default().FileOpenWr("tensorrt_model_proto_partitioner.onnx", fd);
+    model_proto.SerializeToFileDescriptor(fd);
+    model_proto.release_graph();
+}
 
   return Status::OK();
 }

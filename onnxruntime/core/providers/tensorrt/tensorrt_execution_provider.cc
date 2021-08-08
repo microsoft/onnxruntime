@@ -323,7 +323,7 @@ template <>
 bool CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
   return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg);
 }
-
+/*
 class Memcpy final : public OpKernel {
  public:
   Memcpy(const OpKernelInfo& info) : OpKernel(info) {}
@@ -335,10 +335,59 @@ class Memcpy final : public OpKernel {
     return retval;
   }
 };
+*/
+
+class Memcpy final : public OpKernel {
+ public:
+  Memcpy(const OpKernelInfo& info) : OpKernel{info} {}
+
+  Status Compute(OpKernelContext* ctx) const override {
+    auto X_type = ctx->InputType(0);
+    if (X_type->IsTensorType()) {
+      const auto* X = ctx->Input<Tensor>(0);
+      ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
+      Tensor* Y = ctx->Output(0, X->Shape());
+      ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor.");
+      return Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
+    } else if (X_type->IsSparseTensorType()) {
+      const auto* X = ctx->Input<SparseTensor>(0);
+      ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
+      SparseTensor* Y = ctx->OutputSparse(0, X->DenseShape());
+      ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output sparse tensor.");
+      return X->Copy(Info().GetDataTransferManager(), Info().GetKernelDef().ExecQueueId(), *Y);
+    } else if (X_type->IsTensorSequenceType()) {
+      const TensorSeq* X = ctx->Input<TensorSeq>(0);
+      ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor sequence is nullptr.");
+      TensorSeq* Y = ctx->Output<TensorSeq>(0);
+      ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor sequence.");
+      auto X_dtype = X->DataType();
+      Y->SetType(X_dtype);
+      AllocatorPtr alloc;
+      auto status = ctx->GetTempSpaceAllocator(&alloc);
+      if (!status.IsOK()) {
+        return Status(common::ONNXRUNTIME, common::FAIL,
+                      "Memcpy cuda: unable to get an allocator.");
+      }
+      auto X_size = X->Size();
+      for (size_t i = 0; i < X_size; ++i) {
+        const Tensor& source_tensor = X->Get(i);
+        std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(), source_tensor.Shape(), alloc);
+        Status retval = Info().GetDataTransferManager().CopyTensor(source_tensor, *target_tensor, Info().GetKernelDef().ExecQueueId());
+        if (!retval.IsOK()) {
+          return retval;
+        }
+        Y->Add(std::move(*target_tensor));
+      }
+      return Status::OK();
+    }
+    return Status(common::ONNXRUNTIME, common::FAIL, "Memcpy: Unsupported input type.");
+  }
+};
 
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 
+//namespace cuda {
 ONNX_OPERATOR_KERNEL_EX(
     MemcpyFromHost,
     kOnnxDomain,
@@ -347,7 +396,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)
         .ExecQueueId(kCudaStreamCopyIn)
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypes()),//slx AllFixedSizeTensorTypes
     Memcpy);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -358,7 +407,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)
         .ExecQueueId(kCudaStreamCopyOut)
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypes()),//slx AllFixedSizeTensorTypes
     Memcpy);
 
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
@@ -376,6 +425,28 @@ static Status RegisterTensorrtKernels(KernelRegistry& kernel_registry) {
   return Status::OK();
 }
 
+
+//error: (base) steve@zg4:~/work/ort/github86_debug/onnxruntime/build/Linux/Debug$ ORT_TENSORRT_DUMP_SUBGRAPHS=1 ORT_TENSORRT_ENGINE_CACHE_ENABLE=1 ./onnx_test_runner -e tensorrt /home/steve/work/model/bowen
+//2021-08-07 20:05:57.028963635 [E:onnxruntime:Default, provider_bridge_ort.cc:910 Get] Failed to load library libonnxruntime_providers_tensorrt.so with error: /home/steve/work/ort/github86_debug/onnxruntime/build/Linux/Debug/libonnxruntime_providers_tensorrt.so: undefined symbol: _ZN11onnxruntime21BuildKernelCreateInfoINS_54kCudaExecutionProvider_MemcpyFromHost_kOnnxDomain_ver1EEENS_16KernelCreateInfoEv
+//OrtSessionOptionsAppendExecutionProvider_Tensorrt: Failed to load shared library
+
+//class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
+//class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, MemcpyToHost);
+
+//static Status RegisterTensorrtKernels(KernelRegistry& kernel_registry) {
+//  static const BuildKernelCreateInfoFn function_table[] = {
+//      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
+//      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
+//  };
+
+//  for (auto& function_table_entry : function_table) {
+//    ORT_RETURN_IF_ERROR(kernel_registry.Register(function_table_entry()));
+//  }
+//  return Status::OK();
+//}
+
+//} // namespace cuda //slx
+
 static std::shared_ptr<KernelRegistry> s_kernel_registry;
 
 void Shutdown_DeleteRegistry() {
@@ -385,7 +456,7 @@ void Shutdown_DeleteRegistry() {
 std::shared_ptr<KernelRegistry> TensorrtExecutionProvider::GetKernelRegistry() const {
   if (!s_kernel_registry) {
     s_kernel_registry = KernelRegistry::Create();
-    auto status = RegisterTensorrtKernels(*s_kernel_registry);
+    auto status = RegisterTensorrtKernels(*s_kernel_registry);//slx
     if (!status.IsOK())
       s_kernel_registry.reset();
     ORT_THROW_IF_ERROR(status);
@@ -793,9 +864,15 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
 }
 
 SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollection_t nodes_vector_input, int iterations, const int max_iterations,
-                                                                 const GraphViewer& graph, bool* early_termination) const {
-  // Return if iterations are exceeding predefined number
+                                                                 const GraphViewer& whole_graph, const GraphViewer& graph, bool* early_termination) const {
   SubGraphCollection_t nodes_list_output;
+  // Return if the graph is a subgraph
+  if (whole_graph.IsSubgraph()) {//slx
+    std::cout << "--GetSupportedList: the graph is a subgraph and will be skipped" << std::endl;
+    return nodes_list_output;
+  }
+
+  // Return if iterations are exceeding predefined number
   if (iterations > max_iterations) {
     *early_termination = true;
     return nodes_list_output;
@@ -806,7 +883,19 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
   for (const auto* output_arg : graph.GetOutputs()) {
     graph_output_names.insert(output_arg->Name());
   }
-
+/*//slx
+  //slx: get all initialized tensors of the graph
+  std::cout << "--GetSupportedList: graph: " << graph.Name() << std::endl;
+  const auto& init_tensors = graph.GetAllInitializedTensors();
+  for (const auto& tensor : init_tensors) {
+    std::cout << "current graph initialized tensor: " << tensor.first << std::endl;
+  }
+  std::cout << "--GetSupportedList: whole graph: " << whole_graph.Name() << std::endl;
+  const auto& all_init_tensors = whole_graph.GetAllInitializedTensors();
+  for (const auto& tensor : all_init_tensors) {
+    std::cout << "whole graph initialized tensor: " << tensor.first << std::endl;
+  }
+*/
   iterations++;
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   for (const auto& group : nodes_vector_input) {
@@ -832,7 +921,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
             inputs.push_back(&n_input);
             const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
             if (graph.GetInitializedTensor(input->Name(), initializer)) {
-              std::cout << "input has initializer: " << std::endl;//initializer->size() << 
+              std::cout << "input has initializer: " << std::endl;//initializer->size() <<
               const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
               if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
                 std::cout << "add initializer to graph_build" << std::endl;//initializer->name() <<
@@ -843,12 +932,14 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 
           for (auto input : node->ImplicitInputDefs()) {
             std::cout << "ImplicitInputDefs: input: " << input->Name() << std::endl;//slx
+            //auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
+            //inputs.push_back(&n_input);
             const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
             if (graph.GetInitializedTensor(input->Name(), initializer)) {
-              std::cout << "input has initializer: " << std::endl;//initializer->name() << 
+              std::cout << "input has initializer: " << std::endl;//initializer->name() <<
               const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
               if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
-                std::cout << "add initializer to graph_build" << std::endl;//initializer->name() << 
+                std::cout << "add initializer to graph_build" << std::endl;//initializer->name() <<
                 graph_build.AddInitializedTensor(*(initializer));
               }
             }
@@ -954,7 +1045,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 
         SubGraphCollection_t next_nodes_list;
         const std::vector<NodeIndex>& subgraph_node_index = graph_viewer->GetNodesInTopologicalOrder();
-        next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, *graph_viewer, early_termination);
+        next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, whole_graph, *graph_viewer, early_termination);
         for (int i = 0, end = next_nodes_list.size(); i < end; ++i) {
           for (int j = 0, end = next_nodes_list[i].first.size(); j < end; ++j) {
             next_nodes_list[i].first[j] = group.first[subgraph_node_index[next_nodes_list[i].first[j]]];
@@ -1094,7 +1185,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
   SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{nodes_vector, false}};
   bool early_termination = false;
-  supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
+  supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, graph, &early_termination);
   if (early_termination) {
     supported_nodes_vector.clear();
   }
@@ -2010,7 +2101,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           auto output_tensor_ptr = ort.GetTensorMutableData<double>(output_tensor[i]);
           if (output_tensor_ptr != nullptr) {
             cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(buffers[binding_index]), output_tensor_ptr, output_dim_sizes[i]);
-          }		
+          }
         }
       }
       return Status::OK();

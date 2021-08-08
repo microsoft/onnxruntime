@@ -1303,13 +1303,14 @@ common::Status InferenceSession::Initialize() {
 
 #if !defined(ORT_MINIMAL_BUILD)
     if (saving_model) {
+/* //slx
       if (session_state_->GetFuncMgr().NumFuncs() > 0) {
         ORT_RETURN_IF_ERROR_SESSIONID_(
             ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                             "Unable to serialize model as it contains compiled nodes. "
                             "Please disable any execution providers which generate compiled nodes."));
       }
-
+*/
       // add a warning if the NchwcTransformer was enabled, as it contains the hardware specific logic
       if (session_options_.graph_optimization_level >= TransformerLevel::Level3 &&
           optimizers_to_disable_.find("NchwcTransformer") == optimizers_to_disable_.cend()) {

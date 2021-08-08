@@ -2333,6 +2333,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     NodeProto node_proto;
     node.ToProto(node_proto);
     auto& node_name = node.Name();
+    //std::cout << "VerifyNodeAndOpMatch, node: " << node_name << std::endl;//slx
     auto& domain = node.Domain();
 
     if (!node.Op()) {

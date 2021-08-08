@@ -179,7 +179,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   other execution provider.
   */
   SubGraphCollection_t GetSupportedList(SubGraphCollection_t supported_nodes_list, int iterations, const int max_iterations,
-                                        const GraphViewer& graph, bool* early_termination) const;
+                                        const GraphViewer& whole_graph, const GraphViewer& graph, bool* early_termination) const;
 
   void RemoveTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph) const;
 

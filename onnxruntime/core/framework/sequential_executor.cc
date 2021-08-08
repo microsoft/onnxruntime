@@ -296,6 +296,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                input_activation_sizes, input_parameter_sizes, node_name_for_profiling);
     }
 
+    std::cout << "sequential_executor.cc: Compute: node: " << p_op_kernel->Node().Name() << ", type: " << p_op_kernel->Node().OpType() << ", EP: " << p_op_kernel->Node().GetExecutionProviderType() << std::endl;//slx
     Status compute_status;
     {
 #ifdef CONCURRENCY_VISUALIZER
