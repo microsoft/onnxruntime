@@ -1264,7 +1264,8 @@ def test_input_requires_grad_backward_creates_input_grad_as_required1(x1_require
 
 
 @pytest.mark.parametrize("device", ['cuda'])
-def test_model_with_bypass_input(device):
+@pytest.mark.parametrize("training_mode", [True, False])
+def test_model_with_bypass_input(device, training_mode):
     class NeuralNetWithBypassInput(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
             super(NeuralNetWithBypassInput, self).__init__()
@@ -1288,6 +1289,9 @@ def test_model_with_bypass_input(device):
     N, D_in, H, D_out = 32, 784, 500, 10
     pt_model = NeuralNetWithBypassInput(D_in, H, D_out).to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
+    if not training_mode:
+        pt_model.eval()
+        ort_model.eval()
 
     pt_x1 = torch.randn(N, D_in, device=device, requires_grad=True)
     pt_x2 = torch.randn(N, D_in, device=device, requires_grad=True)
