@@ -329,6 +329,8 @@ const float tanh_bound = 10.0f;
 
 #if defined(__GNUC__) && !defined(__wasm__)
 #define restrict __restrict__
+#elif defined(_MSC_VER)
+#define restrict __restrict
 #else
 #define restrict
 #endif
@@ -527,8 +529,23 @@ void tanh_exact(float* pd, int c, float alpha, float beta) {
   }
 }
 
-void merge_lstm_gates_to_memory(const float* restrict pprev, const float* restrict pi, const float* restrict pf,
-                                const float* restrict pg, float* restrict pcurr, int c) {
+// Help compiler simply and correctly optimize for pcurr == pprev case.
+// Although without this in_place(), if restrict pprev and pcur, compiler could also work.
+// Yet this in_place() follow the restrict semantic better.
+static void merge_lstm_gates_to_memory_in_place(const float* restrict pi, const float* restrict pf,
+                                                const float* restrict pg, float* restrict pcurr, int c) {
+  for (int i = 0; i < c; i++) {
+    pcurr[i] = pcurr[i] * pf[i] + pi[i] * pg[i];
+  }
+}
+
+void merge_lstm_gates_to_memory(const float* pprev, const float* restrict pi, const float* restrict pf,
+                                const float* restrict pg, float* pcurr, int c) {
+  if (pprev == pcurr) {
+    merge_lstm_gates_to_memory_in_place(pi, pf, pg, pcurr, c);
+    return;
+  }
+
   for (int i = 0; i < c; i++) {
     pcurr[i] = pprev[i] * pf[i] + pi[i] * pg[i];
   }
