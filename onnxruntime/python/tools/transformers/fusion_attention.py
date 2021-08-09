@@ -358,7 +358,7 @@ class FusionAttention(Fusion):
             logger.debug("fuse_attention: failed to match v path")
             return
         (_, _, add_v, matmul_v) = v_nodes
- 
+
         is_distill = False
         is_distill_add = False
         qk_paths = {

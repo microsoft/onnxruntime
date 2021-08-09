@@ -24,6 +24,24 @@ if(NOT onnxruntime_PYBIND_EXPORT_OPSCHEMA)
   list(REMOVE_ITEM onnxruntime_pybind_srcs  ${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_schema.cc)
 endif()
 
+if (onnxruntime_ENABLE_EAGER_MODE)
+  list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_PREBUILT_PYTORCH_PATH})
+  find_package(Torch REQUIRED)
+  find_library(TORCH_PYTHON_LIBRARY torch_python PATHS "${TORCH_INSTALL_PREFIX}/lib")
+
+  file(GLOB onnxruntime_eager_extension_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_ROOT}/orttraining/eager/*.cpp"
+    )
+
+  if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+    list(APPEND onnxruntime_eager_extension_srcs 
+              "${ORTTRAINING_ROOT}/orttraining/core/framework/torch/dlpack_python.cc")
+  endif()
+
+  list(APPEND onnxruntime_pybind_srcs 
+              ${onnxruntime_eager_extension_srcs})
+endif()
+
 onnxruntime_add_shared_library_module(onnxruntime_pybind11_state ${onnxruntime_pybind_srcs})
 if(MSVC)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
@@ -73,6 +91,19 @@ if (onnxruntime_ENABLE_TRAINING)
   target_include_directories(onnxruntime_pybind11_state PRIVATE ${ORTTRAINING_ROOT})
   target_include_directories(onnxruntime_pybind11_state PRIVATE ${PROJECT_SOURCE_DIR}/external/dlpack/include)
   target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_training)
+endif()
+
+if (onnxruntime_ENABLE_EAGER_MODE)
+  # todo: this is because the prebuild pytorch may use a different version of protobuf headers.
+  # force the build to find the protobuf headers ort using.
+  target_include_directories(onnxruntime_pybind11_state PRIVATE "${REPO_ROOT}/cmake/external/protobuf/src")
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_eager ${TORCH_LIBRARIES} ${TORCH_PYTHON_LIBRARY})
+  # the ort_aten.g.cpp is generated from tools. currently it has some limitations.
+  # todo: fix this
+  set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_aten.g.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+  set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_aten.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+  set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_guard.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+  set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_tensor.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
 endif()
 
 target_link_libraries(onnxruntime_pybind11_state PRIVATE
@@ -308,6 +339,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/quantization
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/eager_test
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
@@ -407,6 +439,18 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_transformers_testdata_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/
+  )
+endif()
+
+if (onnxruntime_BUILD_UNIT_TESTS AND onnxruntime_ENABLE_EAGER_MODE)
+  file(GLOB onnxruntime_eager_test_srcs CONFIGURE_DEPENDS
+      "${ORTTRAINING_ROOT}/orttraining/eager/test/*.py"
+  )
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_eager_test_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/eager_test/
   )
 endif()
 

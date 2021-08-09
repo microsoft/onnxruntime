@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+'use strict';
+
 module.exports = {
   root: true,
   ignorePatterns: ['**/*.js', 'node_modules/', 'types/', 'dist/'],
