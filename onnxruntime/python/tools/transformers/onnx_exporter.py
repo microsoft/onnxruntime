@@ -189,8 +189,8 @@ def optimize_onnx_model(model_name, onnx_model_path, optimized_model_path, model
         Path(optimized_model_path).parent.mkdir(parents=True, exist_ok=True)
 
         from optimizer import optimize_model
-        from onnx_model_bert import BertOptimizationOptions
-        optimization_options = BertOptimizationOptions(model_type)
+        from fusion_options import FusionOptions
+        optimization_options = FusionOptions(model_type)
         optimization_options.use_raw_attention_mask(use_raw_attention_mask)
         if Precision.FLOAT16 == precision:
             optimization_options.enable_gelu_approximation = True
