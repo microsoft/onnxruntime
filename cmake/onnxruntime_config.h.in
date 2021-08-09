@@ -3,6 +3,7 @@
 
 #pragma once
 
+#cmakedefine HAS_UNUSED_BUT_SET_PARAMETER
 #cmakedefine HAS_UNUSED_BUT_SET_VARIABLE
 #cmakedefine HAS_UNUSED_VARIABLE
 #cmakedefine HAS_CAST_FUNCTION_TYPE
