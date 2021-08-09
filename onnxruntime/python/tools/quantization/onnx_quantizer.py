@@ -198,6 +198,7 @@ class ONNXQuantizer:
     def quantize_model(self):
         self.remove_fake_quantized_nodes()
 
+        # NOTE(kreeger): it looks like we don't have an option to do optional optimizations for quantization.
         for node in self.model.nodes():
             number_of_existing_new_nodes = len(self.new_nodes)
             if self.should_quantize(node):

@@ -276,7 +276,9 @@ Status EmbedLayerNormBiasGelu<T>::Compute(OpKernelContext* context) const {
   // 3.) Determine if a fusing can be done for quantization only.
   //
 
+  // NOTE: this was taken from what is in SLN.
   int64_t task_count = batch_size * sequence_length;
+
   concurrency::ThreadPool::TryBatchParallelFor(
       context->GetOperatorThreadPool(), static_cast<int32_t>(task_count),
       [&](ptrdiff_t task_idx) {
