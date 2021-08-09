@@ -731,7 +731,7 @@ if (onnxruntime_USE_COREML)
         "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/*.h"
         "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/*.cc"
       )
-  if (NOT (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS"))
+  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     list(REMOVE_ITEM onnxruntime_providers_coreml_cc_srcs_nested
     "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/model_builder.h"
     "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/model_builder.cc"
