@@ -2636,6 +2636,29 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
+
+  //
+  //
+  // TODO(kreeger): LEFT OFF RIGHT HERE. MATCH THIS DOC TO WHAT IS IN THE OP KERNEL!
+  //
+  //
+
+  static const char* QBiasGelu_ver1_doc =
+      R"DOC(Bias Gelu.
+It's an extension of Gelu. It takes the sum of input A and bias input B as the input of Gelu activation. )DOC";
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QBiasGelu)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(QBiasGelu_ver1_doc)
+      .Input(0, "A", "The normal input data.", "T")
+      .Input(1, "B", "The bias input data that is a 1D tensor.", "T")
+      .Output(0, "C", "The output.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
   // Used to be ONNX 1.7 Inverse(12)
   // Comment out docs not to increase the binary size
   //
