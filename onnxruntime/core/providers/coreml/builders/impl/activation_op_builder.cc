@@ -58,7 +58,6 @@ int ActivationOpBuilder::GetMinSupportedOpSet(const Node& /* node */) const {
   return 6;
 }
 
-#ifdef __APPLE__
 void CreateActivationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
     return;
@@ -75,7 +74,6 @@ void CreateActivationOpBuilder(const std::string& op_type, OpBuilderRegistration
     op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
   }
 }
-#endif
 
 }  // namespace coreml
 }  // namespace onnxruntime

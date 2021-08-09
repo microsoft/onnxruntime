@@ -13,16 +13,17 @@
 namespace onnxruntime {
 namespace coreml {
 
-#ifdef __APPLE__
 class TransposeOpBuilder : public BaseOpBuilder {
   // Add operator related
+#ifdef __APPLE__
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+#endif
 };
 
 // Add operator related
-
+#ifdef __APPLE__
 Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                  const Node& node,
                                                  const logging::Logger& logger) const {
@@ -48,12 +49,12 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
+#endif
 
 void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   op_registrations.builders.push_back(std::make_unique<TransposeOpBuilder>());
   op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
 }
-#endif
 
 }  // namespace coreml
 }  // namespace onnxruntime

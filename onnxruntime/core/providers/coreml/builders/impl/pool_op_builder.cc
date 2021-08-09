@@ -166,7 +166,6 @@ bool PoolOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
   return true;
 }
 
-#ifdef __APPLE__
 void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
     return;
@@ -184,7 +183,6 @@ void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
     op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
   }
 }
-#endif
 
 }  // namespace coreml
 }  // namespace onnxruntime

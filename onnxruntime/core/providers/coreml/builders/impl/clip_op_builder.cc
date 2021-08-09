@@ -135,12 +135,10 @@ bool ClipOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
   return GetClipMinMax(initializers, node, min, max, logger);
 }
 
-#ifdef __APPLE__
 void CreateClipOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   op_registrations.builders.push_back(std::make_unique<ClipOpBuilder>());
   op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
 }
-#endif
 
 }  // namespace coreml
 }  // namespace onnxruntime

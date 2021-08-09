@@ -726,20 +726,15 @@ if (onnxruntime_USE_COREML)
   )
 
   # Add builder source code
-  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin|iOS")
-    file(GLOB_RECURSE
+  file(GLOB_RECURSE
       onnxruntime_providers_coreml_cc_srcs_nested CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/*.h"
       "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/*.cc"
     )
-  else()
-    file(GLOB
-    onnxruntime_providers_coreml_cc_srcs_nested CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/helper.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/helper.cc"
-    "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/op_builder.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/impl/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/impl/*.cc"
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin|iOS")
+    list(REMOVE_ITEM onnxruntime_providers_coreml_cc_srcs_nested
+    "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/model_builder.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/model_builder.cc"
     )
   endif()
 

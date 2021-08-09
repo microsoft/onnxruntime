@@ -83,12 +83,10 @@ bool CastOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
   return true;
 }
 
-#ifdef __APPLE__
 void CreateCastOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   op_registrations.builders.push_back(std::make_unique<CastOpBuilder>());
   op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
 }
-#endif
 
 }  // namespace coreml
 }  // namespace onnxruntime

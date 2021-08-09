@@ -58,12 +58,10 @@ int BinaryOpBuilder::GetMinSupportedOpSet(const Node& /* node */) const {
   return 7;
 }
 
-#ifdef __APPLE__
 void CreateBinaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   op_registrations.builders.push_back(std::make_unique<BinaryOpBuilder>());
   op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
 }
-#endif
 
 }  // namespace coreml
 }  // namespace onnxruntime
