@@ -67,7 +67,7 @@ inline std::vector<OrtValue> GradientChecker<X_T, Y_T, JAC_T>::EvaluateFunctionA
     const std::vector<TensorInfo>& x_infos,
     const std::vector<TensorInfo>& y_infos,
     std::vector<std::vector<X_T>>* x_datas,
-    std::vector<std::vector<Y_T>>* y_datas, 
+    std::vector<std::vector<Y_T>>* y_datas,
     std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers /* = nullptr */) {
   // clear OpTester input/output/initializer_index
   op_session.ClearData();
@@ -342,7 +342,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeNumericJacobianTranspose(
     std::vector<std::vector<Y_T>>* y_datas,
     std::vector<std::vector<JAC_T>>* jacobian_ts,
     const std::vector<AttributeProto>& attributes,
-    bool add_shape, 
+    bool add_shape,
     std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers /* = nullptr */) {
   size_t y_num = y_infos.size();
   size_t x_num = x_infos.size();
@@ -457,7 +457,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
   InitJacobians(x_infos, y_infos, &jacobian_ns);
   // Compute numeric Jacobian.
   ORT_RETURN_IF_ERROR(ComputeNumericJacobianTranspose(
-      op_def, x_infos, y_infos, JAC_T{1e-3f}, x_datas, y_datas, &jacobian_ns, attributes, execution_providers));
+      op_def, x_infos, y_infos, JAC_T{1e-3f}, x_datas, y_datas, &jacobian_ns, attributes, true, execution_providers));
 
   // Compute the maximum error between theoretical and numeric Jacobians.
   *max_error = 0.0;
