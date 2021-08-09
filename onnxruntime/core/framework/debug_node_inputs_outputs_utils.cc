@@ -24,7 +24,8 @@ struct TensorMetadata {
   std::string name;
   std::string producer;
   std::string consumers;
-  int iteration;
+  std::string device;
+  int step;
 };
 
 bool FilterNode(const NodeDumpOptions& dump_options, const Node& node) {
@@ -126,19 +127,50 @@ void DumpTensorToFile(const Tensor& tensor, const std::string& tensor_name, cons
   ORT_THROW_IF_ERROR(Env::Default().FileClose(output_fd));
 }
 
-void DumpTensorToSqliteDb(const Tensor& tensor, const TensorMetadata& tensor_metadata) {
-
-  static int64_t counter = 0;
-  counter++;
+bool TensorExistsInSqlDb(int step, std::string name) {
 
   sqlite3 *db = SqliteConnection();
 
   std::stringstream ss; 
-  ss << "insert into tensors (iteration, name, value) ";
+  ss << "select count(name) from Tensors ";
+  ss << "  where name == \"" << name << "\"";
+  ss << "  and step == " << step << ";";
+
+  auto callback = [](void* exists, int argc, char** argv, char**) -> int { 
+    if (argc > 0 && atoi(argv[0]) > 0) {
+      *((bool*)exists) = true;
+    }
+    return 0; 
+  };
+
+  printf("%s\n", ss.str().c_str());
+  fflush(stdout);
+
+  const char *error_message = 0;
+  bool exists = false;
+  int rc = sqlite3_exec(db, ss.str().c_str(), callback, (void*)&exists, (char**)&error_message);
+  ORT_ENFORCE(rc == SQLITE_OK,
+    "Failed to query existence of tensor ", name, " on step ", step, " on ", error_message);
+
+  return exists;
+}
+
+void DumpTensorToSqliteDb(const Tensor& tensor, const TensorMetadata& tensor_metadata) {
+
+  if (TensorExistsInSqlDb(tensor_metadata.step, tensor_metadata.name)) {
+    return;
+  }
+
+  sqlite3 *db = SqliteConnection();
+
+  std::stringstream ss; 
+  ss << "insert into Tensors (step, name, value, device) ";
   ss << "values ( ";
-  ss << counter << ", ";
+  ss << tensor_metadata.step << ", ";
   ss << "\"" << tensor_metadata.name << "\", ";
-  ss << "? );";
+  ss << "?, ";
+  ss << "\"" << tensor_metadata.device << "\" ";
+  ss << ");";
 
   sqlite3_stmt *stmt = NULL;
   int rc = sqlite3_prepare_v2(db, ss.str().c_str(), -1, &stmt, NULL);
@@ -189,13 +221,14 @@ void DumpCpuTensor(
 
 void DumpTensor(
     const NodeDumpOptions& dump_options,
-    const Tensor& tensor, const TensorMetadata& tensor_metadata,
+    const Tensor& tensor, TensorMetadata& tensor_metadata,
     const SessionState& session_state) {
   // check tensor is on CPU before dumping it
   auto& tensor_location = tensor.Location();
   if (tensor_location.device.Type() == OrtDevice::CPU ||
       tensor_location.mem_type == OrtMemTypeCPUInput ||
       tensor_location.mem_type == OrtMemTypeCPUOutput) {
+    tensor_metadata.device = "CPU";
     DumpCpuTensor(dump_options, tensor, tensor_metadata);
   } else {
     std::cout << tensor_location << "\n";
@@ -211,6 +244,7 @@ void DumpTensor(
       const auto& data_transfer_mgr = session_state.GetDataTransferMgr();
       auto status = data_transfer_mgr.CopyTensor(tensor, cpu_tensor);
       if (status == common::Status::OK()) {
+        tensor_metadata.device = "GPU";
         DumpCpuTensor(dump_options, cpu_tensor, tensor_metadata);
       } else {
         std::cout << " failed to transfer data to cpu.\n";
@@ -301,7 +335,7 @@ sqlite3* SqliteConnection() {
      
       const char *sql_create_tensor_table = 
         "create table if not exists Tensors ( " \
-        "  iteration int not null, " \
+        "  step int not null, " \
         "  name text not null, " \
         "  shape TensorShapeProto, " \
         "  type TypeProto, "  \
@@ -311,15 +345,15 @@ sqlite3* SqliteConnection() {
         "  sizeInBytes int, " \
         "  producer NodeArg, " \
         "  consumers NodeArgList, " \
-        "  primary key (iteration, name) " \
+        "  primary key (step, name) " \
         ");";
         
       const char *error_message = 0;
       rc = sqlite3_exec(db, sql_create_tensor_table, NULL, 0, (char**)&error_message);
       ORT_ENFORCE(rc == SQLITE_OK, 
         "Failed to create Tensors table in sqlite3 db ", sqlite_db_path.c_str(), 
-        " on ", error_message); 
-  
+        " on ", error_message);
+ 
       return db;
     }(), &sqlite3_close);
 
@@ -337,8 +371,11 @@ static void PrintIf(bool boolean_expression, const std::string& message) {
 }
 
 void DumpNodeInputs(
-    const NodeDumpOptions& dump_options,
-    const OpKernelContext& context, const Node& node, const SessionState& session_state) {
+    const NodeDumpOptions& dump_options, 
+    const NodeDumpContext& dump_context, 
+    const OpKernelContext& context, 
+    const Node& node, 
+    const SessionState& session_state) {
   const bool is_any_output_dumped = IsAnyOutputDumped(dump_options);
   if (!is_any_output_dumped) {
     return;
@@ -368,6 +405,7 @@ void DumpNodeInputs(
 
           if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::InputData) != 0) {
 	    tensor_metadata.name = input_defs[i]->Name();
+	    tensor_metadata.step = dump_context.iteration;
             DumpTensor(dump_options, tensor, tensor_metadata, session_state);
           }
         } else {
@@ -384,11 +422,19 @@ void DumpNodeInputs(
 }
 
 void DumpNodeInputs(
-    const OpKernelContext& context, const Node& node, const SessionState& session_state) {
-  DumpNodeInputs(NodeDumpOptionsFromEnvironmentVariables(), context, node, session_state);
+    const NodeDumpContext& dump_context, 
+    const OpKernelContext& context, 
+    const Node& node, 
+    const SessionState& session_state) {
+  DumpNodeInputs(NodeDumpOptionsFromEnvironmentVariables(), dump_context, context, node, session_state);
 }
 
-void DumpNodeOutputs(const NodeDumpOptions& dump_options, OpKernelContext& context, const Node& node, const SessionState& session_state) {
+void DumpNodeOutputs(
+   const NodeDumpOptions& dump_options, 
+   const NodeDumpContext& dump_context, 
+   OpKernelContext& context, 
+   const Node& node, 
+   const SessionState& session_state) {
   const bool is_any_output_dumped = IsAnyOutputDumped(dump_options);
   if (!is_any_output_dumped) {
     return;
@@ -415,6 +461,7 @@ void DumpNodeOutputs(const NodeDumpOptions& dump_options, OpKernelContext& conte
 
           if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::OutputData) != 0) {
 	    tensor_metadata.name = output_defs[i]->Name();
+	    tensor_metadata.step = dump_context.iteration;
             DumpTensor(dump_options, tensor, tensor_metadata, session_state);
           }
         } else {
@@ -433,8 +480,11 @@ void DumpNodeOutputs(const NodeDumpOptions& dump_options, OpKernelContext& conte
 }
 
 void DumpNodeOutputs(
-    OpKernelContext& context, const Node& node, const SessionState& session_state) {
-  DumpNodeOutputs(NodeDumpOptionsFromEnvironmentVariables(), context, node, session_state);
+    const NodeDumpContext& dump_context,
+    OpKernelContext& context, 
+    const Node& node, 
+    const SessionState& session_state) {
+  DumpNodeOutputs(NodeDumpOptionsFromEnvironmentVariables(), dump_context, context, node, session_state);
 }
 
 }  // namespace utils

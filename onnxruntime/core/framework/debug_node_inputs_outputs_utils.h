@@ -108,18 +108,30 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables();
 // dumps inputs for a node
 void DumpNodeInputs(
     const NodeDumpOptions& dump_options,
-    const OpKernelContext& context, const Node& node, const SessionState& session_state);
+    const NodeDumpContext& dump_context,
+    const OpKernelContext& context, 
+    const Node& node, 
+    const SessionState& session_state);
 
 void DumpNodeInputs(
-    const OpKernelContext& context, const Node& node, const SessionState& session_state);
+    const NodeDumpContext& dump_context,
+    const OpKernelContext& context, 
+    const Node& node, 
+    const SessionState& session_state);
 
 // dumps outputs for a node
 void DumpNodeOutputs(
     const NodeDumpOptions& dump_options,
-    OpKernelContext& context, const Node& node, const SessionState& session_state);
+    const NodeDumpContext& dump_context,
+    OpKernelContext& context, 
+    const Node& node, 
+    const SessionState& session_state);
 
 void DumpNodeOutputs(
-    OpKernelContext& context, const Node& node, const SessionState& session_state);
+    const NodeDumpContext& dump_context,
+    OpKernelContext& context, 
+    const Node& node, 
+    const SessionState& session_state);
 
 sqlite3* SqliteConnection(); 
 
