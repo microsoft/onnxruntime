@@ -88,7 +88,7 @@ class GradientBuilderBase {
   }
 
   void TryRecordStashedForwardGraphTensor(const std::string& name) const {
-    if(stashed_tensors_.find(name) == stashed_tensors_.end()) {
+    if (stashed_tensors_.find(name) == stashed_tensors_.end()) {
       stashed_tensors_.insert(name);
     }
   }
@@ -98,7 +98,7 @@ class GradientBuilderBase {
   }
 
   // i-th input of forward op
-  ArgDef I(const size_t i) const {
+  ArgDef I(const size_t i, bool record_stashing = true) const {
     ORT_ENFORCE(i < node_->InputDefs().size());
 
     const std::string& name = node_->InputDefs()[i]->Name();
@@ -106,16 +106,21 @@ class GradientBuilderBase {
     if (recomputed_nodearg) {
       const Node* producer_node = graph_->GetProducerNode(name);
       LOGS(logger_, INFO) << "Recomputed node arg found for " << producer_node->Name();
-      TryRecordStashedForwardGraphTensor(recomputed_nodearg->Name());
+      if (record_stashing) {
+        TryRecordStashedForwardGraphTensor(recomputed_nodearg->Name());
+      }
+
       return ArgDef(recomputed_nodearg->Name(), recomputed_nodearg->TypeAsProto());
     }
 
-    TryRecordStashedForwardGraphTensor(node_->InputDefs()[i]->Name());
+    if (record_stashing) {
+      TryRecordStashedForwardGraphTensor(node_->InputDefs()[i]->Name());
+    }
     return ArgDef(node_->InputDefs()[i]->Name(), node_->InputDefs()[i]->TypeAsProto());
   }
 
   // i-th output of forward op
-  ArgDef O(const size_t i) const {
+  ArgDef O(const size_t i, bool record_stashing = true) const {
     ORT_ENFORCE(i < node_->OutputDefs().size());
 
     const std::string& name = node_->OutputDefs()[i]->Name();
@@ -123,11 +128,16 @@ class GradientBuilderBase {
     if (recomputed_nodearg) {
       const Node* producer_node = graph_->GetProducerNode(name);
       LOGS(logger_, INFO) << "Recomputed node arg found for " << producer_node->Name();
-      TryRecordStashedForwardGraphTensor(recomputed_nodearg->Name());
+      if (record_stashing) {
+        TryRecordStashedForwardGraphTensor(recomputed_nodearg->Name());
+      }
+
       return ArgDef(recomputed_nodearg->Name(), recomputed_nodearg->TypeAsProto());
     }
 
-    TryRecordStashedForwardGraphTensor(node_->OutputDefs()[i]->Name());
+    if (record_stashing) {
+      TryRecordStashedForwardGraphTensor(node_->OutputDefs()[i]->Name());
+    }
     return ArgDef(node_->OutputDefs()[i]->Name(), node_->OutputDefs()[i]->TypeAsProto());
   }
 

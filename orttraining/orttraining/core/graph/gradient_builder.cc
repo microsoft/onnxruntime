@@ -1332,7 +1332,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetLayerNormalizationGradient) {
-  if (IsTensorStashed(I(0).name)) {
+  if (IsTensorStashed(I(0, false).name)) {
     return std::vector<NodeDef>{
         NodeDef(OpDef{"LayerNormalizationGrad", kMSDomain, 1},
                 {GO(0), I(0), I(1), O(1), O(2)},
