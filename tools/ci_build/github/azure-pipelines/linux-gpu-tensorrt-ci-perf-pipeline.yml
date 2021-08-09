@@ -58,9 +58,18 @@ jobs:
     - Agent.Name -equals K8S-HVZD1T2CL-HVZD1T2
 
   variables:
+    - name: trt_dockerfile
+      ${{ if eq(parameters.TrtVersion, '8.0.1.6') }}:
+        value: Dockerfile.ubuntu_cuda11_3_tensorrt8_0
+      ${{ if eq(parameters.TrtVersion, '7.2.3.4') }}:
+        value: Dockerfile.ubuntu_cuda11_1_tensorrt7_2
+      ${{ if eq(parameters.TrtVersion, '7.1.3.4') }}:
+        value: Dockerfile.ubuntu_cuda10_2_tensorrt7_1
     - name: build_args
       ${{ if eq(parameters.RunTrtContainer, true) }}:
         value: Dockerfile.tensorrt-perf -t $(trtContainer) -o $(Build.SourcesDirectory)/onnxruntime/dockerfiles/Dockerfile.tensorrt
+      ${{ if ne(parameters.RunTrtContainer, true) }}:
+        value: Dockerfile.custom-trt-perf -t ${{ parameters.TrtVersion }} -o $(Build.SourcesDirectory)/onnxruntime/tools/ci_build/github/linux/docker/$(trt_dockerfile)
     - name: environment
       ${{ if ne(parameters.RunMachine, true) }}:
         value: docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf 
@@ -71,11 +80,6 @@ jobs:
   timeoutInMinutes: 3000 
       
   steps:
-    
-    - ${{ if eq(parameters.MemTest, true) }}:
-      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/run_mem_test_docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/ -w /workspace/ -l false'
-        displayName: 'Run Memory Test'
-        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
 
     - ${{ if eq(parameters.BuildORT, true) }}:
 
@@ -89,7 +93,7 @@ jobs:
           displayName: 'Build latest ORT'
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
         
-    - ${{ if eq(parameters.PublishWheel, true) }}:
+    - ${{ if and(eq(parameters.PublishWheel, true), eq(variables.trtContainer, '21.07')) }}:
     
       - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/copy_wheel.sh -t $(trtContainer)'
         displayName: 'Copy Wheel from Docker'
@@ -104,6 +108,11 @@ jobs:
           filePath: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/start_job.ps1'
           arguments: '-file_folder $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/dist -account_key $(account-key) -trt_container $(trtContainer)'
         displayName: 'Start Anubis Job'
+      
+    - ${{ if eq(parameters.MemTest, true) }}:
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/run_mem_test_docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/ -w /code/ -l false'
+        displayName: 'Run Memory Test'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
 
     - ${{ each option in parameters.ModelGroups }}:
       - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(with_arguments) -o ${{option}} -m $(${{option}})'
