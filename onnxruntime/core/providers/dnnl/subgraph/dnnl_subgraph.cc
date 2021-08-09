@@ -46,21 +46,24 @@ dnnl::memory::dims DnnlTensor::Dim() {
 }
 
 dnnl::memory::data_type DnnlTensor::Type() {
-  auto& data_type = *arg_->Type();
-  if (data_type == "float16") {
-    return dnnl::memory::data_type::f16;
-  } else if (data_type == "float" || data_type == "tensor(float)") {
-    return dnnl::memory::data_type::f32;
-  } else if (data_type == "int8" || data_type == "tensor(int8)") {
-    return dnnl::memory::data_type::s8;
-  } else if (data_type == "int32" || data_type == "tensor(int32)") {
-    return dnnl::memory::data_type::s32;
-  } else if (data_type == "uint8" || data_type == "tensor(uint8)") {
-    return dnnl::memory::data_type::u8;
-  } else if (data_type == "bf16") {
-    return dnnl::memory::data_type::bf16;
-  } else {
-    return dnnl::memory::data_type::undef;
+  auto data_type = arg_->TypeAsProto()->tensor_type().elem_type();
+  switch (data_type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED:
+      return dnnl::memory::data_type::undef;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+      return dnnl::memory::data_type::f16;
+    case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
+      return dnnl::memory::data_type::bf16;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+      return dnnl::memory::data_type::f32;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+      return dnnl::memory::data_type::s32;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+      return dnnl::memory::data_type::s8;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+      return dnnl::memory::data_type::u8;
+    default:
+      ORT_THROW("Unsupported data type: ", data_type);
   }
 }
 
