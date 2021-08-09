@@ -17,7 +17,7 @@ RUN apt-get update &&\
 RUN unattended-upgrade
 
 WORKDIR /code
-ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/code/cmake-3.18.3-Linux-x86_64/bin:/opt/miniconda/bin:${PATH}
+ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/code/cmake-3.21.0-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
 ENV LD_LIBRARY_PATH /opt/miniconda/lib:$LD_LIBRARY_PATH
 
 # Install python3
@@ -43,20 +43,3 @@ RUN v="${TRT%.*}-1+cuda${CUDA_VERSION%.*}" &&\
     apt-get install -y libnvinfer7=${v} libnvinfer-plugin7=${v} libnvparsers7=${v} libnvonnxparsers7=${v} libnvinfer-dev=${v} libnvinfer-plugin-dev=${v} libnvparsers-dev=${v} python3-libnvinfer=${v} &&\
     apt-mark hold libnvinfer7 libnvinfer-plugin7 libnvparsers7 libnvonnxparsers7 libnvinfer-dev libnvinfer-plugin-dev libnvparsers-dev python3-libnvinfer
 
-# Prepare onnxruntime repository & build onnxruntime with TensorRT
-RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime &&\
-    /bin/sh onnxruntime/onnxruntime/python/tools/tensorrt/perf/build/install_common_deps.sh &&\
-    cp onnxruntime/docs/Privacy.md /code/Privacy.md &&\
-    cp onnxruntime/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt &&\
-    cp onnxruntime/ThirdPartyNotices.txt /code/ThirdPartyNotices.txt &&\
-    cd onnxruntime &&\
-    trt_v=${TRT%.*.*} &&\
-    CUR_PWD=$(pwd) &&\ 
-    cd cmake/external/onnx-tensorrt/ &&\
-    git remote update &&\
-    git checkout ${trt_v} &&\
-    cd ${CUR_PWD} &&\
-    /bin/sh build.sh --parallel --build_shared_lib --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ --config Release --build_wheel --skip_tests --skip_submodule_sync &&\
-    pip install /code/onnxruntime/build/Linux/Release/dist/*.whl &&\
-    cd .. &&\
-    rm -rf cmake-3.18.3-Linux-x86_64
