@@ -15,13 +15,14 @@ class BaseOpBuilder : public IOpBuilder {
   virtual ~BaseOpBuilder() = default;
 
   // Add operator related
- #ifdef __APPLE__
  public:
+#ifdef __APPLE__
   virtual void AddInitializersToSkip(ModelBuilder& /* model_builder */, const Node& /* node */) const override {}
   Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
                            const logging::Logger& logger) const override final ORT_MUST_USE_RESULT;
-
+#endif
  protected:
+#ifdef __APPLE__
   virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                        const logging::Logger& logger) const ORT_MUST_USE_RESULT = 0;
 

@@ -17,11 +17,13 @@ namespace coreml {
 
 class BatchNormalizationOpBuilder : public BaseOpBuilder {
   // Add operator related
-#ifdef __APPLE__
- public:
-  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
+ public:
+#ifdef __APPLE__
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+#endif
  private:
+#ifdef __APPLE__
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 #endif

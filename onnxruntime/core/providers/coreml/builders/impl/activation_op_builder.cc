@@ -12,9 +12,9 @@ namespace onnxruntime {
 namespace coreml {
 
 class ActivationOpBuilder : public BaseOpBuilder {
-// Add operator related
-#ifdef __APPLE__
+  // Add operator related
  private:
+#ifdef __APPLE__
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 #endif
