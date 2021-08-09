@@ -2,6 +2,7 @@ from .quant_utils import QuantizationMode
 from .operators.base_operator import QuantOperatorBase
 from .operators.qdq_base_operator import QDQOperatorBase
 from .operators.matmul import MatMulInteger, QLinearMatMul
+from .operators.bias_gelu import BiasGeluQuant
 from .operators.attention import AttentionQuant
 from .operators.embed_layernorm import EmbedLayerNormalizationQuant
 from .operators.gather import GatherQuant
@@ -23,7 +24,9 @@ CommonOpsRegistry = {
     "EmbedLayerNormalization": EmbedLayerNormalizationQuant,
 }
 
+# TODO(kreeger): determine if this is the spot I want it.
 IntegerOpsRegistry = {
+    "BiasGelu": BiasGeluQuant,
     "Conv": ConvInteger,
     "MatMul": MatMulInteger,
     "Attention": AttentionQuant,
