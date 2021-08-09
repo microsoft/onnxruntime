@@ -325,6 +325,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/datasets
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/external/include/
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/featurizer_ops
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model
@@ -361,6 +362,12 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_capi_training_srcs}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training/
+  COMMAND ${CMAKE_COMMAND} -E create_symlink
+      $<TARGET_FILE_DIR:${build_output_target}>/include/google
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/external/include/google
+  COMMAND ${CMAKE_COMMAND} -E create_symlink
+      $<TARGET_FILE_DIR:${build_output_target}>/external/onnx/onnx
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/external/include/onnx
   COMMAND ${CMAKE_COMMAND} -E copy
       $<TARGET_FILE:onnxruntime_pybind11_state>
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
