@@ -285,6 +285,9 @@ jobs:
      )
 
      move !trt_dir!\runtimes\win-x64\native\onnxruntime_providers_tensorrt.dll !gpu_dir!\runtimes\win-x64\native\onnxruntime_providers_tensorrt.dll
+     move !trt_dir!\runtimes\win-x64\native\onnxruntime.dll !gpu_dir!\runtimes\win-x64\native\onnxruntime.dll
+     move !trt_dir!\runtimes\win-x64\native\onnxruntime.lib !gpu_dir!\runtimes\win-x64\native\onnxruntime.lib
+     move !trt_dir!\runtimes\win-x64\native\onnxruntime.pdb !gpu_dir!\runtimes\win-x64\native\onnxruntime.pdb
 
      pushd !gpu_dir! 
      zip -r ..\!gpu_zip! .
