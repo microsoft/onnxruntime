@@ -16,9 +16,9 @@ namespace onnxruntime {
 namespace coreml {
 
 class ConcatOpBuilder : public BaseOpBuilder {
-  // Add operator related
- private:
+// Add operator related
 #ifdef __APPLE__
+ private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 #endif
