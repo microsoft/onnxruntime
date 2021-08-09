@@ -71,11 +71,6 @@ jobs:
   timeoutInMinutes: 3000 
       
   steps:
-    
-    - ${{ if eq(parameters.MemTest, true) }}:
-      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/run_mem_test_docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/ -w /workspace/ -l false'
-        displayName: 'Run Memory Test'
-        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
 
     - ${{ if eq(parameters.BuildORT, true) }}:
 
@@ -104,6 +99,11 @@ jobs:
           filePath: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/start_job.ps1'
           arguments: '-file_folder $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/dist -account_key $(account-key) -trt_container $(trtContainer)'
         displayName: 'Start Anubis Job'
+      
+    - ${{ if eq(parameters.MemTest, true) }}:
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/run_mem_test_docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/ -w /code/ -l false'
+        displayName: 'Run Memory Test'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
 
     - ${{ each option in parameters.ModelGroups }}:
       - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(with_arguments) -o ${{option}} -m $(${{option}})'
