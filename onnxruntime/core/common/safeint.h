@@ -24,7 +24,12 @@ class SafeIntExceptionHandler<onnxruntime::OnnxRuntimeException> {
 
 #define SAFEINT_EXCEPTION_HANDLER_CPP 1
 #define SafeIntDefaultExceptionHandler SafeIntExceptionHandler<onnxruntime::OnnxRuntimeException>
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-but-set-parameter"
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-but-set-parameter"
+#endif
 #include "safeint/SafeInt.hpp"
-#pragma clang diagnostic pop
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
