@@ -8,7 +8,6 @@
 #include "core/providers/rocm/math/binary_elementwise_ops_impl.h"
 #include "core/providers/rocm/math/binary_elementwise_ops.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/framework/op_kernel_context_internal.h"
 
 using namespace onnxruntime::common;
 namespace onnxruntime {
@@ -21,7 +20,7 @@ namespace rocm {
       1,                                                          \
       T,                                                          \
       kRocmExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .InputMemoryType(OrtMemTypeCPUInput, 1)                 \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);

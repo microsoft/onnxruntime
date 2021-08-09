@@ -130,7 +130,7 @@ std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider() {
 #ifdef USE_ROCM
   OrtROCMProviderOptions provider_options{};
   provider_options.do_copy_in_default_stream = true;
-  if (auto factory = CreateExecutionProviderFactory_ROCM(&provider_options))
+  if (auto factory = CreateExecutionProviderFactory_Rocm(&provider_options))
     return factory->CreateProvider();
 #endif
   return nullptr;

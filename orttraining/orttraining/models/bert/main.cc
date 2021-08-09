@@ -18,8 +18,10 @@ std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const c
 }  // namespace onnxruntime
 #endif
 #ifdef USE_ROCM
-#include "core/providers/rocm/rocm_allocator.h"
-#include "core/providers/rocm/rocm_provider_factory_creator.h"
+namespace onnxruntime {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rocm(const OrtROCMProviderOptions* provider_options);
+std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name);
+}  // namespace onnxruntime
 #endif
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
@@ -631,11 +633,23 @@ void setup_training_params(BertParameters& params) {
 
 #ifdef USE_ROCM
   {
-    ROCMExecutionProviderInfo info{};
-    info.device_id = gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
+    OrtROCMProviderOptions info{
+        gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank()),
+        OrtCudnnConvAlgoSearch::EXHAUSTIVE,
+        std::numeric_limits<size_t>::max(),
+        0,
+        true,
+        0,
+        nullptr,
+        nullptr};
 
-    params.providers.emplace(kRocmExecutionProvider, CreateExecutionProviderFactory_ROCM(info));
-    params.input_allocator = std::make_shared<ROCMPinnedAllocator>(info.device_id, CUDA_PINNED);
+    if (params.gpu_mem_limit_in_gb > 0) {
+      info.gpu_mem_limit = gsl::narrow<size_t>(params.gpu_mem_limit_in_gb * 1024 * 1024 * 1024);
+    }
+    info.cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE;
+
+    params.providers.emplace(kRocmExecutionProvider, CreateExecutionProviderFactory_Rocm(&info));
+    params.input_allocator = CreateROCMPinnedAllocator(info.device_id, ROCM_PINNED);
   }
 #endif
 

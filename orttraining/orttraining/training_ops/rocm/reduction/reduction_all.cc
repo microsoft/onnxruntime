@@ -3,21 +3,20 @@
 
 #include "orttraining/training_ops/rocm/reduction/reduction_all.h"
 
-#include "core/framework/op_kernel_context_internal.h"
 #include "core/providers/rocm/reduction/reduction_functions.h"
 #include "core/providers/rocm/shared_inc/accumulation_type.h"
 
 namespace onnxruntime {
 namespace rocm {
 
-#define REGISTER_REDUCE_ALL_KERNEL_TYPED(Name, TIn, TOut)                                                                                       \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                                \
-      Name,                                                                                                                                     \
-      kMSDomain,                                                                                                                                \
-      1,                                                                                                                                        \
-      TIn##_##TOut,                                                                                                                             \
-      kRocmExecutionProvider,                                                                                                                   \
-      KernelDefBuilder().TypeConstraint("TIn", DataTypeImpl::GetTensorType<TIn>()).TypeConstraint("TOut", DataTypeImpl::GetTensorType<TOut>()), \
+#define REGISTER_REDUCE_ALL_KERNEL_TYPED(Name, TIn, TOut)                                                                                                  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                                           \
+      Name,                                                                                                                                                \
+      kMSDomain,                                                                                                                                           \
+      1,                                                                                                                                                   \
+      TIn##_##TOut,                                                                                                                                        \
+      kRocmExecutionProvider,                                                                                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("TIn", DataTypeImpl::GetTensorType<TIn>()).TypeConstraint("TOut", DataTypeImpl::GetTensorType<TOut>()), \
       Name<TIn, TOut>);
 
 template <typename TIn, typename TOut>

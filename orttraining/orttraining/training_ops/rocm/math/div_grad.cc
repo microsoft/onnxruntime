@@ -9,14 +9,14 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace rocm {
 
-#define DIVGRAD_REGISTER_KERNEL_TYPED(T)                                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      DivGrad,                                                                  \
-      kMSDomain,                                                                \
-      1,                                                                        \
-      T,                                                                        \
-      kRocmExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define DIVGRAD_REGISTER_KERNEL_TYPED(T)                                                   \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      DivGrad,                                                                             \
+      kMSDomain,                                                                           \
+      1,                                                                                   \
+      T,                                                                                   \
+      kRocmExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       DivGrad<T>);
 
 DIVGRAD_REGISTER_KERNEL_TYPED(MLFloat16)

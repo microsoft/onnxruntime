@@ -118,7 +118,6 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   set(ONNXRUNTIME_LIBS
       onnxruntime_session
       ${onnxruntime_libs}
-      ${PROVIDERS_ROCM}
       ${PROVIDERS_MKLDNN}
       onnxruntime_optimizer
       onnxruntime_providers
