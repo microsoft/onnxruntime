@@ -256,11 +256,9 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
 
   // so far, visited are the minimum node in between
   // visited_node_args are the node_args involved
-  std::unordered_set<std::string> stashed_tensors;
-  std::unordered_set<std::string> invertible_ops{"LayerNormalization"};
   for (int index = 0; index < 2; index += 1) {
     for (auto node : visited) {
-      if (invertible_ops.find(node->OpType()) == invertible_ops.end()) {
+      if (INVERTIBLE_OPS.find(node->OpType()) == INVERTIBLE_OPS.end()) {
         if (index == 1) {
           continue;
         }
@@ -282,7 +280,7 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
       }
 
       GradientDef node_defs = GetGradientForOp(gradient_graph_config_, graph_, node, output_args_need_grad,
-                                               input_args_need_grad, logger_, stashed_tensors);
+                                               input_args_need_grad, logger_, stashed_tensors_);
 
       if (node_defs.empty()) {
         LOGS(logger_, WARNING) << "GetGradientForOp() did not create any nodes for node "
