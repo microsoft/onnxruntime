@@ -58,9 +58,18 @@ jobs:
     - Agent.Name -equals K8S-HVZD1T2CL-HVZD1T2
 
   variables:
+    - name: trt_dockerfile
+      ${{ if eq( ${{ parameters.TrtVersion }}, '8.0.1.6') }}:
+        value: Dockerfile.ubuntu_cuda11_3_tensorrt8_0
+      ${{ if eq( ${{ parameters.TrtVersion }}, '7.2.3.4') }}:
+        value: Dockerfile.ubuntu_cuda11_1_tensorrt7_2
+      ${{ if eq( ${{ parameters.TrtVersion }}, '7.1.3.4') }}:
+        value: Dockerfile.ubuntu_cuda10_2_tensorrt7_1
     - name: build_args
       ${{ if eq(parameters.RunTrtContainer, true) }}:
         value: Dockerfile.tensorrt-perf -t $(trtContainer) -o $(Build.SourcesDirectory)/onnxruntime/dockerfiles/Dockerfile.tensorrt
+      ${{ if ne(parameters.RunTrtContainer, true) }}:
+        value: Dockerfile.custom-trt-perf -t ${{ parameters.TrtVersion }} -o $(Build.SourcesDirectory)/onnxruntime/tools/ci_build/github/linux/docker/$(trt_dockerfile)
     - name: environment
       ${{ if ne(parameters.RunMachine, true) }}:
         value: docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf 
