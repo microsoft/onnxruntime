@@ -24,10 +24,21 @@ bool DnnlDefaultNodeCapability::Supported(const Node* node) const {
 bool DnnlDefaultNodeCapability::IsTypeSupported(const Node* node) const {
   auto node_inputs = node->InputDefs();
   if (!node_inputs.empty() && node_inputs[0]->Type() != nullptr) {
+    constexpr size_t TENSOR_PREFIX_LEN = 7; //Precomputed value of std::string("tensor(").length()
     for (auto inputType : inputTypes_) {
-      if (node_inputs[0]->Type()->find(inputType) != std::string::npos) {
+      // Check for string "tensor(data_type)"
+      // Exact length check done for 2 reasons to avoid the out_of_range exception from the compare call and
+      // to check that the string ends in ')'.  This will prevent false matching "float" data type for "float16" data type.
+      // The "+ 1" in the formula is to account for the ending ')' in the string length.
+      // check that the node_inputs[0]->Type() string after the prefix "tensor(" matches the inputType.
+      if ((TENSOR_PREFIX_LEN + inputType.length() + 1 ) == node_inputs[0]->Type()->length() &&
+          node_inputs[0]->Type()->compare(TENSOR_PREFIX_LEN, inputType.length(), inputType) == 0) {
         return true;
       }
+      if (node_inputs[0]->Type()->compare(inputType) == 0) {
+        return true;
+      }
+
     }
   }
   return false;
