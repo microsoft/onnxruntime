@@ -1802,8 +1802,6 @@ if (WINDOWS_STORE)
   endif()
 endif()
 
-include(flake8.cmake)
-
 if(UNIX)
   option(BUILD_PKGCONFIG_FILES "Build and install pkg-config files" ON)
 else()
