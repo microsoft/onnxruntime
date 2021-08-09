@@ -274,17 +274,6 @@ class StatelessModel(torch.nn.Module):
     def forward(self, x):
         return x
 
-class DuplicatedOutputNet(torch.nn.Module):
-    def __init__(self, input_size, num_classes):
-        super(DuplicatedOutputNet, self).__init__()
-
-        self.fc1 = torch.nn.Linear(input_size, num_classes)
-
-    def forward(self, input1):
-        out = self.fc1(input1)
-        out2 = input1+20
-        return tuple([out, {'inner_states': [out2, out]}])
-
 # TODO: This is a workaround for the problem that pytest is still cleaning up the previous test
 # while the next task already start. 
 @pytest.fixture(autouse=True)
@@ -3143,13 +3132,29 @@ def test_debug_options_log_level_validation_fails_on_type_mismatch():
         _ = DebugOptions(log_level=log_level)
     assert f"Expected log_level of type LogLevel, got {type(log_level)}." in str(ex_info.value)
 
-def test_duplicated_output_eval():
+@pytest.mark.parametrize("training_mode", [True, False])
+@pytest.mark.parametrize("set_grad_enabled", [True, False])
+def test_duplicated_output_all_modes(training_mode, set_grad_enabled):
+
+    class DuplicatedOutputNet(torch.nn.Module):
+        def __init__(self, input_size, num_classes):
+            super(DuplicatedOutputNet, self).__init__()
+
+            self.fc1 = torch.nn.Linear(input_size, num_classes)
+
+        def forward(self, input1):
+            out = self.fc1(input1)
+            out2 = input1+20
+            return tuple([out, {'inner_states': [out2, out]}])
+
     device = 'cuda'
     N, D_in, H, D_out = 64, 784, 500, 10
     pt_model = DuplicatedOutputNet(D_in, D_out).to(device)
-    pt_model.eval()
     ort_model = ORTModule(copy.deepcopy(pt_model))
-    ort_model.eval()
+    if not training_mode:
+        pt_model.eval()
+        ort_model.eval()
+    torch.set_grad_enabled(set_grad_enabled)
     x = torch.randn(N, D_in, device=device)
     y = copy.deepcopy(x)
 
@@ -3159,19 +3164,3 @@ def test_duplicated_output_eval():
     _test_helpers.assert_values_are_close(ort_out[0], pt_out[0])
     _test_helpers.assert_values_are_close(ort_out[1]['inner_states'][0], pt_out[1]['inner_states'][0])
     _test_helpers.assert_values_are_close(ort_out[1]['inner_states'][1], pt_out[1]['inner_states'][1])
-
-def test_duplicated_output_no_grad():
-    device = 'cuda'
-    N, D_in, H, D_out = 64, 784, 500, 10
-    pt_model = DuplicatedOutputNet(D_in, D_out).to(device)
-    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix='my_dummy_model'))
-    x = torch.randn(N, D_in, device=device)
-    y = copy.deepcopy(x)
-
-    with torch.no_grad():
-        pt_out = pt_model(x)
-        ort_out = ort_model(y)
-
-        _test_helpers.assert_values_are_close(ort_out[0], pt_out[0])
-        _test_helpers.assert_values_are_close(ort_out[1]['inner_states'][0], pt_out[1]['inner_states'][0])
-        _test_helpers.assert_values_are_close(ort_out[1]['inner_states'][1], pt_out[1]['inner_states'][1])
