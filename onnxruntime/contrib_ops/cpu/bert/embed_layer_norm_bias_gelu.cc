@@ -273,6 +273,7 @@ Status EmbedLayerNormBiasGelu<T>::Compute(OpKernelContext* context) const {
   // TODO(kreeger): LEFT OFF RIGHT HERE:
   // 1.) Experiment with task count or give up batches for f32
   // 2.) Move to fused implementation with shared code for SLN, MatMul, and BiasGelu.
+  // 3.) Determine if a fusing can be done for quantization only.
   //
 
   int64_t task_count = batch_size * sequence_length;
