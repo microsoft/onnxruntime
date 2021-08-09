@@ -60,6 +60,7 @@
 #include "core/optimizer/isinf_reducesum_fusion.h"
 #include "core/optimizer/propagate_cast_ops.h"
 #include "core/optimizer/utils.h"
+#include "core/optimizer/graph_output_deduplication.h"
 #include "core/platform/env.h"
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -4312,6 +4313,45 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
       std::map<std::string, int> op_to_count = CountOpsInGraph(transformed_graph);
       ASSERT_TRUE(op_to_count["Cast"] == expected_casts_count);
     }
+  }
+}
+
+TEST_F(GraphTransformationTests, GraphOutputDeduplication) {
+  // Given
+  auto model_uri = MODEL_FOLDER "duplicate_graph_outputs.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  auto op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 0);
+  ASSERT_TRUE(op_to_count["Add"] == 1);
+
+  // assert that the graph has duplicate outputs
+  std::unordered_map<std::string, int> output_node_arg_count;
+  for (auto& output_node_arg : graph.GetOutputs()) {
+    output_node_arg_count[output_node_arg->Name()]++;
+  }
+  ASSERT_TRUE(output_node_arg_count["X"] == 2);
+
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(std::make_unique<GraphOutputDeduplication>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+
+  // When
+  EXPECT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  // Then
+  op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["Identity"], 2);
+  std::unordered_map<std::string, int> output_node_arg_count_after_transformation;
+  for (auto& output_node_arg : graph.GetOutputs()) {
+    output_node_arg_count_after_transformation[output_node_arg->Name()]++;
+  }
+  EXPECT_FALSE(output_node_arg_count_after_transformation.count("X"));
+  for (auto& [output_name, count] : output_node_arg_count_after_transformation) {
+    EXPECT_EQ(output_name.find("X"), 0U);
+    EXPECT_EQ(count, 1);
   }
 }
 

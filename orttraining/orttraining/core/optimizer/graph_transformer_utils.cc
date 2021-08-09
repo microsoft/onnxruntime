@@ -17,6 +17,7 @@
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/conv_mul_fusion.h"
 #include "core/optimizer/div_mul_fusion.h"
+#include "core/optimizer/graph_output_deduplication.h"
 #include "core/optimizer/dropout_elimination.h"
 #include "core/optimizer/embed_layer_norm_fusion.h"
 #include "core/optimizer/expand_elimination.h"
@@ -83,6 +84,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       rule_transformer->Register(std::make_unique<CastElimination>());
       rule_transformer->Register(std::make_unique<NoopElimination>());
       rule_transformer->Register(std::make_unique<DivMulFusion>());
+      rule_transformer->Register(std::make_unique<GraphOutputDeduplication>());
       rule_transformer->Register(std::make_unique<EliminateDropout>());
       rule_transformer->Register(std::make_unique<GemmTransposeFusion>());
       rule_transformer->Register(std::make_unique<NotWhereFusion>());

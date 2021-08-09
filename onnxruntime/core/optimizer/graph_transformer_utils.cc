@@ -15,6 +15,7 @@
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/conv_mul_fusion.h"
 #include "core/optimizer/div_mul_fusion.h"
+#include "core/optimizer/graph_output_deduplication.h"
 #include "core/optimizer/dropout_elimination.h"
 #include "core/optimizer/dynamic_quantize_matmul_fusion.h"
 #include "core/optimizer/embed_layer_norm_fusion.h"
@@ -72,6 +73,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<CastElimination>());
       rules.push_back(std::make_unique<NoopElimination>());
       rules.push_back(std::make_unique<DivMulFusion>());
+      rules.push_back(std::make_unique<GraphOutputDeduplication>());
       rules.push_back(std::make_unique<FuseReluClip>());
       rules.push_back(std::make_unique<GemmTransposeFusion>());
       rules.push_back(std::make_unique<NotWhereFusion>());
