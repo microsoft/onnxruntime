@@ -93,7 +93,7 @@ jobs:
           displayName: 'Build latest ORT'
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
         
-    - ${{ if and(eq(parameters.PublishWheel, true), eq($(trtContainer), '21.07')) }}:
+    - ${{ if and(eq(parameters.PublishWheel, true), eq(variables.trtContainer, '21.07')) }}:
     
       - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/copy_wheel.sh -t $(trtContainer)'
         displayName: 'Copy Wheel from Docker'
