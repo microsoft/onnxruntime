@@ -319,8 +319,8 @@ Status CUDAExecutionProvider::OnRunStart() {
         CUDA_RETURN_IF_ERROR(cudaEventDestroy(e));
         it = deferred_release_cpu_ptr_.erase(it);
       } else if (event_query_status == cudaErrorNotReady) {
-        // ignore and clear the error if not ready
-        cudaGetLastError();
+        // ignore and clear the error if not ready; void to silence nodiscard
+        (void)cudaGetLastError();
         it++;
       } else {
         CUDA_RETURN_IF_ERROR(event_query_status);

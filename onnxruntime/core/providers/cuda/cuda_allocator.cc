@@ -60,7 +60,8 @@ void* CUDAAllocator::Alloc(size_t size) {
 void CUDAAllocator::Free(void* p) {
   SetDevice(false);
   CheckDevice(false);  // ignore CUDA failure when free
-  cudaFree(p);         // do not throw error since it's OK for cudaFree to fail during shutdown
+  // do not throw error since it's OK for cudaFree to fail during shutdown; void to silence nodiscard
+  (void)cudaFree(p);
 }
 
 void* CUDAExternalAllocator::Alloc(size_t size) {

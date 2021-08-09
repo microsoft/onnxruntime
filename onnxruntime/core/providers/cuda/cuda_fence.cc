@@ -47,16 +47,16 @@ bool CUDAFence::CanRelease() {
   cudaError_t status;
   status = cudaEventQuery(read_event_);
   if (status == cudaErrorNotReady) {
-      // ignore and clear the error if not ready
-      cudaGetLastError();
+      // ignore and clear the error if not ready; void to silence nodiscard
+      (void)cudaGetLastError();
       return false;
   } else if (status != cudaSuccess) {
       CudaCall<cudaError_t, true>(status, "cudaEventQuery(read_event_)", "CUDA", cudaSuccess);
   }
   status = cudaEventQuery(write_event_);
   if (status == cudaErrorNotReady) {
-      // ignore and clear the error if not ready
-      cudaGetLastError();
+      // ignore and clear the error if not ready; void to silence nodiscard
+      (void)cudaGetLastError();
       return false;
   } else if (status != cudaSuccess) {
       CudaCall<cudaError_t, true>(status, "cudaEventQuery(write_event_)", "CUDA", cudaSuccess);

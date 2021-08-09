@@ -25,13 +25,13 @@ const char* CudaErrString(ERRTYPE) {
 
 template <>
 const char* CudaErrString<cudaError_t>(cudaError_t x) {
-  cudaDeviceSynchronize();
+  (void)cudaDeviceSynchronize(); // void to silence nodiscard
   return cudaGetErrorString(x);
 }
 
 template <>
 const char* CudaErrString<cublasStatus_t>(cublasStatus_t e) {
-  cudaDeviceSynchronize();
+  (void)cudaDeviceSynchronize(); // void to silence nodiscard
 
 #ifdef USE_ROCM
   switch (e) {
@@ -71,19 +71,19 @@ const char* CudaErrString<cublasStatus_t>(cublasStatus_t e) {
 
 template <>
 const char* CudaErrString<curandStatus>(curandStatus) {
-  cudaDeviceSynchronize();
+  (void)cudaDeviceSynchronize(); // void to silence nodiscard
   return "(see curand.h & look for curandStatus or CURAND_STATUS_xxx)";
 }
 
 template <>
 const char* CudaErrString<cudnnStatus_t>(cudnnStatus_t e) {
-  cudaDeviceSynchronize();
+  (void)cudaDeviceSynchronize(); // void to silence nodiscard
   return cudnnGetErrorString(e);
 }
 
 template <>
 const char* CudaErrString<cufftResult>(cufftResult e) {
-  cudaDeviceSynchronize();
+  (void)cudaDeviceSynchronize(); // void to silence nodiscard
   switch (e) {
     CASE_ENUM_TO_STR(CUFFT_SUCCESS);
     CASE_ENUM_TO_STR(CUFFT_ALLOC_FAILED);
@@ -99,7 +99,7 @@ const char* CudaErrString<cufftResult>(cufftResult e) {
 #ifdef ORT_USE_NCCL
 template <>
 const char* CudaErrString<ncclResult_t>(ncclResult_t e) {
-  cudaDeviceSynchronize();
+  (void)cudaDeviceSynchronize(); // void to silence nodiscard
   return ncclGetErrorString(e);
 }
 #endif
@@ -124,8 +124,8 @@ bool CudaCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRT
         strcpy(hostname, "?");
 #endif
       int currentCudaDevice;
-      cudaGetDevice(&currentCudaDevice);
-      cudaGetLastError();  // clear last CUDA error
+      (void)cudaGetDevice(&currentCudaDevice); // void to silence nodiscard
+      (void)cudaGetLastError();  // clear last CUDA error; void to silence nodiscard
       static char str[1024];
       snprintf(str, 1024, "%s failure %d: %s ; GPU=%d ; hostname=%s ; expr=%s; %s",
                libName, (int)retCode, CudaErrString(retCode), currentCudaDevice,

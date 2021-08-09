@@ -146,14 +146,14 @@ provider_excluded_files = [
                 'tensor/upsample.h',
                 'tensor/upsample_impl.cu',
                 'tensor/upsample_impl.h',
-                'cuda_common.cc', # implements cublas math modes; no support in HIP
+                'cuda_common.cc',  # implements cublas math modes; no support in HIP
                 'cuda_memory_check.cc',
                 'cuda_memory_check.h',
-                'cuda_pch.cc', # not sure why we skip this one
-                'cuda_pch.h', # small header, hipify doesn't get it right, easier to do manually
+                'cuda_pch.cc',  # not sure why we skip this one
+                'cuda_pch.h',  # small header, hipify doesn't get it right, easier to do manually
                 'cudnn_common.cc',
                 'cudnn_common.h',
-                'fpgeneric.cu', # small, hipify doesn't get it right, easier to do manually
+                'fpgeneric.cu',  # small, hipify doesn't get it right, easier to do manually
                 'integer_gemm.cc',
                 'symbols.txt',
 ]
@@ -165,13 +165,6 @@ training_ops_excluded_files = [
                     'collective/nccl_common.cc',
                     'collective/ready_event.cc',
                     'collective/ready_event.h',
-#                    'communication/common.h',
-#                    'communication/nccl_service.cc',
-#                    'communication/nccl_service.h',
-#                    'communication/recv.cc',
-#                    'communication/recv.h',
-#                    'communication/send.cc',
-#                    'communication/send.h',
                     'controlflow/record.cc',
                     'controlflow/record.h',
                     'controlflow/wait.cc',
@@ -260,9 +253,9 @@ def hipify(src_file_path, dst_file_path):
 
     # CUBLAS -> HIPBLAS
     # Note: We do not use the hipblas marshalling interfaces; use rocblas instead.
-    #s = s.replace('CUBLAS', 'HIPBLAS')
-    #s = s.replace('Cublas', 'Hipblas')
-    #s = s.replace('cublas', 'hipblas')
+    # s = s.replace('CUBLAS', 'HIPBLAS')
+    # s = s.replace('Cublas', 'Hipblas')
+    # s = s.replace('cublas', 'hipblas')
 
     # CUBLAS -> ROCBLAS
     s = s.replace('CUBLAS', 'ROCBLAS')
@@ -295,7 +288,7 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace('CUFFT', 'HIPFFT')
 
     # Undo where above hipify steps went too far.
-    s = s.replace('id, ROCM', 'id, CUDA') # cuda_execution_provider.cc
+    s = s.replace('id, ROCM', 'id, CUDA')  # cuda_execution_provider.cc
     s = s.replace('ROCM error executing', 'HIP error executing')
     s = s.replace('ROCM_PINNED', 'CUDA_PINNED')
     s = s.replace('rocm_err', 'hip_err')
