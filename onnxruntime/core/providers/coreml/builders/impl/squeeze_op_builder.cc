@@ -6,8 +6,8 @@
 #include "core/providers/shared/utils/utils.h"
 #ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
-#include "core/providers/coreml/builders/op_builder_factory.h"
 #endif
+#include "core/providers/coreml/builders/op_builder_factory.h"
 
 #include "base_op_builder.h"
 
