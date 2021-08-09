@@ -6,7 +6,7 @@
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/utils.h"
 
-#include <safeint/SafeInt.hpp>
+#include "core/common/safeint.h"
 
 using namespace onnxruntime::common;
 
