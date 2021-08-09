@@ -42,7 +42,7 @@ class FusionLayerNormalization(Fusion):
             return
 
         root_input = node.input[0]
-        
+
         if children[0].op_type != 'Sub' or children[0].input[0] != root_input:
             return
 

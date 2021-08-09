@@ -4,11 +4,19 @@
 # license information.
 # -------------------------------------------------------------------------
 
-import torch
-from torch import nn
-import numpy
 import os
 import sys
+import numpy
+import torch
+
+
+def find_transformers_source():
+    source_dir = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'python', 'tools', 'transformers')
+    if (os.path.exists(source_dir)):
+        if source_dir not in sys.path:
+            sys.path.append(source_dir)
+        return True
+    return False
 
 
 def create_inputs(batch_size=1, sequence_length=1, hidden_size=768, float16=False, device=torch.device('cuda')):
@@ -40,15 +48,12 @@ def export_onnx(model, onnx_model_path, float16, hidden_size, device):
 
 
 def optimize_onnx(input_onnx_path, optimized_onnx_path, expected_op=None):
-    # Try import optimizer from source directory so that we need not build and install package after making change.
-    source_dir = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'python', 'tools', 'transformers')
-    if (os.path.exists(source_dir) and source_dir not in sys.path):
-        sys.path.append(source_dir)
+    if find_transformers_source():
         from optimizer import optimize_model
     else:
         from onnxruntime.transformers.optimizer import optimize_model
 
-    onnx_model = optimize_model(input_onnx_path, model_type='gpt2', opt_level=0)
+    onnx_model = optimize_model(input_onnx_path, model_type='gpt2')
     onnx_model.save_model_to_file(optimized_onnx_path)
 
     if expected_op is not None:
