@@ -1844,3 +1844,10 @@ if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
   add_compile_definitions(DEBUG_NODE_INPUTS_OUTPUTS)
 endif()
 
+add_custom_target(install_protobuf ALL DEPENDS protobuf::libprotobuf  protobuf::protoc)
+add_custom_command(
+  TARGET install_protobuf
+  COMMAND ${CMAKE_COMMAND} -DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR} -P cmake_install.cmake
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/external/protobuf/cmake
+  COMMENT "Installing protobuf"
+)
