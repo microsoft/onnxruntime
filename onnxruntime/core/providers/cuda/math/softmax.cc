@@ -42,9 +42,17 @@ Status SoftMaxComputeHelper(
   ORT_RETURN_IF_ERROR(input_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
   ORT_RETURN_IF_ERROR(output_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
   if (is_log_softmax) {
+#if USE_ROCM
+    MIOPEN_RETURN_IF_ERROR(miopenSoftmaxForward_V2(handle, &alpha, input_tensor, X_data, &beta, output_tensor, Y_data, MIOPEN_SOFTMAX_LOG, MIOPEN_SOFTMAX_MODE_INSTANCE));
+#else
     CUDNN_RETURN_IF_ERROR(cudnnSoftmaxForward(handle, CUDNN_SOFTMAX_LOG, CUDNN_SOFTMAX_MODE_INSTANCE, &alpha, input_tensor, X_data, &beta, output_tensor, Y_data));
+#endif
   } else {
+#if USE_ROCM
+    MIOPEN_RETURN_IF_ERROR(miopenSoftmaxForward_V2(handle, &alpha, input_tensor, X_data, &beta, output_tensor, Y_data, MIOPEN_SOFTMAX_ACCURATE, MIOPEN_SOFTMAX_MODE_INSTANCE));
+#else
     CUDNN_RETURN_IF_ERROR(cudnnSoftmaxForward(handle, CUDNN_SOFTMAX_ACCURATE, CUDNN_SOFTMAX_MODE_INSTANCE, &alpha, input_tensor, X_data, &beta, output_tensor, Y_data));
+#endif
   }
 
   return Status::OK();
@@ -55,9 +63,13 @@ Status SoftMaxComputeHelper(
   template Status SoftMaxComputeHelper<T, true>(cudaStream_t stream, const T* input, const TensorShape& shape, T* Y, cudnnHandle_t handle, int64_t axis);
 
 SPECIALIZED_SOFTMAX_HELPER_IMPL(float)
+// MIOpen double data type not supported
+#ifndef USE_ROCM
 SPECIALIZED_SOFTMAX_HELPER_IMPL(double)
+#endif
 SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16)
 
+#ifndef USE_ROCM
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 // cudnnSoftmaxForward/Backward doesn't support BFloat16.
 #define SPECIALIZED_SOFTMAX_HELPER_IMPL_BFloat16(is_log_softmax)                                               \
@@ -81,6 +93,7 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16)
 
 SPECIALIZED_SOFTMAX_HELPER_IMPL_BFloat16(true)
     SPECIALIZED_SOFTMAX_HELPER_IMPL_BFloat16(false)
+#endif
 #endif
 
 #define REGISTER_KERNEL_TYPED(T)                                                           \
@@ -242,10 +255,15 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL_BFloat16(true)
   template Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const;
 
 SPECIALIZED_COMPUTE(float)
+// MIOpen double data type not supported
+#ifndef USE_ROCM
 SPECIALIZED_COMPUTE(double)
+#endif
 SPECIALIZED_COMPUTE(MLFloat16)
+#ifndef USE_ROCM
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 SPECIALIZED_COMPUTE(BFloat16)
+#endif
 #endif
 
 }  // namespace cuda

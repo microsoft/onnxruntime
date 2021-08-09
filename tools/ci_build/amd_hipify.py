@@ -83,8 +83,6 @@ provider_excluded_files = [
                 'math/gemm.cc',
                 'math/matmul.cc',
                 'math/matmul_integer.cu',  # hipify-perl's transformKernelLaunch hangs
-                'math/softmax_impl.cu',
-                'math/softmax.cc',
                 'math/topk.cc',
                 'math/topk.h',
                 'math/topk_impl.cu',

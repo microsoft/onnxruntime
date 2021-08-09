@@ -36,6 +36,7 @@ namespace cuda {
 // This is important because it means only __shfl_ instructions are required for reductions.
 // Note that this means WARP_SIZE must be a power of two and <= architecture warp size.
 // CUDA warp size is 32 for all existing GPU architecures, but there is no guarantee this will not change for future arch.
+// ROCM warp size is 64 for all existing GPU architecures, but there is no guarantee this will not change for future arch.
 // is_log_softmax is a flag indicating whether SoftMax or LogSoftMax should be computed.
 // The template can be instantiated with any floating point type for the type arguments input_t, output_t and acc_t.
 // This allows SoftMax to be fused with a cast immediately following the SoftMax.
@@ -50,7 +51,11 @@ __global__ void softmax_warp_forward(output_t* dst, const input_t* src, int batc
   constexpr int next_power_of_two = 1 << log2_elements;
   constexpr int WARP_SIZE = (next_power_of_two < GPU_WARP_SIZE) ? next_power_of_two : GPU_WARP_SIZE;
   constexpr int WARP_ITERATIONS = next_power_of_two / WARP_SIZE;
+#ifdef USE_ROCM
+  constexpr int WARP_BATCH = 1;
+#else
   constexpr int WARP_BATCH = (next_power_of_two <= 128) ? 2 : 1;
+#endif
 
   int first_batch = (blockDim.y * blockIdx.x + threadIdx.y) * WARP_BATCH;
 
@@ -146,10 +151,16 @@ void dispatch_softmax_forward(cudaStream_t stream, output_t* dst, const input_t*
     int warp_size = (next_power_of_two < GPU_WARP_SIZE) ? next_power_of_two : GPU_WARP_SIZE;
 
     // This value must match the WARP_BATCH constexpr value computed inside softmax_warp_forward.
+#ifdef USE_ROCM
+    int batches_per_warp = 1;
+    // use 256 threads per block to maximimize gpu utilization
+    constexpr int threads_per_block = 256;
+#else
     int batches_per_warp = (next_power_of_two <= 128) ? 2 : 1;
-
     // use 128 threads per block to maximimize gpu utilization
     constexpr int threads_per_block = 128;
+#endif
+
 
     int warps_per_block = (threads_per_block / warp_size);
     int batches_per_block = warps_per_block * batches_per_warp;
@@ -214,8 +225,10 @@ template void dispatch_softmax_forward<input_t, output_t, acc_t, true>(cudaStrea
 SPECIALIZED_SOFTMAX_IMPL(float, float, float)
 SPECIALIZED_SOFTMAX_IMPL(half, half, float)
 SPECIALIZED_SOFTMAX_IMPL(double, double, double)
+#ifndef USE_ROCM
 #if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
 SPECIALIZED_SOFTMAX_IMPL(nv_bfloat16, nv_bfloat16, float)
+#endif
 #endif
 
 }
