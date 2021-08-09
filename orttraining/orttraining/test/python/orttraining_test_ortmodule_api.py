@@ -3148,7 +3148,7 @@ def test_duplicated_output_eval():
     N, D_in, H, D_out = 64, 784, 500, 10
     pt_model = DuplicatedOutputNet(D_in, D_out).to(device)
     pt_model.eval()
-    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix='my_dummy_model'))
+    ort_model = ORTModule(copy.deepcopy(pt_model))
     ort_model.eval()
     x = torch.randn(N, D_in, device=device)
     y = copy.deepcopy(x)

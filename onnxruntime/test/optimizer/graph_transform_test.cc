@@ -4343,12 +4343,12 @@ TEST_F(GraphTransformationTests, GraphOutputDeduplication) {
 
   // Then
   op_to_count = CountOpsInGraph(graph);
-  EXPECT_EQ(op_to_count["Identity"], 2);
+  EXPECT_EQ(op_to_count["Identity"], 1);
   std::unordered_map<std::string, int> output_node_arg_count_after_transformation;
   for (auto& output_node_arg : graph.GetOutputs()) {
     output_node_arg_count_after_transformation[output_node_arg->Name()]++;
   }
-  EXPECT_FALSE(output_node_arg_count_after_transformation.count("X"));
+  EXPECT_EQ(output_node_arg_count_after_transformation["X"], 1);
   for (auto& [output_name, count] : output_node_arg_count_after_transformation) {
     EXPECT_EQ(output_name.find("X"), 0U);
     EXPECT_EQ(count, 1);

@@ -23,9 +23,9 @@ namespace onnxruntime {
     Transforms to:
                   Add
                 /    \
-          Identity  Identity
-            /         \
-          X_0         X_1
+               X  Identity
+                       \
+                    X_token_0
 
     onnx models with duplicate output names are a result of exporting PyTorch models
     with same value used multiple times in its return statement. Example `return (out, out)`
@@ -33,8 +33,8 @@ namespace onnxruntime {
 
 namespace {
 
-  std::string IdentityOpName("Identity");
-  std::string OpDescription("Identity node to handle duplicate output names.");
+std::string IdentityOpName("Identity");
+std::string OpDescription("Identity node to handle duplicate output names.");
 
 } // anonymous namespace
 
@@ -69,15 +69,21 @@ Status GraphOutputDeduplication::Apply(Graph& graph, Node& node, RewriteRuleEffe
   std::unordered_map<std::string, std::queue<NodeArg*>> node_args_to_deduplicate;
 
   // For every node output that is also a graph output that occurs multiple times,
-  // add an Identity node whose output node arg is a unique name.
+  // add an Identity node whose output node arg is a unique name (except for the first output for that node).
   for (auto& node_arg : node.MutableOutputDefs()) {
     auto it = graph_output_names_count.find(node_arg->Name());
     if (it != graph_output_names_count.end() && it->second > 1) {
       for (size_t output_idx_for_this_node = 0; output_idx_for_this_node < it->second; ++output_idx_for_this_node) {
+        if (output_idx_for_this_node == 0U) {
+          // First output remains same as the original NodeArg.
+          node_args_to_deduplicate[node_arg->Name()].push(node_arg);
+        } else {
+          // An identity is introduced second NodeArg onwards.
           auto type_proto = node_arg->TypeAsProto();
           auto& output_node_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(node_arg->Name()), type_proto);
           graph.AddNode(graph.GenerateNodeName(node.Name()), IdentityOpName, OpDescription, {node_arg}, {&output_node_arg});
           node_args_to_deduplicate[node_arg->Name()].push(&output_node_arg);
+        }
       }
     }
   }
