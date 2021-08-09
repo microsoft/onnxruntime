@@ -10,14 +10,16 @@
 
 import unittest
 import os
-import onnx
-import onnxruntime
 import pytest
 
 from test_optimizer import _get_test_model_path
 
 
 class TestBertProfiler(unittest.TestCase):
+    def setUp(self):
+        from onnxruntime import get_available_providers
+        self.test_cuda = 'CUDAExecutionProvider' in get_available_providers()
+
     def run_profile(self, arguments: str):
         from onnxruntime.transformers.profiler import parse_arguments, run
         args = parse_arguments(arguments.split())
@@ -27,7 +29,7 @@ class TestBertProfiler(unittest.TestCase):
     @pytest.mark.slow
     def test_profiler_gpu(self):
         input_model_path = _get_test_model_path('bert_keras_squad')
-        if 'CUDAExecutionProvider' in onnxruntime.get_available_providers():
+        if self.test_cuda:
             self.run_profile(f'--model {input_model_path} --batch_size 1 --sequence_length 7 --use_gpu')
 
     @pytest.mark.slow

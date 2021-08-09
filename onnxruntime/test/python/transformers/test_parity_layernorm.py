@@ -8,7 +8,13 @@ import unittest
 import torch
 from torch import nn
 import os
+import onnx
 from parity_utilities import *
+
+if find_transformers_source():
+    from onnx_model import OnnxModel
+else:
+    from onnxruntime.transformers.onnx_model import OnnxModel
 
 
 class LayerNorm(nn.Module):
@@ -33,8 +39,6 @@ class LayerNorm(nn.Module):
 
 
 def optimize_fp16_onnx_with_cast(input_onnx_path, optimized_onnx_path, epsilon):
-    from onnxruntime.transformers.onnx_model import OnnxModel
-    import onnx
     m = onnx.load(input_onnx_path)
     onnx_model = OnnxModel(m)
 
@@ -57,8 +61,6 @@ def optimize_fp16_onnx_with_cast(input_onnx_path, optimized_onnx_path, epsilon):
 
 
 def optimize_fp16_onnx_no_cast(input_onnx_path, optimized_onnx_path, epsilon):
-    from onnxruntime.transformers.onnx_model import OnnxModel
-    import onnx
     m = onnx.load(input_onnx_path)
     onnx_model = OnnxModel(m)
 
@@ -107,8 +109,7 @@ def run(batch_size,
     if optimized:
         optimized_onnx_path = './temp/layer_norm_{}_opt.onnx'.format("fp16" if float16 else "fp32")
         if (not float16) or cast_fp16:
-            optimize_onnx(onnx_model_path, optimized_onnx_path,
-                          expected_op=LayerNorm.get_fused_op())
+            optimize_onnx(onnx_model_path, optimized_onnx_path, expected_op=LayerNorm.get_fused_op())
         else:
             if cast_onnx_only:
                 optimize_fp16_onnx_with_cast(onnx_model_path, optimized_onnx_path, epsilon=epsilon)

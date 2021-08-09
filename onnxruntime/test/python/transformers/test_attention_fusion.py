@@ -6,15 +6,12 @@
 
 import unittest
 import os
-import sys
 import onnx
 from bert_model_generator import create_bert_attention, create_tf2onnx_attention_3d
 from gpt2_model_generator import create_gpt2_attention
 
-# set path so that we could import from parent directory
-transformers_dir = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'python', 'tools', 'transformers')
-if os.path.exists(transformers_dir):
-    sys.path.append(transformers_dir)
+from parity_utilities import find_transformers_source
+if find_transformers_source():
     from optimizer import optimize_model
 else:
     from onnxruntime.transformers.optimizer import optimize_model
@@ -107,8 +104,7 @@ class TestFusion(unittest.TestCase):
             optimized_model = optimize_model(model_path,
                                              model_type='gpt2',
                                              num_heads=num_heads,
-                                             hidden_size=hidden_size,
-                                             disable_onnxruntime=True)
+                                             hidden_size=hidden_size)
             optimized_model.topological_sort()
             os.remove(model_path)
 
