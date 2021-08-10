@@ -1280,10 +1280,11 @@ def test_model_with_bypass_input(device, training_mode):
             out1 = out1.view(bypass_input.size()[0], -1)
             return out1, bypass_input
 
-    def run_step(model, x1, x2):
+    def run_step(model, x1, x2, training_mode):
         y1, y2 = model(x1, x2)
-        loss = y1.sum() + y2.sum()
-        loss.backward()
+        if training_mode:
+            loss = y1.sum() + y2.sum()
+            loss.backward()
         return y1, y2
 
     N, D_in, H, D_out = 32, 784, 500, 10
@@ -1299,12 +1300,13 @@ def test_model_with_bypass_input(device, training_mode):
     ort_x2 = pt_x2.clone()
 
     # Both y1 and y2's gradients are not None.
-    pt_y1, pt_y2 = run_step(pt_model, pt_x1, pt_x2)
-    ort_y1, ort_y2 = run_step(ort_model, ort_x1, ort_x2)
+    pt_y1, pt_y2 = run_step(pt_model, pt_x1, pt_x2, training_mode)
+    ort_y1, ort_y2 = run_step(ort_model, ort_x1, ort_x2, training_mode)
 
     _test_helpers.assert_values_are_close(pt_y1, ort_y1, atol=1e-06)
     _test_helpers.assert_values_are_close(pt_y2, ort_y2, atol=1e-06)
-    _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+    if training_mode:
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
 def test_gpu_reserved_memory_with_torch_no_grad():
     device = 'cuda'
