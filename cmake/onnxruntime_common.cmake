@@ -227,6 +227,7 @@ elseif(NOT onnxruntime_BUILD_WEBASSEMBLY)
   endif()
 endif()
 
+onnxruntime_add_include_to_target(onnxruntime_common Python::Module)
 
 if (ARM64 OR ARM OR X86 OR X64 OR X86_64)
   if((ARM64 OR ARM) AND MSVC)
