@@ -2,8 +2,7 @@ import sqlite3
 import onnx
 from onnx import numpy_helper
 
-connection = sqlite3.connect('ort-trace.db', 
-    detect_types=sqlite3.PARSE_DECLTYPES)
+connection = sqlite3.connect('ort-trace.db', detect_types=sqlite3.PARSE_DECLTYPES)
 
 def convert_tensor_proto_to_numpy_array(blob):
     tensor_proto = onnx.TensorProto()
@@ -12,5 +11,6 @@ def convert_tensor_proto_to_numpy_array(blob):
 
 sqlite3.register_converter("TensorProto", convert_tensor_proto_to_numpy_array)
 
-for step, name, value, device in connection.execute('select step, name, value, device from tensors'):
-    print(step, name, value.shape, device)
+for step, name, value, device, producer, consumer in connection.execute(
+        'Select Step, Name, Value, Device, TracedProducer, TracedConsumers from Tensors'):
+    print(step, name, value.shape, consumer)
