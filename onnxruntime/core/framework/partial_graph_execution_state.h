@@ -13,38 +13,38 @@ class OrtValueCache {
  public:
   OrtValueCache() = default;
 
-  size_t size(){
+  size_t size() const {
     return cache_.size();
   }
 
-  size_t count(std::string name){
+  size_t count(const std::string name) const {
     return cache_.count(name);
   }
 
-  OrtValue at(std::string name) {
+  OrtValue at(const std::string name) const {
     return cache_.at(name);
   }
 
-  Status CacheOrtValue(std::string node_arg_name, OrtValue& value) {
+  Status CacheOrtValue(const std::string node_arg_name, const OrtValue& value) {
     cache_.emplace(node_arg_name, value);
     return Status::OK();
   }
 
-  Status GetCachedIds(std::vector<std::string>& keys) {
-    keys.reserve(cache_.size());
+  Status GetCachedIds(std::vector<std::string>& output_keys) const {
+    output_keys.reserve(cache_.size());
     for(auto kv : cache_) {
-      keys.push_back(kv.first);
+      output_keys.push_back(kv.first);
     }
     return Status::OK();
   }
 
-  Status DeleteOrtValue(std::string node_arg_name) {
+  Status DeleteOrtValue(const std::string node_arg_name) {
     ORT_RETURN_IF(cache_.find(node_arg_name) == cache_.end(), "NodeArg not found in cache: ", node_arg_name);
     cache_.erase(node_arg_name);
     return Status::OK();
   }
 
-  Status DeleteCache() {
+  Status ClearCache() {
     cache_.clear();
     return Status::OK();
   }

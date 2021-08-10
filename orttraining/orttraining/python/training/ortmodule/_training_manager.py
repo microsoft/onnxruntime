@@ -44,15 +44,10 @@ class TrainingManager(GraphExecutionManager):
         forward_outputs = C.OrtValueVector()
         # Run and return module outputs.
         execution_session.run_forward(forward_inputs, forward_outputs, state, cache)
-
-        user_outputs = []
-        for i in range(len(forward_outputs)):
-            if i < cache_start:
-                user_outputs.append(_utils._ortvalue_to_torch_tensor(forward_outputs[i]))
-            elif cache !=None:
+        user_outputs = tuple(_utils._ortvalue_to_torch_tensor(forward_outputs[i]) for i in range(cache_start))
+        if cache != None:
+            for i in range(cache_start, len(forward_outputs)):
                 cache.insert(cache_names[i-cache_start], forward_outputs[i])
-
-        user_outputs = tuple(user_outputs)
 
         output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
         run_info = _RunStateInfo(state, output_info)

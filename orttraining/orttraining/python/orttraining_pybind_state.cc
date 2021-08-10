@@ -335,12 +335,15 @@ void addObjectMethodsForTraining(py::module& m) {
         cache.CacheOrtValue(node_arg_name, value);
       })
       .def("keys", [](OrtValueCache& cache) {
+        // TODO : current implementation will result in two copies:
+        // one to std::vector, and other when pybind converts to py::list
+        // Need to avoid one of the copies.
         std::vector<std::string> key_vec;
         cache.GetCachedIds(key_vec);
         return key_vec;
       })
-      .def("drop", [](OrtValueCache& cache) {
-        cache.DeleteCache();
+      .def("clear", [](OrtValueCache& cache) {
+        cache.ClearCache();
       })
       .def("count", [](OrtValueCache& cache, std::string node_arg_name) {
         return cache.count(node_arg_name);
