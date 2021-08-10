@@ -50,39 +50,39 @@ jobs:
       arguments: 'amd64'
       modifyEnvironment: true
 
-  - task: DownloadPipelineArtifact@2
-    displayName: 'Download Pipeline Artifact'
-    inputs:
-      source: 'specific'
-      project: 'Lotus'
-      pipeline: '963'
-      runVersion: 'specific'
-      runId: '168119'
-      artifactName: 'drop-signed-nuget'
-      targetPath: '$(Build.BinariesDirectory)\nuget-artifact'
-
-  - task: DownloadPipelineArtifact@2
-    displayName: 'Download Pipeline Artifact - testdata'
-    inputs:
-      source: 'specific'
-      project: 'Lotus'
-      pipeline: '963'
-      runVersion: 'specific'
-      runId: '168119'
-      artifactName: 'drop-nuget'
-      targetPath: '$(Build.BinariesDirectory)\testdata'
-  
-  #- task: DownloadPipelineArtifact@0
+  #- task: DownloadPipelineArtifact@2
     #displayName: 'Download Pipeline Artifact'
     #inputs:
+      #source: 'specific'
+      #project: 'Lotus'
+      #pipeline: '963'
+      #runVersion: 'specific'
+      #runId: '168119'
       #artifactName: 'drop-signed-nuget'
       #targetPath: '$(Build.BinariesDirectory)\nuget-artifact'
 
-  #- task: DownloadPipelineArtifact@0
+  #- task: DownloadPipelineArtifact@2
     #displayName: 'Download Pipeline Artifact - testdata'
     #inputs:
+      #source: 'specific'
+      #project: 'Lotus'
+      #pipeline: '963'
+      #runVersion: 'specific'
+      #runId: '168119'
       #artifactName: 'drop-nuget'
       #targetPath: '$(Build.BinariesDirectory)\testdata'
+  
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact'
+    inputs:
+      artifactName: 'drop-signed-nuget'
+      targetPath: '$(Build.BinariesDirectory)\nuget-artifact'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - testdata'
+    inputs:
+      artifactName: 'drop-nuget'
+      targetPath: '$(Build.BinariesDirectory)\testdata'
 
   - template: get-nuget-package-version-as-variable.yml
     parameters:
