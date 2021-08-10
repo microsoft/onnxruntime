@@ -2637,12 +2637,6 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
 
-  //
-  //
-  // TODO(kreeger): LEFT OFF RIGHT HERE. MATCH THIS DOC TO WHAT IS IN THE OP KERNEL!
-  //
-  //
-
   static const char* QBiasGelu_ver1_doc =
       R"DOC(Bias Gelu.
 It's an extension of Gelu. It takes the sum of input A and bias input B as the input of Gelu activation. )DOC";
@@ -2655,7 +2649,7 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       .Input(2, "A_scale", "...", "T1")
       .Input(3, "B_scale", "...", "T1")
       .Input(4, "A_zero_point", "...", "T")
-      .Input(4, "B_zero_point", "...", "T")
+      .Input(5, "B_zero_point", "...", "T")
       .Output(0, "C", "The output.", "T")
       .TypeConstraint(
           "T",

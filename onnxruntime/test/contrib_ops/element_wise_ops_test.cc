@@ -9,6 +9,7 @@
 #include "core/util/math.h"
 #include "core/mlas/inc/mlas.h"
 #include "test/common/cuda_op_test_utils.h"
+#include "test/common/quantization_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -89,18 +90,67 @@ static void RunBiasGeluTest(
     const std::vector<float>& input_b_data,
     const std::vector<int64_t>& input_a_dims,
     const std::vector<int64_t>& input_b_dims) {
-  if (HasCudaEnvironment(0)) {
-    std::vector<float> output_data = ComputeGeluWithErf(Add_Simple(input_a_data, input_b_data));
+  std::vector<float> output_data = ComputeGeluWithErf(Add_Simple(input_a_data, input_b_data));
 
-    OpTester tester("BiasGelu", 1, onnxruntime::kMSDomain);
+  OpTester tester("BiasGelu", 1, onnxruntime::kMSDomain);
 
-    const std::vector<int64_t>& output_dims = input_a_dims.size() >= input_b_dims.size() ? input_a_dims : input_b_dims;
-    tester.AddInput<float>("A", input_a_dims, input_a_data);
-    tester.AddInput<float>("B", input_b_dims, input_b_data);
-    tester.AddOutput<float>("C", output_dims, output_data);
+  const std::vector<int64_t>& output_dims = input_a_dims.size() >= input_b_dims.size() ? input_a_dims : input_b_dims;
+  tester.AddInput<float>("A", input_a_dims, input_a_data);
+  tester.AddInput<float>("B", input_b_dims, input_b_data);
+  tester.AddOutput<float>("C", output_dims, output_data);
 
-    tester.Run();
-  }
+  tester.Run();
+}
+
+template <typename T>
+static void RunQBiasGeluTest(
+    const std::vector<float>& input_a_data,
+    const std::vector<float>& input_b_data,
+    const std::vector<int64_t>& input_a_dims,
+    const std::vector<int64_t>& input_b_dims) {
+
+  std::vector<float> output_data = ComputeGeluWithErf(
+      Add_Simple(input_a_data, input_b_data));
+
+  quantization::Params<T> output_params;
+  std::vector<T> output_data_quant =
+      QuantizeLinearTestVector<T>(output_data, output_params);
+
+  // Quantize this output - or expect f32 output?
+
+  quantization::Params<T> input_a_params;
+  std::vector<T> input_a_data_quant =
+      QuantizeLinearTestVector<T>(input_a_data, input_a_params);
+
+  quantization::Params<T> input_b_params;
+  std::vector<T> input_b_data_quant =
+      QuantizeLinearTestVector<T>(input_b_data, input_b_params);
+
+  OpTester tester("QBiasGelu", /*opset_version=*/1, onnxruntime::kMSDomain);
+
+  // TODO - why is this not reflected in the Op?
+  const std::vector<int64_t>& output_dims =
+      input_a_dims.size() >= input_b_dims.size() ? input_a_dims : input_b_dims;
+
+  tester.AddInput<T>("A", input_a_dims, input_a_data_quant);
+  tester.AddInput<T>("B", input_b_dims, input_b_data_quant);
+
+  tester.AddInput<float>("A_scale", /*dims=*/{}, {input_a_params.scale});
+  tester.AddInput<float>("B_scale",
+                         /*dims=*/{},
+                         {input_b_params.scale},
+                         /*is_initializer=*/true);
+
+  tester.AddInput<T>("A_zero_point", /*dims=*/{}, {input_a_params.zero_point});
+  tester.AddInput<T>("B_zero_point",
+                     /*dims=*/{},
+                     {input_b_params.zero_point},
+                     /*is_initializer=*/true);
+
+  // TODO - probably need an output with scale or ZP!
+  tester.AddOutput<T>("output", output_dims, output_data_quant);
+
+  tester.Run();
 }
 
 TEST(BiasGeluTest, Two_One_Dim) {
@@ -113,6 +163,21 @@ TEST(BiasGeluTest, Two_One_Dim) {
 
   RunBiasGeluTest(input_a_data, input_b_data, {2, 4}, {4});
 }
+
+//
+// TODO(kreeger): write unit test here!
+//
+TEST(QBiasGeluTest, Two_One_Dim) {
+  std::vector<float> input_a_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
+
+  std::vector<float> input_b_data = {
+      -0.5f, 0.6f, 1.2f, 2.1f};
+
+  RunQBiasGeluTest<uint8_t>(input_a_data, input_b_data, {2, 4}, {4});
+}
+
 
 TEST(MathOpTest, ComplexMul) {
   if (DefaultCudaExecutionProvider() == nullptr) return;
