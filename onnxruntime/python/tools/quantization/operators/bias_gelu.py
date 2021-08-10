@@ -17,7 +17,6 @@ class BiasGeluQuant(QuantOperatorBase):
         assert (node.op_type == "BiasGelu")
 
         qbias_gelu_name = node.name + "_quant" if node.name != "" else ""
-
         '''
         Pre-quantization BiasGelu inputs:
         [0] Input
@@ -39,19 +38,12 @@ class BiasGeluQuant(QuantOperatorBase):
         inputs.extend(scale_names)
         inputs.extend(zero_point_names)
 
-        bias_gelu_new_output = node.output[0] + "_quantized"
-
-        # Create an output entry for the quantized value:
-        q_output = QuantizedValue(node.output[0], bias_gelu_new_output, scale_names[0], zero_point_names[0],
-                                  QuantizedValueType.Input)
-        self.quantizer.quantized_value_map[node.output[0]] = q_output
-
         kwargs = {}
         for attribute in node.attribute:
             kwargs.update(attribute_to_kwarg(attribute))
         kwargs["domain"] = ms_domain
 
-        qbias_gelu_node = onnx.helper.make_node("QBiasGelu", inputs, [bias_gelu_new_output], qbias_gelu_name, **kwargs)
+        qbias_gelu_node = onnx.helper.make_node("QBiasGelu", inputs, node.output, qbias_gelu_name, **kwargs)
         nodes.append(qbias_gelu_node)
 
         self.quantizer.new_nodes += nodes

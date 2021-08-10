@@ -196,6 +196,7 @@ bool KernelRegistry::VerifyKernelDef(const onnxruntime::Node& node,
         const char* actual_type_str = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*actual_type));
         ostr << " but the node in the model has the following type (" << actual_type_str << ")";
         error_str = ostr.str();
+        std::cerr << error_str << std::endl;
         return false;
       }
     }

@@ -112,10 +112,6 @@ static void RunQBiasGeluTest(
   std::vector<float> output_data = ComputeGeluWithErf(
       Add_Simple(input_a_data, input_b_data));
 
-  quantization::Params<T> output_params;
-  std::vector<T> output_data_quant =
-      QuantizeLinearTestVector<T>(output_data, output_params);
-
   // Quantize this output - or expect f32 output?
 
   quantization::Params<T> input_a_params;
@@ -147,8 +143,7 @@ static void RunQBiasGeluTest(
                      {input_b_params.zero_point},
                      /*is_initializer=*/true);
 
-  // TODO - probably need an output with scale or ZP!
-  tester.AddOutput<T>("output", output_dims, output_data_quant);
+  tester.AddOutput<float>("C", output_dims, output_data);
 
   tester.Run();
 }

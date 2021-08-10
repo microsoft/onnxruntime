@@ -25,7 +25,6 @@ class TestOpBiasGelu(unittest.TestCase):
         dr = TestDataFeeds(input_data_list)
         return dr
 
-
     def construct_model(self, batch, sequence_length, model_path):
         #
         # TODO(kreeger): Cool ASCII art for this.
@@ -57,7 +56,6 @@ class TestOpBiasGelu(unittest.TestCase):
         model.ir_version = 7  # Use stable onnx IR version
         onnx.save(model, model_path)
 
-
     def test_stub(self):
         print('Hi from OpBiasGelu test')
         batch = 1
@@ -75,7 +73,6 @@ class TestOpBiasGelu(unittest.TestCase):
         # TODO - now check the nodes that end up in the thing.
 
         check_model_correctness(self, model_f32_path, model_uint8_path, data_reader.get_next())
-
 
 
 if __name__ == '__main__':

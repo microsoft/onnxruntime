@@ -2644,21 +2644,15 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(QBiasGelu_ver1_doc)
-      .Input(0, "A", "The normal input data.", "T")
-      .Input(1, "B", "The bias input data that is a 1D tensor.", "T")
-      .Input(2, "A_scale", "...", "T1")
-      .Input(3, "B_scale", "...", "T1")
-      .Input(4, "A_zero_point", "...", "T")
-      .Input(5, "B_zero_point", "...", "T")
+      .Input(0, "A", "The normal input data.", "T1")
+      .Input(1, "B", "The bias input data that is a 1D tensor.", "T1")
+      .Input(2, "A_scale", "...", "T")
+      .Input(3, "B_scale", "...", "T")
+      .Input(4, "A_zero_point", "...", "T1")
+      .Input(5, "B_zero_point", "...", "T1")
       .Output(0, "C", "The output.", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(uint8)"},
-          "Constrain input and output types to quantized tensors.")
-      .TypeConstraint(
-          "T1",
-          {"tensor(float)"},
-          "Constrain types for input scale.")
+      .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
+      .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float32 tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   // Used to be ONNX 1.7 Inverse(12)

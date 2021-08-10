@@ -50,11 +50,17 @@ Status CheckQuantizedInputs(OpKernelContext* context, bool* is_signed_inputs) {
 template <typename T>
 void AddBiasGeluNoApprox(const T* input,
                          const T* bias,
-                         T* temp,
-                         T* output,
+                         const quantization::Params<T>& input_params,
+                         const quantization::Params<T>& bias_params,
+                         float* temp,
+                         float* output,
                          int64_t count) {
   for (int64_t i = 0; i < count; ++i) {
-    T value = input[i] + bias[i];
+    // TODO(kreeger): Go back and update lookup tables.
+    // TODO(kreeger): Consider writing a MlasCompteErf() for uint8/int8.
+    //T value = input[i] + bias[i];
+    float value = quantization::Dequantize<T>(input[i], input_params) +
+                  quantization::Dequantize<T>(bias[i], bias_params);
     output[i] = value * static_cast<T>(M_SQRT1_2);
     temp[i] = value * 0.5f;
   }
@@ -63,6 +69,8 @@ void AddBiasGeluNoApprox(const T* input,
   MlasComputeErf(output, output, count);
 
   for (int64_t i = 0; i < count; i++) {
+    // TODO(kreeger): When/how/where do I want to handle re-quantization?
+    // TODO(kreeger): Double check the graph.
     output[i] = temp[i] * (output[i] + 1.0f);
   }
 }
@@ -77,10 +85,14 @@ Status ComputeInternal(OpKernelContext* context) {
   const Tensor* bias_zero_point = context->Input<Tensor>(5);
 
   Tensor* output = context->Output(0, input_quantized->Shape());
-  T* output_data = output->template MutableData<T>();
+  float* output_data = output->template MutableData<float>();
 
   int64_t element_length = input_quantized->Shape().Size();
   const T* input_data = input_quantized->template Data<T>();
+
+  quantization::Params<T> input_params =
+    quantization::GetTensorQuantizationParams<T>(
+          input_scale, input_zero_point);
 
   if (bias_quantized == nullptr) {
     // TODO(kreeger): handle bias conditionally here and checkinputs().
@@ -91,13 +103,17 @@ Status ComputeInternal(OpKernelContext* context) {
   const T* bias_data = bias_quantized->template Data<T>();
   int64_t bias_length = bias_quantized->Shape().Size();
 
+  quantization::Params<T> bias_params =
+      quantization::GetTensorQuantizationParams<T>(
+          bias_scale, bias_zero_point);
+
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
   BufferUniquePtr buffer = BufferUniquePtr(
-      alloc->Alloc(SafeInt<size_t>(sizeof(T)) * element_length),
+      alloc->Alloc(SafeInt<size_t>(sizeof(float)) * element_length),
       BufferDeleter(alloc));
 
-  T* tmp_data = static_cast<T*>(buffer.get());
+  float* tmp_data = static_cast<float*>(buffer.get());
 
   int64_t task_count = element_length / bias_length;
 
@@ -105,12 +121,16 @@ Status ComputeInternal(OpKernelContext* context) {
       context->GetOperatorThreadPool(), static_cast<int32_t>(task_count),
       [&](ptrdiff_t task_idx) {
         const T* p_input = input_data + task_idx * bias_length;
-        T* p_output = output_data + task_idx * bias_length;
-        T* p_tmp = tmp_data + task_idx * bias_length;
+        float* p_output = output_data + task_idx * bias_length;
+        float* p_tmp = tmp_data + task_idx * bias_length;
 
-        // Hack for now - dequant the list of output
-
-        AddBiasGeluNoApprox(p_input, bias_data, p_tmp, p_output, bias_length);
+        AddBiasGeluNoApprox<T>(p_input,
+                               bias_data,
+                               input_params,
+                               bias_params,
+                               p_tmp,
+                               p_output,
+                               bias_length);
       },
       0);
 
@@ -120,17 +140,17 @@ Status ComputeInternal(OpKernelContext* context) {
 }  // namespace
 
 // This op is internal-only, so register outside of onnx:
-#define REGISTER_KERNEL_TYPED(T)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      QBiasGelu,                                                  \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T,                                                          \
-      kCpuExecutionProvider,                                      \
-      KernelDefBuilder()                                          \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      QBiasGelu);
-REGISTER_KERNEL_TYPED(uint8_t)
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    QBiasGelu,
+    kMSDomain,
+    1,
+    float,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()})
+        .TypeConstraint("T3", DataTypeImpl::GetTensorType<float>()),
+    QBiasGelu);
 
 QBiasGelu::QBiasGelu(const OpKernelInfo& op_kernel_info)
     : OpKernel(op_kernel_info) {
