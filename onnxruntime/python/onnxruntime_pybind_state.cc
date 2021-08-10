@@ -299,7 +299,8 @@ static inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime
 
 static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExecutionProvider(
     const std::string& ep_shared_lib_path,
-    const ProviderOptions& provider_options = {}) {
+    const ProviderOptions& provider_options = {},
+    const std::string& entry_symbol_name = "GetProvider") {
   void* handle;
   auto error = Env::Default().LoadDynamicLibrary(ep_shared_lib_path, false, &handle);
   if (!error.IsOK()) {
@@ -307,7 +308,7 @@ static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExecutionProvider(
   }
 
   Provider* (*PGetProvider)();
-  Env::Default().GetSymbolFromLibrary(handle, "GetProvider", (void**)&PGetProvider);
+  Env::Default().GetSymbolFromLibrary(handle, entry_symbol_name, (void**)&PGetProvider);
 
   Provider* provider = PGetProvider();
   std::shared_ptr<IExecutionProviderFactory> ep_factory = provider->CreateExecutionProviderFactory(&provider_options);
