@@ -6,7 +6,10 @@ jobs:
 - job: NuGet_Test_Win
   workspace:
     clean: all
-  pool: ${{ parameters.AgentPool }}
+  pool:
+    name: 'onnxruntime-gpu-tensorrt8-winbuild' 
+    demands: []
+  #pool: ${{ parameters.AgentPool }}
   #dependsOn:
   #- NuGet_Packaging
   condition: succeeded()
