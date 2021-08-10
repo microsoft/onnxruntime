@@ -625,6 +625,12 @@ class Graph {
   /** Check if a given name is an initializer tensor's name in this graph. */
   bool IsInitializedTensor(const std::string& name) const;
 
+  /** Check if a given name is a sparse initializer's name in the model 
+   * we currently convert sparse_initializer field in the model into dense Tensor instances.
+   * However, we sometimes want to check if this initializer was stored as sparse in the model.
+  */
+  bool IsSparseInitializer(const std::string& name) const;
+
   /** Gets an initializer tensor with the provided name.
   @param[out] value Set to the TensorProto* if the initializer is found, or nullptr if not.
   @returns True if found.
@@ -647,6 +653,14 @@ class Graph {
   @remarks check_outer_scope of true is not supported in a minimal build
   */
   const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const std::string& name, bool check_outer_scope) const;
+
+  /** returns the initializer's TensorProto if 'name' is an initializer (both constant and overridable). 
+  If the initializer is not found, a nullptr is returned.
+  @param check_outer_scope If true and the graph is a subgraph,
+         check ancestor graph/s for 'name' if not found in 'graph'.
+  @remarks check_outer_scope of true is not supported in a minimal build
+  */
+  const ONNX_NAMESPACE::TensorProto* GetInitializer(const std::string& name, bool check_outer_scope) const;
 
   /** Gets the Graph inputs excluding initializers.
   These are the required inputs to the Graph as the initializers can be optionally overridden via graph inputs.
@@ -713,7 +727,7 @@ class Graph {
   /** Gets the NodeArgs that represent value_info instances in the Graph.
   These are the values that are neither Graph inputs nor outputs.
   @remarks Contains no nullptr values. */
-  const std::vector<const NodeArg*>& GetValueInfo() const noexcept { return value_info_; }
+  const std::unordered_set<const NodeArg*>& GetValueInfo() const noexcept { return value_info_; }
 
 #if !defined(ORT_MINIMAL_BUILD)
   void AddValueInfo(const NodeArg* new_value_info);
@@ -1402,7 +1416,7 @@ class Graph {
   bool graph_outputs_manually_set_ = false;
 
   // Graph value_info.
-  std::vector<const NodeArg*> value_info_;
+  std::unordered_set<const NodeArg*> value_info_;
 
   // All node args owned by <*this> graph. Key is node arg name.
   std::unordered_map<std::string, std::unique_ptr<NodeArg>> node_args_;

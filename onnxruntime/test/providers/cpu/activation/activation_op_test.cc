@@ -99,7 +99,9 @@ TEST_F(ActivationOpTest, Relu) {
                           [](float x) { return std::max(x, 0.0f); });
   TestActivationOp<double>("Relu",
                            input_values_double,
-                           [](double x) { return std::max(x, 0.0); });
+                           [](double x) { return std::max(x, 0.0); },
+                           {},
+                           /*is_tensorrt_supported=*/ false);
   TestActivationOp<int8_t>("Relu",
                            input_values_int8,
                            [](int8_t x) { return std::max(x, static_cast<int8_t>(0)); },

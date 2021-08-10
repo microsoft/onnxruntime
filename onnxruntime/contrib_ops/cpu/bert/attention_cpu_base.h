@@ -26,8 +26,10 @@ class AttentionCPUBase : public AttentionBase {
                         Tensor* output,            // output tensor
                         int batch_size,            // batch size
                         int sequence_length,       // sequence length
-                        int head_size,             // head size
-                        int hidden_size,           // hidden size
+                        int qk_head_size,          // qk_head_size
+                        int v_head_size,           // head_size
+                        int v_hidden_size,         // hidden_size
+                        const Tensor* extra_add_qk,// extra add in QK. Its size is BxNxSxS
                         OpKernelContext* context) const {
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
@@ -35,7 +37,7 @@ class AttentionCPUBase : public AttentionBase {
     auto* tp = context->GetOperatorThreadPool();
 
     int past_sequence_length = 0;
-    Tensor* present = GetPresent(context, past, batch_size, head_size, sequence_length, past_sequence_length);
+    Tensor* present = GetPresent(context, past, batch_size, v_head_size, sequence_length, past_sequence_length);
 
     // Total sequence length including that of past state: S* = S' + S
     const int all_sequence_length = past_sequence_length + sequence_length;
@@ -61,18 +63,23 @@ class AttentionCPUBase : public AttentionBase {
     const T* past_data = past != nullptr ? past->template Data<T>() : nullptr;
     T* present_data = present != nullptr ? present->template MutableData<T>() : nullptr;
 
+    const T* extra_add_qk_data = nullptr;
+    if (extra_add_qk != nullptr) {
+      extra_add_qk_data = extra_add_qk->template Data<T>();
+    }
+
     ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K,
                              mask_index_data, mask_index_dims, static_cast<T*>(mask_data),
-                             batch_size, sequence_length, past_sequence_length, head_size,
-                             past_data, present_data, tp);
+                             batch_size, sequence_length, past_sequence_length, qk_head_size == 0 ? v_head_size : qk_head_size,
+                             past_data, present_data, tp, extra_add_qk_data);
 
     // Compute the attentionScore * Value. It does: out_tmp(B, N, S, H) = attention_probs(B, N, S, S*) x V(B, N, S*, H)
     auto out_tmp_data =
-        allocator->Alloc(SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * head_size * sizeof(T));
+        allocator->Alloc(SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * v_head_size * sizeof(T));
     BufferUniquePtr out_tmp_buffer(out_tmp_data, BufferDeleter(allocator));
 
     ComputeVxAttentionScore(output->template MutableData<T>(), static_cast<T*>(out_tmp_data), static_cast<T*>(attention_probs), V,
-                            batch_size, sequence_length, past_sequence_length, head_size, hidden_size,
+                            batch_size, sequence_length, past_sequence_length, v_head_size, v_hidden_size,
                             past_data, present_data, tp);
 
     return Status::OK();
@@ -96,7 +103,8 @@ class AttentionCPUBase : public AttentionBase {
                              int head_size,                                // head size of self-attention
                              const T* past,                                // past state
                              T* present,                                   // present state
-                             ThreadPool* tp) const {
+                             ThreadPool* tp,
+                             const T* extra_add_qk_data) const {
     const int all_sequence_length = past_sequence_length + sequence_length;                  // S* = S' + S
     const size_t past_chunk_length = static_cast<size_t>(past_sequence_length) * head_size;  // S' x H
     const size_t input_chunk_length = static_cast<size_t>(sequence_length) * head_size;      // S x H
@@ -104,10 +112,11 @@ class AttentionCPUBase : public AttentionBase {
 
     {
       if (mask_data != nullptr) {
-        PrepareMask(mask_index, mask_index_dims, mask_data, is_unidirectional_, batch_size, sequence_length, past_sequence_length);
-      } else {  // no any mask
-        memset(attention_probs, 0, static_cast<size_t>(batch_size) * num_heads_ * sequence_length * all_sequence_length * sizeof(T));
+        // Convert attention mask data from int to float (0 to -10000.0f). The mask_data shape is BxSxS*.
+        PrepareMask(mask_index, mask_index_dims, mask_data, batch_size, sequence_length, past_sequence_length);
       }
+
+      memset(attention_probs, 0, static_cast<size_t>(batch_size) * num_heads_ * sequence_length * all_sequence_length * sizeof(T));
 
       const int loop_len = batch_size * num_heads_;
       const float alpha = 1.0f / sqrt(static_cast<float>(head_size));
@@ -119,27 +128,47 @@ class AttentionCPUBase : public AttentionBase {
         for (std::ptrdiff_t i = begin; i != end; ++i) {
           const std::ptrdiff_t batch_index = i / num_heads_;
 
-          // broadcast mask data: (Bx)SxS* -> (BxNx)SxS*
-          if (mask_data != nullptr) {
-            const T* broadcast_data_src = reinterpret_cast<T*>(mask_data) + batch_index * sequence_length * all_sequence_length;
-            T* broadcast_data_dest = reinterpret_cast<T*>(attention_probs) + sequence_length * all_sequence_length * i;
-            memcpy(broadcast_data_dest, broadcast_data_src, sequence_length * all_sequence_length * sizeof(T));
-          }
-
           const T* k = K + input_chunk_length * i;
           if (nullptr != present) {
-            // concatenate past_K and K : (BxNx)S'xH, (BxNx)SxH -> (BxNx)S*xH
+            // Concatenate past_K and K : (BxNx)S'xH, (BxNx)SxH -> (BxNx)S*xH
             k = ConcatStateChunk(past, k, present, past_chunk_length, present_chunk_length, i);
           }
 
-          // gemm
+          int offset = sequence_length * all_sequence_length * static_cast<int>(i);
+          T* output = reinterpret_cast<T*>(attention_probs) + offset;
+
+          // Compute Q*K'
           //                     original                 transposed             each iteration
           // A: Q                (B x N x) S x H          (B x N x) S x H        S x H
           // B: K'               (B x N x) S* x H         (B x N x) H x S*       H x S*
           // C: attention_probs  (B x N x) S x S*         (B x N x) S x S*       S x S*
           math::Gemm<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, all_sequence_length, head_size, alpha,
                                     Q + input_chunk_length * i, k, 1.0,
-                                    reinterpret_cast<T*>(attention_probs) + sequence_length * all_sequence_length * i, nullptr);
+                                    output, nullptr);
+
+          // Apply unidirectional mask and set future words to -10000.0f.
+          if (is_unidirectional_) {
+            for (int s = 0; s < sequence_length - 1; s++) {
+              for (int t = past_sequence_length + s + 1; t < all_sequence_length; t++) {
+                output[s * all_sequence_length + t] = static_cast<T>(-10000.0f);
+              }
+            }
+          }
+
+          // Apply attention mask
+          if (mask_data != nullptr) {
+            const T* attention_mask = reinterpret_cast<T*>(mask_data) + batch_index * sequence_length * all_sequence_length;
+            for (int j = 0; j < sequence_length * all_sequence_length ; j++) {
+              output[j] += attention_mask[j];
+            }
+          }
+
+          if (extra_add_qk_data != nullptr) {
+            const T* extra = extra_add_qk_data + offset;
+            for (int j = 0; j < sequence_length * all_sequence_length ; j++) {
+              output[j] += extra[j];
+            }
+          }
         }
       });
     }

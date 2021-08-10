@@ -180,7 +180,7 @@ jobs:
     buildArch: x86
     msbuildPlatform: Win32
     packageName: x86
-    buildparameter: --x86 ${{ parameters.AdditionalBuildFlags }} ${{ parameters.AdditionalWinBuildFlags}}
+    buildparameter: ${{ parameters.AdditionalBuildFlags }} ${{ parameters.AdditionalWinBuildFlags}}
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: false
 
