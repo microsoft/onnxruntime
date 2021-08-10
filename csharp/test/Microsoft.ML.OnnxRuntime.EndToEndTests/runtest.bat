@@ -52,7 +52,7 @@ IF NOT errorlevel 0 (
 %dn% list test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj package
 dir test\Microsoft.ML.OnnxRuntime.EndToEndTests\packages\
 
-%dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore /p:DefineConstants="USE_TENSORRT"
+%dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore /p:DefineConstants="USE_TENSORRT" --filter TestTensorRTProviderOptions
 IF NOT errorlevel 0 (
     @echo "Failed to build or execute the end-to-end test"
     EXIT 1
