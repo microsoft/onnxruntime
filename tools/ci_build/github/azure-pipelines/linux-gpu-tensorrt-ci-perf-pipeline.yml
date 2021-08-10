@@ -20,6 +20,11 @@ parameters:
   type: boolean
   default: false
 
+- name: RunPython38
+  displayName: Run on Python 3.8
+  type: boolean
+  default: false
+
 - name: TrtVersion
   displayName: TensorRT Version
   type: string
@@ -58,16 +63,19 @@ jobs:
     - Agent.Name -equals K8S-HVZD1T2CL-HVZD1T2
 
   variables:
-    - name: build_args
+    - name: build
       ${{ if eq(parameters.RunTrtContainer, true) }}:
         value: Dockerfile.tensorrt-perf -t $(trtContainer) -o $(Build.SourcesDirectory)/dockerfiles/Dockerfile.tensorrt
     - name: environment
       ${{ if ne(parameters.RunMachine, true) }}:
         value: docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf 
       ${{ if eq(parameters.RunMachine, true) }}:
-        value: machine.sh
+        value: machine.sh 
     - name: with_arguments
-      value: $(environment) -e "$(epList)"
+      ${{ if eq(parameters.RunPython38, true) }}:
+        value: $(environment) -e "$(epList)" -y true
+      ${{ if ne(parameters.RunPython38, true) }}:
+        value: $(environment) -e "$(epList)"
   timeoutInMinutes: 3000 
       
   steps:
