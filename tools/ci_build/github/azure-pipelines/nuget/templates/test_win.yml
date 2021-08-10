@@ -10,8 +10,8 @@ jobs:
     name: 'onnxruntime-gpu-tensorrt8-winbuild' 
     demands: []
   #pool: ${{ parameters.AgentPool }}
-  #dependsOn:
-  #- NuGet_Packaging
+  dependsOn:
+  - NuGet_Packaging
   condition: succeeded()
   variables:
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
