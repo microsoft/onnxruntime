@@ -2,13 +2,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "matmul_integer.cuh"
+#include "core/providers/rocm/math/matmul_integer.cuh"
 
 #include <hipcub/hipcub.hpp>
-#include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/rocm/cu_inc/common.cuh"
 
 namespace onnxruntime {
-namespace cuda {
+namespace rocm {
 
 template <int TPB>
 __global__ void ReduceRowSumOnMatrixAKernel(const int8_t* matrix, int32_t* row_sum, const int8_t offset, int32_t K) {
@@ -35,7 +35,7 @@ Status ReduceRowSumOnMatrixA(hipStream_t stream, const int8_t* matrix, int32_t* 
                                                                                                                                                  static_cast<int>(helper.K()));
   }
 
-  return CUDA_CALL(hipPeekAtLastError()) ? Status::OK() : Status(common::ONNXRUNTIME, common::FAIL);
+  return HIP_CALL(hipPeekAtLastError()) ? Status::OK() : Status(common::ONNXRUNTIME, common::FAIL);
 }
 
 template <int TPB>
@@ -64,7 +64,7 @@ Status ReduceColSumOnMatrixB(hipStream_t stream, const int8_t* matrix, int32_t* 
                                                                                                                                                  static_cast<int32_t>(helper.N()));
   }
 
-  return CUDA_CALL(hipPeekAtLastError()) ? Status::OK() : Status(common::ONNXRUNTIME, common::FAIL);
+  return HIP_CALL(hipPeekAtLastError()) ? Status::OK() : Status(common::ONNXRUNTIME, common::FAIL);
 }
 
 __global__ void ComputeOffsetOfMatrixAB(const int32_t* row_sum,
@@ -125,8 +125,8 @@ Status OffsetOutput(hipStream_t stream,
     }
   }
 
-  return CUDA_CALL(hipPeekAtLastError()) ? Status::OK() : Status(common::ONNXRUNTIME, common::FAIL);
+  return HIP_CALL(hipPeekAtLastError()) ? Status::OK() : Status(common::ONNXRUNTIME, common::FAIL);
 }
 
-}  // namespace cuda
+}  // namespace rocm
 }  // namespace onnxruntime
