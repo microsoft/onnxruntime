@@ -144,7 +144,7 @@ export class WebGLInferenceHandler implements InferenceHandler {
           const adjustedLayout =
               createTextureLayoutFromTextureType(this.session.layoutStrategy, adjustedKernelShape, textureType);
           let buffer = tensor.numberData;
-          if (shape[2] * shape[3] % channels !== 0) {
+          if (shape[1] * shape[2] * shape[3] % channels !== 0) {
             const numFeatureMaps = shape[0];
             const oldRowSize = shape[1] * shape[2] * shape[3];
             const newRowSize = Math.ceil(oldRowSize * group / channels) * channels;

@@ -15,22 +15,6 @@ const createPackedReshape3DProgramMetadata = (outputShape3D: readonly number[]) 
 const createPackedReshape3DProgramInfo =
     (handler: WebGLInferenceHandler, input3D: Tensor, metadata: ProgramMetadata, outputShape3D: readonly number[]):
         ProgramInfo => {
-          // For packed reshape, we need to re-arrange texel data for output shape.
-          // Our pack is designed to pack a 2x2 tile in last h and w dimension, so
-          // for the reshaped new tensor, we just need to re-arrange the last h and
-          // w dimension. For any shape that is not in 3D, i.e. [batch, W, H], we
-          // first convert it to 3D by collapsing other dimension to batch dim, then
-          // process with the last two dimensions.
-          // Note: we only need the shape tensor to calculate output shape, so the
-          // content in shape tensor is never uploaded to GPU. It is always kept in CPU.
-          // TODO: optimize the algorithm -- in some cases, if the last two dims are
-          // the same between input shape and output shape, the packed reshape can be
-          // treated as no-op.
-          // TODO: the implementation is a bit complicated due to the fact tensor shape is
-          // immutable once the tensor is created, plus the tensor shape has a 1-to-1
-          // mapping with texture layout. In the future, we may consider relaxing this
-          // assumption.
-
           const inputShape3D = input3D.dims as [number, number, number];
           const squeezedOutputShape = outputShape3D as [number, number, number];
 
@@ -114,6 +98,17 @@ export function processDims3D(shape: ArrayLike<number>): [number, number, number
   return [batch, shape.length > 1 ? shape[shape.length - 2] : 1, shape[shape.length - 1]];
 }
 
+// For packed reshape, we need to re-arrange texel data for output shape.
+// Our pack is designed to pack a 2x2 tile in last h and w dimension, so
+// for the reshaped new tensor, we just need to re-arrange the last h and
+// w dimension. For any shape that is not in 3D, i.e. [batch, W, H], we
+// first convert it to 3D by collapsing other dimension to batch dim, then
+// process with the last two dimensions.
+// Note: we only need the shape tensor to calculate output shape, so the
+// content in shape tensor is never uploaded to GPU. It is always kept in CPU.
+// TODO: optimize the algorithm -- in some cases, if the last two dims are
+// the same between input shape and output shape, the packed reshape can be
+// treated as no-op.
 export function isReshapeCheap(dims: readonly number[], reshapedDims: readonly number[]) {
   let isCheapReshape = false;
   if (dims.length === 0 || reshapedDims.length === 0) {  // scalar
