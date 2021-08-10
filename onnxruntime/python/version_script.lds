@@ -4,7 +4,6 @@ VERS_1.0 {
     PyInit_onnxruntime_pybind11_state;
     extern "C++" {
        onnx::*;
-       google::protobuf::*;
     };
 
   # Hide everything else.
