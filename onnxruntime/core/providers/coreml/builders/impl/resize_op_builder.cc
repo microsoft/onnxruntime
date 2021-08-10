@@ -67,6 +67,7 @@ bool GetResizeOutputSizes(const InitializedTensorSet& initializers, const Node& 
 }
 
 // Add operator related
+
 #ifdef __APPLE__
 void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   // We don't really use ROI here, so add it to skipped list if it's an initializer tensor

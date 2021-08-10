@@ -33,6 +33,7 @@ class ConvOpBuilder : public BaseOpBuilder {
 };
 
 // Add operator related
+
 #ifdef __APPLE__
 void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   const auto& input_defs = node.InputDefs();

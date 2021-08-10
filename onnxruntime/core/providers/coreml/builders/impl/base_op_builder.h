@@ -15,8 +15,8 @@ class BaseOpBuilder : public IOpBuilder {
   virtual ~BaseOpBuilder() = default;
 
   // Add operator related
+  
 #ifdef __APPLE__
-  // Add operator related
  public:
   virtual void AddInitializersToSkip(ModelBuilder& /* model_builder */, const Node& /* node */) const override {}
   Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node,

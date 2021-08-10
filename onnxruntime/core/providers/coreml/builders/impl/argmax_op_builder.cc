@@ -27,6 +27,7 @@ class ArgMaxOpBuilder : public BaseOpBuilder {
 };
 
 // Add operator related
+
 #ifdef __APPLE__
 Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                               const Node& node,

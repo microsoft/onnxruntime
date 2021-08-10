@@ -37,6 +37,7 @@ class ReshapeOpBuilder : public BaseOpBuilder {
 };
 
 // Add operator related
+
 #ifdef __APPLE__
 void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());

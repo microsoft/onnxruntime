@@ -30,6 +30,7 @@ class PoolOpBuilder : public BaseOpBuilder {
 };
 
 // Add operator related
+
 #ifdef __APPLE__
 Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                             const Node& node,

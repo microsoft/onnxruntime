@@ -27,6 +27,7 @@ class CastOpBuilder : public BaseOpBuilder {
 };
 
 // Add operator related
+
 #ifdef __APPLE__
 Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& /* model_builder */,
                                             const Node& /* node */,

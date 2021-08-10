@@ -6,7 +6,6 @@
 #ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
 #endif
-
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/shared/utils/utils.h"
 

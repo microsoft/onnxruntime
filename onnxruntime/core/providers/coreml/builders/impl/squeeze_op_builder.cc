@@ -32,6 +32,7 @@ class SqueezeOpBuilder : public BaseOpBuilder {
 };
 
 // Add operator related
+
 #ifdef __APPLE__
 void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   if (node.SinceVersion() > 12 && node.InputDefs().size() > 1) {

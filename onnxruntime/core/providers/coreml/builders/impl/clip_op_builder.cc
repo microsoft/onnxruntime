@@ -30,6 +30,7 @@ class ClipOpBuilder : public BaseOpBuilder {
 };
 
 // Add operator related
+
 #ifdef __APPLE__
 void ClipOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   // Both min and max values will be injected into the layer, no need to add to the model
