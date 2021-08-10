@@ -739,13 +739,15 @@ if (onnxruntime_USE_COREML)
   endif()
 
   # Add CoreML objective c++ source code
-  file(GLOB
-    onnxruntime_providers_coreml_objcc_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/model.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/model.mm"
-    "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/host_utils.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/host_utils.mm"
-  )
+  if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    file(GLOB
+      onnxruntime_providers_coreml_objcc_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/model.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/model.mm"
+      "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/host_utils.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/host_utils.mm"
+    )
+  endif()
 
   set(onnxruntime_providers_coreml_cc_srcs
     ${onnxruntime_providers_coreml_cc_srcs_top}
@@ -754,7 +756,11 @@ if (onnxruntime_USE_COREML)
   )
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_coreml_cc_srcs})
-  onnxruntime_add_static_library(onnxruntime_providers_coreml ${onnxruntime_providers_coreml_cc_srcs} ${onnxruntime_providers_coreml_objcc_srcs})
+  if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    onnxruntime_add_static_library(onnxruntime_providers_coreml ${onnxruntime_providers_coreml_cc_srcs} ${onnxruntime_providers_coreml_objcc_srcs})
+  else()
+    onnxruntime_add_static_library(onnxruntime_providers_coreml ${onnxruntime_providers_coreml_cc_srcs})
+  endif()
   onnxruntime_add_include_to_target(onnxruntime_providers_coreml onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
   onnxruntime_add_include_to_target(onnxruntime_providers_coreml onnxruntime_coreml_proto)
   target_link_libraries(onnxruntime_providers_coreml PRIVATE onnxruntime_coreml_proto "-framework Foundation" "-framework CoreML")
