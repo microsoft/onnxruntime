@@ -98,22 +98,20 @@ Return Value:
         beq     ProcessLoopM1
         cmp     x4,#4                       // CountM < 4?
         blo     ProcessLoopM2
-
         cmp     x4,#8                       // CountM < 8?
         blo     ProcessNextColumnLoopM4
         ld1     {v9.4s},[x7]                // load row sum 5 ~ 8
 
 //
 // Process 8 rows of the matrices.
-//
-// v8 ~ v9 row sums 
-//                                      int8 RHS 4x8 block
+// Row Sums: v8 ~ v9  
+//                                      A  4x8 block
 //                           /-----------------------------------------|
 //                           |v0.b[0] ... v0.b[12] v1.b[0] ... v1.b[12]|
 //                           |  ...                              ...   |
 //                           |v0.b[3] ... v0.b[15] v1.b[3] ... v1.b[15]|
 //                           \-----------------------------------------/
-//    int8 LHS 8x4 block
+//    B 8x4 block
 //  /---------------------\  /-----------------------------------------|
 //  |v4.b[0]  ... v4.b[3] |  |v16.s[0] .. v16.s[3] v17.s[0] .. v17.s[3]|
 //  |v4.b[4]  ... v4.b[7] |  |v18.s[0] .. v18.s[3] v19.s[0] .. v19.s[3]|
@@ -124,7 +122,7 @@ Return Value:
 //  |v5.b[8]  ... v5.b[11]|  |v28.s[0] .. v28.s[3] v29.s[0] .. v29.s[3]|
 //  |v5.b[12] ... v5.b[15]|  |v30.s[0] .. v30.s[3] v31.s[0] .. v31.s[3]|
 //  \---------------------/  \-----------------------------------------/
-//////////////////////////
+//
 //  unroll for the next 4 in k dimension
 //                           /-----------------------------------------|
 //                           |v2.b[0] ... v2.b[12] v3.b[0] ... v3.b[12]|
@@ -141,8 +139,6 @@ Return Value:
 //  |v7.b[8]  ... v7.b[11]|  |v28.s[0] .. v28.s[3] v29.s[0] .. v29.s[3]|
 //  |v7.b[12] ... v7.b[15]|  |v30.s[0] .. v30.s[3] v31.s[0] .. v31.s[3]|
 //  \---------------------/  \-----------------------------------------/
-//                                  int32 accumulators 8x8 block
-
 
 // Starting the loop: initialize accumulators with scaled combination
 //                    of row and column sums
@@ -173,7 +169,6 @@ ProcessNextColumnLoopM8
         mul     v26.4s,v0.4s,v27.4s
         mul     v28.4s,v0.4s,v29.4s
         mul     v30.4s,v0.4s,v31.4s
-
         mul     v17.4s,v1.4s,v17.4s
         mul     v19.4s,v1.4s,v19.4s
         mul     v21.4s,v1.4s,v21.4s
@@ -183,6 +178,7 @@ ProcessNextColumnLoopM8
         mul     v29.4s,v1.4s,v29.4s
         mul     v31.4s,v1.4s,v31.4s
 
+        // preloading mixed with accumulator inits
         ld1     {v0.16b},[x1],#16           // load packed B0
         add     v16.4s,v3.4s,v16.4s
         add     v18.4s,v3.4s,v18.4s
@@ -246,19 +242,16 @@ ComputeBlockLoopM8
         UdotByElement 21, 1, 4, 2
         UdotByElement 23, 1, 4, 3
         ldr     q4,[x0],#16                 // load packed A0 for next iteration
-
         UdotByElement 24, 0, 5, 0
         UdotByElement 26, 0, 5, 1
         UdotByElement 28, 0, 5, 2
         UdotByElement 30, 0, 5, 3
         ld1     {v0.16b},[x1],#16           // load packed B0 for next iteration
-
         UdotByElement 25, 1, 5, 0
         UdotByElement 27, 1, 5, 1
         UdotByElement 29, 1, 5, 2
         UdotByElement 31, 1, 5, 3
         ld1     {v1.16b},[x1],#16           // load packed B1 for next iteration
-
 
         UdotByElement 16, 2, 6, 0
         UdotByElement 18, 2, 6, 1
@@ -270,7 +263,6 @@ ComputeBlockLoopM8
         UdotByElement 21, 3, 6, 2
         UdotByElement 23, 3, 6, 3
         ldr     q6,[x0],#16                 // load packed A2 for next iteration
-
         UdotByElement 24, 2, 7, 0
         UdotByElement 26, 2, 7, 1
         UdotByElement 28, 2, 7, 2
@@ -353,7 +345,6 @@ ComputeBlockLoopFinishM8
         add     v30.4s,v30.4s,v6.4s
         add     v31.4s,v31.4s,v7.4s
 
-
 SkipAccumulateOutputM8
         stp     q16,q17,[x2],#32
         dup     v17.4s,v8.s[0]              // broadcast row sums
@@ -371,7 +362,6 @@ SkipAccumulateOutputM8
         dup     v29.4s,v9.s[2]
         stp     q30,q31,[x7]
         dup     v31.4s,v9.s[3]
-
         cbnz    x5,ProcessNextColumnLoopM8
 
 ExitKernelM8
@@ -459,7 +449,6 @@ StoreOutputPartialAddModeM8
         mov     v20.16b,v21.16b
         st1     {v22.4s},[x12],#16
         mov     v22.16b,v23.16b
-
         add     v24.4s,v24.4s,v4.4s
         add     v26.4s,v26.4s,v5.4s
         st1     {v24.4s},[x0],#16
@@ -495,7 +484,6 @@ StoreOutputPartial2AddModeM8
         dup     v20.4s,v20.s[2]
         st1     {v22.2s},[x12],#8
         dup     v22.4s,v22.s[2]
-
         add     v24.4s,v24.4s,v4.4s
         add     v26.4s,v26.4s,v5.4s
         st1     {v24.2s},[x0],#8
@@ -508,7 +496,6 @@ StoreOutputPartial2AddModeM8
         dup     v28.4s,v28.s[2]
         st1     {v30.2s},[x7],#8
         dup     v30.4s,v30.s[2]
-
 
 StoreOutputPartial1AddModeM8
         tbz     x5,#0,ExitKernelM8
@@ -536,7 +523,6 @@ StoreOutputPartial1AddModeM8
         st1     {v28.s}[0],[x4]
         add     v30.4s,v30.4s,v7.4s
         st1     {v30.s}[0],[x7]
-
         b       ExitKernelM8
 
 
@@ -560,27 +546,31 @@ StoreOutputPartial1AddModeM8
 // packed matrix A. At the time of this implementation, using a wider 128-bit
 // load didn't affect performance for higher end cores.
 //
-//                                      int8 RHS 4x8 block
+//                                      B 4x8 block
 //                           /-----------------------------------------|
 //                           |v0.b[0] ... v0.b[12] v1.b[0] ... v1.b[12]|
 //                           |  ...                              ...   |
 //                           |v0.b[3] ... v0.b[15] v1.b[3] ... v1.b[15]|
 //                           \-----------------------------------------/
-//    int8 LHS 4x4 block
+//    A 4x4 block
 //  /---------------------\  /-----------------------------------------|
 //  |d4.b[0]  ... d4.b[3] |  |v16.s[0] .. v16.s[3] v17.s[0] .. v17.s[3]|
 //  |d4.b[4]  ... d4.b[7] |  |v18.s[0] .. v18.s[3] v19.s[0] .. v19.s[3]|
 //  |d5.b[0]  ... d5.b[3] |  |v20.s[0] .. v20.s[3] v21.s[0] .. v21.s[3]|
 //  |d5.b[4]  ... d5.b[7] |  |v22.s[0] .. v22.s[3] v23.s[0] .. v23.s[3]|
 //  \---------------------/  \-----------------------------------------/
-
+//  unroll for the next 4 in k dimension
+//                           /-----------------------------------------|
+//                           |v0.b[0] ... v0.b[12] v1.b[0] ... v1.b[12]|
+//                           |  ...                              ...   |
+//                           |v0.b[3] ... v0.b[15] v1.b[3] ... v1.b[15]|
+//                           \-----------------------------------------/
 //  /---------------------\  /-----------------------------------------\
 //  |d6.b[0]  ... d6.b[3] |  |v24.s[0] .. v24.s[3] v25.s[0] .. v25.s[3]|
 //  |d6.b[4]  ... d6.b[7] |  |v26.s[0] .. v26.s[3] v27.s[0] .. v27.s[3]|
 //  |d7.b[0]  ... d7.b[3] |  |v28.s[0] .. v24.s[3] v29.s[0] .. v29.s[3]|
 //  |d7.b[4]  ... d7.b[7] |  |v30.s[0] .. v24.s[3] v31.s[0] .. v31.s[3]|
 //  \---------------------/  \-----------------------------------------/
-//                                  int32 accumulators 8x8 block
 
 ProcessNextColumnLoopM4
         ld1     {v0.16b},[x1],#16           // load packed B0
@@ -808,13 +798,12 @@ StoreOutputPartial1AddModeM4
         st1     {v22.s}[0],[x12]
         b       ExitKernelM4
 
-
 //
 // Process 2 rows of the matrices.
 //
 ProcessLoopM2
-        dup     v9.4s, v8.s[1];
-        dup     v8.4s, v8.s[0];
+        dup     v9.4s, v8.s[1]
+        dup     v8.4s, v8.s[0]
 
 ProcessNextColumnLoopM2
         ld1     {v0.16b},[x1],#16           // load packed B0

@@ -218,23 +218,20 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_UDOT>(
             // Copy the remaining bytes to the zero padded stack buffer.
             //
             uint8_t* d = D;
-            uint8_t* e = &D[16];
 
             vst1q_u8(d, vmovq_n_u8(0));
-            vst1q_u8(e, vmovq_n_u8(0));
+            vst1q_u8(&d[16], vmovq_n_u8(0));
 
             while (k > 0) {
                 d[0] = *a0++;
                 d[4] = *a1++;
                 d[8] = *a2++;
                 d[12] = *a3++;
+                d[16] = *a4++;
+                d[20] = *a5++;
+                d[24] = *a6++;
+                d[28] = *a7++;
                 d += 1;
-
-                e[0] = *a4++;
-                e[4] = *a5++;
-                e[8] = *a6++;
-                e[12] = *a7++;
-                e += 1;
                 k -= 1;
             }
 
