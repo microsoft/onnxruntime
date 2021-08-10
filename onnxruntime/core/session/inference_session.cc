@@ -23,6 +23,7 @@
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/mldata_type_utils.h"
+#include "core/framework/session_state_flatbuffers_utils.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_type_and_shape.h"
@@ -1161,7 +1162,7 @@ Status AssignNodesToEpsFromHashesImpl(Graph& graph, const fbs::SessionState& fbs
 
   for (auto& node : graph.Nodes()) {
     for (auto& [attribute, subgraph] : node.GetAttributeNameToMutableSubgraphMap()) {
-      const auto key = MakeString(node.Index(), "_", attribute);  // TODO reuse GetSubGraphId()
+      const auto key = experimental::utils::GetSubGraphId(node.Index(), attribute);
       const auto* const fbs_sub_graph_ss = fbs_sub_graph_session_states->LookupByKey(key.c_str());
       ORT_RETURN_IF(nullptr == fbs_sub_graph_ss,
                     "Subgraph SessionState entry for ", key, " is missing. Invalid ORT format model.");

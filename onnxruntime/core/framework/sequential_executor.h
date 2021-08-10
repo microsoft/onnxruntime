@@ -30,8 +30,6 @@ class SequentialExecutor : public IExecutor {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SequentialExecutor);
   const bool& terminate_flag_;
-#if !defined(ORT_MINIMAL_BUILD)
   const bool only_execute_path_to_fetches_;
-#endif
 };
 }  // namespace onnxruntime

@@ -148,6 +148,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   if (only_execute_path_to_fetches) {
     VLOGS(logger, 1) << to_be_executed_nodes->size() << " nodes to be executed\n";
   }
+#else
+  ORT_UNUSED_PARAMETER(only_execute_path_to_fetches_);
 #endif
 
   LOGS(logger, INFO) << "Begin execution";

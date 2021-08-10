@@ -13,6 +13,7 @@
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/ort_value_pattern_planner.h"
+#include "core/framework/session_state_flatbuffers_utils.h"
 #include "core/framework/session_state_utils.h"
 #include "core/framework/utils.h"
 #include "core/providers/cpu/controlflow/utils.h"
@@ -828,10 +829,6 @@ const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {
   return *node_index_info_;
 }
 
-static std::string GetSubGraphId(const NodeIndex node_idx, const std::string& attr_name) {
-  return std::to_string(node_idx) + "_" + attr_name;
-}
-
 #if !defined(ORT_MINIMAL_BUILD)
 void SessionState::UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs) {
   std::vector<int> sorted_idxs = fetch_mlvalue_idxs;
@@ -877,7 +874,7 @@ static Status GetSubGraphSessionStatesOrtFormat(
     for (const auto& name_to_subgraph_session_state : session_states) {
       const std::string& attr_name = name_to_subgraph_session_state.first;
       SessionState& subgraph_session_state = *name_to_subgraph_session_state.second;
-      auto graph_id = builder.CreateString(GetSubGraphId(node_idx, attr_name));
+      auto graph_id = builder.CreateString(experimental::utils::GetSubGraphId(node_idx, attr_name));
       flatbuffers::Offset<fbs::SessionState> session_state;
       ORT_RETURN_IF_ERROR(
           subgraph_session_state.SaveToOrtFormat(builder, session_state));
@@ -1016,7 +1013,7 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
         SessionState& subgraph_session_state = *name_to_subgraph_session_state.second;
 
         // Use the graphid as the key to search the for the fbs::SubGraphSessionState
-        const std::string key = GetSubGraphId(node_idx, attr_name);
+        const std::string key = experimental::utils::GetSubGraphId(node_idx, attr_name);
         const auto* const fbs_sub_graph_ss = fbs_sub_graph_session_states->LookupByKey(key.c_str());
         ORT_RETURN_IF(nullptr == fbs_sub_graph_ss,
                       "Subgraph SessionState entry for ", key, " is missing. Invalid ORT format model.");
