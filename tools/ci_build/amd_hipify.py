@@ -145,6 +145,7 @@ provider_excluded_files = [
                 'cuda_memory_check.h',
                 'cuda_pch.cc',  # not sure why we skip this one
                 'cuda_pch.h',  # small header, hipify doesn't get it right, easier to do manually
+                'cuda_provider_factory.h',  # rocm file is source-controlled since all other EPs need it to exist at build
                 'cudnn_common.cc',
                 'cudnn_common.h',
                 'fpgeneric.cu',  # small, hipify doesn't get it right, easier to do manually
