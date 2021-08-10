@@ -69,7 +69,7 @@ jobs:
       modifyEnvironment: true
       workingFolder: '$(Build.BinariesDirectory)'
   - script: |
-     python -m pip install -q pyopenssl setuptools wheel numpy ninja flake8
+     python -m pip install -q pyopenssl setuptools wheel numpy ninja
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
   - task: PythonScript@0

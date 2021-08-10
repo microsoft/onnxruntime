@@ -12,12 +12,9 @@ import unittest
 import os
 import pytest
 from onnx import TensorProto, load_model
-import sys
 
-# Try import optimizer from source directory so that we need not build and install package after making change.
-source_dir = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'python', 'tools', 'transformers')
-if (os.path.exists(source_dir) and source_dir not in sys.path):
-    sys.path.append(source_dir)
+from parity_utilities import find_transformers_source
+if find_transformers_source():
     from optimizer import optimize_model
     from onnx_model import OnnxModel
     from onnx_exporter import export_onnx_model_from_tf, export_onnx_model_from_pt
@@ -29,7 +26,6 @@ else:
     from onnxruntime.transformers.onnx_exporter import export_onnx_model_from_tf, export_onnx_model_from_pt
     from onnxruntime.transformers.huggingface_models import MODELS
     from onnxruntime.transformers.benchmark_helper import Precision
-
 
 BERT_TEST_MODELS = {
     "bert_keras_0": ('models', 'TFBertForSequenceClassification_1.onnx'),  # bert_mrpc_tensorflow2.1_opset10
