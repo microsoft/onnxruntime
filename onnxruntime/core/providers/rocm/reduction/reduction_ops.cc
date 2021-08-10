@@ -85,7 +85,7 @@ namespace rocm {
       kOnnxDomain,                                                                         \
       13, 13,                                                                              \
       T,                                                                                   \
-      kCudaExecutionProvider,                                                              \
+      kRocmExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 
@@ -96,7 +96,7 @@ namespace rocm {
       kOnnxDomain,                                                                         \
       14,                                                                                  \
       T,                                                                                   \
-      kCudaExecutionProvider,                                                              \
+      kRocmExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 
