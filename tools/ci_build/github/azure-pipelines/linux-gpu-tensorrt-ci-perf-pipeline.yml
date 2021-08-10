@@ -122,6 +122,7 @@ jobs:
     - script: 'mkdir $(Build.SourcesDirectory)/Artifact'
       displayName: 'Prepare Artifacts Directory'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+      condition: always() 
 
     - ${{ if not(eq(length(parameters.ModelGroups), 0)) }}:
       - script: 'cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact'
@@ -132,6 +133,7 @@ jobs:
       - script: 'cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/build/result $(Build.SourcesDirectory)/Artifact/result_mem_test'
         displayName: 'Copy Artifacts'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+        condition: always()
 
     - task: PublishBuildArtifacts@1
       inputs:
