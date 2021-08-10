@@ -23,7 +23,7 @@ namespace debug_node_inputs_outputs_env_vars {
 // Shape is printed by default unless it's turned OFF by setting environment
 // variable ORT_DEBUG_NODE_IO_DUMP_SHAPE_DATA to 0.
 // set to non-zero to dump node meta data
-constexpr const char* kDumpNodeMeta = "ORT_DEBUG_NODE_IO_DUMP_NODE_META";
+constexpr const char* kDumpNodePlacement = "ORT_DEBUG_NODE_IO_DUMP_NODE_PLACEMENT";
 // set to non-zero to dump shape data
 constexpr const char* kDumpShapeData = "ORT_DEBUG_NODE_IO_DUMP_SHAPE_DATA";
 // set to non-zero to dump node input data
@@ -59,8 +59,8 @@ struct NodeDumpOptions {
     Shape = 1 << 0,
     InputData = 1 << 1,
     OutputData = 1 << 2,
-    NodeMeta = 1 << 3,
-    AllData = Shape | InputData | OutputData | NodeMeta,
+    NodePlacement = 1 << 3,
+    AllData = Shape | InputData | OutputData | NodePlacement,
   };
 
   // specifies the information to dump per node

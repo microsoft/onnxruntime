@@ -226,17 +226,15 @@ void DumpTensorToSqliteDb(const Tensor& tensor, const TensorMetadata& tensor_met
   UpdateTensorUsageInSqlDb(tensor_metadata);
 }
 
-void DumpNodeMetaToSqliteDb(
-  const OpKernelContext& context, 
-  const Node& node) {
+void DumpNodePlacementToSqliteDb(const Node& node) {
 
   static std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt_uptr( [](){
   
     sqlite3 *db = SqliteConnection();
 
     const char *sql_insert_node = 
-      "Insert or Ignore into Nodes (Name, OpType, Inputs, Outputs, Device) " \
-      " values (?, ?, ?, ?, ?);";
+      "Insert or Ignore into Nodes (Name, OpType, Device) " \
+      " values (?, ?, ?);";
 
     sqlite3_stmt *stmt = NULL;
     ORT_ENFORCE(SQLITE_OK == sqlite3_prepare_v2(db, sql_insert_node, -1, &stmt, NULL));
@@ -249,18 +247,8 @@ void DumpNodeMetaToSqliteDb(
   ORT_ENFORCE(SQLITE_OK == sqlite3_reset(stmt));
   ORT_ENFORCE(SQLITE_OK == sqlite3_bind_text(stmt, 1, node.Name().c_str(), -1, SQLITE_TRANSIENT));
   ORT_ENFORCE(SQLITE_OK == sqlite3_bind_text(stmt, 2, node.OpType().c_str(), -1, SQLITE_TRANSIENT));
-  ORT_ENFORCE(SQLITE_OK == sqlite3_bind_text(stmt, 5, node.GetExecutionProviderType().c_str(), -1, SQLITE_TRANSIENT));
+  ORT_ENFORCE(SQLITE_OK == sqlite3_bind_text(stmt, 3, node.GetExecutionProviderType().c_str(), -1, SQLITE_TRANSIENT)); 
  
-  std::stringstream ss; 
-  for (auto i = 0, end = context.InputCount(); i < end; ++i)
-    ss << node.InputDefs()[i]->Name() << (i < end-1? ", " : "");
-  ORT_ENFORCE(SQLITE_OK == sqlite3_bind_text(stmt, 3, ss.str().c_str(), -1, SQLITE_TRANSIENT));
-
-  ss.str("");
-  for (auto i = 0, end = context.OutputCount(); i < end; ++i)
-    ss << node.OutputDefs()[i]->Name() << (i < end-1? ", " : "");
-  ORT_ENFORCE(SQLITE_OK == sqlite3_bind_text(stmt, 4, ss.str().c_str(), -1, SQLITE_TRANSIENT));
-  
   ORT_ENFORCE(SQLITE_DONE == sqlite3_step(stmt));
 }
 
@@ -344,8 +332,8 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
     if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kDumpOutputData, false)) {
       opts.dump_flags |= NodeDumpOptions::DumpFlags::OutputData;
     }
-    if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kDumpNodeMeta, true)) {
-      opts.dump_flags |= NodeDumpOptions::DumpFlags::NodeMeta;
+    if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kDumpNodePlacement, true)) {
+      opts.dump_flags |= NodeDumpOptions::DumpFlags::NodePlacement;
     }
 
     opts.filter.name_pattern = Env::Default().GetEnvironmentVar(env_vars::kNameFilter);
@@ -426,8 +414,6 @@ sqlite3* SqliteConnection() {
         "Create table if not exists Nodes ( " \
         "  Name text primary key not null, " \
 	"  OpType text not null, " \
-        "  Inputs text, " \
-        "  Outputs text, " \
         "  Device text " \
         ");";
         
@@ -465,9 +451,10 @@ void DumpNodeInputs(
 
   if (!FilterNode(dump_options, node)) return;
 
-  bool is_node_meta_set = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::NodeMeta) != 0;
+  bool is_node_meta_set = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::NodePlacement) != 0;
   if (dump_context.iteration == 1 && is_node_meta_set) {
-    DumpNodeMetaToSqliteDb(context, node);
+    PrintIf(is_node_meta_set, MakeString(" Placement: ", node.GetExecutionProviderType(), "\n"));
+    DumpNodePlacementToSqliteDb(node);
   }
 
   std::cout << "-----------\n";
@@ -530,8 +517,10 @@ void DumpNodeOutputs(
 
   if (!FilterNode(dump_options, node)) return;
 
-  if (dump_context.iteration == 1 && dump_options.dump_flags & NodeDumpOptions::DumpFlags::NodeMeta) {
-    DumpNodeMetaToSqliteDb(context, node);
+  bool is_node_meta_set = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::NodePlacement) != 0;
+  if (dump_context.iteration == 1 && is_node_meta_set) {
+    PrintIf(is_node_meta_set, MakeString(" Placement: ", node.GetExecutionProviderType(), "\n"));
+    DumpNodePlacementToSqliteDb(node);
   }
 
   std::cout << "-----------\n";
