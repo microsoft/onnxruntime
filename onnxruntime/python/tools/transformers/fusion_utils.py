@@ -120,9 +120,13 @@ class FusionUtils:
                         f"Remove reshape node {node.name} since its input shape is same as output: {input_shape}")
                     nodes_to_remove.append(node)
 
+        graph_output_names = model.get_graphs_output_name()
         if nodes_to_remove:
             for node in nodes_to_remove:
-                model.replace_input_of_all_nodes(node.output[0], node.input[0])
+                if bool(set(node.output) & set(graph_output_names)):
+                    model.replace_output_of_all_nodes(node.input[0], node.output[0])
+                else:
+                    model.replace_input_of_all_nodes(node.output[0], node.input[0])
                 model.remove_node(node)
             model.prune_graph()
 
