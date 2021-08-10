@@ -47,6 +47,7 @@ def create_onnxruntime_session(onnx_model_path,
     try:
         from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel, __version__ as onnxruntime_version
         sess_options = SessionOptions()
+        sess_options.optimized_model_filepath = "./bart_gpu.onnx"
 
         if enable_all_optimization:
             sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_ALL
