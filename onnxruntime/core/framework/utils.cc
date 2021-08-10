@@ -198,7 +198,7 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
     return Status::OK();
   }
 
-   if (copy_info.target_device.Type() == 0 &&
+  if (copy_info.target_device.Type() == 0 &&
       copy_info.source_device.Type() == 1) {
     float f = 1.2f;
     ORT_IGNORE_RETURN_VALUE(f);
@@ -316,6 +316,10 @@ static common::Status CalculateStaticCopyInfoForFeed(const SessionState& session
 
   return Status::OK();
 #else
+  if (input_name == "2629") {
+    float f = 2.8f;
+    ORT_IGNORE_RETURN_VALUE(f);
+  }
   std::vector<SessionState::NodeInfo> node_info_vec;
   ORT_RETURN_IF_ERROR(session_state.GetInputNodeInfo(input_name, node_info_vec));
   const auto& node_info = node_info_vec.front();  // all consumers of a feed have the same device so first entry is fine

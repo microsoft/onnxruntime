@@ -464,6 +464,94 @@ class PlannerImpl {
     return ci.kernel_def->HasExternalOutputs();
   }
 
+  Status ImplicitInputLocationHelper(const GraphViewer& graph_viewer,
+                                     const std::string& implicit_input,
+                                     const std::string& subgraph_kernel_create_info_map_key_base,
+                                     size_t graph_depth,
+                                     size_t parent_node_index,
+                                     const std::string& subgraph_attr_name,
+                                     /*out*/ const OrtMemoryInfo*& memory_info) {
+    std::ostringstream ss;
+
+    // key = base + depth + current graph node index + attr name corresponding to the subgraph
+    ss << subgraph_kernel_create_info_map_key_base;
+    ss << graph_depth;
+    ss << parent_node_index;
+    ss << subgraph_attr_name;
+
+    const auto& local_subgraph_kernel_create_info_map_key = ss.str();
+
+    auto specific_subgraph_map_for_node = subgraphs_kernel_create_info_maps_.find(local_subgraph_kernel_create_info_map_key);
+    ORT_ENFORCE(specific_subgraph_map_for_node != subgraphs_kernel_create_info_maps_.end());
+
+    auto specific_subgraph_execution_providers = subgraphs_execution_providers_.find(local_subgraph_kernel_create_info_map_key);
+    ORT_ENFORCE(specific_subgraph_execution_providers != subgraphs_execution_providers_.end());
+
+    for (const auto& node : graph_viewer.Nodes()) {
+      const auto& input_node_args = node.InputDefs();
+      size_t num_node_inputs = input_node_args.size();
+
+      for (size_t node_input_index = 0; node_input_index < num_node_inputs; ++node_input_index) {
+        auto input_node_arg = input_node_args[node_input_index];
+
+        // Skip processing missing optional inputs
+        if (!input_node_arg->Exists()) {
+          continue;
+        }
+
+        ORT_TRY {
+          auto& def_name = input_node_arg->Name();
+
+          if (def_name == implicit_input) {
+            const auto& kernel_create_info = GetKernelCreateInfo(specific_subgraph_map_for_node->second, node.Index());
+            const auto* p_kernel_def = kernel_create_info.kernel_def.get();
+            ORT_ENFORCE(p_kernel_def, "Should not have entry in kernel create info with nullptr for kernel_def");
+
+            const auto* exec_provider = specific_subgraph_execution_providers->second.get().Get(node);
+            ORT_ENFORCE(exec_provider != nullptr,
+                        "Can not find the execution provider ", node.GetExecutionProviderType());
+
+            // Assign the found output
+            OrtMemType mem_type = p_kernel_def->InputMemoryType(node_input_index);
+            memory_info = &exec_provider->GetAllocator(0, mem_type)->Info();
+
+            return Status::OK();
+          }
+        }
+        ORT_CATCH(const std::exception& ex) {
+          ORT_HANDLE_EXCEPTION([&]() {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
+          });
+        }
+      }
+
+      // If the node has subgraphs (i.e.) control flow nodes,
+      // walk the nodes in those subgraphs as well to best determine
+      // the location for the OrtValue corresponding to the weights
+      // (i.e.) do a recursion
+      if (node.ContainsSubgraph()) {
+        for (auto& name_to_subgraph : node.GetAttributeNameToSubgraphMap()) {
+          GraphViewer subgraph_viewer(*name_to_subgraph.second);
+
+          ORT_RETURN_IF_ERROR(ImplicitInputLocationHelper(subgraph_viewer,
+                                                          implicit_input,
+                                                          local_subgraph_kernel_create_info_map_key,
+                                                          graph_depth + 1,
+                                                          node.Index(),
+                                                          name_to_subgraph.first,
+                                                          memory_info));
+
+          // We have found the location - no need to traverse more subgraphs
+          if (memory_info != nullptr) {
+            return Status::OK();
+          }
+        }
+      }
+    }
+
+    return Status::OK();
+  }
+
   Status ComputeUseCounts() {
     // Note: for every ml-value, its definition must appear before all its uses in a topological sort of a valid model
     std::unordered_set<std::string> graph_inputs;
@@ -514,7 +602,7 @@ class PlannerImpl {
       bool is_implicit_input = false;
 
       // increment UseCount and add location information if applicable for the provided input def
-      auto process_input = [&graph_inputs, &exec_provider, &p_kernel_def, &is_implicit_input,
+      auto process_input = [&graph_inputs, &exec_provider, &p_kernel_def, &is_implicit_input, &pnode,
                             this](const NodeArg& input, size_t arg_idx) {
         const auto& name = input.Name();
         UseCount(name)++;
@@ -527,17 +615,51 @@ class PlannerImpl {
                          [&name](const NodeArg* value) {
                            return value && value->Name() == name;
                          }) != outer_scope_node_args_.cend()) {
+          if (name == "1389") {
+            float f = 1.2f;
+            ORT_IGNORE_RETURN_VALUE(f);
+          }
+
           OrtValueIndex index = Index(name);
 
-          // implicit inputs do not have an entry in the kernel def, so do nothing to them here, leaving the control
-          //   flow op (Loop, Scan, If) to do the necessary copy if the input crosses different provider.
-          // matching logic is used in TransformerMemcpyImpl::ProcessDefs
           if (!is_implicit_input) {
             OrtMemType mem_type = p_kernel_def->InputMemoryType(arg_idx);
             plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, mem_type)->Info());
+          } else {
+            if (std::find_if(outer_scope_node_args_.cbegin(), outer_scope_node_args_.cend(),
+                             [&name](const NodeArg* value) {
+                               return value && value->Name() == name;
+                             }) != outer_scope_node_args_.cend()) {
+              // For implicit inputs, recurse into the subgraph(s) held by this node
+              // and find its actual usage node and update the location.
+              ORT_ENFORCE(pnode->ContainsSubgraph());
+
+              const OrtMemoryInfo* memory_info = nullptr;
+
+              for (auto& name_to_subgraph : pnode->GetAttributeNameToSubgraphMap()) {
+                GraphViewer subgraph_viewer(*name_to_subgraph.second);
+
+                ORT_RETURN_IF_ERROR(ImplicitInputLocationHelper(subgraph_viewer,
+                                                                name,
+                                                                "",
+                                                                0,
+                                                                pnode->Index(),
+                                                                name_to_subgraph.first,
+                                                                memory_info));
+
+                // This subgraph uses the implicit input - no need to iterate though more subgraphs
+                if (memory_info != nullptr) {
+                  break;
+                }
+              }
+
+              // If none of the nested subgraphs use this implicit input,
+              // it point to some internal error.
+              ORT_ENFORCE(memory_info != nullptr);
+              plan_.SetLocation(static_cast<size_t>(index), *memory_info);
+            }
           }
         }
-
         return Status::OK();
       };
 
@@ -552,6 +674,10 @@ class PlannerImpl {
       for (size_t i = 0; i < num_outputs; ++i) {
         auto* node_output = outputs[i];
         if (!node_output->Exists()) continue;
+        if (node_output->Name() == "1389") {
+          float f = 1.2f;
+          ORT_IGNORE_RETURN_VALUE(f);
+        }
         OrtValueIndex index = Index(node_output->Name());
         ProcessDef(index, node_output);
         // Ensures external outputs will not be reused.
@@ -619,6 +745,11 @@ class PlannerImpl {
           // This node input doesn't correspond to any of the weights
           if (!weights.count(def_name)) {
             continue;
+          }
+
+          if (def_name == "2629") {
+            float f = 1.2f;
+            ORT_IGNORE_RETURN_VALUE(f);
           }
 
           // Skip processing shadow values in subgraphs.
@@ -1081,7 +1212,7 @@ class PlannerImpl {
     return !utils::HasTensorType(type_proto);
   }
 
-  //For in-place reuse tensors, the lifetime is the union of all the tensors that tensors that use that buffer
+//For in-place reuse tensors, the lifetime is the union of all the tensors that tensors that use that buffer
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   void AdjustInplaceLifeIntervals() {
     std::unordered_map<OrtValueIndex, std::vector<OrtValueIndex>> inplace_reuse_buffer;
