@@ -21,38 +21,40 @@ __device__ T GsDenormalize(T n, int64_t length, bool align_corners) {
   return x;
 }
 
+
 template <typename T>
-__device__ T GsReflect(T x, T x_min, T x_max) {
-  T dx = {};
-  T range = x_max - x_min;
-  if (x < x_min) {
-    dx = x_min - x;
+__device__ T GsReflect(T x, float x_min, float x_max) {
+  float fx = static_cast<float>(x);
+  float dx = {};
+  float range = x_max - x_min;
+  if (fx < x_min) {
+    dx = x_min - fx;
     int n = static_cast<int>(dx / range);
-    T r = dx - n * range;
+    float r = dx - n * range;
     if (n % 2 == 0) {
-      x = x_min + r;
+      fx = x_min + r;
     }
     else {
-      x = x_max - r;
+      fx = x_max - r;
     }
   }
-  else if (x > x_max) {
-    dx = x - x_max;
+  else if (fx > x_max) {
+    dx = fx - x_max;
     int n = static_cast<int>(dx / range);
-    T r = dx - n * range;
+    float r = dx - n * range;
     if (n % 2 == 0) {
-      x = x_max - r;
+      fx = x_max - r;
     }
     else {
-      x = x_min + r;
+      fx = x_min + r;
     }
   }
   // else fallthrough
-  return x;
+  return static_cast<T>(fx);
 }
 
 template <typename T>
-__device__ T PixelAtGrid(const T* input_data, int64_t bIdx, int64_t cIdx, int64_t y, int64_t x, int64_t padding_mode, int64_t N, int64_t C, int64_t H, int64_t W, T border[4]) {
+__device__ T PixelAtGrid(const T* input_data, int64_t bIdx, int64_t cIdx, int64_t y, int64_t x, int64_t padding_mode, int64_t N, int64_t C, int64_t H, int64_t W, float border[4]) {
   T pixel = 0.0f;
   if (padding_mode == 0) { // zeros
     if (x >= 0 && x < W && y >= 0 && y < H) {
@@ -70,10 +72,9 @@ __device__ T PixelAtGrid(const T* input_data, int64_t bIdx, int64_t cIdx, int64_
   return pixel;
 }
 
-template <typename T>
-__device__ void GsGetCubicCoeffs(T x, T coeffs[4])
+__device__ void GsGetCubicCoeffs(float x, float coeffs[4])
 {
-  T cubic_alpha = -0.75f;
+  float cubic_alpha = -0.75f;
   x = abs(x);
   coeffs[0] = (((cubic_alpha * (x + 1) - 5 * cubic_alpha) * (x + 1) + 8 * cubic_alpha) * (x + 1) - 4 * cubic_alpha);
   coeffs[1] = (((cubic_alpha + 2) * x - (cubic_alpha + 3)) * x * x + 1);
@@ -82,15 +83,15 @@ __device__ void GsGetCubicCoeffs(T x, T coeffs[4])
 }
 
 template <typename T>
-__device__ T GsBicubicInterpolate(T p[4][4], T x, T y) {
-  T v[4] = {};
-  T coeffs[4] = {};
+__device__ T GsBicubicInterpolate(T p[4][4], float x, float y) {
+  float v[4] = {};
+  float coeffs[4] = {};
   GsGetCubicCoeffs(x, coeffs);
   for (int64_t i = 0; i < 4; i++) {
     v[i] = coeffs[0] * p[i][0] + coeffs[1] * p[i][1] + coeffs[2] * p[i][2] + coeffs[3] * p[i][3];
   }
   GsGetCubicCoeffs(y, coeffs);
-  T pixel = coeffs[0] * v[0] + coeffs[1] * v[1] + coeffs[2] * v[2] + coeffs[3] * v[3];
+  T pixel = static_cast<T>(coeffs[0] * v[0] + coeffs[1] * v[1] + coeffs[2] * v[2] + coeffs[3] * v[3]);
   return pixel;
 }
 
@@ -134,10 +135,10 @@ __global__ void _GridSampleKernel(
       grid_x_imgSpace = nearbyint(grid_x_imgSpace);
       grid_y_imgSpace = nearbyint(grid_y_imgSpace);
     }
-    T x_min = -0.5f;
-    T x_max = W_in - 0.5f;
-    T y_min = -0.5f;
-    T y_max = H_in - 0.5f;
+    float x_min = -0.5f;
+    float x_max = W_in - 0.5f;
+    float y_min = -0.5f;
+    float y_max = H_in - 0.5f;
 
     if (align_corners) {
       x_min = 0.0f;
@@ -145,11 +146,11 @@ __global__ void _GridSampleKernel(
       y_min = 0.0f;
       y_max = H_in - 1.0f;
     }
-    T border[] = {x_min, y_min, x_max, y_max};                                                                       // l-t-r-b
-    if (grid_x_imgSpace < x_min || grid_x_imgSpace > x_max || grid_y_imgSpace < y_min || grid_y_imgSpace > y_max) {  // out of bound
+    float border[] = {x_min, y_min, x_max, y_max}; // l-t-r-b
+    if (grid_x_imgSpace < x_min || grid_x_imgSpace > x_max || grid_y_imgSpace < y_min || grid_y_imgSpace > y_max) { // out of bound
       if (padding_mode == 1) { //border
-        grid_x_imgSpace = max(0.0f, min(grid_x_imgSpace, W_in - 1.0f));  // use original border in both align_corner cases
-        grid_y_imgSpace = max(0.0f, min(grid_y_imgSpace, H_in - 1.0f));
+        grid_x_imgSpace = std::clamp<T>(grid_x_imgSpace, 0, W_in - 1); //max(0.0f, min(grid_x_imgSpace, W_in - 1.0f));  // use original border in both align_corner cases
+        grid_y_imgSpace = std::clamp<T>(grid_y_imgSpace, 0, H_in - 1);;
       } 
       else if (padding_mode == 2) {  // Reflection
         grid_x_imgSpace = GsReflect(grid_x_imgSpace, x_min, x_max);

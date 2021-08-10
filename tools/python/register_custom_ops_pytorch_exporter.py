@@ -16,7 +16,7 @@ def register_custom_op():
     """
 
     # Symbolic definition
-    def grid_sample(g, self, input, mode, padding_mode, align_corners):
+    def grid_sample(g, input, grid, mode, padding_mode, align_corners):
         # mode
         #   'bilinear'      : onnx::Constant[value={0}]
         #   'nearest'       : onnx::Constant[value={1}]
@@ -30,10 +30,18 @@ def register_custom_op():
         mode_str = ['bilinear', 'nearest', 'bicubic'][mode]
         padding_mode_str = ['zeros', 'border', 'reflection'][padding_mode]
         align_corners = int(sym_help._maybe_get_const(align_corners, "b"))
-        return g.op("com.microsoft::GridSample", self, input,
+
+        # From opset v13 onward, the output shape can be specified with
+        # (N, C, H, W) (N, H_out, W_out, 2) => (N, C, H_out, W_out)
+        # input_shape = input.type().sizes()
+        # gird_shape = grid.type().sizes()
+        # output_shape = input_shape[:2] + gird_shape[1:3]
+        # g.op(...).setType(input.type().with_sizes(output_shape))
+
+        return g.op("com.microsoft::GridSample", input, grid,
                     mode_s=mode_str,
                     padding_mode_s=padding_mode_str,
-                    align_corners_i=align_corners).setType(self.type())
+                    align_corners_i=align_corners)
 
     def inverse(g, self):
         return g.op("com.microsoft::Inverse", self).setType(self.type())

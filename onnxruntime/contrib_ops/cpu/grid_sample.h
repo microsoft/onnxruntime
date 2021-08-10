@@ -55,7 +55,7 @@ private:
     Reflection
   };
 
-  T PixelAtGrid(const T* image, int64_t r, int64_t c, int64_t H, int64_t W, T border[/* 4 */]) const;
+  T PixelAtGrid(const T* image, int64_t r, int64_t c, int64_t H, int64_t W, float border[/* 4 */]) const;
 
   GridSampleInterpolationMode mode_{Bilinear};
   GridSamplePaddingMode padding_mode_{Zeros};
