@@ -374,7 +374,7 @@ jobs:
 
 - template: test_win.yml
   parameters:
-    AgentPool : 'onnxruntime-gpu-winbuild'
+    AgentPool : 'onnxruntime-gpu-tensorrt8-winbuild'
     Skipx86Tests: 'true'
 
 - template: test_linux.yml
