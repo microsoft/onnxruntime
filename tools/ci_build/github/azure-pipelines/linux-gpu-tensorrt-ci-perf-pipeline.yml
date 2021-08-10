@@ -101,7 +101,7 @@ jobs:
 
       - task: PowerShell@2
         inputs:
-          filePath: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/start_job.ps1'
+          filePath: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/anubis/start_job.ps1'
           arguments: '-file_folder $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/dist -account_key $(account-key) -trt_container $(trtContainer)'
         displayName: 'Start Anubis Job'
 
