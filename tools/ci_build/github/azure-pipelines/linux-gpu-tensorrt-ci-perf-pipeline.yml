@@ -67,7 +67,7 @@ jobs:
         value: Dockerfile.ubuntu_cuda10_2_tensorrt7_1
     - name: build_args
       ${{ if eq(parameters.RunTrtContainer, true) }}:
-        value: Dockerfile.tensorrt-perf -t $(trtContainer) -o $(Build.SourcesDirectory)/onnxruntime/dockerfiles/Dockerfile.tensorrt
+        value: Dockerfile.tensorrt-perf -t $(trtContainer) -o $(Build.SourcesDirectory)/dockerfiles/Dockerfile.tensorrt
       ${{ if ne(parameters.RunTrtContainer, true) }}:
         value: Dockerfile.custom-trt-perf -t ${{ parameters.TrtVersion }} -o $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/$(trt_dockerfile)
     - name: environment
