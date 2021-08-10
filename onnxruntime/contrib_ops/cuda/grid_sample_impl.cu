@@ -33,19 +33,16 @@ __device__ T GsReflect(T x, float x_min, float x_max) {
     float r = dx - n * range;
     if (n % 2 == 0) {
       fx = x_min + r;
-    }
-    else {
+    } else {
       fx = x_max - r;
     }
-  }
-  else if (fx > x_max) {
+  } else if (fx > x_max) {
     dx = fx - x_max;
     int n = static_cast<int>(dx / range);
     float r = dx - n * range;
     if (n % 2 == 0) {
       fx = x_max - r;
-    }
-    else {
+    } else {
       fx = x_min + r;
     }
   }
@@ -54,13 +51,14 @@ __device__ T GsReflect(T x, float x_min, float x_max) {
 }
 
 template <typename T>
-__device__ T PixelAtGrid(const T* input_data, int64_t bIdx, int64_t cIdx, int64_t y, int64_t x, int64_t padding_mode, int64_t N, int64_t C, int64_t H, int64_t W, float border[4]) {
+__device__ T PixelAtGrid(const T* input_data, int64_t bIdx, int64_t cIdx, int64_t y, int64_t x,
+    int64_t padding_mode, int64_t N, int64_t C, int64_t H, int64_t W, float border[4]) {
   T pixel = 0.0f;
-  if (padding_mode == 0) { // zeros
+  if (padding_mode == 0) {  // zeros
     if (x >= 0 && x < W && y >= 0 && y < H) {
       pixel = input_data[bIdx * C * H * W + cIdx * H * W + y * W + x];
     }
-  } else if (padding_mode == 1) { //border
+  } else if (padding_mode == 1) {  //border
     x = max((int64_t)0, min((int64_t)W - 1, (int64_t)x));
     y = max((int64_t)0, min((int64_t)H - 1, (int64_t)y));
     pixel = input_data[bIdx * C * H * W + cIdx * H * W + y * W + x];
@@ -102,17 +100,16 @@ __global__ void _GridSampleKernel(
     const int64_t mode,
     const int64_t padding_mode,
     const int64_t align_corners,
-    // const int64_t dims[4],  // N, C, H_in, W_in
     const int64_t N,
     const int64_t C,
     const int64_t H_in,
     const int64_t W_in,
     const int64_t H_out,
     const int64_t W_out,
-    T* output_data) 
+    T* output_data)
 {
     CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(idx, N * C * H_out * W_out);
-    //extract batch index, channel index, y index, x index for current thread
+    // extract batch index, channel index, y index, x index for current thread
     int BIdx = idx / (C * H_out * W_out );
     int tmpBCnt = BIdx * (C * H_out * W_out);
 
@@ -131,7 +128,7 @@ __global__ void _GridSampleKernel(
 
     T grid_x_imgSpace = GsDenormalize(grid_X, W_in, align_corners == 1);
     T grid_y_imgSpace = GsDenormalize(grid_Y, H_in, align_corners == 1);
-    if (mode == 1) { //nearest
+    if (mode == 1) {  //nearest
       grid_x_imgSpace = nearbyint(grid_x_imgSpace);
       grid_y_imgSpace = nearbyint(grid_y_imgSpace);
     }
@@ -146,19 +143,19 @@ __global__ void _GridSampleKernel(
       y_min = 0.0f;
       y_max = H_in - 1.0f;
     }
-    float border[] = {x_min, y_min, x_max, y_max}; // l-t-r-b
-    if (grid_x_imgSpace < x_min || grid_x_imgSpace > x_max || grid_y_imgSpace < y_min || grid_y_imgSpace > y_max) { // out of bound
-      if (padding_mode == 1) { //border
-        grid_x_imgSpace = std::clamp<T>(grid_x_imgSpace, 0, W_in - 1); //max(0.0f, min(grid_x_imgSpace, W_in - 1.0f));  // use original border in both align_corner cases
-        grid_y_imgSpace = std::clamp<T>(grid_y_imgSpace, 0, H_in - 1);;
-      } 
-      else if (padding_mode == 2) {  // Reflection
+    float border[] = {x_min, y_min, x_max, y_max};  // l-t-r-b
+    if (grid_x_imgSpace < x_min || grid_x_imgSpace > x_max ||
+        grid_y_imgSpace < y_min || grid_y_imgSpace > y_max) { // out of bound
+      if (padding_mode == 1) {  // border
+        grid_x_imgSpace = std::clamp<T>(grid_x_imgSpace, 0, W_in - 1);
+        grid_y_imgSpace = std::clamp<T>(grid_y_imgSpace, 0, H_in - 1);
+      } else if (padding_mode == 2) {  // reflection
         grid_x_imgSpace = GsReflect(grid_x_imgSpace, x_min, x_max);
         grid_y_imgSpace = GsReflect(grid_y_imgSpace, y_min, y_max);
       }
     }
 
-    if (mode == 0) { //bilinear
+    if (mode == 0) {  // bilinear
       int x1 = floor(grid_x_imgSpace);
       int y1 = floor(grid_y_imgSpace);
       int x2 = x1 + 1;
@@ -186,13 +183,13 @@ __global__ void _GridSampleKernel(
       output_data[outIdx] = interpoV;
       return;
     }
-    if (mode == 1) { // nearest
+    if (mode == 1) {  // nearest
       int x_n = grid_x_imgSpace;
       int y_n = grid_y_imgSpace;
       output_data[outIdx] = PixelAtGrid(input_data, BIdx, cIdx, y_n, x_n, padding_mode, N, C, H_in, W_in, border);
       return;
-    } 
-    if (mode == 2) {// bicubic
+    }
+    if (mode == 2) {  // bicubic
       int64_t x0 = static_cast<int64_t>(std::floor(grid_x_imgSpace)) - 1;  // top-left corner of the bbox
       int64_t y0 = static_cast<int64_t>(std::floor(grid_y_imgSpace)) - 1;
       T p[4][4] = {};  // [H][W]
@@ -215,7 +212,7 @@ void GridSampleImpl(
     const int64_t mode,
     const int64_t padding_mode,
     const int64_t align_corners,
-    const int64_t dims[4], 
+    const int64_t dims[4],
     const int64_t H_out,
     const int64_t W_out,
     T* output_data) {
@@ -225,10 +222,12 @@ void GridSampleImpl(
 }
 
 #define SPECIALIZED_IMPL(T) \
-  template void GridSampleImpl<T>(cudaStream_t stream, const T* input_data, const T* grid_data, const int64_t mode, const int64_t padding_mode, const int64_t align_corners, const int64_t[4], const int64_t H_out, const int64_t W_out, T* output_data);
+  template void GridSampleImpl<T>(cudaStream_t stream, const T* input_data, const T* grid_data, \
+                                  const int64_t mode, const int64_t padding_mode, const int64_t align_corners, \
+                                  const int64_t[4], const int64_t H_out, const int64_t W_out, T* output_data);
 
 SPECIALIZED_IMPL(float)
 
 }  // namespace cuda
-}  //namespace contrib
+}  // namespace contrib
 }  // namespace onnxruntime

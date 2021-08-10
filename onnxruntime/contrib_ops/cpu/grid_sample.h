@@ -10,39 +10,13 @@
 namespace onnxruntime {
 namespace contrib{
 
-
 template <typename T>
 class GridSample final : public OpKernel {
-public:
-  GridSample(const OpKernelInfo& info) : OpKernel(info) {
-    std::string mode_str = info.GetAttrOrDefault<std::string>("mode", "bilinear") ;
-    std::string  padding_mode_str = info.GetAttrOrDefault<std::string>("padding_mode", "zeros");
-    align_corners_ = static_cast<bool>(info.GetAttrOrDefault<int64_t>("align_corners", 0));
-    ORT_ENFORCE(mode_str == "bilinear" || mode_str == "nearest" || mode_str == "bicubic", "mode \"", mode_str, "\" not supported, expect bilinear, nearest or bicubic");
-    ORT_ENFORCE(padding_mode_str == "zeros" || padding_mode_str == "border" || padding_mode_str == "reflection", "padding_mode \"", padding_mode_str, "\" not supported, expect zeros, border or reflection");
-    if (mode_str == "bicubic") {
-      mode_ = Bicubic;
-    }
-    else if (mode_str == "nearest") {
-      mode_ = Nearest;
-    }
-    else {
-      mode_ = Bilinear;
-    }
-    if (padding_mode_str == "reflection") {
-      padding_mode_ = Reflection;
-    }
-    else if (padding_mode_str == "border") {
-      padding_mode_ = Border;
-    }
-    else {
-      padding_mode_ = Zeros;
-    }
-  }
-
+ public:
+  GridSample(const OpKernelInfo& info);
   Status Compute(OpKernelContext* context) const override;
 
-private:
+ private:
   enum GridSampleInterpolationMode {
     Bilinear,
     Nearest,
@@ -60,7 +34,7 @@ private:
   GridSampleInterpolationMode mode_{Bilinear};
   GridSamplePaddingMode padding_mode_{Zeros};
   bool align_corners_{0};
-
 };
+
 }  //namespace contrib
 }  //namespace onnxruntime

@@ -22,5 +22,5 @@ void GridSampleImpl(
     T* output_data);
 
 }  // namespace cuda
-}  //namespace contrib
+}  // namespace contrib
 }  // namespace onnxruntime

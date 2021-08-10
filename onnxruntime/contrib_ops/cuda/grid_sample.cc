@@ -27,8 +27,10 @@ GridSample<T>::GridSample(const OpKernelInfo& info) : CudaKernel(info) {
   std::string mode_str = info.GetAttrOrDefault<std::string>("mode", "bilinear");
   std::string padding_mode_str = info.GetAttrOrDefault<std::string>("padding_mode", "zeros");
   align_corners_ = static_cast<bool>(info.GetAttrOrDefault<int64_t>("align_corners", 0));
-  ORT_ENFORCE(mode_str == "bilinear" || mode_str == "nearest" || mode_str == "bicubic", "mode \"", mode_str, "\" not supported, expect bilinear, nearest or bicubic");
-  ORT_ENFORCE(padding_mode_str == "zeros" || padding_mode_str == "border" || padding_mode_str == "reflection", "padding_mode \"", padding_mode_str, "\" not supported, expect zeros, border or reflection");
+  ORT_ENFORCE(mode_str == "bilinear" || mode_str == "nearest" || mode_str == "bicubic", 
+      "mode \"", mode_str, "\" not supported, expect bilinear, nearest or bicubic");
+  ORT_ENFORCE(padding_mode_str == "zeros" || padding_mode_str == "border" || padding_mode_str == "reflection",
+      "padding_mode \"", padding_mode_str, "\" not supported, expect zeros, border or reflection");
   if (mode_str == "bicubic") {
     mode_i_ = 2;
   } else if (mode_str == "nearest") {
@@ -52,18 +54,18 @@ Status GridSample<T>::ComputeInternal(OpKernelContext* context) const {
 
   if (dims_input.size() != 4) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input is expected to have four dimensions (five dimensions is not implemented yet. ) corresponding to [N,C,H,W], got ", dims_input.size());
+                           "Only 4-D tensor supported, got ", dims_input.size());
   }
   const Tensor* Grid = context->Input<Tensor>(1);
   const auto& dims_grid = Grid->Shape().GetDims();
 
   if (dims_grid.size() != 4) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 2 is expected to have four dimensions (five dimensions is not implemented yet. ) corresponding to [N,H,W,2], got ", dims_input.size());
+                           "Only 4-D tensor supported, got ", dims_input.size());
   }
   if (dims_grid.data()[3] != 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 2 is expected to have four dimensions (five dimensions is not implemented yet. ) corresponding to [N,H,W,2], got ", dims_input.size());
+                           "Only 4-D tensor supported, got ", dims_input.size());
   }
 
   std::vector<int64_t> dims_output(4);
