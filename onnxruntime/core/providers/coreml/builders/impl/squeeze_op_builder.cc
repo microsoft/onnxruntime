@@ -15,7 +15,7 @@ namespace onnxruntime {
 namespace coreml {
 
 class SqueezeOpBuilder : public BaseOpBuilder {
-// Add operator related
+  // Add operator related
 #ifdef __APPLE__
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;

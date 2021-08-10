@@ -8,12 +8,11 @@
 #include "core/graph/graph_viewer.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
-
 #include "core/providers/coreml/builders/helper.h"
-#include "core/providers/coreml/model/host_utils.h"
 
 #ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
+#include "core/providers/coreml/model/host_utils.h"
 #include "core/providers/coreml/model/model.h"
 #endif
 
@@ -96,7 +95,6 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
   return result;
 }
-
 
 #ifdef __APPLE__
 common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,

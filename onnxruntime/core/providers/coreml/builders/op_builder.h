@@ -32,6 +32,7 @@ class IOpBuilder {
   virtual Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
                                    const logging::Logger& logger) const ORT_MUST_USE_RESULT = 0;
 #endif
+
   // Operator support related
  public:
   // Check if an operator is supported

@@ -5,7 +5,6 @@
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
-
 #ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
 #endif
@@ -16,7 +15,7 @@ namespace onnxruntime {
 namespace coreml {
 
 class ConcatOpBuilder : public BaseOpBuilder {
-// Add operator related
+  // Add operator related
 #ifdef __APPLE__
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
