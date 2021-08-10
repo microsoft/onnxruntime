@@ -386,7 +386,7 @@ void setup_training_params(GPT2Parameters& params) {
         nullptr};
 
     params.providers.emplace(kRocmExecutionProvider, CreateExecutionProviderFactory_Rocm(&info));
-    params.input_allocator = CreateROCMPinnedAllocator(info.device_id, ROCM_PINNED);
+    params.input_allocator = CreateROCMPinnedAllocator(info.device_id, CUDA_PINNED);
   }
 #endif
 
