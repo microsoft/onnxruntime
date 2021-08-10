@@ -48,7 +48,7 @@ parameters:
 - name: MemTest
   displayName: Run Memory Test
   type: boolean
-  default: true
+  default: false
 
 jobs: 
 - job: Linux_CI_GPU_TENSORRT_PERF
