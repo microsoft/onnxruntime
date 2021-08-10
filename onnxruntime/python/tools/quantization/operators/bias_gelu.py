@@ -13,7 +13,6 @@ class BiasGeluQuant(QuantOperatorBase):
         super().__init__(onnx_quantizer, onnx_node)
 
     def quantize(self):
-        print('Hi from BiasGeluQuant!')
         node = self.node
         assert (node.op_type == "BiasGelu")
 

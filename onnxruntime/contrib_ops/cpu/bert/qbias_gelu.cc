@@ -10,6 +10,7 @@
 namespace onnxruntime {
 namespace contrib {
 
+  #pragma warning(disable: 4189 4100)
 namespace {
 }  // namespace
 
@@ -56,6 +57,8 @@ Status QBiasGelu::Compute(OpKernelContext* context) const {
 
   return Status::OK();
 }
+
+#pragma warning(default: 4189 4100)
 
 }  // namespace contrib
 }  // namespace onnxruntime
