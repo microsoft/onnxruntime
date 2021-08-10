@@ -63,11 +63,11 @@ TEST_P(ModelTest, Run) {
   }
 
   std::unique_ptr<OnnxModelInfo> model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
-  if (model_info->GetONNXOpSetVersion() != 13 && provider_name == "tensorrt") {
+  if (model_info->GetONNXOpSetVersion() != 14 && model_info->GetONNXOpSetVersion() != 15 && provider_name == "tensorrt") {
     // TensorRT can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
     // Besides saving CI build time, TRT isn’t able to support full ONNX ops spec and therefore some testcases will fail.
-    // That's one of reasons we skip those testcases and only test latest ONNX opset.
+    // That's one of reasons we skip those testcases and only test latest ONNX opsets.
     return;
   }
   if (model_info->GetONNXOpSetVersion() == 10 && provider_name == "dnnl") {
@@ -123,6 +123,34 @@ TEST_P(ModelTest, Run) {
       {"training_dropout_default", "result differs", {}},       // Temporary, subsequent PR will remove this.
       {"training_dropout_default_mask", "result differs", {}},  // Temporary, subsequent PR will remove this.
       {"training_dropout_mask", "result differs", {}},          // Temporary, subsequent PR will remove this.
+      {"batchnorm_epsilon_training_mode", "training only", {}},
+      {"batchnorm_example_training_mode", "training only", {}},
+      {"bernoulli", "type error", {}},
+      {"bernoulli_double", "type error", {}},
+      {"bernoulli_double_expanded", "type error", {}},
+      {"bernoulli_expanded", "type error", {}},
+      {"bernoulli_seed", "type error", {}},
+      {"bernoulli_seed_expanded", "type error", {}},
+      {"castlike_BFLOAT16_to_FLOAT", "type error", {}},
+      {"castlike_BFLOAT16_to_FLOAT_expanded", "type error", {}},
+      {"castlike_FLOAT_to_BFLOAT16", "type error", {}},
+      {"castlike_FLOAT_to_BFLOAT16_expanded", "type error", {}},
+      {"castlike_FLOAT_to_STRING", "type error", {}},
+      {"castlike_FLOAT_to_STRING_expanded", "type error", {}},
+      {"convtranspose_autopad_same", "type error", {}},
+      {"gru_batchwise", "type error", {}},
+      {"lstm_batchwise", "type error", {}},
+      {"optional_get_element", "type error", {}},
+      {"optional_get_element_sequence", "type error", {}},
+      {"optional_has_element", "type error", {}},
+      {"optional_has_element_empty", "type error", {}},
+      {"shape_end_1", "type error", {}},
+      {"shape_end_negative_1", "type error", {}},
+      {"shape_start_1", "type error", {}},
+      {"shape_start_1_end_2", "type error", {}},
+      {"shape_start_1_end_negative_1", "type error", {}},
+      {"shape_start_negative_1", "type error", {}},
+      {"simple_rnn_batchwise", "type error", {}},
 #ifdef ENABLE_TRAINING
       {"adagrad", "not a registered function/op", {}},                  // Op not registered.
       {"adagrad_multiple", "not a registered function/op", {}},         // Op not registered.
@@ -357,17 +385,12 @@ TEST_P(ModelTest, Run) {
     broken_tests.insert({"conv_with_strides_no_padding",
                          "Cannot set more than one input unless network has Q/DQ layers. TensorRT EP could not build engine for fused node"});
 
-    //broken_tests.insert({"cast_DOUBLE_to_FLOAT16",
-                         //"fp16 precision has been set for a layer or layer output, but fp16 is not configured in the builder"});
-    //broken_tests.insert({"cast_FLOAT_to_FLOAT16",
-                         //"fp16 precision has been set for a layer or layer output, but fp16 is not configured in the builder"});
+    broken_tests.insert({"conv_with_autopad_same", "Internal Error (node_of_y: Cannot set more than one input unless network has Q/DQ layers.)"});
 
-
-    // Disable known failed testcase for opset 13
-    // sce op is not supported by TensorRT yet
+    // sce op is not supported
     broken_tests_keyword_set.insert({"sce"});
 
-    // Some CIs still fail even though fp16 flag is being set. For example CI with Nvidia Tesla M60.
+    // TensorRT EP CI uses Nvidia Tesla M60 which doesn't support fp16.
     broken_tests_keyword_set.insert({"FLOAT16"});
 
   }
