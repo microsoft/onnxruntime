@@ -152,6 +152,8 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # WIP feature to enable caching in Gradient accumulation scenario.
         self._enable_grad_acc_optimization = False
+        self._param_version_map = None
+        self._cache = C.OrtValueCache()
 
         # Memory aware gradient builder.
         self._use_memory_efficient_gradient = False

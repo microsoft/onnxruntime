@@ -321,7 +321,8 @@ class InferenceSession {
                             const std::vector<OrtValue>& feeds,
                             std::vector<OrtValue>& fetches,
                             PartialGraphExecutionState& state,
-                            FeedsFetchesManager& feeds_fetches_manager);
+                            FeedsFetchesManager& feeds_fetches_manager,
+                            OrtValueCache& cache);
 #endif
 
   /**

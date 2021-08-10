@@ -42,6 +42,12 @@ def train(model, optimizer, scaler, scheduler, train_dataloader, epoch, device, 
     # vs. test (source: https://stackoverflow.com/questions/51433378/what-does-model-train-do-in-pytorch)
     model.train()
 
+    # Always clear any previously calculated gradients before performing a
+    # backward pass. PyTorch doesn't do this automatically because
+    # accumulating the gradients is "convenient while training RNNs".
+    # (source: https://stackoverflow.com/questions/48001598/why-do-we-need-to-call-zero-grad-in-pytorch)
+    optimizer.zero_grad()
+
     # For each batch of training data...
     for step, batch in enumerate(train_dataloader):
 
@@ -60,12 +66,6 @@ def train(model, optimizer, scaler, scheduler, train_dataloader, epoch, device, 
         b_input_ids = batch[0].to(device)
         b_input_mask = batch[1].to(device)
         b_labels = batch[2].to(device)
-
-        # Always clear any previously calculated gradients before performing a
-        # backward pass. PyTorch doesn't do this automatically because
-        # accumulating the gradients is "convenient while training RNNs".
-        # (source: https://stackoverflow.com/questions/48001598/why-do-we-need-to-call-zero-grad-in-pytorch)
-        optimizer.zero_grad()
 
         # Perform a forward pass (evaluate the model on this training batch).
         # This will return the loss (rather than the model output) because we have provided the `labels`.
@@ -108,14 +108,16 @@ def train(model, optimizer, scaler, scheduler, train_dataloader, epoch, device, 
         # This is to help prevent the "exploding gradients" problem.
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
 
-        # Update parameters and take a step using the computed gradient.
-        # The optimizer dictates the "update rule"--how the parameters are
-        # modified based on their gradients, the learning rate, etc.
-        scaler.step(optimizer)
-        scaler.update()
+        if step % args.grad_acc_steps == 0:
+            # Update parameters and take a step using the computed gradient.
+            # The optimizer dictates the "update rule"--how the parameters are
+            # modified based on their gradients, the learning rate, etc.
+            scaler.step(optimizer)
+            scaler.update()
 
-        # Update the learning rate.
-        scheduler.step()
+            # Update the learning rate.
+            scheduler.step()
+            optimizer.zero_grad()
 
     # Calculate the average loss over the training data.
     avg_train_loss = total_loss / len(train_dataloader)
@@ -340,6 +342,8 @@ def main():
                         help='Number of hidden layers for the BERT model. A vanila BERT has 12 hidden layers (default: 1)')
     parser.add_argument('--data-dir', type=str, default='./cola_public/raw',
                         help='Path to the bert data directory')
+    parser.add_argument('--grad-acc-steps', type=int, default=2,
+                        help='Number of steps for accumulating gradients')
 
     args = parser.parse_args()
 
@@ -381,16 +385,15 @@ def main():
         debug_options = DebugOptions(save_onnx=False, onnx_prefix='BertForSequenceClassificationAutoCast')
 
         model = ORTModule(model, debug_options)
-
-    model._torch_module._execution_manager(is_training=True)._enable_grad_acc_optimization = True
+        model._torch_module._execution_manager(is_training=True)._enable_grad_acc_optimization = True
 
     # Tell pytorch to run this model on the GPU.
     if torch.cuda.is_available() and not args.no_cuda:
         model.cuda()
 
     # Note: AdamW is a class from the huggingface library (as opposed to pytorch)
-    optimizer = AdamW(model.parameters(),
-                    lr = 2e-5, # args.learning_rate - default is 5e-5, our notebook had 2e-5
+    optimizer = torch.optim.Adam(model.parameters(),
+                    lr = 2e-2, # args.learning_rate - default is 5e-5, our notebook had 2e-5
                     eps = 1e-8 # args.adam_epsilon  - default is 1e-8.
                     )
 

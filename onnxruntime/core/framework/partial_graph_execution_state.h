@@ -13,6 +13,18 @@ class OrtValueCache {
  public:
   OrtValueCache() = default;
 
+  size_t size(){
+    return cache_.size();
+  }
+
+  size_t count(std::string name){
+    return cache_.count(name);
+  }
+
+  OrtValue at(std::string name) {
+    return cache_.at(name);
+  }
+
   Status CacheOrtValue(std::string node_arg_name, OrtValue& value) {
     cache_.emplace(node_arg_name, value);
     return Status::OK();

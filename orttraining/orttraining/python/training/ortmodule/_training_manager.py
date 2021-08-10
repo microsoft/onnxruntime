@@ -26,7 +26,6 @@ class TrainingManager(GraphExecutionManager):
     def __init__(self, model, debug_options: DebugOptions, fallback_manager: _FallbackManager):
         super().__init__(model, debug_options, fallback_manager)
         self._export_mode = torch.onnx.TrainingMode.TRAINING
-        self._cache = None
 
     @staticmethod
     def execution_session_run_forward(execution_session, onnx_model, cache, cache_names, cache_start, *inputs):
@@ -44,7 +43,7 @@ class TrainingManager(GraphExecutionManager):
 
         forward_outputs = C.OrtValueVector()
         # Run and return module outputs.
-        execution_session.run_forward(forward_inputs, forward_outputs, state)
+        execution_session.run_forward(forward_inputs, forward_outputs, state, cache)
 
         user_outputs = []
         for i in range(len(forward_outputs)):
