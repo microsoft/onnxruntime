@@ -37,11 +37,7 @@ HRESULT __stdcall WINRT_RoGetActivationFactory(HSTRING classId_hstring, GUID con
     if (starts_with(name, winml_dll_prefix))
     {
         const wchar_t* lib_path = winml_dll_path.c_str();
-#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
         library = LoadLibraryExW(lib_path, nullptr, 0);
-#else
-        library = LoadPackagedLibrary(lib_path, 0);
-#endif
     }
     else
     {
