@@ -1,6 +1,7 @@
 parameters:
   AgentPool: 'Linux-CPU'
   ArtifactSuffix: ''
+  NugetPackageName : ''
 
 jobs:
 - job: NuGet_Test_Linux_${{ parameters.ArtifactSuffix }}
@@ -50,6 +51,7 @@ jobs:
       DisableContribOps: $(DisableContribOps)
       DisableMlOps: $(DisableMlOps)
       IsReleaseBuild: $(IsReleaseBuild)
+      PACKAGENAME: ${{ parameters.NugetPackageName }}
         
   - template: ../../templates/component-governance-component-detection-steps.yml
     parameters :

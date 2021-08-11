@@ -412,3 +412,4 @@ jobs:
   parameters:
     AgentPool : Onnxruntime-Linux-GPU
     ArtifactSuffix: 'GPU'
+    NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
