@@ -508,7 +508,7 @@ jobs:
   condition: and (succeeded(), and (${{ parameters.PublishingNuget }}, eq(variables['Build.SourceBranch'], 'refs/heads/master')))
   dependsOn:
   - NuGet_Test_Win_CPU
-  - NuGet_Test_Linux
+  - NuGet_Test_Linux_CPU
   - NuGet_Test_MacOS
   steps:
 

@@ -3,7 +3,7 @@ parameters:
   ArtifactSuffix: ''
 
 jobs:
-- job: NuGet_Test_Linux
+- job: NuGet_Test_Linux_${{ parameters.ArtifactSuffix }}
   workspace:
     clean: all
   timeoutInMinutes:  120

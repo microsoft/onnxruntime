@@ -406,3 +406,8 @@ jobs:
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
     ArtifactSuffix: 'GPU'
     Skipx86Tests: 'true'
+    
+- template: nuget/templates/test_linux.yml
+  parameters:
+    AgentPool : Onnxruntime-Linux-GPU
+    ArtifactSuffix: 'GPU'
