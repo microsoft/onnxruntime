@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "lib/Api.Image/pch.h"
+#include "pch.h"
 #include "inc/ImageConverter.h"
 #include "inc/ImageConversionHelpers.h"
 #include "inc/D3DDeviceCache.h"
