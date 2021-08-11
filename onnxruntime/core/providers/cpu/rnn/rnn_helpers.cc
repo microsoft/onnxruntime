@@ -918,3 +918,4 @@ GruOutputGateFuncPtr GruOutputGateFuncByName(const std::string& func) {
 }  // namespace detail
 }  // namespace rnn
 }  // namespace onnxruntime
+
