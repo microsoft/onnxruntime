@@ -89,6 +89,9 @@ Status Transpose::DoTranspose(const hipDeviceProp_t& prop,
   if (output.Shape().Size() == 0)
     return Status::OK();
 
+  printf("Shape: %s\n", input_shape_override ? input_shape_override->ToString().c_str() : input.Shape().ToString().c_str());
+  printf("Dtype: %d\n", input.GetElementType());
+
   auto element_type = input.GetElementType();
   if (element_type == utils::GetONNXTensorElementDataType<float>() ||
       element_type == utils::GetONNXTensorElementDataType<double>() ||
@@ -96,6 +99,7 @@ Status Transpose::DoTranspose(const hipDeviceProp_t& prop,
     auto mn = TryTransposeWithRocblas(permutations, input_shape_override ? *input_shape_override : input.Shape());
     int M = std::get<0>(mn);
     int N = std::get<1>(mn);
+    printf("TryTranposeWithRocblas M=%d, N=%d\n", M, N);
     if (M != 0 && N != 0) {
       if (element_type == utils::GetONNXTensorElementDataType<float>()) {
         return TransposeWithRocblas<float>(stream, rocblas_handle, input, output, M, N);

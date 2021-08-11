@@ -268,7 +268,16 @@ __global__ void TransposeKernel(int32_t shape_rank, const TArray<int64_t> input_
 
 Status TransposeImpl(cudaStream_t stream, size_t element_size, int32_t shape_rank, const TArray<int64_t>& input_strides,
                      const void* input_data, const TArray<fast_divmod>& fdm_output_strides, void* output_data, int N) {
+
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
+  printf("Invoking TransposeKernel<T> shape-rank: %d N: %d element_size: %lu\n", shape_rank, N, element_size);
+  printf("blocksPerGrid: %d GridDim::maxThreadsPerBlock: %d\n", blocksPerGrid, GridDim::maxThreadsPerBlock);
+  for (int i = 0; i < input_strides.Size(); i++)
+        printf("input_strides[%d] = %d\n", i, input_strides[i]);
+  for (int i = 0; i < fdm_output_strides.Size(); i++)
+        printf("fdm_output_strides[%d] = %d\n", i, fdm_output_strides[i]);
+  fflush(stdout);
+
   switch (element_size) {
     case sizeof(int8_t):
       TransposeKernel<int8_t><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
