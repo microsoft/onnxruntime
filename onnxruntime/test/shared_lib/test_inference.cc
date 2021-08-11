@@ -1623,6 +1623,59 @@ TEST(CApiTest, AllocateInitializersFromNonArenaMemory) {
   Ort::Session session(*ort_env, MODEL_URI, session_options);
 }
 
+#ifdef USE_DML
+TEST(CApiTest, TestDMLExportToORTFormat) {
+  const std::basic_string<ORTCHAR_T> onnx_file = ORT_TSTR("testdata/mnist.onnx");
+  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/mnist.dml.ort");
+
+  std::vector<Input> inputs(1);
+  Input& input = inputs.back();
+  input.name = "Input3";
+  input.dims = {1, 1, 28, 28};
+  input.values = std::vector<float>(28 * 28, 0.0);
+  std::vector<int64_t> expected_dims_y = {1, 10};
+  std::vector<float> expected_values_y = {-0.0448560268f, 0.00779166119f, 0.0681008175f, 0.0299937408f, -0.126409635f,
+                                          0.140218750f, -0.0552849025f, -0.0493838154f, 0.0843220502f, -0.0545404144f};
+
+  // Conversion step
+  {
+    Ort::SessionOptions so;
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_DML(so, 0));
+    so.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
+
+    Ort::Session session(*ort_env, onnx_file.c_str(), so);
+    // check output from original model
+    RunSession<float>(Ort::AllocatorWithDefaultOptions(),
+                      session,
+                      inputs,
+                      "Plus214_Output_0",
+                      expected_dims_y,
+                      expected_values_y,
+                      nullptr);
+
+    // Generate ORT file
+    so.SetOptimizedModelFilePath(ort_file.c_str());
+    Ort::Session session1(*ort_env, onnx_file.c_str(), so);
+  }
+
+  {
+    // Load/run ORT file
+    Ort::SessionOptions so2;
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_DML(so2, 0));
+    Ort::Session session2(*ort_env, ort_file.c_str(), so2);
+
+    // and get output from ORT format model
+    RunSession<float>(Ort::AllocatorWithDefaultOptions(),
+                      session2,
+                      inputs,
+                      "Plus214_Output_0",
+                      expected_dims_y,
+                      expected_values_y,
+                      nullptr);
+  }
+}
+#endif
+
 #ifdef USE_CUDA
 
 // Usage example showing how to use CreateArenaCfgV2() API to configure the default memory CUDA arena allocator

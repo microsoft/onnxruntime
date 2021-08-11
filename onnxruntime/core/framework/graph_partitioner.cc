@@ -437,6 +437,30 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     oss << type << "_" << metadef->name << "_" << fused_node_unique_id++;
     std::string node_name = oss.str();
 
+#if !defined(ORT_MINIMAL_BUILD)
+    // support for something that creates a function based fused node in a full build with an ORT format model
+    // e.g. DML EP requires this with its current setup
+    if (current_ep.GetFusionStyle() == IExecutionProvider::FusionStyle::Function) {
+      Node& fused_func_node = graph.FuseSubGraph(indexed_sub_graph, node_name);
+      fused_func_node.SetExecutionProviderType(type);
+
+      // find hash for fused kernel as that's required during SessionState finalization for an ORT format model
+      auto kernel_registry = current_ep.GetKernelRegistry();
+      const KernelCreateInfo* kci = nullptr;
+      ORT_RETURN_IF_ERROR(kernel_registry->TryFindKernel(fused_func_node, type, &kci));
+      if (!kci) {
+        // TODO: If needed we could potentially support the fall-through to Compile to replicate the
+        // path in PlaceNode the fused node is returned for use in compilation if there's no registered kernel.
+        // For now we don't have a use case for that, and an EP that required it would need to be converted
+		// to the FilteredGraphViewer based Compile, so fail.
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Fused node must have kernel registered.");
+      }
+
+      compiled_kernel_hashes.insert({fused_func_node.OpType(), kci->kernel_def->GetHash()});
+      continue;
+    }
+#endif
+
     Node& fused_node = graph.BeginFuseSubGraph(indexed_sub_graph, node_name);
     fused_node.SetExecutionProviderType(type);
 
@@ -471,8 +495,8 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       auto kernel_def = builder.Build();
 
       // save hash so SessionState can find the kernel. each kernel name should be unique
-      if (compiled_kernel_hashes.insert({metadef.name, kernel_def->GetHash()}).second == false) {
-        ORT_THROW("Existing entry in compiled kernel hashes for ", metadef.name,
+      if (compiled_kernel_hashes.insert({node.OpType(), kernel_def->GetHash()}).second == false) {
+        ORT_THROW("Existing entry in compiled kernel hashes for ", node.OpType(),
                   ". Execution Provider must generate unique names across the entire model.");
       }
 

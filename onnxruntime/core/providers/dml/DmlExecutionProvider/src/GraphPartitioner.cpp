@@ -3,16 +3,16 @@
 
 #include "precomp.h"
 
-#include "IExecutionProvider.h"
 #include "ExecutionProvider.h"
-#include "core/providers/dml/OperatorAuthorHelper/MLOperatorAuthorHelper.h"
 #include "FusedGraphKernel.h"
 #include "GraphDescBuilder.h"
-#include "core/graph/indexed_sub_graph.h"
-#include "core/framework/compute_capability.h"
-#include <wil/wrl.h>
-#include <dxgi1_6.h>
 #include "GraphPartitioner.h"
+#include "IExecutionProvider.h"
+#include "core/framework/compute_capability.h"
+#include "core/graph/indexed_sub_graph.h"
+#include "core/providers/dml/OperatorAuthorHelper/MLOperatorAuthorHelper.h"
+#include <dxgi1_6.h>
+#include <wil/wrl.h>
 
 //#define PRINT_PARTITON_INFO
   
@@ -628,7 +628,7 @@ namespace Dml
     {
         std::unique_ptr<onnxruntime::IndexedSubGraph> subGraph = std::make_unique<onnxruntime::IndexedSubGraph>();
 
-        if (partition->IsDmlGraphPartition())
+        if (partition->IsDmlGraphPartition()) 
         {
             assert(partition->IsDmlGraphPartition());
          
@@ -960,13 +960,18 @@ namespace Dml
                         }
 
                         // Transfer the initializer
-                        auto& graphTensor = const_cast<onnx::TensorProto&>(*tensor);
 
+                        // TBC that it's ok to do a copy instead of a (somewhat hacky) std::move that uses 
+                        // multiple const_cast's and deletes initializers from the Graph via a const GraphViewer. 
                         onnx::TensorProto partitionTensor;
-                        graphTensor.Swap(&partitionTensor);
+                        // auto& graphTensor = const_cast<onnx::TensorProto&>(*tensor);
+                        // graphTensor.Swap(&partitionTensor);
+                        partitionTensor.CopyFrom(*tensor);
                         (*transferredInitializerMap)[input] = std::move(partitionTensor);
-                
-                        const_cast<onnxruntime::InitializedTensorSet&>(graph.GetAllInitializedTensors()).erase(graph.GetAllInitializedTensors().find(input));
+
+                        // Graph::Resolve will remove any unused initializers later so this should be unnecessary, and 
+                        // additionally breaks export to an ORT format model if DML is enabled.
+                        // const_cast<onnxruntime::InitializedTensorSet&>(graph.GetAllInitializedTensors()).erase(graph.GetAllInitializedTensors().find(input));
                     }
                 }
             }
