@@ -1,0 +1,29 @@
+# --------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+# --------------------------------------------------------------
+# Dockerfile to run ONNXRuntime and ONNXRuntime-Extensions from source from CPU only
+
+FROM ubuntu:18.04
+MAINTAINER Changming Sun "chasun@microsoft.com"
+ADD . /code
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends python3-dev ca-certificates gcc-8 g++-8 make libprotobuf-dev protobuf-compiler git python3-setuptools python3-wheel python3-pip aria2 && aria2c -q -d /tmp -o cmake-3.20.3-Linux-x86_64.tar.gz https://github.com/Kitware/CMake/releases/download/v3.20.3/cmake-3.20.3-Linux-x86_64.tar.gz && tar -zxf /tmp/cmake-3.20.3-Linux-x86_64.tar.gz --strip=1 -C /usr
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-8 100 && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-8 100
+
+# After 1.19.5, numpy doesn't support Python 3.6 any more.
+RUN python3 -m pip install numpy==1.19.5
+RUN cd /code/cmake/external/onnx && python3 setup.py bdist_wheel && python3 -m pip install dist/*.whl
+# Prepare onnxruntime repository & build onnxruntime
+RUN cd /code && /bin/bash ./build.sh --skip_submodule_sync --config Release --build_wheel --update --build --parallel --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER)
+RUN python3 -m pip install /code/build/Linux/Release/dist/*.whl
+RUN cd /code/cmake/external/onnxruntime-extensions && python3 setup.py bdist_wheel
+
+FROM ubuntu:18.04
+COPY --from=0 /code/cmake/external/onnx/dist /root
+COPY --from=0 /code/build/Linux/Release/dist /root
+COPY --from=0 /code/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt
+COPY --from=0 /code/cmake/external/onnxruntime-extensions/dist /root
+RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 libprotobuf10 ca-certificates python3-setuptools python3-wheel python3-pip unattended-upgrades && unattended-upgrade
+RUN python3 -m pip install numpy==1.19.5 && python3 -m pip install /root/*.whl && rm -rf /root/*.whl
