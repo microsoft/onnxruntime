@@ -135,18 +135,18 @@ class AttentionCPUBase : public AttentionBase {
           const int mask_offset = batch_index * sequence_length * all_sequence_length;
           T* output = attention_probs + output_offset;
 
-          // broadcast mask data: (Bx)SxS* -> (BxNx)SxS*
+          // Broadcast mask data: (Bx)SxS* -> (BxNx)SxS*
           if (mask_data != nullptr) {
             memcpy(output, mask_data + mask_offset, sequence_length * all_sequence_length * sizeof(T));
           }
 
           const T* k = K + input_chunk_length * i;
           if (nullptr != present) {
-            // concatenate past_K and K : (BxNx)S'xH, (BxNx)SxH -> (BxNx)S*xH
+            // Concatenate past_K and K : (BxNx)S'xH, (BxNx)SxH -> (BxNx)S*xH
             k = ConcatStateChunk(past, k, present, past_chunk_length, present_chunk_length, i);
           }
 
-          // gemm
+          // Compute Q*K' + AttentionMask
           //                     original                 transposed             each iteration
           // A: Q                (B x N x) S x H          (B x N x) S x H        S x H
           // B: K'               (B x N x) S* x H         (B x N x) H x S*       H x S*
