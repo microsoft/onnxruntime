@@ -1,6 +1,6 @@
 #!/bin/bash
 
-while getopts d:o:m:w:e: parameter
+while getopts d:o:m:w:e:p: parameter
 do case "${parameter}"
 in
 d) PERF_DIR=${OPTARG};;
@@ -8,8 +8,15 @@ o) OPTION=${OPTARG};;
 m) MODEL_PATH=${OPTARG};;
 w) WORKSPACE=${OPTARG};;
 e) EP_LIST=${OPTARG};;
+p) PYTHON_38=${OPTARG};;
 esac
 done 
+
+if [ $PYTHON_38 = "true" ]
+then 
+    conda create -y -n py38 python=3.8
+    source activate py38 
+fi 
 
 # add ep list
 RUN_EPS=""

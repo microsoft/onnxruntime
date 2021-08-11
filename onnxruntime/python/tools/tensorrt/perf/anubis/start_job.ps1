@@ -14,6 +14,7 @@ $body_trt_perf_compare = @{
    "Name"="TRT_PERF_COMPARE";
    "Parameters" = @{         
         “TRT_VERSION”=$trt_container;
+        “BUILD_NUMBER”=$env:BUILD_BUILDNUMBER;
         "ORT_TRT_EP_PKG_SAS_URI"=$ort_trt_ep_pkg_sas_uri};
 }
 
