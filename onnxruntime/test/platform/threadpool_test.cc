@@ -425,7 +425,6 @@ TEST(ThreadPoolTest, TestStagedMultiLoopSections_4Thread_100Loop) {
   TestStagedMultiLoopSections("TestStagedMultiLoopSections_4Thread_100Loop", 4, 100);
 }
 #ifdef _WIN32
-#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 #pragma warning(push)
 #pragma warning(disable : 6387)
 TEST(ThreadPoolTest, TestStackSize) {
@@ -455,7 +454,6 @@ TEST(ThreadPoolTest, TestStackSize) {
     ASSERT_EQ(high_limit - low_limit, to.stack_size);
 }
 #pragma warning(pop)
-#endif
 #endif
 
 }  // namespace onnxruntime

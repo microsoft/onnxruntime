@@ -156,7 +156,7 @@ function(target_cppwinrt
                 ${midl_options}
                 ${renamed_idl_fullpath_back_slash}
             COMMAND
-                    ${cppwinrt_exe} -in ${winmd_filename} -comp ${output_dir_back_slash} -pch dll/pch.h -ref ${sdk_metadata_directory} ${add_ref} -out ${generated_dir_back_slash} -verbose
+                    ${cppwinrt_exe} -in ${winmd_filename} -comp ${output_dir_back_slash} -ref ${sdk_metadata_directory} ${add_ref} -out ${generated_dir_back_slash} -verbose
             COMMAND
                     # copy the generated component files into a temporary directory where headers exclusions will be applied
                     xcopy ${output_dir_back_slash} ${temp_dir_back_slash}\\ /Y /D
