@@ -223,7 +223,7 @@ struct MLAS_ACTIVATION_FUNCTION<MlasHardSigmoidActivation>
 #if defined(MLAS_SSE2_INTRINSICS)
         return _mm_cvtss_f32(Activate(_mm_set_ss(Value)));
 #else
-        Value = MlasExtractLaneFloat32x4<0>(AlphaBroadcast) * value + MlasExtractLaneFloat32x4<0>(BetaBroadcast);
+        Value = MlasExtractLaneFloat32x4<0>(AlphaBroadcast) * Value + MlasExtractLaneFloat32x4<0>(BetaBroadcast);
         Value = std::min(Value, MlasExtractLaneFloat32x4<0>(MaximumBroadcast));
         Value = std::max(Value, MlasExtractLaneFloat32x4<0>(MinimumBroadcast));
 
