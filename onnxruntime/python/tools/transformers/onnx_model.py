@@ -81,7 +81,14 @@ class OnnxModel:
                             graph_queue.append(g)
         return self.all_graphs
 
-    def get_graphs_output_name(self):
+    def get_graphs_input_names(self):
+        input_names = []
+        for graph in self.graphs():
+            for input in graph.input:
+                input_names.append(input.name)
+        return input_names
+
+    def get_graphs_output_names(self):
         output_names = []
         for graph in self.graphs():
             for output in graph.output:

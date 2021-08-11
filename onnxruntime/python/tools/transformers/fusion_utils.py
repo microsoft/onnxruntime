@@ -121,10 +121,14 @@ class FusionUtils:
                     nodes_to_remove.append(node)
 
         if nodes_to_remove:
-            graph_output_names = set(model.get_graphs_output_name())
+            graph_input_names = set(model.get_graphs_input_names())
+            graph_output_names = set(model.get_graphs_output_names())
             for node in nodes_to_remove:
                 if bool(set(node.output) & graph_output_names):
-                    model.replace_output_of_all_nodes(node.input[0], node.output[0])
+                    if not bool(set(node.input) & graph_input_names):
+                        model.replace_output_of_all_nodes(node.input[0], node.output[0])
+                    else:
+                        continue
                 else:
                     model.replace_input_of_all_nodes(node.output[0], node.input[0])
                 model.remove_node(node)
