@@ -72,10 +72,8 @@ jobs:
       ${{ if eq(parameters.RunMachine, true) }}:
         value: machine.sh 
     - name: with_arguments
-      ${{ if eq(parameters.RunPython38, true) }}:
-        value: $(environment) -e "$(epList)" -y true
-      ${{ if ne(parameters.RunPython38, true) }}:
-        value: $(environment) -e "$(epList)"
+      value: $(environment) -e "$(epList)" 
+   
   timeoutInMinutes: 3000 
       
   steps:
@@ -96,7 +94,12 @@ jobs:
         - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/ort_build_latest.py -b $(branch) -c /usr/local/cuda -o ~/repos/onnxruntime/ -t ${{ parameters.TrtVersion }}'
           displayName: 'Build latest ORT'
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
-        
+    
+    - ${{ if eq(parameters.RunPython38, true) }}:
+        - script: 'docker build --build-arg IMAGE=ort-$(branch) -t ort-$(branch) -f $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.python38'
+          displayName: 'Build latest ORT Images'
+          workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+          
     - ${{ if eq(parameters.PublishWheel, true) }}:
     
       - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/anubis/copy_wheel.sh -t $(trtContainer)'
