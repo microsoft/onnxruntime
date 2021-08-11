@@ -155,6 +155,8 @@ option(onnxruntime_BUILD_OPSCHEMA_LIB "Build op schema library" ON)
 
 # option to enable custom operators in onnxruntime-extensions
 option(onnxruntime_ENABLE_EXTENSION_CUSTOM_OPS "Enable custom operators in onnxruntime-extensions" OFF)
+option(onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS "Enable external custom operators" OFF)
+set(ONNX_CUSTOM_PROTOC_EXECUTABLE "" CACHE STRING "Specify custom protoc executable to build ONNX")
 
 # pre-build python path
 option(onnxruntime_PREBUILT_PYTORCH_PATH "Path to pytorch installation dir")
@@ -1836,11 +1838,24 @@ if (onnxruntime_BUILD_OPSCHEMA_LIB AND onnxruntime_ENABLE_TRAINING)
   include(onnxruntime_opschema_lib.cmake)
 endif()
 
-add_custom_target(install_protobuf ALL DEPENDS protobuf::libprotobuf  protobuf::protoc)
-add_custom_command(
-  TARGET install_protobuf
-  COMMAND ${CMAKE_COMMAND} -DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR} -P cmake_install.cmake
-  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/external/protobuf/cmake
-  COMMENT "Installing protobuf"
-)
+if (NOT (CMAKE_SYSTEM_NAME STREQUAL "Linux") AND onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
+  message(FATAL_ERROR "External custom operator schemas feature is only supported on Linux")
+endif()
 
+if (NOT ${ONNX_CUSTOM_PROTOC_EXECUTABLE} STREQUAL "" AND onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
+  message(FATAL_ERROR "External custom operator schemas is not supported with the user specified protc executable")
+endif()
+
+if (NOT onnxruntime_ENABLE_TRAINING AND onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
+  message(FATAL_ERROR "External custom operator schemas is supported only with --enable-training option")
+endif()
+
+if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
+  add_custom_target(install_protobuf ALL DEPENDS protobuf::libprotobuf  protobuf::protoc)
+  add_custom_command(
+    TARGET install_protobuf
+    COMMAND ${CMAKE_COMMAND} -DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR} -P cmake_install.cmake
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/external/protobuf/cmake
+    COMMENT "Installing protobuf"
+  )
+endif()
