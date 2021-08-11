@@ -310,7 +310,7 @@ static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExecutionProvider(
   }
 
   Provider* (*PGetProvider)();
-  Env::Default().GetSymbolFromLibrary(handle, entry_symbol_name, (void**)&PGetProvider);
+  OrtPybindThrowIfError(Env::Default().GetSymbolFromLibrary(handle, entry_symbol_name, (void**)&PGetProvider));
 
   Provider* provider = PGetProvider();
   std::shared_ptr<IExecutionProviderFactory> ep_factory = provider->CreateExecutionProviderFactory(&provider_options);
