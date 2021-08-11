@@ -146,10 +146,6 @@ def _get_optimization_level(level):
     raise ValueError('Invalid optimization level of ' + level)
 
 
-def is_macOS():
-    return sys.platform.startswith("darwin")
-
-
 def parse_args():
     parser = argparse.ArgumentParser(
         os.path.basename(__file__),
