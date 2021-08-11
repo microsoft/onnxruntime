@@ -508,6 +508,5 @@ Return Value:
             MlasActivationKernel<MlasHardSigmoidActivation>(Activation, Buffer, Bias, M, N, ldc);
             break;
         }
-
     }
 }
