@@ -7,11 +7,13 @@ import onnx
 import sys
 import argparse
 import numpy as np
+from typing import Tuple, Union
 from collections import deque
-from onnx import helper, ModelProto, TensorProto, numpy_helper
+from onnx import helper, ModelProto, NodeProto, TensorProto, numpy_helper
 from onnx_model import OnnxModel
 from onnx_model_bert import BertOnnxModel
 from fusion_attention import FusionAttention, AttentionMask, AttentionMaskFormat
+from fusion_utils import FusionUtils, NumpyHelper
 
 logger = logging.getLogger(__name__)
 
@@ -87,9 +89,8 @@ class FusionBartEncoderAttention(FusionAttention):
             mask_index = None
             attention_last_node = reshape_qkv_2
 
-            #num_heads, hidden_size = self.get_num_heads_and_hidden_size(reshape_q)
-            # bugbug
-            num_heads, hidden_size = 12, 768
+            num_heads, hidden_size = self.get_num_heads_and_hidden_size(reshape_q_1)
+
             if num_heads <= 0 or hidden_size <= 0 or (hidden_size % num_heads) != 0:
                 logger.debug("fuse_attention: failed to detect num_heads or hidden_size")
                 return
@@ -98,13 +99,6 @@ class FusionBartEncoderAttention(FusionAttention):
                                                   num_heads, hidden_size, root_input, attention_last_node.output[0], None)
             if new_node is None:
                 return
-
-            #front_transpose = helper.make_node("Transpose", [new_node.input[0]], ["front_transpose_out_" + new_node.name], "front_transpose_" + new_node.name, perm=[1,0,2])
-            #back_transpose = helper.make_node("Transpose", ["back_transpose_in_" + new_node.name], [new_node.output[0]], "back_transpose_" + new_node.name, perm=[1,0,2])
-            #self.model.add_node(front_transpose, self.this_graph_name)
-            #self.model.add_node(back_transpose, self.this_graph_name)
-            #new_node.input[0] = "front_transpose_out_" + new_node.name
-            #new_node.output[0] = "back_transpose_in_" + new_node.name
 
             self.nodes_to_add.append(new_node)
             self.node_name_to_graph_name[new_node.name] = self.this_graph_name
@@ -126,6 +120,32 @@ class BartOnnxModel(BertOnnxModel):
         self.attention_fusion = FusionBartEncoderAttention(self, self.hidden_size, self.num_heads, self.attention_mask)
 
     def fuse_attention(self):
-        print("encoder attention")
         self.attention_fusion.apply()
+
+    def get_num_heads_and_hidden_size(self, node: NodeProto) -> Tuple[int, int]:
+
+        reshape_nodes = self.model.match_parent_path(node, ['Concat'], [1])
+        if reshape_nodes is not None:
+            concat_q = reshape_nodes[0]
+        else:
+            return self.num_heads, self.hidden_size
+
+        num_heads_proto = self.model.get_initializer(concat_q.input[2])
+        head_size_proto = self.model.get_initializer(concat_q.input[3])
+
+        if num_heads_proto is None or head_size_proto is None:
+            return self.num_heads, self.hidden_size
+            
+        num_heads = NumpyHelper.to_array(num_heads_proto)[0]
+        head_size = NumpyHelper.to_array(head_size_proto)[0]
+        hidden_size = num_heads * head_size
+
+        if self.num_heads > 0 and num_heads != self.num_heads:
+            logger.warn(f"--num_heads is {self.num_heads}. Detected value is {num_heads}. Using detected value.")
+
+        if self.hidden_size > 0 and hidden_size != self.hidden_size:
+            logger.warn(f"--hidden_size is {self.hidden_size}. Detected value is {hidden_size}. Using detected value.")
+
+        return num_heads, hidden_size       
+
 
