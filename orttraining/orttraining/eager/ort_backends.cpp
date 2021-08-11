@@ -49,8 +49,10 @@ ORTBackendsManager::ORTBackendsManager(const onnxruntime::logging::Logger& logge
   }
 }
 
-void ORTBackendsManager::RegisterProviderLib(const std::string& provider_type, const std::string& lib_path){
-  additional_provider_libs_.insert({provider_type, lib_path});
+void ORTBackendsManager::RegisterProviderLib(const std::string& provider_type, 
+                                             const std::string& lib_path,
+                                             const std::string& entry_point){
+  additional_provider_libs_.insert({provider_type, {lib_path, entry_point}});
 }
 
 onnxruntime::Status ORTBackendsManager::set_device(size_t device_index, const std::string& provider_type,
@@ -73,14 +75,16 @@ onnxruntime::Status ORTBackendsManager::set_device(size_t device_index, const st
   }
   else{
     auto shared_lib_path_it = additional_provider_libs_.find(provider_type);
-    if (shared_lib_path_it == provider_options.end()){
+    if (shared_lib_path_it == additional_provider_libs_.end()){
       return onnxruntime::Status(common::StatusCategory::ONNXRUNTIME,
                           common::StatusCode::INVALID_ARGUMENT, 
                           "Execution provider: " + provider_type + " is not supported.");
     }
 
     void* handle;
-    auto error = Env::Default().LoadDynamicLibrary(shared_lib_path_it->second, false, &handle);
+    auto lib_path = shared_lib_path_it->second.first;
+    auto entry_point = shared_lib_path_it->second.second;
+    auto error = Env::Default().LoadDynamicLibrary(lib_path, false, &handle);
     if (!error.IsOK()) {
       return onnxruntime::Status(common::StatusCategory::ONNXRUNTIME,
                                  common::StatusCode::INVALID_ARGUMENT, 
@@ -89,7 +93,7 @@ onnxruntime::Status ORTBackendsManager::set_device(size_t device_index, const st
     }
 
     Provider* (*PGetProvider)();
-    Env::Default().GetSymbolFromLibrary(handle, "GetProvider", (void**)&PGetProvider);
+    ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle, entry_point, (void**)&PGetProvider));
 
     Provider* provider = PGetProvider();
     std::shared_ptr<IExecutionProviderFactory> ep_factory = provider->CreateExecutionProviderFactory(&provider_options);

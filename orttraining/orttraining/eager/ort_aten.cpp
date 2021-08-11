@@ -273,7 +273,7 @@ at::Tensor& zero_(at::Tensor& self){
     "ZeroGradient", {
       std::move(ort_in_self),
       std::move(flag_val)
-    }, ort_out, nullptr, onnxruntime::kMSDomain);
+    }, ort_out, nullptr, onnxruntime::kMSDomain, 1);
 
   if (!status.IsOK())
     throw std::runtime_error(
