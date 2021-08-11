@@ -29,7 +29,7 @@ class ONNXQuantizer:
 
         # run shape inference on the model (enabled by default)
         self.extra_options = extra_options if extra_options is not None else {}
-        if not ('disableShapeInference' in self.extra_options and self.extra_options['disableShapeInference']):
+        if not ('DisableShapeInference' in self.extra_options and self.extra_options['DisableShapeInference']):
             model = onnx.shape_inference.infer_shapes(model)
         self.value_infos = {vi.name: vi for vi in model.graph.value_info}
         self.value_infos.update({ot.name: ot for ot in model.graph.output})
@@ -122,18 +122,18 @@ class ONNXQuantizer:
 
     def quantize_node_with_sub_graph(self, node):
         '''
-        Check subgraph, if any, quantize it and repleace it.
+        Check subgraph, if any, quantize it and replace it.
         return new_nodes added for quantizing subgraph
         '''
-        graph_attrs = [attr for attr in node.attribute if attr.type == 5 or attr.type == 10]
+        graph_attrs = [attr for attr in node.attribute if attr.type == onnx.AttributeProto.GRAPH or attr.type == onnx.AttributeProto.GRAPHS]
         if len(graph_attrs) == 0:
             return node
         node_name = node.name if node.name != "" else "{}_node_count_{}".format(node.op_type, len(self.new_nodes))
         kwargs = {}
         for attr in node.attribute:
-            if attr.type == 5:
+            if attr.type == onnx.AttributeProto.GRAPH:
                 kv = {attr.name: self.quantize_subgraph(attr.g, "{}:{}".format(node_name, attr.name))}
-            elif attr.type == 10:
+            elif attr.type == onnx.AttributeProto.GRAPHS:
                 value = []
                 for subgraph in attr.graphs:
                     value.extend([self.quantize_subgraph(subgraph, "{}:{}:{}".format(node_name, attr.name, len(value)))])
