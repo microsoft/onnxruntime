@@ -54,14 +54,18 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
   gsl::span<const void*> input_ptr_cpuspan = input_ptr.CpuSpan();
   std::vector<int64_t> axis_dimension_input_output_mapping(p.output_tensor->Shape()[p.axis]);
   int index = 0;
+  std::cout << "input_count = " << input_count <<"; p.axis = " << p.axis << std::endl;
+  std::cout << "concat_sizes:";
   for (int i = 0; i < input_count; ++i) {
     auto input = p.inputs[i];
     concat_sizes[i] = input.tensor->Shape()[p.axis];
+    std::cout << " " << concat_sizes[i];
     input_ptr_cpuspan[i] = input.tensor->DataRaw();
     for (int j = 0; j < input.tensor->Shape()[p.axis]; ++j) {
       axis_dimension_input_output_mapping.at(index++) = i;
     }
   }
+  std::cout << std::endl;
   std::vector<int64_t> concat_sizes_range(concat_sizes);
   for (size_t i = 1; i < concat_sizes_range.size(); ++i) {
     concat_sizes_range[i] += concat_sizes_range[i - 1];
