@@ -77,11 +77,11 @@ Also, if you want to cross-compile for Apple Silicon in an Intel-based MacOS mac
 ### Architectures
 {: .no_toc }
 
-|           | x86_32       | x86_64       | ARM32v7      | ARM64        |
-|-----------|:------------:|:------------:|:------------:|:------------:|
-|Windows    | YES          | YES          |  YES         | YES          |
-|Linux      | YES          | YES          |  YES         | YES          |
-|macOS      | NO           | YES          |  NO          | NO           |
+|           | x86_32       | x86_64       | ARM32v7      | ARM64        | PPC64LE |
+|-----------|:------------:|:------------:|:------------:|:------------:|:-------:|
+|Windows    | YES          | YES          |  YES         | YES          | NO      |
+|Linux      | YES          | YES          |  YES         | YES          | YES     |
+|macOS      | NO           | YES          |  NO          | NO           | NO      |
 
 ### Environments
 {: .no_toc }
