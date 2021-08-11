@@ -4,6 +4,7 @@
 #include "testPch.h"
 
 #include "AdapterDmlEpTest.h"
+#include <wil/result.h>
 
 #include "common.h"
 #include "iengine.h"

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "lib/Api.Image/pch.h"
+#include "pch.h"
 #include "inc/ImageConversionHelpers.h"
 
 #include <winrt/Windows.Graphics.DirectX.Direct3D11.h>

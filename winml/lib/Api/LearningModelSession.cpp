@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "lib/Api/pch/pch.h"
+#include "pch.h"
 
 #include "LearningModelSession.h"
 

@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "adapter/pch.h"
+#include "pch.h"
 
 #include "winml_adapter_c_api.h"
 #include "core/session/ort_apis.h"

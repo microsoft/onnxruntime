@@ -191,7 +191,7 @@ set_winml_target_properties(winml_google_test_lib)
 set_winml_target_properties(winml_test_common)
 get_winml_test_api_src(${WINML_TEST_SRC_DIR} winml_test_api_src)
 
-if (NOT WINDOWS_STORE AND NOT ${winml_is_inbox})
+if (NOT ${winml_is_inbox})
   get_winml_test_api_redist_only_src(${WINML_TEST_SRC_DIR} winml_test_api_redist_only_src)
 endif()
 
