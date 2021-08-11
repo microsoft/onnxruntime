@@ -93,7 +93,7 @@ onnxruntime::Status ORTBackendsManager::set_device(size_t device_index, const st
     }
 
     Provider* (*PGetProvider)();
-    Env::Default().GetSymbolFromLibrary(handle, entry_point, (void**)&PGetProvider);
+    ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle, entry_point, (void**)&PGetProvider));
 
     Provider* provider = PGetProvider();
     std::shared_ptr<IExecutionProviderFactory> ep_factory = provider->CreateExecutionProviderFactory(&provider_options);
