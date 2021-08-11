@@ -60,7 +60,7 @@ class AttentionCPUBase : public AttentionBase {
     }
     BufferUniquePtr mask_data_buffer(mask_data, BufferDeleter(allocator));
 
-    bool* undir_mask = nullptr;
+    void* undir_mask = nullptr;
     if (has_unidirectional) {
       size_t undir_mask_bytes = SafeInt<size_t>(sequence_length) * all_sequence_length * sizeof(bool);
       undir_mask = allocator->Alloc(undir_mask_bytes);
@@ -79,7 +79,7 @@ class AttentionCPUBase : public AttentionBase {
     }
 
     ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K,
-                             mask_index_data, mask_index_dims, static_cast<T*>(mask_data), undir_mask, has_unidirectional,
+                             mask_index_data, mask_index_dims, static_cast<T*>(mask_data), static_cast<bool*>(undir_mask),
                              batch_size, sequence_length, past_sequence_length, qk_head_size == 0 ? v_head_size : qk_head_size,
                              past_data, present_data, tp, extra_add_qk_data);
 
