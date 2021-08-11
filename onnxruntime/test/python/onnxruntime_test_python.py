@@ -1092,6 +1092,7 @@ class TestInferenceSession(unittest.TestCase):
         sess = C.InferenceSession(session_options, custom_op_model, True, True)
         sess.initialize_session(['my_ep'], 
                         [{'shared_lib_path': shared_library,
+                          'provider_factory_entry_point' : 'ProviderEntryPoint',
                           'device_id':'1', 'some_config':'val'}], 
                         set())
         print("Create session with customize execution provider successfully!")

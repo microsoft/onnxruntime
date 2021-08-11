@@ -46,6 +46,8 @@ const OrtDevice::DeviceType OrtDevice::GPU;
 namespace onnxruntime {
 
 constexpr const char* kExecutionProviderSharedLibraryPath = "shared_lib_path";
+constexpr const char* kExecutionProviderSharedLibraryEntry = "provider_factory_entry_point";
+
 }  // namespace onnxruntime
 
 #if defined(_MSC_VER)
@@ -682,11 +684,16 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
           // this is an EP with dynamic loading
           // construct the provider option
           ProviderOptions provider_options;
+          std::string entry_symbol = kDefaultExecutionProviderEntry;
           for (auto option : it->second) {
-            if (option.first != kExecutionProviderSharedLibraryPath)
+            if (option.first == kExecutionProviderSharedLibraryEntry){
+              entry_symbol = option.second;
+            }
+            else if (option.first != kExecutionProviderSharedLibraryPath){
               provider_options.insert(option);
+            }
           }
-          auto p_ep = LoadExecutionProvider(shared_lib_path_it->second, provider_options);
+          auto p_ep = LoadExecutionProvider(shared_lib_path_it->second, provider_options, entry_symbol);
           ORT_THROW_IF_ERROR(sess->RegisterExecutionProvider(
               std::move(p_ep)));
           continue;

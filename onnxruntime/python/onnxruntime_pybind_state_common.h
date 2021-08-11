@@ -454,4 +454,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CoreML(uint32_t flags);
 
+#ifdef ENABLE_TRAINING
+constexpr const char* kDefaultExecutionProviderEntry = "GetProvider"; 
+#endif 
 }  // namespace onnxruntime
