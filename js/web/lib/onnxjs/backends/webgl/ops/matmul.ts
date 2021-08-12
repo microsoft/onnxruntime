@@ -1,129 +1,114 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {MatMul} from '../../../ops/matmul';
+import {Graph} from '../../../graph';
+import {OperatorImplementation, OperatorInitialization} from '../../../operators';
 import {Tensor} from '../../../tensor';
 import {BroadcastUtil, ShapeUtil} from '../../../util';
 import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, RunData, WebGLOperator} from '../types';
-import {getCoordsDataType} from '../utils';
-import {getActicationSnippet} from './fuse-utils';
-import {WebGLMatMulPacked} from './matmul-pack';
+import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
+import {getCoordsDataType, getGlChannels} from '../utils';
+import {getActicationSnippet, InternalActivationAttributes, parseInternalActivationAttributes} from './fuse-utils';
+import {createPackedMatmulProgramInfoLoader} from './matmul-pack';
 
-export class WebGLMatMul extends MatMul implements WebGLOperator {
-  private usePackedTexture?: boolean;
+export const matMul: OperatorImplementation<InternalActivationAttributes> =
+    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: InternalActivationAttributes): Tensor[] => {
+      validateInputs(inputs);
 
-  packedImpl: WebGLMatMulPacked;
-  unpackedImpl: WebGLUnpackedMatMul;
-  constructor() {
-    super();
-    this.packedImpl = new WebGLMatMulPacked();
-    this.unpackedImpl = new WebGLUnpackedMatMul();
+      if (inferenceHandler.session.pack) {
+        return [inferenceHandler.run(
+            createPackedMatmulProgramInfoLoader(inferenceHandler, inputs, attributes), inputs)];
+      } else {
+        return [inferenceHandler.run(createMatmulProgramInfoLoader(inputs, attributes), inputs)];
+      }
+    };
+
+export const parseMatMulAttributes: OperatorInitialization<InternalActivationAttributes> =
+    (node: Graph.Node): InternalActivationAttributes => parseInternalActivationAttributes(node.attributes);
+
+const createMatmulProgramMetadata = (hasBias: boolean, cacheHint: string) => ({
+  name: 'MatMul',
+  inputNames: hasBias ? ['A', 'B', 'Bias'] : ['A', 'B'],
+  inputTypes: hasBias ? [TextureType.unpacked, TextureType.unpacked, TextureType.unpacked] :
+                        [TextureType.unpacked, TextureType.unpacked],
+  cacheHint
+});
+
+function createMatmulProgramInfo(
+    metadata: ProgramMetadata, inputs: Tensor[], activationAttributes: InternalActivationAttributes): ProgramInfo {
+  const aShape = inputs[0].dims;
+  const bShape = inputs[1].dims;
+  const outputShape = BroadcastUtil.calcShape(aShape, bShape, true);
+  if (!outputShape) {
+    throw new Error('Can\'t use matmul on the given tensors');
   }
+  const coordsDataType = getCoordsDataType(outputShape.length);
+  const allGlChannels = getGlChannels();
+  const {activationFunction, applyActivation} = getActicationSnippet(activationAttributes);
 
-  run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
-    if (this.usePackedTexture === undefined) {
-      this.usePackedTexture = inferenceHandler.session.pack;
-    }
+  const hasBias = inputs.length > 2;
+  const processBias = hasBias ? 'value += getBiasForMatmul();' : '';
+  const getBiasForMatmulSnippet =
+      hasBias ? `${getBiasForMatmul(coordsDataType, allGlChannels, inputs[2].dims, outputShape, false)}` : '';
 
-    if (this.usePackedTexture) {
-      return inferenceHandler.run(this.packedImpl, inputs);
-    } else {
-      return inferenceHandler.run(this.unpackedImpl, inputs);
-    }
-  }
-
-  createProgramInfo(handler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo {
-    if (this.usePackedTexture === undefined) {
-      this.usePackedTexture = handler.session.pack;
-    }
-
-    if (this.usePackedTexture && inputs[0].dims.length > 1) {
-      return this.packedImpl.createProgramInfo(handler, inputs);
-    } else {
-      return this.unpackedImpl.createProgramInfo(handler, inputs);
-    }
-  }
-
-  createRunData(handler: WebGLInferenceHandler, programInfo: ProgramInfo, inputs: Tensor[]): RunData {
-    if (this.usePackedTexture && inputs[0].dims.length > 1) {
-      return this.packedImpl.createRunData(handler, programInfo, inputs);
-    } else {
-      return this.unpackedImpl.createRunData(handler, programInfo, inputs);
-    }
-  }
-}
-
-export class WebGLUnpackedMatMul extends MatMul implements WebGLOperator {
-  run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
-    return inferenceHandler.run(this, inputs);
-  }
-  createProgramInfo(handler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo {
-    const hasBias = inputs.length > 2;
-    const processBias = hasBias ? 'value += getBiasForMatmul();' : '';
-    const aShape = inputs[0].dims;
-    const bShape = inputs[1].dims;
-    const outputShape = BroadcastUtil.calcShape(aShape, bShape, true);
-    if (!outputShape) {
-      throw new Error('Can\'t use matmul on the given tensors');
-    }
-    const coordsDataType = getCoordsDataType(outputShape.length);
-    const allGlChannels = ['x', 'y', 'z', 'w', 'u', 'v'];
-
-    const {activationFunction, applyActivation} = getActicationSnippet(this.activation);
-    const additionalVars = this.activation === 'Clip' ? `
-    float min = float(${this.clipMin});
-    float max = float(${this.clipMax});` :
-                                                        '';
-    const getBiasForMatmulSnippet =
-        hasBias ? `${getBiasForMatmul(coordsDataType, allGlChannels, inputs[2].dims, outputShape, false)}` : '';
-
-    const rank = outputShape.length;
-    const arank = aShape.length;
-    const brank = bShape.length;
-    const sharedDim = aShape[aShape.length - 1];
-    const shaderSource = `
-    ${additionalVars}
+  const rank = outputShape.length;
+  const arank = aShape.length;
+  const brank = bShape.length;
+  const sharedDim = aShape[aShape.length - 1];
+  const shaderSource = `
     ${activationFunction}
     ${getBiasForMatmulSnippet}
+    float process(int indices[${rank}]) {
+        int a[${arank}];
+        int b[${brank}];
+        bcastMatmulIndices_A(indices, a);
+        bcastMatmulIndices_B(indices, b);
 
-      float process(int indices[${rank}]) {
-          int a[${arank}];
-          int b[${brank}];
-          bcastMatmulIndices_A(indices, a);
-          bcastMatmulIndices_B(indices, b);
-
-          float value;
-          for (int k=0; k<${sharedDim}; ++k) {
-              a[${arank - 1}] = k;
-              b[${brank - 2}] = k;
-              value += _A(a) * _B(b);
-          }
-          ${processBias}
-          ${applyActivation}
-
-          return value;
-      }`;
-    return {
-      inputLayouts: inputs.map(t => handler.getOrCreateTextureLayout(t)),
-      outputLayout: handler.createTextureLayoutFromShape(outputShape),
-      samplers: hasBias ? ['A', 'B', 'Bias'] : ['A', 'B'],
-      shaderSource,
-    };
-  }
-  createRunData(handler: WebGLInferenceHandler, programInfo: ProgramInfo, inputs: Tensor[]): RunData {
-    const inputTDs = inputs.map((t, i) => handler.getOrCreateTextureData(t, programInfo.inputLayouts[i]));
-    return {
-      inputTextureDatas: inputTDs,
-      outputTextureData: handler.createTextureDataFromLayout(programInfo.outputLayout, inputTDs[0].tensor.type),
-      uniformData: {}
-    };
-  }
+        float value;
+        for (int k=0; k<${sharedDim}; ++k) {
+            a[${arank - 1}] = k;
+            b[${brank - 2}] = k;
+            value += _A(a) * _B(b);
+        }
+        ${processBias}
+        ${applyActivation}
+        return value;
+    }`;
+  return {
+    ...metadata,
+    output: {dims: outputShape, type: inputs[0].type, textureType: TextureType.unpacked},
+    shaderSource,
+  };
 }
+
+export function createMatmulProgramInfoLoader(
+    inputs: Tensor[], activationAttributes: InternalActivationAttributes): ProgramInfoLoader {
+  const metadata = createMatmulProgramMetadata(inputs.length > 2, activationAttributes.activationCacheKey);
+  return {...metadata, get: () => createMatmulProgramInfo(metadata, inputs, activationAttributes)};
+}
+
+const validateInputs = (inputs: Tensor[]): void => {
+  if (!inputs || inputs.length !== 2) {
+    throw new Error('MatMul requires 2 inputs.');
+  }
+
+  if (inputs[0].dims[inputs[0].dims.length - 1] !== inputs[1].dims[inputs[1].dims.length - 2]) {
+    throw new Error('shared dimension does not match.');
+  }
+
+  if ((inputs[0].type !== 'float32' && inputs[0].type !== 'float64') ||
+      (inputs[1].type !== 'float32' && inputs[1].type !== 'float64')) {
+    throw new Error('inputs should be float type');
+  }
+
+  if (inputs[0].type !== inputs[1].type) {
+    throw new Error('inputs types should match');
+  }
+};
 
 export function getBiasForMatmul(
     coordsDataType: string, allGlChannels: readonly string[], inShape: readonly number[], outShape: readonly number[],
-    isPacked = true): string {
+    isPacked: boolean): string {
   let unpackedCoordsSnippet = '';
   const inRank = inShape.length;
   const outRank = outShape.length;
@@ -153,8 +138,7 @@ float getBiasForMatmul() {
   ${coordsDataType} coords = getOutputCoords();
   ${coordsSnippet}
   return getBias(coords.x);
-}
-`;
+}`;
 
   return getBiasForMatmulSource;
 }

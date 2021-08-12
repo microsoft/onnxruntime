@@ -347,7 +347,7 @@ class SessionState {
                                std::unique_ptr<SessionState> session_state);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  Status PopulateKernelCreateInfo(KernelRegistryManager& kernel_registry_manager, bool saving_ort_format);
+  Status PopulateKernelCreateInfo(const KernelRegistryManager& kernel_registry_manager, bool saving_ort_format);
 #endif
 
   Status FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,

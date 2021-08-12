@@ -175,7 +175,7 @@ target_compile_definitions(winml_lib_telemetry PRIVATE _SCL_SECURE_NO_WARNINGS) 
 target_compile_definitions(winml_lib_telemetry PRIVATE BINARY_NAME=\"${BINARY_NAME}\")
 
 # Specify the usage of a precompiled header
-target_precompiled_header(winml_lib_telemetry lib/Telemetry/pch.h)
+target_precompiled_header(winml_lib_telemetry pch.h)
 
 # Includes
 target_include_directories(winml_lib_telemetry PRIVATE ${CMAKE_CURRENT_BINARY_DIR})                             # windows machine learning generated component headers
@@ -186,7 +186,6 @@ target_include_directories(winml_lib_telemetry PRIVATE ${CMAKE_SOURCE_DIR}/commo
 target_include_directories(winml_lib_telemetry PRIVATE ${winml_lib_telemetry_dir})
 target_include_directories(winml_lib_telemetry PRIVATE ${winml_lib_common_dir}/inc)
 target_include_directories(winml_lib_telemetry PRIVATE ${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows)
-target_include_directories(winml_lib_telemetry PRIVATE ${REPO_ROOT}/winml)
 
 # Properties
 set_target_properties(winml_lib_telemetry
@@ -248,7 +247,7 @@ if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
 endif()
 
 # Specify the usage of a precompiled header
-target_precompiled_header(winml_lib_ort lib/Api.Ort/pch.h)
+target_precompiled_header(winml_lib_ort pch.h)
 
 # Includes
 target_include_directories(winml_lib_ort PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
@@ -324,10 +323,9 @@ target_include_directories(winml_adapter PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INC
 add_dependencies(winml_adapter ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 # Specify the usage of a precompiled header
-target_precompiled_header(winml_adapter adapter/pch.h)
+target_precompiled_header(winml_adapter pch.h)
 
 # Includes
-target_include_directories(winml_adapter PRIVATE ${REPO_ROOT}/winml)
 target_include_directories(winml_adapter PRIVATE ${winml_adapter_dir})
 target_include_directories(winml_adapter PRIVATE ${winml_lib_common_dir}/inc)
 
@@ -390,7 +388,7 @@ target_compile_definitions(winml_lib_image PRIVATE PLATFORM_WINDOWS)
 target_compile_definitions(winml_lib_image PRIVATE _SCL_SECURE_NO_WARNINGS)                                 # remove warnings about unchecked iterators
 
 # Specify the usage of a precompiled header
-target_precompiled_header(winml_lib_image lib/Api.Image/pch.h)
+target_precompiled_header(winml_lib_image pch.h)
 
 # Includes
 target_include_directories(winml_lib_image PRIVATE ${CMAKE_CURRENT_BINARY_DIR})                                                               # windows machine learning generated component headers
@@ -410,7 +408,6 @@ target_include_directories(winml_lib_image PRIVATE ${ONNXRUNTIME_INCLUDE_DIR}/co
 target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/flatbuffers/include)
 target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/optional-lite/include)
 target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/mp11/include)
-target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/winml)
 
 # Properties
 set_target_properties(winml_lib_image
@@ -495,7 +492,7 @@ target_compile_definitions(winml_lib_api PRIVATE PLATFORM_WINDOWS)
 target_compile_definitions(winml_lib_api PRIVATE _SCL_SECURE_NO_WARNINGS)                         # remove warnings about unchecked iterators
 
 # Specify the usage of a precompiled header
-target_precompiled_header(winml_lib_api lib/Api/pch/pch.h)
+target_precompiled_header(winml_lib_api pch.h)
 
 # Includes
 target_include_directories(winml_lib_api PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
@@ -527,7 +524,6 @@ target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/Saf
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/flatbuffers/include)
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/optional-lite/include)
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/mp11/include)
-target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/winml)
 
 # Properties
 set_target_properties(winml_lib_api
@@ -585,7 +581,7 @@ target_compile_definitions(winml_lib_api_experimental PRIVATE PLATFORM_WINDOWS)
 target_compile_definitions(winml_lib_api_experimental PRIVATE _SCL_SECURE_NO_WARNINGS)                         # remove warnings about unchecked iterators
 
 # Specify the usage of a precompiled header
-target_precompiled_header(winml_lib_api_experimental lib/Api.Experimental/pch/pch.h)
+target_precompiled_header(winml_lib_api_experimental pch.h)
 
 # Includes
 target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
@@ -619,7 +615,6 @@ target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake
 target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/flatbuffers/include)
 target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/optional-lite/include)
 target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/mp11/include)
-target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/winml)
 
 # Properties
 set_target_properties(winml_lib_api_experimental
@@ -690,8 +685,7 @@ target_include_directories(winml_lib_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/
 target_include_directories(winml_lib_common PRIVATE ${winml_lib_api_dir})
 target_include_directories(winml_lib_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_include_directories(winml_lib_common PRIVATE ${winml_lib_common_dir}/inc)
-target_include_directories(winml_lib_common PRIVATE ${REPO_ROOT}/winml)
-target_precompiled_header(winml_lib_common lib/Common/inc/pch.h)
+target_precompiled_header(winml_lib_common inc/pch.h)
 
 if (onnxruntime_USE_DML)
   target_add_dml(winml_lib_common)
@@ -708,7 +702,7 @@ set_source_files_properties(
   TRUE)
 
 # Add library
-onnxruntime_add_shared_library(winml_dll
+onnxruntime_add_shared_library(winml_dll 
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated/module.g.excl.cpp
   ${winml_dll_dir}/winml.def
   ${winml_dll_dir}/winml.rc
@@ -739,7 +733,7 @@ if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
 endif()
 
 # Specify the usage of a precompiled header
-target_precompiled_header(winml_dll dll/pch.h)
+target_precompiled_header(winml_dll pch.h)
 
 # Includes
 target_include_directories(winml_dll PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
@@ -776,7 +770,6 @@ target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/SafeInt
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/flatbuffers/include)
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/optional-lite/include)
 target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/mp11/include)
-target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/winml)
 
 # Properties
 set_target_properties(winml_dll
