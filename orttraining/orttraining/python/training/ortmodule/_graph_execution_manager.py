@@ -153,6 +153,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_gpu_allocator
             self._torch_alloc = torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
             self._torch_free = torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
+            self._torch_empty_cache = torch_gpu_allocator.gpu_caching_allocator_empty_cache_address()
 
     def _validate_module_type(self, module):
         """Raises a TypeError if the module is not a torch.nn.Module"""
@@ -209,7 +210,8 @@ class GraphExecutionManager(GraphExecutionInterface):
             if self._use_external_gpu_allocator:
                 provider_options = [{"device_id": str(self._device.index),
                                      "gpu_external_alloc": str(self._torch_alloc),
-                                     "gpu_external_free": str(self._torch_free)}, {}]
+                                     "gpu_external_free": str(self._torch_free),
+                                     "gpu_external_empty_cache": str(self._torch_empty_cache)}, {}]
             else:
                 provider_options = [{"device_id": str(self._device.index)}, {}]
         elif self._device.type == 'cpu':
