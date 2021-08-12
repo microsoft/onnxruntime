@@ -13,14 +13,14 @@ static void LoadModel(const std::wstring& modelPath,
   learningModel = winml::LearningModel::LoadFromFilePath(fullPath);
 };
 
-static inline uint64_t GetAdapterIdQuadPart(winml::LearningModelDevice& device) {
+static uint64_t GetAdapterIdQuadPart(winml::LearningModelDevice& device) {
   LARGE_INTEGER id;
   id.LowPart = device.AdapterId().LowPart;
   id.HighPart = device.AdapterId().HighPart;
   return id.QuadPart;
 };
 
-static inline _LUID GetAdapterIdAsLUID(winml::LearningModelDevice& device) {
+static _LUID GetAdapterIdAsLUID(winml::LearningModelDevice& device) {
   _LUID id;
   id.LowPart = device.AdapterId().LowPart;
   id.HighPart = device.AdapterId().HighPart;

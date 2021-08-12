@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "adapter/pch.h"
+#include "pch.h"
 
 #include "winml_adapter_model.h"
 
