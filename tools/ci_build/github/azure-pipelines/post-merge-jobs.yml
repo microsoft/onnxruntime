@@ -48,7 +48,7 @@ jobs:
   pool: 'Win-CPU-2021'
   dependsOn:
   - CodeCoverage
-  condition: succeeded()
+  condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
   steps:
   - checkout: self
     submodules: false
