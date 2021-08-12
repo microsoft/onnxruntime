@@ -31,16 +31,49 @@ class FusionReshape(Fusion):
 
         (unsqueeze_0, gather_0, shape_0) = path0
 
-        path1 = self.model.match_parent_path(concat_node, ['Unsqueeze', 'Gather', 'Shape'], [1, 0, 0],
-                                             output_name_to_node)
-        if path1 is None:
-            return
-        (unsqueeze_1, gather_1, shape_1) = path1
-
         shape = []
         gather_value = self.model.get_constant_value(gather_0.input[1])
         if gather_value == 0:
             shape.append(0)
+
+
+        path1 = self.model.match_parent_path(concat_node, ['Unsqueeze', 'Gather', 'Shape'], [1, 0, 0],
+                                             output_name_to_node)
+        if path1 is None:
+            # Bart
+            if len(concat_node.input) == 4:
+                input_1_proto =  self.model.get_initializer(concat_node.input[1])
+                input_2_proto =  self.model.get_initializer(concat_node.input[2])
+                input_3_proto =  self.model.get_initializer(concat_node.input[3])
+                if input_1_proto is None or input_2_proto is None or input_3_proto is None:
+                    return
+                input_1 = numpy_helper.to_array(input_1_proto)
+                input_2 = numpy_helper.to_array(input_2_proto)
+                input_3 = numpy_helper.to_array(input_3_proto)
+                if input_1[0] == -1 and input_2[0] > 0 and input_3[0] > 0:
+                    shape.extend(input_1)
+                    shape.extend(input_2)
+                    shape.extend(input_3)
+                    shape_value = np.asarray(shape, dtype=np.int64)
+
+                    constant_shape_name = self.model.create_node_name('Constant', 'constant_shape')
+                    new_node = helper.make_node('Constant',
+                                                inputs=[],
+                                                outputs=[constant_shape_name],
+                                                value=helper.make_tensor(name='const_tensor',
+                                                                         data_type=TensorProto.INT64,
+                                                                         dims=shape_value.shape,
+                                                                         vals=bytes(shape_value),
+                                                                         raw=True))
+                    reshape_node.input[1] = constant_shape_name
+                    reshape_node.name = self.model.create_node_name('Reshape', 'Reshape_Fuse')
+                    self.nodes_to_remove.extend([concat_node])
+                    self.nodes_to_add.append(new_node)
+                    self.node_name_to_graph_name[new_node.name] = self.this_graph_name  
+                return
+            else:
+                return
+        (unsqueeze_1, gather_1, shape_1) = path1
 
         gather_value = self.model.get_constant_value(gather_1.input[1])
         if gather_value == 1:

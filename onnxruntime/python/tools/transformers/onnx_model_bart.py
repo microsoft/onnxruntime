@@ -120,32 +120,8 @@ class BartOnnxModel(BertOnnxModel):
         self.attention_fusion = FusionBartEncoderAttention(self, self.hidden_size, self.num_heads, self.attention_mask)
 
     def fuse_attention(self):
+        print("block")
         self.attention_fusion.apply()
-
-    def get_num_heads_and_hidden_size(self, node: NodeProto) -> Tuple[int, int]:
-
-        reshape_nodes = self.model.match_parent_path(node, ['Concat'], [1])
-        if reshape_nodes is not None:
-            concat_q = reshape_nodes[0]
-        else:
-            return self.num_heads, self.hidden_size
-
-        num_heads_proto = self.model.get_initializer(concat_q.input[2])
-        head_size_proto = self.model.get_initializer(concat_q.input[3])
-
-        if num_heads_proto is None or head_size_proto is None:
-            return self.num_heads, self.hidden_size
-            
-        num_heads = NumpyHelper.to_array(num_heads_proto)[0]
-        head_size = NumpyHelper.to_array(head_size_proto)[0]
-        hidden_size = num_heads * head_size
-
-        if self.num_heads > 0 and num_heads != self.num_heads:
-            logger.warn(f"--num_heads is {self.num_heads}. Detected value is {num_heads}. Using detected value.")
-
-        if self.hidden_size > 0 and hidden_size != self.hidden_size:
-            logger.warn(f"--hidden_size is {self.hidden_size}. Detected value is {hidden_size}. Using detected value.")
-
-        return num_heads, hidden_size       
+ 
 
 
