@@ -415,8 +415,11 @@ This option is very fast and allows the package to be built in minutes, but is c
     ```
 
     The first line says your target operating system is Linux. That's always the case.    
-    The second line says the target CPU arch is aarch64, which is the 64 bits ARM. It is good for Raspberry Pi 3 and in later models of the Raspberry Pi 2 (board revision V1.2). The earlier versions of Raspberry Pi doesn't have 64 bits support. For these boards you need to change it to 'SET(CMAKE_SYSTEM_PROCESSOR arm)'.    
-    Type "which aarch64-none-linux-gnu-gcc" in your shell to check if the tool exists. If not, please run "echo $PATH" and check your PATH env setting. And sometimes your compiler may have a different name, then you need to adjust the settings above accordingly.     
+    
+    The second line says the target CPU arch is aarch64, which should be consistent with the compiler you choose. Run your compiler with '-v', and look for the value of "--with-arch=".  If it was found, put the value in our line 2. e.g. If you saw "--with-arch=armv7-a", then you should "SET(CMAKE_SYSTEM_PROCESSOR armv7-a)".  Otherwise("--with-arch=" was not found), please get the value from the "Target:" line. Split the string with '-' and only take the first part. For example, if you saw "Target: aarch64-none-linux-gnu", then you should "SET(CMAKE_SYSTEM_PROCESSOR aarch64)"
+    
+    CMAKE_C_COMPILER/CMAKE_CXX_COMPILER settings: Type "which aarch64-none-linux-gnu-gcc" in your shell to check if the tool exists. If not, please run "echo $PATH" and check your PATH env setting, or you may just put absolute paths here. Sometimes your compiler may have a different name, then you need to adjust the settings above accordingly.     
+    
     If you don't have a sysroot, you can delete the last line. 
 
 5.  Run CMake and make
