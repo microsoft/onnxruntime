@@ -69,7 +69,6 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL(double)
 #endif
 SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16)
 
-#ifndef USE_ROCM
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 // cudnnSoftmaxForward/Backward doesn't support BFloat16.
 #define SPECIALIZED_SOFTMAX_HELPER_IMPL_BFloat16(is_log_softmax)                                               \
@@ -93,7 +92,6 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16)
 
 SPECIALIZED_SOFTMAX_HELPER_IMPL_BFloat16(true)
     SPECIALIZED_SOFTMAX_HELPER_IMPL_BFloat16(false)
-#endif
 #endif
 
 #define REGISTER_KERNEL_TYPED(T)                                                           \
@@ -260,10 +258,8 @@ SPECIALIZED_COMPUTE(float)
 SPECIALIZED_COMPUTE(double)
 #endif
 SPECIALIZED_COMPUTE(MLFloat16)
-#ifndef USE_ROCM
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 SPECIALIZED_COMPUTE(BFloat16)
-#endif
 #endif
 
 }  // namespace cuda

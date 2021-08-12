@@ -70,7 +70,6 @@ class ToCudaType<MLFloat16> {
   }
 };
 
-#ifndef USE_ROCM
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 template <>
 class ToCudaType<BFloat16> {
@@ -81,7 +80,6 @@ class ToCudaType<BFloat16> {
     return *reinterpret_cast<MappedType*>(&h);
   }
 };
-#endif
 #endif
 
 inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int64_t>& dims) {
