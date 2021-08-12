@@ -44,6 +44,14 @@ const isSimdSupported = (): boolean => {
   }
 };
 
+const getWasmFileName = (useSimd: boolean, useThreads: boolean) => {
+  if (useThreads) {
+    return useSimd ? 'ort-wasm-simd-threaded.wasm' : 'ort-wasm-threaded.wasm';
+  } else {
+    return useSimd ? 'ort-wasm-simd.wasm' : 'ort-wasm.wasm';
+  }
+};
+
 export const initializeWebAssembly = async(): Promise<void> => {
   if (initialized) {
     return Promise.resolve();
@@ -64,6 +72,13 @@ export const initializeWebAssembly = async(): Promise<void> => {
 
   const useThreads = numThreads > 1 && isMultiThreadSupported();
   const useSimd = simd && isSimdSupported();
+
+  const wasmPrefixOverride = typeof env.wasm.wasmPaths === 'string' ? env.wasm.wasmPaths : undefined;
+  const wasmFileName = getWasmFileName(false, useThreads);
+  const wasmOverrideFileName = getWasmFileName(useSimd, useThreads);
+  const wasmPathOverride =
+      typeof env.wasm.wasmPaths === 'object' ? env.wasm.wasmPaths[wasmOverrideFileName] : undefined;
+
   let isTimeout = false;
 
   const tasks: Array<Promise<void>> = [];
@@ -81,38 +96,34 @@ export const initializeWebAssembly = async(): Promise<void> => {
   // promise for module initialization
   tasks.push(new Promise((resolve, reject) => {
     const factory = useThreads ? ortWasmFactoryThreaded : ortWasmFactory;
-    const config: Partial<OrtWasmModule> = {};
-
-    if (!useThreads) {
-      config.locateFile = (fileName: string, scriptDirectory: string) => {
-        if (useSimd && fileName === 'ort-wasm.wasm') {
-          return scriptDirectory + 'ort-wasm-simd.wasm';
+    const config: Partial<OrtWasmModule> = {
+      locateFile: (fileName: string, scriptDirectory: string) => {
+        if (fileName.endsWith('.worker.js') && typeof Blob !== 'undefined') {
+          return URL.createObjectURL(new Blob(
+              [
+                // This require() function is handled by webpack to load file content of the corresponding .worker.js
+                // eslint-disable-next-line @typescript-eslint/no-require-imports
+                require('./binding/ort-wasm-threaded.worker.js')
+              ],
+              {type: 'text/javascript'}));
         }
+
+        if (fileName === wasmFileName) {
+          const prefix: string = wasmPrefixOverride ?? scriptDirectory;
+          return wasmPathOverride ?? prefix + wasmOverrideFileName;
+        }
+
         return scriptDirectory + fileName;
-      };
-    } else {
+      }
+    };
+
+    if (useThreads) {
       if (typeof Blob === 'undefined') {
         config.mainScriptUrlOrBlob = path.join(__dirname, 'ort-wasm-threaded.js');
       } else {
         const scriptSourceCode =
             `var ortWasmThreaded=(function(){var _scriptDir;return ${ortWasmFactoryThreaded.toString()}})();`;
         config.mainScriptUrlOrBlob = new Blob([scriptSourceCode], {type: 'text/javascript'});
-        config.locateFile = (fileName: string, scriptDirectory: string) => {
-          if (fileName.endsWith('.worker.js')) {
-            return URL.createObjectURL(new Blob(
-                [
-                  // This require() function is handled by webpack to load file content of the corresponding .worker.js
-                  // eslint-disable-next-line @typescript-eslint/no-require-imports
-                  require('./binding/ort-wasm-threaded.worker.js')
-                ],
-                {type: 'text/javascript'}));
-          }
-
-          if (useSimd && fileName === 'ort-wasm-threaded.wasm') {
-            return scriptDirectory + 'ort-wasm-simd-threaded.wasm';
-          }
-          return scriptDirectory + fileName;
-        };
       }
     }
 
