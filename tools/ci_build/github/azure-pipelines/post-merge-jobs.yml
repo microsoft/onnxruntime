@@ -67,4 +67,4 @@ jobs:
       azureSubscription: AIInfraBuildOnnxRuntimeOSS
       Destination: AzureBlob
       storage: onnxruntime
-
+      ContainerName: '$web'
