@@ -25,9 +25,11 @@ struct TensorMetadata {
   std::string name;
   std::string producer;
   std::string consumer;
-  std::string device;
+  std::string device_type;
   int step;
 };
+
+sqlite3* SqliteConnection(); 
 
 bool FilterNode(const NodeDumpOptions& dump_options, const Node& node) {
   auto match_pattern =
@@ -137,8 +139,8 @@ bool TensorExistsInSqlDb(const TensorMetadata& tensor_metadata) {
     const char *sql_tensor_exists = 
       "select count(name) from Tensors where name == ? and step == ?;";
 
-    sqlite3_stmt *stmt = NULL;
-    ORT_ENFORCE(SQLITE_OK == sqlite3_prepare_v2(db, sql_tensor_exists, -1, &stmt, NULL));
+    sqlite3_stmt *stmt = nullptr;
+    ORT_ENFORCE(SQLITE_OK == sqlite3_prepare_v2(db, sql_tensor_exists, -1, &stmt, nullptr));
 
     return stmt;
   }(), &sqlite3_finalize);
@@ -162,11 +164,11 @@ void InsertTensorInSqlDb(const Tensor& tensor, const TensorMetadata& tensor_meta
     sqlite3 *db = SqliteConnection();
 
     const char *sql_insert_tensor = 
-      "Insert into Tensors (Step, Name, Value, Device, TracedProducer, TracedConsumers) " \
+      "Insert into Tensors (Step, Name, Value, Device, TracedProducer, TracedConsumers) " 
       " values (?, ?, ?, ?, \"\", \"\"); ";
 
-    sqlite3_stmt *stmt = NULL;
-    ORT_ENFORCE(SQLITE_OK == sqlite3_prepare_v2(db, sql_insert_tensor, -1, &stmt, NULL));
+    sqlite3_stmt *stmt = nullptr;
+    ORT_ENFORCE(SQLITE_OK == sqlite3_prepare_v2(db, sql_insert_tensor, -1, &stmt, nullptr));
 
     return stmt;
   }(), &sqlite3_finalize);
@@ -183,7 +185,7 @@ void InsertTensorInSqlDb(const Tensor& tensor, const TensorMetadata& tensor_meta
   int size = bytes.size();
     
   ORT_ENFORCE(SQLITE_OK == sqlite3_bind_blob(stmt, 3, data, size, SQLITE_TRANSIENT));
-  ORT_ENFORCE(SQLITE_OK == sqlite3_bind_text(stmt, 4, tensor_metadata.device.c_str(), -1, SQLITE_TRANSIENT));
+  ORT_ENFORCE(SQLITE_OK == sqlite3_bind_text(stmt, 4, tensor_metadata.device_type.c_str(), -1, SQLITE_TRANSIENT));
  
   ORT_ENFORCE(SQLITE_DONE == sqlite3_step(stmt));
 }
@@ -195,13 +197,13 @@ void UpdateTensorUsageInSqlDb(const TensorMetadata& tensor_metadata) {
     sqlite3 *db = SqliteConnection();
 
     const char *sql_update_tensor = 
-      "Update Tensors set " \
-      "  TracedProducer = TracedProducer || ?, " \
-      "  TracedConsumers = TracedConsumers || ? " \
+      "Update Tensors set " 
+      "  TracedProducer = TracedProducer || ?, "
+      "  TracedConsumers = TracedConsumers || ? " 
       "where name = ? and step = ?;";
 
-    sqlite3_stmt *stmt = NULL;
-    ORT_ENFORCE(SQLITE_OK == sqlite3_prepare_v2(db, sql_update_tensor, -1, &stmt, NULL));
+    sqlite3_stmt *stmt = nullptr;
+    ORT_ENFORCE(SQLITE_OK == sqlite3_prepare_v2(db, sql_update_tensor, -1, &stmt, nullptr));
 
     return stmt;
   }(), &sqlite3_finalize);
@@ -226,18 +228,18 @@ void DumpTensorToSqliteDb(const Tensor& tensor, const TensorMetadata& tensor_met
   UpdateTensorUsageInSqlDb(tensor_metadata);
 }
 
-void DumpNodePlacementToSqliteDb(const Node& node) {
+void InsertNodePlacementToSqliteDb(const Node& node) {
 
   static std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt_uptr( [](){
   
     sqlite3 *db = SqliteConnection();
 
     const char *sql_insert_node = 
-      "Insert or Ignore into Nodes (Name, OpType, Device) " \
+      "Insert or Ignore into Nodes (Name, OpType, Device) "
       " values (?, ?, ?);";
 
-    sqlite3_stmt *stmt = NULL;
-    ORT_ENFORCE(SQLITE_OK == sqlite3_prepare_v2(db, sql_insert_node, -1, &stmt, NULL));
+    sqlite3_stmt *stmt = nullptr;
+    ORT_ENFORCE(SQLITE_OK == sqlite3_prepare_v2(db, sql_insert_node, -1, &stmt, nullptr));
 
     return stmt;
   }(), &sqlite3_finalize);
@@ -283,7 +285,7 @@ void DumpTensor(
   if (tensor_location.device.Type() == OrtDevice::CPU ||
       tensor_location.mem_type == OrtMemTypeCPUInput ||
       tensor_location.mem_type == OrtMemTypeCPUOutput) {
-    tensor_metadata.device = "CPU";
+    tensor_metadata.device_type = "CPU";
     DumpCpuTensor(dump_options, tensor, tensor_metadata);
   } else {
     std::cout << tensor_location << "\n";
@@ -299,7 +301,7 @@ void DumpTensor(
       const auto& data_transfer_mgr = session_state.GetDataTransferMgr();
       auto status = data_transfer_mgr.CopyTensor(tensor, cpu_tensor);
       if (status == common::Status::OK()) {
-        tensor_metadata.device = "GPU";
+        tensor_metadata.device_type = "GPU";
         DumpCpuTensor(dump_options, cpu_tensor, tensor_metadata);
       } else {
         std::cout << " failed to transfer data to cpu.\n";
@@ -339,12 +341,17 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
     opts.filter.name_pattern = Env::Default().GetEnvironmentVar(env_vars::kNameFilter);
     opts.filter.op_type_pattern = Env::Default().GetEnvironmentVar(env_vars::kOpTypeFilter);
 
-    if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kDumpDataToFiles, false)) {
+    const std::string destination = ParseEnvironmentVariableWithDefault<std::string>(
+        env_vars::kDumpDataDestination, "stdout");
+
+    if (destination == "files") {
       opts.data_destination = NodeDumpOptions::DataDestination::TensorProtoFiles;
     }
-
-    if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kDumpDataToSqlite, false)) {
+    else if (destination == "sqlite") {
       opts.data_destination = NodeDumpOptions::DataDestination::SqliteDb;
+    }
+    else if (destination != "stdout") {
+      ORT_THROW("Unsupported data destination type: ", destination);
     }
 
     if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kAppendRankToFileName, false)) {
@@ -389,35 +396,35 @@ sqlite3* SqliteConnection() {
   
       sqlite3 *db;
       int rc = sqlite3_open(sqlite_db_path.c_str(), &db);
-      ORT_ENFORCE(rc == 0, "Failed to connect to sqlite3 db ", sqlite_db_path.c_str());
+      ORT_ENFORCE(rc == SQLITE_OK, "Failed to connect to sqlite3 db ", sqlite_db_path.c_str());
      
       const char *sql_create_tensor_table = 
-        "Create table if not exists Tensors ( " \
-        "  Step int not null, " \
-        "  Name text not null, " \
-        "  Shape TensorShapeProto, " \
-        "  Type TypeProto, "  \
-        "  Value TensorProto, " \
-        "  Device text, " \
-        "  TracedProducer NodeArg, " \
-        "  TracedConsumers NodeArgList, " \
-        "  primary key (step, name) " \
+        "Create table if not exists Tensors ( " 
+        "  Step int not null, " 
+        "  Name text not null, " 
+        "  Shape TensorShapeProto, " 
+        "  Type TypeProto, "  
+        "  Value TensorProto, " 
+        "  Device text, " 
+        "  TracedProducer NodeArg, " 
+        "  TracedConsumers NodeArgList, " 
+        "  primary key (step, name) " 
         ");";
         
-      const char *error_message = 0;
-      rc = sqlite3_exec(db, sql_create_tensor_table, NULL, 0, (char**)&error_message);
+      const char *error_message = nullptr;
+      rc = sqlite3_exec(db, sql_create_tensor_table, nullptr, 0, (char**)&error_message);
       ORT_ENFORCE(rc == SQLITE_OK, 
         "Failed to create Tensors table in sqlite3 db ", sqlite_db_path.c_str(), 
         " on ", error_message);
 
       const char *sql_create_node_table = 
-        "Create table if not exists Nodes ( " \
-        "  Name text primary key not null, " \
-	"  OpType text not null, " \
-        "  Device text " \
+        "Create table if not exists Nodes ( " 
+        "  Name text primary key not null, " 
+        "  OpType text not null, " 
+        "  Device text " 
         ");";
         
-      rc = sqlite3_exec(db, sql_create_node_table, NULL, 0, (char**)&error_message);
+      rc = sqlite3_exec(db, sql_create_node_table, nullptr, 0, (char**)&error_message);
       ORT_ENFORCE(rc == SQLITE_OK, 
         "Failed to create Nodes table in sqlite3 db ", sqlite_db_path.c_str(), 
         " on ", error_message);
@@ -454,7 +461,7 @@ void DumpNodeInputs(
   bool is_node_meta_set = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::NodePlacement) != 0;
   if (dump_context.iteration == 1 && is_node_meta_set) {
     PrintIf(is_node_meta_set, MakeString(" Placement: ", node.GetExecutionProviderType(), "\n"));
-    DumpNodePlacementToSqliteDb(node);
+    InsertNodePlacementToSqliteDb(node);
   }
 
   std::cout << "-----------\n";
@@ -478,9 +485,9 @@ void DumpNodeInputs(
           PrintIf(is_shape_set, MakeString(" Shape: ", shape, "\n"));
 
           if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::InputData) != 0) {
-	    tensor_metadata.name = input_defs[i]->Name();
-	    tensor_metadata.step = dump_context.iteration;
-	    tensor_metadata.consumer = node.Name() + ":" + std::to_string(i);
+            tensor_metadata.name = input_defs[i]->Name();
+            tensor_metadata.step = dump_context.iteration;
+            tensor_metadata.consumer = node.Name() + ":" + std::to_string(i);
             DumpTensor(dump_options, tensor, tensor_metadata, session_state);
           }
         } else {
@@ -520,7 +527,7 @@ void DumpNodeOutputs(
   bool is_node_meta_set = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::NodePlacement) != 0;
   if (dump_context.iteration == 1 && is_node_meta_set) {
     PrintIf(is_node_meta_set, MakeString(" Placement: ", node.GetExecutionProviderType(), "\n"));
-    DumpNodePlacementToSqliteDb(node);
+    InsertNodePlacementToSqliteDb(node);
   }
 
   std::cout << "-----------\n";
@@ -541,9 +548,9 @@ void DumpNodeOutputs(
           PrintIf(is_shape_set, MakeString(" Shape: ", shape, "\n"));
 
           if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::OutputData) != 0) {
-	    tensor_metadata.name = output_defs[i]->Name();
-	    tensor_metadata.step = dump_context.iteration;
-	    tensor_metadata.producer = node.Name() + ":" + std::to_string(i);
+            tensor_metadata.name = output_defs[i]->Name();
+            tensor_metadata.step = dump_context.iteration;
+            tensor_metadata.producer = node.Name() + ":" + std::to_string(i);
             DumpTensor(dump_options, tensor, tensor_metadata, session_state);
           }
         } else {

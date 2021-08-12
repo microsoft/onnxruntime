@@ -22,24 +22,22 @@ namespace utils {
 namespace debug_node_inputs_outputs_env_vars {
 // Shape is printed by default unless it's turned OFF by setting environment
 // variable ORT_DEBUG_NODE_IO_DUMP_SHAPE_DATA to 0.
-// set to non-zero to dump node meta data
-constexpr const char* kDumpNodePlacement = "ORT_DEBUG_NODE_IO_DUMP_NODE_PLACEMENT";
 // set to non-zero to dump shape data
 constexpr const char* kDumpShapeData = "ORT_DEBUG_NODE_IO_DUMP_SHAPE_DATA";
 // set to non-zero to dump node input data
 constexpr const char* kDumpInputData = "ORT_DEBUG_NODE_IO_DUMP_INPUT_DATA";
 // set to non-zero to dump node output data
 constexpr const char* kDumpOutputData = "ORT_DEBUG_NODE_IO_DUMP_OUTPUT_DATA";
+// set to non-zero to dump node meta data
+constexpr const char* kDumpNodePlacement = "ORT_DEBUG_NODE_IO_DUMP_NODE_PLACEMENT";
 // specify a node name filter to limit the nodes that are dumped
 // see NodeDumpOptions::FilterOptions
 constexpr const char* kNameFilter = "ORT_DEBUG_NODE_IO_NAME_FILTER";
 // specify a node op type filter to limit the nodes that are dumped
 // see NodeDumpOptions::FilterOptions
 constexpr const char* kOpTypeFilter = "ORT_DEBUG_NODE_IO_OP_TYPE_FILTER";
-// set to non-zero to dump data to files instead of stdout
-constexpr const char* kDumpDataToFiles = "ORT_DEBUG_NODE_IO_DUMP_DATA_TO_FILES";
-// set to non-zero to dump data to sqlite3 db instead of files
-constexpr const char* kDumpDataToSqlite = "ORT_DEBUG_NODE_IO_DUMP_DATA_TO_SQLITE";
+// set to "stdout", "files", or "sqlite" to select dump destination
+constexpr const char* kDumpDataDestination = "ORT_DEBUG_NODE_IO_DUMP_DATA_DESTINATION";
 // set to non-zero to append OpenMPI world rank to filename
 constexpr const char* kAppendRankToFileName = "ORT_DEBUG_NODE_IO_APPEND_RANK_TO_FILE_NAME";
 // specify the output directory for any data files produced
@@ -135,8 +133,6 @@ void DumpNodeOutputs(
     OpKernelContext& context, 
     const Node& node, 
     const SessionState& session_state);
-
-sqlite3* SqliteConnection(); 
 
 }  // namespace utils
 }  // namespace onnxruntime
