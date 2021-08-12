@@ -61,10 +61,15 @@
 #ifdef _WIN32
 #pragma warning(push)
 #pragma warning(disable : 28020)
+#elif __aarch64__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-truncation"
 #endif
 #include "nlohmann/json.hpp"
 #ifdef _WIN32
 #pragma warning(pop)
+#elif __aarch64__
+#pragma GCC diagnostic pop
 #endif
 
 #include "asserts.h"
