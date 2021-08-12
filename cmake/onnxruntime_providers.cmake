@@ -697,9 +697,11 @@ if (onnxruntime_USE_COREML)
 
   # Compile CoreML proto definition to ${CMAKE_CURRENT_BINARY_DIR}/coreml
   set(COREML_PROTO_ROOT ${PROJECT_SOURCE_DIR}/external/coremltools/mlmodel/format)
-  file(GLOB coreml_proto_srcs
-    "${COREML_PROTO_ROOT}/*.proto"
-  )
+  if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    file(GLOB coreml_proto_srcs
+      "${COREML_PROTO_ROOT}/*.proto"
+    )
+  endif()
   onnxruntime_add_static_library(onnxruntime_coreml_proto ${coreml_proto_srcs})
   target_include_directories(onnxruntime_coreml_proto PUBLIC $<TARGET_PROPERTY:${PROTOBUF_LIB},INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}")
   target_compile_definitions(onnxruntime_coreml_proto PUBLIC $<TARGET_PROPERTY:${PROTOBUF_LIB},INTERFACE_COMPILE_DEFINITIONS>)
@@ -756,11 +758,7 @@ if (onnxruntime_USE_COREML)
   )
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_coreml_cc_srcs})
-  if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
-    onnxruntime_add_static_library(onnxruntime_providers_coreml ${onnxruntime_providers_coreml_cc_srcs} ${onnxruntime_providers_coreml_objcc_srcs})
-  else()
-    onnxruntime_add_static_library(onnxruntime_providers_coreml ${onnxruntime_providers_coreml_cc_srcs})
-  endif()
+  onnxruntime_add_static_library(onnxruntime_providers_coreml ${onnxruntime_providers_coreml_cc_srcs} ${onnxruntime_providers_coreml_objcc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_coreml onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
   onnxruntime_add_include_to_target(onnxruntime_providers_coreml onnxruntime_coreml_proto)
   if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")

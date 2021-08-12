@@ -5,7 +5,6 @@ import argparse
 import os
 import pathlib
 import typing
-import sys
 
 import onnxruntime as ort
 from .ort_format_model import create_config_from_models
