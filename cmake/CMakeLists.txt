@@ -742,7 +742,7 @@ if(UNIX AND onnxruntime_ENABLE_LTO AND NOT onnxruntime_PREFER_SYSTEM_LIB)
   target_link_options(protoc PRIVATE "-Wl,--no-as-needed")
 endif()
 
-if(MSVC AND onnxruntime_DEV_MODE)
+if(MSVC AND onnxruntime_DEV_MODE AND NOT onnxruntime_PREFER_SYSTEM_LIB)
   target_compile_options(${PROTOBUF_LIB} PRIVATE "/wd5054")
 endif()
 
