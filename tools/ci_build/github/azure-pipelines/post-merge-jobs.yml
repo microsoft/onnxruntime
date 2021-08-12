@@ -46,6 +46,11 @@ jobs:
   workspace:
     clean: all
   pool: 'Win-CPU-2021'
+  variables:
+  - name: runCodesignValidationInjection
+    value: false
+  - name: skipComponentGovernanceDetection
+    value: true
   dependsOn:
   - CodeCoverage
   condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
