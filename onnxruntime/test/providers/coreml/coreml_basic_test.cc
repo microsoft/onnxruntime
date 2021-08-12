@@ -142,7 +142,7 @@ TEST(CoreMLExecutionProviderTest, ArgMaxCastTest) {
 #endif  // !(ORT_MINIMAL_BUILD)
 
 TEST(CoreMLExecutionProviderTest, TestOrtFormatModel) {
-  // mnist model that has only had basic optimizations applied. nnapi should be able to take at least some of the nodes
+  // mnist model that has only had basic optimizations applied. CoreML should be able to take at least some of the nodes
   const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/mnist.level1_opt.ort");
 
 #if defined(__APPLE__)
