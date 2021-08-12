@@ -220,6 +220,8 @@ static std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph
 static std::unordered_map<std::string, int> GetFunctionOpsetImports(const ONNX_NAMESPACE::FunctionProto& func_proto, const std::unordered_map<std::string, int>& graph_imports) {
   std::unordered_map<std::string, int> function_opset_imports{graph_imports};
   for (const auto& opset_import : func_proto.opset_import()) {
+    // If graph imports does not contain opset_import then insert it otherwise the one in graph imports overrides.
+    // If the opset imports are not compatible then this will be caught during function body inline.
     function_opset_imports.insert({opset_import.domain(), static_cast<int>(opset_import.version())});
   }
   return function_opset_imports;

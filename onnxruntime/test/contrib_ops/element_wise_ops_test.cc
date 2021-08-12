@@ -89,18 +89,16 @@ static void RunBiasGeluTest(
     const std::vector<float>& input_b_data,
     const std::vector<int64_t>& input_a_dims,
     const std::vector<int64_t>& input_b_dims) {
-  if (HasCudaEnvironment(0)) {
-    std::vector<float> output_data = ComputeGeluWithErf(Add_Simple(input_a_data, input_b_data));
+  std::vector<float> output_data = ComputeGeluWithErf(Add_Simple(input_a_data, input_b_data));
 
-    OpTester tester("BiasGelu", 1, onnxruntime::kMSDomain);
+  OpTester tester("BiasGelu", 1, onnxruntime::kMSDomain);
 
-    const std::vector<int64_t>& output_dims = input_a_dims.size() >= input_b_dims.size() ? input_a_dims : input_b_dims;
-    tester.AddInput<float>("A", input_a_dims, input_a_data);
-    tester.AddInput<float>("B", input_b_dims, input_b_data);
-    tester.AddOutput<float>("C", output_dims, output_data);
+  const std::vector<int64_t>& output_dims = input_a_dims.size() >= input_b_dims.size() ? input_a_dims : input_b_dims;
+  tester.AddInput<float>("A", input_a_dims, input_a_data);
+  tester.AddInput<float>("B", input_b_dims, input_b_data);
+  tester.AddOutput<float>("C", output_dims, output_data);
 
-    tester.Run();
-  }
+  tester.Run();
 }
 
 TEST(BiasGeluTest, Two_One_Dim) {

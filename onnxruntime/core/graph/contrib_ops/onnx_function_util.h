@@ -20,18 +20,4 @@ inline static FunctionBodyHelper::NodeDef Const(const std::string& name, double 
   return FunctionBodyHelper::NodeDef{
       {name}, "Constant", {}, {{"value", ToTensor(value, elem_type)}}};
 }
-
-// Utility function to construct a FunctionProto from an opschema (for the signature information),
-// a sequence of NodeDefs (for the function body), and the relied opsets.
-bool BuildFunctionProto(FunctionProto& functionProto,
-                        const OpSchema& schema,
-                        const std::vector<FunctionBodyHelper::NodeDef>& node_defs,
-                        const std::vector<OperatorSetIdProto>& relied_opsets = {});
-
-// Utility function to validate opset compatibility between function proto
-// and graph.
-bool IsFunctionOpsetCompatible(const ISchemaRegistry* schema_registry,
-                               const FunctionProto& func_proto,
-                               const std::unordered_map<std::string, int>& graph_imports);
-
 }  // namespace ONNX_NAMESPACE

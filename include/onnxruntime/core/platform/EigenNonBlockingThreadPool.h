@@ -1192,6 +1192,7 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
                           std::function<void(unsigned idx)> fn,
                           unsigned n,
                           std::ptrdiff_t block_size) override {
+  ORT_ENFORCE(n <= num_threads_+1, "More work items than threads");
   profiler_.LogStartAndCoreAndBlock(block_size);
   PerThread* pt = GetPerThread();
   assert(pt->leading_par_section && "RunInParallel, but not in parallel section");
@@ -1249,6 +1250,7 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
 // For all other threads:
 //  1. run fn(...);
 void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdiff_t block_size) override {
+  ORT_ENFORCE(n <= num_threads_+1, "More work items than threads");
   profiler_.LogStartAndCoreAndBlock(block_size);
   PerThread* pt = GetPerThread();
   ThreadPoolParallelSection ps;

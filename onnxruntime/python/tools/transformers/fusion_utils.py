@@ -76,7 +76,8 @@ class FusionUtils:
                 value = helper.get_attribute_value(attr)
 
         if isinstance(expected_value, list):
-            return isinstance(value, ndarray) and array_equal(expected_value, value, equal_nan=False)
+            return (isinstance(value, ndarray) or isinstance(value, list)) and array_equal(
+                expected_value, value, equal_nan=False)
         else:
             return value == expected_value
 
@@ -96,9 +97,34 @@ class FusionUtils:
         value = self.model.get_constant_value(node.input[input_index])
 
         if isinstance(expected_value, list):
-            return isinstance(value, ndarray) and array_equal(expected_value, value, equal_nan=False)
+            return (isinstance(value, ndarray) or isinstance(value, list)) and array_equal(
+                expected_value, value, equal_nan=False)
         else:
             return value == expected_value
+
+    @staticmethod
+    def remove_useless_reshape_nodes(model: OnnxModel):
+        """Remove reshape node that is not needed based on symbolic shape inference: input and output has same shape
+        """
+        shape_infer = model.infer_runtime_shape(update=True)
+        if shape_infer is None:
+            return
+
+        nodes_to_remove = []
+        for node in model.nodes():
+            if node.op_type == 'Reshape':
+                input_shape = shape_infer.get_edge_shape(node.input[0])
+                output_shape = shape_infer.get_edge_shape(node.output[0])
+                if input_shape and output_shape and input_shape == output_shape:
+                    logger.info(
+                        f"Remove reshape node {node.name} since its input shape is same as output: {input_shape}")
+                    nodes_to_remove.append(node)
+
+        if nodes_to_remove:
+            for node in nodes_to_remove:
+                model.replace_input_of_all_nodes(node.output[0], node.input[0])
+                model.remove_node(node)
+            model.prune_graph()
 
 
 class NumpyHelper:

@@ -10,10 +10,12 @@ import os
 import torch
 from pathlib import Path
 from transformers import AutoConfig, AutoTokenizer, AutoModel, LxmertConfig, TransfoXLConfig
+from affinity_helper import AffinitySetting
 from benchmark_helper import create_onnxruntime_session, Precision
 from gpt2_helper import GPT2ModelNoPastState, PRETRAINED_GPT2_MODELS, TFGPT2ModelNoPastState
 from quantize_helper import QuantizeHelper
 from huggingface_models import MODEL_CLASSES
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 logger = logging.getLogger(__name__)
@@ -187,8 +189,8 @@ def optimize_onnx_model(model_name, onnx_model_path, optimized_model_path, model
         Path(optimized_model_path).parent.mkdir(parents=True, exist_ok=True)
 
         from optimizer import optimize_model
-        from onnx_model_bert import BertOptimizationOptions
-        optimization_options = BertOptimizationOptions(model_type)
+        from fusion_options import FusionOptions
+        optimization_options = FusionOptions(model_type)
         optimization_options.use_raw_attention_mask(use_raw_attention_mask)
         if Precision.FLOAT16 == precision:
             optimization_options.enable_gelu_approximation = True
@@ -271,11 +273,16 @@ def load_pt_model(model_name, model_class, cache_dir):
 def load_tf_model(model_name, model_class, cache_dir):
     config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
 
+    # Loading tf model from transformers limits the cpu affinity to {0} when KMP_AFFINITY is set
+    # Restore the affinity after model loading for expected ORT performance
+    affi_helper = AffinitySetting()
+    affi_helper.get_affinity()
     model = load_pretrained_model(model_name,
                                   config=config,
                                   cache_dir=cache_dir,
                                   custom_model_class=model_class,
                                   is_tf_model=True)
+    affi_helper.set_affinity()
 
     return config, model
 
