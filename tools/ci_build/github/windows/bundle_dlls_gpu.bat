@@ -12,6 +12,7 @@ set gpu_dir=""
 set trt_nuget=""
 set trt_zip=""
 set trt_dir=""
+
 FOR /R %%i IN (*.nupkg) do (
     set filename=%%~ni
     IF "!filename:~25,3!"=="Gpu" (
@@ -37,12 +38,10 @@ IF !gpu_dir! == "" (
     EXIT 1
 )
 
-unzip linux-x64.zip -d linux-x64
 mkdir !gpu_dir!\runtimes\linux-x64
 mkdir !gpu_dir!\runtimes\linux-x64\native
-move linux-x64\linux-x64\libonnxruntime.so !gpu_dir!\runtimes\linux-x64\native\libonnxruntime.so
-move linux-x64\linux-x64\libonnxruntime_providers_shared.so !gpu_dir!\runtimes\linux-x64\native\libonnxruntime_providers_shared.so
-move linux-x64\linux-x64\libonnxruntime_providers_cuda.so !gpu_dir!\runtimes\linux-x64\native\libonnxruntime_providers_cuda.so
+move onnxruntime-linux-x64\lib\libonnxruntime.so.1* !gpu_dir!\runtimes\linux-x64\native\libonnxruntime.so
+move move onnxruntime-linux-x64\lib\libonnxruntime_providers_* !gpu_dir!\runtimes\linux-x64\native
 
 IF !trt_dir! == "" (
     echo "Can't find TensorRT nuget package to unpack/pack"
