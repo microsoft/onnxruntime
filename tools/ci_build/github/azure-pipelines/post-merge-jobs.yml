@@ -28,13 +28,13 @@ jobs:
           llvm-cov show -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test -object onnxruntime_api_tests_without_env -object onnx_test_runner -object onnxruntime_shared_lib_test -object onnxruntime_global_thread_pools_test -object onnxruntime_api_tests_without_env $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops --format=html -output-dir=$(Build.ArtifactStagingDirectory)
         workingDirectory: $(Build.BinariesDirectory)
 
-  - task: AzureCLI@2
-    displayName: 'Azure CLI'
-    inputs:
-      azureSubscription: AIInfraBuildOnnxRuntimeOSS
-      scriptType: bash
-      scriptPath: $(Build.SourcesDirectory)/tools/ci_build/github/linux/upload_code_coverage_data.sh
-      workingDirectory: '$(Build.BinariesDirectory)'
+    - task: AzureCLI@2
+      displayName: 'Azure CLI'
+      inputs:
+        azureSubscription: AIInfraBuildOnnxRuntimeOSS
+        scriptType: bash
+        scriptPath: $(Build.SourcesDirectory)/tools/ci_build/github/linux/upload_code_coverage_data.sh
+        workingDirectory: '$(Build.BinariesDirectory)'
 
     - task: PublishPipelineArtifact@1
       displayName: 'Publish Pipeline Artifact'
