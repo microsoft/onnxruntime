@@ -18,7 +18,6 @@ REGISTER_GRADIENT_KERNEL_TYPED(float)
 REGISTER_GRADIENT_KERNEL_TYPED(double)
 REGISTER_GRADIENT_KERNEL_TYPED(MLFloat16)
 
-// TODO: we can cache the descriptors, and only update if the x shape changes
 template <typename T>
 Status ConvGrad<T>::PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor& w, Tensor* dB, Tensor* dX,
                                 Tensor* dW) const {
