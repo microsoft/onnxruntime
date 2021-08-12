@@ -113,6 +113,9 @@ class FusionBartEncoderAttention(FusionAttention):
             self.nodes_to_remove.extend(mask_nodes)
             self.prune_graph = True
 
+    #def check_shape_paths(reshape_qkv_2, reshape_qkv_1, ):
+
+
 class BartOnnxModel(BertOnnxModel):
     def __init__(self, model, num_heads, hidden_size):
         super().__init__(model, num_heads, hidden_size)
@@ -120,7 +123,6 @@ class BartOnnxModel(BertOnnxModel):
         self.attention_fusion = FusionBartEncoderAttention(self, self.hidden_size, self.num_heads, self.attention_mask)
 
     def fuse_attention(self):
-        print("block")
         self.attention_fusion.apply()
  
 

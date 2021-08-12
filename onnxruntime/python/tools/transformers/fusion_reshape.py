@@ -16,6 +16,23 @@ class FusionReshape(Fusion):
     def __init__(self, model: OnnxModel):
         super().__init__(model, "Reshape", "Reshape")
 
+    def replace_reshape_node(self, shape, reshape_node, concat_node):
+        shape_value = np.asarray(shape, dtype=np.int64)
+        constant_shape_name = self.model.create_node_name('Constant', 'constant_shape')
+        new_node = helper.make_node('Constant',
+                                    inputs=[],
+                                    outputs=[constant_shape_name],
+                                    value=helper.make_tensor(name='const_tensor',
+                                                             data_type=TensorProto.INT64,
+                                                             dims=shape_value.shape,
+                                                             vals=bytes(shape_value),
+                                                             raw=True))
+        reshape_node.input[1] = constant_shape_name
+        reshape_node.name = self.model.create_node_name('Reshape', 'Reshape_Fuse')
+        self.nodes_to_remove.extend([concat_node])
+        self.nodes_to_add.append(new_node)
+        self.node_name_to_graph_name[new_node.name] = self.this_graph_name 
+
     def fuse(self, reshape_node, input_name_to_nodes, output_name_to_node):
         if reshape_node.input[1] not in output_name_to_node:
             return
@@ -54,22 +71,8 @@ class FusionReshape(Fusion):
                     shape.extend(input_1)
                     shape.extend(input_2)
                     shape.extend(input_3)
-                    shape_value = np.asarray(shape, dtype=np.int64)
-
-                    constant_shape_name = self.model.create_node_name('Constant', 'constant_shape')
-                    new_node = helper.make_node('Constant',
-                                                inputs=[],
-                                                outputs=[constant_shape_name],
-                                                value=helper.make_tensor(name='const_tensor',
-                                                                         data_type=TensorProto.INT64,
-                                                                         dims=shape_value.shape,
-                                                                         vals=bytes(shape_value),
-                                                                         raw=True))
-                    reshape_node.input[1] = constant_shape_name
-                    reshape_node.name = self.model.create_node_name('Reshape', 'Reshape_Fuse')
-                    self.nodes_to_remove.extend([concat_node])
-                    self.nodes_to_add.append(new_node)
-                    self.node_name_to_graph_name[new_node.name] = self.this_graph_name  
+                    #bugbug: need to check matmul->add
+                    self.replace_reshape_node(shape, reshape_node, concat_node)
                 return
             else:
                 return
@@ -142,31 +145,31 @@ class FusionReshape(Fusion):
                 shape.append(concat_value)
 
         root_input = reshape_node.input[0]
+        root_input_1 = None
+        ok_to_delete_path = True
+        matmul_path = self.model.match_parent_path(reshape_node, ['Mul', 'Add', 'MatMul'], [0, 0, 1],
+                                                   output_name_to_node)
+        if matmul_path is not None:
+            top_matmul = matmul_path[-1]
+            root_input_1 = top_matmul.input[0]
+
         same_shape_input = True
         for shape_node in shape_nodes:
             if shape_node.input[0] != root_input:
                 same_shape_input = False
+            if root_input_1 is not None and shape_node.input[0] == root_input_1:
+                same_shape_input = True
+                ok_to_delete_path = False
 
         if not same_shape_input:
             return
 
-        shape_value = np.asarray(shape, dtype=np.int64)
-
-        constant_shape_name = self.model.create_node_name('Constant', 'constant_shape')
-        new_node = helper.make_node('Constant',
-                                    inputs=[],
-                                    outputs=[constant_shape_name],
-                                    value=helper.make_tensor(name='const_tensor',
-                                                             data_type=TensorProto.INT64,
-                                                             dims=shape_value.shape,
-                                                             vals=bytes(shape_value),
-                                                             raw=True))
-        reshape_node.input[1] = constant_shape_name
-        reshape_node.name = self.model.create_node_name('Reshape', 'Reshape_Fuse')
-        self.nodes_to_remove.extend([concat_node])
-        self.nodes_to_remove.extend(path0)
-        self.nodes_to_remove.extend(path1)
-        self.nodes_to_remove.extend(path2)
-        self.nodes_to_remove.extend(path3)
-        self.nodes_to_add.append(new_node)
-        self.node_name_to_graph_name[new_node.name] = self.this_graph_name
+        self.replace_reshape_node(shape, reshape_node, concat_node)
+        
+        # TODO: need a smart way to delete nodes
+        if ok_to_delete_path:
+            self.nodes_to_remove.extend(path0)
+            self.nodes_to_remove.extend(path1)
+            self.nodes_to_remove.extend(path2)
+            self.nodes_to_remove.extend(path3)
+        
