@@ -191,6 +191,9 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
     auto node_index = node_exec_plan.node_index;
     const auto& node = *graph_viewer.GetNode(node_exec_plan.node_index);
 
+    printf("Node %s %s\n", node.Name().c_str(), node.GetExecutionProviderType().c_str());
+    fflush(stdout);
+
 #ifdef CONCURRENCY_VISUALIZER
     series.write_flag(node.Name().c_str());
 #endif
@@ -312,6 +315,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
           ORT_RETURN_IF_ERROR(utils::VerifyInputTensorsAllocatedContiguously(&op_kernel_context));
         }
 #endif
+        printf("-- Execute --\n");
         compute_status = p_op_kernel->Compute(&op_kernel_context);
       }
       ORT_CATCH(const std::exception& ex) {

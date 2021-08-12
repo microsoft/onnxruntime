@@ -90,7 +90,12 @@ Status Transpose::DoTranspose(const hipDeviceProp_t& prop,
     return Status::OK();
 
   printf("Shape: %s\n", input_shape_override ? input_shape_override->ToString().c_str() : input.Shape().ToString().c_str());
-  printf("Dtype: %d\n", input.GetElementType());
+  std::cout << "Dtype: " << input.DataType() << std::endl;
+  printf("Permutation: ");
+  for (int i = 0; i < permutations.size(); i++) { 
+    printf("%d ", permutations[i]);
+  }
+  printf("\n");
 
   auto element_type = input.GetElementType();
   if (element_type == utils::GetONNXTensorElementDataType<float>() ||

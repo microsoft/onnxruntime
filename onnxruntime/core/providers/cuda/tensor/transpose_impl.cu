@@ -30,13 +30,17 @@ __global__ void Transpose3DKernel(const TArray<int64_t> input_shape,
 bool CanDoTranspose3D(int32_t rank,
                       const std::vector<int64_t>& input_dims,
                       const std::vector<size_t>& permutations) {
+  printf("last_two_dim: %d\n", permutations[rank - 2] == (rank - 1) && permutations[rank - 1] == (rank - 2));
+  printf("tile_alignme: %d\n", input_dims[rank - 2] % TILE_DIM == 0 && input_dims[rank - 1] % TILE_DIM == 0);
   if (rank == 3 &&
       // permutation is done in the last two dimensions.
       permutations[rank - 2] == (rank - 1) && permutations[rank - 1] == (rank - 2) &&
       // the last two dimensions are aligned with TILE_DIM.
       input_dims[rank - 2] % TILE_DIM == 0 && input_dims[rank - 1] % TILE_DIM == 0) {
+    printf("CanDoTranspose3D: true\n");
     return true;
   }
+  printf("CanDoTranspose3D: false\n");
   return false;
 }
 
@@ -126,9 +130,11 @@ bool CanDoTranspose4DParallelizeMultipleElementsPerThreadInInnermostDim(const cu
         ((num_threads_per_block & (prop.warpSize - 1)) == 0) &&
         // input_dims[3] must be a multiple of `num_elements_per_thread`
         ((input_dims[3] % num_elements_per_thread) == 0)) {
+      printf("CanDoTranspose4DParallelizeMultipleElementsPerThreadInInnermostDim: true\n");
       return true;
     }
   }
+  printf("CanDoTranspose4DParallelizeMultipleElementsPerThreadInInnermostDim: false\n");
   return false;
 }
 
@@ -215,9 +221,11 @@ bool CanDoTranspose4DParallelizeOneElementPerThread(const cudaDeviceProp& prop,
         number_of_threads_per_block >= prop.warpSize &&
         // num_threads_per_block must be a multiple of warp size (32)
         ((number_of_threads_per_block & (prop.warpSize - 1)) == 0)) {
+      printf("CanDoTranspose4DParallelizeOneElementPerThread: true\n");
       return true;
     }
   }
+  printf("CanDoTranspose4DParallelizeOneElementPerThread: false\n");
   return false;
 }
 
