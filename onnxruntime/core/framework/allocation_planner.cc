@@ -495,7 +495,7 @@ class PlannerImpl {
       UseCount(initializer_name)++;
     }
 
-    std::unordered_set<OrtValueIndex> ort_value_index_has_explicit_consumer;
+    std::unordered_set<OrtValueIndex> arg_has_explicit_consumer;
 
     for (SequentialExecutionPlan::NodeExecutionPlan& step : plan_.execution_plan) {
       auto pnode = graph_viewer_.GetNode(step.node_index);
@@ -521,7 +521,7 @@ class PlannerImpl {
 
       // increment UseCount and add location information if applicable for the provided input def
       auto process_input = [&graph_inputs, &exec_provider, &p_kernel_def, &is_implicit_input, &pnode,
-                            &ort_value_index_has_explicit_consumer, this](const NodeArg& input, size_t arg_idx) {
+                            &arg_has_explicit_consumer, this](const NodeArg& input, size_t arg_idx) {
         const auto& name = input.Name();
         UseCount(name)++;
 
@@ -540,11 +540,11 @@ class PlannerImpl {
           if (!is_implicit_input) {
             OrtMemType mem_type = p_kernel_def->InputMemoryType(arg_idx);
             plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, mem_type)->Info());
-            ort_value_index_has_explicit_consumer.insert(index);
+            arg_has_explicit_consumer.insert(index);
           } else {
             // Only process if within a subgraph and if there is no explicit consumer of an
             // outer scope arg or a sub-graph input at this graph level
-            if (is_subgraph && ort_value_index_has_explicit_consumer.count(index) == 0) {
+            if (is_subgraph && is_outer_scope_arg && arg_has_explicit_consumer.count(index) == 0) {
               auto iter = outer_scope_arg_to_location_map_.find(name);
               ORT_ENFORCE(iter != outer_scope_arg_to_location_map_.end());
               plan_.SetLocation(static_cast<size_t>(index), iter->second);

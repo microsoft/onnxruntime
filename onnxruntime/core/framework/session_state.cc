@@ -1168,11 +1168,11 @@ static OrtValueIndex Index(const OrtValueNameIdxMap& ort_value_name_idx_map,
   return result;
 }
 
-static Status OuterScopeLocationAccumulator(const SequentialExecutionPlan& plan,
-                                            const OrtValueNameIdxMap& ort_value_name_to_idx_map,
-                                            const Node& parent_node,
-                                            const GraphViewer& subgraph,
-                                            /*out*/ std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_arg_to_location_map) {
+static Status OuterScopeNodeArgLocationAccumulator(const SequentialExecutionPlan& plan,
+                                                   const OrtValueNameIdxMap& ort_value_name_to_idx_map,
+                                                   const Node& parent_node,
+                                                   const GraphViewer& subgraph,
+                                                   /*out*/ std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_arg_to_location_map) {
   auto process_implicit_input = [&plan, &ort_value_name_to_idx_map,
                                  &outer_scope_arg_to_location_map](const NodeArg& input, size_t arg_idx) {
     const auto& name = input.Name();
@@ -1188,34 +1188,7 @@ static Status OuterScopeLocationAccumulator(const SequentialExecutionPlan& plan,
     return Status::OK();
   };
 
-  // Process implicit inputs to the node containing the subgraph
-  ORT_RETURN_IF_ERROR(Node::ForEachWithIndex(parent_node.ImplicitInputDefs(), process_implicit_input));
-
-  const auto& subgraph_inputs = subgraph.GetInputs();
-
-  auto process_input = [&plan, &ort_value_name_to_idx_map,
-                        &outer_scope_arg_to_location_map, &subgraph_inputs](const NodeArg& input, size_t arg_idx) {
-    const auto& name = input.Name();
-    ORT_TRY {
-      // The name in the map should be the corresponding subgraph input
-      outer_scope_arg_to_location_map.insert({name, plan.GetLocation(Index(ort_value_name_to_idx_map, subgraph_inputs[arg_idx]->Name()))});
-    }
-    ORT_CATCH(const std::exception& ex) {
-      ORT_HANDLE_EXCEPTION([&]() {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
-      });
-    }
-
-    return Status::OK();
-  };
-
-  // If's subgraphs don't have exp
-  // Process inputs to the node containing the subgraph
-  if (subgraph_inputs.size() != 0) {
-    ORT_RETURN_IF_ERROR(Node::ForEachWithIndex(parent_node.InputDefs(), process_input));
-  }
-
-  return Status::OK();
+  return Node::ForEachWithIndex(parent_node.ImplicitInputDefs(), process_implicit_input);
 }
 
 Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
@@ -1344,9 +1317,10 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
       // recurse
       std::unordered_map<OrtValueName, OrtMemoryInfo> outer_scope_arg_to_location_map;
-      ORT_RETURN_IF_ERROR(OuterScopeLocationAccumulator(*p_seq_exec_plan_, GetOrtValueNameIdxMap(),
-                                                        node, subgraph_session_state.GetGraphViewer(),
-                                                        outer_scope_arg_to_location_map));
+      GraphViewer subgraph_graph_viewer(subgraph_session_state.graph_);
+      ORT_RETURN_IF_ERROR(OuterScopeNodeArgLocationAccumulator(*p_seq_exec_plan_, GetOrtValueNameIdxMap(),
+                                                               node, subgraph_graph_viewer,
+                                                               outer_scope_arg_to_location_map));
       ORT_RETURN_IF_ERROR(subgraph_session_state.FinalizeSessionStateImpl(
           graph_location, kernel_registry_manager, &node, subgraph_session_options,
           remove_initializers, constant_initializers_use_count, outer_scope_arg_to_location_map));
