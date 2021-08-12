@@ -333,7 +333,6 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     bool canAliasFirstInput,
     bool supportsGraph,
     const uint32_t* requiredInputCountForGraph,
-    bool requiresFloatFormatsForGraph,
     bool supportedWith64BitTensorsVia32BitStrides,
     bool supportedWith64BitTensorsVia32BitStridesFromAnyEp,
     bool prefer64BitTensorsDirectly,
@@ -503,7 +502,6 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
                 graphReg.requiredInputCount = *requiredInputCountForGraph;
             }
 
-            graphReg.requiresFloatFormatsExceptConstInputs = requiresFloatFormatsForGraph;
             regInfo->graphNodeFactoryRegistration = graphReg;
         }
 
@@ -536,7 +534,6 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
         if (canAliasFirstInput ||
             supportsGraph ||
             requiredInputCountForGraph ||
-            requiresFloatFormatsForGraph ||
             requiredConstantCpuInputs ||
             supportedWith64BitTensorsVia32BitStrides ||
             supportedWith64BitTensorsVia32BitStridesFromAnyEp ||

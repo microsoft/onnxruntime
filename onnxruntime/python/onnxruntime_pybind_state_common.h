@@ -161,7 +161,8 @@ extern std::string nuphar_settings;
 #if defined(USE_CUDA) || defined(USE_ROCM)
 #ifdef USE_CUDA
 namespace onnxruntime {
-ProviderInfo_CUDA* GetProviderInfo_CUDA();
+ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
+ProviderInfo_CUDA& GetProviderInfo_CUDA();
 namespace python {
 // TODO remove deprecated global config
 extern OrtCudnnConvAlgoSearch cudnn_conv_algo_search;

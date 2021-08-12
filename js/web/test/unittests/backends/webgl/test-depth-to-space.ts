@@ -2,10 +2,8 @@
 // Licensed under the MIT License.
 
 import {expect} from 'chai';
-
 import {Attribute} from '../../../../lib/onnxjs/attribute';
 import {Backend, InferenceHandler, resolveBackend, SessionHandler} from '../../../../lib/onnxjs/backend';
-import {WebGLBackend} from '../../../../lib/onnxjs/backends/backend-webgl';
 import {WebGLInferenceHandler} from '../../../../lib/onnxjs/backends/webgl/inference-handler';
 import {WebGLDepthToSpace} from '../../../../lib/onnxjs/backends/webgl/ops/depth-to-space';
 import {Profiler} from '../../../../lib/onnxjs/instrument';
@@ -124,11 +122,6 @@ describe('#UnitTest# - unpacked WebGLDepthToSpace - Tensor WebGLDepthToSpace', (
     backend = await resolveBackend('webgl');
     sessionhandler = backend.createSessionHandler({profiler});
     inferenceHandler = sessionhandler.createInferenceHandler();
-  });
-
-  // Set it back to false, apparently this state is sticky throughout all the tests running in same browser session..
-  after('Resetting Context', () => {
-    (backend as WebGLBackend).pack = false;
   });
 
   const testDataSet = getTestData();

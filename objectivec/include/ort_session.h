@@ -25,7 +25,7 @@ NS_ASSUME_NONNULL_BEGIN
  * @param env The ORT Environment instance.
  * @param path The path to the ONNX model.
  * @param sessionOptions Optional session configuration options.
- * @param[out] error Optional error information set if an error occurs.
+ * @param error Optional error information set if an error occurs.
  * @return The instance, or nil if an error occurs.
  */
 - (nullable instancetype)initWithEnv:(ORTEnv*)env
@@ -40,7 +40,7 @@ NS_ASSUME_NONNULL_BEGIN
  * @param inputs Dictionary of input names to input ORT values.
  * @param outputs Dictionary of output names to output ORT values.
  * @param runOptions Optional run configuration options.
- * @param[out] error Optional error information set if an error occurs.
+ * @param error Optional error information set if an error occurs.
  * @return Whether the model was run successfully.
  */
 - (BOOL)runWithInputs:(NSDictionary<NSString*, ORTValue*>*)inputs
@@ -55,7 +55,7 @@ NS_ASSUME_NONNULL_BEGIN
  * @param inputs Dictionary of input names to input ORT values.
  * @param outputNames Set of output names.
  * @param runOptions Optional run configuration options.
- * @param[out] error Optional error information set if an error occurs.
+ * @param error Optional error information set if an error occurs.
  * @return A dictionary of output names to output ORT values with the outputs
  *         requested in `outputNames`, or nil if an error occurs.
  */
@@ -63,6 +63,30 @@ NS_ASSUME_NONNULL_BEGIN
                                                   outputNames:(NSSet<NSString*>*)outputNames
                                                    runOptions:(nullable ORTRunOptions*)runOptions
                                                         error:(NSError**)error;
+
+/**
+ * Gets the model's input names.
+ *
+ * @param error Optional error information set if an error occurs.
+ * @return An array of input names, or nil if an error occurs.
+ */
+- (nullable NSArray<NSString*>*)inputNamesWithError:(NSError**)error;
+
+/**
+ * Gets the model's overridable initializer names.
+ *
+ * @param error Optional error information set if an error occurs.
+ * @return An array of overridable initializer names, or nil if an error occurs.
+ */
+- (nullable NSArray<NSString*>*)overridableInitializerNamesWithError:(NSError**)error;
+
+/**
+ * Gets the model's output names.
+ *
+ * @param error Optional error information set if an error occurs.
+ * @return An array of output names, or nil if an error occurs.
+ */
+- (nullable NSArray<NSString*>*)outputNamesWithError:(NSError**)error;
 
 @end
 
@@ -76,7 +100,7 @@ NS_ASSUME_NONNULL_BEGIN
 /**
  * Creates session configuration options.
  *
- * @param[out] error Optional error information set if an error occurs.
+ * @param error Optional error information set if an error occurs.
  * @return The instance, or nil if an error occurs.
  */
 - (nullable instancetype)initWithError:(NSError**)error NS_SWIFT_NAME(init());
@@ -86,7 +110,7 @@ NS_ASSUME_NONNULL_BEGIN
  * A value of 0 means ORT will pick a default value.
  *
  * @param intraOpNumThreads The number of threads.
- * @param[out] error Optional error information set if an error occurs.
+ * @param error Optional error information set if an error occurs.
  * @return Whether the option was set successfully.
  */
 - (BOOL)setIntraOpNumThreads:(int)intraOpNumThreads
@@ -96,7 +120,7 @@ NS_ASSUME_NONNULL_BEGIN
  * Sets the graph optimization level.
  *
  * @param graphOptimizationLevel The graph optimization level.
- * @param[out] error Optional error information set if an error occurs.
+ * @param error Optional error information set if an error occurs.
  * @return Whether the option was set successfully.
  */
 - (BOOL)setGraphOptimizationLevel:(ORTGraphOptimizationLevel)graphOptimizationLevel
@@ -106,7 +130,7 @@ NS_ASSUME_NONNULL_BEGIN
  * Sets the path to which the optimized model file will be saved.
  *
  * @param optimizedModelFilePath The optimized model file path.
- * @param[out] error Optional error information set if an error occurs.
+ * @param error Optional error information set if an error occurs.
  * @return Whether the option was set successfully.
  */
 - (BOOL)setOptimizedModelFilePath:(NSString*)optimizedModelFilePath
@@ -116,7 +140,7 @@ NS_ASSUME_NONNULL_BEGIN
  * Sets the session log ID.
  *
  * @param logID The log ID.
- * @param[out] error Optional error information set if an error occurs.
+ * @param error Optional error information set if an error occurs.
  * @return Whether the option was set successfully.
  */
 - (BOOL)setLogID:(NSString*)logID
@@ -126,7 +150,7 @@ NS_ASSUME_NONNULL_BEGIN
  * Sets the session log severity level.
  *
  * @param loggingLevel The log severity level.
- * @param[out] error Optional error information set if an error occurs.
+ * @param error Optional error information set if an error occurs.
  * @return Whether the option was set successfully.
  */
 - (BOOL)setLogSeverityLevel:(ORTLoggingLevel)loggingLevel
@@ -140,7 +164,7 @@ NS_ASSUME_NONNULL_BEGIN
  *
  * @param key The key.
  * @param value The value.
- * @param[out] error Optional error information set if an error occurs.
+ * @param error Optional error information set if an error occurs.
  * @return Whether the option was set successfully.
  */
 - (BOOL)addConfigEntryWithKey:(NSString*)key
@@ -159,7 +183,7 @@ NS_ASSUME_NONNULL_BEGIN
 /**
  * Creates run configuration options.
  *
- * @param[out] error Optional error information set if an error occurs.
+ * @param error Optional error information set if an error occurs.
  * @return The instance, or nil if an error occurs.
  */
 - (nullable instancetype)initWithError:(NSError**)error NS_SWIFT_NAME(init());
@@ -168,7 +192,7 @@ NS_ASSUME_NONNULL_BEGIN
  * Sets the run log tag.
  *
  * @param logTag The log tag.
- * @param[out] error Optional error information set if an error occurs.
+ * @param error Optional error information set if an error occurs.
  * @return Whether the option was set successfully.
  */
 - (BOOL)setLogTag:(NSString*)logTag
@@ -178,7 +202,7 @@ NS_ASSUME_NONNULL_BEGIN
  * Sets the run log severity level.
  *
  * @param loggingLevel The log severity level.
- * @param[out] error Optional error information set if an error occurs.
+ * @param error Optional error information set if an error occurs.
  * @return Whether the option was set successfully.
  */
 - (BOOL)setLogSeverityLevel:(ORTLoggingLevel)loggingLevel
@@ -192,7 +216,7 @@ NS_ASSUME_NONNULL_BEGIN
  *
  * @param key The key.
  * @param value The value.
- * @param[out] error Optional error information set if an error occurs.
+ * @param error Optional error information set if an error occurs.
  * @return Whether the option was set successfully.
  */
 - (BOOL)addConfigEntryWithKey:(NSString*)key

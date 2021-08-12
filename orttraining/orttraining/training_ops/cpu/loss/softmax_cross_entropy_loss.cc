@@ -100,10 +100,17 @@ template <typename T1, typename T2>
 Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const {
   const Tensor& logit = *context->Input<Tensor>(0);
   const Tensor& label = *context->Input<Tensor>(1);
+  const Tensor* p_weight = context->Input<Tensor>(2);
+  const Tensor* p_ignore_index = context->Input<Tensor>(3);
+  int64_t ignore_index = ignore_index_;
+  if (p_ignore_index) {
+    ORT_ENFORCE(p_ignore_index->Shape().IsScalar(), "ignore_index should be a scalar.");
+    ignore_index = *(p_ignore_index->template Data<int64_t>());
+  }
+  
   const TensorShape logit_shape{logit.Shape()};
   const TensorShape label_shape{label.Shape()};
-  VerifyLogitWeightAndLabelShape(logit_shape, label_shape,
-                                 OpKernel::Node().InputDefs().size() == 3 ? &(*(context->Input<Tensor>(2))).Shape() : nullptr);
+  VerifyLogitWeightAndLabelShape(logit_shape, label_shape, p_weight ? &p_weight->Shape() : nullptr);
 
   // N_D = N * D1 * D2...D*K
   int64_t N_D;
@@ -159,15 +166,15 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
   // 1) Can merge the two cases in one if we assume default weight values to be 1s but will need to
   // multiply even when weights are not provided.
   // 2) Use parallel for below everywhere.
-  if (OpKernel::Node().InputDefs().size() == 3) {
-    const Tensor& weight = *context->Input<Tensor>(2);
+  if (p_weight) {
+    const Tensor& weight = *p_weight;
     const T1* weight_data = weight.template Data<T1>();
     T1 sum_weight = (T1)0;
 
     // Compute weighed loss for each sample while summing weights for unignored target/label values.
     if (reduction_ == ReductionType::MEAN) {
       for (int i = 0; i < n_d; i++) {
-        if (ignore_index_ == label_data[i]) {
+        if (ignore_index == label_data[i]) {
           loss_sample[i] = 0;
         } else {
           loss_sample[i] = -log_prob_data[i * c + label_data[i]] * weight_data[label_data[i]];
@@ -176,7 +183,7 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
       }
     } else {
       for (int i = 0; i < n_d; i++) {
-        if (ignore_index_ == label_data[i]) {
+        if (ignore_index == label_data[i]) {
           loss_sample[i] = 0;
         } else {
           loss_sample[i] = -log_prob_data[i * c + label_data[i]] * weight_data[label_data[i]];
@@ -197,7 +204,7 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
     // Compute loss for each sample while counting unignored target/label values.
     int unignored_samples = 0;
     for (int i = 0; i < n_d; i++) {
-      if (ignore_index_ == label_data[i]) {
+      if (ignore_index == label_data[i]) {
         loss_sample[i] = 0;
       } else {
         loss_sample[i] = -log_prob_data[i * c + label_data[i]];
@@ -240,10 +247,17 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
   const Tensor& dY = *context->Input<Tensor>(0);
   const Tensor& log_prob = *context->Input<Tensor>(1);
   const Tensor& label = *context->Input<Tensor>(2);
+  const Tensor* p_weight = context->Input<Tensor>(3);
+  const Tensor* p_ignore_index = context->Input<Tensor>(4);
+  int64_t ignore_index = ignore_index_;
+  if (p_ignore_index) {
+    ORT_ENFORCE(p_ignore_index->Shape().IsScalar(), "ignore_index should be a scalar.");
+    ignore_index = *(p_ignore_index->template Data<int64_t>());
+  }
+
   const TensorShape probability_shape{log_prob.Shape()};
   const TensorShape label_shape{label.Shape()};
-  VerifyLogitWeightAndLabelShape(probability_shape, label_shape,
-                                 OpKernel::Node().InputDefs().size() == 4 ? &(*(context->Input<Tensor>(3))).Shape() : nullptr);
+  VerifyLogitWeightAndLabelShape(probability_shape, label_shape, p_weight ? &p_weight->Shape() : nullptr);
 
   // N_D = N * D1 * D2...D*K
   int64_t N_D;
@@ -272,8 +286,8 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
   }
 
   // REVIEW(codemzs): Use parallel for below.
-  if (OpKernel::Node().InputDefs().size() == 4) {
-    const Tensor& weight = *context->Input<Tensor>(3);
+  if (p_weight) {
+    const Tensor& weight = *p_weight;
     const T1* weight_data = weight.template Data<T1>();
 
     if (reduction_ == ReductionType::NONE) {
@@ -282,7 +296,7 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
         T1 weight_smaple = weight_data[label_sample] * dY_data[i];
         for (int j = 0; j < c; j++) {
           int index = i * c + j;
-          if (ignore_index_ == label_sample) {
+          if (ignore_index == label_sample) {
             d_logit_data[index] = 0;
           } else {
             d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == j)) * weight_smaple;
@@ -295,7 +309,7 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
       if (reduction_ == ReductionType::MEAN) {
         T1 sum_weight = (T1)0;
         for (int i = 0; i < n_d; i++) {
-          if (ignore_index_ != label_data[i]) {
+          if (ignore_index != label_data[i]) {
             sum_weight += weight_data[label_data[i]];
           }
         }
@@ -310,7 +324,7 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
         T1 weight_smaple = weight_data[label_sample] * dY_scaled;
         for (int j = 0; j < c; j++) {
           int index = i * c + j;
-          if (ignore_index_ == label_sample) {
+          if (ignore_index == label_sample) {
             d_logit_data[index] = 0;
           } else {
             d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == j)) * weight_smaple;
@@ -324,7 +338,7 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
         T2 label_sample = label_data[i];
         for (int j = 0; j < c; j++) {
           int index = i * c + j;
-          if (ignore_index_ == label_sample) {
+          if (ignore_index == label_sample) {
             d_logit_data[index] = 0;
           } else {
             d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == j)) * dY_data[i];
@@ -335,7 +349,7 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
       T1 dY_scaled = *dY_data;
       int unignored_sample_count = 0;
       for (int i = 0; i < n_d; i++) {
-        if (ignore_index_ != label_data[i]) {
+        if (ignore_index != label_data[i]) {
           unignored_sample_count += 1;
         }
       }
@@ -348,7 +362,7 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
         T2 label_sample = label_data[i];
         for (int j = 0; j < c; j++) {
           int index = i * c + j;
-          if (ignore_index_ == label_sample) {
+          if (ignore_index == label_sample) {
             d_logit_data[index] = 0;
           } else {
             d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == j)) * dY_scaled;
@@ -374,6 +388,19 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
 
   return Status::OK();
 }
+
+#define REGISTER_KERNEL_INTERNAL_TYPED(OpName, ClassName, T1, T2)                                     \
+  ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(OpName, kMSDomain, 1, T1, T2, kCpuExecutionProvider,              \
+                                    KernelDefBuilder()                                                \
+                                        .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())       \
+                                        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<T2>())    \
+                                        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), \
+                                    ClassName<T1, T2>);
+
+REGISTER_KERNEL_INTERNAL_TYPED(SoftmaxCrossEntropyLossInternal, SoftmaxCrossEntropyLoss, float, int32_t)
+REGISTER_KERNEL_INTERNAL_TYPED(SoftmaxCrossEntropyLossInternal, SoftmaxCrossEntropyLoss, float, int64_t)
+REGISTER_KERNEL_INTERNAL_TYPED(SoftmaxCrossEntropyLossInternalGrad, SoftmaxCrossEntropyLossGrad, float, int32_t)
+REGISTER_KERNEL_INTERNAL_TYPED(SoftmaxCrossEntropyLossInternalGrad, SoftmaxCrossEntropyLossGrad, float, int64_t)
 
 }  // namespace contrib
 }  // namespace onnxruntime

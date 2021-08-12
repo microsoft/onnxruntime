@@ -72,6 +72,29 @@ def _parse_build_settings(args):
     return build_settings
 
 
+# Add ORT C and C++ API headers to the AAR package (in fact a zip file)
+# Such that developers using ORT native API can extract libraries and header from AAR package without building ORT
+# TODO, see if we can use Gradle to add headers to AAR package directly, which is necessary if we want to
+# publish the packagee directly using Gradle in the pipeline
+def _add_headers_to_aar(aar_file_path, header_files_path):
+    import shutil
+    import tempfile
+    with tempfile.TemporaryDirectory() as temp_dir:
+        aar_content = os.path.join(temp_dir, 'aar_content')
+        shutil.unpack_archive(aar_file_path, aar_content, 'zip')
+
+        # copy necessary header files
+        shutil.copytree(header_files_path, os.path.join(aar_content, 'headers'))
+
+        # create the zip archive
+        zip_base_filename = os.path.join(temp_dir, 'aar_with_headers')
+        zip_filename = zip_base_filename + '.zip'
+        shutil.make_archive(zip_base_filename, 'zip', root_dir=aar_content)
+
+        # overwrite the existing AAR package
+        shutil.move(zip_filename, aar_file_path)
+
+
 def _build_aar(args):
     build_settings = _parse_build_settings(args)
     build_dir = os.path.abspath(args.build_dir)
@@ -89,6 +112,7 @@ def _build_aar(args):
     _base_build_command = [
         sys.executable, BUILD_PY, '--config=' + _build_config
     ] + build_settings['build_params']
+    header_files_path = ''
 
     # Build binary for each ABI, one by one
     for abi in build_settings['build_abis']:
@@ -116,6 +140,10 @@ def _build_aar(args):
                 os.remove(_target_lib_name)
             os.symlink(os.path.join(_build_dir, _build_config, lib_name), _target_lib_name)
 
+        # we only need to define the header files path once
+        if not header_files_path:
+            header_files_path = os.path.join(_build_dir, _build_config, 'android', 'headers')
+
     # The directory to publish final AAR
     _aar_publish_dir = os.path.join(build_dir, 'aar_out', _build_config)
     os.makedirs(_aar_publish_dir, exist_ok=True)
@@ -139,6 +167,11 @@ def _build_aar(args):
     # clean, build, and publish to a local directory
     subprocess.run(_gradle_command + ['clean'], env=_env, shell=_shell, check=True, cwd=JAVA_ROOT)
     subprocess.run(_gradle_command + ['build'], env=_env, shell=_shell, check=True, cwd=JAVA_ROOT)
+
+    # add C and C++ API headers to the intermediate aar package
+    aar_file_path = os.path.join(_aar_dir, 'outputs', 'aar', 'onnxruntime-release.aar')
+    _add_headers_to_aar(aar_file_path, header_files_path)
+
     subprocess.run(_gradle_command + ['publish'], env=_env, shell=_shell, check=True, cwd=JAVA_ROOT)
 
 

@@ -47,11 +47,11 @@ export class WebGLIm2ColPacked implements WebGLOperator {
           pos = rc.y + ${row};
 
           if(blockIndex < ${im2colShape[1]} && pos < ${im2colShape[0]}) {
-            offsetY = int(blockIndex / (${this.convOutputShape[rank - 1]})) * ${this.strides[0]} - ${this.pads[1]};
+            offsetY = int(blockIndex / (${this.convOutputShape[rank - 1]})) * ${this.strides[0]} - ${this.pads[0]};
             d0 = offsetY + ${this.dilations[0]} * (imod(pos, ${kernelSize}) / ${wshape[2]});
 
             if(d0 < ${xshape[rowDim]} && d0 >= 0) {
-              offsetX = imod(blockIndex, ${this.convOutputShape[rank - 1]}) * ${this.strides[1]} - ${this.pads[0]};
+              offsetX = imod(blockIndex, ${this.convOutputShape[rank - 1]}) * ${this.strides[1]} - ${this.pads[1]};
               d1 = offsetX + ${this.dilations[1]} * imod(imod(pos, ${kernelSize}), ${wshape[2]});
 
               if(d1 < ${xshape[colDim]} && d1 >= 0) {
