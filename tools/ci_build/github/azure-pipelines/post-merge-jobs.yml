@@ -29,24 +29,21 @@ jobs:
           llvm-cov show -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test -object onnxruntime_api_tests_without_env -object onnx_test_runner -object onnxruntime_shared_lib_test -object onnxruntime_global_thread_pools_test -object onnxruntime_api_tests_without_env $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops --format=html -output-dir=$(Build.ArtifactStagingDirectory)
         workingDirectory: $(Build.BinariesDirectory)
 
-
-
     - task: PublishPipelineArtifact@1
       displayName: 'Publish Pipeline Artifact'
       inputs:
         targetPath: '$(Build.ArtifactStagingDirectory)'
         artifact: html
 
-    - task: PythonScript@0
-      displayName: 'Post code coverage data to the Dashboard'
-      inputs:
-        scriptPath: $(Build.SourcesDirectory)/tools/ci_build/github/windows/post_code_coverage_to_dashboard.py
-        arguments: --commit_hash=$(OnnxRuntimeGitCommitHash) --report_file="$(Build.BinariesDirectory)/report.json" --report_url="https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(Build.BuildId)" --branch $(Build.SourceBranchName) --arch $(Agent.OSArchitecture) --os $(Agent.OS) --build_config default
-        workingDirectory: $(Build.BinariesDirectory)
-        pythonInterpreter: '/usr/bin/python3'
-      env: 
-        DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
 
+    - task: AzureCLI@2
+      displayName: 'Azure CLI '
+      inputs:
+        azureSubscription: AIInfraBuildOnnxRuntimeOSS
+        scriptType: batch
+        scriptLocation: inlineScript
+        inlineScript: 'python3 $(Build.SourcesDirectory)/tools/ci_build/github/windows/post_code_coverage_to_dashboard.py --commit_hash=$(OnnxRuntimeGitCommitHash) --report_file="$(Build.BinariesDirectory)/report.json" --report_url="https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(Build.BuildId)" --branch $(Build.SourceBranchName) --arch $(Agent.OSArchitecture) --os $(Agent.OS) --build_config default'
+        workingDirectory: '$(Build.BinariesDirectory)'
 
 - job: Upload
   workspace:
