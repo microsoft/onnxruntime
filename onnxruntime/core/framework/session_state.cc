@@ -1111,7 +1111,7 @@ static Status OuterScopeNodeArgLocationAccumulator(const SequentialExecutionPlan
                                                    const Node& parent_node,
                                                    /*out*/ std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_arg_to_location_map) {
   auto process_implicit_input = [&plan, &ort_value_name_to_idx_map,
-                                 &outer_scope_arg_to_location_map](const NodeArg& input, size_t arg_idx) {
+                                 &outer_scope_arg_to_location_map](const NodeArg& input, size_t /*arg_idx*/) {
     const auto& name = input.Name();
     ORT_TRY {
       outer_scope_arg_to_location_map.insert({name, plan.GetLocation(Index(ort_value_name_to_idx_map, name))});
