@@ -85,14 +85,14 @@ Status ConvGrad<T>::PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor&
     args_.params.data_type = CudnnTensor::GetDataType<CudaT>();
     args_.params.input_dim = static_cast<uint8_t>(x_dims.size());
     for (size_t i = 0; i < x_dims.size(); i++) {
-      args_.params.input_size[i] = x_dims[i];
-      args_.params.weight_size[i] = w_dims[i];
+      args_.params.input_size[i] = static_cast<int>(x_dims[i]);
+      args_.params.weight_size[i] = static_cast<int>(w_dims[i]);
     }
     for (size_t i = 0; i < rank; i++) {
-      args_.params.padding[i] = pads[i];
-      args_.params.padding[i + rank] = pads[i + rank];
-      args_.params.stride[i] = strides[i];
-      args_.params.dilation[i] = dilations[i];
+      args_.params.padding[i] = static_cast<int>(pads[i]);
+      args_.params.padding[i + rank] = static_cast<int>(pads[i + rank]);
+      args_.params.stride[i] = static_cast<int>(strides[i]);
+      args_.params.dilation[i] = static_cast<int>(dilations[i]);
     }
     args_.params.groups = conv_attrs_.group;
     int algo_mode = cuda_ep->GetCudnnConvAlgo();
