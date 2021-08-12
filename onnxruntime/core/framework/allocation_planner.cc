@@ -543,7 +543,7 @@ class PlannerImpl {
             // 2) If it is a non-subgraph input (i.e.) only an outer scope node arg fed through
             // to this level of the subgraph as an implicit input
             // 3) If there is no explicit consumer at this graph level
-            // If there is an explicit consumer, we want the location must be where it is consumed
+            // If there is an explicit consumer, the location MUST be where it is consumed
             // and not where it is located in the outer scope.
             // It is okay if we process a node consuming this arg as an implicit input
             // ahead of a node that is an explicit consumer, because we will just reset
