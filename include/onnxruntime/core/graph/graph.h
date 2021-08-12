@@ -999,6 +999,9 @@ class Graph {
   /** Initialize function body for the given node */
   void InitFunctionBodyForNode(Node& node);
 
+  /** Add function proto to model local functions container */
+  void AddModelLocalFunction(const ONNX_NAMESPACE::FunctionProto* func_proto);
+
   /** Mark a NodeArg name as coming from the outer scope when programmatically constructing a Graph that will
   be used as a GraphProto attribute in another Node..
   e.g. when creating a Graph instance that will be used as a subgraph in a control flow operator, it is necessary to
@@ -1180,7 +1183,8 @@ class Graph {
         const std::unordered_map<std::string, int>& domain_to_version,
         Version ir_version,
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
-        const logging::Logger& logger);
+        const logging::Logger& logger,
+        const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions);
 
   // internal use by the Graph class only
   Graph(const Model& owning_model,
@@ -1190,7 +1194,8 @@ class Graph {
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
         Graph* parent_graph,
         const Node* parent_node,
-        const logging::Logger& logger);
+        const logging::Logger& logger,
+        const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions);
 
   void InitializeStateFromModelFileGraphProto();
 
@@ -1369,6 +1374,8 @@ class Graph {
   IOnnxRuntimeOpSchemaCollectionPtr schema_registry_;
 
   std::vector<std::unique_ptr<onnxruntime::Function>> function_container_;
+
+  std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_local_functions_;
 #endif
 
   // Graph nodes.

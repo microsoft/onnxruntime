@@ -51,7 +51,8 @@ class Model {
                  const IOnnxRuntimeOpSchemaRegistryList& local_registries,
                  const std::unordered_map<std::string, int>& domain_to_version,
                  const std::vector<ONNX_NAMESPACE::FunctionProto>& model_specific_functions,
-                 const logging::Logger& logger);
+                 const logging::Logger& logger,
+                 const std::vector<ONNX_NAMESPACE::FunctionProto>* model_functions = nullptr);
 
   // NOTE: after calling this constructor, <*this> model will
   // hold a copy of <model_proto>.

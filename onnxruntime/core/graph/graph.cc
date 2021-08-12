@@ -963,13 +963,15 @@ Graph::Graph(const Model& owning_model,
              const std::unordered_map<std::string, int>& domain_to_version,
              Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
-             const logging::Logger& logger)
-    : Graph(owning_model, graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, logger) {}
+             const logging::Logger& logger,
+             const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions)
+    : Graph(owning_model, graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, logger, model_functions) {}
 
 Graph::Graph(const Model& owning_model,
              GraphProto* graph_proto, const std::unordered_map<std::string, int>& domain_to_version, Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry, Graph* parent_graph, const Node* parent_node,
-             const logging::Logger& logger)
+             const logging::Logger& logger,
+             const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions)
     : owning_model_(owning_model),
       graph_proto_(graph_proto),
       schema_registry_(schema_registry),
@@ -980,6 +982,7 @@ Graph::Graph(const Model& owning_model,
       parent_graph_(parent_graph),
       parent_node_(parent_node),
       logger_(logger),
+      model_local_functions_(model_functions),
       is_loaded_from_model_file_(GraphLoadedFromModelFile(graph_proto_)) {
   ORT_ENFORCE(graph_proto != nullptr, "graph_proto cannot be null");
   ArgNameToTypeMap name_to_type_map;
@@ -1123,7 +1126,8 @@ Graph::Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::Graph
             &subgraph_proto,
             parent_graph.DomainToVersionMap(), parent_graph.IrVersion(), parent_graph.schema_registry_,
             &parent_graph,
-            &parent_node, parent_graph.logger_) {
+            &parent_node, parent_graph.logger_, 
+            {}) {
 }
 
 void Graph::InitializeStateFromModelFileGraphProto() {
@@ -2420,9 +2424,15 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   return Status::OK();
 }
 
+void Graph::AddModelLocalFunction(const ONNX_NAMESPACE::FunctionProto* func_proto) {
+  this->model_local_functions_[func_proto->name()] = func_proto;
+}
+
 void Graph::InitFunctionBodyForNode(Node& node) {
+  onnx::FunctionProto onnx_function_proto;
   if (node.op_ && (node.op_->HasFunction() || node.op_->HasContextDependentFunction())) {
-    onnx::FunctionProto onnx_function_proto;
+    // This node has a schema defined function proto. If it is a context dependant function
+    // then build it otherwise fetch the functionproto from schema.
     if (node.op_->HasContextDependentFunction()) {
       NodeProto node_proto;
       node.ToProto(node_proto);
@@ -2441,18 +2451,29 @@ void Graph::InitFunctionBodyForNode(Node& node) {
     } else {
       onnx_function_proto = *(node.op_->GetFunction());
     }
-
-    ORT_TRY {
-      auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
-                                                                  logger_);
-      function_container_.emplace_back(std::move(func_ptr));
-      node.SetFunctionBody(*function_container_.back());
-    }
-    ORT_CATCH(const std::exception& ) {
-      // Return without using this function op's expansion. No need to fail just yet.
-      // If ORT has a specialized kernel for this op then execution will proceed
+  } else {
+    auto iter = model_local_functions_.find(node.OpType());
+    if (iter == model_local_functions_.end()) {
       return;
     }
+    // This node has a model local function proto.
+    onnx_function_proto = *(iter->second);
+  }
+
+  ORT_TRY {
+    auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto, model_local_functions_,
+                                                                logger_);
+    function_container_.emplace_back(std::move(func_ptr));
+    node.SetFunctionBody(*function_container_.back());
+  }
+  ORT_CATCH(const std::exception& e) {
+    LOGS(logger_, WARNING) << "Function body initialization failed for node '"
+                           << node.Name() << "' optype " << node.OpType()
+                           << ". Error message " << e.what() 
+                           << ". Execution will fail if ORT does not have a specialized kernel for this op";
+    // Return without using this function op's expansion. No need to fail just yet.
+    // If ORT has a specialized kernel for this op then execution will proceed
+    return;
   }
 }
 
