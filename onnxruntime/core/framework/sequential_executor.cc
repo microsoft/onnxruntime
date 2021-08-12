@@ -190,7 +190,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
     static int iteration = 0;
-    utils::NodeDumpContext dump_context { ++iteration };
+    size_t program_counter = 0;
+    utils::NodeDumpContext dump_context { ++iteration, program_counter };
 #endif
 
 
@@ -277,6 +278,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       }
     }
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
+    dump_context.program_counter = program_counter++;
     utils::DumpNodeInputs(dump_context, op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
 

@@ -8,7 +8,10 @@
 #include <iomanip>
 #include <cctype>
 #include <string>
+
+#ifdef ENABLE_SQL
 #include <sqlite3.h>
+#endif
 
 #include "core/common/path_utils.h"
 #include "core/framework/tensorprotoutils.h"
@@ -28,8 +31,6 @@ struct TensorMetadata {
   std::string device_type;
   int step;
 };
-
-sqlite3* SqliteConnection(); 
 
 bool FilterNode(const NodeDumpOptions& dump_options, const Node& node) {
   auto match_pattern =
@@ -130,6 +131,10 @@ void DumpTensorToFile(const Tensor& tensor, const std::string& tensor_name, cons
   ORT_THROW_IF_ERROR(Env::Default().FileClose(output_fd));
 }
 
+#ifdef ENABLE_SQL
+
+sqlite3* SqliteConnection(); 
+
 bool TensorExistsInSqlDb(const TensorMetadata& tensor_metadata) {
 
   static std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt_uptr( [](){
@@ -228,15 +233,15 @@ void DumpTensorToSqliteDb(const Tensor& tensor, const TensorMetadata& tensor_met
   UpdateTensorUsageInSqlDb(tensor_metadata);
 }
 
-void InsertNodePlacementToSqliteDb(const Node& node) {
+void InsertNodePlacementToSqliteDb(const NodeDumpContext& dump_context, const Node& node) {
 
   static std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt_uptr( [](){
   
     sqlite3 *db = SqliteConnection();
 
     const char *sql_insert_node = 
-      "Insert or Ignore into Nodes (Name, OpType, Device) "
-      " values (?, ?, ?);";
+      "Insert or Ignore into Nodes (ProgramCounter, Name, OpType, Device) "
+      " values (?, ?, ?, ?);";
 
     sqlite3_stmt *stmt = nullptr;
     ORT_ENFORCE(SQLITE_OK == sqlite3_prepare_v2(db, sql_insert_node, -1, &stmt, nullptr));
@@ -247,12 +252,15 @@ void InsertNodePlacementToSqliteDb(const Node& node) {
   sqlite3_stmt* stmt = stmt_uptr.get();
  
   ORT_ENFORCE(SQLITE_OK == sqlite3_reset(stmt));
-  ORT_ENFORCE(SQLITE_OK == sqlite3_bind_text(stmt, 1, node.Name().c_str(), -1, SQLITE_TRANSIENT));
-  ORT_ENFORCE(SQLITE_OK == sqlite3_bind_text(stmt, 2, node.OpType().c_str(), -1, SQLITE_TRANSIENT));
-  ORT_ENFORCE(SQLITE_OK == sqlite3_bind_text(stmt, 3, node.GetExecutionProviderType().c_str(), -1, SQLITE_TRANSIENT)); 
+  ORT_ENFORCE(SQLITE_OK == sqlite3_bind_int(stmt, 1, dump_context.program_counter); 
+  ORT_ENFORCE(SQLITE_OK == sqlite3_bind_text(stmt, 2, node.Name().c_str(), -1, SQLITE_TRANSIENT));
+  ORT_ENFORCE(SQLITE_OK == sqlite3_bind_text(stmt, 3, node.OpType().c_str(), -1, SQLITE_TRANSIENT));
+  ORT_ENFORCE(SQLITE_OK == sqlite3_bind_text(stmt, 4, node.GetExecutionProviderType().c_str(), -1, SQLITE_TRANSIENT)); 
  
   ORT_ENFORCE(SQLITE_DONE == sqlite3_step(stmt));
 }
+
+#endif // ENABLE_SQL
 
 void DumpCpuTensor(
     const NodeDumpOptions& dump_options,
@@ -268,7 +276,11 @@ void DumpCpuTensor(
       break;
     }
     case NodeDumpOptions::DataDestination::SqliteDb: {
+#ifdef ENABLE_SQL
       DumpTensorToSqliteDb(tensor, tensor_metadata);
+#else
+      ORT_THROW("Recompile with --cmake_extra_defines onnxruntime_ENABLE_SQL=1");
+#endif
       break;
     }
     default:
@@ -364,7 +376,10 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
     }
 
     opts.output_dir = Path::Parse(ToPathString(Env::Default().GetEnvironmentVar(env_vars::kOutputDir)));
-    opts.sqlite_db_path = Path::Parse(ToPathString(Env::Default().GetEnvironmentVar(env_vars::kSqliteDbPath)));
+
+    std::string sqlite_db_path = 
+	ParseEnvironmentVariableWithDefault<std::string>(env_vars::kSqliteDbPath, "execution-trace.db");
+    opts.sqlite_db_path = Path::Parse(ToPathString(sqlite_db_path));
 
     // check for confirmation for dumping data to files for all nodes
     const bool is_input_or_output_requested = ((opts.dump_flags & NodeDumpOptions::DumpFlags::InputData) != 0) ||
@@ -386,6 +401,7 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
   return node_dump_options;
 }
 
+#ifdef ENABLE_SQL
 sqlite3* SqliteConnection() {
 
   static std::unique_ptr<sqlite3, decltype(&sqlite3_close)> sqlite_db(
@@ -434,6 +450,7 @@ sqlite3* SqliteConnection() {
 
   return sqlite_db.get();
 }
+#endif // ENABLE_SQL
 
 static bool IsAnyOutputDumped(const NodeDumpOptions& dump_options) {
   return dump_options.dump_flags != NodeDumpOptions::DumpFlags::None;
@@ -461,7 +478,9 @@ void DumpNodeInputs(
   bool is_node_meta_set = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::NodePlacement) != 0;
   if (dump_context.iteration == 1 && is_node_meta_set) {
     PrintIf(is_node_meta_set, MakeString(" Placement: ", node.GetExecutionProviderType(), "\n"));
-    InsertNodePlacementToSqliteDb(node);
+#ifdef ENABLE_SQL    
+    InsertNodePlacementToSqliteDb(dump_context, node);
+#endif
   }
 
   std::cout << "-----------\n";
@@ -527,7 +546,9 @@ void DumpNodeOutputs(
   bool is_node_meta_set = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::NodePlacement) != 0;
   if (dump_context.iteration == 1 && is_node_meta_set) {
     PrintIf(is_node_meta_set, MakeString(" Placement: ", node.GetExecutionProviderType(), "\n"));
-    InsertNodePlacementToSqliteDb(node);
+#ifdef ENABLE_SQL    
+    InsertNodePlacementToSqliteDb(dump_context, node);
+#endif
   }
 
   std::cout << "-----------\n";

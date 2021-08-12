@@ -4,11 +4,13 @@
 // to create a build with these enabled run the build script with:
 //   --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
 
+// to enable redirect to sqlite database also include:
+//   --cmake_extra_defines onnxruntime_ENABLE_SQL=1
+// see orttraining/tools/scripts/sqldb_to_tensors.py for retrieval 
+
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
 
 #pragma once
-
-#include <sqlite3.h>
 
 #include "core/common/path.h"
 #include "core/framework/op_kernel.h"
@@ -101,6 +103,8 @@ struct NodeDumpOptions {
 struct NodeDumpContext {
   // which execution pass are we on?
   int iteration;
+  // which node are we on?
+  int program_counter;
 };
 
 // gets NodeDumpOptions instance configured from environment variable values
