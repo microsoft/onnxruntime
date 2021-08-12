@@ -204,35 +204,6 @@ jobs:
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
   - script: |
-     pushd $(Build.BinariesDirectory)\nuget-artifact
-     dir
-     powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/unzip.exe -OutFile unzip.exe"
-     powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile zip.exe"
-     set PATH=%CD%;%PATH%
-     SETLOCAL EnableDelayedExpansion
-     FOR /R %%i IN (*.nupkg) do (
-         set filename=%%~ni
-         IF NOT "!filename:~25,7!"=="Managed" (
-             rename %%~ni.nupkg %%~ni.zip
-             unzip %%~ni.zip -d %%~ni
-             del /Q %%~ni.zip
-             unzip linux-x64.zip -d linux-x64
-             mkdir %%~ni\runtimes\linux-x64
-             mkdir %%~ni\runtimes\linux-x64\native
-             move linux-x64\linux-x64\libonnxruntime.so %%~ni\runtimes\linux-x64\native\libonnxruntime.so
-             move linux-x64\linux-x64\libonnxruntime_providers_shared.so %%~ni\runtimes\linux-x64\native\libonnxruntime_providers_shared.so
-             move linux-x64\linux-x64\libonnxruntime_providers_cuda.so %%~ni\runtimes\linux-x64\native\libonnxruntime_providers_cuda.so
-             pushd %%~ni
-             zip -r ..\%%~ni.zip .
-             popd
-             move %%~ni.zip %%~ni.nupkg
-         )
-     )
-     popd
-     copy $(Build.BinariesDirectory)\nuget-artifact\*.nupkg $(Build.ArtifactStagingDirectory)
-    displayName: 'Bundle Native NuGet and other binaries'
-
-  - script: |
      pushd $(Build.BinariesDirectory)\nuget-artifact-dml
      dir
      powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/unzip.exe -OutFile unzip.exe"
@@ -289,13 +260,6 @@ jobs:
   - template: ../../templates/validate-nuget.yml
     parameters:
       NugetPath: '$(Build.ArtifactStagingDirectory)'
-      NugetPackage: 'Microsoft.ML.OnnxRuntime.Gpu*nupkg'
-      PlatformsSupported: 'win-x64,linux-x64'
-      VerifyNugetSigning: ${{ parameters.DoEsrp }}
-
-  - template: ../../templates/validate-nuget.yml
-    parameters:
-      NugetPath: '$(Build.ArtifactStagingDirectory)'
       NugetPackage: 'Microsoft.ML.OnnxRuntime.DirectML*nupkg'
       PlatformsSupported: 'win-x64,win-x86,win-arm64,win-arm'
       VerifyNugetSigning: ${{ parameters.DoEsrp }}
@@ -305,89 +269,3 @@ jobs:
     inputs:
       artifactName: 'drop-signed-nuget'
       targetPath: '$(Build.ArtifactStagingDirectory)'
-
-- template: test_win.yml
-  parameters:
-    AgentPool : 'onnxruntime-gpu-winbuild'
-    Skipx86Tests: 'true'
-
-- template: test_linux.yml
-  parameters:
-    AgentPool : 'Onnxruntime-Linux-GPU'
-    TestGPU : 'true'
-
-- job: Publish_NuGet_Package_And_Report
-  workspace:
-    clean: all
-  pool: 'Win-CPU-2021'
-  variables:
-  - name: GDN_CODESIGN_TARGETDIRECTORY
-    value: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
-  condition: and (succeeded(), and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master')))
-  dependsOn:
-  - NuGet_Test_Win
-  - NuGet_Test_Linux
-  steps:
-  - template: ../../templates/set-version-number-variables-step.yml
-
-  - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - Signed NuGet Package'
-    inputs:
-      artifactName: 'drop-signed-nuget'
-      targetPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
-
-  - template: get-nuget-package-version-as-variable.yml
-    parameters:
-      packageFolder: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
-
-  - task: DotNetCoreCLI@2
-    displayName: 'Copy Signed Native NuGet Package to Internal NuGet Feed'
-    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
-    inputs:
-      command: 'push'
-      searchPatternPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.Gpu.$(NuGetPackageVersionNumber).nupkg'
-      feedPublish: 'OnnxRuntime'
-
-  - task: DotNetCoreCLI@2
-    displayName: 'Copy Signed Managed NuGet Package to Internal NuGet Feed'
-    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
-    inputs:
-      command: 'push'
-      searchPatternPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.Managed.$(NuGetPackageVersionNumber).nupkg'
-      feedPublish: 'OnnxRuntime'
-  
-  - task: DotNetCoreCLI@2
-    displayName: 'Copy Signed DirectML NuGet Package to Internal NuGet Feed'
-    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
-    inputs:
-      command: 'push'
-      searchPatternPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.DirectML.$(DirectMLNuGetPackageVersionNumber).nupkg'
-      feedPublish: 'OnnxRuntime'
-
-  - task: NuGetCommand@2
-    displayName: 'Copy Signed Native NuGet Package to ORT-NIGHTLY'
-    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
-    inputs:
-      command: 'push'
-      packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.Gpu.$(NuGetPackageVersionNumber).nupkg'
-      publishVstsFeed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/7982ae20-ed19-4a35-a362-a96ac99897b7'
-  
-  - task: NuGetCommand@2
-    displayName: 'Copy Signed Managed NuGet Package to ORT-NIGHTLY'
-    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
-    inputs:
-      command: 'push'
-      packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.Managed.$(NuGetPackageVersionNumber).nupkg'
-      publishVstsFeed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/7982ae20-ed19-4a35-a362-a96ac99897b7'
-
-  - task: NuGetCommand@2
-    displayName: 'Copy Signed DirectML NuGet Package to ORT-NIGHTLY'
-    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
-    inputs:
-      command: 'push'
-      packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.DirectML.$(DirectMLNuGetPackageVersionNumber).nupkg'
-      publishVstsFeed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/7982ae20-ed19-4a35-a362-a96ac99897b7'
-
-  - template: ../../templates/component-governance-component-detection-steps.yml
-    parameters :
-      condition : 'always'
