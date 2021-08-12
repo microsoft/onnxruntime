@@ -1125,6 +1125,15 @@ static Status OuterScopeNodeArgLocationAccumulator(const SequentialExecutionPlan
     return Status::OK();
   };
 
+  // For now we just pass along the location info of just the implicit inputs to the subgraph.
+  // In future, we may want to extend this to node inputs as well that will be passed
+  // through as "explicit" inputs to the subgraph. To enable this, there is complexity
+  // regarding mapping arg names at this level of the graph to their corresponding subgraph
+  // input name counterparts and also op specific logic to determine which of the inputs
+  // to this node form subgraph inputs and so on.
+  // We want to that to avoid copies for explicit graph inputs that are "passed through"
+  // to a nested subgraph.
+  // See similar comment in the allocation planner.
   return Node::ForEachWithIndex(parent_node.ImplicitInputDefs(), process_implicit_input);
 }
 
