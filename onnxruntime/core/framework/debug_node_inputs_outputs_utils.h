@@ -38,7 +38,7 @@ constexpr const char* kNameFilter = "ORT_DEBUG_NODE_IO_NAME_FILTER";
 // specify a node op type filter to limit the nodes that are dumped
 // see NodeDumpOptions::FilterOptions
 constexpr const char* kOpTypeFilter = "ORT_DEBUG_NODE_IO_OP_TYPE_FILTER";
-// set to "stdout", "files", or "sqlite" to select dump destination
+// set to "stdout" or "files" or "sqlite" to select dump destination
 constexpr const char* kDumpDataDestination = "ORT_DEBUG_NODE_IO_DUMP_DATA_DESTINATION";
 // set to non-zero to append OpenMPI world rank to filename
 constexpr const char* kAppendRankToFileName = "ORT_DEBUG_NODE_IO_APPEND_RANK_TO_FILE_NAME";
