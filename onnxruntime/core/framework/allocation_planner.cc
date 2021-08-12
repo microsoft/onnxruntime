@@ -123,7 +123,7 @@ class PlannerImpl {
               const KernelCreateInfoMap& kernel_create_info_map,
               const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
               const std::unordered_map<std::string, std::reference_wrapper<const ExecutionProviders>>& subgraphs_execution_providers,
-              const std::unordered_map<std::string, OrtMemoryInfo>& implicit_inputs_to_location_map,
+              const std::unordered_map<std::string, OrtMemoryInfo>& outer_scope_arg_to_location_map,
               const OrtValueNameIdxMap& ort_value_name_idx_map,
               const ISequentialPlannerContext& context, SequentialExecutionPlan& plan)
       : context_(context),
@@ -135,7 +135,7 @@ class PlannerImpl {
         kernel_create_info_map_(kernel_create_info_map),
         subgraphs_kernel_create_info_maps_(subgraphs_kernel_create_info_maps),
         subgraphs_execution_providers_(subgraphs_execution_providers),
-        implicit_inputs_to_location_map_(implicit_inputs_to_location_map),
+        outer_scope_arg_to_location_map_(outer_scope_arg_to_location_map),
         ort_value_name_idx_map_(ort_value_name_idx_map) {}
 
   Status CreatePlan();
@@ -154,7 +154,7 @@ class PlannerImpl {
 
   const std::unordered_map<std::string, std::reference_wrapper<const ExecutionProviders>>& subgraphs_execution_providers_;
 
-  const std::unordered_map<std::string, OrtMemoryInfo>& implicit_inputs_to_location_map_;
+  const std::unordered_map<std::string, OrtMemoryInfo>& outer_scope_arg_to_location_map_;
 
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
 
@@ -528,17 +528,13 @@ class PlannerImpl {
         // If it's a graph input or outer scope node arg, set its plan.
         // NOTE: Copy nodes should have already been added if a graph input is fed as input
         // to nodes assigned to different providers.
-        bool is_graph_input = graph_inputs.find(name) != graph_inputs.cend();
+        bool is_graph_input = (graph_inputs.find(name) != graph_inputs.cend());
         bool is_outer_scope_arg = std::find_if(outer_scope_node_args_.cbegin(), outer_scope_node_args_.cend(),
                                                [&name](const NodeArg* value) {
                                                  return value && value->Name() == name;
                                                }) != outer_scope_node_args_.cend();
+        bool is_subgraph = (parent_node_ != nullptr);
         if (is_graph_input || is_outer_scope_arg) {
-          if (name == "data_0") {
-            float f = 1.2f;
-            ORT_IGNORE_RETURN_VALUE(f);
-          }
-
           OrtValueIndex index = Index(name);
 
           if (!is_implicit_input) {
@@ -546,9 +542,11 @@ class PlannerImpl {
             plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, mem_type)->Info());
             ort_value_index_has_explicit_consumer.insert(index);
           } else {
-            if (is_outer_scope_arg && ort_value_index_has_explicit_consumer.count(index) == 0) {
-              auto iter = implicit_inputs_to_location_map_.find(name);
-              ORT_ENFORCE(iter != implicit_inputs_to_location_map_.end());
+            // Only process if within a subgraph and if there is no explicit consumer of an
+            // outer scope arg or a sub-graph input at this graph level
+            if (is_subgraph && ort_value_index_has_explicit_consumer.count(index) == 0) {
+              auto iter = outer_scope_arg_to_location_map_.find(name);
+              ORT_ENFORCE(iter != outer_scope_arg_to_location_map_.end());
               plan_.SetLocation(static_cast<size_t>(index), iter->second);
             }
           }
@@ -1180,7 +1178,7 @@ Status SequentialPlanner::CreatePlan(
     const KernelCreateInfoMap& kernel_create_info_map,
     const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
     const std::unordered_map<std::string, std::reference_wrapper<const ExecutionProviders>>& subgraphs_execution_providers,
-    const std::unordered_map<std::string, OrtMemoryInfo>& implicit_inputs_to_location_map,
+    const std::unordered_map<std::string, OrtMemoryInfo>& outer_scope_arg_to_location_map,
     const OrtValueNameIdxMap& ort_value_name_idx_map,
     const ISequentialPlannerContext& context,
     std::unique_ptr<SequentialExecutionPlan>& plan) {
@@ -1191,7 +1189,7 @@ Status SequentialPlanner::CreatePlan(
                       kernel_create_info_map,
                       subgraphs_kernel_create_info_maps,
                       subgraphs_execution_providers,
-                      implicit_inputs_to_location_map,
+                      outer_scope_arg_to_location_map,
                       ort_value_name_idx_map, context, *plan);
 
   return planner.CreatePlan();
