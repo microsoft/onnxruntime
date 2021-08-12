@@ -406,7 +406,6 @@ jobs:
 
   - task: CopyFiles@2
     displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
-<<<<<<< HEAD
     inputs:
       SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts'
       Contents: '*.nupkg'
@@ -461,61 +460,6 @@ jobs:
   - task: RoslynAnalyzers@2
     displayName: 'Run Roslyn Analyzers'
     inputs:
-=======
-    inputs:
-      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts'
-      Contents: '*.nupkg'
-      TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-  - task: CopyFiles@2
-    displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
-    inputs:
-      SourceFolder: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
-      Contents: '*.nupkg'
-      TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-  - template: templates/esrp_nuget.yml
-    parameters:
-      DisplayName: 'ESRP - sign NuGet package'
-      FolderPath: '$(Build.ArtifactStagingDirectory)'
-      DoEsrp: ${{ parameters.DoEsrp }}
-
-  - template: templates/validate-nuget.yml
-    parameters:
-      NugetPath: '$(Build.ArtifactStagingDirectory)'
-      NugetPackage: 'Microsoft.ML.OnnxRuntime.*nupkg'
-      PlatformsSupported: 'win-x64,linux-x64'
-      VerifyNugetSigning: false
-
-  - task: PublishPipelineArtifact@0
-    displayName: 'Publish Pipeline NuGet Artifact'
-    inputs:
-      artifactName: 'drop-signed-nuget-GPU'
-      targetPath: '$(Build.ArtifactStagingDirectory)'
-
-  - powershell: |
-     $counter = 0
-     Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.nupkg | foreach {7z x -y -o$counter $_.fullname;$counter++}
-    workingDirectory: '$(Build.ArtifactStagingDirectory)'
-    displayName: 'Unzip files to sanitize the PE files'
-
-  - task: DotNetCoreCLI@2
-    displayName: 'Build C#'
-    inputs:
-      command: custom
-      custom: clean
-      projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-      configuration: RelWithDebInfo
-      arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu'
-      workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-  - task: BinSkim@4
-    displayName: 'Run BinSkim'
-
-  - task: RoslynAnalyzers@2
-    displayName: 'Run Roslyn Analyzers'
-    inputs:
->>>>>>> c46815f2b85044d53eafff246062cd40a380de01
       userProvideBuildInfo: msBuildInfo
       msBuildArchitecture: DotNetCore
       msBuildCommandline: '"C:\Program Files\dotnet\dotnet.exe" build $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln --configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu'
@@ -535,12 +479,9 @@ jobs:
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
     ArtifactSuffix: 'GPU'
     Skipx86Tests: 'true'
-<<<<<<< HEAD
     
 - template: nuget/templates/test_linux.yml
   parameters:
     AgentPool : Onnxruntime-Linux-GPU
     ArtifactSuffix: 'GPU'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
-=======
->>>>>>> c46815f2b85044d53eafff246062cd40a380de01
