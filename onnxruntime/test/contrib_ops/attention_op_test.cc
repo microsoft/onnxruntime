@@ -1832,12 +1832,9 @@ TEST(AttentionTest, SharedPrepackedWeights) {
   tester.AddOutput<float>("output", output_dims, output_data);
   tester.AddInput<int32_t>("mask_index", mask_index_dims, mask_index_data);
 
-  auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape(weights_dims),
-                                           weight_data.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
   OrtValue weight;
-
-  weight.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape(weights_dims),
+                       weight_data.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), weight);
 
   SessionOptions so;
 

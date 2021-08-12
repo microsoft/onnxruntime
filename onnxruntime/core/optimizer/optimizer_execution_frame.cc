@@ -171,13 +171,7 @@ Status OptimizerExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value,
   // tensors
   auto element_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
   AllocatorPtr allocator_ptr = info_.GetAllocator();
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
-                                                              *shape,
-                                                              allocator_ptr);
-
-  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-  ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
-
+  Tensor::InitOrtValue(element_type, *shape, std::move(allocator_ptr), ort_value);
   return Status::OK();
 }
 
