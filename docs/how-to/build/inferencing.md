@@ -254,7 +254,7 @@ This option is very fast and allows the package to be built in minutes, but is c
 
 1. Get the corresponding toolchain.
 
-    TLDR; Go to https://www.linaro.org/downloads/, get "64-bit Armv8 Cortex-A, little-endian" and "Linux Targeted", not "Bare-Metal Targeted". Extract it to your build machine and add the bin folder to your $PATH env. Then skip this part.
+    TLDR; Go to [https://developer.arm.com/tools-and-software/open-source-software/developer-tools/gnu-toolchain/gnu-a/downloads](https://developer.arm.com/tools-and-software/open-source-software/developer-tools/gnu-toolchain/gnu-a/downloads), get "AArch64 GNU/Linux target (aarch64-none-linux-gnu)", don't choose "Bare-Metal Targeted". Extract it to your build machine and add the bin folder to your $PATH env. Then skip this part.
 
     You can use [GCC](https://gcc.gnu.org/) or [Clang](http://clang.llvm.org/). Both work, but instructions here are based on GCC.
 
@@ -403,9 +403,10 @@ This option is very fast and allows the package to be built in minutes, but is c
 
     ```cmake
     SET(CMAKE_SYSTEM_NAME Linux)
+    SET(CMAKE_SYSTEM_PROCESSOR aarch64)
     SET(CMAKE_SYSTEM_VERSION 1)
-    SET(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
-    SET(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)
+    SET(CMAKE_C_COMPILER aarch64-none-linux-gnu-gcc)
+    SET(CMAKE_CXX_COMPILER aarch64-none-linux-gnu-g++)
     SET(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
     SET(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
     SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
@@ -413,7 +414,10 @@ This option is very fast and allows the package to be built in minutes, but is c
     SET(CMAKE_FIND_ROOT_PATH /mnt/pi)
     ```
 
-    If you don't have a sysroot, you can delete the last line.
+    The first line says your target operating system is Linux. That's always the case.
+    The first line says the target CPU arch is aarch64, which is the 64 bits ARM. It is good for Raspberry Pi 3 and in later models of the Raspberry Pi 2 (board revision V1.2). The earlier versions of Raspberry Pi doesn't have 64 bits support. For these boards you need to change it to 'SET(CMAKE_SYSTEM_PROCESSOR arm)'.    
+    Type "which aarch64-none-linux-gnu-gcc" in your shell to check if the tool exists. If not, please run "echo $PATH" and check your PATH env setting. And sometimes your compiler may have a different name, then you need to adjust the settings above accordingly.
+    If you don't have a sysroot, you can delete the last line. 
 
 5.  Run CMake and make
 
