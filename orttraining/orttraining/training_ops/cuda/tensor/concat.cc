@@ -50,26 +50,38 @@ Status ConcatTraining::ComputeInternal(OpKernelContext* ctx) const {
     concat_sizes_range[i] += concat_sizes_range[i - 1];
   }
 
-  CudaAsyncBuffer<int64_t> concat_sizes_gpu(this, concat_sizes);
-  CudaAsyncBuffer<int64_t> axis_dimension_input_output_mapping_gpu(this, axis_dimension_input_output_mapping);
-  CudaAsyncBuffer<int64_t> concat_sizes_range_gpu(this, concat_sizes_range);
-  concat_sizes_gpu.CopyToGpu();
-  axis_dimension_input_output_mapping_gpu.CopyToGpu();
-  concat_sizes_range_gpu.CopyToGpu();
-  input_ptr.CopyToGpu();
+  auto element_bytes = p.output_tensor->DataType()->Size();
   int block_size_inside_axis_dim = static_cast<int>(p.output_axis_pitch / p.output_tensor->Shape()[p.axis]);
   int block_size_including_axis_dim = static_cast<int>(p.output_axis_pitch);
-  auto element_bytes = p.output_tensor->DataType()->Size();
-  ORT_RETURN_IF_ERROR(ConcatImpl(Stream(),
+  input_ptr.CopyToGpu();
+  if (std::all_of(concat_sizes.begin(), concat_sizes.end(), [&] (int64_t i) {return i == concat_sizes[0];})) {
+    ORT_RETURN_IF_ERROR(ConcatSameConcatDimImpl(Stream(),
                                  element_bytes,
                                  block_size_including_axis_dim,
                                  block_size_inside_axis_dim,
-                                 concat_sizes_gpu.GpuPtr(),
-                                 concat_sizes_range_gpu.GpuPtr(),
-                                 axis_dimension_input_output_mapping_gpu.GpuPtr(),
+                                 concat_sizes[0],
                                  p.output_tensor->MutableDataRaw(),
                                  input_ptr.GpuPtr(),
                                  p.output_num_elements));
+  } else {
+    CudaAsyncBuffer<int64_t> concat_sizes_gpu(this, concat_sizes);
+    CudaAsyncBuffer<int64_t> axis_dimension_input_output_mapping_gpu(this, axis_dimension_input_output_mapping);
+    CudaAsyncBuffer<int64_t> concat_sizes_range_gpu(this, concat_sizes_range);
+    concat_sizes_gpu.CopyToGpu();
+    axis_dimension_input_output_mapping_gpu.CopyToGpu();
+    concat_sizes_range_gpu.CopyToGpu();
+
+    ORT_RETURN_IF_ERROR(ConcatImpl(Stream(),
+                                  element_bytes,
+                                  block_size_including_axis_dim,
+                                  block_size_inside_axis_dim,
+                                  concat_sizes_gpu.GpuPtr(),
+                                  concat_sizes_range_gpu.GpuPtr(),
+                                  axis_dimension_input_output_mapping_gpu.GpuPtr(),
+                                  p.output_tensor->MutableDataRaw(),
+                                  input_ptr.GpuPtr(),
+                                  p.output_num_elements));
+  }
 
   // Create optional output tensor for 'per_input_length'
   Tensor* per_input_length_tensor = ctx->Output(1, {input_count});
