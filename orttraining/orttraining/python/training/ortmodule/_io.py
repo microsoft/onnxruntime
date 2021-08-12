@@ -114,6 +114,11 @@ class _InputInfo(object):
         ret += [_PrimitiveType.get_tensor(kwargs[name], device) if _PrimitiveType.is_primitive_type(kwargs[name])
             else kwargs[name] for name in self.names if name in kwargs]
 
+        # if kwargs is empty, append an empty dictionary at the end of the sample inputs to make exporter
+        # happy. This is because the exporter is confused with kwargs and dictionary inputs otherwise.
+        if not kwargs:
+            ret.append({})
+
         return ret
 
     def unflatten(self, flat_args):
@@ -141,6 +146,11 @@ def _combine_input_buffers_initializers(params, onnx_input_names, input_info, bu
             # each element of the list is an input by itself
             for inp in current_input:
                 _expand_inputs(inp, non_none_inputs)
+        elif isinstance(current_input, abc.Mapping):
+            # If the input is a mapping (like a dict), expand the dict so that
+            # each element of the dict is an input by itself
+            for _, val in current_input.items():
+                _expand_inputs(val, non_none_inputs)
         elif current_input is not None:
             # else just collect all the non none inputs within non_none_inputs
             non_none_inputs.append(current_input)
@@ -311,24 +321,30 @@ def _extract_schema(data):
     elif isinstance(data, torch.Tensor):
         return _TensorStub(dtype=str(data.dtype), shape_dims=len(data.size()))
 
+    # Instead of replacing the tensor with a stub in the original user input, build the stubbed_schema
+    # from scratch from the user input.
+    stubbed_schema = None
     if isinstance(data, abc.Sequence) and not isinstance(data, str):
         sequence_type = type(data)
-        data = list(data)
+        stubbed_schema = []
         for idx in range(len(data)):
-            data[idx] = _extract_schema(data[idx])
+            stubbed_schema.append(_extract_schema(data[idx]))
         try:
             # namedtuple can be created by passing the list sequence to method _make
-            data = sequence_type._make(data)
+            stubbed_schema = sequence_type._make(stubbed_schema)
         except AttributeError:
             # If attribute error encountered, create the sequence directly
-            data = sequence_type(data)
+            stubbed_schema = sequence_type(stubbed_schema)
     elif isinstance(data, abc.Mapping):
-        for key in sorted(data):
-            data[key] = _extract_schema(data[key])
+        dict_type = type(data)
+        stubbed_schema = {}
+        for key in data:
+            stubbed_schema[key] = _extract_schema(data[key])
+        stubbed_schema = dict_type(**stubbed_schema)
     else:
         raise wrap_exception(ORTModuleIOError,
                              TypeError(f'ORTModule does not support the following model data type {type(data)}'))
-    return data
+    return stubbed_schema
 
 
 def _parse_outputs_and_extract_names_and_dynamic_axes(module_output):
@@ -408,7 +424,7 @@ class _FlattenedModule(torch.nn.Module):
         return _transform_output_to_flat_tuple(self._original_module(*new_args, **new_kwargs))
 
 
-def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwargs):
+def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, schema, inputs, kwargs):
 
     def _add_dynamic_shape(name, input):
         dynamic_axes[name] = {}
@@ -431,6 +447,15 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwarg
 
             # Return here since the list by itself is not a valid input.
             # All the elements of the list have already been added as inputs individually.
+            return
+        elif isinstance(input, abc.Mapping):
+            # If the input is a mapping (like a dict), expand the dict so that
+            # each element of the dict is an input by itself.
+            for key, val in input.items():
+                _add_input(f"{name}_{key}", val, onnx_graph, onnx_graph_input_names)
+
+            # Return here since the dict by itself is not a valid input.
+            # All the elements of the dict have already been added as inputs individually.
             return
 
         # InputInfo should contain all the names irrespective of whether they are
@@ -482,8 +507,6 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwarg
                 if name not in input_names:
                     _add_input(name, inp, onnx_graph, onnx_graph_input_names)
 
-    # Shallow copy is ok as we need the data structure, not the content
-    schema = _extract_schema({'args': copy.copy(inputs), 'kwargs': copy.copy(kwargs)})
 
     return _InputInfo(names=input_names,
                       shape=input_shape,
