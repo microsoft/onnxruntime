@@ -55,6 +55,11 @@ jobs:
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - testdata'
     inputs:
+      source: 'specific'
+      project: 'Lotus'
+      pipeline: '940'
+      runVersion: 'specific'
+      runId: '168614'
       artifactName: 'drop-nuget'
       targetPath: '$(Build.BinariesDirectory)\testdata'
 
