@@ -19,7 +19,7 @@ from azure.kusto.ingest import (
     IngestionProperties,
     DataFormat,
     ReportLevel,
-    KustoStreamingIngestClient,
+    QueuedIngestClient,
 )
 
 
@@ -67,7 +67,7 @@ def write_to_db(coverage_data, args):
     cluster = "https://ingest-onnxruntimedashboarddb.southcentralus.kusto.windows.net"
     kcsb = KustoConnectionStringBuilder.with_az_cli_authentication(cluster)
     # The authentication method will be taken from the chosen KustoConnectionStringBuilder.
-    client = KustoStreamingIngestClient(kcsb)
+    client = QueuedIngestClient(kcsb)
     fields = ["UploadTime", "CommitId", "Coverage", "LinesCovered", "TotalLines", "OS", "Arch", "BuildConfig",
               "ReportURL", "Branch"]
     now_str = datetime.datetime.now() .strftime("%Y-%m-%d %H:%M:%S")

@@ -23,10 +23,18 @@ jobs:
           #Merge the mulitple prof data into a single indexed profile data file
           llvm-profdata merge -sparse -o ort.profdata *.profraw
           #Create coverage report, output the result to 'report.json'
-          llvm-cov export -summary-only -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test -object onnxruntime_api_tests_without_env -object onnx_test_runner -object onnxruntime_shared_lib_test -object onnxruntime_global_thread_pools_test -object onnxruntime_api_tests_without_env $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops > $(Build.ArtifactStagingDirectory)/report.json
+          llvm-cov export -summary-only -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test -object onnxruntime_api_tests_without_env -object onnx_test_runner -object onnxruntime_shared_lib_test -object onnxruntime_global_thread_pools_test -object onnxruntime_api_tests_without_env $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops > $(Build.BinariesDirectory)/report.json
 
           llvm-cov show -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test -object onnxruntime_api_tests_without_env -object onnx_test_runner -object onnxruntime_shared_lib_test -object onnxruntime_global_thread_pools_test -object onnxruntime_api_tests_without_env $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops --format=html -output-dir=$(Build.ArtifactStagingDirectory)
         workingDirectory: $(Build.BinariesDirectory)
+
+  - task: AzureCLI@2
+    displayName: 'Azure CLI'
+    inputs:
+      azureSubscription: AIInfraBuildOnnxRuntimeOSS
+      scriptType: bash
+      scriptPath: $(Build.SourcesDirectory)/tools/ci_build/github/linux/upload_code_coverage_data.sh
+      workingDirectory: '$(Build.BinariesDirectory)'
 
     - task: PublishPipelineArtifact@1
       displayName: 'Publish Pipeline Artifact'
@@ -51,20 +59,6 @@ jobs:
       buildType: 'current'
       artifactName: 'html'
       targetPath: '$(Build.BinariesDirectory)'
-
-  - task: AzureCLI@2
-    displayName: 'Azure CLI '
-    inputs:
-      azureSubscription: AIInfraBuildOnnxRuntimeOSS
-      scriptType: batch
-      scriptLocation: inlineScript
-      inlineScript: 'python3 $(Build.SourcesDirectory)/tools/ci_build/github/windows/post_code_coverage_to_dashboard.py --commit_hash=$(OnnxRuntimeGitCommitHash) --report_file="$(Build.BinariesDirectory)/report.json" --report_url="https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(Build.BuildId)" --branch $(Build.SourceBranchName) --arch $(Agent.OSArchitecture) --os $(Agent.OS) --build_config default'
-      workingDirectory: '$(Build.BinariesDirectory)'
-
-  - task: CmdLine@2
-    inputs:
-      script: |
-        rm -f $(Build.BinariesDirectory)/report.json
       
   - task: AzureFileCopy@4
     displayName: 'AzureBlob File Copy'
@@ -73,4 +67,4 @@ jobs:
       azureSubscription: AIInfraBuildOnnxRuntimeOSS
       Destination: AzureBlob
       storage: onnxruntime
-      ContainerName: '$web'
+
