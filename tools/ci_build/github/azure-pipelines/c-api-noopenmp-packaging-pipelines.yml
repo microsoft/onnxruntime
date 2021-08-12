@@ -94,7 +94,7 @@ jobs:
     buildJava: true
     java_artifact_id: onnxruntime_gpu
 
-- template: templates/win-ci.yml
+- template: templates/win-trt-ci.yml
   parameters:
     ort_build_pool_name: 'onnxruntime-gpu-tensorrt8-winbuild'
     DoCompliance: ${{ parameters.DoCompliance }}
