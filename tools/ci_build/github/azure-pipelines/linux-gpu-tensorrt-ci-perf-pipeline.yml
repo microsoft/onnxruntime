@@ -96,7 +96,7 @@ jobs:
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
     
     - ${{ if eq(parameters.RunPython38, true) }}:
-        - script: 'docker build --build-arg IMAGE=ort-$(branch) -t ort-$(branch) -f $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.python38'
+        - script: 'docker build --build-arg IMAGE=ort-$(branch) -t ort-$(branch) -f $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.python38 .'
           displayName: 'Build latest ORT Images'
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
           
