@@ -36,6 +36,7 @@
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/graph_transformer_utils.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/platform/Barrier.h"
 #include "core/platform/ort_mutex.h"
 #include "core/platform/threadpool.h"
@@ -953,6 +954,14 @@ Status InferenceSession::PartitionOrtFormatModel(onnxruntime::Graph& graph,
 
   return Status::OK();
 }
+
+Status InferenceSession::TransformGraphForOrtFormatModel(Graph& graph) {
+  auto qdq_transformer = QDQSelectorActionTransformer();
+  bool modified = false;
+  ORT_RETURN_IF_ERROR(qdq_transformer.Apply(graph, modified, *session_logger_));
+  return Status::OK();
+}
+
 #endif
 
 #if defined(ENABLE_ORT_FORMAT_LOAD)

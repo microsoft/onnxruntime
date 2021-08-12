@@ -203,7 +203,7 @@ class Node {
     return ConstPointerContainer<std::vector<NodeArg*>>(definitions_.output_defs);
   }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   /**
   Helper to iterate through the container returned by #MutableInputDefs() or #MutableOutputDefs() and call the provided function.
   @param node_args Collection of NodeArgs returned by #MutableInputDefs() or #MutableOutputDefs()
@@ -241,7 +241,7 @@ class Node {
   std::vector<NodeArg*>& MutableOutputDefs() noexcept {
     return definitions_.output_defs;
   }
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   /** Struct to provide sorting between EdgeEnd instances based on NodeIndex first, and NodeArg::Name second. */
   struct EdgeEndCompare {
@@ -607,9 +607,6 @@ class Graph {
   /** Gets the Graph description. */
   void SetDescription(const std::string& description);
 
-  /** Add an initializer tensor to the Graph. */
-  void AddInitializedTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto);
-
   /** Replaces the initializer tensor with the same name as the given initializer tensor.
   The replacement initializer tensor must have the same type and shape as the existing initializer tensor.
 
@@ -618,6 +615,11 @@ class Graph {
   */
   common::Status ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_initializer);
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  /** Add an initializer tensor to the Graph. */
+  void AddInitializedTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto);
+#endif
 
   /** Remove the initializer tensor with the provided name from the Graph. */
   void RemoveInitializedTensor(const std::string& tensor_name);

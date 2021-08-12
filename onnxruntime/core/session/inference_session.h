@@ -601,6 +601,8 @@ class InferenceSession {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   Status PartitionOrtFormatModel(onnxruntime::Graph& graph, const ExecutionProviders& providers,
                                  KernelRegistryManager& kernel_registry_manager, SessionState& session_state) const;
+
+  Status TransformGraphForOrtFormatModel(onnxruntime::Graph& graph);
 #endif
 
   SessionOptions session_options_;

@@ -2607,6 +2607,17 @@ Status Graph::Resolve(const ResolveOptions& options) {
   return Status::OK();
 }
 
+void Graph::SetName(const std::string& name) {
+  graph_proto_->set_name(name);
+}
+
+void Graph::SetDescription(const std::string& description) {
+  graph_proto_->set_doc_string(description);
+}
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 void Graph::AddInitializedTensor(const TensorProto& tensor) {
   auto existing = name_to_initial_tensor_.find(tensor.name());
   if (existing != name_to_initial_tensor_.cend()) {
@@ -2629,16 +2640,7 @@ void Graph::AddInitializedTensor(const TensorProto& tensor) {
     ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor.name(), &t));
   }
 }
-
-void Graph::SetName(const std::string& name) {
-  graph_proto_->set_name(name);
-}
-
-void Graph::SetDescription(const std::string& description) {
-  graph_proto_->set_doc_string(description);
-}
-
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 const std::string& Graph::Name() const noexcept {
   return graph_proto_->name();
