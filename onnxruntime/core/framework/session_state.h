@@ -355,7 +355,8 @@ class SessionState {
                                   _In_opt_ const Node* parent_node,
                                   const SessionOptions& session_options,
                                   bool remove_initializers,
-                                  std::unordered_map<std::string, size_t>& constant_initializers_use_count);
+                                  std::unordered_map<std::string, size_t>& constant_initializers_use_count,
+                                  const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map = {});
 
 #ifdef ENABLE_TRAINING
   Status GeneratePatternGroupCache(
