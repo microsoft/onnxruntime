@@ -1126,15 +1126,6 @@ ORT_STATUS_PTR PopulateTensorWithData(Tensor& tensor, bool is_string, _In_ const
   return nullptr;
 }
 
-// Return status instead of throwing if unsupported type specified
-struct UnsupportedReturnFailStatus {
-  void operator()(int32_t dt_type, OrtStatusPtr& status) const {
-    std::string msg("Unsupported tensor element type in the input: ");
-    msg.append(std::to_string(dt_type));
-    status = OrtApis::CreateStatus(ORT_FAIL, msg.c_str());
-  }
-};
-
 ORT_STATUS_PTR CreateTensorAndPopulate(MLDataType element_type, const int64_t* shape, size_t shape_len,
                                        const void* data, size_t num_elements, _Inout_ OrtAllocator* allocator, OrtValue& result) {
   ORT_API_RETURN_IF_ERROR(CreateTensorImpl(element_type, shape, shape_len, allocator, result));
