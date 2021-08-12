@@ -258,8 +258,8 @@ jobs:
   pool: 'Win-CPU-2021'
   variables:
     breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
-  #dependsOn:
-  Windows_Packaging_tensorrt
+  dependsOn:
+    - Windows_Packaging_tensorrt
   #- Windows_Packaging_gpu
   #- Linux_C_API_Packaging_GPU_x64
   condition: succeeded()
