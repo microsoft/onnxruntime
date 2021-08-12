@@ -54,6 +54,7 @@ option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_FEATURIZERS "Build ML Featurizers support" OFF)
 option(onnxruntime_DEV_MODE "Enable developer warnings and treat most of them as error." OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" OFF)
+option(onnxruntime_DISABLE_UNIT_TESTS "Disable ONNXRuntime unit tests" OFF)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
 option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to provide eigen_SOURCE_PATH if turn this on." OFF)
@@ -227,6 +228,10 @@ if (NOT (UNIX AND onnxruntime_ENABLE_PYTHON AND onnxruntime_ENABLE_TRAINING AND 
     message(WARNING "onnxruntime_ENABLE_TRAINING_TORCH_INTEROP is turned OFF due to incompatible build combinations.")
   endif()
   set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OFF)
+endif()
+
+if(onnxruntime_DISABLE_UNIT_TESTS)
+    set(onnxruntime_BUILD_UNIT_TESTS OFF)
 endif()
 
 set(onnxruntime_REQUIRE_PYTHON_EMBED_LIB OFF)
