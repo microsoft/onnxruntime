@@ -6,6 +6,7 @@
 #include "dnnl_batchnorm.h"
 #include "dnnl_binary.h"
 #include "dnnl_conv.h"
+#include "dnnl_gemm.h"
 #include "dnnl_lrn.h"
 #include "dnnl_matmul.h"
 #include "dnnl_matmul_integer.h"
@@ -205,6 +206,8 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlBatchNorm().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Conv") {
       DnnlConv().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Gemm") {
+      DnnlGemm().CreatePrimitive(*this, node);
     } else if (node.OpType() == "LRN") {
       DnnlLrn().CreatePrimitive(*this, node);
     } else if (node.OpType() == "MatMul") {
