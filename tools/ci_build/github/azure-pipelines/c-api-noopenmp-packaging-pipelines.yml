@@ -94,18 +94,18 @@ jobs:
     #buildJava: true
     #java_artifact_id: onnxruntime_gpu
 
-#- template: templates/win-trt-ci.yml
-  #parameters:
-    #ort_build_pool_name: 'onnxruntime-gpu-tensorrt8-winbuild'
-    #DoCompliance: ${{ parameters.DoCompliance }}
-    #DoEsrp: ${{ parameters.DoEsrp }}
-    #job_name_suffix: tensorrt 
-    #EnvSetupScript: setup_env_gpu.bat
-    #buildArch: x64
-    #msbuildPlatform: x64
-    #packageName: tensorrt-x64
-    #buildparameter: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.0.1.6.Windows10.x86_64.cuda-11.3.cudnn8.2" --cuda_version=11.4 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.4" --cudnn_home="C:\local\cudnn-11.4-windows-x64-v8.2.2.26\cuda" --enable_onnx_tests --enable_wcos --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;52;60;61;70;75;80"
-    #runTests: ${{ parameters.RunOnnxRuntimeTests }}
+- template: templates/win-trt-ci.yml
+  parameters:
+    ort_build_pool_name: 'onnxruntime-gpu-tensorrt8-winbuild'
+    DoCompliance: ${{ parameters.DoCompliance }}
+    DoEsrp: ${{ parameters.DoEsrp }}
+    job_name_suffix: tensorrt 
+    EnvSetupScript: setup_env_gpu.bat
+    buildArch: x64
+    msbuildPlatform: x64
+    packageName: tensorrt-x64
+    buildparameter: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.0.1.6.Windows10.x86_64.cuda-11.3.cudnn8.2" --cuda_version=11.4 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.4" --cudnn_home="C:\local\cudnn-11.4-windows-x64-v8.2.2.26\cuda" --enable_onnx_tests --enable_wcos --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;52;60;61;70;75;80"
+    runTests: ${{ parameters.RunOnnxRuntimeTests }}
 
 #- template: templates/android-java-api-aar.yml
   #parameters:
@@ -271,11 +271,11 @@ jobs:
       #artifactName: 'onnxruntime-win-gpu-x64'
       #targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
-  #- task: DownloadPipelineArtifact@2
-    #displayName: 'Download Pipeline Artifact - NuGet'
-    #inputs:
-      #artifactName: 'onnxruntime-win-tensorrt-x64'
-      #targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Pipeline Artifact - NuGet'
+    inputs:
+      artifactName: 'onnxruntime-win-tensorrt-x64'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
   #- task: DownloadPipelineArtifact@2
     #displayName: 'Download Pipeline Artifact - NuGet'
@@ -300,16 +300,16 @@ jobs:
       artifactName: 'onnxruntime-win-gpu-x64'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
-  - task: DownloadPipelineArtifact@2
-    displayName: 'Download Pipeline Artifact - NuGet'
-    inputs:
-      source: 'specific'
-      project: 'Lotus'
-      pipeline: '940'
-      runVersion: 'specific'
-      runId: '168614'
-      artifactName: 'onnxruntime-win-tensorrt-x64'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+  #- task: DownloadPipelineArtifact@2
+    #displayName: 'Download Pipeline Artifact - NuGet'
+    #inputs:
+      #source: 'specific'
+      #project: 'Lotus'
+      #pipeline: '940'
+      #runVersion: 'specific'
+      #runId: '168614'
+      #artifactName: 'onnxruntime-win-tensorrt-x64'
+      #targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - NuGet'
