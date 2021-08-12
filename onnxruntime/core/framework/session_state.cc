@@ -1256,13 +1256,13 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       SessionState& subgraph_session_state = *entry->second;
 
       // recurse
-      std::unordered_map<OrtValueName, OrtMemoryInfo> outer_scope_node_arg_to_location_map;
+      std::unordered_map<OrtValueName, OrtMemoryInfo> local_outer_scope_node_arg_to_location_map;
       ORT_RETURN_IF_ERROR(OuterScopeNodeArgLocationAccumulator(*p_seq_exec_plan_, GetOrtValueNameIdxMap(),
                                                                node,
-                                                               outer_scope_node_arg_to_location_map));
+                                                               local_outer_scope_node_arg_to_location_map));
       ORT_RETURN_IF_ERROR(subgraph_session_state.FinalizeSessionStateImpl(
           graph_location, kernel_registry_manager, &node, subgraph_session_options, remove_initializers,
-          constant_initializers_use_count, outer_scope_node_arg_to_location_map));
+          constant_initializers_use_count, local_outer_scope_node_arg_to_location_map));
 
       // setup all the info for handling the feeds and fetches used in subgraph execution
       auto* p_op_kernel = GetMutableKernel(node.Index());

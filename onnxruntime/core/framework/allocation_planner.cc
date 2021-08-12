@@ -536,6 +536,7 @@ class PlannerImpl {
           if (!is_implicit_input) {
             OrtMemType mem_type = p_kernel_def->InputMemoryType(arg_idx);
             plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, mem_type)->Info());
+            node_arg_has_explicit_consumer.insert(index);
           } else {  // implicit input
             // Only process an implicit input:
             // 1) Within a subgraph
