@@ -674,6 +674,8 @@ struct OpKernelContext final {
   const T* Input(int index) const;
   int InputCount() const { return g_host->OpKernelContext__InputCount(this); }
 
+  //const std::string& GetMyNodeName() const {return g_host->Node__Name(this);}
+
   MLDataType InputType(int index) const { return g_host->OpKernelContext__InputType(this, index); }
 
   template <typename T>
