@@ -1191,8 +1191,8 @@ class Graph {
         const std::unordered_map<std::string, int>& domain_to_version,
         Version ir_version,
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
-        const logging::Logger& logger,
-        const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions);
+        const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions,
+        const logging::Logger& logger);
 
   // internal use by the Graph class only
   Graph(const Model& owning_model,
@@ -1202,8 +1202,8 @@ class Graph {
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
         Graph* parent_graph,
         const Node* parent_node,
-        const logging::Logger& logger,
-        const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions);
+        const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions,
+        const logging::Logger& logger);
 
   void InitializeStateFromModelFileGraphProto();
 

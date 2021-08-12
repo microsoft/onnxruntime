@@ -963,15 +963,15 @@ Graph::Graph(const Model& owning_model,
              const std::unordered_map<std::string, int>& domain_to_version,
              Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
-             const logging::Logger& logger,
-             const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions)
-    : Graph(owning_model, graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, logger, model_functions) {}
+             const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions,
+             const logging::Logger& logger)
+    : Graph(owning_model, graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, model_functions, logger) {}
 
 Graph::Graph(const Model& owning_model,
              GraphProto* graph_proto, const std::unordered_map<std::string, int>& domain_to_version, Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry, Graph* parent_graph, const Node* parent_node,
-             const logging::Logger& logger,
-             const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions)
+             const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions,
+             const logging::Logger& logger)
     : owning_model_(owning_model),
       graph_proto_(graph_proto),
       schema_registry_(schema_registry),
@@ -1126,8 +1126,8 @@ Graph::Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::Graph
             &subgraph_proto,
             parent_graph.DomainToVersionMap(), parent_graph.IrVersion(), parent_graph.schema_registry_,
             &parent_graph,
-            &parent_node, parent_graph.logger_, 
-            {}) {
+            &parent_node, {},
+            parent_graph.logger_) {
 }
 
 void Graph::InitializeStateFromModelFileGraphProto() {
@@ -2369,7 +2369,9 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         }
       }
 
-      InitFunctionBodyForNode(node);
+      if (!node.op_ || (node.op_ && (node.op_->HasFunction() || node.op_->HasContextDependentFunction()))) {
+        InitFunctionBodyForNode(node);
+      }
 
       if (!node.op_) {
         return Status(ONNXRUNTIME, FAIL, "Fatal error: " + node.OpType() + " is not a registered function/op");
@@ -2452,12 +2454,16 @@ void Graph::InitFunctionBodyForNode(Node& node) {
       onnx_function_proto = *(node.op_->GetFunction());
     }
   } else {
-    auto iter = model_local_functions_.find(node.OpType());
-    if (iter == model_local_functions_.end()) {
+    auto proto_entry = std::find_if(model_local_functions_.begin(), model_local_functions_.end(),
+                                    [&node](std::pair<const std::string, const ONNX_NAMESPACE::FunctionProto*> entry) {
+                                      return entry.second->name() == node.OpType() && entry.second->domain() == node.Domain();
+    });
+
+    if (proto_entry == model_local_functions_.end()) {
       return;
     }
     // This node has a model local function proto.
-    onnx_function_proto = *(iter->second);
+    onnx_function_proto = *(proto_entry->second);
   }
 
   ORT_TRY {

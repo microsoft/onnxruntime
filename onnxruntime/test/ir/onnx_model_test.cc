@@ -11,6 +11,8 @@
 #include "test/providers/provider_test_utils.h"  //For ASSERT_STATUS_OK
 #include "test/test_environment.h"
 #include "gtest/gtest.h"
+#include "onnx/defs/function.h"
+#include "onnx/defs/parser.h"
 
 using namespace onnxruntime;
 using namespace ONNX_NAMESPACE;
@@ -185,6 +187,156 @@ TEST_F(ONNXModelsTest, TestModelsWithAnOpContainingAFunctionBody) {
   ASSERT_STATUS_OK(Model::Load(ORT_TSTR("testdata/model_containing_op_with_function_body.onnx"), model, nullptr,
                                *logger_));
   ASSERT_STATUS_OK(model->MainGraph().Resolve());
+}
+
+TEST(FunctionVerification, VerifyModelLocalFunctions) {
+  const char* code = R"ONNX(
+<
+  ir_version: 8,
+  opset_import: [ "" : 13, "custom_domain" : 1],
+  producer_name: "FunctionProtoTest",
+  producer_version: "1.0",
+  model_version: 1,
+  doc_string: "A test model for model local functions."
+>
+agraph (float[N] x) => (uint8[N] w)
+{
+    y = custom_domain.foo(x)
+    w = Identity(y)
+}
+)ONNX";
+
+  ModelProto model_proto;
+  ONNX_NAMESPACE::OnnxParser parser(code);
+  auto status = parser.Parse(model_proto);
+  EXPECT_TRUE(status.IsOK());
+  EXPECT_TRUE(parser.EndOfInput());
+
+  auto func_body_nodes = FunctionBodyHelper::BuildNodes(
+      {// nodes: {outputs, op, inputs, attributes}
+       FunctionBodyHelper::Const<float>("Q_Min", 0.f),
+       FunctionBodyHelper::Const<float>("Q_Max", 255.f),
+       {{"X_Min"}, "ReduceMin", {"x"}, {MakeAttribute("keepdims", int64_t(0))}},
+       {{"X_Max"}, "ReduceMax", {"x"}, {MakeAttribute("keepdims", int64_t(0))}},
+       {{"X_Range"}, "Sub", {"X_Max", "X_Min"}},
+       {{"Scale"}, "Div", {"X_Range", "Q_Max"}},
+       {{"ZeroPoint_FP"}, "Sub", {"Q_Min", "Scale"}},
+       {{"Zeropoint"}, "Cast", {"ZeroPoint_FP"}, {MakeAttribute("to", int64_t(2))}},
+       {{"y"}, "QuantizeLinear", {"x", "Scale", "Zeropoint"}}});
+
+  auto* function_proto = model_proto.mutable_functions()->Add();
+  for (const auto& node : func_body_nodes) {
+    auto new_node = function_proto->add_node();
+    new_node->CopyFrom(node);
+  }
+
+  function_proto->set_name("foo");
+  function_proto->set_domain("custom_domain");
+  function_proto->set_doc_string("Test function proto");
+  function_proto->add_input("x");
+  function_proto->add_output("y");
+
+  std::unordered_map<std::string, int> opset_imports({{"", 13}});
+  for (auto& opset_import : opset_imports) {
+    auto* func_opset_import = function_proto->mutable_opset_import()->Add();
+    func_opset_import->set_domain(opset_import.first);
+    func_opset_import->set_version(opset_import.second);
+  }
+
+  std::shared_ptr<Model> model;
+  std::shared_ptr<onnxruntime::OnnxRuntimeOpSchemaRegistry> registry = std::make_shared<OnnxRuntimeOpSchemaRegistry>();
+  std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>> regs = {registry};
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, &regs, *(DefaultLoggingManager().CreateLogger("GraphTest"))));
+}
+
+TEST(FunctionVerification, VerifyNestedModelLocalFunctions) {
+  const char* code = R"ONNX(
+<
+  ir_version: 8,
+  opset_import: [ "" : 13, "custom_domain" : 1],
+  producer_name: "FunctionProtoTest",
+  producer_version: "1.0",
+  model_version: 1,
+  doc_string: "A test model for model local functions."
+>
+agraph (float[N] x) => (uint8[N] w)
+{
+    y = custom_domain.foo(x)
+    w = Identity(y)
+}
+)ONNX";
+
+  ModelProto model_proto;
+  ONNX_NAMESPACE::OnnxParser parser(code);
+  auto status = parser.Parse(model_proto);
+  EXPECT_TRUE(status.IsOK());
+  EXPECT_TRUE(parser.EndOfInput());
+
+  // Build first function proto
+  auto* function_proto = model_proto.mutable_functions()->Add();
+  auto func_body_nodes = FunctionBodyHelper::BuildNodes(
+      {// nodes: {outputs, op, inputs, attributes, domain}
+       FunctionBodyHelper::Const<float>("Q_Min", 0.f),
+       FunctionBodyHelper::Const<float>("Q_Max", 255.f),
+       {{"X_Min"}, "ReduceMin", {"x"}, {MakeAttribute("keepdims", int64_t(0))}},
+       {{"X_Max"}, "ReduceMax", {"x"}, {MakeAttribute("keepdims", int64_t(0))}},
+       {{"X_Range"}, "Sub", {"X_Max", "X_Min"}},
+       {{"Scale"}, "Div", {"X_Range", "Q_Max"}},
+       {{"ZeroPoint_FP"}, "Sub", {"Q_Min", "Scale"}},
+       {{"Zeropoint"}, "Cast", {"ZeroPoint_FP"}, {MakeAttribute("to", int64_t(2))}},
+       {{"y"}, "QuantizeLinear", {"x", "Scale", "Zeropoint"}}});
+
+  for (const auto& node : func_body_nodes) {
+    auto new_node = function_proto->add_node();
+    new_node->CopyFrom(node);
+  }
+
+  function_proto->set_name("bar");
+  function_proto->set_domain("custom_domain");
+  function_proto->set_doc_string("Test function proto");
+  function_proto->add_input("x");
+  function_proto->add_output("y");
+
+  std::unordered_map<std::string, int> opset_imports({{"", 13}});
+  for (auto& opset_import : opset_imports) {
+    auto* func_opset_import = function_proto->mutable_opset_import()->Add();
+    func_opset_import->set_domain(opset_import.first);
+    func_opset_import->set_version(opset_import.second);
+  }
+
+  // Build second function proto
+  function_proto = model_proto.mutable_functions()->Add();
+  func_body_nodes = FunctionBodyHelper::BuildNodes(
+      {// nodes: {outputs, op, inputs, attributes, domain}
+       {{"b"}, "bar", {"a"}, {}, "custom_domain"},
+       {{"c"}, "Identity", {"b"}}});
+
+  for (const auto& node : func_body_nodes) {
+    auto new_node = function_proto->add_node();
+    new_node->CopyFrom(node);
+  }
+
+  function_proto->set_name("foo");
+  function_proto->set_domain("custom_domain");
+  function_proto->set_doc_string("Test function proto");
+  function_proto->add_input("a");
+  function_proto->add_output("c");
+
+  std::unordered_map<std::string, int> func2_opset_imports({{"", 13}, {"custom_domain", 1}});
+  for (auto& opset_import : func2_opset_imports) {
+    auto* func_opset_import = function_proto->mutable_opset_import()->Add();
+    func_opset_import->set_domain(opset_import.first);
+    func_opset_import->set_version(opset_import.second);
+  }
+
+  auto* value_info = model_proto.mutable_graph()->add_value_info();
+  value_info->mutable_type()->mutable_tensor_type()->set_elem_type(2);
+  value_info->set_name("y");
+
+  std::shared_ptr<Model> model;
+  std::shared_ptr<onnxruntime::OnnxRuntimeOpSchemaRegistry> registry = std::make_shared<OnnxRuntimeOpSchemaRegistry>();
+  std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>> regs = {registry};
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, &regs, *(DefaultLoggingManager().CreateLogger("GraphTest"))));
 }
 
 }  // namespace test
