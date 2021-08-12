@@ -71,6 +71,7 @@ class SequentialPlanner {
       const KernelCreateInfoMap& kernel_create_info_map,
       const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
       const std::unordered_map<std::string, std::reference_wrapper<const ExecutionProviders>>& subgraphs_execution_providers,
+      const std::unordered_map<std::string, OrtMemoryInfo>& implicit_inputs_to_location_map,
       const OrtValueNameIdxMap& ort_value_name_idx_map,
       const ISequentialPlannerContext& context,
       std::unique_ptr<SequentialExecutionPlan>& plan);

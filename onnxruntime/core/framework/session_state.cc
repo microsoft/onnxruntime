@@ -1059,6 +1059,10 @@ static void ComputeConstantInitializerUseCount(const Graph& graph, std::unordere
   }
 }
 
+void OuterScopeLocationAccumulator(const SequentialExecutionPlan& seq_execution_plan) {
+  const auto& allocation_plan = seq_execution_plan.allocation_plan;
+}
+
 Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                                           KernelRegistryManager& kernel_registry_manager,
                                           const SessionOptions& session_options,
@@ -1160,12 +1164,41 @@ static void AccumulateAllNestedSubgraphsKernelCreateInfoMaps(
   }
 }
 
+static OrtValueIndex Index(const OrtValueNameIdxMap& ort_value_name_idx_map,
+                    const OrtValueName& name) {
+  OrtValueIndex result;
+  auto status = ort_value_name_idx_map.GetIdx(name, result);
+  ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
+  return result;
+}
+
+static Status OuterScopeLocationAccumulator(const SequentialExecutionPlan& plan,
+                                            const OrtValueNameIdxMap& ort_value_name_to_idx_map,
+                                            const Node& node,
+                                            /*out*/ std::unordered_map<OrtValueName, OrtMemoryInfo>& implicit_inputs_to_location_map) {
+  auto process_implicit_input = [&plan, &ort_value_name_to_idx_map, &implicit_inputs_to_location_map](const NodeArg& input, size_t arg_idx) {
+    const auto& name = input.Name();
+    ORT_TRY {
+      implicit_inputs_to_location_map.insert({name, plan.GetLocation(Index(ort_value_name_to_idx_map, name))});
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
+      });
+    }
+    return Status::OK();
+  };
+
+  return Node::ForEachWithIndex(node.ImplicitInputDefs(), process_implicit_input);
+}
+
 Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                                               KernelRegistryManager& kernel_registry_manager,
                                               _In_opt_ const Node* parent_node,
                                               const SessionOptions& session_options,
                                               bool remove_initializers,
-                                              std::unordered_map<std::string, size_t>& constant_initializers_use_count) {
+                                              std::unordered_map<std::string, size_t>& constant_initializers_use_count,
+                                              const std::unordered_map<OrtValueName, OrtMemoryInfo>& implicit_inputs_to_location_map) {
   CreateGraphInfo();
 
   // ignore any outer scope args we don't know about. this can happen if a node contains multiple subgraphs.
@@ -1192,6 +1225,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                                     execution_providers_, kernel_create_info_map_,
                                                     subgraphs_kernel_create_info_maps,
                                                     subgraphs_execution_providers,
+                                                    implicit_inputs_to_location_map,
                                                     ort_value_name_idx_map_, context, p_seq_exec_plan_));
   //Record the allocation plan
 
@@ -1283,8 +1317,12 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       SessionState& subgraph_session_state = *entry->second;
 
       // recurse
+      std::unordered_map<OrtValueName, OrtMemoryInfo> implicit_inputs_to_location_map;
+      ORT_RETURN_IF_ERROR(OuterScopeLocationAccumulator(*p_seq_exec_plan_, GetOrtValueNameIdxMap(),
+                                                        node, implicit_inputs_to_location_map));
       ORT_RETURN_IF_ERROR(subgraph_session_state.FinalizeSessionStateImpl(
-          graph_location, kernel_registry_manager, &node, subgraph_session_options, remove_initializers, constant_initializers_use_count));
+          graph_location, kernel_registry_manager, &node, subgraph_session_options,
+          remove_initializers, constant_initializers_use_count));
 
       // setup all the info for handling the feeds and fetches used in subgraph execution
       auto* p_op_kernel = GetMutableKernel(node.Index());

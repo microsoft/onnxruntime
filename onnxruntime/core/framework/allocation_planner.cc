@@ -123,6 +123,7 @@ class PlannerImpl {
               const KernelCreateInfoMap& kernel_create_info_map,
               const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
               const std::unordered_map<std::string, std::reference_wrapper<const ExecutionProviders>>& subgraphs_execution_providers,
+              const std::unordered_map<std::string, OrtMemoryInfo>& implicit_inputs_to_location_map,
               const OrtValueNameIdxMap& ort_value_name_idx_map,
               const ISequentialPlannerContext& context, SequentialExecutionPlan& plan)
       : context_(context),
@@ -134,6 +135,7 @@ class PlannerImpl {
         kernel_create_info_map_(kernel_create_info_map),
         subgraphs_kernel_create_info_maps_(subgraphs_kernel_create_info_maps),
         subgraphs_execution_providers_(subgraphs_execution_providers),
+        implicit_inputs_to_location_map_(implicit_inputs_to_location_map),
         ort_value_name_idx_map_(ort_value_name_idx_map) {}
 
   Status CreatePlan();
@@ -151,6 +153,8 @@ class PlannerImpl {
   const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps_;
 
   const std::unordered_map<std::string, std::reference_wrapper<const ExecutionProviders>>& subgraphs_execution_providers_;
+
+  const std::unordered_map<std::string, OrtMemoryInfo>& implicit_inputs_to_location_map_;
 
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
 
@@ -464,94 +468,6 @@ class PlannerImpl {
     return ci.kernel_def->HasExternalOutputs();
   }
 
-  Status ImplicitInputLocationHelper(const GraphViewer& graph_viewer,
-                                     const std::string& implicit_input,
-                                     const std::string& subgraph_kernel_create_info_map_key_base,
-                                     size_t graph_depth,
-                                     size_t parent_node_index,
-                                     const std::string& subgraph_attr_name,
-                                     /*out*/ const OrtMemoryInfo*& memory_info) {
-    std::ostringstream ss;
-
-    // key = base + depth + current graph node index + attr name corresponding to the subgraph
-    ss << subgraph_kernel_create_info_map_key_base;
-    ss << graph_depth;
-    ss << parent_node_index;
-    ss << subgraph_attr_name;
-
-    const auto& local_subgraph_kernel_create_info_map_key = ss.str();
-
-    auto specific_subgraph_map_for_node = subgraphs_kernel_create_info_maps_.find(local_subgraph_kernel_create_info_map_key);
-    ORT_ENFORCE(specific_subgraph_map_for_node != subgraphs_kernel_create_info_maps_.end());
-
-    auto specific_subgraph_execution_providers = subgraphs_execution_providers_.find(local_subgraph_kernel_create_info_map_key);
-    ORT_ENFORCE(specific_subgraph_execution_providers != subgraphs_execution_providers_.end());
-
-    for (const auto& node : graph_viewer.Nodes()) {
-      const auto& input_node_args = node.InputDefs();
-      size_t num_node_inputs = input_node_args.size();
-
-      for (size_t node_input_index = 0; node_input_index < num_node_inputs; ++node_input_index) {
-        auto input_node_arg = input_node_args[node_input_index];
-
-        // Skip processing missing optional inputs
-        if (!input_node_arg->Exists()) {
-          continue;
-        }
-
-        ORT_TRY {
-          auto& def_name = input_node_arg->Name();
-
-          if (def_name == implicit_input) {
-            const auto& kernel_create_info = GetKernelCreateInfo(specific_subgraph_map_for_node->second, node.Index());
-            const auto* p_kernel_def = kernel_create_info.kernel_def.get();
-            ORT_ENFORCE(p_kernel_def, "Should not have entry in kernel create info with nullptr for kernel_def");
-
-            const auto* exec_provider = specific_subgraph_execution_providers->second.get().Get(node);
-            ORT_ENFORCE(exec_provider != nullptr,
-                        "Can not find the execution provider ", node.GetExecutionProviderType());
-
-            // Assign the found output
-            OrtMemType mem_type = p_kernel_def->InputMemoryType(node_input_index);
-            memory_info = &exec_provider->GetAllocator(0, mem_type)->Info();
-
-            return Status::OK();
-          }
-        }
-        ORT_CATCH(const std::exception& ex) {
-          ORT_HANDLE_EXCEPTION([&]() {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
-          });
-        }
-      }
-
-      // If the node has subgraphs (i.e.) control flow nodes,
-      // walk the nodes in those subgraphs as well to best determine
-      // the location for the OrtValue corresponding to the weights
-      // (i.e.) do a recursion
-      if (node.ContainsSubgraph()) {
-        for (auto& name_to_subgraph : node.GetAttributeNameToSubgraphMap()) {
-          GraphViewer subgraph_viewer(*name_to_subgraph.second);
-
-          ORT_RETURN_IF_ERROR(ImplicitInputLocationHelper(subgraph_viewer,
-                                                          implicit_input,
-                                                          local_subgraph_kernel_create_info_map_key,
-                                                          graph_depth + 1,
-                                                          node.Index(),
-                                                          name_to_subgraph.first,
-                                                          memory_info));
-
-          // We have found the location - no need to traverse more subgraphs
-          if (memory_info != nullptr) {
-            return Status::OK();
-          }
-        }
-      }
-    }
-
-    return Status::OK();
-  }
-
   Status ComputeUseCounts() {
     // Note: for every ml-value, its definition must appear before all its uses in a topological sort of a valid model
     std::unordered_set<std::string> graph_inputs;
@@ -579,6 +495,8 @@ class PlannerImpl {
       UseCount(initializer_name)++;
     }
 
+    std::unordered_set<OrtValueIndex> ort_value_index_has_explicit_consumer;
+
     for (SequentialExecutionPlan::NodeExecutionPlan& step : plan_.execution_plan) {
       auto pnode = graph_viewer_.GetNode(step.node_index);
       if (pnode == nullptr) {
@@ -603,19 +521,20 @@ class PlannerImpl {
 
       // increment UseCount and add location information if applicable for the provided input def
       auto process_input = [&graph_inputs, &exec_provider, &p_kernel_def, &is_implicit_input, &pnode,
-                            this](const NodeArg& input, size_t arg_idx) {
+                            &ort_value_index_has_explicit_consumer, this](const NodeArg& input, size_t arg_idx) {
         const auto& name = input.Name();
         UseCount(name)++;
 
         // If it's a graph input or outer scope node arg, set its plan.
         // NOTE: Copy nodes should have already been added if a graph input is fed as input
         // to nodes assigned to different providers.
-        if (graph_inputs.find(name) != graph_inputs.cend() ||
-            std::find_if(outer_scope_node_args_.cbegin(), outer_scope_node_args_.cend(),
-                         [&name](const NodeArg* value) {
-                           return value && value->Name() == name;
-                         }) != outer_scope_node_args_.cend()) {
-          if (name == "1389") {
+        bool is_graph_input = graph_inputs.find(name) != graph_inputs.cend();
+        bool is_outer_scope_arg = std::find_if(outer_scope_node_args_.cbegin(), outer_scope_node_args_.cend(),
+                                               [&name](const NodeArg* value) {
+                                                 return value && value->Name() == name;
+                                               }) != outer_scope_node_args_.cend();
+        if (is_graph_input || is_outer_scope_arg) {
+          if (name == "data_0") {
             float f = 1.2f;
             ORT_IGNORE_RETURN_VALUE(f);
           }
@@ -625,38 +544,12 @@ class PlannerImpl {
           if (!is_implicit_input) {
             OrtMemType mem_type = p_kernel_def->InputMemoryType(arg_idx);
             plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, mem_type)->Info());
+            ort_value_index_has_explicit_consumer.insert(index);
           } else {
-            if (std::find_if(outer_scope_node_args_.cbegin(), outer_scope_node_args_.cend(),
-                             [&name](const NodeArg* value) {
-                               return value && value->Name() == name;
-                             }) != outer_scope_node_args_.cend()) {
-              // For implicit inputs, recurse into the subgraph(s) held by this node
-              // and find its actual usage node and update the location.
-              ORT_ENFORCE(pnode->ContainsSubgraph());
-
-              const OrtMemoryInfo* memory_info = nullptr;
-
-              for (auto& name_to_subgraph : pnode->GetAttributeNameToSubgraphMap()) {
-                GraphViewer subgraph_viewer(*name_to_subgraph.second);
-
-                ORT_RETURN_IF_ERROR(ImplicitInputLocationHelper(subgraph_viewer,
-                                                                name,
-                                                                "",
-                                                                0,
-                                                                pnode->Index(),
-                                                                name_to_subgraph.first,
-                                                                memory_info));
-
-                // This subgraph uses the implicit input - no need to iterate though more subgraphs
-                if (memory_info != nullptr) {
-                  break;
-                }
-              }
-
-              // If none of the nested subgraphs use this implicit input,
-              // it point to some internal error.
-              ORT_ENFORCE(memory_info != nullptr);
-              plan_.SetLocation(static_cast<size_t>(index), *memory_info);
+            if (is_outer_scope_arg && ort_value_index_has_explicit_consumer.count(index) == 0) {
+              auto iter = implicit_inputs_to_location_map_.find(name);
+              ORT_ENFORCE(iter != implicit_inputs_to_location_map_.end());
+              plan_.SetLocation(static_cast<size_t>(index), iter->second);
             }
           }
         }
@@ -674,10 +567,6 @@ class PlannerImpl {
       for (size_t i = 0; i < num_outputs; ++i) {
         auto* node_output = outputs[i];
         if (!node_output->Exists()) continue;
-        if (node_output->Name() == "1389") {
-          float f = 1.2f;
-          ORT_IGNORE_RETURN_VALUE(f);
-        }
         OrtValueIndex index = Index(node_output->Name());
         ProcessDef(index, node_output);
         // Ensures external outputs will not be reused.
@@ -775,6 +664,10 @@ class PlannerImpl {
             }
           }
 
+          if (def_name == "data_0") {
+            float f = 1.2f;
+            ORT_IGNORE_RETURN_VALUE(f);
+          }
           auto wt_index = Index(def_name);
           locations[wt_index].emplace_back(GetLocationForNodeInput(node_input_index, node, kernel_create_info_map, execution_providers));
         }
@@ -1287,6 +1180,7 @@ Status SequentialPlanner::CreatePlan(
     const KernelCreateInfoMap& kernel_create_info_map,
     const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
     const std::unordered_map<std::string, std::reference_wrapper<const ExecutionProviders>>& subgraphs_execution_providers,
+    const std::unordered_map<std::string, OrtMemoryInfo>& implicit_inputs_to_location_map,
     const OrtValueNameIdxMap& ort_value_name_idx_map,
     const ISequentialPlannerContext& context,
     std::unique_ptr<SequentialExecutionPlan>& plan) {
@@ -1294,8 +1188,10 @@ Status SequentialPlanner::CreatePlan(
   plan = std::make_unique<SequentialExecutionPlan>();
 
   PlannerImpl planner(parent_node, graph_viewer, outer_scope_node_args, providers,
-                      kernel_create_info_map, subgraphs_kernel_create_info_maps,
+                      kernel_create_info_map,
+                      subgraphs_kernel_create_info_maps,
                       subgraphs_execution_providers,
+                      implicit_inputs_to_location_map,
                       ort_value_name_idx_map, context, *plan);
 
   return planner.CreatePlan();

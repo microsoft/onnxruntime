@@ -270,7 +270,7 @@ class PlannerTest : public ::testing::Test {
     SequentialPlannerTestContext test_context(&shape_map_);
 
     status = SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph_), outer_scope_node_args, execution_providers_,
-                                           kernel_create_info_map, {}, {}, state_->GetOrtValueNameIdxMap(), test_context,
+                                           kernel_create_info_map, {}, {}, {}, state_->GetOrtValueNameIdxMap(), test_context,
                                            plan_);
 
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
