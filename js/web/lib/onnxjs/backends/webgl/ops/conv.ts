@@ -1,487 +1,184 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Attribute} from '../../../attribute';
-import {Logger} from '../../../instrument';
-import {Conv} from '../../../ops/conv';
+import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../../../attribute-with-cache-key';
+import {InferenceHandler} from '../../../backend';
+import {Graph} from '../../../graph';
+import {OperatorImplementation, OperatorInitialization} from '../../../operators';
 import {Tensor} from '../../../tensor';
-import {assert, PoolConvUtil} from '../../../util';
-import {getGlsl} from '../glsl-source';
+import {PoolConvUtil} from '../../../util';
 import {WebGLInferenceHandler} from '../inference-handler';
-import {Artifact, ProgramInfo, RunData, TextureLayout, WebGLOperator} from '../types';
-import {WebGLContext} from '../webgl-context';
 
-import {WebGLConvPacked} from './conv-pack';
-import {getActicationSnippet} from './fuse-utils';
-import {WebGLUnpackedMatMul} from './matmul';
-import {reshape} from './reshape';
+import {createUnpackedGroupedConvProgramInfoLoader} from './conv-grouped';
+import {conv2DPacked} from './conv-pack';
+import {createDotProductProgramInfoLoader} from './dot-product';
+import {InternalActivationAttributes, parseInternalActivationAttributes} from './fuse-utils';
+import {createIm2ColProgramInfoLoader} from './im2col';
+import {createMatmulProgramInfoLoader} from './matmul';
 
-export class WebGLConv extends Conv {
-  unpackedGroupedConvImpl: WebGLUnpackedGroupedConv;
-  unpackedConvImpl: WebGLUnpackedConv;
-  packedConvImpl: WebGLConvPacked;
-  unpackedPointwiseConvImpl: WebGLUnpackedPointwiseConv;
 
-  constructor() {
-    super();
-    this.unpackedGroupedConvImpl = new WebGLUnpackedGroupedConv();
-    this.unpackedConvImpl = new WebGLUnpackedConv();
-    this.packedConvImpl = new WebGLConvPacked();
-    this.unpackedPointwiseConvImpl = new WebGLUnpackedPointwiseConv();
-  }
+export const calculateOutputShape =
+    (inputShape: readonly number[], kernelShape: readonly number[], dilations: readonly number[],
+     adjustPads: readonly number[], strides: readonly number[]): number[] => {
+      const batchSize = inputShape[0];
+      const inputSpatialShape = inputShape.slice(2);
+      const spatialRank = inputSpatialShape.length;
+      const outChannels = kernelShape[0];
+      const kernelSpatialShape = kernelShape.slice(2);
+      const dilatedKernelShape = kernelSpatialShape.map((v, i) => v + (v - 1) * (dilations[i] - 1));
+      const inputSpatialShapeWithPad = inputSpatialShape.map((v, i) => v + adjustPads[i] + adjustPads[i + spatialRank]);
+      const outputSpatialShape =
+          inputSpatialShapeWithPad.map((v, i) => Math.floor((v - dilatedKernelShape[i] + strides[i]) / strides[i]));
+      const outputShape = [batchSize, outChannels].concat(...outputSpatialShape);
+      return outputShape;
+    };
 
-  initialize(attributes: Attribute): void {
-    super.initialize(attributes);
-    this.unpackedGroupedConvImpl.initialize(attributes);
-    this.unpackedConvImpl.initialize(attributes);
-    this.packedConvImpl.initialize(attributes);
-    this.unpackedPointwiseConvImpl.initialize(attributes);
-  }
-
-  run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
-    const packMode = inferenceHandler.session.pack;
-    const isPointwise = this.kernelShape[0] === 1 && this.kernelShape[1] === 1;
-    if (this.group > 1) {
-      return this.unpackedGroupedConvImpl.run(inferenceHandler, inputs);
-    } else if (isPointwise && packMode) {
-      return this.unpackedPointwiseConvImpl.run(inferenceHandler, inputs);
-    } else if (packMode && inputs[0].dims.length === 4 && inputs[0].dims[0] === 1) {
-      return this.packedConvImpl.run(inferenceHandler, inputs);
-    } else {
-      return this.unpackedConvImpl.run(inferenceHandler, inputs);
-    }
-  }
-
-  static calcOutputShape(
-      inputShape: number[], kernelShape: number[], dilations: number[], adjustPads: number[],
-      strides: number[]): number[] {
-    const batchSize = inputShape[0];
-    const inputSpatialShape = inputShape.slice(2);
-    const spatialRank = inputSpatialShape.length;
-    const outChannels = kernelShape[0];
-    const kernelSpatialShape = kernelShape.slice(2);
-    const dilatedKernelShape = kernelSpatialShape.map((v, i) => v + (v - 1) * (dilations[i] - 1));
-    const inputSpatialShapeWithPad = inputSpatialShape.map((v, i) => v + adjustPads[i] + adjustPads[i + spatialRank]);
-    const outputSpatialShape =
-        inputSpatialShapeWithPad.map((v, i) => Math.floor((v - dilatedKernelShape[i] + strides[i]) / strides[i]));
-    const outputShape = [batchSize, outChannels].concat(...outputSpatialShape);
-    return outputShape;
-  }
+export interface ConvAttributes extends InternalActivationAttributes, AttributeWithCacheKey {
+  readonly autoPad: string;
+  readonly dilations: readonly number[];
+  readonly group: number;
+  readonly kernelShape: readonly number[];
+  readonly pads: readonly number[];
+  readonly strides: readonly number[];
 }
 
-export class WebGLUnpackedPointwiseConv extends Conv {
-  private programInfo: ProgramInfo[];
-  private artifacts: Artifact[];
-  private matmul = new WebGLUnpackedMatMul();
-  private outputShape: number[];
-
-  run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
-    const programManager = inferenceHandler.session.programManager;
-    const xShape = inputs[0].dims.slice();
-    const wShape = inputs[1].dims.slice();
-    PoolConvUtil.adjustPadsBasedOnAutoPad(
-        inputs[0].dims, this.strides, this.dilations, this.kernelShape, this.pads, this.autoPad);
-    Logger.verbose(
-        'Conv',
-        `autpPad:${this.autoPad}, dilations:${this.dilations}, group:${this.group}, kernelShape:${
-            this.kernelShape}, pads:${this.pads}, strides:${this.strides}`);
-
-    if (!this.outputShape) {
-      this.outputShape = WebGLConv.calcOutputShape(xShape, wShape, this.dilations, this.pads, this.strides);
-    }
-
-    if (this.activation) {
-      const attributes = new Attribute(undefined);
-      attributes.set('__internal_activation', 'string', (this.activation));
-      if (this.activation === 'Clip') {
-        attributes.set('__clip_max', 'float', this.clipMax);
-        attributes.set('__clip_min', 'float', this.clipMin);
-      }
-      this.matmul.initialize(attributes);
-    }
-    const reshapedX = reshape(inferenceHandler, inputs[0], [xShape[1], xShape[2] * xShape[3]]);
-    const reshapedW = reshape(inferenceHandler, inputs[1], [wShape[0], wShape[1]]);
-    const hasBias = (inputs.length === 3);
-
-    if (!this.artifacts) {
-      this.artifacts = [];
-      this.programInfo = [];
-      this.programInfo[0] = hasBias ?
-          this.matmul.createProgramInfo(inferenceHandler, [reshapedW, reshapedX, inputs[2]]) :
-          this.matmul.createProgramInfo(inferenceHandler, [reshapedW, reshapedX]);
-      this.artifacts[0] = programManager.build(this.programInfo[0]);
-    }
-
-    assert(this.artifacts.length === 1, () => 'expect matmul artifacts was created');
-    const runDataMatmul = this.matmul.createRunData(
-        inferenceHandler, this.programInfo[0], hasBias ? [reshapedW, reshapedX, inputs[2]] : [reshapedW, reshapedX]);
-    programManager.run(this.artifacts[0], runDataMatmul);
-    const matmulOutput = runDataMatmul.outputTextureData.tensor;
-
-    const res = [reshape(inferenceHandler, matmulOutput, this.outputShape)];
-    // eslint-disable-next-line no-console
-    // console.log(
-    //     'res[0]=', res[0].data[0], ' res[1]=', res[0].data[1], ' res[1]=', res[0].data[2], ' res[3]=',
-    //     res[0].data[3]);
-    return res;
-  }
-}
-
-export class WebGLUnpackedGroupedConv extends Conv implements WebGLOperator {
-  run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
-    return inferenceHandler.run(this, inputs);
-  }
-
-  createProgramInfo(handler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo {
-    const hasBias = inputs.length > 2;
-    const processBias = hasBias ? 'value += getBias(output_channel);' : '';
-    const xShape = inputs[0].dims.slice();
-    const wShape = inputs[1].dims.slice();
-    const outputChannelsPerGroup = wShape[0] / this.group;
-    // if kernelShape is not specified in the attributes of this op, infer it from the weight tensor dims
-    if (this.kernelShape.length === 0) {
-      for (let i = 2; i < wShape.length; ++i) {
-        this.kernelShape.push(wShape[i]);
-      }
-    }
-    PoolConvUtil.adjustPadsBasedOnAutoPad(
-        inputs[0].dims, this.strides, this.dilations, this.kernelShape, this.pads, this.autoPad);
-    Logger.verbose(
-        'Conv',
-        `autpPad:${this.autoPad}, dilations:${this.dilations}, group:${this.group}, kernelShape:${
-            this.kernelShape}, pads:${this.pads}, strides:${this.strides}`);
-    const outputShape = WebGLConv.calcOutputShape(xShape, wShape, this.dilations, this.pads, this.strides);
-    const glsl = getGlsl(handler.session.backend.glContext.version);
-    const additionalVars = this.activation === 'Clip' ? `
-    const float min = float(${this.clipMin});
-    const float max = float(${this.clipMax});` :
-                                                        '';
-    const {activationFunction, applyActivation} = getActicationSnippet(this.activation);
-
-    const shaderSource = `
-    const ivec2 strides = ivec2(${this.strides[0]}, ${this.strides[1]});
-    const ivec2 pads = ivec2(${this.pads[0]}, ${this.pads[1]});
-    ${additionalVars}
-    ${activationFunction}
-    void main() {
-      ivec4 coords = getOutputCoords();
-      int batch = coords.x;
-      int output_channel = coords.y;
-      ivec2 xRCCorner = coords.zw * strides - pads;
-      int group_id = output_channel / ${outputChannelsPerGroup};
-
-      float value = 0.0;
-      for (int wInChannel = 0; wInChannel < ${wShape[1]}; wInChannel++) {
-        int input_channel = group_id * ${wShape[1]} + wInChannel;
-        for (int wHeight = 0; wHeight < ${wShape[2]}; wHeight++) {
-          int xHeight = xRCCorner.x + wHeight * ${this.dilations[0]};
-
-          if (xHeight < 0 || xHeight >= ${xShape[2]}) {
-            continue;
-          }
-
-          for (int wWidth = 0; wWidth < ${wShape[3]}; wWidth++) {
-            int xWidth = xRCCorner.y + wWidth * ${this.dilations[1]};
-            if (xWidth < 0 || xWidth >= ${xShape[3]}) {
-              continue;
-            }
-
-            float xVal = getX(batch, input_channel, xWidth, xHeight);
-            float wVal = getW(output_channel, wInChannel, wWidth, wHeight);
-            value += xVal*wVal;
-          }
-        }
-      }
-      ${processBias}
-      ${applyActivation}
-      ${glsl.output} = vec4(value, .0, .0, .0);
-    }
-`;
-    return {
-      inputLayouts: inputs.map(t => handler.getOrCreateTextureLayout(t)),
-      outputLayout: handler.createTextureLayoutFromShape(outputShape),
-      samplers: hasBias ? ['X', 'W', 'Bias'] : ['X', 'W'],
-      shaderSource,
-      hasMain: true,
+export const conv: OperatorImplementation<ConvAttributes> =
+    (inferenceHandler: InferenceHandler, inputs: Tensor[], attributes: ConvAttributes): Tensor[] => {
+      validateInputs(inputs, attributes);  // currently will fail if not conv2D
+      return conv2d(inferenceHandler, inputs, attributes);
     };
-  }
 
-  createRunData(handler: WebGLInferenceHandler, programInfo: ProgramInfo, inputs: Tensor[]): RunData {
-    const inputTDs = inputs.map((t, i) => handler.getOrCreateTextureData(t, programInfo.inputLayouts[i]));
-    return {
-      inputTextureDatas: inputTDs,
-      outputTextureData: handler.createTextureDataFromLayout(programInfo.outputLayout, inputTDs[0].tensor.type),
-      uniformData: {}
-    };
-  }
-}
-
-export class WebGLUnpackedConv extends Conv {
-  run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
-    const programManager = inferenceHandler.session.programManager;
-    if (!this.artifacts) {
-      this.artifacts = [];
-      const programInfos = this.createProgramInfoArray(inferenceHandler, inputs);
-      for (let i = 0; i < programInfos.length; ++i) {
-        const artifact = inferenceHandler.session.programManager.build(programInfos[i]);
-        this.artifacts.push(artifact);
-      }
-    }
-    const runDataArray = this.createRunDataArray(inferenceHandler, this.artifacts.map(a => a.programInfo), inputs);
-    inferenceHandler.checkAndUpdateTextureForm(this.artifacts[0], runDataArray[0]);
-    programManager.run(this.artifacts[0], runDataArray[0]);
-    programManager.run(this.artifacts[1], runDataArray[1]);
-    return [runDataArray[1].outputTextureData.tensor];
-  }
-  createProgramInfoArray(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo[] {
-    const xshape = inputs[0].dims.slice();
-    const kshape = inputs[1].dims.slice();
-    // if kernelShape is not specified in the attributes of this op, infer it from the weight tensor dims
-    if (this.kernelShape.length === 0) {
-      const wDims = inputs[1].dims;
-      for (let i = 2; i < wDims.length; ++i) {
-        this.kernelShape.push(wDims[i]);
-      }
-    }
-    PoolConvUtil.adjustPadsBasedOnAutoPad(
-        inputs[0].dims, this.strides, this.dilations, this.kernelShape, this.pads, this.autoPad);
-    Logger.verbose(
-        'Conv',
-        `autpPad:${this.autoPad}, dilations:${this.dilations}, group:${this.group}, kernelShape:${
-            this.kernelShape}, pads:${this.pads}, strides:${this.strides}`);
-    const outputShape = WebGLConv.calcOutputShape(xshape, kshape, this.dilations, this.pads, this.strides);
-    const im2colProgramInfo = this.createIm2ColProgramInfo(inferenceHandler, inputs, outputShape);
-    const dotProductProgramInfo =
-        this.createDotProductProgramInfo(inferenceHandler, im2colProgramInfo.outputLayout, inputs, outputShape);
-    return [im2colProgramInfo, dotProductProgramInfo];
-  }
-  createRunDataArray(inferenceHandler: WebGLInferenceHandler, programInfos: ProgramInfo[], inputs: Tensor[]):
-      RunData[] {
-    const k = inputs[1];
-    const b = inputs.length >= 3 ? inputs[2] : undefined;
-    let kTD = inferenceHandler.getTextureData(k.dataId);
-    if (!kTD) {
-      Logger.verbose('Conv', 'Did not find the adjustedKernel texture in the cache. Creating rew.');
-      const newKernelData =
-          WebGLUnpackedConv.prepKernelForDotProduct(k.dims.slice(), this.group, 4, k.floatData as Float32Array);
-      // hack: should use graph transformer to rewrite initializer K
-      kTD = inferenceHandler.createTextureDataFromLayoutBindTensor(
-          programInfos[1].inputLayouts[1], k.type, newKernelData, k);
-    }
-    const runtDataIm2Col = {
-      inputTextureDatas: [inferenceHandler.getOrCreateTextureData(inputs[0])],
-      outputTextureData: inferenceHandler.createTextureDataFromLayout(programInfos[0].outputLayout, inputs[0].type),
-      uniformData: {}
-    };
-    const inputTDs = [runtDataIm2Col.outputTextureData, kTD];
-    if (b) {
-      inputTDs.push(inferenceHandler.getOrCreateTextureData(b));
-    }
-    const outputTD = inferenceHandler.createTextureDataFromLayout(programInfos[1].outputLayout, inputs[0].type);
-    const runDataDotProduct = {
-      inputTextureDatas: inputTDs,
-      outputTextureData: outputTD,
-      uniformData: {},
-      draw: (glContext: WebGLContext, artifact: Artifact) => {
-        const gl = glContext.gl;
-        const sharedDim = artifact.programInfo.params!.sharedDim as number;
-        const sharedDimReadSize = artifact.programInfo.params!.sharedDimReadSize as number;
-        const sharedDimOffsetLocation = artifact.uniformLocations.find(l => l.name === 'sharedDimOffset')!.location;
-        let blend = false;
-        for (let k = 0; k < sharedDim; k += sharedDimReadSize) {
-          Logger.verbose('MatMul2D', `k = ${k}, sharedDim: ${sharedDim}, readSize = ${sharedDimReadSize}`);
-          if (k === sharedDimReadSize) {
-            blend = true;
-            gl.enable(gl.BLEND);
-            glContext.checkError();
-            gl.blendEquation(gl.FUNC_ADD);
-            glContext.checkError();
-            gl.blendFunc(gl.ONE, gl.ONE);
-            glContext.checkError();
-          }
-
-          gl.uniform1i(sharedDimOffsetLocation, k);
-          glContext.checkError();
-          glContext.draw();
-        }
-
-        if (blend) {
-          gl.disable(gl.BLEND);
-          glContext.checkError();
-        }
+const conv2d: OperatorImplementation<ConvAttributes> =
+    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: ConvAttributes): Tensor[] => {
+      const adjustedAttributes = getAdjustedConvAttributes(attributes, inputs);
+      const packMode = inferenceHandler.session.pack;
+      const isPointwise = adjustedAttributes.kernelShape[0] === 1 && adjustedAttributes.kernelShape[1] === 1;
+      if (adjustedAttributes.group > 1) {
+        const result = inferenceHandler.run(
+            createUnpackedGroupedConvProgramInfoLoader(inferenceHandler, inputs, adjustedAttributes), inputs);
+        return [result];
+      } else if (isPointwise && packMode) {
+        return [conv2DUnpackedPointwise(inferenceHandler, inputs, adjustedAttributes)];
+      } else if (packMode && inputs[0].dims.length === 4 && inputs[0].dims[0] === 1 && !isPointwise) {
+        return [conv2DPacked(inferenceHandler, inputs, adjustedAttributes)];
+      } else {
+        return [conv2DUnpacked(inferenceHandler, inputs, adjustedAttributes)];
       }
     };
-    return [runtDataIm2Col, runDataDotProduct];
-  }
-  createIm2ColProgramInfo(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], outputShape: number[]):
-      ProgramInfo {
-    const xshape = inputs[0].dims.slice();
-    const kshape = inputs[1].dims.slice();
 
-    const rank = outputShape.length;
-    const im2colDims = WebGLUnpackedConv.calcIm2ColDims(xshape, kshape, outputShape, 4);
-    const outputLayout = inferenceHandler.createTextureLayoutFromShape(
-        im2colDims, 4, [im2colDims[0], im2colDims[1], im2colDims[2], im2colDims[3] * 4], {breakAxis: 3});
+const conv2DUnpackedPointwise =
+    (inferenceHandler: WebGLInferenceHandler, inputs: readonly Tensor[], attributes: ConvAttributes): Tensor => {
+      const xshape = inputs[0].dims;
+      const kshape = inputs[1].dims;
+      const outputShape =
+          calculateOutputShape(xshape, kshape, attributes.dilations, attributes.pads, attributes.strides);
+      const reshapedX = inferenceHandler.reshapeUnpacked(inputs[0], [xshape[1], xshape[2] * xshape[3]]);
+      const reshapedK = inferenceHandler.reshapeUnpacked(inputs[1], [kshape[0], kshape[1]]);
 
-    const shaderSource = `
-      const int XC = ${xshape[1]};
-      const int XH = ${xshape[2]};
-      const int XW = ${xshape[3]};
-      const int KH = ${this.kernelShape[0]};
-      const int KW = ${this.kernelShape[1]};
-      const int dilationH = ${this.dilations[0]};
-      const int dilationW = ${this.dilations[1]};
-      const int strideH = ${this.strides[0]};
-      const int strideW = ${this.strides[1]};
-      const int padH = ${this.pads[0]};
-      const int padW = ${this.pads[1]};
-      const int KHKW = KH*KW;
-      const int XCKHKW = XC * KHKW;
-      const int outputChannels = 4;
-      vec4 process(int indices[${rank}]) {
-        int b  = indices[0]; // batch size
-        int oh = indices[1] * strideH - padH; //output height
-        int ow = indices[2] * strideW - padW; //output width
-        int p = indices[3] * outputChannels; //patch
-        vec4 value = vec4(0.0);
-        for(int i=0; i < outputChannels; ++i) {
-          if(p < XCKHKW) {
-            int patchC = p / KHKW;
-            int patchH = (p - patchC*KHKW) / KW;
-            int patchW = (p - patchC*KHKW) - patchH * KW;
-            int xh2 = oh + patchH * dilationH;
-            int xw2 = ow + patchW * dilationW;
-            int x[${xshape.length}];
-            x[0] = b;
-            x[1] = patchC;
-            x[2] = xh2;
-            x[3] = xw2;
-            if(xh2 >= 0 &&
-                xh2 < XH &&
-                xw2 >= 0 &&
-                xw2 < XW) {
-              value[i] = _X(x);
-            }
-          }
-          ++p;
-        }
-        return value;
-      }
-      `;
-    return {
-      name: 'Im2Col',
-      inputLayouts: [inferenceHandler.createTextureLayoutFromShape(xshape)],
-      outputLayout,
-      samplers: ['X'],
-      shaderSource,
+      const matmulInputs = inputs.length > 2 ? [reshapedK, reshapedX, inputs[2]] : [reshapedK, reshapedX];
+      const matmulOutput = inferenceHandler.run(createMatmulProgramInfoLoader(matmulInputs, attributes), matmulInputs);
+      return inferenceHandler.reshapeUnpacked(matmulOutput, outputShape);
     };
-  }
-  createDotProductProgramInfo(
-      inferenceHandler: WebGLInferenceHandler, im2colLayout: TextureLayout, inputs: Tensor[],
-      outputShape: number[]): ProgramInfo {
-    const xshape = inputs[0].dims.slice();
-    const kshape = inputs[1].dims.slice();
-    const adjustedKernelShape = [kshape[0], Math.ceil((xshape[1] * kshape[2] * kshape[3]) / 4)];
-    const kLayout = inferenceHandler.createTextureLayoutFromShape(
-        adjustedKernelShape, 4, [adjustedKernelShape[0], adjustedKernelShape[1] * 4], {breakAxis: 1});
 
-    let bLayout: TextureLayout|undefined;
-    const rank = outputShape.length;
+const conv2DUnpacked =
+    (inferenceHandler: WebGLInferenceHandler, inputs: readonly Tensor[], attributes: ConvAttributes): Tensor => {
+      const xshape = inputs[0].dims;
+      const kshape = inputs[1].dims;
+      const outputShape =
+          calculateOutputShape(xshape, kshape, attributes.dilations, attributes.pads, attributes.strides);
+      const xIm2Col = inferenceHandler.run(
+          createIm2ColProgramInfoLoader(inferenceHandler, inputs[0], inputs[1], outputShape, attributes), [inputs[0]]);
 
-    const inputLayouts = [im2colLayout, kLayout];
-    if (inputs.length === 3) {
-      bLayout = inferenceHandler.createTextureLayoutFromShape(inputs[2].dims.slice());
-      inputLayouts.push(bLayout);
-    }
-    const outputLayout = inferenceHandler.createTextureLayoutFromShape(outputShape);
-    const initValue = (inputs.length < 3) ? '0.0' : '_B(b)';
-    const sharedDim = im2colLayout.shape[3];
-    const blendEnabled = inferenceHandler.session.backend.glContext.isBlendSupported && !this.activation;
-    const sharedDimReadSize = blendEnabled && inferenceHandler.session.backend.matmulMaxBatchSize ?
-        this.calcSharedDimReadSize(inferenceHandler.session.backend.matmulMaxBatchSize, sharedDim) :
-        sharedDim;
-    const samplers = ['Im2Col', 'K'];
-    if (inputs.length === 3) {
-      samplers.push('B');
-    }
-    const additionalVars = this.activation === 'Clip' ? `
-    const float min = float(${this.clipMin});
-    const float max = float(${this.clipMax});` :
-                                                        '';
-    const {activationFunction, applyActivation} = getActicationSnippet(this.activation);
-    const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
-    const shaderSource = `
-    ${additionalVars}
-    ${activationFunction}
-    float process(int indices[${rank}]) {
-      int b[1];
-      b[0] = indices[1];
-      int im2col[${im2colLayout.shape.length}];
-      im2col[0] = indices[0];
-      im2col[1] = indices[2];
-      im2col[2] = indices[3];
-      int im2colOffset = im2col[0] * ${im2colLayout.strides[0]} + im2col[1] * ${
-        im2colLayout.strides[1]} + im2col[2] * ${im2colLayout.strides[2]} + sharedDimOffset;
-      int kernelOffset = indices[1] * ${kLayout.strides[0]} + sharedDimOffset;
-      float value = sharedDimOffset == 0 ? ${initValue} : 0.0;
-      for (int i = 0; i < ${sharedDimReadSize}; ++i) {
-        vec2 im2colCoords = offsetToCoords(im2colOffset, ${im2colLayout.width}, ${im2colLayout.height});
-        vec2 kernelCoords = offsetToCoords(kernelOffset, ${kLayout.width}, ${kLayout.height});
-        value += dot(${glsl.texture2D}(Im2Col, im2colCoords), ${glsl.texture2D}(K, kernelCoords));
-        ++im2colOffset;
-        ++kernelOffset;
-      }
-      ${applyActivation}
-      return value;
-    }`;
-    return {
-      name: 'dotProduct',
-      inputLayouts: inputs.length === 3 ? [im2colLayout, kLayout, bLayout!] : [im2colLayout, kLayout],
-      outputLayout,
-      shaderSource,
-      samplers,
-      variables: [{name: 'sharedDimOffset', type: 'int'}],
-      params: {sharedDim, sharedDimReadSize}
+      const dotProductInputs = inputs.length === 3 ? [xIm2Col, inputs[1], inputs[2]] : [xIm2Col, inputs[1]];
+      const output = inferenceHandler.run(
+          createDotProductProgramInfoLoader(inferenceHandler, inputs, outputShape, attributes), dotProductInputs);
+      return output;
     };
-  }
-  static prepKernelForDotProduct(shape: number[], group: number, channels: number, kernel: Float32Array): Float32Array {
-    if (group === 1 && (channels === 1 || (shape[2] * shape[3]) % channels === 0)) {
-      return kernel;
+
+const getAdjustedConvAttributes = <T extends ConvAttributes>(attributes: T, inputs: Tensor[]): T => {
+  const kernelShape = attributes.kernelShape.slice();
+  // if kernelShape is not specified in the attributes of this op, infer it from the weight tensor dims
+  if (attributes.kernelShape.length === 0) {
+    for (let i = 2; i < inputs[1].dims.length; ++i) {
+      kernelShape.push(inputs[1].dims[i]);
     }
-    const numFeatureMaps = shape[0];
-    const oldRowSize = shape[1] * shape[2] * shape[3];
-    const newRowSize = Math.ceil(oldRowSize * group / channels) * channels;
-    const newSize = numFeatureMaps * newRowSize;
-    const buffer = new Float32Array(newSize);
-    for (let f = 0; f < numFeatureMaps; ++f) {
-      const oldOffset = f * oldRowSize;
-      const newOffset = f * newRowSize + f % group * oldRowSize;
-      buffer.set(kernel.subarray(oldOffset, oldOffset + oldRowSize), newOffset);
-    }
-    return buffer;
   }
-  static calcIm2ColDims(inputShape: number[], kernelShape: number[], outputShape: number[], channels = 1): number[] {
-    return [
-      outputShape[0], outputShape[2], outputShape[3],
-      Math.ceil(inputShape[1] * kernelShape[2] * kernelShape[3] / channels)
-    ];
+  const pads = attributes.pads.slice();
+  PoolConvUtil.adjustPadsBasedOnAutoPad(
+      inputs[0].dims, attributes.strides, attributes.dilations, kernelShape, pads, attributes.autoPad);
+
+  // always return a new object so does not modify the original attributes
+  const newAttributes: T = Object.assign({}, attributes);
+  Object.assign(newAttributes, {kernelShape, pads, cacheKey: attributes.cacheKey});
+  return newAttributes;
+};
+
+export const parseConvAttributes: OperatorInitialization<ConvAttributes> = (node: Graph.Node): ConvAttributes => {
+  const attributes = node.attributes;
+  const activationAttributes = parseInternalActivationAttributes(attributes);
+  // TODO : Make this generic enough to compute default attributes for multi-dimensional conv
+  const autoPad = attributes.getString('auto_pad', 'NOTSET');
+  const dilations = attributes.getInts('dilations', [1, 1]);
+  const group = attributes.getInt('group', 1);
+  const kernelShape = attributes.getInts('kernel_shape', []);
+  const pads = attributes.getInts('pads', [0, 0, 0, 0]);
+  const strides = attributes.getInts('strides', [1, 1]);
+
+  return createAttributeWithCacheKey({autoPad, dilations, group, kernelShape, pads, strides, ...activationAttributes});
+};
+
+const validateInputs = (inputs: Tensor[], attributes: ConvAttributes): void => {
+  // Refer to the below link for all input checks
+  // https://github.com/onnx/onnx/blob/master/docs/Operators.md#Conv
+  if (!inputs || (inputs.length !== 2 && inputs.length !== 3)) {
+    throw new Error('Conv requires 2 or 3 inputs');
   }
 
-  protected calcSharedDimReadSize(preferredBatchSize: number, sharedDim: number): number {
-    if (preferredBatchSize <= 0 || sharedDim < preferredBatchSize || sharedDim % preferredBatchSize !== 0) {
-      return sharedDim;
-    }
-    return preferredBatchSize;
+  // TODO : Need to add support for multi-dimensional conv
+  if (inputs[0].dims.length !== 4 || inputs[1].dims.length !== 4) {
+    throw new Error('currently only support 2-dimensional conv');
   }
-  protected calcBlockSize(outputLayout: TextureLayout): [number, number]|undefined {
-    const preferredRowCount = 64;
-    const preferredColCount = 64;
-    if (outputLayout.height < preferredRowCount) {
-      return undefined;
-    }
-    return [preferredColCount, preferredRowCount];
+
+  // FILTER_IN_CHANNEL should be equal to DATA_CHANNEL
+  const dataChannel = inputs[0].dims[1];
+  const filterInChannel = inputs[1].dims[1] * attributes.group;
+  if (dataChannel !== filterInChannel) {
+    throw new Error('FILTER_IN_CHANNEL should be equal to DATA_CHANNEL');
   }
-  protected artifacts: Artifact[];
-  protected readSize = 8;
-  protected blockSize = 64;
-}
+
+  // if bias is provided it should be 1D and the number of elements should be equal to the number of feature maps
+  if (inputs.length === 3 && (inputs[2].dims.length !== 1 || inputs[1].dims[0] !== inputs[2].dims[0])) {
+    throw new Error('invalid bias');
+  }
+
+  const spatialRank = inputs[0].dims.length - 2;
+  // wrong dilations dimension
+  if (attributes.dilations.length !== spatialRank) {
+    throw new Error(`dilations should be ${spatialRank}D`);
+  }
+
+  // Wrong strides dimension
+  if (attributes.strides.length !== spatialRank) {
+    throw new Error(`strides should be ${spatialRank}D`);
+  }
+
+  // Wrong pads dimension
+  if (attributes.pads.length !== spatialRank * 2) {
+    throw new Error(`pads should be ${spatialRank * 2}D`);
+  }
+
+  // if kernelShape is specified, it's data length must be 2 less than dims length of the weights tensor
+  // (the first 2 dims are batch_size and channels)
+  if (attributes.kernelShape.length !== 0 && attributes.kernelShape.length !== inputs[1].dims.length - 2) {
+    throw new Error('invalid kernel shape');
+  }
+
+  // TODO : Need to add support for float64
+  if (inputs[0].type !== 'float32' || inputs[1].type !== 'float32') {
+    throw new Error('Conv input(X,W) should be float tensor');
+  }
+
+  if (inputs.length === 3 && inputs[2].type !== 'float32') {
+    throw new Error('Conv input(bias) should be float tensor');
+  }
+};
