@@ -13,7 +13,7 @@ jobs:
       inputs:
         script: |
           set -e
-          sudo python3 -m pip install panda
+          sudo python3 -m pip install pandas
           ln -s /data/models .
           #Build onnxruntime and run the instrumented program(unitests)
           LLVM_PROFILE_FILE="%p.profraw" CFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CXXFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CC=clang CXX=clang++  python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir=$(Build.BinariesDirectory) --config Debug --parallel --skip_submodule_sync --build_shared_lib --enable_onnx_tests --cmake_extra_defines RUN_MODELTEST_IN_DEBUG_MODE=ON
