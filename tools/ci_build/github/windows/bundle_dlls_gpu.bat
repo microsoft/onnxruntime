@@ -1,6 +1,4 @@
 REM for available runtime identifiers, see https://github.com/dotnet/corefx/blob/release/3.1/pkg/Microsoft.NETCore.Platforms/runtime.json
- pushd $(Build.BinariesDirectory)\nuget-artifact
- dir
 powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/unzip.exe -OutFile unzip.exe"
 powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile zip.exe"
 set PATH=%CD%;%PATH%
@@ -54,5 +52,3 @@ FOR /R %%i IN (*.nupkg) do (
  zip -r ..\!gpu_zip! .
  popd
  move !gpu_zip! !gpu_nuget!
- popd
- copy $(Build.BinariesDirectory)\nuget-artifact\*.nupkg $(Build.ArtifactStagingDirectory)
