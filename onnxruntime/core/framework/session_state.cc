@@ -1102,10 +1102,14 @@ static OrtValueIndex Index(const OrtValueNameIdxMap& ort_value_name_idx_map,
                            const OrtValueName& name) {
   OrtValueIndex result;
   auto status = ort_value_name_idx_map.GetIdx(name, result);
-  ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
+  ORT_THROW_IF_ERROR(status);
   return result;
 }
 
+// The following method accumulates the locations of implicit inputs to a control flow node
+// at the current graph level. This information will be used in the allocation planner
+// while determining the location of such implicit inputs in that level of the subgraph.
+// This method will not be called for the main graph (there is no "outer scope" to the main graph).
 static Status OuterScopeNodeArgLocationAccumulator(const SequentialExecutionPlan& plan,
                                                    const OrtValueNameIdxMap& ort_value_name_to_idx_map,
                                                    const Node& parent_node,
@@ -1127,10 +1131,9 @@ static Status OuterScopeNodeArgLocationAccumulator(const SequentialExecutionPlan
 
   // For now we just pass along the location info of just the implicit inputs to the subgraph.
   // In future, we may want to extend this to node inputs as well that will be passed
-  // through as "explicit" inputs to the subgraph. To enable this, there is complexity
+  // through as "explicit" inputs to the subgraph. To enable this, there is logic to add
   // regarding mapping arg names at this level of the graph to their corresponding subgraph
-  // input name counterparts and also op specific logic to determine which of the inputs
-  // to this node form subgraph inputs and so on.
+  // input name counterparts.
   // We want to that to avoid copies for explicit graph inputs that are "passed through"
   // to a nested subgraph.
   // See similar comment in the allocation planner.

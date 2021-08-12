@@ -543,15 +543,15 @@ class PlannerImpl {
             // 2) If it is a non-subgraph input (i.e.) only an outer scope node arg fed through
             // to this level of the subgraph as an implicit input
             // 3) If there is no explicit consumer at this graph level
-            // If there is an explicit consumer, we want the location to reflect that
-            // and not where it is produced in the outer scope.
+            // If there is an explicit consumer, we want the location must be where it is consumed
+            // and not where it is located in the outer scope.
             // It is okay if we process a node consuming this arg as an implicit input
             // ahead of a node that is an explicit consumer, because we will just reset
             // this location in the 'if' branch above.
 
             // TODO: Can we extend this optimization to explicit subgraph inputs that are
             // "passed through" to a nested subgraph (i.e.) when there is no explicit
-            // consumer of a subgraph input at this level of the subgraph.
+            // consumer of a subgraph input (non-implicit input) at this level of the subgraph.
             if (is_subgraph && is_outer_scope_arg && node_arg_has_explicit_consumer.count(index) == 0) {
               auto iter = outer_scope_node_arg_to_location_map_.find(name);
               ORT_ENFORCE(iter != outer_scope_node_arg_to_location_map_.end());
