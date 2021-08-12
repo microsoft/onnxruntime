@@ -7,6 +7,7 @@
 #include "core/common/safeint.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/data_types.h"
+#include "core/framework/ml_value.h"
 #include "core/framework/utils.h"
 
 namespace onnxruntime {
@@ -42,6 +43,20 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::s
     : alloc_info_(deleter->Info()) {
   ORT_ENFORCE(p_type != nullptr);
   Init(p_type, shape, p_data, deleter, offset);
+}
+
+void Tensor::InitOrtValue(MLDataType elt_type, const TensorShape& shape,
+                          std::shared_ptr<IAllocator> allocator, OrtValue& ort_value) {
+  auto p_tensor = std::make_unique<Tensor>(elt_type, shape, std::move(allocator));
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+  ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+}
+
+void Tensor::InitOrtValue(MLDataType p_type, const TensorShape& shape, void* p_data,
+                          const OrtMemoryInfo& location, OrtValue& ort_value) {
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+  auto p_tensor = std::make_unique<Tensor>(p_type, shape, p_data, location);
+  ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
 }
 
 size_t Tensor::SizeInBytes() const {
