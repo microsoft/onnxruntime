@@ -201,8 +201,6 @@ training_ops_excluded_files = [
                     'nn/batch_norm_grad.h',
                     'nn/batch_norm_internal.cc',
                     'nn/batch_norm_internal.h',
-                    'nn/conv_grad_helper.cc',
-                    'nn/conv_grad_helper.h',
                     'nn/conv_grad.cc',
                     'nn/conv_grad.h',
                     'reduction/reduction_all.cc',
