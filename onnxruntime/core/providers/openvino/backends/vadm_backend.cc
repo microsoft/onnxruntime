@@ -133,9 +133,8 @@ void VADMBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* c
   auto infer_request = infer_requests_[infer_req_idx];
   auto graph_input_info = ie_cnn_network_->getInputsInfo();
 
-  size_t index = 0;
   for (auto input_info_iter = graph_input_info.begin();
-       input_info_iter != graph_input_info.end(); ++input_info_iter, ++index) {
+       input_info_iter != graph_input_info.end(); ++input_info_iter) {
     // Get OpenVINO's input buffer
     InferenceEngine::Blob::Ptr graph_input_blob;
     std::string input_name = input_info_iter->first;
@@ -147,7 +146,7 @@ void VADMBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* c
       ORT_THROW(log_tag + " Cannot access IE Blob for input: " + input_name);
     }
     auto precision = input_info_iter->second->getPrecision();
-    FillInputBlob(graph_input_blob, index, batch_slice_idx, input_name, ort, context, precision, subgraph_context_);
+    FillInputBlob(graph_input_blob, batch_slice_idx, input_name, ort, context, precision, subgraph_context_);
   }
 
   // Start Async inference

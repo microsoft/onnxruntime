@@ -340,7 +340,7 @@ void FillOutputHelper(Ort::CustomOpApi& ort, OrtValue* out_tensor, std::shared_p
   std::copy(res.begin(), res.end(), tensor_data);
 }
 
-void FillInputBlob(InferenceEngine::Blob::Ptr& inputBlob, size_t request_id, size_t batch_slice_idx,
+void FillInputBlob(InferenceEngine::Blob::Ptr& inputBlob, size_t batch_slice_idx,
                    std::string input_name, Ort::CustomOpApi& ort, OrtKernelContext* context,
                    InferenceEngine::Precision precision, const SubGraphContext& subgraph_context) {
   auto minput = InferenceEngine::as<InferenceEngine::MemoryBlob>(inputBlob);
@@ -349,7 +349,6 @@ void FillInputBlob(InferenceEngine::Blob::Ptr& inputBlob, size_t request_id, siz
   auto input_data = minputHolder.as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
   size_t input_data_size = inputBlob->byteSize();
 
-  ORT_UNUSED_PARAMETER(request_id);
   const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context.input_names.at(input_name));
   auto tensor_shape = ort.GetTensorTypeAndShape(tensor);
   auto elem_type = ort.GetTensorElementType(tensor_shape);

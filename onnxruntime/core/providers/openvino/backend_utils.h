@@ -68,7 +68,7 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_s
                 std::string output_name,
                 std::unordered_map<std::string, int> output_names);
 
-void FillInputBlob(InferenceEngine::Blob::Ptr& inputBlob, size_t request_id, size_t batch_slice_idx,
+void FillInputBlob(InferenceEngine::Blob::Ptr& inputBlob, size_t batch_slice_idx,
                    std::string input_name, Ort::CustomOpApi& ort, OrtKernelContext* context,
                    InferenceEngine::Precision precision, const SubGraphContext& subgraph_context);
 

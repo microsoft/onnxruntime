@@ -171,9 +171,8 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
 void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context, std::shared_ptr<InferenceEngine::InferRequest> infer_request) {
   auto graph_input_info = exe_network_.GetInputsInfo();
 
-  size_t index = 0;
   for (auto input_info_iter = graph_input_info.begin();
-       input_info_iter != graph_input_info.end(); ++input_info_iter, ++index) {
+       input_info_iter != graph_input_info.end(); ++input_info_iter) {
     // Get OpenVINO's input buffer
     InferenceEngine::Blob::Ptr graph_input_blob;
     std::string input_name = input_info_iter->first;
@@ -187,7 +186,7 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* 
     }
     auto precision = input_info_iter->second->getPrecision();
     size_t batch_slice = 0;
-    FillInputBlob(graph_input_blob, index, batch_slice, input_name, ort, context, precision, subgraph_context_);
+    FillInputBlob(graph_input_blob, batch_slice, input_name, ort, context, precision, subgraph_context_);
   }
   // Start Async inference
   try {
