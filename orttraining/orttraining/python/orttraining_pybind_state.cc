@@ -306,7 +306,7 @@ std::unordered_map<std::string, std::unordered_map<std::string, py::object>> Con
   return py_tensor_state;
 }
 
-void addObjectMethodsForTraining(py::module& m) {
+void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn) {
   py::class_<std::vector<OrtValue>>(m, "OrtValueVector")
       .def(py::init<>())
       .def("push_back", [](std::vector<OrtValue>* v, const OrtValue& ortvalue) {
@@ -435,7 +435,7 @@ void addObjectMethodsForTraining(py::module& m) {
 #endif
 #endif
       })
-      .def("load_model", [](PyTrainingSession* sess, const std::string& path, TrainingParameters& parameters, const std::vector<std::string>& provider_types, const ProviderOptionsVector& provider_options) {
+      .def("load_model", [ep_registration_fn](PyTrainingSession* sess, const std::string& path, TrainingParameters& parameters, const std::vector<std::string>& provider_types, const ProviderOptionsVector& provider_options) {
         OrtPybindThrowIfError(sess->GetSessionHandle()->Load(path));
 
 #if defined(USE_MPI)
@@ -445,11 +445,11 @@ void addObjectMethodsForTraining(py::module& m) {
 #endif
         const auto config_result = ConfigureSessionForTraining(static_cast<PipelineTrainingSession*>(sess->GetSessionHandle()), parameters);
 
-        InitializeSession(sess->GetSessionHandle(), provider_types, provider_options);
+        InitializeSession(sess->GetSessionHandle(), ep_registration_fn, provider_types, provider_options);
 
         return config_result;
       })
-      .def("read_bytes", [](PyTrainingSession* sess, const py::bytes& serialized_model, TrainingParameters& parameters, const std::vector<std::string>& provider_types, const ProviderOptionsVector& provider_options) {
+      .def("read_bytes", [ep_registration_fn](PyTrainingSession* sess, const py::bytes& serialized_model, TrainingParameters& parameters, const std::vector<std::string>& provider_types, const ProviderOptionsVector& provider_options) {
         std::istringstream buffer(serialized_model);
         OrtPybindThrowIfError(sess->GetSessionHandle()->Load(buffer));
 
@@ -460,7 +460,7 @@ void addObjectMethodsForTraining(py::module& m) {
 #endif
         const auto config_result = ConfigureSessionForTraining(static_cast<PipelineTrainingSession*>(sess->GetSessionHandle()), parameters);
 
-        InitializeSession(sess->GetSessionHandle(), provider_types, provider_options);
+        InitializeSession(sess->GetSessionHandle(), ep_registration_fn, provider_types, provider_options);
 
         return config_result;
       })

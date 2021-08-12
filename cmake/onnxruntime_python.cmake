@@ -23,6 +23,10 @@ file(GLOB onnxruntime_pybind_srcs CONFIGURE_DEPENDS
 if(NOT onnxruntime_PYBIND_EXPORT_OPSCHEMA)
   list(REMOVE_ITEM onnxruntime_pybind_srcs  ${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_schema.cc)
 endif()
+  
+if(onnxruntime_ENABLE_TRAINING)
+  list(REMOVE_ITEM onnxruntime_pybind_srcs  ${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_module.cc)
+endif()
 
 if (onnxruntime_ENABLE_EAGER_MODE)
   list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_PREBUILT_PYTORCH_PATH})

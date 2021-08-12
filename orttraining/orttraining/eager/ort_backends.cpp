@@ -20,7 +20,7 @@
 //use the environment from python module
 namespace onnxruntime{
 namespace python{
-  onnxruntime::Environment& GetEnv();
+  Environment& GetTrainingORTEnv();
 }
 }
 
@@ -32,7 +32,7 @@ using namespace onnxruntime;
 constexpr const char* kMSNPUExecutionProvider = "MSNPUExecutionProvider";
 
 ORTBackendsManager& GetORTBackendsManager() {
-  auto& env = onnxruntime::python::GetEnv();
+  auto& env = onnxruntime::python::GetTrainingORTEnv();
   static ORTBackendsManager instance {env.GetLoggingManager()->DefaultLogger()};
   return instance;
 }
