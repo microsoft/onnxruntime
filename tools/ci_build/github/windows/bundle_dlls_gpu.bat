@@ -2,8 +2,6 @@ REM Copyright (c) Microsoft Corporation. All rights reserved.
 REM Licensed under the MIT License.
 
 REM for available runtime identifiers, see https://github.com/dotnet/corefx/blob/release/3.1/pkg/Microsoft.NETCore.Platforms/runtime.json
-powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/unzip.exe -OutFile unzip.exe"
-powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile zip.exe"
 set PATH=%CD%;%PATH%
 SETLOCAL EnableDelayedExpansion
 set gpu_nuget=""

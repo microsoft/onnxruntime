@@ -53,9 +53,9 @@ dir test\Microsoft.ML.OnnxRuntime.EndToEndTests\packages\
 
 IF "%PACKAGENAME%"=="Microsoft.ML.OnnxRuntime.Gpu" (
   set TESTONGPU=ON
-  %dn% test -p:DefineConstants=USE_TENSORRT test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore --filter CanRunInferenceOnAModelWithTensorRT
-  %dn% test -p:DefineConstants=USE_TENSORRT test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore
-  %dn% test -p:DefineConstants="USE_CUDA:USE_TENSORRT" test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore
+  REM Use mutile Defineconstants, please see https://github.com/dotnet/sdk/issues/9562
+  %dn% test "/p:DefineConstants=USE_CUDA%3BUSE_TENSORRT" test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore
+  REM %dn% test -p:DefineConstants=USE_TENSORRT test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore --filter CanRunInferenceOnAModelWithTensorRT
 ) ELSE (
   %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore
 )
