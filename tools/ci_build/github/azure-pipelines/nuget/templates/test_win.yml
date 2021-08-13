@@ -46,7 +46,7 @@ jobs:
       arguments: 'amd64'
       modifyEnvironment: true
   
-  - task: DownloadPipelineArtifact@0
+  - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact'
     inputs:
       source: 'specific'
