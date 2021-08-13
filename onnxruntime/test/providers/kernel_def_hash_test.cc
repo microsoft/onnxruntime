@@ -63,9 +63,13 @@
 #pragma warning(disable : 28020)
 #elif __aarch64__
 #pragma GCC diagnostic push
-#if !defined(__has_warning) || __has_warning("-Wformat-truncation")
+#if defined(__has_warning)
+#if __has_warning("-Wformat-truncation")
 #pragma GCC diagnostic ignored "-Wformat-truncation"
-#endif
+#endif  // __has_warning("-Wformat-truncation")
+#else
+#pragma GCC diagnostic ignored "-Wformat-truncation"
+#endif  // defined(__has_warning)
 #endif
 #include "nlohmann/json.hpp"
 #ifdef _WIN32
