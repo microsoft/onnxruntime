@@ -498,7 +498,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
       Tensor* output = context_.Output(output_idx, data.Shape());
       // Safely use the IDataTransfer abstraction as we only allow using
       // Loop on CUDA if the copy stream is the same as the compute stream.
-      // So there is no explcit sync required between the compute and copy streams
+      // So there is no explicit sync required between the compute and copy streams
       // to avoid data races.
       session_state_.GetDataTransferMgr().CopyTensor(input.Get<Tensor>(), *output);
     } else if (input.IsTensorSequence()) {
@@ -524,7 +524,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
           Tensor tmp(it->DataType(), onnxruntime::TensorShape(it->Shape()), alloc);
           // Safely use the IDataTransfer abstraction as we only allow using
           // Loop on CUDA if the copy stream is the same as the compute stream.
-          // So there is no explcit sync required between the compute and copy streams
+          // So there is no explicit sync required between the compute and copy streams
           // to avoid data races.
           session_state_.GetDataTransferMgr().CopyTensor(*it, tmp);
           tensors.push_back(std::move(tmp));
