@@ -232,9 +232,9 @@ bool TensorExistsInSqlDb(const TensorMetadata& tensor_metadata) {
   SQL_OK(sqlite3_reset(stmt));
   SQL_OK(sqlite3_bind_text(stmt, 1, tensor_metadata.name.c_str(), -1, SQLITE_TRANSIENT));
   SQL_OK(sqlite3_bind_int(stmt, 2, tensor_metadata.step));
-  SqlStepWithRetry(sqlite3_step(stmt), SQLITE_ROW);
+  SqlStepWithRetry(stmt, SQLITE_ROW);
   bool exists = sqlite3_column_int(stmt, 0) > 0;
-  SqlStepWithRetry(sqlite3_step(stmt), SQLITE_DONE);
+  SqlStepWithRetry(stmt, SQLITE_DONE);
 
   return exists;
 }
@@ -269,7 +269,7 @@ void InsertTensorInSqlDb(const Tensor& tensor, const TensorMetadata& tensor_meta
   SQL_OK(sqlite3_bind_blob(stmt, 3, data, size, SQLITE_TRANSIENT));
   SQL_OK(sqlite3_bind_text(stmt, 4, tensor_metadata.device_type.c_str(), -1, SQLITE_TRANSIENT));
  
-  SqlStepWithRetry(sqlite3_step(stmt), SQLITE_DONE);
+  SqlStepWithRetry(stmt, SQLITE_DONE);
 }
 
 void UpdateTensorUsageInSqlDb(const TensorMetadata& tensor_metadata) {
@@ -298,7 +298,7 @@ void UpdateTensorUsageInSqlDb(const TensorMetadata& tensor_metadata) {
   SQL_OK(sqlite3_bind_text(stmt, 3, tensor_metadata.name.c_str(), -1, SQLITE_TRANSIENT));
   SQL_OK(sqlite3_bind_int(stmt, 4, tensor_metadata.step));
   
-  SqlStepWithRetry(sqlite3_step(stmt), SQLITE_DONE);
+  SqlStepWithRetry(stmt, SQLITE_DONE);
 }
 
 void DumpTensorToSqliteDb(const Tensor& tensor, const TensorMetadata& tensor_metadata) {
@@ -329,12 +329,12 @@ void InsertNodePlacementToSqliteDb(const NodeDumpContext& dump_context, const No
   sqlite3_stmt* stmt = stmt_uptr.get();
  
   SQL_OK(sqlite3_reset(stmt));
-  SQL_OK(sqlite3_bind_int(stmt, 1, dump_context.program_counter); 
+  SQL_OK(sqlite3_bind_int(stmt, 1, dump_context.program_counter)); 
   SQL_OK(sqlite3_bind_text(stmt, 2, node.Name().c_str(), -1, SQLITE_TRANSIENT));
   SQL_OK(sqlite3_bind_text(stmt, 3, node.OpType().c_str(), -1, SQLITE_TRANSIENT));
   SQL_OK(sqlite3_bind_text(stmt, 4, node.GetExecutionProviderType().c_str(), -1, SQLITE_TRANSIENT)); 
  
-  SqlStepWithRetry(sqlite3_step(stmt), SQLITE_DONE);
+  SqlStepWithRetry(stmt, SQLITE_DONE);
 }
 #endif // ENABLE_SQL
 
