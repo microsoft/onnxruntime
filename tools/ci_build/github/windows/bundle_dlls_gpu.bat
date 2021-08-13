@@ -7,52 +7,40 @@ powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFil
 set PATH=%CD%;%PATH%
 SETLOCAL EnableDelayedExpansion
 set gpu_nuget=""
-set gpu_zip=""
-set gpu_dir=""
 set trt_nuget=""
-set trt_zip=""
 set trt_dir=""
 
 FOR /R %%i IN (*.nupkg) do (
     set filename=%%~ni
     IF "!filename:~25,3!"=="Gpu" (
         set gpu_nuget=%%~ni.nupkg
-        set gpu_zip=%%~ni.zip
-        set gpu_dir=%%~ni
-        rename !gpu_nuget! !gpu_zip!
-        unzip !gpu_zip! -d !gpu_dir!
-        del /Q !gpu_zip!
     )
+
     IF "!filename:~25,8!"=="TensorRT" (
         set trt_nuget=%%~ni.nupkg
-        set trt_zip=%%~ni.zip
         set trt_dir=%%~ni
-        rename !trt_nuget! !trt_zip!
-        unzip !trt_zip! -d !trt_dir!
-        del /Q !trt_zip!
+        7z x !trt_nuget! -y -o!trt_dir!
      )
 )
 
-IF !gpu_dir! == "" (
-    echo "Can't find GPU nuget package to unpack/pack"
+IF !gpu_nuget! == "" (
+    echo "Can't find GPU nuget package"
     EXIT 1
 )
 
-mkdir !gpu_dir!\runtimes\linux-x64
-mkdir !gpu_dir!\runtimes\linux-x64\native
-move onnxruntime-linux-x64\lib\libonnxruntime.so.1* !gpu_dir!\runtimes\linux-x64\native\libonnxruntime.so
-move onnxruntime-linux-x64\lib\libonnxruntime_providers_* !gpu_dir!\runtimes\linux-x64\native
-
-IF !trt_dir! == "" (
-    echo "Can't find TensorRT nuget package to unpack/pack"
+IF !trt_nuget! == "" (
+    echo "Can't find TensorRT nuget package"
     EXIT 1
 )
 
-move !trt_dir!\runtimes\win-x64\native\onnxruntime_providers_tensorrt.dll !gpu_dir!\runtimes\win-x64\native\onnxruntime_providers_tensorrt.dll
-move !trt_dir!\runtimes\win-x64\native\onnxruntime.dll !gpu_dir!\runtimes\win-x64\native\onnxruntime.dll
-move !trt_dir!\runtimes\win-x64\native\onnxruntime.lib !gpu_dir!\runtimes\win-x64\native\onnxruntime.lib
-move !trt_dir!\runtimes\win-x64\native\onnxruntime.pdb !gpu_dir!\runtimes\win-x64\native\onnxruntime.pdb
-pushd !gpu_dir! 
-zip -r ..\!gpu_zip! .
-popd
-move !gpu_zip! !gpu_nuget!
+mkdir runtimes\linux-x64\native
+move onnxruntime-linux-x64\lib\libonnxruntime.so.1* runtimes\linux-x64\native\libonnxruntime.so
+move onnxruntime-linux-x64\lib\libonnxruntime_providers_* runtimes\linux-x64\native
+
+mkdir runtimes\win-x64\native
+move !trt_dir!\runtimes\win-x64\native\onnxruntime_providers_tensorrt.dll runtimes\win-x64\native\onnxruntime_providers_tensorrt.dll
+move !trt_dir!\runtimes\win-x64\native\onnxruntime.dll runtimes\win-x64\native\onnxruntime.dll
+move !trt_dir!\runtimes\win-x64\native\onnxruntime.lib runtimes\win-x64\native\onnxruntime.lib
+move !trt_dir!\runtimes\win-x64\native\onnxruntime.pdb runtimes\win-x64\native\onnxruntime.pdb
+
+7z a !gpu_nuget! runtimes

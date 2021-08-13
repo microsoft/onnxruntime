@@ -181,6 +181,7 @@ def generate_files(list, args):
     is_cpu_package = args.package_name in ['Microsoft.ML.OnnxRuntime', 'Microsoft.ML.OnnxRuntime.OpenMP']
     is_mklml_package = args.package_name == 'Microsoft.ML.OnnxRuntime.MKLML'
     is_cuda_gpu_package = args.package_name == 'Microsoft.ML.OnnxRuntime.Gpu'
+    is_tensorrt_package = args.package_name == 'Microsoft.ML.OnnxRuntime.TensorRT'
     is_dml_package = args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML'
     is_windowsai_package = args.package_name == 'Microsoft.AI.MachineLearning'
 
@@ -432,7 +433,7 @@ def generate_files(list, args):
             windowsai_net50_targets = os.path.join(args.sources_path, 'csharp', 'src', interop_src, interop_targets)
             files_list.append('<file src=' + '"' + windowsai_net50_targets + '" target="build\\net5.0" />')
 
-    if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package:
+    if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package or is_tensorrt_package:
         # Process props file
         source_props = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'props.xml')
         target_props = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime',
