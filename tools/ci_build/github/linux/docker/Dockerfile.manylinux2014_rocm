@@ -130,7 +130,7 @@ FROM build_cpython AS build_cpython39
 COPY build_scripts/ambv-pubkey.txt /build_scripts/cpython-pubkeys.txt
 RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.9.6
 
-
+FROM build_cpython AS all_python
 COPY --from=build_cpython36 /opt/_internal /opt/_internal/
 COPY --from=build_cpython37 /opt/_internal /opt/_internal/
 COPY --from=build_cpython38 /opt/_internal /opt/_internal/
