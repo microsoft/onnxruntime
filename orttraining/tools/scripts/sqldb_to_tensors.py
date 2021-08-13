@@ -15,5 +15,5 @@ def convert_tensor_proto_to_numpy_array(blob):
 sqlite3.register_converter("TensorProto", convert_tensor_proto_to_numpy_array)
 
 for step, name, value, device, producer, consumers in connection.execute(
-        'Select Step, Name, Value, Device, TracedProducer, TracedConsumers from Tensors'):
+        'Select Step, Name, Value, DeviceType, TracedProducer, TracedConsumers from Tensors'):
     print(step, name, value.shape, consumers)
