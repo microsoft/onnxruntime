@@ -100,5 +100,5 @@ jobs:
       azureSubscription: AIInfraBuildOnnxRuntimeOSS
       scriptType: bash
       scriptPath: $(Build.SourcesDirectory)/tools/ci_build/github/linux/upload_code_coverage_data.sh
-      arguments: "https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(Build.BuildId)" arm android nnapi
+      arguments: '"https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(Build.BuildId)" arm android nnapi'
       workingDirectory: '$(Build.BinariesDirectory)'
