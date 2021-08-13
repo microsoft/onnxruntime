@@ -799,32 +799,50 @@ if(NOT TARGET re2::re2)
   set(RE2_INCLUDE_DIR ${REPO_ROOT}/cmake/external/re2)
 endif()
 
-
 # Adding pytorch CPU info library
+# TODO!! need a better way to find out the supported architectures
+set(TARGET_ARCH "${CMAKE_SYSTEM_PROCESSOR}")
+if (NOT DEFINED TARGET_ARCH OR  "${TARGET_ARCH}" STREQUAL "")
+    set(TARGET_ARCH "${CMAKE_OSX_ARCHITECTURES}")
+endif()
+
+set(CPUINFO_SUPPORTED TRUE)
+if (NOT DEFINED TARGET_ARCH OR  "${TARGET_ARCH}" STREQUAL "")
+    message(WARNING
+      "Target processor architecture is not specified. cpuinfo not included")
+    set(CPUINFO_SUPPORTED FALSE)
+elseif(NOT TARGET_ARCH MATCHES "^(i[3-6]86|AMD64|x86(_64)?|armv[5-8].*|aarch64|arm64)$")
+  message(WARNING
+    "Target processor architecture \"${CPUINFO_TARGET_PROCESSOR}\" is not supported in cpuinfo. "
+    "cpuinfo not included.")
+  set(CPUINFO_SUPPORTED FALSE)
+elseif(MSVC AND (( CMAKE_SYSTEM_PROCESSOR  MATCHES "^(ARM.*|arm.*)$" ) OR (CMAKE_GENERATOR_PLATFORM  MATCHES "^(ARM.*|arm.*)$" ) ))
+  message(WARNING
+    "Cpuinfo not included for compilation problems with Windows ARM.")
+  set(CPUINFO_SUPPORTED FALSE)
+endif()
+
 # TODO  do we have to add target_include_directories to each project that uses this?
-if(MSVC AND (( CMAKE_SYSTEM_PROCESSOR  MATCHES "^(ARM.*|arm.*)$" ) OR (CMAKE_GENERATOR_PLATFORM  MATCHES "^(ARM.*|arm.*)$" ) ))
-  # cpuinfo fail to compile with windows arm.
-else()
-set(PYTORCH_CPUINFO_DIR external/pytorch_cpuinfo)
-set(PYTORCH_CPUINFO_INCLUDE_DIR ${PYTORCH_CPUINFO_DIR}/include)
-set(CPUINFO_BUILD_TOOLS OFF CACHE INTERNAL "")
-set(CPUINFO_BUILD_UNIT_TESTS OFF CACHE INTERNAL "")
-set(CPUINFO_BUILD_MOCK_TESTS OFF CACHE INTERNAL "")
-set(CPUINFO_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
+if(CPUINFO_SUPPORTED)
+  set(PYTORCH_CPUINFO_DIR external/pytorch_cpuinfo)
+  set(PYTORCH_CPUINFO_INCLUDE_DIR ${PYTORCH_CPUINFO_DIR}/include)
+  set(CPUINFO_BUILD_TOOLS OFF CACHE INTERNAL "")
+  set(CPUINFO_BUILD_UNIT_TESTS OFF CACHE INTERNAL "")
+  set(CPUINFO_BUILD_MOCK_TESTS OFF CACHE INTERNAL "")
+  set(CPUINFO_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
 
-if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
- set(IOS ON CACHE INTERNAL "")
- set(IOS_ARCH "${CMAKE_OSX_ARCHITECTURES}" CACHE INTERNAL "")
+  if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+      set(IOS ON CACHE INTERNAL "")
+      set(IOS_ARCH "${CMAKE_OSX_ARCHITECTURES}" CACHE INTERNAL "")
+  endif()
+  
+  string(APPEND CMAKE_CXX_FLAGS " -DCPUINFO_SUPPORTED")
+  add_subdirectory(external/pytorch_cpuinfo EXCLUDE_FROM_ALL)
+  if(MSVC)
+    target_compile_options(cpuinfo PRIVATE "-D_CRT_SECURE_NO_WARNINGS")
+  endif()
 endif()
 
-message(STATUS "CMAKE_SYSTEM_PROCESSOR = ${CMAKE_SYSTEM_PROCESSOR}")
-message(STATUS "CMAKE_SYSTEM_NAME = ${CMAKE_SYSTEM_NAME}")
-message(STATUS "CMAKE_OSX_ARCHITECTURES = ${CMAKE_OSX_ARCHITECTURES}")
-message(STATUS "IOS_ARCH = ${IOS_ARCH}")
-
-add_subdirectory(external/pytorch_cpuinfo EXCLUDE_FROM_ALL)
-
-endif()
 # bounds checking behavior.
 # throw instead of calling terminate if there's a bounds checking violation.
 # we make it through via a handler so CUDA does not complain
