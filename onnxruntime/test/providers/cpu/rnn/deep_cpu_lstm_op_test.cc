@@ -1273,22 +1273,14 @@ TEST(LSTMTest, SharedPrepackedWeights) {
   test.AddOptionalOutputEdge<float>();
 
   // W
-  auto W_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape(W_dims),
-                                           W_data.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
-
   OrtValue W;
-
-  W.Init(W_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-         DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape(W_dims),
+                       W_data.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), W);
 
   // R
-  auto R_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape(R_dims),
-                                           R_data.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
-
   OrtValue R;
-
-  R.Init(R_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-         DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape(R_dims),
+                       R_data.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), R);
 
   SessionOptions so;
 

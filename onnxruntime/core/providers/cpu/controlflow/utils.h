@@ -19,16 +19,16 @@ namespace onnxruntime {
 // Creates a scalar MLValue based on given value and allocator.
 template <typename T>
 OrtValue MakeScalarMLValue(const AllocatorPtr& allocator, T value, bool is_1d) {
+  std::vector<int64_t> dims;
+  if (is_1d) {
+    dims.push_back(1);
+  }
+  TensorShape shape(std::move(dims));
   auto* data_type = DataTypeImpl::GetType<T>();
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(data_type,
-                                                                      is_1d ? TensorShape({1}) : TensorShape({}),
-                                                                      allocator);
-
-  *p_tensor->MutableData<T>() = value;
-
-  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-  return OrtValue{p_tensor.release(), ml_tensor,
-                  ml_tensor->GetDeleteFunc()};
+  OrtValue ort_value;
+  Tensor::InitOrtValue(data_type, shape, allocator, ort_value);
+  *ort_value.GetMutable<Tensor>()->MutableData<T>() = value;
+  return ort_value;
 }
 
 namespace controlflow {

@@ -1,6 +1,6 @@
 parameters:
   IsMacOS : 'true'
-
+  ArtifactSuffix: ''
 jobs:
 - job: NuGet_Test_MacOS
   workspace:
@@ -8,7 +8,7 @@ jobs:
   pool:
     vmImage: 'macOS-10.15'
   dependsOn:
-  - NuGet_Packaging
+  - NuGet_Packaging_${{ parameters.ArtifactSuffix }}
   condition: succeeded()
   variables:
   - name: OnnxRuntimeBuildDirectory
@@ -17,7 +17,7 @@ jobs:
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - Signed NuGet'
     inputs:
-      artifactName: 'drop-signed-nuget'
+      artifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
   - task: DownloadPipelineArtifact@0

@@ -17,6 +17,8 @@
 #include "core/framework/data_types.h"
 #include "core/framework/data_types_internal.h"
 
+struct OrtValue;
+
 namespace onnxruntime {
 
 //TODO:ensure dtype_!=nullptr
@@ -35,7 +37,7 @@ namespace onnxruntime {
 class Tensor final {
  public:
   static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) {
-    return std::make_unique<Tensor>(p_type, shape, allocator);
+    return std::make_unique<Tensor>(p_type, shape, std::move(allocator));
   }
   static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc, ptrdiff_t offset = 0) {
     return std::make_unique<Tensor>(p_type, shape, p_data, alloc, offset);
@@ -56,11 +58,37 @@ class Tensor final {
   Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc,
          ptrdiff_t offset = 0);
 
+  /// <summary>
+  /// Creates an instance of Tensor on the heap using the appropriate __ctor and
+  /// initializes OrtValue with it.
+  /// </summary>
+  /// <param name="p_type"></param>
+  /// <param name="shape"></param>
+  /// <param name="p_data"></param>
+  /// <param name="info"></param>
+  /// <param name="offset"></param>
+  static void InitOrtValue(MLDataType p_type, const TensorShape& shape,
+                           void* p_data, const OrtMemoryInfo& location,
+                           OrtValue& ort_value);
+
   /**
    * Deprecated. The orginal design is this Tensor class won't do any allocation / release.
    * However, this function will allocate the buffer for the shape, and do placement new if p_type is string tensor.
    */
   Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator);
+
+  /// <summary>
+  /// Creates an instance of Tensor on the heap using the appropriate __ctor and
+  /// initializes OrtValue with it.
+  /// </summary>
+  /// <param name="elt_type"></param>
+  /// <param name="shape"></param>
+  /// <param name="allocator"></param>
+  /// <param name="ort_value"></param>
+  static void InitOrtValue(MLDataType elt_type,
+                           const TensorShape& shape,
+                           std::shared_ptr<IAllocator> allocator,
+                           OrtValue& ort_value);
 
   /**
    * Create tensor with given type, shape, pre-allocated memory and allocator which will be used to free the pre-allocated memory.
