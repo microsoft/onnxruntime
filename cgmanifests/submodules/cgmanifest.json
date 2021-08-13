@@ -17,8 +17,8 @@
         "Type": "other",
         "other": {
           "Name": "automake",
-          "Version": "1.16.3",
-          "DownloadUrl": "http://ftp.gnu.org/gnu/automake/automake-1.16.3.tar.gz"
+          "Version": "1.16.4",
+          "DownloadUrl": "http://ftp.gnu.org/gnu/automake/automake-1.16.4.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -39,8 +39,8 @@
         "Type": "other",
         "other": {
           "Name": "patchelf",
-          "Version": "0.12",
-          "DownloadUrl": "https://github.com/NixOS/patchelf/archive/0.12.tar.gz"
+          "Version": "0.13",
+          "DownloadUrl": "https://github.com/NixOS/patchelf/archive/0.13.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -50,8 +50,8 @@
         "Type": "other",
         "other": {
           "Name": "libxcrypt",
-          "Version": "4.4.17",
-          "DownloadUrl": "https://github.com/besser82/libxcrypt/archive/v4.4.17.tar.gz"
+          "Version": "4.4.23",
+          "DownloadUrl": "https://github.com/besser82/libxcrypt/archive/v4.4.23.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -61,19 +61,8 @@
         "Type": "other",
         "other": {
           "Name": "git",
-          "Version": "2.31.1",
-          "DownloadUrl": "https://www.kernel.org/pub/software/scm/git/git-2.31.1.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "cmake",
-          "Version": "3.21.0",
-          "DownloadUrl": "https://github.com/Kitware/CMake/releases/download/v3.21.0/cmake-3.21.0.tar.gz"
+          "Version": "2.32.0",
+          "DownloadUrl": "https://www.kernel.org/pub/software/scm/git/git-2.32.0.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -94,8 +83,8 @@
         "Type": "other",
         "other": {
           "Name": "sqlite_autoconf",
-          "Version": "3350500",
-          "DownloadUrl": "https://www.sqlite.org/2021/sqlite-autoconf-3350500.tar.gz"
+          "Version": "3360000",
+          "DownloadUrl": "https://www.sqlite.org/2021/sqlite-autoconf-3360000.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -305,7 +294,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "a57bc99daa6ddeef2ad535f8f78d1847f57216f0",
+          "commitHash": "1f63dcb7fcc3a8bf5c3c8e326867ecd6f5c43f35",
           "repositoryUrl": "https://github.com/onnx/onnx"
         },
         "comments": "git submodule at cmake/external/onnx"
