@@ -76,7 +76,7 @@ jobs:
   variables:
   - name: skipComponentGovernanceDetection
     value: true
-  pool: 'Linux-CPU'
+  pool: 'Linux-CPU-2019'
   dependsOn: Android_CI
   steps:
   - task: DownloadPipelineArtifact@0
