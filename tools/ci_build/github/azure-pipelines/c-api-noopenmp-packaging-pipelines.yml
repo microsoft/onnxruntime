@@ -290,11 +290,6 @@ jobs:
       artifactName: 'drop-extra'
       targetPath: '$(Build.BinariesDirectory)/extra-artifact'
 
-  - script: |
-     dir
-    workingDirectory: '$(Build.BinariesDirectory)/nuget-artifact'
-    displayName: 'List artifacts'
-
   #Reconstruct the build dir
   - task: PowerShell@2
     displayName: 'PowerShell Script'
