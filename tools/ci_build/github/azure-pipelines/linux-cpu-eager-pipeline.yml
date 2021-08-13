@@ -55,7 +55,7 @@ jobs:
          #Test ORT with the latest ONNX release.
          sed -i 's/git+http:\/\/github\.com\/onnx\/onnx.*/onnx==1.9.0/' $(Build.BinariesDirectory)/requirements.txt
          python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
-         cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_cpu.txt $(Build.BinariesDirectory)/requirements_torch_cpu.txt
+         cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_eager_cpu.txt $(Build.BinariesDirectory)/requirements_torch_eager_cpu.txt
          python3 -m pip install -r $(Build.BinariesDirectory)/requirements_torch_cpu.txt
          ln -sf /data/models $(Build.BinariesDirectory)
          cd $(Build.SourcesDirectory)/java
