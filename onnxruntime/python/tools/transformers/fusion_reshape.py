@@ -57,7 +57,7 @@ class FusionReshape(Fusion):
         path1 = self.model.match_parent_path(concat_node, ['Unsqueeze', 'Gather', 'Shape'], [1, 0, 0],
                                              output_name_to_node)
         if path1 is None:
-            # Bart
+            # Adjust for Bart
             if len(concat_node.input) == 4:
                 input_1_proto =  self.model.get_initializer(concat_node.input[1])
                 input_2_proto =  self.model.get_initializer(concat_node.input[2])
@@ -71,11 +71,19 @@ class FusionReshape(Fusion):
                     shape.extend(input_1)
                     shape.extend(input_2)
                     shape.extend(input_3)
-                    #bugbug: need to check matmul->add
+                    
+                    gemm_path = self.model.match_parent_path(reshape_node, ['Add', 'MatMul'], [0, 1], output_name_to_node)
+                    if gemm_path is None:
+                        return
+                    top_matmul = gemm_path[-1]
+                    root_input = top_matmul.input[0]
+
+                    if shape_0.input[0] != root_input:
+                        return
+
                     self.replace_reshape_node(shape, reshape_node, concat_node)
-                return
-            else:
-                return
+            return
+
         (unsqueeze_1, gather_1, shape_1) = path1
 
         gather_value = self.model.get_constant_value(gather_1.input[1])
@@ -147,10 +155,11 @@ class FusionReshape(Fusion):
         root_input = reshape_node.input[0]
         root_input_1 = None
         ok_to_delete_path = True
-        matmul_path = self.model.match_parent_path(reshape_node, ['Mul', 'Add', 'MatMul'], [0, 0, 1],
-                                                   output_name_to_node)
-        if matmul_path is not None:
-            top_matmul = matmul_path[-1]
+        # Adjust for Bart
+        gemm_path = self.model.match_parent_path(reshape_node, ['Mul', 'Add', 'MatMul'], [0, 0, 1],
+                                                 output_name_to_node)
+        if gemm_path is not None:
+            top_matmul = gemm_path[-1]
             root_input_1 = top_matmul.input[0]
 
         same_shape_input = True
@@ -166,7 +175,7 @@ class FusionReshape(Fusion):
 
         self.replace_reshape_node(shape, reshape_node, concat_node)
         
-        # TODO: need a smart way to delete nodes
+        # TODO: generic deletion from bottom-up
         if ok_to_delete_path:
             self.nodes_to_remove.extend(path0)
             self.nodes_to_remove.extend(path1)

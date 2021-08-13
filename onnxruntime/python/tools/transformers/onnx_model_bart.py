@@ -3,17 +3,9 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 import logging
-import onnx
-import sys
-import argparse
-import numpy as np
-from typing import Tuple, Union
-from collections import deque
-from onnx import helper, ModelProto, NodeProto, TensorProto, numpy_helper
 from onnx_model import OnnxModel
 from onnx_model_bert import BertOnnxModel
 from fusion_attention import FusionAttention, AttentionMask, AttentionMaskFormat
-from fusion_utils import FusionUtils, NumpyHelper
 
 logger = logging.getLogger(__name__)
 
@@ -24,19 +16,49 @@ class FusionBartEncoderAttention(FusionAttention):
     def __init__(self, model: OnnxModel, hidden_size: int, num_heads: int, attention_mask: AttentionMask):
         super().__init__(model, hidden_size, num_heads, attention_mask)
 
-    def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
-        # Sometimes we can not fuse skiplayernormalization since the add before layernorm has an output that used by nodes outside skiplayernorm
-        # Conceptually we treat add before layernorm as skiplayernorm node since they share the same pattern
-        start_node = normalize_node
-        if normalize_node.op_type == 'LayerNormalization':
-            add_before_layernorm = self.model.match_parent(normalize_node, 'Add', 0)
-            if add_before_layernorm is not None:
-                start_node = add_before_layernorm
-            else:
-                return
+    def check_runtime_shape_path(self, reshape_qkv_2, reshape_qkv_1, reshape_q_2, reshape_k_2, reshape_v_2, root_input):
+        concat_qkv_2_path = self.model.match_parent_path(reshape_qkv_2, ['Concat'], [1])
+        if concat_qkv_2_path is None:
+            return False
+        concat_qkv_2 = concat_qkv_2_path[0]
 
+        reshape_qkv_2_path_1 = self.model.match_parent_path(concat_qkv_2, ['Unsqueeze', 'Gather', 'Shape'], [0, 0, 0])
+        reshape_qkv_2_path_2 = self.model.match_parent_path(concat_qkv_2, ['Unsqueeze', 'Gather', 'Shape'], [1, 0, 0])
+        reshape_qkv_2_path_3 = self.model.match_parent_path(concat_qkv_2, ['Unsqueeze', 'Gather', 'Shape'], [2, 0, 0])
+        if reshape_qkv_2_path_1 is None or reshape_qkv_2_path_2 is None or reshape_qkv_2_path_3 is None:
+            return False
+        _, gather_1, shape_1 = reshape_qkv_2_path_1
+        _, gather_2, shape_2 = reshape_qkv_2_path_2
+        _, _, shape_3 = reshape_qkv_2_path_3
+
+        if shape_1.input[0] != root_input or shape_2.input[0] != root_input or shape_3.input[0] != root_input:
+            return False
+
+        reshape_qkv_1_path_1 = self.model.match_parent_path(reshape_qkv_1, ['Concat', 'Unsqueeze', 'Gather'], [1, 0, 0])
+        reshape_qkv_1_path_2 = self.model.match_parent_path(reshape_qkv_1, ['Concat', 'Unsqueeze', 'Gather'], [1, 2, 0])
+        if reshape_qkv_1_path_1 is None or reshape_qkv_1_path_2 is None:
+            return False
+        if reshape_qkv_1_path_1[-1].name != gather_1.name or reshape_qkv_1_path_2[-1].name != gather_2.name:
+            return False
+
+        reshape_q_2_path = self.model.match_parent_path(reshape_q_2, ['Concat', 'Unsqueeze', 'Mul'], [1, 0, 0])
+        reshape_k_2_path = self.model.match_parent_path(reshape_k_2, ['Concat', 'Unsqueeze', 'Mul'], [1, 0, 0])
+        reshape_v_2_path = self.model.match_parent_path(reshape_v_2, ['Concat', 'Unsqueeze', 'Mul'], [1, 0, 0])
+        if reshape_q_2_path is None or reshape_k_2_path is None or reshape_v_2_path is None:
+            return False
+        mul_q = reshape_q_2_path[-1]
+        mul_k = reshape_k_2_path[-1]
+        mul_v = reshape_v_2_path[-1]
+
+        gather_1_out = gather_1.output[0]
+        if mul_q.input[0] != gather_1_out or mul_k.input[0] != gather_1_out or mul_v.input[0] != gather_1_out:
+            return False
+        return True
+
+
+    def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):  
         # SkipLayerNormalization has two inputs, and one of them is the root input for attention.
-        qkv_nodes = self.model.match_parent_path(start_node, ['Add', 'MatMul', 'Reshape', 'Transpose', 'Reshape', 'MatMul'],
+        qkv_nodes = self.model.match_parent_path(normalize_node, ['Add', 'MatMul', 'Reshape', 'Transpose', 'Reshape', 'MatMul'],
                                                  [None, 1, 0, 0, 0, 0])
         if qkv_nodes is not None:
             (add_out, matmul_out, reshape_qkv_2, transpose_qkv, reshape_qkv_1, matmul_qkv) = qkv_nodes
@@ -44,7 +66,7 @@ class FusionBartEncoderAttention(FusionAttention):
             return
 
         other_inputs = []
-        for i, input in enumerate(start_node.input):
+        for i, input in enumerate(normalize_node.input):
             if input not in output_name_to_node:
                 continue
             if input == qkv_nodes[0].output[0]:
@@ -83,6 +105,9 @@ class FusionBartEncoderAttention(FusionAttention):
         else:
             return
 
+        if not self.check_runtime_shape_path(reshape_qkv_2, reshape_qkv_1, reshape_q_2, reshape_k_2, reshape_v_2, root_input):
+            return
+
         if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_v.input[0] == root_input:
 
             mask_nodes = []
@@ -112,8 +137,6 @@ class FusionBartEncoderAttention(FusionAttention):
             # Use prune graph to remove mask nodes since they are shared by all attention nodes.
             self.nodes_to_remove.extend(mask_nodes)
             self.prune_graph = True
-
-    #def check_shape_paths(reshape_qkv_2, reshape_qkv_1, ):
 
 
 class BartOnnxModel(BertOnnxModel):

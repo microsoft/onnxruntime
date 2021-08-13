@@ -56,9 +56,8 @@ def create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_name
         segment_ids = numpy.zeros([batch_size, sequence_length], dtype=data_type)
         inputs['token_type_ids'] = segment_ids
 
-    # bugbug
-    #if config.is_encoder_decoder:
-    #    inputs['decoder_input_ids'] = input_ids
+    if config.is_encoder_decoder:
+        inputs['decoder_input_ids'] = input_ids
 
     if isinstance(config, LxmertConfig):
         inputs["visual_feats"] = numpy.random.randn(1, 1, config.visual_feat_dim).astype(numpy.float32)
