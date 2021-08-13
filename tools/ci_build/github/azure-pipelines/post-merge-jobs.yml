@@ -34,7 +34,7 @@ jobs:
         azureSubscription: AIInfraBuildOnnxRuntimeOSS
         scriptType: bash
         scriptPath: $(Build.SourcesDirectory)/tools/ci_build/github/linux/upload_code_coverage_data.sh
-        arguments: "https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(Build.BuildId)" x64 linux default
+        arguments: 'https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(Build.BuildId)' x64 linux default
         workingDirectory: '$(Build.BinariesDirectory)'
 
     - task: PublishPipelineArtifact@1
