@@ -526,7 +526,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
   } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL
     return onnxruntime::CreateExecutionProviderFactory_Dnnl(
-      sess->GetSessionOptions().enable_cpu_mem_arena))->CreateProvider();
+      sess->GetSessionOptions().enable_cpu_mem_arena)->CreateProvider();
 #endif
   } else if (type == kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
@@ -589,7 +589,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 
     // clear nuphar_settings after use to avoid it being accidentally passed on to next session
     nuphar_settings.clear();
-    return std::move(p);
+    return p;
 #endif
   } else if (type == kVitisAIExecutionProvider) {
 #if USE_VITISAI

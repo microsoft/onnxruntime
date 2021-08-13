@@ -150,8 +150,9 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 #endif
   
   addObjectMethodsForTraining(m, ORTTrainingRegisterExecutionProviders);
+#ifdef ENABLE_EAGER_MODE
   addObjectMethodsForEager(m);
-
+#endif
 }
 
 }
