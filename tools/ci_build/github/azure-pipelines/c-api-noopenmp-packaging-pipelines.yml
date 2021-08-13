@@ -394,15 +394,6 @@ jobs:
       arguments: '--configuration RelWithDebInfo -t:CreatePackage -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-  - task: DotNetCoreCLI@2
-    displayName: 'Build TensorRT Nuget Packages'
-    inputs:
-      command: build
-      projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
-      configuration: RelWithDebInfo
-      arguments: '--configuration RelWithDebInfo -t:CreatePackage -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.TensorRT -p:ExecutionProvider=tensorrt -p:IsLinuxBuild=false -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
-      workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
   - task: BatchScript@1
     displayName: 'Bundle Native NuGet and other binaries'
     inputs:
