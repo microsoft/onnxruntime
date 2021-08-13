@@ -41,7 +41,6 @@ struct DeleteOnUnloadPtr {
 #include <unordered_map>
 #include <unordered_set>
 #include <stddef.h>
-#include "onnx/common/stl_backports.h"
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
 #include "core/common/type_list.h"
@@ -189,7 +188,7 @@ template <typename T>
 struct EinsumTypedComputeProcessor;
 
 namespace contrib {
-class ATenOpBase;
+class ATenOp;
 class Group;
 class PassThrough;
 class YieldOp;

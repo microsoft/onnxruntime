@@ -113,6 +113,8 @@ struct Node__EdgeIterator {
 // calls the virtual function (which will lead to infinite recursion in the bridge). There is no known way to get the non virtual member
 // function pointer implementation in this case.
 struct ProviderHost {
+  virtual const OrtApiBase* OrtGetApiBase() = 0;
+
   virtual void* HeapAllocate(size_t size) = 0;
   virtual void HeapFree(void*) = 0;
 
@@ -141,6 +143,8 @@ struct ProviderHost {
 
   virtual void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) = 0;
   virtual void cuda__Impl_Cast(void* stream, const int32_t* input_data, int64_t* output_data, size_t count) = 0;
+  virtual void cuda__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) = 0;
+  virtual void cuda__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) = 0;
 
   virtual bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
   virtual bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
@@ -591,7 +595,7 @@ struct ProviderHost {
 
   virtual const std::vector<const NodeArg*>& GraphViewer__GetInputs(const GraphViewer* p) noexcept = 0;
   virtual const std::vector<const NodeArg*>& GraphViewer__GetOutputs(const GraphViewer* p) noexcept = 0;
-  virtual const std::vector<const NodeArg*>& GraphViewer__GetValueInfo(const GraphViewer* p) noexcept = 0;
+  virtual const std::unordered_set<const NodeArg*>& GraphViewer__GetValueInfo(const GraphViewer* p) noexcept = 0;
 
   virtual const InitializedTensorSet& GraphViewer__GetAllInitializedTensors(const GraphViewer* p) = 0;
   virtual bool GraphViewer__GetInitializedTensor(const GraphViewer* p, const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) = 0;
@@ -652,6 +656,9 @@ struct ProviderHost {
   virtual std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) = 0;
   virtual std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc, ptrdiff_t offset) = 0;
   virtual void Tensor__operator_delete(Tensor* p) = 0;
+
+  virtual void Tensor__InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, OrtValue& ort_value) = 0;
+  virtual void Tensor__InitOrtValue(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& location, OrtValue& ort_value) = 0;
 
   virtual bool* Tensor__MutableData_bool(Tensor* p) = 0;
   virtual int8_t* Tensor__MutableData_int8(Tensor* p) = 0;
@@ -726,13 +733,13 @@ struct ProviderHost {
   virtual void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) = 0;
   virtual AllocatorPtr AllocatorManager__GetAllocator(const AllocatorManager* p, int id, OrtMemType mem_type) = 0;
 
-#ifdef USE_CUDA
-
-  virtual PhiloxGenerator& PhiloxGenerator__Default() = 0;
-
 #if defined(ENABLE_TRAINING) && defined(ORT_USE_NCCL)
   virtual training::DistributedRunContext& GetDistributedRunContextInstance() = 0;
 #endif
+
+#ifdef USE_CUDA
+
+  virtual PhiloxGenerator& PhiloxGenerator__Default() = 0;
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
   virtual void contrib__PythonOpBase__Init(contrib::PythonOpBase* p, const OpKernelInfo& info) = 0;
