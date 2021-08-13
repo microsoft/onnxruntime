@@ -507,8 +507,8 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
         TensorSeq* output = context_.Output<TensorSeq>(output_idx);
         *output = std::move(*input.GetMutable<TensorSeq>());
       } else {
-        // We can't move the Loop's inputs directly into the Loop's outputs.
-        // We need to make a copy.
+        // We can't move the Loop's inputs directly into the Loop's outputs
+        // as operator inputs are read-only. Hence, we need to make a copy.
         std::vector<Tensor> tensors;
 
         auto& data = input.Get<TensorSeq>();

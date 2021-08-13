@@ -91,7 +91,7 @@ Loop::Loop(const OpKernelInfo& info) : onnxruntime::Loop(info) {
   // the compute stream to avoid data races. At the very least, we need to expose an interface in IDataTransfer
   // to use a caller provided stream for Loop to provide for the GPUDataTransfer instance to use.
   // Currently, using a dedicated copy stream has larger negative implications (see comment in GPUDataTransfer's
-  // constructor implementation), and so it is not in a useable state. When it becomes useable again,
+  // constructor implementation), and so it is not in a usable state. When it becomes usable again,
   // we will re-visit this limitation in Loop.
   bool do_copy_on_default_stream = static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider())->DoCopyOnDefaultStream();
   ORT_ENFORCE(do_copy_on_default_stream,
