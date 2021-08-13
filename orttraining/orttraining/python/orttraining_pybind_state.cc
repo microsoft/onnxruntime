@@ -33,6 +33,8 @@ using namespace onnxruntime;
 using namespace onnxruntime::logging;
 using namespace onnxruntime::training;
 
+Environment& GetTrainingORTEnv();
+
 struct TrainingParameters {
   std::string loss_output_name;
   std::unordered_set<std::string> weights_to_train;
@@ -468,11 +470,11 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
   py::class_<PyTrainingSession, PyInferenceSession> training_session(m, "TrainingSession");
   training_session
       .def(py::init([](const PySessionOptions& so) {
-        Environment& env = GetEnv();
+        Environment& env = GetTrainingORTEnv();
         return std::make_unique<PyTrainingSession>(env, so);
       }))
       .def(py::init([]() {
-        Environment& env = GetEnv();
+        Environment& env = GetTrainingORTEnv();
         return std::make_unique<PyTrainingSession>(env, GetDefaultCPUSessionOptions());
       }))
       .def("finalize", [](py::object) {
