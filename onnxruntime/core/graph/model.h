@@ -41,7 +41,7 @@ class Model {
                  bool is_onnx_domain_only,
                  const logging::Logger& logger)
       : Model(graph_name, is_onnx_domain_only, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {},
-              logger) {}
+              {} , logger) {}
 
   // Construct model from scratch.
   explicit Model(const std::string& graph_name,
@@ -50,8 +50,8 @@ class Model {
                  const PathString& model_path,
                  const IOnnxRuntimeOpSchemaRegistryList& local_registries,
                  const std::unordered_map<std::string, int>& domain_to_version,
-                 const logging::Logger& logger,
-                 const std::vector<ONNX_NAMESPACE::FunctionProto>* model_functions = nullptr);
+                 const std::vector<ONNX_NAMESPACE::FunctionProto>& model_local_functions,
+                 const logging::Logger& logger);
 
   // NOTE: after calling this constructor, <*this> model will
   // hold a copy of <model_proto>.

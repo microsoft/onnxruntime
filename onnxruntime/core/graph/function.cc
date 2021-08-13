@@ -234,7 +234,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
       body_("fused_function_subgraph", false, onnxruntime::ModelMetaData(),
             graph.ModelPath().ToPathString(),
             IOnnxRuntimeOpSchemaRegistryList({graph.GetSchemaRegistry()}),
-            graph.DomainToVersionMap(), {}, logger) {
+            graph.DomainToVersionMap(), {} , logger) {
   auto& function_body_graph = body_.MainGraph();
 
   auto* meta_def = nodes_to_fuse.GetMetaDef();
@@ -306,7 +306,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
       body_(onnx_func_proto.name(), false, onnxruntime::ModelMetaData(),
             graph.ModelPath().ToPathString(), IOnnxRuntimeOpSchemaRegistryList(),
             onnx_func_proto.opset_import_size() != 0 ? GetFunctionOpsetImports(onnx_func_proto, graph.DomainToVersionMap()) : graph.DomainToVersionMap(),
-            {}, logger),
+            {} ,logger),
       onnx_func_proto_(onnx_func_proto) {
   // Make a copy of the FunctionProto.
   // All FunctionBody ops with the same op type seem to share the same FunctionProto struct within a model.
