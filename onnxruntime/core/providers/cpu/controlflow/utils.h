@@ -9,7 +9,7 @@
 
 #include "core/framework/feeds_fetches_manager.h"
 #ifdef SHARED_PROVIDER
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #else
 #include "core/framework/op_kernel.h"
 #endif
