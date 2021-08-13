@@ -23,7 +23,7 @@ do case "${parameter_Option}"
 in
 #android, yocto, ubuntu20.04
 o) BUILD_OS=${OPTARG};;
-#gpu, tensorrt or openvino. It is ignored when BUILD_OS is android or yocto.
+#gpu, openvino. It is ignored when BUILD_OS is android or yocto.
 d) BUILD_DEVICE=${OPTARG};;
 #python version: 3.6 3.7 (absence means default 3.6)
 p) PYTHON_VER=${OPTARG};;
@@ -96,19 +96,6 @@ elif [ $BUILD_DEVICE = "gpu" ]; then
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
             --docker-build-args="--build-arg BASEIMAGE=nvcr.io/nvidia/cuda:11.1.1-cudnn8-devel-${BUILD_OS} --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg INSTALL_DEPS_EXTRA_ARGS=\"${INSTALL_DEPS_EXTRA_ARGS}\" --build-arg USE_CONDA=${USE_CONDA} --network=host" \
             --dockerfile Dockerfile.ubuntu_gpu_training --context .
-elif [[ $BUILD_DEVICE = "tensorrt"* ]]; then
-        if [ $BUILD_DEVICE = "tensorrt-v7.1" ]; then
-            # TensorRT container release 20.07
-            IMAGE="$BUILD_OS-cuda11.0-cudnn8.0-tensorrt7.1"
-            DOCKER_FILE=Dockerfile.ubuntu_tensorrt7_1
-        else
-            # TensorRT container release 21.07
-            IMAGE="$BUILD_OS-cuda11.4-cudnn8.2-tensorrt8.0"
-            DOCKER_FILE=Dockerfile.ubuntu_tensorrt
-        fi
-        $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
-            --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER}" \
-            --dockerfile $DOCKER_FILE --context .
 else
         IMAGE_OS_VERSION=""
         if [ $BUILD_OS = "ubuntu18.04" ]; then
