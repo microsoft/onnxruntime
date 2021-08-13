@@ -3,7 +3,7 @@ trigger: none
 jobs:
 - template: templates/linux-ci.yml
   parameters:
-    AgentPool : 'Linux-Single-GPU-V100'
+    AgentPool : 'Onnxruntime-Linux-GPU-NC6sv3'
     JobName: 'Onnxruntime_Linux_GPU_Training'
     SubmoduleCheckoutMode: 'recursive'
     RunDockerBuildArgs: >
