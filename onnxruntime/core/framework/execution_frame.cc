@@ -275,10 +275,7 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
           // for a subgraph with an output of unknown shape that needs to be accumulated by the control flow node.
           // If the initializer is providing the output, the shape is known.
           AllocatorPtr allocator = GetAllocator(src.Location());
-
-          auto p_tensor = std::make_unique<Tensor>(src.DataType(), src.Shape(), allocator);
-          auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-          dest.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+          Tensor::InitOrtValue(src.DataType(), src.Shape(), std::move(allocator), dest);
         }
         ORT_THROW_IF_ERROR(CopyTensor(src, *dest.GetMutable<Tensor>()));
       }
@@ -527,12 +524,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
 
   //no memory pattern, or the pattern is not correct.
   if (!alloc) alloc = GetAllocator(location);
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type, shape, alloc);
-
-  {
-    auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-    ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
-  }
+  Tensor::InitOrtValue(element_type, shape, std::move(alloc), ort_value);
 
   // trace the memory allocation.
   // don't trace the memory allocation on string tensors, as it need
@@ -604,10 +596,7 @@ Status ExecutionFrame::AllocateTensorWithPreAllocateBufferHelper(OrtValue& ort_v
                                                                  MLDataType element_type,
                                                                  const OrtMemoryInfo& location,
                                                                  const TensorShape& shape) {
-  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-  auto p_tensor = std::make_unique<Tensor>(element_type, shape, pBuffer, location);
-  ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
-
+  Tensor::InitOrtValue(element_type, shape, pBuffer, location, ort_value);
   return Status::OK();
 }
 

@@ -9,7 +9,7 @@
 
 #include "core/common/safeint.h"
 #include "core/framework/error_code_helper.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/framework/sparse_tensor.h"
 #include "core/framework/tensor_shape.h"

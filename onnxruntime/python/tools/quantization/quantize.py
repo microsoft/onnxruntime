@@ -184,6 +184,11 @@ def quantize_static(model_input,
             extra.Sigmoid.nnapi = True/False  (Default is False)
             ActivationSymmetric = True/False: symmetrize calibration data for activations (default is False).
             WeightSymmetric = True/False: symmetrize calibration data for weights (default is True).
+            EnableSubgraph = True/False : Default is False. If enabled, subgraph will be quantized.
+                                          Dyanmic mode currently is supported. Will support more in future.
+            DisableShapeInference = True/False : in dynamic quantize mode, shape inference is not must have
+                                                 and if it cause some issue, you could disable it.
+
     '''
 
     mode = QuantizationMode.QLinearOps

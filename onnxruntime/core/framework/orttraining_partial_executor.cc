@@ -165,8 +165,8 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
 #ifdef CONCURRENCY_VISUALIZER
   // need unique name for the series. number of nodes should be good enough for a subgraph
   char series_name[MaxSeriesNameLengthInChars] = "MainGraph";
-  if (graph_viewer->IsSubgraph()) {
-    auto s = graph_viewer->ParentNode()->Name().substr(0, MaxSeriesNameLengthInChars - 1);
+  if (graph_viewer.IsSubgraph()) {
+    auto s = graph_viewer.ParentNode()->Name().substr(0, MaxSeriesNameLengthInChars - 1);
     std::copy(s.cbegin(), s.cend(), series_name);
   }
 

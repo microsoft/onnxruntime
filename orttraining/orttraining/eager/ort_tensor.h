@@ -4,7 +4,7 @@
 #pragma once
 
 #include <c10/core/TensorImpl.h>
-#include <core/framework/ml_value.h>
+#include <core/framework/ort_value.h>
 
 namespace torch_ort {
 namespace eager {
