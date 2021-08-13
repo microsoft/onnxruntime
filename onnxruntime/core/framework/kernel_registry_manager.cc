@@ -114,8 +114,8 @@ bool KernelRegistryManager::SearchKernelRegistriesByHash(uint64_t kernel_def_has
   }
 #endif
 
-  for (const auto& [provider_type, registry] : provider_type_to_registry_) {
-    if (registry->TryFindKernelByHash(kernel_def_hash, kernel_create_info)) {
+  for (const auto& kv : provider_type_to_registry_) {
+    if (kv.second->TryFindKernelByHash(kernel_def_hash, kernel_create_info)) {
       return true;
     }
   }
