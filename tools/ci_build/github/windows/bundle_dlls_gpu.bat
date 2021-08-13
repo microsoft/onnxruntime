@@ -18,6 +18,7 @@ FOR /R %%i IN (*.nupkg) do (
         set trt_nuget=%%~ni.nupkg
         set trt_dir=%%~ni
         7z x !trt_nuget! -y -o!trt_dir!
+        del /Q !trt_nuget!
      )
 )
 
