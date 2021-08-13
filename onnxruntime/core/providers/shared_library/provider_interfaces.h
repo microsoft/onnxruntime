@@ -657,6 +657,9 @@ struct ProviderHost {
   virtual std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc, ptrdiff_t offset) = 0;
   virtual void Tensor__operator_delete(Tensor* p) = 0;
 
+  virtual void Tensor__InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, OrtValue& ort_value) = 0;
+  virtual void Tensor__InitOrtValue(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& location, OrtValue& ort_value) = 0;
+
   virtual bool* Tensor__MutableData_bool(Tensor* p) = 0;
   virtual int8_t* Tensor__MutableData_int8(Tensor* p) = 0;
   virtual uint8_t* Tensor__MutableData_uint8(Tensor* p) = 0;

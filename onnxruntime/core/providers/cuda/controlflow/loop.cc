@@ -5,7 +5,6 @@
 #include "core/providers/cuda/controlflow/loop.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_fwd.h"
-#include "core/framework/ml_value.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 
 using namespace ONNX_NAMESPACE;

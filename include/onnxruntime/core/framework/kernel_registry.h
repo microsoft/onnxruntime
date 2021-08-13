@@ -47,11 +47,8 @@ class KernelRegistry {
 
 #endif
 
-  // Check if an execution provider can create kernel for a node and return the kernel if so.
-  // Kernel matching is via kernel_def_hash.
-  Status TryFindKernel(const onnxruntime::Node& node, onnxruntime::ProviderType exec_provider,
-                       uint64_t kernel_def_hash,
-                       const KernelCreateInfo** out) const;
+  // Try to find the kernel given a kernel def hash.
+  bool TryFindKernelByHash(uint64_t kernel_def_hash, const KernelCreateInfo** out) const;
 
   bool IsEmpty() const { return kernel_creator_fn_map_.empty(); }
 
@@ -98,5 +95,8 @@ class KernelRegistry {
   // Kernel create function map from op name to kernel creation info.
   // key is opname+domain_name+provider_name
   KernelCreateMap kernel_creator_fn_map_;
+
+  // map from kernel def hash to entry in kernel_creator_fn_map_;
+  std::unordered_map<uint64_t, KernelCreateMap::iterator> kernel_def_hash_lookup_;
 };
 }  // namespace onnxruntime

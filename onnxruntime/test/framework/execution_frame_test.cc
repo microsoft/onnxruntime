@@ -174,11 +174,8 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
   std::vector<float> fdata(static_cast<size_t>(shape.Size()));
   //create fake ml value with owned buffer.
   OrtMemoryInfo cpuinfo(kCpuExecutionProvider, OrtDeviceAllocator);
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type, shape, fdata.data(), cpuinfo);
   OrtValue value;
-  value.Init(p_tensor.release(),
-             DataTypeImpl::GetType<Tensor>(),
-             DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  Tensor::InitOrtValue(element_type, shape, fdata.data(), cpuinfo, value);
 
   auto cpu_xp = CreateCPUExecutionProvider();
   auto xp_typ = cpu_xp->Type();
@@ -440,13 +437,12 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
     ASSERT_STATUS_OK(session.Initialize());
 
     auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
-    auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape({5, 5}), allocator);
-    const void* orig_buffer = p_tensor->DataRaw();
-
     std::vector<OrtValue> results;
     results.resize(1);
-    results[0].Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-                    DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+    Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({5, 5}), std::move(allocator), results[0]);
+
+    const void* orig_buffer = results[0].Get<Tensor>().DataRaw();
+
     RunOptions ro;
     ASSERT_STATUS_OK(session.Run(ro, {}, {}, {"values"}, &results, nullptr));
 

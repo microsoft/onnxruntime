@@ -3,7 +3,6 @@
 # _onnx_models.py
 
 from dataclasses import dataclass
-from filelock import SoftFileLock
 import onnx
 import os
 import torch
