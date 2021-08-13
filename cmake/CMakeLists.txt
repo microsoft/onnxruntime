@@ -837,8 +837,10 @@ if(CPUINFO_SUPPORTED)
   endif()
   
   string(APPEND CMAKE_CXX_FLAGS " -DCPUINFO_SUPPORTED")
-
   add_subdirectory(external/pytorch_cpuinfo EXCLUDE_FROM_ALL)
+  if(MSVC)
+    target_compile_options(cpuinfo PRIVATE "-D_CRT_SECURE_NO_WARNINGS")
+  endif()
 endif()
 
 # bounds checking behavior.
