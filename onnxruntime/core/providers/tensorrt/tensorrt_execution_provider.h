@@ -24,7 +24,6 @@ static const std::string kDumpSubgraphs = "ORT_TENSORRT_DUMP_SUBGRAPHS";
 static const std::string kEngineCacheEnable = "ORT_TENSORRT_ENGINE_CACHE_ENABLE";
 static const std::string kCachePath = "ORT_TENSORRT_CACHE_PATH";
 static const std::string kDecryptionEnable = "ORT_TENSORRT_ENGINE_DECRYPTION_ENABLE";
-//static const std::string kDecryptionEnable = "ORT_TENSORRT_ENGINE_ENCRYPTION_ENABLE";
 static const std::string kDecryptionLibPath = "ORT_TENSORRT_ENGINE_DECRYPTION_LIB_PATH";
 static const std::string kForceSequentialEngineBuild= "ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD";
 // Old env variable for backward compatibility
@@ -99,7 +98,6 @@ struct TensorrtFuncState {
   AllocatorPtr scratch_allocator;
   std::unordered_map<std::string, float> dynamic_range_map;
   bool engine_decryption_enable;
-  //bool engine_encryption_enable;
   int (*engine_decryption)(const char*, char*, size_t*);
   int (*engine_encryption)(const char*, char*, size_t*);
 };
@@ -159,7 +157,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   AllocatorPtr allocator_;
   mutable char model_path_[4096];  // Reserved for max path length
   bool engine_decryption_enable_ = false;
-  //bool engine_encryption_enable_ = false;
   int (*engine_decryption_)(const char*, char*, size_t*);
   int (*engine_encryption_)(const char*, char*, size_t*);
 
