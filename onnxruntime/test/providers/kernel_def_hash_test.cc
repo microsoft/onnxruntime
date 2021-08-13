@@ -57,24 +57,19 @@
 #include <iostream>
 
 #include "gtest/gtest.h"
+#include "onnxruntime_config.h"
 
 #ifdef _WIN32
 #pragma warning(push)
 #pragma warning(disable : 28020)
-#elif __aarch64__
+#elif defined(HAS_FORMAT_TRUNCATION)
 #pragma GCC diagnostic push
-#if defined(__has_warning)
-#if __has_warning("-Wformat-truncation")
 #pragma GCC diagnostic ignored "-Wformat-truncation"
-#endif  // __has_warning("-Wformat-truncation")
-#else
-#pragma GCC diagnostic ignored "-Wformat-truncation"
-#endif  // defined(__has_warning)
 #endif
 #include "nlohmann/json.hpp"
 #ifdef _WIN32
 #pragma warning(pop)
-#elif __aarch64__
+#elif defined(HAS_FORMAT_TRUNCATION)
 #pragma GCC diagnostic pop
 #endif
 
