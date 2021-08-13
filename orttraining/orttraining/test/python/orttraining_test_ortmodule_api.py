@@ -3156,9 +3156,9 @@ def test_ortmodule_dict_input():
     pt_model = DictNet().to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
     x = {'one_value': torch.randn(N, D_in, device=device), 'two_value': torch.randn(N, D_in, device=device)}
-    y = copy.deepcopy(x)
+    x_copy = copy.deepcopy(x)
 
-    _test_helpers.assert_values_are_close(pt_model(x), ort_model(y))
+    _test_helpers.assert_values_are_close(pt_model(x), ort_model(x_copy))
 
 def test_ortmodule_dict_input_with_unused_values():
     class DictNet(torch.nn.Module):
@@ -3176,9 +3176,9 @@ def test_ortmodule_dict_input_with_unused_values():
     pt_model = DictNet().to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
     x = {'a': torch.randn(N, D_in, device=device), 'b': torch.randn(N, D_in, device=device)}
-    y = copy.deepcopy(x)
+    x_copy = copy.deepcopy(x)
 
-    _test_helpers.assert_values_are_close(pt_model(x), ort_model(y))
+    _test_helpers.assert_values_are_close(pt_model(x), ort_model(x_copy))
 
 def test_ortmodule_dict_input_with_none_values():
     class DictNet(torch.nn.Module):
@@ -3196,9 +3196,9 @@ def test_ortmodule_dict_input_with_none_values():
     pt_model = DictNet().to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
     x = {'a': None, 'b': torch.randn(N, D_in, device=device)}
-    y = copy.deepcopy(x)
+    x_copy = copy.deepcopy(x)
 
-    _test_helpers.assert_values_are_close(pt_model(x), ort_model(y))
+    _test_helpers.assert_values_are_close(pt_model(x), ort_model(x_copy))
 
 def test_ortmodule_dict_input_with_nested_values():
     class DictNet(torch.nn.Module):
@@ -3231,10 +3231,9 @@ def test_ortmodule_dict_input_with_nested_values():
                 }
             }
         }
-    y = copy.deepcopy(x)
+    x_copy = copy.deepcopy(x)
 
-    _test_helpers.assert_values_are_close(pt_model(x), ort_model(y))
-
+    _test_helpers.assert_values_are_close(pt_model(x), ort_model(x_copy))
 
 def test_ortmodule_list_dict_input_with_nested_values():
     class ListDictNet(torch.nn.Module):
@@ -3264,6 +3263,49 @@ def test_ortmodule_list_dict_input_with_nested_values():
                 }
             ]
         }
-    y = copy.deepcopy(x)
+    x_copy = copy.deepcopy(x)
 
-    _test_helpers.assert_values_are_close(pt_model(x), ort_model(y))
+    _test_helpers.assert_values_are_close(pt_model(x), ort_model(x_copy))
+
+def test_ortmodule_list_dict_input_with_kwargs_and_registered_buffer():
+    class ListDictKwargsNet(torch.nn.Module):
+        def __init__(self, N, D_in):
+            super(ListDictKwargsNet, self).__init__()
+            self.register_buffer("buffer", torch.ones(N, D_in, device='cuda'))
+            self.dummy = torch.nn.Parameter(torch.FloatTensor([3]))
+
+        def forward(self, batch, **kwargs):
+            a = batch['one_value'][0]
+            b = batch['two_value'][0]
+            c = batch['two_value'][1]
+            d = batch['three_value'][0]
+            e = batch['three_value'][1]['four_value']
+            out = self.buffer + self.dummy + a + b + c + d + e
+            if kwargs:
+                if 'kwargs_0' in kwargs:
+                    out += kwargs['kwargs_0']
+                if 'kwargs_1' in kwargs:
+                    out += torch.matmul(kwargs['kwargs_0'], kwargs['kwargs_1'])
+
+            return out
+
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model = ListDictKwargsNet(N, D_in).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix='kwargsanddict'))
+    x = {
+            'one_value': [torch.randn(N, D_in, device=device)],
+            'two_value': [torch.randn(N, D_in, device=device), torch.randn(N, D_in, device=device)],
+            'three_value': [
+                torch.randn(N, D_in, device=device),
+                {
+                    'four_value': torch.randn(N, D_in, device=device)
+                }
+            ]
+        }
+    x_copy = copy.deepcopy(x)
+    kwargs_input = {'kwargs_0' : torch.randn(N, D_in, device=device),
+              'kwargs_1' : torch.randn(D_in, D_in, device=device)}
+    kwargs_input_copy = copy.deepcopy(kwargs_input)
+
+    _test_helpers.assert_values_are_close(pt_model(x, **kwargs_input), ort_model(x_copy, **kwargs_input_copy))
