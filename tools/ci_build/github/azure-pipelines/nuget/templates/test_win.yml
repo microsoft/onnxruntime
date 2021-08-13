@@ -9,8 +9,8 @@ jobs:
   workspace:
     clean: all
   pool: ${{ parameters.AgentPool }}
-  #dependsOn:
-  #- NuGet_Packaging_${{ parameters.ArtifactSuffix }}
+  dependsOn:
+  - NuGet_Packaging_${{ parameters.ArtifactSuffix }}
   condition: succeeded()
   variables:
   - name: OnnxRuntimeBuildDirectory
@@ -46,25 +46,15 @@ jobs:
       arguments: 'amd64'
       modifyEnvironment: true
   
-  - task: DownloadPipelineArtifact@2
+  - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact'
     inputs:
-      source: 'specific'
-      project: 'Lotus'
-      pipeline: '940'
-      runVersion: 'specific'
-      runId: '168896'
       artifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
       targetPath: '$(Build.BinariesDirectory)\nuget-artifact'
 
-  - task: DownloadPipelineArtifact@2
+  - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - testdata'
     inputs:
-      source: 'specific'
-      project: 'Lotus'
-      pipeline: '940'
-      runVersion: 'specific'
-      runId: '168614'
       artifactName: 'drop-nuget'
       targetPath: '$(Build.BinariesDirectory)\testdata'
 
