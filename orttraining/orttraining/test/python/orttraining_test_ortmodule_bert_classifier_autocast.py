@@ -322,7 +322,7 @@ def main():
                         help='disables ONNX Runtime training')
     parser.add_argument('--batch-size', type=int, default=32, metavar='N',
                         help='input batch size for training (default: 32)')
-    parser.add_argument('--do-val', action='store_true', default=True,
+    parser.add_argument('--do-val', action='store_true', default=False,
                         help='disables validation')
     parser.add_argument('--test-batch-size', type=int, default=64, metavar='N',
                         help='input batch size for testing (default: 64)')

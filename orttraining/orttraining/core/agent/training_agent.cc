@@ -50,7 +50,7 @@ TrainingAgent::TrainingAgent(InferenceSession& session,
 TrainingAgent::~TrainingAgent() = default;
 
 common::Status TrainingAgent::RunForward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-                                         PartialGraphExecutionState& state, OrtValueCache* cache) {
+                                         PartialGraphExecutionState& state, const OrtValueCache& cache) {
   state.SetProgramCounterStart(0);
   state.SetProgramCounterEnd(fw_program_counter_end_);
   return RunCore(feeds, fetches, state, *fw_feeds_fetches_manager_, cache);
@@ -60,12 +60,12 @@ common::Status TrainingAgent::RunBackward(const std::vector<OrtValue>& feeds, st
                                           PartialGraphExecutionState& state) {
   state.SetProgramCounterStart(fw_program_counter_end_);
   state.SetProgramCounterEnd(bw_program_counter_end_);
-  return RunCore(feeds, fetches, state, *bw_feeds_fetches_manager_, nullptr);
+  return RunCore(feeds, fetches, state, *bw_feeds_fetches_manager_, {});
 }
 
 common::Status TrainingAgent::RunCore(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                       PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager,
-                                      OrtValueCache* cache) {
+                                      const OrtValueCache& cache) {
   auto fetches_size = feeds_fetches_manager.GetFeedsFetchesInfo().output_names.size();
   fetches.resize(fetches_size, {});
   RunOptions run_options;

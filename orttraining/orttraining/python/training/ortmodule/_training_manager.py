@@ -114,11 +114,9 @@ class TrainingManager(GraphExecutionManager):
                         warnings.warn("Fast path enabled - skipping checks for rebuilding gradient graph, execution agent creation, and device during training.",
                                       UserWarning)
                 
-                if self._enable_grad_acc_optimization:
-                self._gradient_accumulation_manager.initialize(self._flattened_module, self._graph_info)
+                self._gradient_accumulation_manager.initialize(self._enable_grad_acc_optimization, self._flattened_module, self._graph_info)
         
-            if self._enable_grad_acc_optimization:
-                self._gradient_accumulation_manager.update_cache_before_run()
+            self._gradient_accumulation_manager.maybe_update_cache_before_run()
 
             class _ORTModuleFunction(torch.autograd.Function):
                 '''Use a custom torch.autograd.Function to associate self.backward_graph as the

@@ -9,49 +9,8 @@
 
 namespace onnxruntime {
 
-class OrtValueCache {
- public:
-  OrtValueCache() = default;
+typedef std::unordered_map<std::string, OrtValue> OrtValueCache;
 
-  size_t size() const {
-    return cache_.size();
-  }
-
-  size_t count(const std::string name) const {
-    return cache_.count(name);
-  }
-
-  OrtValue at(const std::string name) const {
-    return cache_.at(name);
-  }
-
-  Status CacheOrtValue(const std::string node_arg_name, const OrtValue& value) {
-    cache_.emplace(node_arg_name, value);
-    return Status::OK();
-  }
-
-  Status GetCachedIds(std::vector<std::string>& output_keys) const {
-    output_keys.reserve(cache_.size());
-    for(auto kv : cache_) {
-      output_keys.push_back(kv.first);
-    }
-    return Status::OK();
-  }
-
-  Status DeleteOrtValue(const std::string node_arg_name) {
-    ORT_RETURN_IF(cache_.find(node_arg_name) == cache_.end(), "NodeArg not found in cache: ", node_arg_name);
-    cache_.erase(node_arg_name);
-    return Status::OK();
-  }
-
-  Status ClearCache() {
-    cache_.clear();
-    return Status::OK();
-  }
-
- private:
-  std::unordered_map<std::string, OrtValue> cache_;
-};
 
 struct PartialGraphExecutionState {
  public:

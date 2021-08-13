@@ -18,6 +18,7 @@
 #include "python/onnxruntime_pybind_mlvalue.h"
 
 PYBIND11_MAKE_OPAQUE(std::vector<OrtValue>);
+PYBIND11_MAKE_OPAQUE(std::unordered_map<std::string, OrtValue>);
 
 namespace onnxruntime {
 namespace python {
@@ -332,24 +333,24 @@ void addObjectMethodsForTraining(py::module& m) {
   py::class_<OrtValueCache>(m, "OrtValueCache")
       .def(py::init<>())
       .def("insert", [](OrtValueCache& cache, std::string node_arg_name, OrtValue& value) {
-        cache.CacheOrtValue(node_arg_name, value);
+        cache.emplace(node_arg_name, value);
       })
       .def("keys", [](OrtValueCache& cache) {
-        // TODO : current implementation will result in two copies:
-        // one to std::vector, and other when pybind converts to py::list
-        // Need to avoid one of the copies.
-        std::vector<std::string> key_vec;
-        cache.GetCachedIds(key_vec);
-        return key_vec;
+        py::list keys;
+        for(auto kv : cache) {
+          keys.append(kv.first);
+        }
+        return keys;
       })
       .def("clear", [](OrtValueCache& cache) {
-        cache.ClearCache();
+        cache.clear();
       })
       .def("count", [](OrtValueCache& cache, std::string node_arg_name) {
         return cache.count(node_arg_name);
       })
       .def("remove", [](OrtValueCache& cache, std::string node_arg_name) {
-        cache.DeleteOrtValue(node_arg_name);
+        const auto& num_entries_erased = cache.erase(node_arg_name);
+        ORT_ENFORCE(num_entries_erased == 1, "NodeArg not found in cache: ", node_arg_name);
       });
 
   py::class_<TrainingParameters> parameters(m, "TrainingParameters", R"pbdoc(Configuration information for training.)pbdoc");
@@ -554,13 +555,13 @@ void addObjectMethodsForTraining(py::module& m) {
                                                bw_fetches_names, bw_outputs_device_info);
       }))
       .def("run_forward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state) -> void {
-        Status status = agent->RunForward(feeds, fetches, *state, nullptr);
+        Status status = agent->RunForward(feeds, fetches, *state, {});
         if (!status.IsOK()) {
           throw std::runtime_error("Error in forward pass execution: " + status.ErrorMessage());
         }
       })
-      .def("run_forward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state, OrtValueCache& cache) -> void {
-        Status status = agent->RunForward(feeds, fetches, *state, &cache);
+      .def("run_forward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state, const OrtValueCache& cache) -> void {
+        Status status = agent->RunForward(feeds, fetches, *state, cache);
         if (!status.IsOK()) {
           throw std::runtime_error("Error in forward pass execution: " + status.ErrorMessage());
         }
