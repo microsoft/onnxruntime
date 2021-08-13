@@ -21,3 +21,5 @@ if [ "${AUDITWHEEL_PLAT}" == "manylinux2010_i686" ] || [ "${AUDITWHEEL_PLAT}" ==
 	# centralized in this script to avoid code duplication
 	LC_ALL=C ${MY_DIR}/update-system-packages.sh
 fi
+yum install -y yum-plugin-versionlock
+yum versionlock cuda* libcudnn*
