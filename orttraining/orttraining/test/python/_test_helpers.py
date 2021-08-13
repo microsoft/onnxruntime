@@ -6,23 +6,31 @@ import torch
 from numpy.testing import assert_allclose
 from onnxruntime.capi.ort_trainer import ORTTrainer as Legacy_ORTTrainer
 from onnxruntime.training import orttrainer
+
 try:
+    print('********************* try 1 orttraining/orttraining/test/python/_test_helpers.py')
     from onnxruntime.training.ortmodule import ORTModule
     from onnxruntime.training.ortmodule._graph_execution_manager_factory import GraphExecutionManagerFactory
     from onnxruntime.training.ortmodule._fallback import ORTModuleInitException
 except ImportError:
     # Some pipelines do not contain ORTModule
+    print('********************* ImportError 1 orttraining/orttraining/test/python/_test_helpers.py')
     pass
 except Exception as e:
+    print('********************* Exception 1 orttraining/orttraining/test/python/_test_helpers.py')
     try:
+        print('********************* try 2 orttraining/orttraining/test/python/_test_helpers.py')
         from onnxruntime.training.ortmodule._fallback import ORTModuleInitException
         if isinstance(e, ORTModuleInitException):
+            print('********************* try if ORTModuleInitException orttraining/orttraining/test/python/_test_helpers.py')
             # ORTModule is present but not ready to run
             # That is OK because this file is also used by ORTTrainer tests
             pass
     except Exception:
-        # ORTModule not present
-        pass
+        print('********************* Exception 2 orttraining/orttraining/test/python/_test_helpers.py')
+        # Non-ORTModuleInitException exception
+        raise
+
 
 def assert_model_outputs(output_a, output_b, verbose=False, rtol=1e-7, atol=0):
     r"""Asserts whether output_a and output_b difference is within specified tolerance

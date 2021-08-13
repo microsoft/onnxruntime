@@ -129,6 +129,8 @@ def main():
 
     run_ortmodule_experimental_json_config_tests(cwd, log)
 
+    run_ortmodule_fallback_tests(cwd, log, args.transformers_cache)
+
     return 0
 
 

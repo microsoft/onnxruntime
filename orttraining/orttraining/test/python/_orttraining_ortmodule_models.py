@@ -11,6 +11,7 @@ class MyStrNet(torch.nn.Module):
             print('hi')
         return x
 
+
 class NeuralNetSinglePositionalArgument(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
         super(NeuralNetSinglePositionalArgument, self).__init__()
@@ -24,6 +25,7 @@ class NeuralNetSinglePositionalArgument(torch.nn.Module):
         out = self.relu(out)
         out = self.fc2(out)
         return out
+
 
 class NeuralNetCustomClassOutput(torch.nn.Module):
     class CustomClass(object):
@@ -53,14 +55,17 @@ class NeuralNetCustomClassOutput(torch.nn.Module):
         out3 = self.fc3_2(self.relu3(self.fc3_1(input3)))
         return NeuralNetCustomClassOutput.CustomClass(out1, out2, out3)
 
+
 class MyCustomFunctionReluModel(torch.nn.Module):
     def __init__(self):
         super().__init__()
+
         class MyReLU(torch.autograd.Function):
             @staticmethod
             def forward(ctx, input):
                 ctx.save_for_backward(input)
                 return input.clamp(min=0)
+
             @staticmethod
             def backward(ctx, grad_output):
                 input, = ctx.saved_tensors
@@ -68,5 +73,6 @@ class MyCustomFunctionReluModel(torch.nn.Module):
                 grad_input[input < 0] = 0
                 return grad_input
         self.relu = MyReLU.apply
+
     def forward(self, input):
         return self.relu(input)

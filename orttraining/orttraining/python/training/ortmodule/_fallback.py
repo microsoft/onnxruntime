@@ -204,12 +204,12 @@ class _FallbackManager(object):
     def fallback(self, model: torch.nn.Module, log_level: _logger.LogLevel, *inputs, **kwargs):
         '''Executes user PyTorch `model` using the provided inputs and return the result'''
 
-        assert self.is_pending()
+        assert self.is_pending(), '`fallback` can only be called when there is a pending fallback'
 
         if log_level <= _logger.LogLevel.WARNING:
             warnings.warn(
                 (f'Fallback due to exception {type(self._exception)} was triggered. '
-                 f'See details below:\n\n{print_exception(self._exception)}'), UserWarning)
+                 f'See details below:\n\n{get_exception_as_string(self._exception)}'), UserWarning)
 
         # Pending fallbacks are resetted to enforce retries
         if self.retry:
@@ -227,8 +227,8 @@ def wrap_exception(new_exception: ORTModuleFallbackException, raised_exception: 
         exception = e
     return exception
 
-def print_exception(exception):
-    assert isinstance(exception, Exception)
+def get_exception_as_string(exception):
+    assert isinstance(exception, Exception), 'exception must be a `Exception`'
 
     try:
         raise exception

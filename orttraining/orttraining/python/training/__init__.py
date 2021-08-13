@@ -14,16 +14,8 @@ from . import amp, checkpoint, optim, model_desc_validation
 
 try:
     from .ortmodule import ORTModule
+    print('******************** try orttraining/orttraining/python/training/__init__.py')
 except ImportError:
-    # Not a ORTModule training package
+    # That is OK iff this is not a ORTModule training package
+    print('******************** ImportError orttraining/orttraining/python/training/__init__.py')
     pass
-except Exception as e:
-    try:
-        from onnxruntime.training.ortmodule._fallback import ORTModuleInitException
-        if isinstance(e, ORTModuleInitException):
-            # ORTModule is present but not ready to run
-            # That is OK when this is not a ORTModule training package
-            pass
-    except Exception:
-        # Not a ORTModule training package
-        pass

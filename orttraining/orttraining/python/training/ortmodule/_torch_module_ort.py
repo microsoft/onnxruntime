@@ -174,6 +174,4 @@ class TorchModuleORT(TorchModuleInterface):
         # This `module` property enables HuggingFace Trainer to retrieve the underlying PreTrainedModel inside ORTModule
         # to save and load a complete checkpoint
 
-        print('++++++++++++++++++++++++++++++++++++++++++++')
-        print(type(self._original_module))
         return self._original_module
