@@ -25,7 +25,7 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
     --skip_tests \
     --enable_training_ops \
     --enable_pybind --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so \
-    --use_nnapi
+    --use_nnapi\
     --use_coreml
 
 # Run kernel def hash verification test
