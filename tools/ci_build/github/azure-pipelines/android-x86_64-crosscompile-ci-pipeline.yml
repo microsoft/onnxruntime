@@ -89,11 +89,6 @@ jobs:
     inputs:
       versionSpec: '3.x'
 
-  - task: CmdLine@2
-    inputs:
-      script: |
-        python3 -m pip install pandas
-
   - task: AzureCLI@2
     displayName: 'Post Android Code Coverage To DashBoard'
     inputs:
