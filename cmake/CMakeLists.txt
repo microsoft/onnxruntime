@@ -236,7 +236,7 @@ set(onnxruntime_REQUIRE_PYTHON_EMBED_LIB OFF)
 if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   add_compile_definitions(ENABLE_TRAINING_TORCH_INTEROP)
 
-  # Python::Python is required for building unit test executables. 
+  # Python::Python is required for building unit test executables.
   if (onnxruntime_BUILD_UNIT_TESTS)
     set(onnxruntime_REQUIRE_PYTHON_EMBED_LIB ON)
   endif()
@@ -722,7 +722,7 @@ else()
     set(protobuf_DISABLE_RTTI OFF CACHE BOOL "Remove runtime type information in the binaries" FORCE)
   endif()
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
-  
+
   if(TARGET libprotoc)
     set_target_properties(libprotoc PROPERTIES FOLDER "External/Protobuf")
     add_executable(protobuf::protoc ALIAS protoc)
@@ -933,6 +933,7 @@ else()
   check_cxx_compiler_flag(-Wambiguous-reversed-operator HAS_AMBIGUOUS_REVERSED_OPERATOR)
   check_cxx_compiler_flag(-Wdeprecated-anon-enum-enum-conversion HAS_DEPRECATED_ANON_ENUM_ENUM_CONVERSION)
   check_cxx_compiler_flag(-Wundefined-var-template HAS_UNDEFINED_VAR_TEMPLATE)
+  check_cxx_compiler_flag(-Wformat-truncation HAS_FORMAT_TRUNCATION)
 
   if(HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
@@ -955,7 +956,7 @@ else()
 endif()
 
 #names in this var must match the directory names under onnxruntime/core/providers
-#ONNXRUNTIME_PROVIDER_NAMES is the list of providers that needs to export additional symbols in the global namespace. 
+#ONNXRUNTIME_PROVIDER_NAMES is the list of providers that needs to export additional symbols in the global namespace.
 #For example CUDA EP exports "OrtSessionOptionsAppendExecutionProvider_CUDA", which is a global function.
 #However, all these things are legacy and deprecated and should be replaced with functions in onnxruntime_c_api.h.
 set(ONNXRUNTIME_PROVIDER_NAMES cpu)

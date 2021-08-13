@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/optimizer/graph_transformer.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include <memory>
 #include "core/framework/execution_provider.h"
 
