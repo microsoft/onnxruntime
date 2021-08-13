@@ -187,7 +187,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
     static int iteration = 0;
     iteration += (state_.GetProgramCounterStart() == 0);
-    utils::NodeDumpContext dump_context { iteration, -1 };
+    utils::NodeDumpContext dump_context { iteration, 0 };
 #endif
 
 

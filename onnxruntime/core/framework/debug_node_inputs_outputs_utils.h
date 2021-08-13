@@ -5,7 +5,7 @@
 //   --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
 
 // to enable redirect to sqlite database also include:
-//   --cmake_extra_defines onnxruntime_ENABLE_SQL=1
+//   --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1 onnxruntime_ENABLE_SQL=1
 // see orttraining/tools/scripts/sqldb_to_tensors.py for retrieval 
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
@@ -44,8 +44,8 @@ constexpr const char* kDumpDataDestination = "ORT_DEBUG_NODE_IO_DUMP_DATA_DESTIN
 constexpr const char* kAppendRankToFileName = "ORT_DEBUG_NODE_IO_APPEND_RANK_TO_FILE_NAME";
 // specify the output directory for any data files produced
 constexpr const char* kOutputDir = "ORT_DEBUG_NODE_IO_OUTPUT_DIR";
-// specify the file path to sqlite3 db
-constexpr const char* kSqliteDbPath = "ORT_DEBUG_NODE_IO_SQLITE_DB_PATH";
+// specify the file prefix for sqlite3 db (process id will be appended)
+constexpr const char* kSqliteDbPrefix = "ORT_DEBUG_NODE_IO_SQLITE_DB_PREFIX";
 // set to non-zero to confirm that dumping data files for all nodes is acceptable
 constexpr const char* kDumpingDataToFilesForAllNodesIsOk =
     "ORT_DEBUG_NODE_IO_DUMPING_DATA_TO_FILES_FOR_ALL_NODES_IS_OK";
@@ -97,14 +97,14 @@ struct NodeDumpOptions {
   // the output directory for dumped data files
   Path output_dir;
   // the sqlite3 db to append dumped data
-  Path sqlite_db_path;
+  Path sqlite_db_prefix;
 };
 
 struct NodeDumpContext {
   // which execution pass are we on?
   int iteration;
   // which node are we on?
-  int program_counter;
+  size_t program_counter;
 };
 
 // gets NodeDumpOptions instance configured from environment variable values
