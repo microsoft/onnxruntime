@@ -11,10 +11,10 @@ FOR /R %%i IN (*.nupkg) do (
        move onnxruntime-linux-x64\lib\libonnxruntime.so.1* runtimes\linux-x64\native\libonnxruntime.so
        move onnxruntime-linux-x64\lib\libonnxruntime_providers_* runtimes\linux-x64\native
        mkdir runtimes\win-x64\native
-       move onnxruntime-win-tensorrt-x64-*\lib\onnxruntime_providers_tensorrt.dll runtimes\win-x64\native\onnxruntime_providers_tensorrt.dll
-       move onnxruntime-win-tensorrt-x64-*\lib\onnxruntime.dll runtimes\win-x64\native\onnxruntime.dll
-       move onnxruntime-win-tensorrt-x64-*\lib\onnxruntime.lib runtimes\win-x64\native\onnxruntime.lib
-       move onnxruntime-win-tensorrt-x64-*\lib\onnxruntime.pdb runtimes\win-x64\native\onnxruntime.pdb
+       move onnxruntime-win-tensorrt-x64\lib\onnxruntime_providers_tensorrt.dll runtimes\win-x64\native\onnxruntime_providers_tensorrt.dll
+       move onnxruntime-win-tensorrt-x64\lib\onnxruntime.dll runtimes\win-x64\native\onnxruntime.dll
+       move onnxruntime-win-tensorrt-x64\lib\onnxruntime.lib runtimes\win-x64\native\onnxruntime.lib
+       move onnxruntime-win-tensorrt-x64\lib\onnxruntime.pdb runtimes\win-x64\native\onnxruntime.pdb
        7z a  %%~ni.nupkg runtimes
    )
 ) 

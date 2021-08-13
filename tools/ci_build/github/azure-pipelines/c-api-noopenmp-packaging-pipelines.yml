@@ -453,17 +453,17 @@ jobs:
   #- task: BinSkim@4
   #  displayName: 'Run BinSkim'
 
-  - task: RoslynAnalyzers@2
-    displayName: 'Run Roslyn Analyzers'
-    inputs:
-      userProvideBuildInfo: msBuildInfo
-      msBuildArchitecture: DotNetCore
-      msBuildCommandline: '"C:\Program Files\dotnet\dotnet.exe" build $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln --configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu'
-    condition: and(succeeded(), eq('${{ parameters.DoCompliance }}', true))
+  #- task: RoslynAnalyzers@2
+    #displayName: 'Run Roslyn Analyzers'
+    #inputs:
+      #userProvideBuildInfo: msBuildInfo
+      #msBuildArchitecture: DotNetCore
+      #msBuildCommandline: '"C:\Program Files\dotnet\dotnet.exe" build $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln --configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu'
+    #condition: and(succeeded(), eq('${{ parameters.DoCompliance }}', true))
 
-  - template: templates/component-governance-component-detection-steps.yml
-    parameters :
-      condition : 'succeeded'
+  #- template: templates/component-governance-component-detection-steps.yml
+    #parameters :
+      #condition : 'succeeded'
 
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
