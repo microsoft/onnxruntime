@@ -427,7 +427,7 @@ union PtrConvert {
 
 ORT_API_STATUS_IMPL(OrtApis::FillSparseTensorCoo, _Inout_ OrtValue* ort_value, _In_ const OrtMemoryInfo* data_mem_info,
                     _In_ const int64_t* values_shape, size_t values_shape_len, _In_ const void* values,
-                    size_t indices_num, const int64_t* indices_data) {
+                    _In_ const int64_t* indices_data, size_t indices_num) {
   API_IMPL_BEGIN
   TensorShape values_t_shape(values_shape, values_shape_len);
   auto& sparse_tensor = ValidateFillInputArgs(ort_value, values_t_shape, data_mem_info);
@@ -449,8 +449,8 @@ ORT_API_STATUS_IMPL(OrtApis::FillSparseTensorCoo, _Inout_ OrtValue* ort_value, _
 
 ORT_API_STATUS_IMPL(OrtApis::FillSparseTensorCsr, _Inout_ OrtValue* ort_value, _In_ const OrtMemoryInfo* data_mem_info,
                     _In_ const int64_t* values_shape, size_t values_shape_len, _In_ const void* values,
-                    size_t inner_indices_num, const int64_t* inner_indices_data,
-                    size_t outer_indices_num, const int64_t* outer_indices_data) {
+                    _In_ const int64_t* inner_indices_data, size_t inner_indices_num,
+                    _In_ const int64_t* outer_indices_data, size_t outer_indices_num) {
   API_IMPL_BEGIN
   TensorShape values_t_shape(values_shape, values_shape_len);
   auto& sparse_tensor = ValidateFillInputArgs(ort_value, values_t_shape, data_mem_info);
@@ -472,8 +472,8 @@ ORT_API_STATUS_IMPL(OrtApis::FillSparseTensorCsr, _Inout_ OrtValue* ort_value, _
 
 ORT_API_STATUS_IMPL(OrtApis::FillSparseTensorBlockSparse, _Inout_ OrtValue* ort_value, _In_ const OrtMemoryInfo* data_mem_info,
                     _In_ const int64_t* values_shape, size_t values_shape_len, _In_ const void* values,
-                    size_t indices_shape_len, const int64_t* indices_shape_data,
-                    const int32_t* indices_data) {
+                    _In_ const int64_t* indices_shape_data, size_t indices_shape_len,
+                    _In_ const int32_t* indices_data) {
   API_IMPL_BEGIN
   TensorShape values_t_shape(values_shape, values_shape_len);
   auto& sparse_tensor = ValidateFillInputArgs(ort_value, values_t_shape, data_mem_info);

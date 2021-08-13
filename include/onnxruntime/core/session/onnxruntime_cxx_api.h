@@ -551,10 +551,10 @@ struct Value : Base<OrtValue> {
   /// </summary>
   /// <param name="data_mem_info">specified buffer memory description</param>
   /// <param name="values_param">values buffer information.</param>
-  /// <param name="indices_num">number of COO indices or 0 for fully sparse data</param>
   /// <param name="indices_data">coo indices buffer or nullptr for fully sparse data</param>
+  /// <param name="indices_num">number of COO indices or 0 for fully sparse data</param>
   void FillSparseTensorCoo(const OrtMemoryInfo* data_mem_info, const OrtSparseValuesParam& values_param,
-                           size_t indices_num, const int64_t* indices_data);
+                           const int64_t* indices_data, size_t indices_num);
 
   /// <summary>
   /// The API will allocate memory using the allocator instance supplied to the CreateSparseTensor() API
@@ -563,14 +563,14 @@ struct Value : Base<OrtValue> {
   /// </summary>
   /// <param name="data_mem_info">specified buffer memory description</param>
   /// <param name="values_param">values buffer information</param>
-  /// <param name="inner_indices_num">number of csr inner indices or 0 for fully sparse tensors</param>
   /// <param name="inner_indices_data">csr inner indices pointer or nullptr for fully sparse tensors</param>
-  /// <param name="outer_indices_num">number of csr outer indices or 0</param>
+  /// <param name="inner_indices_num">number of csr inner indices or 0 for fully sparse tensors</param>
   /// <param name="outer_indices_data">pointer to csr indices data or nullptr for fully sparse tensors</param>
+  /// <param name="outer_indices_num">number of csr outer indices or 0</param>
   void FillSparseTensorCsr(const OrtMemoryInfo* data_mem_info,
                            const OrtSparseValuesParam& values,
-                           size_t inner_indices_num, const int64_t* inner_indices_data,
-                           size_t outer_indices_num, const int64_t* outer_indices_data);
+                           const int64_t* inner_indices_data, size_t inner_indices_num,
+                           const int64_t* outer_indices_data, size_t outer_indices_num);
 
   /// <summary>
   /// The API will allocate memory using the allocator instance supplied to the CreateSparseTensor() API

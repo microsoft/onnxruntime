@@ -602,7 +602,7 @@ struct OrtApi {
   ORT_API2_STATUS(GetStringTensorDataLength, _In_ const OrtValue* value, _Out_ size_t* len);
 
   /**
-     * This API returns a all of of UTF-8 encoded strings that are contained within a tensor
+     * This API returns all of of UTF-8 encoded strings that are contained within a tensor
      * or in non-empty values of a sparse tensor in one single buffer. Use offsets to calculate
      * the length of each string such as len[i] = offsets[i + 1] - offsets[i] except the last
      * string for which the length is calculated as total_len - offset[i].
@@ -1548,12 +1548,12 @@ struct OrtApi {
    * \param values_shape - pointer to values shape array
    * \param values_shape_len - length of the values_shape
    * \param values - pointer to an array of values. For strings, pass const char**.
-   * \param indices_num - number of COO indices
    * \param indices_data - pointer to a location of COO indices
+   * \param indices_num - number of COO indices
    */
   ORT_API2_STATUS(FillSparseTensorCoo, _Inout_ OrtValue* ort_value, _In_ const OrtMemoryInfo* data_mem_info,
                   _In_ const int64_t* values_shape, size_t values_shape_len, _In_ const void* values,
-                  size_t indices_num, const int64_t* indices_data);
+                  _In_ const int64_t* indices_data, size_t indices_num);
 
   /**
    * This API fills populates an empty tensor that was created using CreateSparseTensorAsOrtValue API.
@@ -1567,15 +1567,15 @@ struct OrtApi {
    * \param values_shape - pointer to values shape array
    * \param values_shape_len - length of the values_shape
    * \param values - pointer to an array of values. For strings, pass const char**.
-   * \param inner_indices_num - number of CSR inner indices
    * \param inner_indices_data - pointer to a location of CSR inner indices
-   * \param outer_indices_num - number of CSR outer indices
+   * \param inner_indices_num - number of CSR inner indices
    * \param outer_indices_data - pointer to a location of CSR outer indices
+   * \param outer_indices_num - number of CSR outer indices
    */
   ORT_API2_STATUS(FillSparseTensorCsr, _Inout_ OrtValue* ort_value, _In_ const OrtMemoryInfo* data_mem_info,
                   _In_ const int64_t* values_shape, size_t values_shape_len, _In_ const void* values,
-                  size_t inner_indices_num, const int64_t* inner_indices_data,
-                  size_t outer_indices_num, const int64_t* outer_indices_data);
+                  _In_ const int64_t* inner_indices_data, size_t inner_indices_num,
+                  _In_ const int64_t* outer_indices_data, size_t outer_indices_num);
 
   /**
    * This API fills populates an empty tensor that was created using CreateSparseTensorAsOrtValue API.
@@ -1587,14 +1587,14 @@ struct OrtApi {
    *  at the creation time has memory info that is not the same as mem_info argument to this function a X-device copy will be performed.
    *  String data is assumed to be on CPU and will only be copied into a CPU allocated buffer.
    * \param values - structure with values information
+   * \param indices_shape_data - pointer to a location of indices shape
    * \param indices_shape_len - length of the block sparse indices shape
-   * \param indices_shape - pointer to a location of indices shape
    * \param indices_data - pointer to a location of indices data. Shape will determine the length of the indices data.
    */
   ORT_API2_STATUS(FillSparseTensorBlockSparse, _Inout_ OrtValue* ort_value, _In_ const OrtMemoryInfo* data_mem_info,
                   _In_ const int64_t* values_shape, size_t values_shape_len, _In_ const void* values,
-                  size_t indices_shape_len, const int64_t* indices_shape_data,
-                  const int32_t* indices_data);
+                  _In_ const int64_t* indices_shape_data, size_t indices_shape_len,
+                  _In_ const int32_t* indices_data);
 
   /**
    * Create an OrtValue with a sparse tensor. This is the first step.

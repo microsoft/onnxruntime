@@ -511,7 +511,7 @@ TEST(CApiTest, SparseTensorFillSparseTensorFormatAPI) {
     Ort::Value::Shape ort_dense_shape{dense_shape.data(), dense_shape.size()};
     auto coo_st = Ort::Value::CreateSparseTensor<int32_t>(allocator, ort_dense_shape);
     coo_st.FillSparseTensorCoo(info, {&values_len, 1U, {expected_values.data()}},
-                               expected_linear_indices.size(), expected_linear_indices.data());
+                               expected_linear_indices.data(), expected_linear_indices.size());
     {
       auto ti = coo_st.GetTypeInfo();
       ASSERT_EQ(ONNX_TYPE_SPARSETENSOR, ti.GetONNXType());
@@ -567,8 +567,8 @@ TEST(CApiTest, SparseTensorFillSparseTensorFormatAPI) {
     Ort::Value::Shape ort_dense_shape{dense_shape.data(), dense_shape.size()};
     auto csr_st = Ort::Value::CreateSparseTensor<int32_t>(allocator, ort_dense_shape);
     csr_st.FillSparseTensorCsr(info, {values_shape.data(), values_shape.size(), {expected_values.data()}},
-                               expected_inner.size(), expected_inner.data(),
-                               expected_outer.size(), expected_outer.data());
+                               expected_inner.data(), expected_inner.size(),
+                               expected_outer.data(), expected_outer.size());
     {
       auto ti = csr_st.GetTypeInfo();
       ASSERT_EQ(ONNX_TYPE_SPARSETENSOR, ti.GetONNXType());
@@ -696,7 +696,7 @@ TEST(CApiTest, SparseTensorFillSparseFormatStringsAPI) {
     Ort::Value::Shape ort_dense_shape{dense_shape.data(), dense_shape.size()};
     auto coo_st = Ort::Value::CreateSparseTensor(allocator, ort_dense_shape, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
     coo_st.FillSparseTensorCoo(info, {&values_len, 1U, {strings}},
-                               expected_linear_indices.size(), expected_linear_indices.data());
+                               expected_linear_indices.data(), expected_linear_indices.size());
     {
       auto ti = coo_st.GetTypeInfo();
       ASSERT_EQ(ONNX_TYPE_SPARSETENSOR, ti.GetONNXType());
@@ -773,8 +773,8 @@ TEST(CApiTest, SparseTensorFillSparseFormatStringsAPI) {
     const int64_t values_len = static_cast<int64_t>(expected_values.size());
     auto csr_st = Ort::Value::CreateSparseTensor(allocator, ort_dense_shape, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
     csr_st.FillSparseTensorCsr(info, {values_shape.data(), values_shape.size(), {strings}},
-                               expected_inner.size(), expected_inner.data(),
-                               expected_outer.size(), expected_outer.data());
+                               expected_inner.data(), expected_inner.size(),
+                               expected_outer.data(), expected_outer.size());
     {
       auto ti = csr_st.GetTypeInfo();
       ASSERT_EQ(ONNX_TYPE_SPARSETENSOR, ti.GetONNXType());

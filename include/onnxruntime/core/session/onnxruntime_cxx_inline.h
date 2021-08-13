@@ -770,19 +770,19 @@ inline Value Value::CreateSparseTensor(const OrtMemoryInfo* info, void* p_data, 
 }
 
 inline void Value::FillSparseTensorCoo(const OrtMemoryInfo* mem_info, const OrtSparseValuesParam& values_param,
-                                       size_t indices_num, const int64_t* indices_data) {
+                                       const int64_t* indices_data, size_t indices_num) {
   ThrowOnError(GetApi().FillSparseTensorCoo(p_, mem_info, values_param.values_shape,
                                             values_param.values_shape_len, values_param.data.p_data,
-                                            indices_num, indices_data));
+                                            indices_data, indices_num));
 }
 
 inline void Value::FillSparseTensorCsr(const OrtMemoryInfo* data_mem_info,
                                        const OrtSparseValuesParam& values,
-                                       size_t inner_indices_num, const int64_t* inner_indices_data,
-                                       size_t outer_indices_num, const int64_t* outer_indices_data) {
+                                       const int64_t* inner_indices_data, size_t inner_indices_num,
+                                       const int64_t* outer_indices_data, size_t outer_indices_num) {
   ThrowOnError(GetApi().FillSparseTensorCsr(p_, data_mem_info, values.values_shape, values.values_shape_len, values.data.p_data,
-                                            inner_indices_num, inner_indices_data,
-                                            outer_indices_num, outer_indices_data));
+                                            inner_indices_data, inner_indices_num,
+                                            outer_indices_data, outer_indices_num));
 }
 
 inline void Value::FillSparseTensorBlockSparse(const OrtMemoryInfo* data_mem_info,
@@ -790,7 +790,7 @@ inline void Value::FillSparseTensorBlockSparse(const OrtMemoryInfo* data_mem_inf
                                                const Shape& indices_shape,
                                                const int32_t* indices_data) {
   ThrowOnError(GetApi().FillSparseTensorBlockSparse(p_, data_mem_info, values.values_shape, values.values_shape_len, values.data.p_data,
-                                                    indices_shape.shape_len, indices_shape.shape,
+                                                    indices_shape.shape, indices_shape.shape_len,
                                                     indices_data));
 }
 
