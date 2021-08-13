@@ -21,6 +21,8 @@ Abstract:
 #include <cstdlib>
 #include <cstdint>
 
+#include <functional>
+
 //
 // Define the calling convention for Windows targets.
 //
@@ -90,19 +92,54 @@ typedef enum { CblasLeft=141, CblasRight=142} CBLAS_SIDE;
 #endif
 
 //
-// Forward declare the thread pool implementation class.
-//
-// N.B. Avoid including ONNX Runtime headers here to keep the dependencies for
-// standalone MLAS test executables smaller.
+// Abstract IThreadPool to remove dependencies for onnxruntime thread pool.
 //
 
-namespace onnxruntime {
-    namespace concurrency {
-        class ThreadPool;
+namespace mlas
+{
+    class IThreadPool
+    {
+    public:
+        IThreadPool() = default;
+        virtual ~IThreadPool() = default;
+
+        virtual void TrySimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn) = 0;
+
+        virtual void TryBatchParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn, std::ptrdiff_t num_batches) = 0;
+
+        virtual int DegreeOfParallelism() = 0;
+
+        inline static void TrySimpleParallelFor(IThreadPool* tp, std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn) {
+            if (tp != nullptr) {
+                return tp->TrySimpleParallelFor(total, fn);
+            } else {
+                for (std::ptrdiff_t i = 0; i < total; ++i) {
+                    fn(i);
+                }
+            }
+        }
+
+        inline static void TryBatchParallelFor(IThreadPool* tp, std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn, std::ptrdiff_t num_batches) {
+            if (tp != nullptr) {
+                return tp->TryBatchParallelFor(total, fn, num_batches);
+            } else {
+                for (std::ptrdiff_t i = 0; i < total; ++i) {
+                    fn(i);
+                }
+            }
+        }
+
+        inline static int DegreeOfParallelism(IThreadPool* tp) {
+            if (tp != nullptr) {
+                return tp->DegreeOfParallelism();
+            } else {
+                return 1;
+            }
+        }
     };
-};
+} // namespace mlas
 
-using MLAS_THREADPOOL = onnxruntime::concurrency::ThreadPool;
+using MLAS_THREADPOOL = mlas::IThreadPool;
 
 //
 // Platform routines.

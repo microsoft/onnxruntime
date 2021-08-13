@@ -19,6 +19,7 @@ limitations under the License.
 #include "core/common/common.h"
 #include "core/common/cpuid_info.h"
 #include "core/common/eigen_common_wrapper.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
 #include "core/platform/ort_mutex.h"
 #if !defined(ORT_MINIMAL_BUILD)
@@ -364,6 +365,35 @@ class alignas(CACHE_LINE_BYTES) LoopCounter {
 #pragma warning(pop) /* Padding added in LoopCounterShard, LoopCounter */
 #endif
 
+
+// Wrapper class for MlasThreadPool
+class MlasThreadPoolAdapter : public mlas::IThreadPool
+{
+public:
+  MlasThreadPoolAdapter(ThreadPool* tp) : tp_(tp) {}
+
+  virtual ~MlasThreadPoolAdapter() = default;
+
+  inline virtual void TrySimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn) override final
+  {
+    ThreadPool::TrySimpleParallelFor(tp_, total, fn);
+  }
+
+  inline virtual int DegreeOfParallelism() override final
+  {
+    return ThreadPool::DegreeOfParallelism(tp_);
+  }
+
+  inline virtual void TryBatchParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn, std::ptrdiff_t num_batches) override final
+  {
+    ThreadPool::TryBatchParallelFor(tp_, total, fn, num_batches);
+  }
+
+private:
+  ThreadPool* tp_;
+};
+
+
 ThreadPool::ThreadPool(Env* env,
                        const ThreadOptions& thread_options,
                        const NAME_CHAR_TYPE* name,
@@ -384,6 +414,8 @@ ThreadPool::ThreadPool(Env* env,
                                                         thread_options_);
     underlying_threadpool_ = extended_eigen_threadpool_.get();
   }
+
+  mlas_threadpool_adapter_ = std::make_unique<MlasThreadPoolAdapter>(this);
 }
 
 ThreadPool::~ThreadPool() = default;
@@ -440,6 +472,14 @@ void ThreadPool::Schedule(std::function<void()> fn) {
     underlying_threadpool_->Schedule(std::move(fn));
   } else {
     fn();
+  }
+}
+
+mlas::IThreadPool* ThreadPool::AsMlasThreadPool() {
+  if (this != nullptr) {
+    return mlas_threadpool_adapter_.get();
+  } else {
+    return nullptr;
   }
 }
 

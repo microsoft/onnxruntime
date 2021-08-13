@@ -119,6 +119,10 @@ class Allocator;
 class ThreadPoolInterface;
 }  // namespace Eigen
 
+namespace mlas {
+class IThreadPool;
+}  // namespace mlas
+
 namespace onnxruntime {
 
 struct TensorOpCost {
@@ -136,6 +140,8 @@ class ThreadPoolTempl;
 class ExtendedThreadPoolInterface;
 class LoopCounter;
 class ThreadPoolParallelSection;
+
+class MlasThreadPoolAdapter;
 
 class ThreadPool {
  public:
@@ -384,6 +390,9 @@ class ThreadPool {
   static void StartProfiling(concurrency::ThreadPool* tp);
   static std::string StopProfiling(concurrency::ThreadPool* tp);
 
+  // convert to MLAS ThreadPool
+  mlas::IThreadPool* AsMlasThreadPool();
+
  private:
   friend class LoopCounter;
 
@@ -443,6 +452,8 @@ class ThreadPool {
 
   // If used, underlying_threadpool_ is instantiated and owned by the ThreadPool.
   std::unique_ptr<ThreadPoolTempl<Env> > extended_eigen_threadpool_;
+
+  std::unique_ptr<MlasThreadPoolAdapter> mlas_threadpool_adapter_;
 };
 
 }  // namespace concurrency
