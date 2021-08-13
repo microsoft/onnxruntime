@@ -383,7 +383,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSparseTensorWithValuesAsOrtValue, _In_ const 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::UseCooIndices, _Inout_ OrtValue* ort_value, size_t indices_num, _Inout_ int64_t* indices_data) {
+ORT_API_STATUS_IMPL(OrtApis::UseCooIndices, _Inout_ OrtValue* ort_value, _Inout_ int64_t* indices_data, size_t indices_num) {
   API_IMPL_BEGIN
   auto v = reinterpret_cast<::OrtValue*>(ort_value);
   auto& sparse_tensor = SparseTensor::GetSparseTensorFromOrtValue(*v);
@@ -396,7 +396,9 @@ ORT_API_STATUS_IMPL(OrtApis::UseCooIndices, _Inout_ OrtValue* ort_value, size_t 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::UseCsrIndices, _Inout_ OrtValue* ort_value, size_t inner_num, _Inout_ int64_t* inner_data, size_t outer_num, _Inout_ int64_t* outer_data) {
+ORT_API_STATUS_IMPL(OrtApis::UseCsrIndices, _Inout_ OrtValue* ort_value,
+                    _Inout_ int64_t* inner_data, size_t inner_num,
+                    _Inout_ int64_t* outer_data, size_t outer_num) {
   API_IMPL_BEGIN
   auto& sparse_tensor = SparseTensor::GetSparseTensorFromOrtValue(*ort_value);
   auto inner_span = (inner_num == 0 || inner_data == nullptr)

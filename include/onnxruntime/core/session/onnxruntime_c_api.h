@@ -1630,12 +1630,12 @@ struct OrtApi {
    * indices_data buffer should eclipse the life span of this OrtValue.
    * 
    * \param ort_value - OrtValue instance constructed with CreateSparseTensorWithValuesAsOrtValue
+   * \param indices_data - pointer to a user pre-allocated buffer or nullptr for fully sparse tensors.
    * \param indices_num  - number of COO indices. Should either be 0 for fully sparse tensors, be equal
    *  to the number of nnz values specified to CreateSparseTensorWithValuesAsOrtValue for 1-D {nnz} indices or
    *  be twice as number of nnz values for a  2-D indices {nnz, 2}
-   * \param indices_data - pointer to a user pre-allocated buffer or nullptr for fully sparse tensors.
    */
-  ORT_API2_STATUS(UseCooIndices, _Inout_ OrtValue* ort_value, size_t indices_num, _Inout_ int64_t* indices_data);
+  ORT_API2_STATUS(UseCooIndices, _Inout_ OrtValue* ort_value, _Inout_ int64_t* indices_data, size_t indices_num);
 
   /**
    * The API assigns CSR format indices to the SparseTensor that was created by 
@@ -1644,14 +1644,15 @@ struct OrtApi {
    * indner_data and outer_data buffers should eclipse the life span of this OrtValue.
    * 
    * \param ort_value - OrtValue instance constructed with CreateSparseTensorWithValuesAsOrtValue
+   * \param inner_data - pointer to a user pre-allocated buffer or nullptr for fully sparse tensors.
    * \param inner_num  - number of inner CSR indices. Should either be 0 for fully sparse tensors or be equal
    * to the number of nnz values specified to CreateSparseTensorWithValuesAsOrtValue.
-   * \param inner_data - pointer to a user pre-allocated buffer or nullptr for fully sparse tensors.
+   * \param outer_data - pointer to user pre-allocated buffer or nullptr for fully sparse tensors.
    * \param outer_num - number of CSR outer indices. Should either be 0 for fully sparse tensors or
    * equal to rows + 1 of the dense shape.
-   * \param outer_data - pointer to user pre-allocated buffer or nullptr for fully sparse tensors.
    */
-  ORT_API2_STATUS(UseCsrIndices, _Inout_ OrtValue* ort_value, size_t inner_num, _Inout_ int64_t* inner_data, size_t outer_num, _Inout_ int64_t* outer_data);
+  ORT_API2_STATUS(UseCsrIndices, _Inout_ OrtValue* ort_value, _Inout_ int64_t* inner_data, size_t inner_num,
+                  _Inout_ int64_t* outer_data, size_t outer_num);
 
   /**
    * The API assigns BlockSparse format indices to the SparseTensor that was created by 

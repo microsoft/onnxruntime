@@ -324,7 +324,7 @@ TEST(CApiTest, SparseTensorUsingAPI) {
     Ort::Value::Shape ort_dense_shape{dense_shape.data(), dense_shape.size()};
     Ort::Value::Shape ort_values_shape{&values_len, 1U};
     auto coo_st = Ort::Value::CreateSparseTensor(info, expected_values.data(), ort_dense_shape, ort_values_shape);
-    coo_st.UseCooIndices(expected_linear_indices.size(), expected_linear_indices.data());
+    coo_st.UseCooIndices(expected_linear_indices.data(), expected_linear_indices.size());
 
     {
       auto ti = coo_st.GetTypeInfo();
@@ -384,7 +384,7 @@ TEST(CApiTest, SparseTensorUsingAPI) {
     constexpr int64_t values_len = 3;
     Ort::Value::Shape ort_values_shape{&values_len, 1U};
     auto csr_st = Ort::Value::CreateSparseTensor(info, expected_values.data(), ort_dense_shape, ort_values_shape);
-    csr_st.UseCsrIndices(expected_inner.size(), expected_inner.data(), expected_outer.size(), expected_outer.data());
+    csr_st.UseCsrIndices(expected_inner.data(), expected_inner.size(), expected_outer.data(), expected_outer.size());
     {
       auto ti = csr_st.GetTypeInfo();
       ASSERT_EQ(ONNX_TYPE_SPARSETENSOR, ti.GetONNXType());

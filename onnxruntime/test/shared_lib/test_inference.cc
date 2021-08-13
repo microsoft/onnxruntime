@@ -333,7 +333,7 @@ TEST(CApiTest, SparseInputModel) {
    Ort::Value::Shape ort_dense_shape{common_shape.data(), common_shape.size()};
    Ort::Value::Shape ort_values_shape{&indices_shape[0], 1U};
    auto a_st = Ort::Value::CreateSparseTensor(info, A_values.data(), ort_dense_shape, ort_values_shape);
-   a_st.UseCooIndices(A_indices.size(), A_indices.data());
+   a_st.UseCooIndices(A_indices.data(), A_indices.size());
 
    auto b_tensor = Ort::Value::CreateTensor(info, B_data.data(), B_data.size(), common_shape.data(), common_shape.size());
 

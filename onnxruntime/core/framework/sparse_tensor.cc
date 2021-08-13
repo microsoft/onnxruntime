@@ -4,7 +4,7 @@
 #include "core/framework/data_types.h"
 #include "core/framework/sparse_tensor.h"
 #include "core/framework/data_transfer_manager.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/utils.h"
 
 #include <safeint/SafeInt.hpp>

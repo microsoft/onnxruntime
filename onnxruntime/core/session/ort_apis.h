@@ -307,8 +307,8 @@ ORT_API_STATUS_IMPL(CreateSparseTensorWithValuesAsOrtValue, _In_ const OrtMemory
                     _In_ const int64_t* dense_shape, size_t dense_shape_len,
                     _In_ const int64_t* values_shape, size_t values_shape_len,
                     ONNXTensorElementDataType type, _Outptr_ OrtValue** out);
-ORT_API_STATUS_IMPL(UseCooIndices, _Inout_ OrtValue* ort_value, size_t indices_num, _Inout_ int64_t* indices_data);
-ORT_API_STATUS_IMPL(UseCsrIndices, _Inout_ OrtValue*, size_t inner_num, _Inout_ int64_t* inner_data, size_t outer_num, _Inout_ int64_t* outer_data);
+ORT_API_STATUS_IMPL(UseCooIndices, _Inout_ OrtValue* ort_value, _Inout_ int64_t* indices_data, size_t indices_num);
+ORT_API_STATUS_IMPL(UseCsrIndices, _Inout_ OrtValue*, _Inout_ int64_t* inner_data, size_t inner_num, _Inout_ int64_t* outer_data, size_t outer_num);
 ORT_API_STATUS_IMPL(UseBlockSparseIndices, _Inout_ OrtValue* ort_value, const int64_t* indices_shape, size_t indices_shape_len, _Inout_ int32_t* indices_data);
 ORT_API_STATUS_IMPL(GetSparseTensorFormat, _In_ const OrtValue* ort_value, _Out_ enum OrtSparseFormat* out);
 ORT_API_STATUS_IMPL(GetSparseTensorValuesTypeAndShape, _In_ const OrtValue* ort_value, _Outptr_ OrtTensorTypeAndShapeInfo** out);

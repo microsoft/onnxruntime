@@ -489,9 +489,9 @@ struct Value : Base<OrtValue> {
   /// allocated buffers lifespan must eclipse that of the OrtValue.
   /// The location of the indices is assumed to be the same as specified by OrtMemoryInfo argument at the creation time.
   /// </summary>
-  /// <param name="indices_num">number of indices entries. Use 0 for fully sparse tensors</param>
   /// <param name="indices_data">pointer to the user allocated buffer with indices. Use nullptr for fully sparse tensors.</param>
-  void UseCooIndices(size_t indices_num, int64_t* indices_data);
+  /// <param name="indices_num">number of indices entries. Use 0 for fully sparse tensors</param>
+  void UseCooIndices(int64_t* indices_data, size_t indices_num);
 
   /// <summary>
   /// Supplies CSR format specific indices and marks the contained sparse tensor as being a CSR format tensor.
@@ -499,11 +499,11 @@ struct Value : Base<OrtValue> {
   /// allocated buffers lifespan must eclipse that of the OrtValue.
   /// The location of the indices is assumed to be the same as specified by OrtMemoryInfo argument at the creation time.
   /// </summary>
-  /// <param name="inner_num">number of csr inner indices or 0 for fully sparse tensors</param>
   /// <param name="inner_data">pointer to the user allocated buffer with inner indices or nullptr for fully sparse tensors</param>
-  /// <param name="outer_num">number of csr outer indices or 0 for fully sparse tensors</param>
+  /// <param name="inner_num">number of csr inner indices or 0 for fully sparse tensors</param>
   /// <param name="outer_data">pointer to the user allocated buffer with outer indices or nullptr for fully sparse tensors</param>
-  void UseCsrIndices(size_t inner_num, int64_t* inner_data, size_t outer_num, int64_t* outer_data);
+  /// <param name="outer_num">number of csr outer indices or 0 for fully sparse tensors</param>
+  void UseCsrIndices(int64_t* inner_data, size_t inner_num, int64_t* outer_data, size_t outer_num);
 
   /// <summary>
   /// Supplies BlockSparse format specific indices and marks the contained sparse tensor as being a BlockSparse format tensor.

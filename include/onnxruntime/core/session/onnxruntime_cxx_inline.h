@@ -794,12 +794,12 @@ inline void Value::FillSparseTensorBlockSparse(const OrtMemoryInfo* data_mem_inf
                                                     indices_data));
 }
 
-inline void Value::UseCooIndices(size_t indices_num, int64_t* indices_data) {
-  ThrowOnError(GetApi().UseCooIndices(p_, indices_num, indices_data));
+inline void Value::UseCooIndices(int64_t* indices_data, size_t indices_num) {
+  ThrowOnError(GetApi().UseCooIndices(p_, indices_data, indices_num));
 }
 
-inline void Value::UseCsrIndices(size_t inner_num, int64_t* inner_data, size_t outer_num, int64_t* outer_data) {
-  ThrowOnError(GetApi().UseCsrIndices(p_, inner_num, inner_data, outer_num, outer_data));
+inline void Value::UseCsrIndices(int64_t* inner_data, size_t inner_num, int64_t* outer_data, size_t outer_num) {
+  ThrowOnError(GetApi().UseCsrIndices(p_, inner_data, inner_num, outer_data, outer_num));
 }
 
 inline void Value::UseBlockSparseIndices(const Shape& indices_shape, int32_t* indices_data) {
