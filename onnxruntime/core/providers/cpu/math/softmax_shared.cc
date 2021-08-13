@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <cmath>
 #include "core/providers/cpu/math/softmax_shared.h"
+#include "core/platform/threadpool.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/mlas/inc/mlas.h"
@@ -96,7 +97,7 @@ common::Status SoftmaxCPU<float>(size_t N,
                                  float* Ydata,
                                  bool logarithmic,
                                  onnxruntime::concurrency::ThreadPool* thread_pool) {
-  MlasComputeSoftmax(Xdata, Ydata, N, D, logarithmic, thread_pool);
+  MlasComputeSoftmax(Xdata, Ydata, N, D, logarithmic, thread_pool->AsMlasThreadPool());
   return Status::OK();
 }
 

@@ -446,7 +446,7 @@ void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, 
         }
 
         if (use_mlas) {
-          MlasComputeSoftmax(s, s, num_batches, batch_size, false, threadpool);
+          MlasComputeSoftmax(s, s, num_batches, batch_size, false, threadpool->AsMlasThreadPool());
         } else {
           while (s < s_end) {
             gsl::span<float> scores_for_batch(s, s + batch_size);

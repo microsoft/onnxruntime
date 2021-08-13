@@ -281,7 +281,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
       gemm_params.OutputProcessor = &(scale_bias_procs[i]);
     }
 
-    MlasGemmBatch(gemm_shape, gemm_data_vec.data(), loop_len, tp);
+    MlasGemmBatch(gemm_shape, gemm_data_vec.data(), loop_len, tp->AsMlasThreadPool());
   }
 
   // Compute the attention score and apply the score to V

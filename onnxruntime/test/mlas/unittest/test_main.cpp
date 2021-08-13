@@ -9,9 +9,9 @@
 #if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
 
 MLAS_THREADPOOL* GetMlasThreadPool(void) {
-  static MLAS_THREADPOOL* threadpool = new onnxruntime::concurrency::ThreadPool(
+  static onnxruntime::concurrency::ThreadPool* threadpool = new onnxruntime::concurrency::ThreadPool(
       &onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr, 2, true);
-  return threadpool;
+  return threadpool->AsMlasThreadPool();
 }
 
 #else

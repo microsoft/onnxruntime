@@ -215,7 +215,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
                     static_cast<size_t>(M / conv_attrs_.group),
                     &activation_,
                     &WorkingBufferSize,
-                    thread_pool);
+                    thread_pool->AsMlasThreadPool());
 
     auto* working_data = WorkingBufferSize > 0 ? alloc->Alloc(SafeInt<size_t>(sizeof(float)) * WorkingBufferSize)
                                                : nullptr;
@@ -227,7 +227,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
              Bdata,
              static_cast<float*>(working_buffer.get()),
              Ydata,
-             thread_pool);
+             thread_pool->AsMlasThreadPool());
   } else {
     const int64_t input_image_size = input_shape.Size();
     const int64_t output_image_size = output_shape.Size();

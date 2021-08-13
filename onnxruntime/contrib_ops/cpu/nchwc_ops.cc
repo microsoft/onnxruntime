@@ -213,7 +213,7 @@ Status NchwcConv::Compute(OpKernelContext* context) const {
       y_data,
       &activation_,
       Sum == nullptr,
-      context->GetOperatorThreadPool());
+      context->GetOperatorThreadPool()->AsMlasThreadPool());
 
   return Status::OK();
 }
@@ -238,7 +238,7 @@ Status NchwcPoolBase::NchwcPool(OpKernelContext* context, MLAS_POOLING_KIND kind
       output_dims.data(),
       X->template Data<float>(),
       Y->template MutableData<float>(),
-      context->GetOperatorThreadPool());
+      context->GetOperatorThreadPool()->AsMlasThreadPool());
 
   return Status::OK();
 }

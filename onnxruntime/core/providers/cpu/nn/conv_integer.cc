@@ -164,7 +164,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
       gemm_params.C = Ydata;
       gemm_params.ldc = static_cast<size_t>(output_image_size);
 
-      MlasGemm(gemm_shape, gemm_params, thread_pool);
+      MlasGemm(gemm_shape, gemm_params, thread_pool->AsMlasThreadPool());
 
       Xdata += X_offset;
       Ydata += Y_offset;

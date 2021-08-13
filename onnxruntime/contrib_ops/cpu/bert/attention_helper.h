@@ -57,7 +57,7 @@ void ComputeAttentionSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
 
 template <>
 inline void ComputeAttentionSoftmaxInplace(float* score, int N, int D, ThreadPool* tp) {
-  MlasComputeSoftmax(score, score, N, D, false, tp);
+  MlasComputeSoftmax(score, score, N, D, false, tp->AsMlasThreadPool());
 }
 
 template <typename T>
