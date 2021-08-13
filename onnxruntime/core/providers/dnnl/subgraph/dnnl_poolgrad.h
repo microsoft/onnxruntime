@@ -8,15 +8,15 @@
 namespace onnxruntime {
 namespace ort_dnnl {
 
-class DnnlPool {
+class DnnlPoolGrad {
  public:
   enum InputTensors : int {
-    IN_X = 0,
+    IN_DY = 0,
+    IN_INDICES = 1
   };
 
   enum OutputTensors : int {
-    OUT_Y = 0,
-    OUT_INDICES = 1
+    OUT_DX = 0
   };
 
   enum PoolShape : size_t {
@@ -26,7 +26,7 @@ class DnnlPool {
     SHAPE_3D = 3
   };
 
-  DnnlPool();
+  DnnlPoolGrad();
   void CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node);
 
  private:

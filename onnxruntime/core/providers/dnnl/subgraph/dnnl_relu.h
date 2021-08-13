@@ -8,18 +8,17 @@
 namespace onnxruntime {
 namespace ort_dnnl {
 
-class DnnlReluGrad {
+class DnnlRelu {
  public:
   enum InputTensors : int {
-    IN_dY = 0,
-    IN_X = 1
+    IN_X = 0,
   };
 
   enum OutputTensors : int {
-    OUT_dX = 0
+    OUT_Y = 0
   };
 
-  DnnlReluGrad();
+  DnnlRelu();
   void CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node);
 };
 
