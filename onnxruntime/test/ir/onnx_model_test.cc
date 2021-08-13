@@ -291,8 +291,8 @@ agraph (float[N] x) => (uint8[N] w)
     new_node->CopyFrom(node);
   }
 
-  function_proto->set_name("bar");
-  function_proto->set_domain("custom_domain");
+  function_proto->set_name("foo");
+  function_proto->set_domain("custom_domain_1");
   function_proto->set_doc_string("Test function proto");
   function_proto->add_input("x");
   function_proto->add_output("y");
@@ -305,10 +305,12 @@ agraph (float[N] x) => (uint8[N] w)
   }
 
   // Build second function proto
+  // intentionally using same function name to test 
+  // that domainA:name and domainB:name are allowed.
   function_proto = model_proto.mutable_functions()->Add();
   func_body_nodes = FunctionBodyHelper::BuildNodes(
       {// nodes: {outputs, op, inputs, attributes, domain}
-       {{"b"}, "bar", {"a"}, {}, "custom_domain"},
+       {{"b"}, "foo", {"a"}, {}, "custom_domain_1"},
        {{"c"}, "Identity", {"b"}}});
 
   for (const auto& node : func_body_nodes) {
@@ -322,7 +324,7 @@ agraph (float[N] x) => (uint8[N] w)
   function_proto->add_input("a");
   function_proto->add_output("c");
 
-  std::unordered_map<std::string, int> func2_opset_imports({{"", 13}, {"custom_domain", 1}});
+  std::unordered_map<std::string, int> func2_opset_imports({{"", 13}, {"custom_domain_1", 1}});
   for (auto& opset_import : func2_opset_imports) {
     auto* func_opset_import = function_proto->mutable_opset_import()->Add();
     func_opset_import->set_domain(opset_import.first);
@@ -338,6 +340,5 @@ agraph (float[N] x) => (uint8[N] w)
   std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>> regs = {registry};
   ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, &regs, *(DefaultLoggingManager().CreateLogger("GraphTest"))));
 }
-
 }  // namespace test
 }  // namespace onnxruntime
