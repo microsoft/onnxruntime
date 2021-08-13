@@ -861,7 +861,7 @@ set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} -DGSL_UNENFORCED_O
 include(eigen)
 
 #onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn,
-# dnnl/mklml, onnxruntime_codegen_tvm, tvm, nnvm_compiler and pthread
+# dnnl/mklml, onnxruntime_codegen_tvm, tvm and pthread
 # pthread is always at the last
 set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto ${PROTOBUF_LIB} re2::re2)
 
@@ -1263,14 +1263,12 @@ if (onnxruntime_USE_TVM)
   set_target_properties(tvm PROPERTIES FOLDER "External/tvm")
   set_target_properties(tvm_topi PROPERTIES FOLDER "External/tvm")
   set_target_properties(tvm_runtime PROPERTIES FOLDER "External/tvm")
-  set_target_properties(nnvm_compiler PROPERTIES FOLDER "External/tvm")
 
   set(TVM_INCLUDES ${PROJECT_SOURCE_DIR}/external/tvm/include
     ${PROJECT_SOURCE_DIR}/external/tvm/3rdparty/dmlc-core/include
     ${PROJECT_SOURCE_DIR}/external/tvm/3rdparty/dlpack/include
     $<TARGET_PROPERTY:tvm,INTERFACE_INCLUDE_DIRECTORIES>
-    $<TARGET_PROPERTY:tvm_topi,INTERFACE_INCLUDE_DIRECTORIES>
-    $<TARGET_PROPERTY:nnvm_compiler,INTERFACE_INCLUDE_DIRECTORIES>)
+    $<TARGET_PROPERTY:tvm_topi,INTERFACE_INCLUDE_DIRECTORIES>)
   add_definitions(-DUSE_TVM)
 
   set(onnxruntime_tvm_libs onnxruntime_codegen_tvm)
@@ -1280,8 +1278,8 @@ if (onnxruntime_USE_TVM)
       set(FS_STDLIB stdc++fs)
     endif()
   endif()
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm nnvm_compiler ${FS_STDLIB})
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm nnvm_compiler)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm ${FS_STDLIB})
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm)
 endif()
 
 if (onnxruntime_ENABLE_EXTENSION_CUSTOM_OPS)
