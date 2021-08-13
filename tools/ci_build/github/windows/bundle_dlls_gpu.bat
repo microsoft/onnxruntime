@@ -41,7 +41,7 @@ IF !gpu_dir! == "" (
 mkdir !gpu_dir!\runtimes\linux-x64
 mkdir !gpu_dir!\runtimes\linux-x64\native
 move onnxruntime-linux-x64\lib\libonnxruntime.so.1* !gpu_dir!\runtimes\linux-x64\native\libonnxruntime.so
-move move onnxruntime-linux-x64\lib\libonnxruntime_providers_* !gpu_dir!\runtimes\linux-x64\native
+move onnxruntime-linux-x64\lib\libonnxruntime_providers_* !gpu_dir!\runtimes\linux-x64\native
 
 IF !trt_dir! == "" (
     echo "Can't find TensorRT nuget package to unpack/pack"
