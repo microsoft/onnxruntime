@@ -10,8 +10,8 @@
 
 #include "core/platform/env.h"
 #include "core/session/provider_bridge_ort.h"
-
 #include <unordered_map>
+#include <cstdlib>
 
 namespace onnxruntime {
 namespace python {
@@ -79,14 +79,14 @@ static std::unique_ptr<ORTTrainingPythonEnv> ort_training_env;
 
 void InitializeTrainingEnv() {
   auto initialize = [&]() {
-    // Initialization of the module
-    InitArray();
-    Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
-    ort_training_env = std::make_unique<ORTTrainingPythonEnv>();
     static bool initialized = false;
     if (initialized) {
       return;
     }
+    // Initialization of the module
+    InitArray();
+    Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
+    ort_training_env = std::make_unique<ORTTrainingPythonEnv>();
     initialized = true;
   };
   initialize();
@@ -153,6 +153,15 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 #ifdef ENABLE_EAGER_MODE
   addObjectMethodsForEager(m);
 #endif
+
+  // clean the ort training environment when python interpreter exit
+  // otherwise the global var will be de-constrcut after user main.
+  // the order of ort training environment deconstruction and cudart
+  // deconstruction is not stable, which will lead to crash.
+  auto atexit = py::module_::import("atexit");
+  atexit.attr("register")(py::cpp_function([]() {
+    ort_training_env = nullptr;
+  }));
 }
 
 }

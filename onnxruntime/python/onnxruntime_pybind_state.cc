@@ -28,15 +28,6 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/provider_bridge_ort.h"
 
-#ifdef ENABLE_TRAINING
-#include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
-
-#ifdef ENABLE_TRAINING_TORCH_INTEROP
-#include "orttraining/core/framework/torch/custom_function_register.h"
-#endif
-
-#endif
-
 // Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
 // GCC 4.x doesn't seem to define this and it breaks the pipelines based on CentOS as it uses
 // GCC 4.x.
@@ -845,51 +836,6 @@ void addGlobalMethods(py::module& m, Environment& env) {
         }
       });
 
-#ifdef ENABLE_TRAINING
-  m.def("register_aten_op_executor",
-        [](const std::string& is_tensor_argument_address_str, const std::string& aten_op_executor_address_str) -> void {
-          size_t is_tensor_argument_address_int, aten_op_executor_address_int;
-          ORT_THROW_IF_ERROR(
-              ParseStringWithClassicLocale(is_tensor_argument_address_str, is_tensor_argument_address_int));
-          ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(aten_op_executor_address_str, aten_op_executor_address_int));
-          void* p_is_tensor_argument = reinterpret_cast<void*>(is_tensor_argument_address_int);
-          void* p_aten_op_executor = reinterpret_cast<void*>(aten_op_executor_address_int);
-          contrib::aten_ops::ATenOperatorExecutor::Initialize(p_is_tensor_argument, p_aten_op_executor);
-        });
-  m.def("register_forward_runner", [](py::object obj) -> void {
-#ifdef ENABLE_TRAINING_TORCH_INTEROP
-    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
-    pool.RegisterForwardRunner(obj.ptr());
-#else
-        ORT_UNUSED_PARAMETER(obj);
-#endif
-  });
-  m.def("register_backward_runner", [](py::object obj) -> void {
-#ifdef ENABLE_TRAINING_TORCH_INTEROP
-    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
-    pool.RegisterBackwardRunner(obj.ptr());
-#else
-        ORT_UNUSED_PARAMETER(obj);
-#endif
-  });
-  m.def("register_torch_autograd_function", [](std::string key, py::object obj) -> void {
-#ifdef ENABLE_TRAINING_TORCH_INTEROP
-    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
-    pool.RegisterTorchAutogradFunction(key, obj.ptr());
-#else
-        ORT_UNUSED_PARAMETER(key);
-        ORT_UNUSED_PARAMETER(obj);
-#endif
-  });
-  m.def("unregister_python_functions", []() -> void {
-#ifdef ENABLE_TRAINING_TORCH_INTEROP
-    // Release all custom python functions registered.
-    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
-    pool.UnRegisterFunctions();
-#endif
-  });
-#endif
-
 #ifdef USE_NUPHAR
   // TODO remove deprecated global config
   m.def("set_nuphar_settings", [](const std::string& str) {
@@ -1489,15 +1435,7 @@ static struct {
 } allocators;
 #endif
 
-#ifdef ENABLE_TRAINING
-void addObjectMethodsForTraining(py::module& m);
-#endif
-
-#ifdef ENABLE_EAGER_MODE
-void addObjectMethodsForEager(py::module& m);
-#endif
-
-void CreatePybindStateModule(py::module& m) {
+void CreateInferencePybindStateModule(py::module& m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";
   RegisterExceptions(m);
 
@@ -1568,18 +1506,10 @@ void CreatePybindStateModule(py::module& m) {
   }
 #endif
 
-#ifdef ENABLE_TRAINING
-  addObjectMethodsForTraining(m);
-#endif  // ENABLE_TRAINING
-
 #ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
   addGlobalSchemaFunctions(m);
   addOpSchemaSubmodule(m);
   addOpKernelSubmodule(m);
-#endif
-
-#ifdef ENABLE_EAGER_MODE
-  addObjectMethodsForEager(m);
 #endif
 
 }
