@@ -3,6 +3,7 @@
 # _torch_module.py
 
 from . import _io
+from .debug_options import DebugOptions
 from ._graph_execution_manager_factory import GraphExecutionManagerFactory
 from ._torch_module_interface import TorchModuleInterface
 
@@ -16,7 +17,7 @@ T = TypeVar('T', bound='torch.nn.Module')
 
 
 class TorchModule(TorchModuleInterface):
-    def __init__(self, module: torch.nn.Module):
+    def __init__(self, module: torch.nn.Module, debug_options: DebugOptions):
         super(TorchModule, self).__init__(module)
         self._flattened_module = _io._FlattenedModule(module)
 
@@ -36,7 +37,7 @@ class TorchModule(TorchModuleInterface):
         functools.update_wrapper(
             self.forward.__func__, self._original_module.forward.__func__)
 
-        self._execution_manager = GraphExecutionManagerFactory(self._flattened_module)
+        self._execution_manager = GraphExecutionManagerFactory(self._flattened_module, debug_options)
 
     def _apply(self, fn):
         """Override original method to delegate execution to the flattened PyTorch user module"""

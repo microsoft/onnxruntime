@@ -64,7 +64,7 @@ struct MyEP_Provider : Provider {
 
 extern "C" {
 
-ORT_API(onnxruntime::Provider*, GetProvider) {
+ORT_API(onnxruntime::Provider*, ProviderEntryPoint) {
   return &onnxruntime::g_provider;
 }
 

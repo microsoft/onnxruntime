@@ -8,19 +8,14 @@
 #include "embed_layer_norm_helper.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/common.h"
+#include "core/quantization/quantization.h"
 
 namespace onnxruntime {
 namespace contrib {
 
 namespace {
 
-// TODO(kreeger): Drop this when ComputeInternal() is using a lookup table.
-template <typename T>
-inline float Dequantize(T value, float scale, T zero_point) {
-  return static_cast<float>(static_cast<int32_t>(value) - zero_point) * scale;
-}
-
-template <typename T, typename T2>
+template <typename T, typename QuantizedType>
 Status ComputeInternal(OpKernelContext* context, float epsilon) {
   const Tensor* input_ids = context->Input<Tensor>(0);
   const Tensor* segment_ids = context->Input<Tensor>(1);  // optional. nullptr if it's distill-bert
@@ -64,30 +59,30 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
       has_segment_embedding ? static_cast<int>(segment_embedding->Shape()[0]) : 0;
 
   // Grab quantization values:
-  float word_embedding_scale_data = *(word_embedding_scale->template Data<float>());
-  T2 word_embedding_zero_point_data = *(word_embedding_zero_point->template Data<T2>());
-
-  float position_embedding_scale_data = *(position_embedding_scale->template Data<float>());
-  T2 position_embedding_zero_point_data = *(position_embedding_zero_point->template Data<T2>());
-
-  float segment_embedding_scale_data =
-      has_segment_embedding ? *(segment_embedding_scale->template Data<float>()) : 0.0f;
-  T2 segment_embedding_zero_point_data =
-      has_segment_embedding ? *(segment_embedding_zero_point->template Data<T2>()) : 0;
-
-  float gamma_scale_data = *(gamma_scale->template Data<float>());
-  T2 gamma_zero_point_data = *(gamma_zero_point->template Data<T2>());
-
-  float beta_scale_data = *(beta_scale->template Data<float>());
-  T2 beta_zero_point_data = *(beta_zero_point->template Data<T2>());
+  quantization::Params<QuantizedType> word_embedding_params =
+      quantization::GetTensorQuantizationParams<QuantizedType>(word_embedding_scale,
+                                                               word_embedding_zero_point);
+  quantization::Params<QuantizedType> position_embedding_params =
+      quantization::GetTensorQuantizationParams<QuantizedType>(position_embedding_scale,
+                                                               position_embedding_zero_point);
+  quantization::Params<QuantizedType> segment_embedding_params;
+  if (has_segment_embedding) {
+    segment_embedding_params =
+        quantization::GetTensorQuantizationParams<QuantizedType>(segment_embedding_scale,
+                                                                 segment_embedding_zero_point);
+  }
+  quantization::Params<QuantizedType> gamma_params =
+      quantization::GetTensorQuantizationParams<QuantizedType>(gamma_scale, gamma_zero_point);
+  quantization::Params<QuantizedType> beta_params =
+      quantization::GetTensorQuantizationParams<QuantizedType>(beta_scale, beta_zero_point);
 
   // Grab pointers to buffers each Tensor represents:
-  const T2* word_embedding_data = word_embedding->template Data<T2>();
-  const T2* position_embedding_data = position_embedding->template Data<T2>();
-  const T2* segment_embedding_data =
-      has_segment_embedding ? segment_embedding->template Data<T2>() : nullptr;
-  const T2* gamma_data = gamma->template Data<T2>();
-  const T2* beta_data = beta->template Data<T2>();
+  const QuantizedType* word_embedding_data = word_embedding->template Data<QuantizedType>();
+  const QuantizedType* position_embedding_data = position_embedding->template Data<QuantizedType>();
+  const QuantizedType* segment_embedding_data =
+      has_segment_embedding ? segment_embedding->template Data<QuantizedType>() : nullptr;
+  const QuantizedType* gamma_data = gamma->template Data<QuantizedType>();
+  const QuantizedType* beta_data = beta->template Data<QuantizedType>();
 
   T* output_data = output->template MutableData<T>();
 
@@ -120,12 +115,14 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
           }
 
           // Grab inputs for the embeddings for the current batch index:
-          const T2* input_word_embedding = word_embedding_data + word_col_index * hidden_size;
-          const T2* input_position_embedding =
+          const QuantizedType* input_word_embedding =
+              word_embedding_data + word_col_index * hidden_size;
+          const QuantizedType* input_position_embedding =
               position_embedding_data + position_col_index * hidden_size;
-          const T2* input_segment_embedding = nullptr;
+          const QuantizedType* input_segment_embedding = nullptr;
           if (segment_embedding_data != nullptr) {
-            input_segment_embedding = segment_embedding_data + segment_col_index * hidden_size;
+            input_segment_embedding =
+                segment_embedding_data + segment_col_index * hidden_size;
           }
 
           T* output = output_data + (index * hidden_size);
@@ -133,16 +130,13 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
           T sum = static_cast<T>(0);
           for (int i = 0; i < hidden_size; ++i) {
             // TODO(kreeger): Use a table query to improve performance:
-            T subtotal = Dequantize<T2>(input_word_embedding[i],
-                                        word_embedding_scale_data,
-                                        word_embedding_zero_point_data) +
-                         Dequantize<T2>(input_position_embedding[i],
-                                        position_embedding_scale_data,
-                                        position_embedding_zero_point_data);
+            T subtotal = quantization::Dequantize<QuantizedType>(input_word_embedding[i],
+                                                                 word_embedding_params) +
+                         quantization::Dequantize<QuantizedType>(input_position_embedding[i],
+                                                                 position_embedding_params);
             if (segment_embedding_data != nullptr) {
-              subtotal += Dequantize<T2>(input_segment_embedding[i],
-                                         segment_embedding_scale_data,
-                                         segment_embedding_zero_point_data);
+              subtotal += quantization::Dequantize<QuantizedType>(input_segment_embedding[i],
+                                                                  segment_embedding_params);
             }
             output[i] = subtotal;
             sum += subtotal;
@@ -160,8 +154,8 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
           T e = sqrt(sum / hidden_size + epsilon);
           for (int i = 0; i < hidden_size; i++) {
             // TODO(kreeger): Consider keeping these as int8 or use PrePack()!
-            T cur_gamma = Dequantize<T2>(gamma_data[i], gamma_scale_data, gamma_zero_point_data);
-            T cur_beta = Dequantize<T2>(beta_data[i], beta_scale_data, beta_zero_point_data);
+            T cur_gamma = quantization::Dequantize<QuantizedType>(gamma_data[i], gamma_params);
+            T cur_beta = quantization::Dequantize<QuantizedType>(beta_data[i], beta_params);
             output[i] = output[i] / e * cur_gamma + cur_beta;
           }
         },

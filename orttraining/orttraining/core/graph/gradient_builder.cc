@@ -16,7 +16,6 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/gradient_builder_registry.h"
 #include "orttraining/core/graph/graph_augmenter.h"
-#include "orttraining/training_ops/cpu/aten_ops/aten_op_config.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -824,24 +823,24 @@ IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
   std::vector<NodeDef> output;
   if (a.name.compare(b.name) == 0) {
     if (IsGradientRequiredForSrcNodeInput(0)) {
-        output.push_back(
-            NodeDef("Identity",
-                    {GO(0)},
-                    {GI(0)}));
+      output.push_back(
+          NodeDef("Identity",
+                  {GO(0)},
+                  {GI(0)}));
     }
 
     if (IsGradientRequiredForSrcNodeInput(1)) {
-        if (is_sub) {
-          output.push_back(
-              NodeDef("Neg",
-                      {GO(0)},
-                      {GI(1)}));
-        } else /*is_add*/ {
-          output.push_back(
-              NodeDef("Identity",
-                      {GO(0)},
-                      {GI(1)}));
-        }
+      if (is_sub) {
+        output.push_back(
+            NodeDef("Neg",
+                    {GO(0)},
+                    {GI(1)}));
+      } else /*is_add*/ {
+        output.push_back(
+            NodeDef("Identity",
+                    {GO(0)},
+                    {GI(1)}));
+      }
     }
     return output;
   }
@@ -918,14 +917,14 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulGradient) {
 
   std::vector<NodeDef> output;
   if (a.name.compare(b.name) == 0) {
-    if(IsGradientRequiredForSrcNodeInput(0)) {
+    if (IsGradientRequiredForSrcNodeInput(0)) {
       output.push_back(
           NodeDef("Mul",
                   {GO(0), I(1)},
                   {GI(0)}));
     }
 
-    if(IsGradientRequiredForSrcNodeInput(1)) {
+    if (IsGradientRequiredForSrcNodeInput(1)) {
       output.push_back(
           NodeDef("Mul",
                   {GO(0), I(0)},
@@ -1569,10 +1568,18 @@ IMPLEMENT_GRADIENT_BUILDER(GetAbsGradient) {
 IMPLEMENT_GRADIENT_BUILDER(GetTileGradient) {
   std::vector<NodeDef> result = {};
 
+  int opset_version = SrcNodeDomain() == kOnnxDomain ? SrcNodeOpsetVersion() : OnnxOpSetVersion();
   result.push_back(NodeDef("Shape", {I(0)}, {IA("orig_shape")}));
   std::vector<int64_t> axes_values = {1};
-  result.push_back(NodeDef("Unsqueeze", {IA("orig_shape")}, {IA("2d_orig_shape")}, {MakeAttribute("axes", axes_values)}));  // M, N, K
-  result.push_back(NodeDef("Unsqueeze", {I(1)}, {IA("2d_repeats")}, {MakeAttribute("axes", axes_values)}));                 //a, b, c
+  if (opset_version >= 13) {
+    NodeDef unsqueeze_axes = ConstantVectorNode(axes_values, Name("unsqueeze_axes"));
+    result.push_back(unsqueeze_axes);
+    result.push_back(NodeDef("Unsqueeze", {IA("orig_shape"), unsqueeze_axes.output_args[0]}, {IA("2d_orig_shape")}));  // M, N, K
+    result.push_back(NodeDef("Unsqueeze", {I(1), unsqueeze_axes.output_args[0]}, {IA("2d_repeats")}));                 //a, b, c
+  } else {
+    result.push_back(NodeDef("Unsqueeze", {IA("orig_shape")}, {IA("2d_orig_shape")}, {MakeAttribute("axes", axes_values)}));  // M, N, K
+    result.push_back(NodeDef("Unsqueeze", {I(1)}, {IA("2d_repeats")}, {MakeAttribute("axes", axes_values)}));                 //a, b, c
+  }
   result.push_back(NodeDef("Concat", {IA("2d_repeats"), IA("2d_orig_shape")}, {IA("concated_dims_T")},
                            {MakeAttribute("axis", int64_t(1))}));  // [[a, M], [b, N], [c, K]]
   std::vector<int64_t> const_shape_minusone{-1};
@@ -1607,7 +1614,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetTileGradient) {
     result.push_back(delta_node);
     result.push_back(NodeDef("Range", {start_node.output_args[0], IA("limit"), delta_node.output_args[0]}, {IA("range_even_indices")}));
 
-    int opset_version = SrcNodeDomain() == kOnnxDomain ? SrcNodeOpsetVersion() : OnnxOpSetVersion();
     result.push_back(NodeDef(opset_version >= 13 ? OpDef{"ReduceSum", kOnnxDomain, opset_version} : OpDef{"ReduceSumTraining", kMSDomain, 1},
                              {IA("reshape_tile_grad_op"), IA("range_even_indices")},
                              {GI(0)},
@@ -1680,51 +1686,52 @@ IMPLEMENT_GRADIENT_BUILDER(GetMinMaxGradient) {
   return result;
 }
 
-IMPLEMENT_GRADIENT_BUILDER(GetATenOpGradient) {
-  const auto& src_attrs = SrcNodeAttributes();
-  std::vector<AttributeProto> attrs;
-  ORT_ENFORCE(utils::HasString(src_attrs.at("name")));
-  const std::string name = src_attrs.at("name").s();
-  attrs.emplace_back(MakeAttribute("name", name));
-  if (src_attrs.find("custom_attributes_json") != src_attrs.end()) {
-    attrs.emplace_back(MakeAttribute("custom_attributes_json", src_attrs.at("custom_attributes_json").s()));
-  }
+IMPLEMENT_GRADIENT_BUILDER(GetExternalGradient) {
+  std::vector<NodeDef> result;
+  const auto& p_grad_def = GradientDefinitionRegistry::Instance().GetGradientDefinition(GetGradientDefinitionKey());
+  ORT_ENFORCE(p_grad_def);
+  const auto& grad_def = *p_grad_def;
 
-  const auto* op_config_ptr = contrib::aten_ops::ATenOperatorConfigs::Instance().GetConfig(name);
-  ORT_ENFORCE(op_config_ptr, "ATen Op config for ", name, " is not found.");
-  const auto& op_config = *op_config_ptr;
-
-  std::vector<int64_t> grad_output_types;
-  std::vector<ArgDef> input_args;
-  std::vector<ArgDef> output_args;
-
-  for (const auto& config : op_config.backward_input_source_configs) {
-    size_t index = config.second;
-    switch (config.first) {
-      case contrib::aten_ops::GRAD_OUTPUT:
-        input_args.emplace_back(GO(index));
-        break;
-      case contrib::aten_ops::FORWARD_INPUT:
-        input_args.emplace_back(I(index));
-        break;
-      case contrib::aten_ops::FORWARD_OUTPUT:
-        input_args.emplace_back(O(index));
-        break;
-    }
-  }
-
-  for (size_t index : op_config.gradient_input_indices) {
-    if (IsGradientRequiredForSrcNodeInput(index)) {
-      output_args.emplace_back(GI(index));
-    } else {
-      output_args.emplace_back(ArgDef("", nullptr));
+  std::unordered_set<std::string> seen_outputs;
+  for (const auto& node_def : grad_def) {
+    OpDef op_def(node_def.op_type, node_def.domain);
+    std::vector<ArgDef> input_args;
+    for (const auto& input : node_def.inputs) {
+      if (input.find("GO(") == 0) {
+        int index = std::stoi(input.substr(3, input.length() - 4));
+        input_args.emplace_back(GO(static_cast<size_t>(index)));
+      } else if (input.find("I(") == 0) {
+        int index = std::stoi(input.substr(2, input.length() - 3));
+        input_args.emplace_back(I(static_cast<size_t>(index)));
+      } else if (input.find("O(") == 0) {
+        int index = std::stoi(input.substr(2, input.length() - 3));
+        input_args.emplace_back(O(static_cast<size_t>(index)));
+      } else {
+        ORT_ENFORCE(seen_outputs.find(input) != seen_outputs.end(), input, " is not a valid intermediate output.");
+        input_args.emplace_back(IA(input));
+      }
     }
 
-    grad_output_types.emplace_back(IElemType(index));
+    std::vector<ArgDef> output_args;
+    for (const auto& output : node_def.outputs) {
+      if (output.find("GI(") == 0) {
+        size_t index = static_cast<size_t>(std::stoi(output.substr(3, output.length() - 4)));
+        output_args.emplace_back(GI(index));
+      } else {
+        seen_outputs.insert(output);
+        output_args.emplace_back(IA(output));
+      }
+    }
+
+    std::vector<AttributeProto> attrs;
+    for (const auto& attribute : node_def.attributes) {
+      attrs.emplace_back(AttributeDefinitionToAttributeProto(attribute));
+    }
+
+    result.emplace_back(NodeDef(op_def, input_args, output_args, attrs));
   }
 
-  attrs.emplace_back(MakeAttribute("output_types", grad_output_types));
-  return std::vector<NodeDef>{NodeDef(OpDef{"ATenOpGrad", kMSDomain, 1}, input_args, output_args, attrs)};
+  return result;
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
@@ -1733,6 +1740,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
   std::vector<AttributeProto> attrs;
   ORT_ENFORCE(utils::HasString(src_attrs.at("name")));
   attrs.push_back(MakeAttribute("name", src_attrs.at("name").s()));
+  attrs.push_back(MakeAttribute("output_convention", src_attrs.at("input_convention").s()));
   attrs.push_back(MakeAttribute("inplace", src_attrs.at("inplace").i()));
 
   // input_tensor_types[i] store the type of autograd.Function.apply's ith output.
@@ -1781,33 +1789,46 @@ IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
   }
   attrs.push_back(MakeAttribute("output_tensor_ranks", output_tensor_ranks));
 
-  std::vector<int64_t> output_tensor_requires_grads;
-  for (const auto requires_grad : src_attrs["input_tensor_requires_grads"].ints()) {
-    output_tensor_requires_grads.push_back(requires_grad);
-  }
-  attrs.push_back(MakeAttribute("output_tensor_requires_grads", output_tensor_requires_grads));
-
   std::vector<ArgDef> input_args;
   // Put Python context generated by PythonOp.
   input_args.push_back(O(0));
   // Put other outputs.
   for (int i = 1; i < GetSrcNodeOutputSize(); ++i) {
-    if (input_tensor_requires_grads.at(i)) {
+    if (src_attrs["output_tensor_requires_grads"].ints().Get(i - 1)) {
       // Only add FW outputs which
       //  1. are tensors,
       //  2. needs gradients (requires_grad=True in Pytorch).
       input_args.push_back(GO(i));
+    } else {
+      input_args.push_back(ArgDef());
     }
   }
 
   // Also connect forward outputs to PythonOpGrad for random segement fault issues.
+  // Todo (pengwa): we should investigate whether we could avoid those outputs that are not used
+  // in backward computation.
   for (int i = 1; i < GetSrcNodeOutputSize(); ++i) {
     input_args.push_back(O(i));
   }
 
+  // src_attrs["input_requires_grads"] stores all inputs's requires_grad attributes,
+  // including both tensor inputs and non-tensor inputs (e.g. constants), here we filter out
+  // those non-tensor inputs when constructing PythonOpGrad's outputs.
+  const std::string& input_convention = src_attrs.at("input_convention").s();
+  const auto& fw_input_requires_grads = src_attrs["input_requires_grads"].ints();
+  std::vector<int64_t> bw_tensor_output_requires_grads;
+  for (auto i = 0; i < fw_input_requires_grads.size(); ++i) {
+    if (input_convention[i] == 'd') {  // only handle gradients for tensor type inputs.
+      bw_tensor_output_requires_grads.push_back(fw_input_requires_grads.Get(i));
+    }
+  }
+  ORT_ENFORCE(static_cast<size_t>(GetSrcNodeInputSize()) == bw_tensor_output_requires_grads.size(),
+              "PythonOpGrad requiring gradient output count mismatch.");
+  attrs.push_back(MakeAttribute("output_tensor_requires_grads", bw_tensor_output_requires_grads));
+
   std::vector<ArgDef> output_args;
   for (int i = 0; i < GetSrcNodeInputSize(); ++i) {
-    if (output_tensor_requires_grads[i]) {
+    if (bw_tensor_output_requires_grads[i]) {
       output_args.push_back(GI(i));
     } else {
       output_args.push_back(ArgDef());

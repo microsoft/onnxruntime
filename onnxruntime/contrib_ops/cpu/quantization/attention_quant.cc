@@ -158,7 +158,8 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
                                                  weights_shape,
                                                  bias->Shape(),
                                                  mask_index,
-                                                 past_tensor));
+                                                 past_tensor,
+                                                 nullptr));
 
   ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(input_scale_tensor),
                     "input scale must be a scalar or 1D tensor of size 1");
@@ -214,8 +215,8 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(allocator));
 
   auto Q = reinterpret_cast<T*>(gemm_data);
-  auto K = Q + batch_size * sequence_length * hidden_size;
-  auto V = K + batch_size * sequence_length * hidden_size;
+  auto K = Q + static_cast<int64_t>(batch_size) * sequence_length * hidden_size;
+  auto V = K + static_cast<int64_t>(batch_size) * sequence_length * hidden_size;
   T* QKV[3] = {Q, K, V};
 
   {
@@ -271,7 +272,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
         gemm_params.BIsPacked = true;
       } else {
         gemm_params.B = weights_data + weights_offset;
-        gemm_params.ldb = 3 * hidden_size;
+        gemm_params.ldb = static_cast<int64_t>(3) * hidden_size;
       }
       gemm_params.ZeroPointB = nullptr != weight_zp_data ? weight_zp_data + weights_zp_offset : &weight_zp_default;
       gemm_params.PerColumnZeroPoints = is_weight_zp_per_column;
@@ -286,7 +287,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   // Compute the attention score and apply the score to V
   return ApplyAttention(Q, K, V, mask_index, past_tensor, output,
                         batch_size, sequence_length,
-                        head_size, hidden_size, context);
+                        head_size, head_size, hidden_size, nullptr, context);
 }
 
 }  // namespace contrib

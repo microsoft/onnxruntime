@@ -7,6 +7,14 @@ file(GLOB onnxruntime_session_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/session/*.cc"
     )
 
+if (onnxruntime_MINIMAL_BUILD)
+  set(onnxruntime_session_src_exclude
+    "${ONNXRUNTIME_ROOT}/core/session/provider_bridge_ort.cc"
+  )
+
+  list(REMOVE_ITEM onnxruntime_session_srcs ${onnxruntime_session_src_exclude})
+endif()
+
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_session_srcs})
 
 onnxruntime_add_static_library(onnxruntime_session ${onnxruntime_session_srcs})
@@ -14,6 +22,9 @@ install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/session  DES
 onnxruntime_add_include_to_target(onnxruntime_session onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
 if(onnxruntime_ENABLE_INSTRUMENT)
   target_compile_definitions(onnxruntime_session PUBLIC ONNXRUNTIME_ENABLE_INSTRUMENT)
+endif()
+if(NOT MSVC)
+  set_source_files_properties(${ONNXRUNTIME_ROOT}/core/session/environment.cc PROPERTIES COMPILE_FLAGS  "-Wno-parentheses")
 endif()
 target_include_directories(onnxruntime_session PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
 target_link_libraries(onnxruntime_session PRIVATE nlohmann_json::nlohmann_json)

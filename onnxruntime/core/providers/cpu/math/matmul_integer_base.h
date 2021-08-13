@@ -4,6 +4,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/providers/common.h"
+#include "core/quantization/quant_util.h"
 
 namespace onnxruntime {
 
@@ -27,11 +28,16 @@ class MatMulIntegerBase : public OpKernel {
 
       b_is_signed_ = tensor.IsDataType<int8_t>();
 
-      const size_t K = static_cast<size_t>(b_shape_[0]);
-      const size_t N = static_cast<size_t>(b_shape_[1]);
+      size_t K = static_cast<size_t>(b_shape_[0]);
+      size_t N = static_cast<size_t>(b_shape_[1]);
 
       const auto* b_data = static_cast<const uint8_t*>(tensor.DataRaw());
 
+      BufferUniquePtr b_trans_buffer;
+      if (IsBTransposed()) {
+        std::swap(K, N);
+        b_data = quantization::TransPoseInputData(b_data, b_trans_buffer, alloc, N, K);
+      }
       const size_t packed_b_size = MlasGemmPackBSize(N, K, b_is_signed_);
       if (packed_b_size == 0) {
         return Status::OK();
@@ -75,7 +81,11 @@ class MatMulIntegerBase : public OpKernel {
   /**
    * @return input index of Matrix B, the weight tensor 
   */
-  virtual int GetBIdx() = 0;
+  virtual int GetBIdx() const = 0;
+
+  virtual bool IsBTransposed() const {
+    return false;
+  }
 
   // Check if quantization parameter of B is supported.
   // It should be in one of the formats below:
@@ -85,8 +95,8 @@ class MatMulIntegerBase : public OpKernel {
   bool IsBQuantParamSupported(const TensorShape& B_quant_param_shape, const TensorShape& B_shape) const {
     int64_t B_quant_param_rank = B_quant_param_shape.NumDimensions();
     int64_t B_shape_rank = B_shape.NumDimensions();
-    if (B_quant_param_rank == 0 ||                                     //scalar
-        B_quant_param_rank == 1 && B_quant_param_shape.Size() == 1) {  // 1D tensor with size 1
+    if (B_quant_param_rank == 0 ||                                       //scalar
+        (B_quant_param_rank == 1 && B_quant_param_shape.Size() == 1)) {  // 1D tensor with size 1
       return true;
     }
 

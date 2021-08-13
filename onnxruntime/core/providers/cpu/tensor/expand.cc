@@ -100,7 +100,7 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
       return Status::OK();
     }
 
-    if (input_dim == 1 && output_dim > 1 || output_dims_iter == 0) {
+    if ((input_dim == 1 && output_dim > 1) || output_dims_iter == 0) {
       --dim_group_start;
       input_dim_group[dim_group_start] = input_count;
       output_dim_group[dim_group_start] = output_count;

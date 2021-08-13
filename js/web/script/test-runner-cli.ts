@@ -32,17 +32,17 @@ const TEST_DATA_OP_ROOT = path.join(TEST_ROOT, 'data', 'ops');
 
 const TEST_DATA_BASE = args.env === 'node' ? TEST_ROOT : '/base/test/';
 
-let whitelist: Test.WhiteList;
+let testlist: Test.TestList;
 const shouldLoadSuiteTestData = (args.mode === 'suite0');
 if (shouldLoadSuiteTestData) {
-  npmlog.verbose('TestRunnerCli.Init', 'Loading whitelist...');
+  npmlog.verbose('TestRunnerCli.Init', 'Loading testlist...');
 
-  // The following is a whitelist of unittests for already implemented operators.
+  // The following is a list of unittests for already implemented operators.
   // Modify this list to control what node tests to run.
-  const jsonWithComments = fs.readFileSync(path.resolve(TEST_ROOT, './test-suite-whitelist.jsonc')).toString();
+  const jsonWithComments = fs.readFileSync(path.resolve(TEST_ROOT, './suite-test-list.jsonc')).toString();
   const json = stripJsonComments(jsonWithComments, {whitespace: true});
-  whitelist = JSON.parse(json) as Test.WhiteList;
-  npmlog.verbose('TestRunnerCli.Init', 'Loading whitelist... DONE');
+  testlist = JSON.parse(json) as Test.TestList;
+  npmlog.verbose('TestRunnerCli.Init', 'Loading testlist... DONE');
 }
 
 // The default backends and opset version lists. Those will be used in suite tests.
@@ -78,9 +78,9 @@ if (shouldLoadSuiteTestData) {
 if (shouldLoadSuiteTestData) {
   npmlog.verbose('TestRunnerCli.Init', 'Loading test groups for suite test... DONE');
 
-  npmlog.verbose('TestRunnerCli.Init', 'Validate whitelist...');
-  validateWhiteList();
-  npmlog.verbose('TestRunnerCli.Init', 'Validate whitelist... DONE');
+  npmlog.verbose('TestRunnerCli.Init', 'Validate testlist...');
+  validateTestList();
+  npmlog.verbose('TestRunnerCli.Init', 'Validate testlist... DONE');
 }
 
 const modelTestGroups: Test.ModelTestGroup[] = [];
@@ -151,11 +151,11 @@ npmlog.info('TestRunnerCli', 'Tests completed successfully');
 
 process.exit();
 
-function validateWhiteList() {
+function validateTestList() {
   for (const backend of DEFAULT_BACKENDS) {
     const nodeTest = nodeTests.get(backend);
     if (nodeTest) {
-      for (const testCase of whitelist[backend].node) {
+      for (const testCase of testlist[backend].node) {
         const testCaseName = typeof testCase === 'string' ? testCase : testCase.name;
         let found = false;
         for (const testGroup of nodeTest) {
@@ -163,7 +163,7 @@ function validateWhiteList() {
               found || testGroup.tests.some(test => minimatch(test.modelUrl, path.join('**', testCaseName, '*.onnx')));
         }
         if (!found) {
-          throw new Error(`node model test case '${testCaseName}' in white list does not exist.`);
+          throw new Error(`node model test case '${testCaseName}' in test list does not exist.`);
         }
       }
     }
@@ -171,10 +171,10 @@ function validateWhiteList() {
     const onnxTest = onnxTests.get(backend);
     if (onnxTest) {
       const onnxModelTests = onnxTest.tests.map(i => i.name);
-      for (const testCase of whitelist[backend].onnx) {
+      for (const testCase of testlist[backend].onnx) {
         const testCaseName = typeof testCase === 'string' ? testCase : testCase.name;
         if (onnxModelTests.indexOf(testCaseName) === -1) {
-          throw new Error(`onnx model test case '${testCaseName}' in white list does not exist.`);
+          throw new Error(`onnx model test case '${testCaseName}' in test list does not exist.`);
         }
       }
     }
@@ -182,10 +182,10 @@ function validateWhiteList() {
     const opTest = opTests.get(backend);
     if (opTest) {
       const opTests = opTest.map(i => i.name);
-      for (const testCase of whitelist[backend].ops) {
+      for (const testCase of testlist[backend].ops) {
         const testCaseName = typeof testCase === 'string' ? testCase : testCase.name;
         if (opTests.indexOf(testCaseName) === -1) {
-          throw new Error(`operator test case '${testCaseName}' in white list does not exist.`);
+          throw new Error(`operator test case '${testCaseName}' in test list does not exist.`);
         }
       }
     }
@@ -195,19 +195,19 @@ function validateWhiteList() {
 function loadNodeTests(backend: string, version: number): Test.ModelTestGroup {
   return suiteFromFolder(
       `node-opset_v${version}-${backend}`, path.join(TEST_DATA_MODEL_NODE_ROOT, `v${version}`), backend,
-      whitelist[backend].node);
+      testlist[backend].node);
 }
 
 function suiteFromFolder(
     name: string, suiteRootFolder: string, backend: string,
-    whitelist?: readonly Test.WhiteList.Test[]): Test.ModelTestGroup {
+    testlist?: readonly Test.TestList.Test[]): Test.ModelTestGroup {
   const sessions: Test.ModelTest[] = [];
   const tests = fs.readdirSync(suiteRootFolder);
   for (const test of tests) {
     let condition: Test.Condition|undefined;
     let times: number|undefined;
-    if (whitelist) {
-      const matches = whitelist.filter(
+    if (testlist) {
+      const matches = testlist.filter(
           p => minimatch(path.join(suiteRootFolder, test), path.join('**', typeof p === 'string' ? p : p.name)));
       if (matches.length === 0) {
         times = 0;
@@ -217,7 +217,7 @@ function suiteFromFolder(
           condition = match.condition;
         }
       } else {
-        throw new Error(`multiple whitelist rules matches test: ${path.join(suiteRootFolder, test)}`);
+        throw new Error(`multiple testlist rules matches test: ${path.join(suiteRootFolder, test)}`);
       }
     }
     sessions.push(modelTestFromFolder(path.resolve(suiteRootFolder, test), backend, condition, times));
@@ -339,7 +339,7 @@ function loadOpTests(backend: string): Test.OperatorTestGroup[] {
     const stat = fs.lstatSync(thisFullPath);
     const ext = path.extname(thisFullPath);
     if (stat.isFile() && (ext === '.json' || ext === '.jsonc')) {
-      const skip = whitelist[backend].ops.indexOf(thisPath) === -1;
+      const skip = testlist[backend].ops.indexOf(thisPath) === -1;
       groups.push(opTestFromManifest(thisFullPath, backend, skip));
     }
   }

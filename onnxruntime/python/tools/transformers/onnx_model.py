@@ -23,18 +23,13 @@ class OnnxModel:
         self.shape_infer_helper = None
         self.all_graphs = None
 
-    def infer_runtime_shape(self, dynamic_axis_mapping, update=False):
-        shape_infer_helper = None
-        if update:
-            shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
-            self.shape_infer_helper = shape_infer_helper
-        else:
-            if self.shape_infer_helper is None:
-                self.shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
-            shape_infer_helper = self.shape_infer_helper
+    def infer_runtime_shape(self, dynamic_axis_mapping={}, update=False):
+        if self.shape_infer_helper is None or update:
+            self.shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
+
         try:
-            if shape_infer_helper.infer(dynamic_axis_mapping):
-                return shape_infer_helper
+            if self.shape_infer_helper.infer(dynamic_axis_mapping):
+                return self.shape_infer_helper
         except:
             print("failed in shape inference", sys.exc_info()[0])
 
@@ -85,6 +80,20 @@ class OnnxModel:
                             assert (isinstance(g, onnx_pb.GraphProto))
                             graph_queue.append(g)
         return self.all_graphs
+
+    def get_graphs_input_names(self):
+        input_names = []
+        for graph in self.graphs():
+            for input in graph.input:
+                input_names.append(input.name)
+        return input_names
+
+    def get_graphs_output_names(self):
+        output_names = []
+        for graph in self.graphs():
+            for output in graph.output:
+                output_names.append(output.name)
+        return output_names
 
     def get_graph_by_node(self, node):
         for graph in self.graphs():
@@ -491,16 +500,24 @@ class OnnxModel:
         # restore opset version
         self.model.opset_import[0].version = original_opset_version
 
-    def convert_model_float32_to_float16(self, cast_input_output=True):
+    def convert_model_float32_to_float16(self, cast_input_output=True, use_symbolic_shape_infer=True):
         """Convert a graph to FLOAT16. By default, we will keep data types of inputs and outputs.
            For decoder model with past_key_values, it is recommended to set cast_input_output=False for better performance.
         Args:
             cast_input_output (bool, optional): keep data type of inputs and outputs, and add Cast nodes to convert float32 inputs to float16, and float16 to float32 for outputs. Defaults to True.
+            use_symbolic_shape_infer (bool, optional): use symbolic shape inference instead of onnx shape inference.
         """
         from packaging.version import Version
         import onnxconverter_common as oc
         if Version(oc.__version__) > Version("1.7.0"):
-            self.model = oc.float16.convert_float_to_float16(self.model, keep_io_types=cast_input_output)
+            model = self.model
+            if use_symbolic_shape_infer:
+                # Use symbolic shape inference since custom operators (like Gelu, SkipLayerNormalization etc) are not recognized by onnx shape inference.
+                shape_infer_helper = SymbolicShapeInferenceHelper(model)
+                model = shape_infer_helper.infer_shapes(model, auto_merge=True, guess_output_rank=False)
+            self.model = oc.float16.convert_float_to_float16(model,
+                                                             keep_io_types=cast_input_output,
+                                                             disable_shape_infer=use_symbolic_shape_infer)
             return
 
         graph = self.model.graph
@@ -783,13 +800,13 @@ class OnnxModel:
 
     @staticmethod
     def graph_topological_sort(graph):
-        deps_count = [0]*len(graph.node) # dependency count of each node
-        deps_to_nodes = {} # input to node indice
+        deps_count = [0] * len(graph.node)  # dependency count of each node
+        deps_to_nodes = {}  # input to node indice
         sorted_nodes = []  # initialize sorted_nodes
         for node_idx, node in enumerate(graph.node):
             # CANNOT use len(node.input) directly because input can be optional
-            deps_count[node_idx] = sum(1 for _ in node.input if _ )
-            if deps_count[node_idx] == 0: # Constant doesn't depend on any inputs
+            deps_count[node_idx] = sum(1 for _ in node.input if _)
+            if deps_count[node_idx] == 0:  # Constant doesn't depend on any inputs
                 sorted_nodes.append(graph.node[node_idx])
                 continue
 
@@ -799,6 +816,7 @@ class OnnxModel:
                 else:
                     deps_to_nodes[input_name].append(node_idx)
 
+        # Note: this logic only applies to top level graph since a sub graph could use intializer from parent graph
         initializer_names = [init.name for init in graph.initializer]
         graph_input_names = [input.name for input in graph.input]
         input_names = initializer_names + graph_input_names
@@ -828,7 +846,7 @@ class OnnxModel:
                             end = end + 1
             start = start + 1
 
-        assert(end == len(graph.node)), "Graph is not a DAG"
+        assert (end == len(graph.node)), "Graph is not a DAG"
         graph.ClearField('node')
         graph.node.extend(sorted_nodes)
 
@@ -870,3 +888,17 @@ class OnnxModel:
             if self.get_initializer(input.name) is None:
                 graph_inputs.append(input)
         return graph_inputs
+
+    def get_opset_version(self):
+        """Get opset version of onnx domain
+
+        Raises:
+            RuntimeError: ONNX model has no opset for default domain.
+
+        Returns:
+            int: opset version of onnx domain.
+        """
+        for opset in self.model.opset_import:
+            if opset.domain in ["", "ai.onnx"]:
+                return opset.version
+        raise RuntimeError("ONNX model has no opset for default domain")
