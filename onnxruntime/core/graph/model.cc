@@ -45,7 +45,6 @@ Model::Model(const std::string& graph_name,
              const PathString& model_path,
              const IOnnxRuntimeOpSchemaRegistryList& local_registries,
              const std::unordered_map<std::string, int>& domain_to_version,
-             const std::vector<ONNX_NAMESPACE::FunctionProto>&,
              const logging::Logger& logger,
              const std::vector<ONNX_NAMESPACE::FunctionProto>* model_functions)
     : model_path_(Path::Parse(model_path)) {
@@ -88,7 +87,7 @@ Model::Model(const std::string& graph_name,
     for (auto& func : *model_functions) {
       auto func_ptr = model_proto_.add_functions();
       func_ptr->CopyFrom(func);
-      model_local_functions[func_ptr->name()] = func_ptr;
+      model_local_functions[func_ptr->domain() + ":" + func_ptr->name()] = func_ptr;
     }
   }
 
@@ -188,7 +187,7 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
 
   std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_local_functions;
   for (auto& func : model_proto_.functions()) {
-    model_local_functions[func.name()] = &func;
+    model_local_functions[func.domain() + ":" + func.name()] = &func;
   }
 
   // create instance. need to call private ctor so can't use make_unique

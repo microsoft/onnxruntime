@@ -981,8 +981,8 @@ Graph::Graph(const Model& owning_model,
       using_latest_onnx_opset_(UsingLatestOnnxOpset(domain_to_version)),
       parent_graph_(parent_graph),
       parent_node_(parent_node),
-      logger_(logger),
       model_local_functions_(model_functions),
+      logger_(logger),
       is_loaded_from_model_file_(GraphLoadedFromModelFile(graph_proto_)) {
   ORT_ENFORCE(graph_proto != nullptr, "graph_proto cannot be null");
   ArgNameToTypeMap name_to_type_map;
@@ -2427,7 +2427,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
 }
 
 void Graph::AddModelLocalFunction(const ONNX_NAMESPACE::FunctionProto* func_proto) {
-  this->model_local_functions_[func_proto->name()] = func_proto;
+  this->model_local_functions_[func_proto->domain() + ":" + func_proto->name()] = func_proto;
 }
 
 void Graph::InitFunctionBodyForNode(Node& node) {
@@ -2454,16 +2454,13 @@ void Graph::InitFunctionBodyForNode(Node& node) {
       onnx_function_proto = *(node.op_->GetFunction());
     }
   } else {
-    auto proto_entry = std::find_if(model_local_functions_.begin(), model_local_functions_.end(),
-                                    [&node](std::pair<const std::string, const ONNX_NAMESPACE::FunctionProto*> entry) {
-                                      return entry.second->name() == node.OpType() && entry.second->domain() == node.Domain();
-    });
-
-    if (proto_entry == model_local_functions_.end()) {
+    auto iter = model_local_functions_.find(node.Domain() + ":" + node.OpType());
+    if (iter == model_local_functions_.end()) {
       return;
     }
+
     // This node has a model local function proto.
-    onnx_function_proto = *(proto_entry->second);
+    onnx_function_proto = *(iter->second);
   }
 
   ORT_TRY {
