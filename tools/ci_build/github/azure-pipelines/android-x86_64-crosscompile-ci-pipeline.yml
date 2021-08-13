@@ -54,8 +54,8 @@ jobs:
   - task: PublishPipelineArtifact@0
     displayName: 'Publish code coverage report'
     inputs:
-      artifactName: "coverage_rpt.txt"
-      targetPath: '$(Build.SourcesDirectory)/build_nnapi/Debug/coverage_rpt.txt'
+      artifactName: "report.json"
+      targetPath: '$(Build.SourcesDirectory)/build_nnapi/Debug/report.json'
       publishLocation: 'pipeline'
 
   - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
@@ -73,17 +73,16 @@ jobs:
 - job: Update_Dashboard
   workspace:
     clean: all
-  pool:
-    vmImage: 'ubuntu-latest'
+  variables:
+  - name: skipComponentGovernanceDetection
+    value: true
+  pool: 'Linux-CPU'
   dependsOn: Android_CI
-  # disable update dashboard of Android Code coverage until Azure CI machine cannot access database issue is resolved
-  # condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
-  condition: false
   steps:
   - task: DownloadPipelineArtifact@0
     displayName: 'Download code coverage report'
     inputs:
-      artifactName: 'coverage_rpt.txt'
+      artifactName: 'report.json'
       targetPath: '$(Build.BinariesDirectory)'
 
   - task: UsePythonVersion@0
@@ -93,16 +92,13 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |
-        python3 -m pip install mysql-connector-python
+        python3 -m pip install pandas
 
-  - task: PythonScript@0
-    displayName: Post Android Code Coverage To DashBoard
+  - task: AzureCLI@2
+    displayName: 'Post Android Code Coverage To DashBoard'
     inputs:
-      scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/post_code_coverage_to_dashboard.py'
-      arguments: >
-        --commit_hash=$(Build.SourceVersion)
-        --report_url="https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)"
-        --report_file="$(Build.BinariesDirectory)/coverage_rpt.txt"
-        --branch $(Build.SourceBranchName) --arch $(Agent.OSArchitecture) --os "android" --build_config nnapi
-    env:
-      DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
+      azureSubscription: AIInfraBuildOnnxRuntimeOSS
+      scriptType: bash
+      scriptPath: $(Build.SourcesDirectory)/tools/ci_build/github/linux/upload_code_coverage_data.sh
+      arguments: "https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(Build.BuildId)" arm android nnapi
+      workingDirectory: '$(Build.BinariesDirectory)'
