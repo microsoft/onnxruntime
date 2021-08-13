@@ -62,14 +62,14 @@
 #ifdef _WIN32
 #pragma warning(push)
 #pragma warning(disable : 28020)
-#elif defined(HAS_FORMAT_TRUNCATION)
+#elif __aarch64__ && defined(HAS_FORMAT_TRUNCATION)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-truncation"
 #endif
 #include "nlohmann/json.hpp"
 #ifdef _WIN32
 #pragma warning(pop)
-#elif defined(HAS_FORMAT_TRUNCATION)
+#elif __aarch64__ && defined(HAS_FORMAT_TRUNCATION)
 #pragma GCC diagnostic pop
 #endif
 
