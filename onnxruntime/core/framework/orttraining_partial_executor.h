@@ -20,7 +20,7 @@ namespace onnxruntime {
 class PartialExecutor : public IExecutor {
  public:
   PartialExecutor(PartialGraphExecutionState& state, 
-                  OrtValueCache& cache)
+                  OrtValueCache* cache)
       : state_{state},
         cache_{cache} {}
 
@@ -33,7 +33,7 @@ class PartialExecutor : public IExecutor {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PartialExecutor);
   PartialGraphExecutionState& state_;
-  OrtValueCache cache_;
+  OrtValueCache* cache_;
 };
 }  // namespace onnxruntime
 #endif

@@ -553,14 +553,20 @@ void addObjectMethodsForTraining(py::module& m) {
         return std::make_unique<TrainingAgent>(*session->GetSessionHandle(), fw_feed_names, fw_outputs_device_info,
                                                bw_fetches_names, bw_outputs_device_info);
       }))
-      .def("run_forward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state, OrtValueCache& cache) -> void {
-        Status status = agent->RunForward(feeds, fetches, *state, cache);
+      .def("run_forward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state) -> void {
+        Status status = agent->RunForward(feeds, fetches, *state, nullptr);
         if (!status.IsOK()) {
           throw std::runtime_error("Error in forward pass execution: " + status.ErrorMessage());
         }
       })
-      .def("run_backward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state, OrtValueCache& cache) -> void {
-        Status status = agent->RunBackward(feeds, fetches, *state, cache);
+      .def("run_forward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state, OrtValueCache& cache) -> void {
+        Status status = agent->RunForward(feeds, fetches, *state, &cache);
+        if (!status.IsOK()) {
+          throw std::runtime_error("Error in forward pass execution: " + status.ErrorMessage());
+        }
+      })
+      .def("run_backward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state) -> void {
+        Status status = agent->RunBackward(feeds, fetches, *state);
         if (!status.IsOK()) {
           throw std::runtime_error("Error in backward pass execution: " + status.ErrorMessage());
         }
@@ -642,7 +648,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("output_grad_indices_require_full_shape", &GraphInfo::output_grad_indices_require_full_shape)
       .def_readwrite("module_output_indices_requires_save_for_backward", &GraphInfo::module_output_indices_requires_save_for_backward)
       .def_readwrite("frontier_node_arg_map", &GraphInfo::frontier_node_arg_map)
-      .def_readwrite("cached_node_arg_name", &GraphInfo::cached_node_arg_name)
+      .def_readwrite("cached_node_arg_names", &GraphInfo::cached_node_arg_names)
       .def_readwrite("module_output_gradient_name", &GraphInfo::module_output_gradient_name);
 
   py::class_<OrtModuleGraphBuilder> ortmodule_graph_builder(m, "OrtModuleGraphBuilder");

@@ -65,7 +65,7 @@ struct GraphInfo {
   std::unordered_map<std::string, std::string> frontier_node_arg_map{};
   // Names of the frontier NodeArgs in the order in which they will 
   // be retrieved in the forward pass
-  std::vector<std::string> cached_node_arg_name{};
+  std::vector<std::string> cached_node_arg_names{};
 };
 
 class OrtModuleGraphBuilder {

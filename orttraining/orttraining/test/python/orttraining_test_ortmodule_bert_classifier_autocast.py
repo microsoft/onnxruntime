@@ -322,6 +322,8 @@ def main():
                         help='disables ONNX Runtime training')
     parser.add_argument('--batch-size', type=int, default=32, metavar='N',
                         help='input batch size for training (default: 32)')
+    parser.add_argument('--do-val', action='store_true', default=True,
+                        help='disables validation')
     parser.add_argument('--test-batch-size', type=int, default=64, metavar='N',
                         help='input batch size for testing (default: 64)')
     parser.add_argument('--view-graphs', action='store_true', default=False,
@@ -380,6 +382,12 @@ def main():
         config=config,
     )
 
+    # Note: AdamW is a class from the huggingface library (as opposed to pytorch)
+    optimizer = torch.optim.AdamW(model.parameters(),
+                    lr = 2e-2, # args.learning_rate - default is 5e-5, our notebook had 2e-5
+                    eps = 1e-8 # args.adam_epsilon  - default is 1e-8.
+                    )
+
     if not args.pytorch_only:
         # Just for future debugging
         debug_options = DebugOptions(save_onnx=False, onnx_prefix='BertForSequenceClassificationAutoCast')
@@ -391,11 +399,7 @@ def main():
     if torch.cuda.is_available() and not args.no_cuda:
         model.cuda()
 
-    # Note: AdamW is a class from the huggingface library (as opposed to pytorch)
-    optimizer = torch.optim.Adam(model.parameters(),
-                    lr = 2e-2, # args.learning_rate - default is 5e-5, our notebook had 2e-5
-                    eps = 1e-8 # args.adam_epsilon  - default is 1e-8.
-                    )
+
 
     # Authors recommend between 2 and 4 epochs
     # Total number of training steps is number of batches * number of epochs.
@@ -421,10 +425,12 @@ def main():
         total_training_time += train(model, optimizer, scaler, scheduler, train_dataloader, epoch_i, device, args)
         if not args.pytorch_only and epoch_i == 0:
             epoch_0_training = total_training_time
-        test_time, validation_accuracy = test(model, validation_dataloader, device, args)
-        total_test_time += test_time
+        if args.do_val:
+            test_time, validation_accuracy = test(model, validation_dataloader, device, args)
+            total_test_time += test_time
 
-    assert validation_accuracy > 0.5
+    if args.do_val:
+        assert validation_accuracy > 0.5
 
     print('\n======== Global stats ========')
     if not args.pytorch_only:

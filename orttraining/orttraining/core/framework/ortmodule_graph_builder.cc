@@ -308,7 +308,7 @@ void OrtModuleGraphBuilder::HandleOutputsAndGrads() {
   for (auto& iter : graph_info_.frontier_node_arg_map) {
     std::string name = iter.second;
     yield_input_node_args.emplace_back(gradient_graph.GetNodeArg(name));
-    graph_info_.cached_node_arg_name.emplace_back(name);
+    graph_info_.cached_node_arg_names.emplace_back(name);
   }
 
   const auto& frontier_tensors = graph_info_.frontier_node_arg_map;

@@ -1651,7 +1651,7 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
                                     std::vector<OrtValue>& fetches,
                                     PartialGraphExecutionState& state,
                                     FeedsFetchesManager& feeds_fetches_manager,
-                                    OrtValueCache& cache) {
+                                    OrtValueCache* cache) {
   Status retval = Status::OK();
   std::vector<IExecutionProvider*> exec_providers_to_stop;
   exec_providers_to_stop.reserve(execution_providers_.NumProviders());

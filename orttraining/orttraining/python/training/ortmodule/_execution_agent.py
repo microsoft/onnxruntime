@@ -116,20 +116,24 @@ class TrainingAgent(object):
         self._training_agent = C_TrainingAgent(self._inference_session._sess, fw_feed_names, fw_outputs_device_info,
                                                bw_fetches_names, bw_outputs_device_info)
 
-    def run_forward(self, feeds, fetches, state, cache):
+    def run_forward(self, feeds, fetches, state, cache=None):
         """
          Compute the forward subgraph for given feeds and fetches.
          :param feeds: Inputs to the graph run.
          :param fetches: Outputs of the graph run.
          :param state: State of the graph that is used for executing partial graph runs.
+         :param cache: Cache to store stashed OrtValues for intermediate activations.
         """
-        self._training_agent.run_forward(feeds, fetches, state, cache)
+        if cache:
+            self._training_agent.run_forward(feeds, fetches, state, cache)
+        else:
+            self._training_agent.run_forward(feeds, fetches, state)
 
-    def run_backward(self, feeds, fetches, state, cache):
+    def run_backward(self, feeds, fetches, state):
         """
          Compute the backward subgraph for given feeds and fetches.
          :param feeds: Inputs to the graph run.
          :param fetches: Outputs of the graph run.
          :param state: State of the graph that is used for executing partial graph runs.
         """
-        self._training_agent.run_backward(feeds, fetches, state, cache)
+        self._training_agent.run_backward(feeds, fetches, state)

@@ -28,7 +28,7 @@ class TrainingManager(GraphExecutionManager):
         self._export_mode = torch.onnx.TrainingMode.TRAINING
 
     @staticmethod
-    def execution_session_run_forward(execution_session, onnx_model, cache, cache_names, cache_start, *inputs):
+    def execution_session_run_forward(execution_session, onnx_model, gradient_accumulation_manager, *inputs):
         """Runs the forward graph on execution_session with given model inputs and device"""
 
         # TODO: Try to reuse the output buffers as some of the output tensors are same sizes,
@@ -43,11 +43,12 @@ class TrainingManager(GraphExecutionManager):
 
         forward_outputs = C.OrtValueVector()
         # Run and return module outputs.
-        execution_session.run_forward(forward_inputs, forward_outputs, state, cache)
-        user_outputs = tuple(_utils._ortvalue_to_torch_tensor(forward_outputs[i]) for i in range(cache_start))
-        if cache != None:
-            for i in range(cache_start, len(forward_outputs)):
-                cache.insert(cache_names[i-cache_start], forward_outputs[i])
+        if gradient_accumulation_manager.enabled:
+            execution_session.run_forward(forward_inputs, forward_outputs, state, gradient_accumulation_manager.cache)
+            user_outputs = gradient_accumulation_manager.update_cache_and_return_outputs(forward_outputs)
+        else:
+            execution_session.run_forward(forward_inputs, forward_outputs, state)
+            user_outputs = tuple(_utils._ortvalue_to_torch_tensor(forward_output) for forward_output in forward_outputs)
 
         output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
         run_info = _RunStateInfo(state, output_info)
@@ -112,6 +113,12 @@ class TrainingManager(GraphExecutionManager):
                     if self._debug_options.logging.log_level <= _logger.LogLevel.WARNING:
                         warnings.warn("Fast path enabled - skipping checks for rebuilding gradient graph, execution agent creation, and device during training.",
                                       UserWarning)
+                
+                if self._enable_grad_acc_optimization:
+                self._gradient_accumulation_manager.initialize(self._flattened_module, self._graph_info)
+        
+            if self._enable_grad_acc_optimization:
+                self._gradient_accumulation_manager.update_cache_before_run()
 
             class _ORTModuleFunction(torch.autograd.Function):
                 '''Use a custom torch.autograd.Function to associate self.backward_graph as the
@@ -134,6 +141,7 @@ class TrainingManager(GraphExecutionManager):
 
                     user_outputs, ctx.run_info = TrainingManager.execution_session_run_forward(self._execution_agent,
                                                                                                self._onnx_models.optimized_model,
+                                                                                               self._gradient_accumulation_manager,
                                                                                                *inputs)
 
                     # Disable materializing grads then None object will not be

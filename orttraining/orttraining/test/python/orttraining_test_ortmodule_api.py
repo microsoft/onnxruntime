@@ -3139,7 +3139,7 @@ def test_debug_options_log_level_validation_fails_on_type_mismatch():
         _ = DebugOptions(log_level=log_level)
     assert f"Expected log_level of type LogLevel, got {type(log_level)}." in str(ex_info.value)
 
-def test_ortmodule_GAOptimization_correctness():
+def test_ortmodule_gradient_accumulation_optimization_correctness():
     class NeuralNetWithCast(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
             super(NeuralNetWithCast, self).__init__()
