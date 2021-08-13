@@ -26,16 +26,16 @@ namespace utils {
 
 // environment variables that control debug node dumping behavior
 namespace debug_node_inputs_outputs_env_vars {
-// Shape is printed by default unless it's turned OFF by setting environment
-// variable ORT_DEBUG_NODE_IO_DUMP_SHAPE_DATA to 0.
-// set to non-zero to dump shape data
+// Tensor shape and Node placement is printed by default unless it's turned OFF
+// by setting the respective environment variables to 0
+// set to non-zero to dump tensor shape data
 constexpr const char* kDumpShapeData = "ORT_DEBUG_NODE_IO_DUMP_SHAPE_DATA";
+// set to non-zero to dump node placement data
+constexpr const char* kDumpNodePlacement = "ORT_DEBUG_NODE_IO_DUMP_NODE_PLACEMENT";
 // set to non-zero to dump node input data
 constexpr const char* kDumpInputData = "ORT_DEBUG_NODE_IO_DUMP_INPUT_DATA";
 // set to non-zero to dump node output data
 constexpr const char* kDumpOutputData = "ORT_DEBUG_NODE_IO_DUMP_OUTPUT_DATA";
-// set to non-zero to dump node meta data
-constexpr const char* kDumpNodePlacement = "ORT_DEBUG_NODE_IO_DUMP_NODE_PLACEMENT";
 // specify a node name filter to limit the nodes that are dumped
 // see NodeDumpOptions::FilterOptions
 constexpr const char* kNameFilter = "ORT_DEBUG_NODE_IO_NAME_FILTER";
