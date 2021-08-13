@@ -4,12 +4,12 @@
 // to create a build with these enabled run the build script with:
 //   --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
 
-// to enable redirect to sqlite database also include:
+// to enable redirect to sqlite database run the build script with:
 //   --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1 onnxruntime_ENABLE_SQL=1
 //
 // see orttraining/tools/scripts/sqldb_to_tensors.py for retrieval
 //
-// select data destination using
+// select data dump destination using
 //   ORT_DEBUG_NODE_IO_DUMP_DATA_DESTINATION= one of {stdout, files, sqlite}
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
