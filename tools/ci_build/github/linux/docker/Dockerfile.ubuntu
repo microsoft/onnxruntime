@@ -1,3 +1,4 @@
+#This file is only for linux-pytorch-custom-ops-ci-pipeline
 ARG OS_VERSION=18.04
 FROM ubuntu:${OS_VERSION}
 
