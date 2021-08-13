@@ -486,8 +486,8 @@ Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, Pr
   IAllocatorUniquePtr<float> temp_X;
   cudnnDataType_t cudnn_type_X = CudnnTensor::GetDataType<CudaT>();
 
-  if (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_FLATTENED_INDICES && std::is_same<T, MLFloat16>::value) {
-    // ArgMax/ArgMin with FP16 are not supported by cudnn, so convert input to fp32 then call cudnn
+  if (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_FLATTENED_INDICES && (std::is_same<T, MLFloat16>::value || std::is_same<T, int64_t>::value)) {
+    // ArgMax/ArgMin with FP16/int64_t are not supported by cudnn, so convert input to fp32 then call cudnn
     temp_X = cuda_ep.GetScratchBuffer<float>(input_count);
     cudnn_type_X = CUDNN_DATA_FLOAT;
     Impl_Cast<CudaT, float>(stream, reinterpret_cast<const CudaT*>(input.template Data<T>()), temp_X.get(), input_shape.Size());
@@ -974,7 +974,8 @@ template std::unique_ptr<Tensor> ReduceCompute<MLFloat16, CUDNN_REDUCE_TENSOR_NO
 #define REGISTER_KERNEL_HFD_11(name)        \
   REGISTER_KERNEL_TYPED_11(name, MLFloat16) \
   REGISTER_KERNEL_TYPED_11(name, float)     \
-  REGISTER_KERNEL_TYPED_11(name, double)
+  REGISTER_KERNEL_TYPED_11(name, double)    \
+  REGISTER_KERNEL_TYPED_11(name, int64_t)
 
 REGISTER_KERNEL_HFD_11(ArgMax)
 REGISTER_KERNEL_HFD_11(ArgMin)

@@ -36,6 +36,7 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
     if (ReshapeFusion::Fuse_Subgraph(reshape, graph, logger)) {
       fused_count++;
       LOGS(logger, INFO) << "Fused reshape node: " << reshape.OutputDefs()[0]->Name();
+      std::cout << "Fused reshape node: " << reshape.OutputDefs()[0]->Name() << std::endl;
       modified = true;
     }
   }
@@ -335,6 +336,10 @@ After fusion:
                     Reshape
 */
 bool ReshapeFusion::Fuse_Subgraph(Node& reshape, Graph& graph, const logging::Logger& logger) {
+  //if (reshape.OutputDefs()[0]->Name() == '1494') {
+  //  std::cout << "" << std::endl;
+  //}
+
   // The root could be either a graph input or a node so use node arg to compare.
   const NodeArg& root_input = *(reshape.InputDefs()[0]);
 

@@ -131,7 +131,7 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(
 std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     TransformerLevel level,
     const SessionOptions& session_options,
-    const IExecutionProvider& execution_provider, /*required by constant folding*/
+    const IExecutionProvider&, //execution_provider, /*required by constant folding*/
     const std::unordered_set<std::string>& rules_and_transformers_to_disable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
@@ -144,7 +144,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     case TransformerLevel::Level1: {
       // no filtering on execution provider for L1 optimizations as they only use official ONNX operators
       transformers.emplace_back(std::make_unique<CommonSubexpressionElimination>());
-      transformers.emplace_back(std::make_unique<ConstantFolding>(execution_provider, !disable_quant_qdq));
+      //transformers.emplace_back(std::make_unique<ConstantFolding>(execution_provider, !disable_quant_qdq));
       transformers.emplace_back(std::make_unique<MatMulAddFusion>());
       transformers.emplace_back(std::make_unique<ReshapeFusion>());
       transformers.emplace_back(std::make_unique<FreeDimensionOverrideTransformer>(

@@ -12,6 +12,8 @@ namespace cuda {
 template <typename T>
 struct AccumulationType;
 template <>
+struct AccumulationType<int64_t> { using type = float; };
+template <>
 struct AccumulationType<half> { using type = float; };
 template <>
 struct AccumulationType<float> { using type = float; };
