@@ -305,7 +305,7 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model
  * Please note, this function does not unpack string_data of an initializer tensor
  * @param initializer       given initializer tensor
  * @param model_path        model_path to construct external data dir path. When this is empty, current dir is used.
- * @param unpacked_tensor   the data from the initializer in byte form
+ * @param unpacked_tensor   the vector holds data from the initializer in byte form
  * @returns                 Status::OK() if data is unpacked successfully
  */
 common::Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
@@ -317,7 +317,7 @@ common::Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initiali
  * contains external data
  * Please note, this function does not unpack string_data of an initializer tensor
  * @param initializer       given initializer tensor
- * @param unpacked_tensor   the data from the initializer in byte form
+ * @param unpacked_tensor   the vector holds data from the initializer in byte form
  * @returns                 Status::OK() if data is unpacked successfully
  */
 common::Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,

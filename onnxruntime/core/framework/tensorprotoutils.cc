@@ -1157,6 +1157,7 @@ template common::Status GetSizeInBytesFromTensorProto<0>(const ONNX_NAMESPACE::T
 
 #define CASE_UNPACK(TYPE, ELEMENT_TYPE, DATA_SIZE)                               \
   case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##TYPE: {      \
+    SafeInt<size_t> tensor_byte_size;                                            \
     size_t element_count = 0;                                                    \
     if (initializer.has_raw_data()) {                                            \
       tensor_byte_size = initializer.raw_data().size();                          \
@@ -1185,7 +1186,6 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
     return Status::OK();
   }
 
-  SafeInt<size_t> tensor_byte_size;
   switch (initializer.data_type()) {
     CASE_UNPACK(FLOAT, float, float_data_size);
     CASE_UNPACK(DOUBLE, double, double_data_size);
