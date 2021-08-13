@@ -97,7 +97,7 @@ jobs:
   - task: AzureCLI@2
     displayName: 'Post Android Code Coverage To DashBoard'
     inputs:
-      azureSubscription: AIInfraBuildOnnxRuntimeOSS
+      azureSubscription: AIInfraBuild
       scriptType: bash
       scriptPath: $(Build.SourcesDirectory)/tools/ci_build/github/linux/upload_code_coverage_data.sh
       arguments: '"https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" arm android nnapi'
