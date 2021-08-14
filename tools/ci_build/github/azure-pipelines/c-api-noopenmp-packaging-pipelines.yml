@@ -78,10 +78,11 @@ jobs:
         condition : 'succeeded'
     - template: templates/clean-agent-build-directory-step.yml
 
+- template: linux-gpu-tensorrt-packaging-pipeline.yml
 
 - template: templates/win-ci.yml
   parameters:
-    ort_build_pool_name: 'onnxruntime-gpu-tensorrt8-winbuild'
+    ort_build_pool_name: 'onnxruntime-gpu-winbuild'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     job_name_suffix: gpu
@@ -260,9 +261,10 @@ jobs:
   variables:
     breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
   dependsOn:
-  - Windows_Packaging_tensorrt
   - Windows_Packaging_gpu
+  - Windows_Packaging_tensorrt
   - Linux_C_API_Packaging_GPU_x64
+  - Linux_C_API_Packaging_GPU_TensorRT_x64
   condition: succeeded()
   steps:
   - checkout: self
@@ -283,6 +285,12 @@ jobs:
     displayName: 'Download Pipeline Artifact - NuGet'
     inputs:
       artifactName: 'onnxruntime-linux-x64-gpu'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Pipeline Artifact - NuGet'
+    inputs:
+      artifactName: 'onnxruntime-linux-x64-gpu-tensorrt'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
   - task: DownloadPipelineArtifact@2
