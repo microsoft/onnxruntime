@@ -453,6 +453,10 @@ if (onnxruntime_DISABLE_EXCEPTIONS)
   endif()
 endif()
 
+if (onnxruntime_BUILD_SHARED_MLAS_LIB)
+  add_compile_definitions(ORT_USE_MLAS_SHARED_LIB)
+endif ()
+
 # We need to link with libatomic on systems that do not have built-in atomics, or
 # don't have built-in support for 8 byte atomics
 # Derived from https://github.com/protocolbuffers/protobuf/blob/master/cmake/CMakeLists.txt

@@ -19,7 +19,9 @@ limitations under the License.
 #include "core/common/common.h"
 #include "core/common/cpuid_info.h"
 #include "core/common/eigen_common_wrapper.h"
+#ifdef ORT_USE_MLAS_SHARED_LIB
 #include "core/mlas/inc/mlas.h"
+#endif
 #include "core/platform/EigenNonBlockingThreadPool.h"
 #include "core/platform/ort_mutex.h"
 #if !defined(ORT_MINIMAL_BUILD)
@@ -366,8 +368,8 @@ class alignas(CACHE_LINE_BYTES) LoopCounter {
 #endif
 
 
-// Wrapper class for MlasThreadPool
-class MlasThreadPoolAdapter : public mlas::IThreadPool
+#ifdef ORT_USE_MLAS_SHARED_LIB
+class MlasThreadPoolAdapter : public ThreadPool::MLAS_THREADPOOL_TYPE
 {
 public:
   MlasThreadPoolAdapter(ThreadPool* tp) : tp_(tp) {}
@@ -392,7 +394,7 @@ public:
 private:
   ThreadPool* tp_;
 };
-
+#endif
 
 ThreadPool::ThreadPool(Env* env,
                        const ThreadOptions& thread_options,
@@ -415,7 +417,9 @@ ThreadPool::ThreadPool(Env* env,
     underlying_threadpool_ = extended_eigen_threadpool_.get();
   }
 
+#ifdef ORT_USE_MLAS_SHARED_LIB
   mlas_threadpool_adapter_ = std::make_unique<MlasThreadPoolAdapter>(this);
+#endif
 }
 
 ThreadPool::~ThreadPool() = default;
@@ -475,14 +479,6 @@ void ThreadPool::Schedule(std::function<void()> fn) {
   }
 }
 
-mlas::IThreadPool* ThreadPool::AsMlasThreadPool() {
-  if (this != nullptr) {
-    return mlas_threadpool_adapter_.get();
-  } else {
-    return nullptr;
-  }
-}
-
 void ThreadPool::StartProfiling() {
   if (underlying_threadpool_) {
     underlying_threadpool_->StartProfiling();
@@ -495,6 +491,18 @@ std::string ThreadPool::StopProfiling() {
   } else {
     return {};
   }
+}
+
+ThreadPool::MLAS_THREADPOOL_TYPE* ThreadPool::AsMlasThreadPool() {
+#ifdef ORT_USE_MLAS_SHARED_LIB
+  if (this != nullptr) {
+    return reinterpret_cast<MLAS_THREADPOOL_TYPE*>(mlas_threadpool_adapter_.get());
+  } else {
+    return nullptr;
+  }
+#else
+  return this;
+#endif
 }
 
 thread_local ThreadPool::ParallelSection* ThreadPool::ParallelSection::current_parallel_section{nullptr};

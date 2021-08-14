@@ -91,6 +91,7 @@ typedef enum { CblasNonUnit=131, CblasUnit=132 } CBLAS_DIAG;
 typedef enum { CblasLeft=141, CblasRight=142} CBLAS_SIDE;
 #endif
 
+#ifdef ORT_USE_MLAS_SHARED_LIB
 //
 // Abstract IThreadPool to remove dependencies for onnxruntime thread pool.
 //
@@ -140,6 +141,22 @@ namespace mlas
 } // namespace mlas
 
 using MLAS_THREADPOOL = mlas::IThreadPool;
+#else
+//
+// Forward declare the thread pool implementation class.
+//
+// N.B. Avoid including ONNX Runtime headers here to keep the dependencies for
+// standalone MLAS test executables smaller.
+//
+
+namespace onnxruntime {
+    namespace concurrency {
+        class ThreadPool;
+    }
+}
+
+using MLAS_THREADPOOL = onnxruntime::concurrency::ThreadPool;
+#endif
 
 //
 // Platform routines.
