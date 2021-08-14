@@ -221,12 +221,12 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
       float scale_w = scales[3];
 
       // Onnx spec requires scale to be a positive float, so we are not checking that here
-      if (std::roundf(scale_h) != scale_h) {
+      if (round(scale_h) != scale_h) {
         LOGS(logger, VERBOSE) << "Resize: scale_h: " << scale_h << " is not a whole number";
         return false;
       }
 
-      if (std::roundf(scale_w) != scale_w) {
+      if (round(scale_w) != scale_w) {
         LOGS(logger, VERBOSE) << "Resize: scale_w: " << scale_w << " is not a whole number";
         return false;
       }
