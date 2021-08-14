@@ -171,22 +171,26 @@ jobs:
 
 - template: win-ci.yml
   parameters:
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
-    job_name_suffix: CPU_x86_${{ parameters.BuildVariant }}
+    OrtNugetPackageId: ${{ parameters.OrtNugetPackageId }}
+    job_name_suffix: x86_${{ parameters.BuildVariant }}
     EnvSetupScript: setup_env_x86.bat
     buildArch: x86
     msbuildPlatform: Win32
     packageName: x86
-    buildparameter: ${{ parameters.AdditionalBuildFlags }} ${{ parameters.AdditionalWinBuildFlags}}
+    buildparameter: --x86 ${{ parameters.AdditionalBuildFlags }} ${{ parameters.AdditionalWinBuildFlags}}
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: false
 
 - template: win-ci.yml
   parameters:
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
-    job_name_suffix: CPU_arm_${{ parameters.BuildVariant }}
+    OrtNugetPackageId: ${{ parameters.OrtNugetPackageId }}
+    job_name_suffix: arm_${{ parameters.BuildVariant }}
     EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: arm
@@ -197,9 +201,11 @@ jobs:
 
 - template: win-ci.yml
   parameters:
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
-    job_name_suffix: CPU_arm64_${{ parameters.BuildVariant }}
+    OrtNugetPackageId: ${{ parameters.OrtNugetPackageId }}
+    job_name_suffix: arm64_${{ parameters.BuildVariant }}
     EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: arm64
@@ -210,9 +216,11 @@ jobs:
 
 - template: win-ci.yml
   parameters:
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
-    job_name_suffix: CPU_x64_${{ parameters.BuildVariant }}
+    OrtNugetPackageId: ${{ parameters.OrtNugetPackageId }}
+    job_name_suffix: x64_${{ parameters.BuildVariant }}
     EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: x64
@@ -290,7 +298,7 @@ jobs:
     displayName: 'Clean Agent Directories'
     condition: always()
 
-- job: NuGet_Packaging_CPU
+- job: NuGet_Packaging
   workspace:
     clean: all
   pool: 'Win-CPU-2021'
@@ -441,7 +449,7 @@ jobs:
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline NuGet Artifact'
     inputs:
-      artifactName: 'drop-signed-nuget-CPU'
+      artifactName: 'drop-signed-nuget'
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
   - powershell: |
@@ -460,7 +468,7 @@ jobs:
       arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-  - task: BinSkim@4
+  - task: BinSkim@3
     displayName: 'Run BinSkim'
 
   - task: RoslynAnalyzers@2
@@ -479,24 +487,7 @@ jobs:
     displayName: 'Clean Agent Directories'
     condition: always()
 
-
-- template: ../nuget/templates/test_win.yml
-  parameters:
-    AgentPool : 'Win-CPU-2021'
-    Skipx86Tests : false
-    NugetPackageName : 'Microsoft.ML.OnnxRuntime'
-    ArtifactSuffix: 'CPU'
-
-- template: ../nuget/templates/test_linux.yml
-  parameters:
-    AgentPool : Linux-CPU
-    NugetPackageName : 'Microsoft.ML.OnnxRuntime'
-    ArtifactSuffix: 'CPU'
-
-- template: ../nuget/templates/test_macos.yml
-  parameters:
-    AgentPool : macOS-10.15
-    ArtifactSuffix: 'CPU'
+- template: ../nuget/templates/test_all_os.yml
 
 - job: Publish_NuGet_Package_And_Report
   workspace:
@@ -506,20 +497,20 @@ jobs:
   - name: GDN_CODESIGN_TARGETDIRECTORY
     value: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
   pool: 'Win-CPU-2021'
-  condition: and (succeeded(), and (${{ parameters.PublishingNuget }}, eq(variables['Build.SourceBranch'], 'refs/heads/master')))
+  condition: and (succeeded(), and (${{ parameters.PublishingNuget }}, and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master'))))
   dependsOn:
-  - NuGet_Test_Win_CPU
-  - NuGet_Test_Linux_CPU
+  - NuGet_Test_Win
+  - NuGet_Test_Linux
   - NuGet_Test_MacOS
   steps:
 
   - template: set-version-number-variables-step.yml
 
-  - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - Signed NuGet Package'
-    inputs:
-      artifactName: 'drop-signed-nuget-CPU'
-      targetPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
+  - template: ../nuget/templates/upload-binary-sizes-from-nuget-package.yml
+    parameters:
+      downloadPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
+      gitCommitHash: $(OnnxRuntimeGitCommitHashShort)
+      buildVariant: ${{ parameters.BuildVariant }}
 
   - template: ../nuget/templates/get-nuget-package-version-as-variable.yml
     parameters:
