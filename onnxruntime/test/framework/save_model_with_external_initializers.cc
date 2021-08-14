@@ -46,11 +46,11 @@ void LoadSaveAndCompareModel(const std::string& input_onnx,
     const ONNX_NAMESPACE::TensorProto* tensor_proto = i.second;
     const ONNX_NAMESPACE::TensorProto* from_external_tensor_proto = initializers_from_external[kInitName];
 
-    std::vector<uint8_t> tensor_proto_data;
+    std::vector<std::byte> tensor_proto_data;
     ORT_THROW_IF_ERROR(utils::UnpackInitializerData(*tensor_proto, Path(), tensor_proto_data));
     size_t tensor_proto_size = tensor_proto_data.size();
 
-    std::vector<uint8_t> from_external_tensor_proto_data;
+    std::vector<std::byte> from_external_tensor_proto_data;
     ORT_THROW_IF_ERROR(utils::UnpackInitializerData(*from_external_tensor_proto, Path(), from_external_tensor_proto_data));
     size_t from_external_tensor_proto_size = from_external_tensor_proto_data.size();
 

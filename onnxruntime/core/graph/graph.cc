@@ -3141,14 +3141,15 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
       // Dense tensors larger than the threshold are added to the external file.
       TensorProto* output_proto = result.add_initializer();
 
-      std::vector<uint8_t> raw_data;
-      ORT_THROW_IF_ERROR(utils::UnpackInitializerData(initializer, Path(), raw_data));
-      size_t tensor_bytes_size = raw_data.size();
+      std::vector<std::byte> unpacked_tensor;
+      ORT_THROW_IF_ERROR(utils::UnpackInitializerData(initializer, Path(), unpacked_tensor));
+      size_t tensor_bytes_size = unpacked_tensor.size();
       if (tensor_bytes_size < initializer_size_threshold) {
         *output_proto = initializer;
         continue;
       }
 
+      const auto* raw_data = reinterpret_cast<const uint8_t*>(unpacked_tensor.data());
       for (size_t index = 0; index != tensor_bytes_size; ++index) {
         external_stream << raw_data[index];
       }

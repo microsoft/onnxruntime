@@ -155,7 +155,7 @@ static Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_prot
 // This function does not unpack string_data of an initializer tensor
 static Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                         const ORTCHAR_T* tensor_proto_dir,
-                                        std::vector<uint8_t>& unpacked_tensor) {
+                                        std::vector<std::byte>& unpacked_tensor) {
   std::basic_string<ORTCHAR_T> external_file_path;
   onnxruntime::FileOffsetType file_offset;
   SafeInt<size_t> tensor_byte_size;
@@ -185,11 +185,12 @@ static Status UnpackTensorWithExternalDataImpl(const ONNX_NAMESPACE::TensorProto
                                                size_t expected_num_elements, size_t element_size,
                                                /*out*/ unsigned char* p_data) {
   ORT_RETURN_IF(nullptr == p_data, "nullptr == p_data");
-  std::vector<uint8_t> unpacked_tensor;
+  std::vector<std::byte> unpacked_tensor;
   ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(tensor, tensor_proto_dir, unpacked_tensor));
 
   // ReadLittleEndian checks src and dst buffers are the same size
-  auto src_span = gsl::make_span(unpacked_tensor.data(), unpacked_tensor.size());
+  auto src_span = gsl::make_span(reinterpret_cast<const unsigned char*>(unpacked_tensor.data()),
+                                 unpacked_tensor.size());
   auto dst_span = gsl::make_span(p_data, expected_num_elements * element_size);
 
   return onnxruntime::utils::ReadLittleEndian(element_size, src_span, dst_span);
@@ -948,7 +949,7 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
 
   if (type != TensorProto_DataType_STRING) {
     // need to read in sparse data first as it could be in a type specific field, in raw data, or in external data
-    std::vector<uint8_t> sparse_data_storage;
+    std::vector<std::byte> sparse_data_storage;
     ORT_RETURN_IF_ERROR(UnpackInitializerData(sparse_values, model_path, sparse_data_storage));
     void* sparse_data = sparse_data_storage.data();
     size_t element_size = 0;
@@ -1102,7 +1103,7 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
     n_dense_elements *= dim;
   }
 
-  std::vector<uint8_t> dense_raw_data;
+  std::vector<std::byte> dense_raw_data;
   ORT_RETURN_IF_ERROR(UnpackInitializerData(dense_proto, model_path, dense_raw_data));
   size_t element_size = 0;
   // We want this type list to match the one above in SparseTensorProtoToDenseTensorProto
@@ -1177,7 +1178,7 @@ template common::Status GetSizeInBytesFromTensorProto<0>(const ONNX_NAMESPACE::T
 
 Status UnpackInitializerData(const onnx::TensorProto& initializer,
                              const Path& model_path,
-                             std::vector<uint8_t>& unpacked_tensor) {
+                             std::vector<std::byte>& unpacked_tensor) {
   if (initializer.data_location() == TensorProto_DataLocation_EXTERNAL) {
     ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(
         initializer,
@@ -1209,7 +1210,7 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
 #undef CASE_UNPACK
 
 Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
-                             std::vector<uint8_t>& unpacked_tensor) {
+                             std::vector<std::byte>& unpacked_tensor) {
   ORT_RETURN_IF(initializer.data_location() == TensorProto_DataLocation_EXTERNAL,
                 "The given initializer contains external data");
   return UnpackInitializerData(initializer, Path(), unpacked_tensor);
