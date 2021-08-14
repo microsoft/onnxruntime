@@ -546,7 +546,7 @@ if (onnxruntime_USE_TVM)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
-        $<TARGET_FILE:tvm> $<TARGET_FILE:nnvm_compiler>
+        $<TARGET_FILE:tvm>
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   )
 endif()

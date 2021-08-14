@@ -33,6 +33,14 @@ tar -xzf Python-${CPYTHON_VERSION}.tgz
 pushd Python-${CPYTHON_VERSION}
 PREFIX="/opt/_internal/cpython-${CPYTHON_VERSION}"
 mkdir -p ${PREFIX}/lib
+if [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ]; then
+	# The _ctypes stdlib module build started to fail with 3.10.0rc1
+	# No clue what changed exactly yet
+	# This workaround fixes the build
+	LIBFFI_INCLUDEDIR=$(pkg-config --cflags-only-I libffi  | tr -d '[:space:]')
+	LIBFFI_INCLUDEDIR=${LIBFFI_INCLUDEDIR:2}
+	cp ${LIBFFI_INCLUDEDIR}/ffi.h ${LIBFFI_INCLUDEDIR}/ffitarget.h /usr/include/
+fi
 # configure with hardening options only for the interpreter & stdlib C extensions
 # do not change the default for user built extension (yet?)
 ./configure \
@@ -41,6 +49,9 @@ mkdir -p ${PREFIX}/lib
 	--prefix=${PREFIX} --disable-shared --with-ensurepip=no > /dev/null
 make -j$(nproc) > /dev/null
 make install > /dev/null
+if [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ]; then
+	rm -f /usr/include/ffi.h /usr/include/ffitarget.h
+fi
 popd
 rm -rf Python-${CPYTHON_VERSION} Python-${CPYTHON_VERSION}.tgz Python-${CPYTHON_VERSION}.tgz.asc
 
