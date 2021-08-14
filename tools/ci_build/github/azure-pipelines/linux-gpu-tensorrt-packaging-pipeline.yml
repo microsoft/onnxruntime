@@ -1,6 +1,3 @@
-variables:
-  PackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Tensorrt'
-
 jobs:
 
 - job: Linux_C_API_Packaging_GPU_TensorRT_x64
