@@ -85,10 +85,6 @@ jobs:
       artifactName: 'coverage_rpt.txt'
       targetPath: '$(Build.BinariesDirectory)'
 
-  - task: UsePythonVersion@0
-    inputs:
-      versionSpec: '3.x'
-
   - task: AzureCLI@2
     displayName: 'Post Android Code Coverage To DashBoard'
     inputs:
