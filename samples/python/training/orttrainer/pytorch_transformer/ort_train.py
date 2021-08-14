@@ -1,5 +1,4 @@
 import argparse
-import math
 import torch
 import onnxruntime
 

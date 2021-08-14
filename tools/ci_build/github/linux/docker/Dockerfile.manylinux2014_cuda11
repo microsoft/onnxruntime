@@ -27,7 +27,7 @@ ENV PATH=${PREPEND_PATH}${PATH}
 ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
 
 # first copy the fixup mirrors script, keep the script around
-COPY build_scripts/fixup-mirrors.sh /usr/bin/fixup-mirrors
+COPY build_scripts/fixup-mirrors.sh /usr/local/sbin/fixup-mirrors
 
 # setup entrypoint, this will wrap commands with `linux32` with i686 images
 COPY build_scripts/install-entrypoint.sh build_scripts/update-system-packages.sh /build_scripts/
@@ -47,8 +47,8 @@ RUN export AUTOCONF_ROOT=autoconf-2.71 && \
     manylinux-entrypoint /build_scripts/install-autoconf.sh
 
 COPY build_scripts/install-automake.sh /build_scripts/
-RUN export AUTOMAKE_ROOT=automake-1.16.3 && \
-    export AUTOMAKE_HASH=ce010788b51f64511a1e9bb2a1ec626037c6d0e7ede32c1c103611b9d3cba65f && \
+RUN export AUTOMAKE_ROOT=automake-1.16.4 && \
+    export AUTOMAKE_HASH=8a0f0be7aaae2efa3a68482af28e5872d8830b9813a6a932a2571eac63ca1794 && \
     export AUTOMAKE_DOWNLOAD_URL=http://ftp.gnu.org/gnu/automake && \
     manylinux-entrypoint /build_scripts/install-automake.sh
 
@@ -59,15 +59,18 @@ RUN export LIBTOOL_ROOT=libtool-2.4.6 && \
     manylinux-entrypoint /build_scripts/install-libtool.sh
 
 COPY build_scripts/install-patchelf.sh /build_scripts/
-RUN export PATCHELF_VERSION=0.12 && \
-    export PATCHELF_HASH=3dca33fb862213b3541350e1da262249959595903f559eae0fbc68966e9c3f56 && \
+RUN export PATCHELF_VERSION=0.13 && \
+    export PATCHELF_HASH=60c6aeadb673de9cc1838b630c81f61e31c501de324ef7f1e8094a2431197d09 && \
     export PATCHELF_DOWNLOAD_URL=https://github.com/NixOS/patchelf/archive && \
     manylinux-entrypoint /build_scripts/install-patchelf.sh
 
 COPY build_scripts/install-libxcrypt.sh /build_scripts/
-RUN export LIBXCRYPT_VERSION=4.4.17 && \
-    export LIBXCRYPT_HASH=7665168d0409574a03f7b484682e68334764c29c21ca5df438955a381384ca07 && \
+RUN export LIBXCRYPT_VERSION=4.4.23 && \
+    export LIBXCRYPT_HASH=9cbbcb795ed5d121a1613eb0e40c77173b53e15a746796fc7cd7bd71cfd64533 && \
     export LIBXCRYPT_DOWNLOAD_URL=https://github.com/besser82/libxcrypt/archive && \
+    export PERL_ROOT=perl-5.34.0 && \
+    export PERL_HASH=551efc818b968b05216024fb0b727ef2ad4c100f8cb6b43fab615fa78ae5be9a && \
+    export PERL_DOWNLOAD_URL=https://www.cpan.org/src/5.0 && \
     manylinux-entrypoint /build_scripts/install-libxcrypt.sh
 
 
@@ -78,18 +81,10 @@ RUN manylinux-entrypoint /build_scripts/install-build-packages.sh
 
 FROM build_base AS build_git
 COPY build_scripts/build-git.sh /build_scripts/
-RUN export GIT_ROOT=git-2.31.1 && \
-    export GIT_HASH=46d37c229e9d786510e0c53b60065704ce92d5aedc16f2c5111e3ed35093bfa7 && \
+RUN export GIT_ROOT=git-2.32.0 && \
+    export GIT_HASH=6038f06d396ba9dab2eee541c7db6e7f9f847f181ec62f3d8441893f8c469398 && \
     export GIT_DOWNLOAD_URL=https://www.kernel.org/pub/software/scm/git && \
     manylinux-entrypoint /build_scripts/build-git.sh
-
-
-FROM build_base AS build_cmake
-COPY build_scripts/build-cmake.sh /build_scripts/
-RUN export CMAKE_VERSION=3.21.0 && \
-    export CMAKE_HASH=4a42d56449a51f4d3809ab4d3b61fd4a96a469e56266e896ce1009b5768bd2ab && \
-    export CMAKE_DOWNLOAD_URL=https://github.com/Kitware/CMake/releases/download && \
-    manylinux-entrypoint /build_scripts/build-cmake.sh
 
 
 FROM build_base AS build_swig
@@ -105,8 +100,8 @@ RUN export SWIG_ROOT=swig-4.0.2 && \
 
 FROM build_base AS build_cpython
 COPY build_scripts/build-sqlite3.sh /build_scripts/
-RUN export SQLITE_AUTOCONF_ROOT=sqlite-autoconf-3350500 && \
-    export SQLITE_AUTOCONF_HASH=f52b72a5c319c3e516ed7a92e123139a6e87af08a2dc43d7757724f6132e6db0 && \
+RUN export SQLITE_AUTOCONF_ROOT=sqlite-autoconf-3360000 && \
+    export SQLITE_AUTOCONF_HASH=bd90c3eb96bee996206b83be7065c9ce19aef38c3f4fb53073ada0d0b69bbce3 && \
     export SQLITE_AUTOCONF_DOWNLOAD_URL=https://www.sqlite.org/2021 && \
     manylinux-entrypoint /build_scripts/build-sqlite3.sh
 
@@ -121,35 +116,33 @@ COPY build_scripts/build-cpython.sh /build_scripts/
 
 FROM build_cpython AS build_cpython36
 COPY build_scripts/cpython-pubkeys.txt /build_scripts/cpython-pubkeys.txt
-
-RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.6.13
+RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.6.14
 
 
 FROM build_cpython AS build_cpython37
 COPY build_scripts/cpython-pubkeys.txt /build_scripts/cpython-pubkeys.txt
-
-RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.7.10
+RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.7.11
 
 
 FROM build_cpython AS build_cpython38
 COPY build_scripts/ambv-pubkey.txt /build_scripts/cpython-pubkeys.txt
-
-RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.8.10
+RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.8.11
 
 
 FROM build_cpython AS build_cpython39
 COPY build_scripts/ambv-pubkey.txt /build_scripts/cpython-pubkeys.txt
-
-RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.9.5
+RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.9.6
 
 
 FROM build_cpython AS build_cpython310
 COPY build_scripts/cpython-pubkey-310-311.txt /build_scripts/cpython-pubkeys.txt
+RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.10.0rc1
 
-RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.10.0b1
 
-
-FROM build_cpython AS all_cpython
+FROM build_cpython AS all_python
+COPY build_scripts/install-pypy.sh /build_scripts/install-pypy.sh
+COPY build_scripts/pypy.sha256 /build_scripts/pypy.sha256
+RUN manylinux-entrypoint /build_scripts/install-pypy.sh 3.7 7.3.5
 COPY --from=build_cpython36 /opt/_internal /opt/_internal/
 COPY --from=build_cpython37 /opt/_internal /opt/_internal/
 COPY --from=build_cpython38 /opt/_internal /opt/_internal/
@@ -160,11 +153,20 @@ RUN hardlink -cv /opt/_internal
 
 FROM runtime_base
 COPY --from=build_git /manylinux-rootfs /
-COPY --from=build_cmake /manylinux-rootfs /
 COPY --from=build_swig /manylinux-rootfs /
 COPY --from=build_cpython /manylinux-rootfs /
-COPY --from=all_cpython /opt/_internal /opt/_internal/
-COPY build_scripts/finalize.sh build_scripts/update-system-packages.sh build_scripts/python-tag-abi-tag.py build_scripts/requirements.txt build_scripts/requirements-tools.txt /build_scripts/
+COPY --from=all_python /opt/_internal /opt/_internal/
+COPY build_scripts/finalize.sh \
+     build_scripts/update-system-packages.sh \
+     build_scripts/python-tag-abi-tag.py \
+     build_scripts/requirements3.6.txt \
+     build_scripts/requirements3.7.txt \
+     build_scripts/requirements3.8.txt \
+     build_scripts/requirements3.9.txt \
+     build_scripts/requirements3.10.txt \
+     build_scripts/requirements-base-tools.txt \
+     /build_scripts/
+COPY build_scripts/requirements-tools/* /build_scripts/requirements-tools/
 RUN manylinux-entrypoint /build_scripts/finalize.sh && rm -rf /build_scripts
 
 ENV SSL_CERT_FILE=/opt/_internal/certs.pem
