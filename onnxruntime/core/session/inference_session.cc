@@ -978,7 +978,7 @@ Status InferenceSession::PartitionOrtFormatModel(onnxruntime::Graph& graph,
 }
 
 Status InferenceSession::TransformGraphForOrtFormatModel(Graph& graph) {
-  auto qdq_transformer = QDQSelectorActionTransformer();
+  const auto qdq_transformer = QDQSelectorActionTransformer();
   bool modified = false;
   ORT_RETURN_IF_ERROR(qdq_transformer.Apply(graph, modified, *session_logger_));
   return Status::OK();
@@ -1384,6 +1384,8 @@ common::Status InferenceSession::Initialize() {
         ORT_RETURN_IF_ERROR_SESSIONID_(PartitionOrtFormatModel(graph, execution_providers_, kernel_registry_manager_,
                                                                *session_state_));
       }
+
+      ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraphForOrtFormatModel(graph));
 #endif
 
       ORT_RETURN_IF_ERROR_SESSIONID_(
