@@ -2,7 +2,7 @@ param([string]$file_folder, [string]$account_key, [string]$trt_container)
 
 Add-Type -AssemblyName System.Web
 $wheel_file = [System.IO.Path]::GetFileName((Get-ChildItem $file_folder))
-$ort_trt_ep_pkg_blob_path = 'ort-trt-ep/' + $wheel_file
+$ort_trt_ep_pkg_blob_path = 'ort-trt-ep/' + $env:BUILD_BUILDNUMBER + '/' + $wheel_file
 $expiredays = New-TimeSpan -Days 1
 $end = (Get-Date) + $expiredays
 
