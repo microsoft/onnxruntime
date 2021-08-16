@@ -108,6 +108,10 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
     AppendClusterToSubGraph(graph_viewer_.GetNodesInTopologicalOrder(), inputs, outputs, result);
 
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model is fully supported by OpenVINO";
+    //Enable CI Logs
+    if(backend_utils::IsCILogEnabled()) {
+      std::cout << "Model is fully supported on OpenVINO" << std::endl;
+    }
     openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph = true;
 
   } else {  // unsupported_nodes_idx.empty()
