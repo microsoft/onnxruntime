@@ -42,7 +42,7 @@ jobs:
               --parallel \
               --build_wheel --build_eager_mode --enable_training \
               --enable_onnx_tests \
-              --build_java --build_nodejs --update --build
+              --update --build
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
