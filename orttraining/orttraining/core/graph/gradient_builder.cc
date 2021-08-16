@@ -1332,16 +1332,16 @@ IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetLayerNormalizationGradient) {
-  if (GetGradientGraphConfiguration().use_memory_efficient_gradient && IsTensorStashed(I(0, false).name)) {
+  if (GetGradientGraphConfiguration().use_memory_efficient_gradient && !IsTensorStashed(I(0, false).name)) {
     return std::vector<NodeDef>{
-        NodeDef(OpDef{"LayerNormalizationGrad", kMSDomain, 1},
-                {GO(0), I(0), I(1), O(1), O(2)},
+        NodeDef(OpDef{"InvertibleLayerNormalizationGrad", kMSDomain, 1},
+                {GO(0), O(0), I(1), I(2), O(2)},
                 {GI(0), GI(1), GI(2)},
                 {SrcNodeAttributes()})};
   } else {
     return std::vector<NodeDef>{
-        NodeDef(OpDef{"InvertibleLayerNormalizationGrad", kMSDomain, 1},
-                {GO(0), O(0), I(1), I(2), O(2)},
+        NodeDef(OpDef{"LayerNormalizationGrad", kMSDomain, 1},
+                {GO(0), I(0), I(1), O(1), O(2)},
                 {GI(0), GI(1), GI(2)},
                 {SrcNodeAttributes()})};
   }
