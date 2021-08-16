@@ -12,7 +12,7 @@
 #include "core/common/status.h"
 #include "core/framework/endian_utils.h"
 #include "core/framework/allocator.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/mem_buffer.h"
 #include "core/framework/tensor_external_data_info.h"
 #include "core/graph/onnx_protobuf.h"

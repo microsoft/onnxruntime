@@ -802,7 +802,9 @@ TEST_P(ModelTest, Run) {
                                                    ORT_TSTR("mlperf_ssd_resnet34_1200"),
                                                    ORT_TSTR("convtranspose_1d"),
                                                    ORT_TSTR("convtranspose_3d"),
-                                                   ORT_TSTR("maxpool_2d_uint8")};
+                                                   ORT_TSTR("maxpool_2d_uint8"),
+                                                   ORT_TSTR("mul_uint8"),
+                                                   ORT_TSTR("div_uint8")};
   static const ORTCHAR_T* tensorrt_disabled_tests[] = {
       ORT_TSTR("udnie"), ORT_TSTR("rain_princess"),
       ORT_TSTR("pointilism"), ORT_TSTR("mosaic"),

@@ -4,7 +4,7 @@
 #pragma once
 
 #include <torch/extension.h>
-#include <core/framework/ml_value.h>
+#include <core/framework/ort_value.h>
 #include "core/common/status.h"
 #include <core/framework/provider_options.h>
 #include <core/eager/ort_kernel_invoker.h>
