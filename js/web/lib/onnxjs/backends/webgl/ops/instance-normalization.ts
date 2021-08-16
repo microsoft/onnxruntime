@@ -1,151 +1,156 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {InstanceNormalization} from '../../../ops/instance-normalization';
+import {Graph} from '../../../graph';
+import {OperatorImplementation, OperatorInitialization} from '../../../operators';
 import {Tensor} from '../../../tensor';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
-import {Artifact, ProgramInfo, RunData, TextureLayout} from '../types';
+import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
 
-export class WebGLInstanceNormalization extends InstanceNormalization {
-  run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
-    if (!this.artifacts) {
-      this.artifacts = [];
-      const programInfos = this.createProgramInfos(inferenceHandler, inputs);
-      programInfos.forEach((programInfo) => {
-        const artifact = inferenceHandler.session.programManager.build(programInfo);
-        this.artifacts.push(artifact);
-      });
-    }
+export const instanceNormalization: OperatorImplementation<number> =
+    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], epsilon: number): Tensor[] => {
+      validateInputs(inputs);
 
-    const runDatas = this.createRunDatas(inferenceHandler, this.artifacts.map(a => a.programInfo), inputs);
-    runDatas.forEach((v, i) => inferenceHandler.session.programManager.run(this.artifacts[i], v));
-    return [runDatas[1].outputTextureData.tensor];
-  }
-
-  checkInputTypes(inputs: Tensor[]): boolean {
-    if (!super.checkInputTypes(inputs)) {
-      return false;
-    }
-
-    if (inputs[0].dims.length !== 4) {
-      // currently webgl implementation only support 4-D input.
-      return false;
-    }
-
-    return true;
-  }
-
-  createMeanAndVarianceProgramInfo(inferenceHandler: WebGLInferenceHandler, xLayout: TextureLayout): ProgramInfo {
-    const xDims = xLayout.shape;
-    const channel = xDims[1];
-    const channelSize = xDims[2] * xDims[3];
-    const outputShape = [xDims[0], channel];
-    const outputUnpackedShape = [xDims[0], channel * 4];
-
-    const shaderSource = `
-    vec4 process(int[2] indices) {
-      vec4 v = vec4(0.0);
-      int a[4];
-      a[0] = indices[0];
-      a[1] = indices[1];
-      float temp = 0.0;
-      for(int a2=0; a2<${xDims[2]}; a2++) {
-        a[2] = a2;
-        for(int a3=0; a3<${xDims[3]}; a3++) {
-          a[3] = a3;
-          float x = _X(a);
-          temp += x;
-        }
-      }
-      float mean = temp / float(${channelSize});
-      temp = 0.0;
-      for(int a2=0; a2<${xDims[2]}; a2++) {
-        a[2] = a2;
-        for(int a3=0; a3<${xDims[3]}; a3++) {
-          a[3] = a3;
-          float x = _X(a);
-          temp += (x - mean) * (x - mean);
-        }
-      }
-      v.r = mean;
-      v.g = temp / float(${channelSize});
-
-      return v;
-    }`;
-    return {
-      inputLayouts: [xLayout],
-      outputLayout: inferenceHandler.createTextureLayoutFromShape(outputShape, 4, outputUnpackedShape),
-      samplers: ['X'],
-      shaderSource,
-      name: 'MeanAndVariance',
+      const meanAndVariance = inferenceHandler.run(createMeanAndVarianceProgramInfoLoader(inputs[0]), inputs);
+      const output = inferenceHandler.run(
+          createComputeOutputProgramInfoLoader(inferenceHandler, inputs[0], epsilon, meanAndVariance.dims),
+          [inputs[0], meanAndVariance, inputs[1], inputs[2]]);
+      return [output];
     };
-  }
 
-  createComputOutputProgramInfo(
-      inferenceHandler: WebGLInferenceHandler, xLayout: TextureLayout, scaleLayout: TextureLayout,
-      bLayout: TextureLayout, meanAndVarianceLayout: TextureLayout): ProgramInfo {
-    const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
-    const shaderSource = `
-    vec4 get_MeanAndVariance(int[2] mv) {
-      int offset = indicesToOffset_MeanAndVariance(mv);
-      vec2 coords = offsetToCoords(offset, ${meanAndVarianceLayout.width}, ${meanAndVarianceLayout.height});
-      return ${glsl.texture2D}(MeanAndVariance, coords);
-    }
+export const parseInstanceNormalizationAttributes: OperatorInitialization<number> = (node: Graph.Node): number =>
+    node.attributes.getFloat('epsilon', 1e-5);
 
-    float process(int[4] indices) {
+const meanAndVarianceProgramMetadata = {
+  name: 'InstanceNormalization_MeanAndVariance',
+  inputNames: ['X'],
+  inputTypes: [TextureType.unpacked],
+};
 
-          int mv[2];
-          mv[0] = indices[0];
-          mv[1] = indices[1];
-          vec4 mean_and_variance = get_MeanAndVariance(mv);
-          float mean = mean_and_variance.r;
-          float variance = mean_and_variance.g;
+const createMeanAndVarianceProgramInfo = (metadata: ProgramMetadata, input: Tensor): ProgramInfo => {
+  const xDims = input.dims.slice();
+  const channel = xDims[1];
+  const channelSize = xDims[2] * xDims[3];
+  const outputShape = [xDims[0], channel];
 
-          int sb[1];
-          sb[0] = indices[1];
-          float scale = _Scale(sb);
-          float b = _B(sb);
+  const shaderSource = `
+      vec4 process(int[2] indices) {
+        vec4 v = vec4(0.0);
+        int a[4];
+        a[0] = indices[0];
+        a[1] = indices[1];
+        float temp = 0.0;
+        for(int a2=0; a2<${xDims[2]}; a2++) {
+          a[2] = a2;
+          for(int a3=0; a3<${xDims[3]}; a3++) {
+            a[3] = a3;
+            float x = _X(a);
+            temp += x;
+          }
+        }
+        float mean = temp / float(${channelSize});
+        temp = 0.0;
+        for(int a2=0; a2<${xDims[2]}; a2++) {
+          a[2] = a2;
+          for(int a3=0; a3<${xDims[3]}; a3++) {
+            a[3] = a3;
+            float x = _X(a);
+            temp += (x - mean) * (x - mean);
+          }
+        }
+        v.r = mean;
+        v.g = temp / float(${channelSize});
 
-          return scale * (_X(indices) - mean) / sqrt(variance + epsilon) + b;
-        }`;
-    return {
-      inputLayouts: [xLayout, meanAndVarianceLayout, scaleLayout, bLayout],
-      outputLayout: inferenceHandler.createTextureLayoutFromShape(xLayout.shape),
-      samplers: ['X', 'MeanAndVariance', 'Scale', 'B'],
-      variables: [{name: 'epsilon', type: 'float'}],
-      shaderSource,
-      name: 'ComputOutput',
+        return v;
+      }`;
+  return {
+    ...metadata,
+    output: {dims: outputShape, type: input.type, textureType: TextureType.packedLastDimension},
+    shaderSource
+  };
+};
+
+const createMeanAndVarianceProgramInfoLoader = (input: Tensor): ProgramInfoLoader => ({
+  ...meanAndVarianceProgramMetadata,
+  get: () => createMeanAndVarianceProgramInfo(meanAndVarianceProgramMetadata, input)
+});
+
+const computeOutputProgramMetadata = {
+  name: 'InstanceNormalization_ComputeOutput',
+  inputNames: ['X', 'MeanAndVariance', 'Scale', 'B'],
+  inputTypes: [TextureType.unpacked, TextureType.packedLastDimension, TextureType.unpacked, TextureType.unpacked],
+};
+
+const createComputeOutputProgramInfo =
+    (inferenceHandler: WebGLInferenceHandler, metadata: ProgramMetadata, input: Tensor, epsilon: number,
+     meanAndVarianceShape: readonly number[]): ProgramInfo => {
+      const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
+      const [textureWidth, textureHeight] =
+          inferenceHandler.calculateTextureWidthAndHeight(meanAndVarianceShape, TextureType.packedLastDimension);
+      const [meanAndVarianceWidth, meanAndVarianceHeight] = [textureWidth / 4, textureHeight];
+      const shaderSource = `
+      vec4 get_MeanAndVariance(int[2] mv) {
+        int offset = indicesToOffset_MeanAndVariance(mv);
+        vec2 coords = offsetToCoords(offset, ${meanAndVarianceWidth}, ${meanAndVarianceHeight});
+        return ${glsl.texture2D}(MeanAndVariance, coords);
+      }
+
+      float process(int[4] indices) {
+        int mv[2];
+        mv[0] = indices[0];
+        mv[1] = indices[1];
+        vec4 mean_and_variance = get_MeanAndVariance(mv);
+        float mean = mean_and_variance.r;
+        float variance = mean_and_variance.g;
+
+        int sb[1];
+        sb[0] = indices[1];
+        float scale = _Scale(sb);
+        float b = _B(sb);
+
+        return scale * (_X(indices) - mean) / sqrt(variance + epsilon) + b;
+      }`;
+      return {
+        ...metadata,
+        output: {dims: input.dims, type: input.type, textureType: TextureType.unpacked},
+        variables: [{name: 'epsilon', type: 'float', data: epsilon}],
+        shaderSource
+      };
     };
-  }
-  createProgramInfos(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo[] {
-    const xLayout = inferenceHandler.getOrCreateTextureLayout(inputs[0]);
-    const scaleLayout = inferenceHandler.getOrCreateTextureLayout(inputs[1]);
-    const bLayout = inferenceHandler.getOrCreateTextureLayout(inputs[2]);
-    const meanAndVarianceProgramInfo = this.createMeanAndVarianceProgramInfo(inferenceHandler, xLayout);
-    const computeOutputProgramInfo = this.createComputOutputProgramInfo(
-        inferenceHandler, xLayout, scaleLayout, bLayout, meanAndVarianceProgramInfo.outputLayout);
 
-    const programInfos: ProgramInfo[] = [meanAndVarianceProgramInfo, computeOutputProgramInfo];
-    return programInfos;
+const createComputeOutputProgramInfoLoader =
+    (inferenceHandler: WebGLInferenceHandler, input: Tensor, epsilon: number, meanAndVarianceShape: readonly number[]):
+        ProgramInfoLoader => {
+          const metadata = {...computeOutputProgramMetadata, cacheHint: `${epsilon}`};
+          return {
+            ...metadata,
+            get: () => createComputeOutputProgramInfo(inferenceHandler, metadata, input, epsilon, meanAndVarianceShape)
+          };
+        };
+
+const validateInputs = (inputs: Tensor[]): void => {
+  if (!inputs || inputs.length !== 3) {
+    throw new Error('InstanceNormalization requires 3 inputs.');
   }
-  createRunDatas(inferenceHandler: WebGLInferenceHandler, programInfos: ProgramInfo[], inputs: Tensor[]): RunData[] {
-    const dataType = inputs[0].type;
-    const inputTD = inferenceHandler.getOrCreateTextureData(inputs[0], programInfos[0].inputLayouts[0]);
-    const scaleTD = inferenceHandler.getOrCreateTextureData(inputs[1], programInfos[1].inputLayouts[2]);
-    const bTD = inferenceHandler.getOrCreateTextureData(inputs[2], programInfos[1].inputLayouts[3]);
-    const runDatas: RunData[] = [];
-    runDatas.push({
-      inputTextureDatas: [inputTD],
-      outputTextureData: inferenceHandler.createTextureDataFromLayout(programInfos[0].outputLayout, dataType),
-      uniformData: {}
-    });
-    runDatas.push({
-      inputTextureDatas: [inputTD, runDatas[0].outputTextureData, scaleTD, bTD],
-      outputTextureData: inferenceHandler.createTextureDataFromLayout(programInfos[1].outputLayout, dataType),
-      uniformData: {'epsilon': this.epsilon}
-    });
-    return runDatas;
+
+  const X = inputs[0];
+  const scale = inputs[1];
+  const B = inputs[2];
+
+  // input should at least have three dimensions - N,C,dim1,...,dimn
+  // other inputs can have only one dimensions
+  if (X.dims.length < 3 || scale.dims.length !== 1 || B.dims.length !== 1) {
+    throw new Error('Invalid input shape.');
   }
-  protected artifacts: Artifact[];
-}
+  if (scale.dims[0] !== X.dims[1] || B.dims[0] !== X.dims[1]) {
+    throw new Error('Input shapes are mismatched.');
+  }
+  if ((X.type !== 'float32' && X.type !== 'float64') || (scale.type !== 'float32' && scale.type !== 'float64') ||
+      (B.type !== 'float32' && B.type !== 'float64')) {
+    throw new Error('Invalid input type.');
+  }
+  if (inputs[0].dims.length !== 4) {
+    throw new Error('Only support 4-D input shape.');
+  }
+};

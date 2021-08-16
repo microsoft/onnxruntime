@@ -30,8 +30,8 @@ def legacy_transformer_model_description(bptt=35, batch_size=20, ntokens=28785):
     label_desc = Legacy_IODescription('label', [bptt * batch_size])
     loss_desc = Legacy_IODescription('loss', [])
     predictions_desc = Legacy_IODescription('predictions', [bptt, batch_size, ntokens])
-    return Legacy_ModelDescription([input_desc, label_desc],[loss_desc, predictions_desc]),\
-           Legacy_IODescription('__learning_rate', [1])
+    return (Legacy_ModelDescription([input_desc, label_desc], [loss_desc, predictions_desc]),
+            Legacy_IODescription('__learning_rate', [1]))
 
 
 def legacy_transformer_model_description_dynamic_axes(ntokens=28785):
@@ -39,5 +39,5 @@ def legacy_transformer_model_description_dynamic_axes(ntokens=28785):
     label_desc = Legacy_IODescription('label', ['bptt_x_batch_size'])
     loss_desc = Legacy_IODescription('loss', [])
     predictions_desc = Legacy_IODescription('predictions', ['bptt', 'batch_size', ntokens])
-    return Legacy_ModelDescription([input_desc, label_desc],[loss_desc, predictions_desc]),\
-           Legacy_IODescription('__learning_rate', [1])
+    return (Legacy_ModelDescription([input_desc, label_desc], [loss_desc, predictions_desc]),
+            Legacy_IODescription('__learning_rate', [1]))

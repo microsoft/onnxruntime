@@ -19,9 +19,6 @@ parameters:
   type: boolean
   default: false
 
-variables:
-  PackageName: 'Microsoft.ML.OnnxRuntime'
-
 jobs:
 - template: templates/c-api-cpu.yml
   parameters:
@@ -84,11 +81,9 @@ jobs:
 
 - template: templates/win-ci.yml
   parameters:
-    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ort_build_pool_name: 'onnxruntime-gpu-winbuild'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
-    OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime.Gpu'
     job_name_suffix: gpu
     EnvSetupScript: setup_env_cuda_11.bat
     buildArch: x64
@@ -98,6 +93,7 @@ jobs:
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
+
 
 - template: templates/android-java-api-aar.yml
   parameters:
@@ -109,7 +105,7 @@ jobs:
   pool: 'Win-CPU-2021'
   dependsOn:
   - Linux_C_API_Packaging_GPU_x64
-  - Windows_Packaging_CPU_gpu
+  - Windows_Packaging_gpu
   condition: succeeded()
   steps:
   - checkout: self
@@ -241,3 +237,179 @@ jobs:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
     condition: always()
+
+
+
+- job: NuGet_Packaging_GPU
+  workspace:
+    clean: all
+  pool: 'Win-CPU-2021'
+  variables:
+    breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
+  dependsOn:
+  - Windows_Packaging_gpu
+  - Linux_C_API_Packaging_GPU_x64
+  condition: succeeded()
+  steps:
+  - checkout: self
+    submodules: true
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Pipeline Artifact - NuGet'
+    inputs:
+      artifactName: 'onnxruntime-win-gpu-x64'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Pipeline Artifact - NuGet'
+    inputs:
+      artifactName: 'onnxruntime-linux-x64-gpu'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Pipeline Artifact - NuGet'
+    inputs:
+      artifactName: 'drop-extra'
+      targetPath: '$(Build.BinariesDirectory)/extra-artifact'
+
+  #Reconstruct the build dir
+  - task: PowerShell@2
+    displayName: 'PowerShell Script'
+    inputs:
+      targetType: filePath
+      filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\extract_nuget_files_gpu.ps1
+
+  - script: |
+     dir
+    workingDirectory: '$(Build.BinariesDirectory)/nuget-artifact'
+    displayName: 'List artifacts'
+
+  - script: |
+     mklink /D /J models C:\local\models
+    workingDirectory: '$(Build.BinariesDirectory)'
+    displayName: 'Create models link'
+
+  - task: NuGetToolInstaller@0
+    displayName: Use Nuget 5.7.0
+    inputs:
+      versionSpec: 5.7.0
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Restore nuget packages'
+    inputs:
+      command: restore
+      projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      configuration: RelWithDebInfo
+      arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Build C#'
+    inputs:
+      command: build
+      projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      configuration: RelWithDebInfo
+      arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+  - template: templates/win-esrp-dll.yml
+    parameters:
+      FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
+      DisplayName: 'ESRP - Sign C# dlls'
+      DoEsrp: ${{ parameters.DoEsrp }}
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Build Nuget Packages'
+    inputs:
+      command: build
+      projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+      configuration: RelWithDebInfo
+      arguments: '--configuration RelWithDebInfo -t:CreatePackage -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+  - task: BatchScript@1
+    displayName: 'Bundle Native NuGet and other binaries'
+    inputs:
+      filename: $(Build.SourcesDirectory)\tools\ci_build\github\windows\bundle_dlls_gpu.bat
+      workingFolder: $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts
+
+  - task: CopyFiles@2
+    displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts'
+      Contents: '*.nupkg'
+      TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+  - task: CopyFiles@2
+    displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
+    inputs:
+      SourceFolder: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
+      Contents: '*.nupkg'
+      TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+  - template: templates/esrp_nuget.yml
+    parameters:
+      DisplayName: 'ESRP - sign NuGet package'
+      FolderPath: '$(Build.ArtifactStagingDirectory)'
+      DoEsrp: ${{ parameters.DoEsrp }}
+
+  - template: templates/validate-nuget.yml
+    parameters:
+      NugetPath: '$(Build.ArtifactStagingDirectory)'
+      NugetPackage: 'Microsoft.ML.OnnxRuntime.*nupkg'
+      PlatformsSupported: 'win-x64,linux-x64'
+      VerifyNugetSigning: false
+
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline NuGet Artifact'
+    inputs:
+      artifactName: 'drop-signed-nuget-GPU'
+      targetPath: '$(Build.ArtifactStagingDirectory)'
+
+  - powershell: |
+     $counter = 0
+     Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.nupkg | foreach {7z x -y -o$counter $_.fullname;$counter++}
+    workingDirectory: '$(Build.ArtifactStagingDirectory)'
+    displayName: 'Unzip files to sanitize the PE files'
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Build C#'
+    inputs:
+      command: custom
+      custom: clean
+      projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      configuration: RelWithDebInfo
+      arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu'
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+  #TODO: enable binskim
+  #- task: BinSkim@4
+  #  displayName: 'Run BinSkim'
+
+  - task: RoslynAnalyzers@2
+    displayName: 'Run Roslyn Analyzers'
+    inputs:
+      userProvideBuildInfo: msBuildInfo
+      msBuildArchitecture: DotNetCore
+      msBuildCommandline: '"C:\Program Files\dotnet\dotnet.exe" build $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln --configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu'
+    condition: and(succeeded(), eq('${{ parameters.DoCompliance }}', true))
+
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
+
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+    
+- template: nuget/templates/test_win.yml
+  parameters:
+    AgentPool : 'onnxruntime-gpu-winbuild'
+    NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
+    ArtifactSuffix: 'GPU'
+    Skipx86Tests: 'true'
+    
+- template: nuget/templates/test_linux.yml
+  parameters:
+    AgentPool : Onnxruntime-Linux-GPU
+    ArtifactSuffix: 'GPU'
+    NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'

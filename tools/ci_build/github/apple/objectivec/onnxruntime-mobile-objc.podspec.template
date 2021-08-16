@@ -29,7 +29,8 @@ Pod::Spec.new do |s|
 
     core.pod_target_xcconfig = {
       "HEADER_SEARCH_PATHS" => include_dirs.join(" "),
-      "EXCLUDED_ARCHS[sdk=iphonesimulator*]": "arm64",
+      "OTHER_CPLUSPLUSFLAGS" => "-fvisibility=hidden -fvisibility-inlines-hidden",
+      "EXCLUDED_ARCHS[sdk=iphonesimulator*]" => "arm64",
     }
 
     core.public_header_files = [

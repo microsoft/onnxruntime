@@ -7,6 +7,7 @@ import contextlib
 import glob
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -579,7 +580,7 @@ def get_config_build_dir(build_dir, config):
 
 
 def run_subprocess(args, cwd=None, capture_stdout=False, dll_path=None,
-                   shell=False, env={}):
+                   shell=False, env={}, python_path=None):
     if isinstance(args, str):
         raise ValueError("args should be a sequence of strings, not a string")
 
@@ -592,6 +593,14 @@ def run_subprocess(args, cwd=None, capture_stdout=False, dll_path=None,
                 my_env["LD_LIBRARY_PATH"] += os.pathsep + dll_path
             else:
                 my_env["LD_LIBRARY_PATH"] = dll_path
+    if python_path:
+        if is_windows():
+            my_env["PYTHONPATH"] = python_path + os.pathsep + my_env["PYTHONPATH"]
+        else:
+            if "PYTHONPATH" in my_env:
+                my_env["PYTHONPATH"] += os.pathsep + python_path
+            else:
+                my_env["PYTHONPATH"] = python_path
 
     my_env.update(env)
 
@@ -1017,6 +1026,10 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
 
     print('build.py: 4 (cmake_args)')
     print(cmake_args)
+
+    if args.build_eager_mode:
+        import torch
+        cmake_args += ["-Donnxruntime_PREBUILT_PYTORCH_PATH=%s" % os.path.dirname(torch.__file__)]
 
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
@@ -1554,6 +1567,11 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 # run basic frontend tests
                 run_training_python_frontend_tests(cwd=cwd)
 
+            if args.build_eager_mode:
+                # run eager mode test
+                args_list = [sys.executable, os.path.join(cwd, 'eager_test')]
+                run_subprocess(args_list, cwd=cwd, dll_path=dll_path, python_path=cwd)
+
             try:
                 import onnx  # noqa
                 onnx_test = True
@@ -1896,6 +1914,8 @@ def generate_documentation(source_dir, build_dir, configs, validate):
 
 
 def main():
+    log.debug("Command line arguments:\n  {}".format(" ".join(shlex.quote(arg) for arg in sys.argv[1:])))
+
     args = parse_arguments()
     cmake_extra_defines = (args.cmake_extra_defines
                            if args.cmake_extra_defines else [])
@@ -2142,6 +2162,24 @@ def main():
 
         print('build.py: 2')
         print(cmake_extra_defines)
+        if args.build_eager_mode:
+            # generate the ort aten backend code
+            def gen_ort_aten_ops(eager_root_dir):
+                gen_cpp_name = os.path.join(eager_root_dir, "ort_aten.g.cpp")
+                if os.path.exists(gen_cpp_name):
+                    os.remove(gen_cpp_name)
+                subprocess.check_call([
+                    sys.executable,
+                    os.path.join(eager_root_dir, 'opgen', 'opgen.py'),
+                    "--output_file",
+                    gen_cpp_name,
+                    "--use_preinstalled_torch"
+                ])
+
+            eager_root_dir = os.path.join(source_dir, "orttraining", "orttraining", "eager")
+            gen_ort_aten_ops(eager_root_dir)
+
+>>>>>>> public/master
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home, mpi_home, nccl_home,
             tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
