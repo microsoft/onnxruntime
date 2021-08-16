@@ -42,6 +42,14 @@ void DumpOnnxModelProto(const ONNX_NAMESPACE::ModelProto& model_proto, std::stri
 
 #endif
 
+bool IsCILogEnabled() {
+  const std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_ENABLE_CI_LOG");
+  if (!env_name.empty()) {
+    return true;
+  }
+  return false;
+}
+
 bool UseCompiledNetwork() {
   const std::string env_name = onnxruntime::GetEnvironmentVar("OV_USE_COMPILED_NETWORK");
   if (!env_name.empty()) {

@@ -58,6 +58,10 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer, const 
   ORT_UNUSED_PARAMETER(kernel_registries);
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
+  //Enable CI Logs
+  if (!(GetEnvironmentVar("ORT_OPENVINO_ENABLE_CI_LOG").empty())) {
+    std::cout << "In the OpenVINO EP" << std::endl;
+  }
   openvino_ep::BackendManager::GetGlobalContext().onnx_model_name = graph_viewer.Name();
 #ifdef _WIN32
   std::wstring onnx_path = graph_viewer.ModelPath().ToPathString();

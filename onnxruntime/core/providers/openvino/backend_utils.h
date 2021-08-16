@@ -29,6 +29,9 @@ const std::string log_tag = "[OpenVINO-EP] ";
 bool IsDebugEnabled();
 #endif
 
+//Internal diagnostic function. 
+bool IsCILogEnabled();
+
 bool UseCompiledNetwork();
 
 std::string GetCurrentWorkingDir();

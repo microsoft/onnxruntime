@@ -257,6 +257,11 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
     }
     // Get Output tensors
     LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
+    //Enable CI Logs
+    if(IsCILogEnabled()) {
+      std::cout << "Inference successful" << std::endl;
+    }
+
   } else {
       //Requesting for an idle infer_request from a pool of infer_requests_
       std::shared_ptr<InferenceEngine::InferRequest> infer_request;
