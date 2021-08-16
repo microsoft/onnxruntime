@@ -145,7 +145,7 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
     params.ldc = gemm_shape.N;
   }
 
-  MlasGemmBatch(gemm_shape, gemm_data_vec.data(), num_gemms, ctx->GetOperatorThreadPool()->AsMlasThreadPool());
+  MlasGemmBatch(gemm_shape, gemm_data_vec.data(), num_gemms, concurrency::ThreadPool::AsMlasThreadPool(ctx->GetOperatorThreadPool()));
 
   return Status::OK();
 }

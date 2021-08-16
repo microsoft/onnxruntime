@@ -293,7 +293,7 @@ Status Gemm<float>::Compute(OpKernelContext* context) const {
         c_data != nullptr ? beta_ : 0.0f,
         y_data,
         static_cast<size_t>(N),
-        thread_pool->AsMlasThreadPool());
+        concurrency::ThreadPool::AsMlasThreadPool(thread_pool));
   }
 
   ComputeActivation(y_data, M * N, thread_pool);

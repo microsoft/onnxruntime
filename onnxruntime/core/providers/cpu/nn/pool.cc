@@ -144,7 +144,7 @@ Status PoolBase::Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const
            pool_attrs_.global_pooling ? nullptr : pool_attrs_.kernel_shape.data(),
            pool_attrs_.global_pooling ? nullptr : pads.data(),
            pool_attrs_.global_pooling ? nullptr : pool_attrs_.strides.data(), output_dims.data(),
-           X->template Data<float>(), Y->template MutableData<float>(), thread_pool->AsMlasThreadPool());
+           X->template Data<float>(), Y->template MutableData<float>(), concurrency::ThreadPool::AsMlasThreadPool(thread_pool));
 
   return Status::OK();
 }
