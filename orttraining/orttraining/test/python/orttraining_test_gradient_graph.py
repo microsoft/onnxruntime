@@ -40,6 +40,9 @@ class GradientGraphBuilderTest(unittest.TestCase):
                 'output': {0: 'batch_size', },
             })
         # FIXME Gets a Segmentation fault.
+        # in orttraining/orttraining/core/framework/gradient_graph_builder.cc
+        # in GradientGraphBuilder::CheckNodeArgsReachable
+        # on the line: `for (const NodeArg* node_arg : x_node_args_) {`
         builder = GradientGraphBuilder(str(path), {'output'}, {'input'}, 'loss')
         builder.build()
         # TODO Maybe it should be .ort?
