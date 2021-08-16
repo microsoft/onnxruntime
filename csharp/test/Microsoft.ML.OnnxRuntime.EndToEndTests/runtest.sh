@@ -28,6 +28,9 @@ if [ $RunTestCsharp = "true" ]; then
     exit 1
   fi
 
+  dotnet list test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj package
+  ls -al test\Microsoft.ML.OnnxRuntime.EndToEndTests\packages\
+
   if [ $PACKAGENAME = "Microsoft.ML.OnnxRuntime.Gpu" ]; then
     export TESTONGPU=ON 
     dotnet test -p:DefineConstants=USE_TENSORRT $BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore --verbosity detailed --filter TensorRT
