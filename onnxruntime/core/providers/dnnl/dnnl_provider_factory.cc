@@ -11,8 +11,6 @@ using namespace onnxruntime;
 
 namespace onnxruntime {
 
-void Shutdown_DeleteRegistry();
-
 struct DnnlProviderFactory : IExecutionProviderFactory {
   DnnlProviderFactory(bool create_arena) : create_arena_(create_arena) {}
   ~DnnlProviderFactory() override {}
@@ -50,7 +48,7 @@ struct Dnnl_Provider : Provider {
   }
 
   void Shutdown() override {
-    Shutdown_DeleteRegistry();
+    return;
   }
 
 } g_provider;

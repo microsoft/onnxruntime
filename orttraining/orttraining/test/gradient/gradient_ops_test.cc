@@ -797,7 +797,11 @@ TEST(GradientCheckerTest, MaxPoolGrad) {
 #endif
 }
 
+#ifdef USE_DNNL
+TEST(GradientCheckerTest, DISABLED_GlobalAveragePoolGrad) {
+#else
 TEST(GradientCheckerTest, GlobalAveragePoolGrad) {
+#endif
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"GlobalAveragePool"};
