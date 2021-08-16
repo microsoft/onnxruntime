@@ -41,9 +41,9 @@ GridSample<T>::GridSample(const OpKernelInfo& info) : OpKernel(info) {
 //     Normalized location (-1, -1) points to the top-left pixel.
 //     Normalized location (1, 1) points to the bottom-tight pixel.
 //   When align_corners is false [default]:
-//     Normalized location (-1, -1) points to the top-left pixel minus half 
+//     Normalized location (-1, -1) points to the top-left pixel minus half
 //     pixel in both directions, i.e, (-0.5, -0.5) in acutal image space.
-//     Normalized location (1, 1) points to the bottom-tight pixel plus half 
+//     Normalized location (1, 1) points to the bottom-tight pixel plus half
 //     pixel in both directions, i.e. (H - 0.5, W - 0.5) in acutal image space.
 template <typename T>
 T GsDenormalize(T n, int64_t length, bool align_corners) {
@@ -157,11 +157,15 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
   auto W_in = input_dims[3];
   auto H_out = grid_dims[1];
   auto W_out = grid_dims[2];
-  ORT_ENFORCE(grid_dims[0] == N, "grid batch size ", grid_dims[0], " does not match input batch size", N);
-  ORT_ENFORCE(grid_dims[3] == 2, "last dimension of grid: ", grid_dims[3], ", expect 2");
+  ORT_ENFORCE(grid_dims[0] == N, "Grid batch size ", grid_dims[0], " does not match input batch size ", N);
+  ORT_ENFORCE(grid_dims[3] == 2, "Last dimension of grid: ", grid_dims[3], ", expect 2");
 
   TensorShape Y_shape = {N, C, H_out, W_out};
   auto& Y = *context->Output(0, Y_shape);
+  // Return early if the output tensor is going to be of size 0
+  if (Y.Shape().Size() == 0) {
+    return Status::OK();
+  }
 
   // Force float here to avoid possible issue in integer T case
   float x_min = -0.5f;

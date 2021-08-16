@@ -27,7 +27,7 @@ GridSample<T>::GridSample(const OpKernelInfo& info) : CudaKernel(info) {
   std::string mode_str = info.GetAttrOrDefault<std::string>("mode", "bilinear");
   std::string padding_mode_str = info.GetAttrOrDefault<std::string>("padding_mode", "zeros");
   align_corners_ = static_cast<bool>(info.GetAttrOrDefault<int64_t>("align_corners", 0));
-  ORT_ENFORCE(mode_str == "bilinear" || mode_str == "nearest" || mode_str == "bicubic", 
+  ORT_ENFORCE(mode_str == "bilinear" || mode_str == "nearest" || mode_str == "bicubic",
       "mode \"", mode_str, "\" not supported, expect bilinear, nearest or bicubic");
   ORT_ENFORCE(padding_mode_str == "zeros" || padding_mode_str == "border" || padding_mode_str == "reflection",
       "padding_mode \"", padding_mode_str, "\" not supported, expect zeros, border or reflection");
@@ -51,29 +51,25 @@ template <typename T>
 Status GridSample<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   const auto& dims_input = X->Shape().GetDims();
-
-  if (dims_input.size() != 4) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Only 4-D tensor supported, got ", dims_input.size());
-  }
   const Tensor* Grid = context->Input<Tensor>(1);
   const auto& dims_grid = Grid->Shape().GetDims();
 
-  if (dims_grid.size() != 4) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Only 4-D tensor supported, got ", dims_input.size());
+  if (dims_input.size() != 4 || dims_grid.size() != 4) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Only 4-D tensor is supported");
   }
-  if (dims_grid.data()[3] != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Only 4-D tensor supported, got ", dims_input.size());
-  }
+  ORT_ENFORCE(dims_grid[0] == dims_input[0], "Grid batch size ", dims_grid[0], " does not match input batch size ", dims_input[0]);
+  ORT_ENFORCE(dims_grid[3] == 2, "Last dimension of grid: ", dims_grid[3], ", expect 2");
 
   std::vector<int64_t> dims_output(4);
-  dims_output[0] = dims_grid[0];
+  dims_output[0] = dims_input[0];
   dims_output[1] = dims_input[1];
   dims_output[2] = dims_grid[1];
   dims_output[3] = dims_grid[2];
   Tensor* Y = context->Output(0, dims_output);
+    // Return early if the output tensor is going to be of size 0
+  if (Y->Shape().Size() == 0) {
+    return Status::OK();
+  }
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   CudaT* Y_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());

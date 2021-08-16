@@ -15,7 +15,7 @@ using namespace onnxruntime::cuda;
 template <typename T>
 class GridSample final : public CudaKernel {
  public:
-  GridSample(const OpKernelInfo& info);
+  explicit GridSample(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:

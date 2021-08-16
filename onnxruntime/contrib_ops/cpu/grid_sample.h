@@ -13,7 +13,7 @@ namespace contrib{
 template <typename T>
 class GridSample final : public OpKernel {
  public:
-  GridSample(const OpKernelInfo& info);
+  explicit GridSample(const OpKernelInfo& info);
   Status Compute(OpKernelContext* context) const override;
 
  private:
