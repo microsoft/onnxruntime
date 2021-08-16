@@ -62,6 +62,7 @@ jobs:
       DisableMlOps: $(DisableMlOps)
       IsReleaseBuild: $(IsReleaseBuild)
       PACKAGENAME: ${{ parameters.NugetPackageName }}
+      IsLinuxBuild: 'true'
         
   - template: ../../templates/component-governance-component-detection-steps.yml
     parameters :
