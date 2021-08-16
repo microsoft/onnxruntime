@@ -262,7 +262,7 @@ def parse_arguments():
 
     # Build options
     parser.add_argument(
-        "--cmake_extra_defines", action='append', nargs="+",
+        "--cmake_extra_defines", nargs="+",
         help="Extra definitions to pass to CMake during build system "
         "generation. These are just CMake -D options without the leading -D.")
     parser.add_argument(
