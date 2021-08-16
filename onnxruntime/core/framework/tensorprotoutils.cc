@@ -1178,6 +1178,9 @@ template common::Status GetSizeInBytesFromTensorProto<0>(const ONNX_NAMESPACE::T
 Status UnpackInitializerData(const onnx::TensorProto& initializer,
                              const Path& model_path,
                              std::vector<uint8_t>& unpacked_tensor) {
+  // TODO, if std::vector does not use a custom allocator, the default std::allocator will
+  // allocation the memory aligned to std::max_align_t, need look into allocating
+  // forced aligned memory (align as 16 or larger)for unpacked_tensor
   if (initializer.data_location() == TensorProto_DataLocation_EXTERNAL) {
     ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(
         initializer,
