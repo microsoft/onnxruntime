@@ -420,13 +420,207 @@ struct TypeInfo : Base<OrtTypeInfo> {
 };
 
 struct Value : Base<OrtValue> {
+  // This structure is used to feed  sparse tensor values
+  // information for use with FillSparseTensor<Format>() API
+  // if the data type for the sparse tensor values is numeric
+  // use data.p_data, otherwise, use data.str pointer to feed
+  // values. data.str is an array of const char* that are zero terminated.
+  // number of strings in the array must match shape size.
+  // For fully sparse tensors use shape {0} and set p_data/str
+  // to nullptr.
+  struct OrtSparseValuesParam {
+    const int64_t* values_shape;
+    size_t values_shape_len;
+    union {
+      const void* p_data;
+      const char** str;
+    } data;
+  };
+
+  // Provides a way to pass shape in a single
+  // argument
+  struct Shape {
+    const int64_t* shape;
+    size_t shape_len;
+  };
+
   template <typename T>
   static Value CreateTensor(const OrtMemoryInfo* info, T* p_data, size_t p_data_element_count, const int64_t* shape, size_t shape_len);
   static Value CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len,
                             ONNXTensorElementDataType type);
+
+
+  /// <summary>
+  /// This is a simple forwarding method to the other overload that helps deducing
+  /// data type enum value from the type of the buffer.
+  /// </summary>
+  /// <typeparam name="T">numeric datatype. This API is not suitable for strings.</typeparam>
+  /// <param name="info">Memory description where the user buffers reside (CPU vs GPU etc)</param>
+  /// <param name="p_data">pointer to the user supplied buffer, use nullptr for fully sparse tensors</param>
+  /// <param name="dense_shape">a would be dense shape of the tensor</param>
+  /// <param name="values_shape">non zero values shape. Use a single 0 shape for fully sparse tensors.</param>
+  /// <returns></returns>
+  template <typename T>
+  static Value CreateSparseTensor(const OrtMemoryInfo* info, T* p_data, const Shape& dense_shape,
+                                  const Shape& values_shape);
+
+  /// <summary>
+  /// Creates an OrtValue instance containing SparseTensor. This constructs
+  /// a sparse tensor that makes use of user allocated buffers. It does not make copies
+  /// of the user provided data and does not modify it. The lifespan of user provided buffers should
+  /// eclipse the life span of the resulting OrtValue. This call constructs an instance that only contain
+  /// a pointer to non-zero values. To fully populate the sparse tensor call Use<Format>Indices() API below
+  /// to supply a sparse format specific indices.
+  /// This API is not suitable for string data. Use CreateSparseTensor() with allocator specified so strings
+  /// can be properly copied into the allocated buffer.
+  /// </summary>
+  /// <param name="info">Memory description where the user buffers reside (CPU vs GPU etc)</param>
+  /// <param name="p_data">pointer to the user supplied buffer, use nullptr for fully sparse tensors</param>
+  /// <param name="dense_shape">a would be dense shape of the tensor</param>
+  /// <param name="values_shape">non zero values shape. Use a single 0 shape for fully sparse tensors.</param>
+  /// <param name="type">data type</param>
+  /// <returns>Ort::Value instance containing SparseTensor</returns>
+  static Value CreateSparseTensor(const OrtMemoryInfo* info, void* p_data, const Shape& dense_shape,
+                                  const Shape& values_shape, ONNXTensorElementDataType type);
+
+  /// <summary>
+  /// Supplies COO format specific indices and marks the contained sparse tensor as being a COO format tensor.
+  /// Values are supplied with a CreateSparseTensor() API. The supplied indices are not copied and the user
+  /// allocated buffers lifespan must eclipse that of the OrtValue.
+  /// The location of the indices is assumed to be the same as specified by OrtMemoryInfo argument at the creation time.
+  /// </summary>
+  /// <param name="indices_data">pointer to the user allocated buffer with indices. Use nullptr for fully sparse tensors.</param>
+  /// <param name="indices_num">number of indices entries. Use 0 for fully sparse tensors</param>
+  void UseCooIndices(int64_t* indices_data, size_t indices_num);
+
+  /// <summary>
+  /// Supplies CSR format specific indices and marks the contained sparse tensor as being a CSR format tensor.
+  /// Values are supplied with a CreateSparseTensor() API. The supplied indices are not copied and the user
+  /// allocated buffers lifespan must eclipse that of the OrtValue.
+  /// The location of the indices is assumed to be the same as specified by OrtMemoryInfo argument at the creation time.
+  /// </summary>
+  /// <param name="inner_data">pointer to the user allocated buffer with inner indices or nullptr for fully sparse tensors</param>
+  /// <param name="inner_num">number of csr inner indices or 0 for fully sparse tensors</param>
+  /// <param name="outer_data">pointer to the user allocated buffer with outer indices or nullptr for fully sparse tensors</param>
+  /// <param name="outer_num">number of csr outer indices or 0 for fully sparse tensors</param>
+  void UseCsrIndices(int64_t* inner_data, size_t inner_num, int64_t* outer_data, size_t outer_num);
+
+  /// <summary>
+  /// Supplies BlockSparse format specific indices and marks the contained sparse tensor as being a BlockSparse format tensor.
+  /// Values are supplied with a CreateSparseTensor() API. The supplied indices are not copied and the user
+  /// allocated buffers lifespan must eclipse that of the OrtValue.
+  /// The location of the indices is assumed to be the same as specified by OrtMemoryInfo argument at the creation time.
+  /// </summary>
+  /// <param name="indices_shape">indices shape or a {0} for fully sparse</param>
+  /// <param name="indices_data">user allocated buffer with indices or nullptr for fully spare tensors</param>
+  void UseBlockSparseIndices(const Shape& indices_shape, int32_t* indices_data);
+
   template <typename T>
   static Value CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len);
   static Value CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type);
+
+  /// <summary>
+  /// This is a simple forwarding method the below CreateSparseTensor.
+  /// This helps to specify data type enum in terms of C++ data type.
+  /// Use CreateSparseTensor<T>
+  /// </summary>
+  /// <typeparam name="T">numeric data type only. String data enum must be specified explicitly.</typeparam>
+  /// <param name="allocator">allocator to use</param>
+  /// <param name="dense_shape">a would be dense shape of the tensor</param>
+  /// <returns>Ort::Value</returns>
+  template <typename T>
+  static Value CreateSparseTensor(OrtAllocator* allocator, const Shape& dense_shape);
+
+  /// <summary>
+  /// Creates an instance of OrtValue containing sparse tensor. The created instance has no data.
+  /// The data must be supplied by on of the FillSparseTensor<Format>() methods that take both non-zero values
+  /// and indices. The data will be copied into a buffer that would be allocated using the supplied allocator.
+  /// Use this API to create OrtValues that contain sparse tensors with all supported data types including
+  /// strings.
+  /// </summary>
+  /// <param name="allocator">allocator to use. The allocator lifespan must eclipse that of the resulting OrtValue</param>
+  /// <param name="dense_shape">a would be dense shape of the tensor</param>
+  /// <param name="type">data type</param>
+  /// <returns>an instance of Ort::Value</returns>
+  static Value CreateSparseTensor(OrtAllocator* allocator, const Shape& dense_shape, ONNXTensorElementDataType type);
+
+  /// <summary>
+  /// The API will allocate memory using the allocator instance supplied to the CreateSparseTensor() API
+  /// and copy the values and COO indices into it. If data_mem_info specifies that the data is located
+  /// at difference device than the allocator, a X-device copy will be performed if possible.
+  /// </summary>
+  /// <param name="data_mem_info">specified buffer memory description</param>
+  /// <param name="values_param">values buffer information.</param>
+  /// <param name="indices_data">coo indices buffer or nullptr for fully sparse data</param>
+  /// <param name="indices_num">number of COO indices or 0 for fully sparse data</param>
+  void FillSparseTensorCoo(const OrtMemoryInfo* data_mem_info, const OrtSparseValuesParam& values_param,
+                           const int64_t* indices_data, size_t indices_num);
+
+  /// <summary>
+  /// The API will allocate memory using the allocator instance supplied to the CreateSparseTensor() API
+  /// and copy the values and CSR indices into it. If data_mem_info specifies that the data is located
+  /// at difference device than the allocator, a X-device copy will be performed if possible.
+  /// </summary>
+  /// <param name="data_mem_info">specified buffer memory description</param>
+  /// <param name="values_param">values buffer information</param>
+  /// <param name="inner_indices_data">csr inner indices pointer or nullptr for fully sparse tensors</param>
+  /// <param name="inner_indices_num">number of csr inner indices or 0 for fully sparse tensors</param>
+  /// <param name="outer_indices_data">pointer to csr indices data or nullptr for fully sparse tensors</param>
+  /// <param name="outer_indices_num">number of csr outer indices or 0</param>
+  void FillSparseTensorCsr(const OrtMemoryInfo* data_mem_info,
+                           const OrtSparseValuesParam& values,
+                           const int64_t* inner_indices_data, size_t inner_indices_num,
+                           const int64_t* outer_indices_data, size_t outer_indices_num);
+
+  /// <summary>
+  /// The API will allocate memory using the allocator instance supplied to the CreateSparseTensor() API
+  /// and copy the values and BlockSparse indices into it. If data_mem_info specifies that the data is located
+  /// at difference device than the allocator, a X-device copy will be performed if possible.
+  /// </summary>
+  /// <param name="data_mem_info">specified buffer memory description</param>
+  /// <param name="values_param">values buffer information</param>
+  /// <param name="indices_shape">indices shape. use {0} for fully sparse tensors</param>
+  /// <param name="indices_data">pointer to indices data or nullptr for fully sparse tensors</param>
+  void FillSparseTensorBlockSparse(const OrtMemoryInfo* data_mem_info,
+                                   const OrtSparseValuesParam& values,
+                                   const Shape& indices_shape,
+                                   const int32_t* indices_data);
+
+  /// <summary>
+  /// The API returns the sparse data format this OrtValue holds in a sparse tensor.
+  /// If the sparse tensor was not fully constructed, i.e. Use*() or Fill*() API were not used
+  /// the value returned is ORT_SPARSE_UNDEFINED.
+  /// </summary>
+  /// <returns>Format enum</returns>
+  OrtSparseFormat GetSparseFormat() const;
+
+  /// <summary>
+  /// The API returns type and shape information for stored non-zero values of the
+  /// sparse tensor. Use GetSparseTensorValues() to obtain values buffer pointer.
+  /// </summary>
+  /// <returns>TensorTypeAndShapeInfo values information</returns>
+  TensorTypeAndShapeInfo GetSparseTensorValuesTypeAndShapeInfo() const;
+
+  /// <summary>
+  /// The API returns type and shape information for the specified indices. Each supported
+  /// indices have their own enum values even if a give format has more than one kind of indices.
+  /// Use GetSparseTensorIndicesData() to obtain pointer to indices buffer.
+  /// </summary>
+  /// <param name="">enum requested</param>
+  /// <returns>type and shape information</returns>
+  TensorTypeAndShapeInfo GetSparseTensorIndicesTypeShapeInfo(OrtSparseIndicesFormat) const;
+
+  /// <summary>
+  /// The API retrieves a pointer to the internal indices buffer. The API merely performs
+  /// a convenience data type casting on the return type pointer. Make sure you are requesting
+  /// the right type, use GetSparseTensorIndicesTypeShapeInfo();
+  /// </summary>
+  /// <typeparam name="T">type to cast to</typeparam>
+  /// <param name="indices_format">requested indices kind</param>
+  /// <param name="num_indices">number of indices entries</param>
+  /// <returns>Pinter to the internal sparse tensor buffer containing indices. Do not free this pointer.</returns>
+  template <typename T>
+  const T* GetSparseTensorIndicesData(OrtSparseIndicesFormat indices_format, size_t& num_indices) const;
 
   static Value CreateMap(Value& keys, Value& values);
   static Value CreateSequence(std::vector<Value>& values);
@@ -443,10 +637,38 @@ struct Value : Base<OrtValue> {
   Value& operator=(Value&&) = default;
 
   bool IsTensor() const;
+
+  /// <summary>
+  /// Returns true if the OrtValue contains a sparse tensor
+  /// </summary>
+  /// <returns></returns>
+  bool IsSparseTensor() const;
+
   size_t GetCount() const;  // If a non tensor, returns 2 for map and N for sequence, where N is the number of elements
   Value GetValue(int index, OrtAllocator* allocator) const;
 
+  /// <summary>
+  /// This API returns a full length of string data contained within either a tensor or a sparse Tensor.
+  /// For sparse tensor it returns a full length of stored non-empty strings (values). The API is useful
+  /// for allocating necessary memory and calling GetStringTensorContent().
+  /// </summary>
+  /// <returns>total length of UTF-8 encoded bytes contained. No zero terminators counted.</returns>
   size_t GetStringTensorDataLength() const;
+
+  /// <summary>
+  /// The API copies all of the UTF-8 encoded string data contained within a tensor or a sparse tensor
+  /// into a supplied buffer. Use GetStringTensorDataLength() to find out the length of the buffer to allocate.
+  /// The user must also allocate offsets buffer with the number of entries equal to that of the contained
+  /// strings.
+  /// 
+  /// Strings are always assumed to be on CPU, no X-device copy.
+  /// </summary>
+  /// <param name="buffer">user allocated buffer</param>
+  /// <param name="buffer_length">length in bytes of the allocated buffer</param>
+  /// <param name="offsets">a pointer to the offsets user allocated buffer</param>
+  /// <param name="offsets_count">count of offsets, must be equal to the number of strings contained.
+  ///   that can be obtained from the shape of the tensor or from GetSparseTensorValuesTypeAndShapeInfo()
+  ///   for sparse tensors</param>
   void GetStringTensorContent(void* buffer, size_t buffer_length, size_t* offsets, size_t offsets_count) const;
 
   template <typename T>
@@ -455,13 +677,52 @@ struct Value : Base<OrtValue> {
   template <typename T>
   const T* GetTensorData() const;
 
+  /// <summary>
+  /// The API returns a pointer to an internal buffer of the sparse tensor
+  /// containing non-zero values. The API merely does casting. Make sure you
+  /// are requesting the right data type by calling GetSparseTensorValuesTypeAndShapeInfo()
+  /// first.
+  /// </summary>
+  /// <typeparam name="T">numeric data types only. Use GetStringTensor*() to retrieve strings.</typeparam>
+  /// <returns>a pointer to the internal values buffer. Do not free this pointer.</returns>
+  template <typename T>
+  const T* GetSparseTensorValues() const;
+
   template <typename T>
   T& At(const std::vector<int64_t>& location);
 
+  /// <summary>
+  /// The API returns type information for data contained in a tensor. For sparse
+  /// tensors it returns type information for contained non-zero values.
+  /// It returns dense shape for sparse tensors.
+  /// </summary>
+  /// <returns>TypeInfo</returns>
   TypeInfo GetTypeInfo() const;
+
+  /// <summary>
+  /// The API returns type information for data contained in a tensor. For sparse
+  /// tensors it returns type information for contained non-zero values.
+  /// It returns dense shape for sparse tensors.
+  /// </summary>
+  /// <returns>TensorTypeAndShapeInfo</returns>
   TensorTypeAndShapeInfo GetTensorTypeAndShapeInfo() const;
 
+  /// <summary>
+  /// The API returns a byte length of UTF-8 encoded string element
+  /// contained in either a tensor or a spare tensor values.
+  /// </summary>
+  /// <param name="element_index"></param>
+  /// <returns>byte length for the specified string element</returns>
   size_t GetStringTensorElementLength(size_t element_index) const;
+
+  /// <summary>
+  /// The API copies UTF-8 encoded bytes for the requested string element
+  /// contained within a tensor or a sparse tensor into a provided buffer.
+  /// Use GetStringTensorElementLength() to obtain the length of the buffer to allocate.
+  /// </summary>
+  /// <param name="buffer_length"></param>
+  /// <param name="element_index"></param>
+  /// <param name="buffer"></param>
   void GetStringTensorElement(size_t buffer_length, size_t element_index, void* buffer) const;
 
   void FillStringTensor(const char* const* s, size_t s_len);
