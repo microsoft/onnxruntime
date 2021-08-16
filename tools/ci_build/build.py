@@ -162,8 +162,6 @@ def parse_arguments():
     parser.add_argument(
         "--enable_training_torch_interop", action='store_true', help="Enable training kernels interop with torch.")
     parser.add_argument(
-        "--disable_unit_tests", action='store_true', help="Disable unit tests.")
-    parser.add_argument(
         "--disable_nccl", action='store_true', help="Disable Nccl.")
     parser.add_argument(
         "--mpi_home", help="Path to MPI installation dir")
@@ -759,7 +757,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_TRAINING=" + ("ON" if args.enable_training else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING_OPS=" + ("ON" if args.enable_training_ops else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING_TORCH_INTEROP=" + ("ON" if args.enable_training_torch_interop else "OFF"),
-        "-Donnxruntime_DISABLE_UNIT_TESTS=" + ("ON" if args.disable_unit_tests else "OFF"),
         # Enable advanced computations such as AVX for some traininig related ops.
         "-Donnxruntime_ENABLE_CPU_FP16_OPS=" + ("ON" if args.enable_training else "OFF"),
         "-Donnxruntime_USE_NCCL=" + ("OFF" if args.disable_nccl else "ON"),
