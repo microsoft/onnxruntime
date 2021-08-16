@@ -202,8 +202,8 @@ class TrainingRunner {
     bool transformer_layer_recompute = false;
     // Number of layers to apply recompute
     int number_recompute_layers = 0;
-    // Use invertible layernorm grad
-    bool use_invertible_layernorm_grad = false;
+    // Use memory aware gradient builder.
+    bool use_memory_efficient_gradient = false;
   };
 
   TrainingRunner(Parameters params, const Environment& env);
