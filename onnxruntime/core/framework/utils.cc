@@ -135,11 +135,9 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
 
   if (source_mlvalue.IsTensor()) {
     const Tensor& source_tensor = source_mlvalue.Get<Tensor>();
-    std::unique_ptr<Tensor> target_tensor = std::make_unique<Tensor>(source_tensor.DataType(),
-                                                                     source_tensor.Shape(),
-                                                                     allocator);
-    auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-    target_mlvalue.Init(target_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+    Tensor::InitOrtValue(source_tensor.DataType(),
+                         source_tensor.Shape(),
+                         allocator, target_mlvalue);
   } else if (source_mlvalue.IsSparseTensor()) {
     const SparseTensor& source_tensor = source_mlvalue.Get<SparseTensor>();
     auto p_tensor = std::make_unique<SparseTensor>(source_tensor.DataType(),

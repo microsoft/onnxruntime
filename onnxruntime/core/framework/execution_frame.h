@@ -11,7 +11,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
 #include "core/framework/iexecutor.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/node_index_info.h"
 #include "core/framework/sequential_execution_plan.h"
 #include "core/framework/tensor.h"

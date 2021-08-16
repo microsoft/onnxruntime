@@ -1237,12 +1237,9 @@ TEST(ConvTransposeTest, SharedPrepackedWeights) {
   };
   test.AddOutput<float>("Y", {1, 6, 4, 4}, expected_vals);
 
-  auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape({6, 3, 3, 3}),
-                                           W.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
   OrtValue w;
-
-  w.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-         DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({6, 3, 3, 3}),
+                       W.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), w);
 
   SessionOptions so;
   // Set up W as a shared initializer to be shared between sessions

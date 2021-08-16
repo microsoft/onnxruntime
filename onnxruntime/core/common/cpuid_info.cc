@@ -21,19 +21,8 @@
 #include <mutex>
 #include "core/common/cpuid_info.h"
 
-#if defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)
-
-#if defined(_MSC_VER) && defined(CPUIDINFO_ARCH_ARM)
-// pytorch cpu info does not work for Windows ARM
-// 1. msvc report syntax error in file src/arm/api.h
-// 2. features reporting micro-arch in Windows is missing
-#else
-
-#define CPUINFO_INCLUDED
+#if (defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)) && defined(CPUINFO_SUPPORTED)
 #include <cpuinfo.h>
-
-#endif
-
 #endif
 
 namespace onnxruntime {
@@ -64,7 +53,7 @@ CPUIDInfo CPUIDInfo::instance_;
 
 
 CPUIDInfo::CPUIDInfo() {
-#ifdef CPUINFO_INCLUDED
+#if (defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)) && defined(CPUINFO_SUPPORTED)
     if (!cpuinfo_initialize()) {
       // Unfortunately we can not capture cpuinfo log!!
       ORT_THROW("Failed to initialize CPU info.");

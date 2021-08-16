@@ -39,7 +39,7 @@ We welcome contributions! Please see the [contribution guidelines](CONTRIBUTING.
 
 For feature requests or bug reports, please file a [GitHub Issue](https://github.com/Microsoft/onnxruntime/issues).
 
-For general discussion or questions, please use [Github Discussions](https://github.com/microsoft/onnxruntime/discussions).
+For general discussion or questions, please use [GitHub Discussions](https://github.com/microsoft/onnxruntime/discussions).
 
 ## Code of Conduct
 
