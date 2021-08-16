@@ -9,8 +9,8 @@ jobs:
     clean: all
   timeoutInMinutes:  120
   pool: ${{ parameters.AgentPool }}
-  dependsOn:
-  - NuGet_Packaging_${{ parameters.ArtifactSuffix }}
+  #dependsOn:
+  #- NuGet_Packaging_${{ parameters.ArtifactSuffix }}
   condition: succeeded()
   variables:
   - name: OnnxRuntimeBuildDirectory
