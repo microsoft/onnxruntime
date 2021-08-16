@@ -3,7 +3,7 @@
 
 #include "test/util/include/test_utils.h"
 
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/session/inference_session.h"
 
 #include "test/util/include/asserts.h"

@@ -624,8 +624,7 @@ export class ShapeUtil {
    * https://github.com/onnx/onnx/blob/master/docs/Operators.md#Reshape
    */
 
-  static calculateReshapedDims(
-      originalDims: readonly number[], shapeHints: number[]|readonly number[]|Tensor.IntegerType): readonly number[] {
+  static calculateReshapedDims(originalDims: readonly number[], shapeHints: ArrayLike<number>): number[] {
     // reshape to a Scalar Tensor
     if (shapeHints.length === 0) {
       if (originalDims.length === 0 || ShapeUtil.size(originalDims) === 1) {
@@ -1106,8 +1105,8 @@ export class PoolConvUtil {
 
   // adjust pad values based on 'autoPad' attribute
   static adjustPadsBasedOnAutoPad(
-      inputDims: readonly number[], strides: number[], dilations: number[], kernelShape: number[], pads: number[],
-      autoPad?: string) {
+      inputDims: readonly number[], strides: readonly number[], dilations: readonly number[],
+      kernelShape: readonly number[], pads: number[], autoPad?: string) {
     if (!autoPad) {
       return;
     }
