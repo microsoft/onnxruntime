@@ -44,10 +44,10 @@ Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
     std::copy(initializer.string_data().cbegin(), initializer.string_data().cend(), string_data_vec.begin());
     string_data = builder.CreateVectorOfStrings(string_data_vec);
   } else {
-    std::vector<std::byte> unpacked_tensor;
+    std::vector<uint8_t> unpacked_tensor;
     ORT_RETURN_IF_ERROR(
         onnxruntime::utils::UnpackInitializerData(initializer, model_path, unpacked_tensor));
-    raw_data = builder.CreateVector(reinterpret_cast<const uint8_t*>(unpacked_tensor.data()), unpacked_tensor.size());
+    raw_data = builder.CreateVector(unpacked_tensor.data(), unpacked_tensor.size());
   }
 
   fbs::TensorBuilder tb(builder);

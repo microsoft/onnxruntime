@@ -281,7 +281,7 @@ bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, co
         return false;
       }
 
-      std::vector<std::byte> unpacked_tensor;
+      std::vector<uint8_t> unpacked_tensor;
       auto status = onnxruntime::utils::UnpackInitializerData(zero_tensor, node.ModelPath(), unpacked_tensor);
       if (!status.IsOK()) {
         LOGS_DEFAULT(ERROR) << "Qlinear[Conv/MatMul] error when unpack zero tensor: " << zero_point_name
@@ -311,12 +311,12 @@ float GetQuantizationScale(const InitializedTensorSet& initializers, const Node&
 
 common::Status GetQuantizationZeroPoint(const InitializedTensorSet& initializers,
                                         const Node& node, size_t idx, int32_t& zero_point) {
-  std::vector<std::byte> unpacked_tensor;
+  std::vector<uint8_t> unpacked_tensor;
   const auto& zero_point_tensor = *initializers.at(node.InputDefs()[idx]->Name());
   ORT_RETURN_IF_ERROR(
       onnxruntime::utils::UnpackInitializerData(zero_point_tensor, node.ModelPath(), unpacked_tensor));
   // Onnx quantization uses uint8 [int8 not yet supported], need to cast to int32_t used by NNAPI
-  zero_point = static_cast<int32_t>(reinterpret_cast<const uint8_t*>(unpacked_tensor.data())[0]);
+  zero_point = static_cast<int32_t>(unpacked_tensor[0]);
   return Status::OK();
 }
 

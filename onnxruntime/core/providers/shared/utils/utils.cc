@@ -66,7 +66,7 @@ bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node,
         LOGS(logger, VERBOSE) << "Input min of Clip must be known";
         return false;
       }
-      std::vector<std::byte> unpacked_tensor;
+      std::vector<uint8_t> unpacked_tensor;
       auto status = onnxruntime::utils::UnpackInitializerData(*initializers.at(min_name), unpacked_tensor);
       if (!status.IsOK()) {
         LOGS(logger, ERROR) << "Error while unpack min tensor: " << status.ErrorMessage();
@@ -81,7 +81,7 @@ bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node,
         LOGS(logger, VERBOSE) << "Input max of Clip must be known";
         return false;
       }
-      std::vector<std::byte> unpacked_tensor;
+      std::vector<uint8_t> unpacked_tensor;
       auto status = onnxruntime::utils::UnpackInitializerData(*initializers.at(max_name), unpacked_tensor);
       if (!status.IsOK()) {
         LOGS(logger, ERROR) << "Error while unpack max tensor: " << status.ErrorMessage();
