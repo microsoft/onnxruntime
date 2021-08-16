@@ -27,9 +27,12 @@ class FunctionImpl final : public Function {
   // a Function Op. This takes in a FunctionProto and constructs function body
   // from it. The function body initialization happens during model load in graph resolve
   // phase.
+  // model_local_functions contains domain:optype to model_local_functions map. This is 
+  // used to resolve and initialize nested functions.
   FunctionImpl(const onnxruntime::Graph& graph,
                const onnxruntime::NodeIndex& node_index,
                const ONNX_NAMESPACE::FunctionProto& onnx_func,
+               const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
                const logging::Logger& logger);
 
   ~FunctionImpl() override;
