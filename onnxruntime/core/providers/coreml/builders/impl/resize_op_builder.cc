@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <math.h>
+
 #include "core/providers/common.h"
 #include "core/providers/cpu/tensor/reshape_helper.h"
 
