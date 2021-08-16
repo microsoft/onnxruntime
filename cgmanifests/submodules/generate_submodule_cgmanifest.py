@@ -15,24 +15,25 @@ package_url = None
 
 registrations = []
 
-with open(os.path.join(REPO_DIR, 'tools', 'ci_build', 'github', 'linux', 'docker', 'Dockerfile.manylinux2014_cuda11'), "r") as f:
+with open(os.path.join(REPO_DIR, 'tools', 'ci_build', 'github', 'linux', 'docker', 'Dockerfile.manylinux2014_cuda11'),
+          "r") as f:
     for line in f:
         if not line.strip():
             package_name = None
             package_filename = None
             package_url = None
         if package_filename is None:
-            m = re.match("RUN\s+export\s+(.+?)_ROOT=(\S+).*", line)
+            m = re.match(r"RUN\s+export\s+(.+?)_ROOT=(\S+).*", line)
             if m is not None:
                 package_name = m.group(1)
                 package_filename = m.group(2)
             else:
-                m = re.match("RUN\s+export\s+(.+?)_VERSION=(\S+).*", line)
+                m = re.match(r"RUN\s+export\s+(.+?)_VERSION=(\S+).*", line)
                 if m is not None:
                     package_name = m.group(1)
                     package_filename = m.group(2)
         elif package_url is None:
-            m = re.match("(.+?)_DOWNLOAD_URL=(\S+)", line)
+            m = re.match(r"(.+?)_DOWNLOAD_URL=(\S+)", line)
             if m is not None:
                 package_url = m.group(2)
                 if package_name == 'LIBXCRYPT':
@@ -60,8 +61,10 @@ with open(os.path.join(REPO_DIR, 'tools', 'ci_build', 'github', 'linux', 'docker
                 package_filename = None
                 package_url = None
 
+
 def normalize_path_separators(path):
     return path.replace(os.path.sep, "/")
+
 
 proc = subprocess.run(
     ["git", "submodule", "foreach", "--quiet", "--recursive", "{} {} $toplevel/$sm_path".format(

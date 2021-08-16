@@ -24,8 +24,10 @@ endif()
 
 onnxruntime_add_static_library(ort_opschema_lib ${contrib_ops_schema_src})
 target_compile_options(ort_opschema_lib PRIVATE -D_OPSCHEMA_LIB_=1)
-
-set (OPSCHEMA_LIB_DEPENDENCIES onnx onnx_proto protobuf::libprotobuf flatbuffers)
+if(NOT MSVC)
+  target_compile_options(ort_opschema_lib PRIVATE "-Wno-parentheses")
+endif()
+set (OPSCHEMA_LIB_DEPENDENCIES onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
 
 # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" is found
 target_include_directories(ort_opschema_lib PRIVATE ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${CMAKE_CURRENT_BINARY_DIR})

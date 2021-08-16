@@ -46,6 +46,8 @@ const OrtDevice::DeviceType OrtDevice::GPU;
 namespace onnxruntime {
 
 constexpr const char* kExecutionProviderSharedLibraryPath = "shared_lib_path";
+constexpr const char* kExecutionProviderSharedLibraryEntry = "provider_factory_entry_point";
+
 }  // namespace onnxruntime
 
 #if defined(_MSC_VER)
@@ -299,7 +301,8 @@ static inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime
 
 static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExecutionProvider(
     const std::string& ep_shared_lib_path,
-    const ProviderOptions& provider_options = {}) {
+    const ProviderOptions& provider_options = {},
+    const std::string& entry_symbol_name = "GetProvider") {
   void* handle;
   auto error = Env::Default().LoadDynamicLibrary(ep_shared_lib_path, false, &handle);
   if (!error.IsOK()) {
@@ -307,7 +310,7 @@ static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExecutionProvider(
   }
 
   Provider* (*PGetProvider)();
-  Env::Default().GetSymbolFromLibrary(handle, "GetProvider", (void**)&PGetProvider);
+  OrtPybindThrowIfError(Env::Default().GetSymbolFromLibrary(handle, entry_symbol_name, (void**)&PGetProvider));
 
   Provider* provider = PGetProvider();
   std::shared_ptr<IExecutionProviderFactory> ep_factory = provider->CreateExecutionProviderFactory(&provider_options);
@@ -668,6 +671,10 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #ifdef USE_RKNPU
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Rknpu());
 #endif
+    } else if (type == kCoreMLExecutionProvider) {
+#if defined(USE_COREML)
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CoreML(0));
+#endif
     } else {
       // check whether it is a dynamic load EP:
       const auto it = provider_options_map.find(type);
@@ -677,11 +684,16 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
           // this is an EP with dynamic loading
           // construct the provider option
           ProviderOptions provider_options;
+          std::string entry_symbol = kDefaultExecutionProviderEntry;
           for (auto option : it->second) {
-            if (option.first != kExecutionProviderSharedLibraryPath)
+            if (option.first == kExecutionProviderSharedLibraryEntry){
+              entry_symbol = option.second;
+            }
+            else if (option.first != kExecutionProviderSharedLibraryPath){
               provider_options.insert(option);
+            }
           }
-          auto p_ep = LoadExecutionProvider(shared_lib_path_it->second, provider_options);
+          auto p_ep = LoadExecutionProvider(shared_lib_path_it->second, provider_options, entry_symbol);
           ORT_THROW_IF_ERROR(sess->RegisterExecutionProvider(
               std::move(p_ep)));
           continue;
@@ -1476,6 +1488,10 @@ static struct {
 void addObjectMethodsForTraining(py::module& m);
 #endif
 
+#ifdef ENABLE_EAGER_MODE
+void addObjectMethodsForEager(py::module& m);
+#endif
+
 void CreatePybindStateModule(py::module& m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";
   RegisterExceptions(m);
@@ -1556,6 +1572,11 @@ void CreatePybindStateModule(py::module& m) {
   addOpSchemaSubmodule(m);
   addOpKernelSubmodule(m);
 #endif
+
+#ifdef ENABLE_EAGER_MODE
+  addObjectMethodsForEager(m);
+#endif
+
 }
 
 // static variable used to create inference session and training session.
