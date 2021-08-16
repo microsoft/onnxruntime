@@ -9,7 +9,7 @@
 
 #include "core/common/safeint.h"
 #include "core/framework/error_code_helper.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/framework/sparse_tensor.h"
 #include "core/framework/tensor_shape.h"
@@ -214,8 +214,8 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorTypeAndShape, _In_ const OrtValue* v, _Out
       data_type = tensor.DataType();
     } else {
       const SparseTensor& tensor = v->Get<onnxruntime::SparseTensor>();
-      shape = &tensor.Shape();
-      data_type = tensor.Values().DataType();
+      shape = &tensor.DenseShape();
+      data_type = tensor.DataType();
     }
     return GetTensorShapeAndType(*shape, *data_type, out);
   } else {

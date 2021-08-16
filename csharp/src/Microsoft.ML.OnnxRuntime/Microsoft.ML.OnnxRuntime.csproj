@@ -71,13 +71,6 @@
           CopyToOutputDirectory="Never"
           Visible="false"
     />
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\cuda\cuda_provider_factory.h"
-          Condition="'$(OrtPackageId)' != 'Microsoft.ML.OnnxRuntime.DirectML'"
-          PackagePath="\build\native\include"
-          Pack="false"
-          CopyToOutputDirectory="Never"
-          Visible="false"
-    />
     <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\dml\dml_provider_factory.h"
           Condition="'$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'"
           PackagePath="\build\native\include"

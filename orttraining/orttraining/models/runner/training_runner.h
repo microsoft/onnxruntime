@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "core/common/path_string.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/providers/providers.h"
 #include "orttraining/core/framework/checkpoint_registry.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"

@@ -67,11 +67,22 @@ static bool UsingLatestOnnxOpset(const DomainToVersionMap& opset_versions) {
 }
 
 static Status MergeShapeInfo(const std::string& output_name,
-                             const TypeProto_Tensor& source, TypeProto_Tensor& target,
+                             const TypeProto& source, TypeProto& target,
                              bool strict, const logging::Logger& logger) {
+  if (!(utils::HasTensorType(source) && utils::HasTensorType(target)) &&
+      !(utils::HasSparseTensorType(source) && utils::HasSparseTensorType(target))) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Source and target must both be either tensors or sparse tensors");
+  }
+
   auto status = Status::OK();
+
   ORT_TRY {
-    ONNX_NAMESPACE::mergeInShapeInfo(source, target);
+    if (utils::HasTensorType(source)) {
+      ONNX_NAMESPACE::mergeInShapeInfo(source.tensor_type(), *target.mutable_tensor_type());
+    } else {
+      ONNX_NAMESPACE::mergeInShapeInfo(source.sparse_tensor_type(), *target.mutable_sparse_tensor_type());
+    }
   }
   ORT_CATCH(const ONNX_NAMESPACE::InferenceError& ex) {
     // if this model was not created with the latest onnx version, allow the shape inferencing failure (strict == false).
@@ -82,10 +93,13 @@ static Status MergeShapeInfo(const std::string& output_name,
       // target.shape() was empty. 'assert' just in case that ever changes.
       assert(utils::HasShape(source) && utils::HasShape(target));
       LOGS(logger, WARNING) << "Error merging shape info for output. '" << output_name
-                            << "' source:" << source.shape() << " target:" << target.shape()
+                            << "' source:" << utils::GetShape(source) << " target:" << utils::GetShape(target)
                             << ". Falling back to lenient merge.";
-
-      ONNX_NAMESPACE::UnionShapeInfo(source.shape(), target);
+      if (utils::HasTensorType(source)) {
+        ONNX_NAMESPACE::UnionShapeInfo(utils::GetShape(source), *target.mutable_tensor_type());
+      } else {
+        ONNX_NAMESPACE::UnionShapeInfo(utils::GetShape(source), *target.mutable_sparse_tensor_type());
+      }
     } else {
       ORT_UNUSED_PARAMETER(logger);
       ORT_UNUSED_PARAMETER(strict);
@@ -305,11 +319,10 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
       }
 
       if (utils::HasShape(input_tensor_type)) {
-        auto& current_tensor_type = *current_type.mutable_tensor_type();
-        if (utils::HasShape(current_tensor_type)) {
-          ORT_RETURN_IF_ERROR(MergeShapeInfo(Name(), input_tensor_type, current_tensor_type, strict, logger));
+        if (utils::HasShape(current_type)) {
+          ORT_RETURN_IF_ERROR(MergeShapeInfo(Name(), input_type, current_type, strict, logger));
         } else {
-          current_tensor_type = input_tensor_type;
+          *current_type.mutable_tensor_type() = input_tensor_type;
         }
       }
 
@@ -338,13 +351,10 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
       }
 
       if (utils::HasShape(input_tensor_type)) {
-        auto& current_tensor_type = *current_type.mutable_sparse_tensor_type();
-        if (utils::HasShape(current_tensor_type)) {
-          // TODO: Check if we need to merge shape here
-          // if so we'd need to provide merging routine ONNX
-          // mergeInShapeInfo(input_tensor_type, current_tensor_type);
+        if (utils::HasShape(current_type)) {
+          ORT_RETURN_IF_ERROR(MergeShapeInfo(Name(), input_type, current_type, strict, logger));
         } else {
-          current_tensor_type = input_tensor_type;
+          *current_type.mutable_sparse_tensor_type() = input_tensor_type;
         }
       }
     } break;
@@ -606,7 +616,10 @@ Status Node::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Node& fbs_n
   since_version_ = fbs_node.since_version();
   experimental::utils::LoadStringFromOrtFormat(op_type_, fbs_node.op_type());
   node_type_ = static_cast<Node::Type>(fbs_node.type());
-  experimental::utils::LoadStringFromOrtFormat(execution_provider_type_, fbs_node.execution_provider_type());
+  // we skip populating the saved EP here
+  // the node will either be assigned to another EP by the ORT format model-specific graph partitioning or fall back to
+  // the EP encoded in its kernel def hash
+  //experimental::utils::LoadStringFromOrtFormat(execution_provider_type_, fbs_node.execution_provider_type());
   ORT_RETURN_IF_ERROR(LoadNodeArgsFromOrtFormat(fbs_node.inputs(), definitions_.input_defs));
 
   // attributes
@@ -1188,7 +1201,7 @@ void Graph::InitializeStateFromModelFileGraphProto() {
     const auto& name = graph_value_info.name();
     const auto* node_arg = GetNodeArg(name);
     if (node_arg != nullptr) {
-      value_info_.push_back(node_arg);
+      value_info_.insert(node_arg);
     }
   }
 
@@ -1892,6 +1905,11 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     return initializer;
   }
 
+  // ORT does not implement partial data propagation yet so just return nullptr.
+  const TensorShapeProto* getSymbolicInput(size_t) const override {
+    return nullptr;
+  }
+
   GraphInferencer* getGraphAttributeInferencer(const std::string& attribute_name) override {
     GraphInferencer* graph_inferencer = nullptr;
 
@@ -1914,7 +1932,7 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
   const SparseTensorProto* getInputSparseData(size_t) const override {
     return nullptr;
   }
-  
+
  private:
   Node& node_;
   // node_output_types_ will be populated by the operator-specific shape inference.
@@ -2195,27 +2213,29 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
       output_def->SetType(inferred_type);
 
     // Update output-shape if it was inferred:
-    if (utils::HasTensorType(onnx_inferred_type)) {
-      auto& tensor_type = onnx_inferred_type.tensor_type();
-      if (utils::HasShape(tensor_type)) {
-        if (output_def->Shape() == nullptr) {
-          output_def->SetShape(tensor_type.shape());
-        } else {
-          // we need to merge the shapes as a subgraph may have placeholder dimensions to represent the rank
-          // that have no values.
-          TypeProto_Tensor merge_target;
-          (*merge_target.mutable_shape()) = *output_def->Shape();
-          auto status = MergeShapeInfo(output_def->Name(), tensor_type, merge_target, using_latest_onnx_opset_, logger_);
-          if (!status.IsOK()) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node:", node_name, " ", status.ErrorMessage());
-          }
-
-          // we may have cleared the shape if there was a mismatch so handle that
-          if (utils::HasShape(merge_target))
-            output_def->SetShape(merge_target.shape());
-          else
-            output_def->ClearShape();
+    // HasShape()/GetShape() work for tensor types
+    // if the behavior changes the below may need adjustment
+    if (utils::HasShape(onnx_inferred_type)) {
+      if (output_def->Shape() == nullptr) {
+        output_def->SetShape(utils::GetShape(onnx_inferred_type));
+      } else {
+        // we need to merge the shapes as a subgraph may have placeholder dimensions to represent the rank
+        // that have no values.
+        TypeProto merge_target;
+        if (utils::HasTensorType(onnx_inferred_type)) {
+          *merge_target.mutable_tensor_type()->mutable_shape() = *output_def->Shape();
+        } else if (utils::HasSparseTensorType(onnx_inferred_type)) {
+          *merge_target.mutable_sparse_tensor_type()->mutable_shape() = *output_def->Shape();
         }
+        auto status = MergeShapeInfo(output_def->Name(), onnx_inferred_type, merge_target, using_latest_onnx_opset_, logger_);
+        if (!status.IsOK()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node:", node_name, " ", status.ErrorMessage());
+        }
+        // we may have cleared the shape if there was a mismatch so handle that
+        if (utils::HasShape(merge_target))
+          output_def->SetShape(utils::GetShape(merge_target));
+        else
+          output_def->ClearShape();
       }
     }
   }
@@ -2340,8 +2360,12 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
       auto maxInclusiveVersion = DomainToVersionMap().find(domain)->second;
       node.op_ = schema_registry_->GetSchema(node.OpType(), maxInclusiveVersion, node.Domain());
 
-      if (node.op_ && node.op_->Deprecated()) {
-        node.op_ = nullptr;
+      if (node.op_) {
+        node.since_version_ = node.op_->since_version();
+
+        if (node.op_->Deprecated()) {
+            node.op_ = nullptr;
+        }
       }
 
       InitFunctionBodyForNode(node);
@@ -2350,7 +2374,11 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         return Status(ONNXRUNTIME, FAIL, "Fatal error: " + node.OpType() + " is not a registered function/op");
       }
 
-      node.since_version_ = node.op_->since_version();
+      // For ops without schema (like model local functions set the since version after constructing the schema.
+      // schema construction will happen during function body initialization.
+      if (node.since_version_ == -1) {
+        node.since_version_ = node.op_->since_version();
+      }
     }
 
     ORT_RETURN_IF_ERROR(node.UpdateInputArgCount());
@@ -2417,19 +2445,17 @@ void Graph::InitFunctionBodyForNode(Node& node) {
       onnx_function_proto = *(node.op_->GetFunction());
     }
 
-    // Check function's opset requirements are compatible with model's opset.
-    auto& graphImports = DomainToVersionMap();
-    for (const auto& fn_import : onnx_function_proto.opset_import()) {
-      auto it = graphImports.find(fn_import.domain());
-      if ((it != graphImports.end()) && (it->second != fn_import.version()))
-        return;  // Incompatible. Do not use this function expansion.
+    ORT_TRY {
+      auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
+                                                                  logger_);
+      function_container_.emplace_back(std::move(func_ptr));
+      node.SetFunctionBody(*function_container_.back());
     }
-
-    auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
-                                                                logger_);
-
-    function_container_.emplace_back(std::move(func_ptr));
-    node.SetFunctionBody(*function_container_.back());
+    ORT_CATCH(const std::exception& ) {
+      // Return without using this function op's expansion. No need to fail just yet.
+      // If ORT has a specialized kernel for this op then execution will proceed
+      return;
+    }
   }
 }
 
@@ -2648,6 +2674,10 @@ bool Graph::IsInitializedTensor(const std::string& name) const {
   return name_to_initial_tensor_.count(name) > 0;
 }
 
+bool Graph::IsSparseInitializer(const std::string& name) const {
+  return sparse_tensor_names_.count(name) > 0;
+}
+
 void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
   bool found = false;
   auto iter = name_to_initial_tensor_.find(tensor_name);
@@ -2760,12 +2790,26 @@ const ONNX_NAMESPACE::TensorProto* Graph::GetConstantInitializer(const std::stri
   return initializer;
 }
 
+const ONNX_NAMESPACE::TensorProto* Graph::GetInitializer(const std::string& initializer_name,
+                                                         bool check_outer_scope) const {
+  const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+  if (GetInitializedTensor(initializer_name, initializer)) {
+    return initializer;
+  } else if (check_outer_scope && IsSubgraph()) {
+    // make sure there's not a local value with the same name. if there is it shadows any initializer in outer scope.
+    if (IsOuterScopeValue(initializer_name)) {
+      initializer = parent_graph_->GetInitializer(initializer_name, check_outer_scope);
+    }
+  }
+
+  return initializer;
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 void Graph::AddValueInfo(const NodeArg* new_value_info) {
-  for (const auto* info : value_info_) {
-    ORT_ENFORCE(info->Name() != new_value_info->Name(), "Error: trying to add an existing value info.");
-  }
-  value_info_.push_back(new_value_info);
+  NodeArg* node_arg = GetNodeArg(new_value_info->Name());
+  ORT_ENFORCE(node_arg && node_arg == new_value_info, "Error: trying to add an value info that are no in graph.");
+  value_info_.insert(new_value_info);
 }
 
 std::vector<NodeArg*> Graph::CreateNodeArgs(const google::protobuf::RepeatedPtrField<std::string>& names,
@@ -3401,9 +3445,7 @@ Status Graph::SetGraphInputsOutputs() {
         // Remove the output arg name from graph outputs since it's
         // the input of this node, which we call it intermediate result
         // and store it in <m_valueinfo>.
-        if (std::find(value_info_.begin(), value_info_.end(), input_arg) == value_info_.end()) {
-          value_info_.push_back(input_arg);
-        }
+        value_info_.insert(input_arg);
       }
     }
   }

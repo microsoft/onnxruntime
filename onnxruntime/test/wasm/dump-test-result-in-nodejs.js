@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+'use strict';
+
 // This file is used to be injected into "onnxruntime_test_all" as specified by flag "--pre-js" by emcc.
 // It dumps the test report file from emscripten's MEMFS to real file system
 

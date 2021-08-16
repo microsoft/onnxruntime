@@ -270,7 +270,7 @@
           }
         }
         ORT_RETURN_IF_NOT(model_output_type == MLMultiArrayDataTypeInt32,
-                          "Coreml model_output_type is not MLMultiArrayDataTypeInt32 for the case")
+                          "Coreml model_output_type is not MLMultiArrayDataTypeInt32 for the case");
         break;
       default:
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,

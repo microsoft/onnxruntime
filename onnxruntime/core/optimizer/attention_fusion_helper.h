@@ -178,7 +178,7 @@ bool MatchGemmSubgraph(Graph& graph,
 
     if (!optimizer_utils::CheckOutputEdges(graph, unsqueeze_after_gather, 1) ||
         !optimizer_utils::CheckOutputEdges(graph, gather, 1) ||
-        !optimizer_utils::CheckOutputEdges(graph, shape, 1) && !use_shared_node) {
+        (!optimizer_utils::CheckOutputEdges(graph, shape, 1) && !use_shared_node)) {
       DEBUG_LOG("Output edge count not expected for nodes in gemm gather path");
       return false;
     }

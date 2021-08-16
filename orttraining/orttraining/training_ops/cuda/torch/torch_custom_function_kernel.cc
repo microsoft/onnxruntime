@@ -4,9 +4,9 @@
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 
 #include "core/providers/shared_library/provider_api.h"
-#include "core/language_interop_ops/torch/refcount_tracker.h"
+#include "orttraining/core/framework/torch/refcount_tracker.h"
 #include "orttraining/training_ops/cuda/torch/torch_custom_function_kernel.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 
 using namespace onnxruntime::language_interop_ops::torch;
 

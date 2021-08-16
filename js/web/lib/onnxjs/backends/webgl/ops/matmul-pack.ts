@@ -1,134 +1,97 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {MatMul} from '../../../ops/matmul';
 import {Tensor} from '../../../tensor';
 import {BroadcastUtil} from '../../../util';
 import {ShapeUtil} from '../../../util';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, RunData, WebGLOperator} from '../types';
-import {getCoordsDataType} from '../utils';
+import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
+import {getCoordsDataType, getGlChannels} from '../utils';
 
-import {getActicationSnippet} from './fuse-utils';
+import {getActicationSnippet, InternalActivationAttributes} from './fuse-utils';
+import {getBiasForMatmul} from './matmul';
 
-export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
-  run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
-    return inferenceHandler.run(this, inputs);
-  }
-  createProgramInfo(handler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo {
-    const hasBias = inputs.length > 2;
-    const processBias = hasBias ? 'value += getBiasForMatmul();' : '';
-    const aShape = inputs[0].dims;
-    const bShape = inputs[1].dims;
-    const outputShape = BroadcastUtil.calcShape(aShape, bShape, true);
-    const isBroadcast = !ShapeUtil.areEqual(inputs[0].dims, inputs[1].dims);
+const createPackedMatmulProgramMetadata = (hasBias: boolean, cacheHint: string) => ({
+  name: 'MatMul (packed)',
+  inputNames: hasBias ? ['A', 'B', 'Bias'] : ['A', 'B'],
+  inputTypes: hasBias ? [TextureType.packed, TextureType.packed, TextureType.packed] :
+                        [TextureType.packed, TextureType.packed],
+  cacheHint
+});
 
-    if (!outputShape) {
-      throw new Error('Can\'t use matmul on the given tensors');
-    }
-    const sharedDim = aShape[aShape.length - 1];
-    const sharedDimIndex = Math.ceil(sharedDim / 2);
-    const aRank = aShape.length;
-    const bRank = bShape.length;
+const createPackedMatmulProgramInfo =
+    (inferenceHandler: WebGLInferenceHandler, metadata: ProgramMetadata, inputs: Tensor[],
+     activationAttributes: InternalActivationAttributes): ProgramInfo => {
+      const hasBias = inputs.length > 2;
+      const processBias = hasBias ? 'value += getBiasForMatmul();' : '';
+      const aShape = inputs[0].dims;
+      const bShape = inputs[1].dims;
+      const outputShape = BroadcastUtil.calcShape(aShape, bShape, true);
+      const isBroadcast = !ShapeUtil.areEqual(inputs[0].dims, inputs[1].dims);
 
-    const glsl = getGlsl(handler.session.backend.glContext.version);
-    const coordsDataType = getCoordsDataType(outputShape.length);
-    const outRank = outputShape.length;
-    const allGlChannels = ['x', 'y', 'z', 'w', 'u', 'v'];
-    const additionalVars = this.activation === 'Clip' ? `
-    float min = float(${this.clipMin});
-    float max = float(${this.clipMax});` :
-                                                        '';
-    const {activationFunction, applyActivation} = getActicationSnippet(this.activation);
+      if (!outputShape) {
+        throw new Error('Can\'t use matmul on the given tensors');
+      }
+      const sharedDim = aShape[aShape.length - 1];
+      const sharedDimIndex = Math.ceil(sharedDim / 2);
+      const aRank = aShape.length;
+      const bRank = bShape.length;
 
-    const getBiasForMatmulSnippet =
-        hasBias ? `${getBiasForMatmul(coordsDataType, allGlChannels, inputs[2].dims, outputShape)}` : '';
+      const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
+      const coordsDataType = getCoordsDataType(outputShape.length);
+      const outRank = outputShape.length;
+      const allGlChannels = getGlChannels();
+      const {activationFunction, applyActivation} = getActicationSnippet(activationAttributes);
 
-    const getBcastedSamplerForMatmulSnippet =
-        isBroadcast ? `${getBcastSamplerForMatmul(coordsDataType, allGlChannels, inputs, outputShape)}` : '';
+      const getBiasForMatmulSnippet =
+          hasBias ? `${getBiasForMatmul(coordsDataType, allGlChannels, inputs[2].dims, outputShape, true)}` : '';
 
-    const getSamplerAInLoopSnippet = isBroadcast ? 'getAAtOutCoordsMatmul(i)' : `getA(${getA(allGlChannels, aRank)})`;
-    const getSamplerBInLoopSnippet = isBroadcast ? 'getBAtOutCoordsMatmul(i)' : `getB(${getB(allGlChannels, bRank)})`;
-    const getOutputCoordsSnippet = isBroadcast ? '' : `${coordsDataType} rc = getOutputCoords();
-    int lastDim = rc.${allGlChannels[outRank - 1]};
-    rc.${allGlChannels[outRank - 1]} = rc.${allGlChannels[outRank - 2]};
-    rc.${allGlChannels[outRank - 2]} = lastDim;
-`;
-    const shaderSource = `
-      ${additionalVars}
-      ${getBcastedSamplerForMatmulSnippet}
-      ${getBiasForMatmulSnippet}
-      ${activationFunction}
-      void main() {
-        ${getOutputCoordsSnippet}
+      const getBcastedSamplerForMatmulSnippet =
+          isBroadcast ? `${getBcastSamplerForMatmul(coordsDataType, allGlChannels, inputs, outputShape)}` : '';
 
-        vec4 value = vec4(0);
-        for (int i = 0; i < ${sharedDimIndex}; i++) {
-          vec4 a = ${getSamplerAInLoopSnippet};
-          vec4 b = ${getSamplerBInLoopSnippet};
+      const getSamplerAInLoopSnippet = isBroadcast ? 'getAAtOutCoordsMatmul(i)' : `getA(${getA(allGlChannels, aRank)})`;
+      const getSamplerBInLoopSnippet = isBroadcast ? 'getBAtOutCoordsMatmul(i)' : `getB(${getB(allGlChannels, bRank)})`;
+      const getOutputCoordsSnippet = isBroadcast ? '' : `${coordsDataType} rc =
+          getOutputCoords(); int lastDim = rc.${allGlChannels[outRank - 1]}; rc.${allGlChannels[outRank - 1]} =
+          rc.${allGlChannels[outRank - 2]}; rc.${allGlChannels[outRank - 2]} = lastDim;
+      `;
+      const shaderSource = `
+            ${getBcastedSamplerForMatmulSnippet}
+            ${getBiasForMatmulSnippet}
+            ${activationFunction}
+            void main() {
+              ${getOutputCoordsSnippet}
 
-          value += (a.rrbb * b.rgrg);
-          value += (a.ggaa * b.baba);
-        }
-        ${processBias}
-        ${applyActivation}
-        ${glsl.output} = value;
-      }`;
-    return {
-      name: 'WebGLMatMulPacked',
-      inputLayouts: inputs.map((t, i) => handler.getOrCreateTextureLayout(t, 4, true, inputs[i].dims, true)),
-      outputLayout:
-          handler.createTextureLayoutFromShape(outputShape, 4, outputShape, {isPacked: true, reverseWH: true}),
-      samplers: hasBias ? ['A', 'B', 'Bias'] : ['A', 'B'],
-      shaderSource,
-      hasMain: true,
-      expectPackedInputs: true,
-      expectPackedOutputs: true,
+              vec4 value = vec4(0);
+              for (int i = 0; i < ${sharedDimIndex}; i++) {
+                vec4 a = ${getSamplerAInLoopSnippet};
+                vec4 b = ${getSamplerBInLoopSnippet};
+
+                value += (a.rrbb * b.rgrg);
+                value += (a.ggaa * b.baba);
+              }
+              ${processBias}
+              ${applyActivation}
+              ${glsl.output} = value;
+            }`;
+      return {
+        ...metadata,
+        output: {dims: outputShape, type: inputs[0].type, textureType: TextureType.packed},
+        shaderSource,
+        hasMain: true
+      };
     };
-  }
-  createRunData(handler: WebGLInferenceHandler, programInfo: ProgramInfo, inputs: Tensor[]): RunData {
-    const inputTDs =
-        inputs.map((t) => handler.getOrCreateTextureData(t, handler.getOrCreateTextureLayout(t, 1, false, [], true)));
-    return {
-      inputTextureDatas: inputTDs,
-      outputTextureData: handler.createTextureDataFromLayout(programInfo.outputLayout, inputTDs[0].tensor.type),
-      uniformData: {}
+
+export const createPackedMatmulProgramInfoLoader =
+    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[],
+     activationAttributes: InternalActivationAttributes): ProgramInfoLoader => {
+      const metadata = createPackedMatmulProgramMetadata(inputs.length > 2, activationAttributes.activationCacheKey);
+      return {
+        ...metadata,
+        get: () => createPackedMatmulProgramInfo(inferenceHandler, metadata, inputs, activationAttributes)
+      };
     };
-  }
-}
-
-function getBiasForMatmul(
-    coordsDataType: string, allGlChannels: readonly string[], inShape: readonly number[],
-    outShape: readonly number[]): string {
-  let unpackedCoordsSnippet = '';
-  const inRank = inShape.length;
-  const outRank = outShape.length;
-  const rankDiff = outRank - inRank;
-  if (outRank < 2 && inRank > 0) {
-    unpackedCoordsSnippet = 'coords';
-  } else {
-    unpackedCoordsSnippet = inShape.map((s, i) => `coords.${allGlChannels[i + rankDiff]}`).join(', ');
-  }
-  const broadcastDims = BroadcastUtil.getBroadcastDims(inShape, outShape);
-  const coordsSnippet = broadcastDims.map(d => `coords.${allGlChannels[d + rankDiff]} = 0;`).join('\n');
-  const inSize = ShapeUtil.size(inShape);
-  const isInputScalar = inSize === 1;
-  let output = 'vec4(outputValue.xx, outputValue.yy)';
-  if (isInputScalar) {
-    output = 'vec4(outputValue.x)';
-  }
-  const getBiasForMatmulSource = `
-  vec4 getBiasForMatmul() {
-    ${coordsDataType} coords = getOutputCoords();
-    ${coordsSnippet}
-    vec4 outputValue = getBias(${unpackedCoordsSnippet});
-    return ${output};
-
-  }`;
-
-  return getBiasForMatmulSource;
-}
 
 function getBcastSamplerForMatmul(
     coordsDataType: string, allGlChannels: readonly string[], inputs: Tensor[], outShape: readonly number[]): string {
