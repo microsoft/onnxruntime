@@ -175,6 +175,8 @@ export class ModelTestContext {
       Logger.verbose('TestRunner.Perf', ` * Runs          : ${runs.map(r => r.toFixed(2)).join(', ')}`);
 
       if (runs.length > 1) {
+        const sorted = runs.sort((a, b) => a - b);
+        Logger.verbose('TestRunner.Perf', ` * Runs P50      : ${sorted[Math.floor((runs.length - 1) / 2)].toFixed(2)}`);
         const avg = runs.reduce((prev, current) => prev + current) / runs.length;
         Logger.verbose('TestRunner.Perf', ` * Runs Avg      : ${avg.toFixed(2)}`);
         const variance = runs.reduce((prev, current) => prev + (current - avg) * (current - avg));
@@ -475,7 +477,7 @@ export async function runModelTestSet(
     testCase.inputs!.forEach(i => {
       Logger.verbose('TestRunner', `   '${i.name}': ${i.type}[${i.dims.join(',')}]`);
     });
-    Logger.verbose('TestRunner', `  Output(s): ${outputs.size}`);
+    Logger.verbose('TestRunner', `  Output(s): ${Object.keys(outputs).length}`);
     for (const name in outputs) {
       if (Object.hasOwnProperty.call(outputs, name)) {
         const tensor = outputs[name];
@@ -551,10 +553,10 @@ async function runOpTestcase(
   const inputTensors =
       testcase.inputs.map(input => createTensor(input.dims, input.type as Tensor.DataType, input.data));
 
-  let results = operator.run(inferenceHandler, inputTensors);
-  if ('then' in results) {
-    results = await results;
-  }
+  const results = operator.impl(inferenceHandler, inputTensors, operator.context);
+  // if ('then' in results) {
+  //   results = await results;
+  // }
 
   results.forEach((output, i) => {
     Logger.verbose('TestOpRunner', `  Result'${i}': ${output.type}[${output.dims.join(',')}]`);

@@ -1,3 +1,6 @@
+REM Copyright (c) Microsoft Corporation. All rights reserved.
+REM Licensed under the MIT License.
+
 REM for available runtime identifiers, see https://github.com/dotnet/corefx/blob/release/3.1/pkg/Microsoft.NETCore.Platforms/runtime.json
 set PATH=%CD%;%PATH%
 SETLOCAL EnableDelayedExpansion 
