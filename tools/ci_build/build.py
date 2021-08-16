@@ -2179,7 +2179,6 @@ def main():
             eager_root_dir = os.path.join(source_dir, "orttraining", "orttraining", "eager")
             gen_ort_aten_ops(eager_root_dir)
 
->>>>>>> public/master
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home, mpi_home, nccl_home,
             tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
