@@ -1012,9 +1012,18 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     else:
         add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "OFF")
 
+    print('build.py: 3')
+    print(cmake_extra_defines)
+
+    print('build.py: 4 (cmake_args)')
+    print(cmake_args)
+
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
     cmake_args += cmake_extra_args
+
+    print('build.py: 5 (cmake_args)')
+    print(cmake_args)
 
     # ADO pipelines will store the pipeline build number
     # (e.g. 191101-2300.1.master) and source version in environment
@@ -1063,6 +1072,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 config_build_dir, "external", "tvm",
                 config) + os.pathsep + os.path.dirname(sys.executable) + os.pathsep + os.environ["PATH"]
 
+        print('build.py: 6 (cmake_args)')
+        print(cmake_args)
         run_subprocess(
             cmake_args + [
                 "-Donnxruntime_ENABLE_MEMLEAK_CHECKER=" +
@@ -1888,6 +1899,8 @@ def main():
     args = parse_arguments()
     cmake_extra_defines = (args.cmake_extra_defines
                            if args.cmake_extra_defines else [])
+    print('build.py: 1')
+    print(cmake_extra_defines)
     cross_compiling = args.arm or args.arm64 or args.arm64ec or args.android
 
     # If there was no explicit argument saying what to do, default
@@ -2127,6 +2140,8 @@ def main():
         if args.use_rocm and args.rocm_version is None:
             args.rocm_version = ""
 
+        print('build.py: 2')
+        print(cmake_extra_defines)
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home, mpi_home, nccl_home,
             tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
