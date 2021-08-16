@@ -493,18 +493,6 @@ std::string ThreadPool::StopProfiling() {
   }
 }
 
-ThreadPool::MLAS_THREADPOOL_TYPE* ThreadPool::AsMlasThreadPool() {
-#ifdef ORT_USE_MLAS_SHARED_LIB
-  if (this != nullptr) {
-    return reinterpret_cast<MLAS_THREADPOOL_TYPE*>(mlas_threadpool_adapter_.get());
-  } else {
-    return nullptr;
-  }
-#else
-  return this;
-#endif
-}
-
 thread_local ThreadPool::ParallelSection* ThreadPool::ParallelSection::current_parallel_section{nullptr};
 
 ThreadPool::ParallelSection::ParallelSection(ThreadPool* tp) {

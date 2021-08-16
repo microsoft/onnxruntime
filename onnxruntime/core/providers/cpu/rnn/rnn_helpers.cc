@@ -229,7 +229,7 @@ void ComputeGemm(const int M,
         M, N, K, alpha,
         A, K,
         weights.buffer_, beta,
-        C, ldc, thread_pool->AsMlasThreadPool());
+        C, ldc, concurrency::ThreadPool::AsMlasThreadPool(thread_pool));
   } else {
     ::onnxruntime::math::GemmEx<float>(
         CblasNoTrans, CblasTrans,
@@ -306,7 +306,7 @@ void ComputeGemm(const int M,
   gemm_params.ldc = ld_C_buffer;
   gemm_params.OutputProcessor = &output_processor;
 
-  MlasGemm(gemm_shape, gemm_params, thread_pool->AsMlasThreadPool());
+  MlasGemm(gemm_shape, gemm_params, concurrency::ThreadPool::AsMlasThreadPool(thread_pool));
 }
 
 namespace deepcpu {

@@ -104,7 +104,7 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
     std::unique_ptr<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR> requant_proc_ptr;
     SetPostProcessor(y_zp, N, output_scales, y, gemm_param, scale_bias_proc_ptr, requant_proc_ptr);
 
-    MlasGemmBatch(gemm_shape, &gemm_param, 1, context->GetOperatorThreadPool()->AsMlasThreadPool());
+    MlasGemmBatch(gemm_shape, &gemm_param, 1, concurrency::ThreadPool::AsMlasThreadPool(context->GetOperatorThreadPool()));
     return Status::OK();
   }
 

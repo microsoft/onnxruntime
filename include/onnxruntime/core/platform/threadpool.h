@@ -400,7 +400,18 @@ class ThreadPool {
   static std::string StopProfiling(concurrency::ThreadPool* tp);
 
   // convert to MLAS ThreadPool
-  MLAS_THREADPOOL_TYPE* AsMlasThreadPool();
+  inline static MLAS_THREADPOOL_TYPE* AsMlasThreadPool(concurrency::ThreadPool* tp)
+  {
+#ifdef MLAS_STANDALONE_LIB
+    if (tp != nullptr) {
+      return reinterpret_cast<MLAS_THREADPOOL_TYPE*>(tp->mlas_threadpool_adapter_.get());
+    } else {
+      return nullptr;
+    }
+#else
+    return tp;
+#endif
+  }
 
  private:
   friend class LoopCounter;

@@ -107,7 +107,7 @@ Status MatMulInteger::Compute(OpKernelContext* ctx) const {
     gemm_params.B = b_data + helper.RightOffsets()[batch];
     gemm_params.C = y_data + helper.OutputOffsets()[batch];
   }
-  MlasGemmBatch(gemm_shape, gemm_data_vec.data(), batch_size, ctx->GetOperatorThreadPool()->AsMlasThreadPool());
+  MlasGemmBatch(gemm_shape, gemm_data_vec.data(), batch_size, concurrency::ThreadPool::AsMlasThreadPool(ctx->GetOperatorThreadPool()));
 
   return Status::OK();
 }

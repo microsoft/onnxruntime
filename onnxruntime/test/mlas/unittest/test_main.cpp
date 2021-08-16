@@ -11,7 +11,7 @@
 MLAS_THREADPOOL* GetMlasThreadPool(void) {
   static onnxruntime::concurrency::ThreadPool* threadpool = new onnxruntime::concurrency::ThreadPool(
       &onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr, 2, true);
-  return threadpool->AsMlasThreadPool();
+  return onnxruntime::concurrency::ThreadPool::AsMlasThreadPool(threadpool);
 }
 
 #else

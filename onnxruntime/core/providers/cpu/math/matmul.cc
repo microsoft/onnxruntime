@@ -200,7 +200,7 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
     data[i].beta = 0.0f;
   }
   MlasGemmBatch(trans_a ? CblasTrans : CblasNoTrans, trans_b ? CblasTrans : CblasNoTrans,
-                M, N, K, data.data(), max_len, thread_pool->AsMlasThreadPool());
+                M, N, K, data.data(), max_len, concurrency::ThreadPool::AsMlasThreadPool(thread_pool));
 
   return Status::OK();
 }
