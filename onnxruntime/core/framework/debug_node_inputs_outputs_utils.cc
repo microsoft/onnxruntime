@@ -9,7 +9,7 @@
 #include <cctype>
 #include <string>
 
-#ifdef ENABLE_SQL
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB
 #include <sqlite3.h>
 #endif
 
@@ -131,7 +131,7 @@ void DumpTensorToFile(const Tensor& tensor, const std::string& tensor_name, cons
   ORT_THROW_IF_ERROR(Env::Default().FileClose(output_fd));
 }
 
-#ifdef ENABLE_SQL
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB
 sqlite3* SqliteConnection() {
 
   static thread_local std::unique_ptr<sqlite3, decltype(&sqlite3_close)> sqlite_db(
@@ -184,7 +184,7 @@ sqlite3* SqliteConnection() {
 }
 
 #define SQL_OK(command) \
-  ORT_ENFORCE(command == SQLITE_OK, "Failed sql operation on ", sqlite3_errmsg(SqliteConnection()))
+  ORT_ENFORCE((command) == SQLITE_OK, "Failed sql operation on ", sqlite3_errmsg(SqliteConnection()))
 
 void SqlStepWithRetry(sqlite3_stmt* stmt, int sql_expected) {
 
@@ -334,7 +334,7 @@ void InsertNodePlacementToSqliteDb(const NodeDumpContext& dump_context, const No
  
   SqlStepWithRetry(stmt, SQLITE_DONE);
 }
-#endif // ENABLE_SQL
+#endif // DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB
 
 void DumpCpuTensor(
     const NodeDumpOptions& dump_options,
@@ -350,10 +350,10 @@ void DumpCpuTensor(
       break;
     }
     case NodeDumpOptions::DataDestination::SqliteDb: {
-#ifdef ENABLE_SQL
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB
       DumpTensorToSqliteDb(tensor, tensor_metadata);
 #else
-      ORT_THROW("Recompile with --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1 onnxruntime_ENABLE_SQL=1");
+      ORT_THROW("Recompile with --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1 onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB=1");
 #endif
       break;
     }
@@ -498,10 +498,10 @@ void DumpNodeInputs(
 
   if (!FilterNode(dump_options, node)) return;
 
-  bool is_node_meta_set = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::NodePlacement) != 0;
-  if (dump_context.iteration == 1 && is_node_meta_set) {
-    PrintIf(is_node_meta_set, MakeString(" Placement: ", node.GetExecutionProviderType(), "\n"));
-#ifdef ENABLE_SQL    
+  bool should_dump_node_placement = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::NodePlacement) != 0;
+  if (dump_context.iteration == 1 && should_dump_node_placement) {
+    PrintIf(should_dump_node_placement, MakeString(" Placement: ", node.GetExecutionProviderType(), "\n"));
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB    
     InsertNodePlacementToSqliteDb(dump_context, node);
 #endif
   }
@@ -566,10 +566,10 @@ void DumpNodeOutputs(
 
   if (!FilterNode(dump_options, node)) return;
 
-  bool is_node_meta_set = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::NodePlacement) != 0;
-  if (dump_context.iteration == 1 && is_node_meta_set) {
-    PrintIf(is_node_meta_set, MakeString(" Placement: ", node.GetExecutionProviderType(), "\n"));
-#ifdef ENABLE_SQL    
+  bool should_dump_node_placement = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::NodePlacement) != 0;
+  if (dump_context.iteration == 1 && should_dump_node_placement) {
+    PrintIf(should_dump_node_placement, MakeString(" Placement: ", node.GetExecutionProviderType(), "\n"));
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB    
     InsertNodePlacementToSqliteDb(dump_context, node);
 #endif
   }
