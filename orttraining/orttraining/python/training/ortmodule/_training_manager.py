@@ -147,8 +147,12 @@ class TrainingManager(GraphExecutionManager):
                     # ORT is NOT relying on save_for_backward() to actually save the tensor,
                     # as this tensor is also kept in ORT's PartialGraphState
                     # This call is to invoke pytorch's version check to detect the potential inplace corruption
+                    # If ORT is caching tensors, the module_output_indices_requires_save_for_backward field
+                    # might also have indices of cached tensors that are not passed over to pytorch, and they don't 
+                    # need marking with save_for_backward()
                     for idx in self._graph_info.module_output_indices_requires_save_for_backward:
-                        ctx.save_for_backward(user_outputs[idx])
+                        if idx < len(self._graph_info.user_output_names):
+                            ctx.save_for_backward(user_outputs[idx])
 
                     # Mark the outputs tensors non-differentiable if requires_grad is False in _graph_info
                     # This will return torch the output tensors with correct requires_grad settings
