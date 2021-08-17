@@ -3,28 +3,32 @@ import unittest
 from pathlib import Path
 
 import torch
+from torch import nn
 
 from onnxruntime.training import GradientGraphBuilder
 
 
 class NeuralNet(torch.nn.Module):
-    def __init__(self, input_size, hidden_size, num_classes):
+    def __init__(self, input_size, hidden_size, num_classes, loss_fn):
         super(NeuralNet, self).__init__()
 
         self.fc1 = torch.nn.Linear(input_size, hidden_size)
         self.relu = torch.nn.ReLU()
         self.fc2 = torch.nn.Linear(hidden_size, num_classes)
+        self.loss_fn = loss_fn
 
     def forward(self, input1):
         out = self.fc1(input1)
         out = self.relu(out)
         out = self.fc2(out)
-        return out
+        # loss = self.loss_fn(out, label)
+        return out#, loss
 
 
 class GradientGraphBuilderTest(unittest.TestCase):
     def test_save(self):
-        model = NeuralNet(input_size=10, hidden_size=5, num_classes=2)
+        loss_fn = nn.CrossEntropyLoss()
+        model = NeuralNet(input_size=10, hidden_size=5, num_classes=2, loss_fn=loss_fn)
         directory_path = Path(os.path.dirname(__file__)).resolve()
         path = directory_path / 'model.onnx'
         batch_size = 1
@@ -39,11 +43,18 @@ class GradientGraphBuilderTest(unittest.TestCase):
                 'input': {0: 'batch_size', },
                 'output': {0: 'batch_size', },
             })
-        # FIXME Gets a Segmentation fault.
-        # in orttraining/orttraining/core/framework/gradient_graph_builder.cc
-        # in GradientGraphBuilder::CheckNodeArgsReachable
-        # on the line: `for (const NodeArg* node_arg : x_node_args_) {`
-        builder = GradientGraphBuilder(str(path), {'output'}, {'input'}, 'loss')
+        # FIXME Make sure we're setting up the parameters properly.
+        # Currently gets an error at `level_to_transformer_map_.find(level)`
+        # whebc calling
+        # `graph_transformation_mgr_.ApplyTransformers(*graph_, TransformerLevel::Level2, logger_)` in
+        # `GradientGraphBuilder::Build`.
+        # Program received signal SIGFPE, Arithmetic exception.
+        # 0x00007fff6a288cd7 in std::__detail::_Mod_range_hashing::operator() (
+        #     this=0x7fffffffb3c8, __num=2, __den=0)
+        #     at /usr/include/c++/7/bits/hashtable_policy.h:448
+        # 448         { return __num % __den; }
+        # Seems like `GraphTransformerManager::Register` is not called.
+        builder = GradientGraphBuilder(str(path), {'output'}, {'fc1.weight', 'fc1.bias', 'fc2.weight', 'fc2.bias'}, '')
         builder.build()
         # TODO Maybe it should be .ort?
         gradient_graph_path = directory_path/'gradient_graph_model.onnx'

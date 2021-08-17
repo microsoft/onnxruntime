@@ -666,6 +666,16 @@ void addObjectMethodsForTraining(py::module& m) {
                                           const std::unordered_set<std::string>& y_node_arg_names,
                                           const std::unordered_set<std::string>& x_node_arg_names,
                                           const std::string& loss_node_arg_name) {
+                                            std::cout << "y_node_arg_names:" << std::endl;
+                                            for (const auto& v : y_node_arg_names)
+                                            std::cout << "v: " << v << std::endl;
+                                            std::cout << std::endl;
+                                            std::cout << "x_node_arg_names:" << std::endl;
+                                            for (const auto& v : x_node_arg_names)
+                                            std::cout << "v: " << v << std::endl;
+                                            std::cout << std::endl;
+                                            
+
                           auto file_path = ToPathString(model_path);
                           std::shared_ptr<Model> model;
                           auto logger = logging::LoggingManager::DefaultLogger();
