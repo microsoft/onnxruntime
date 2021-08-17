@@ -15,7 +15,7 @@ ARG MY_ROOT=/code
 ENV PATH /opt/miniconda/bin:/code/cmake-3.21.0-linux-x86_64/bin:$PATH
 ENV LD_LIBRARY_PATH=/opt/miniconda/lib:/usr/lib:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
 
-ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2021.3.394
+ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2021.4.582
 ENV InferenceEngine_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/share
 ENV IE_PLUGINS_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64
 ENV LD_LIBRARY_PATH=/opt/intel/opencl:${INTEL_OPENVINO_DIR}/inference_engine/external/gna/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/lib:$INTEL_OPENVINO_DIR/deployment_tools/ngraph/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/omp/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/lib:${IE_PLUGINS_PATH}:${LD_LIBRARY_PATH}
@@ -54,7 +54,7 @@ RUN apt update -y && \
     cd /etc/apt/sources.list.d && \
     echo "deb https://apt.repos.intel.com/openvino/2021 all main">intel-openvino-2021.list && \ 
     apt update -y && \
-    apt -y install intel-openvino-dev-ubuntu18-2021.3.394 && \
+    apt -y install intel-openvino-dev-ubuntu18-2021.4.582 && \
     cd ${INTEL_OPENVINO_DIR}/install_dependencies && ./install_openvino_dependencies.sh -y && \
     cd ${INTEL_OPENVINO_DIR} && rm -rf documentation data_processing && \
     cd deployment_tools/ && rm -rf model_optimizer open_model_zoo demo tools && \

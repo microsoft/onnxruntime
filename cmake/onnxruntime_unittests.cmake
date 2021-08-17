@@ -1043,6 +1043,11 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       DEPENDS ${all_dependencies}
     )
 
+    if (onnxruntime_USE_ROCM)
+      target_include_directories(onnxruntime_test_debug_node_inputs_outputs PRIVATE ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hipcub/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include)
+      target_include_directories(onnxruntime_test_debug_node_inputs_outputs PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime)
+    endif(onnxruntime_USE_ROCM)
+
     target_compile_definitions(onnxruntime_test_debug_node_inputs_outputs
       PRIVATE DEBUG_NODE_INPUTS_OUTPUTS)
   endif(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)

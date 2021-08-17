@@ -917,7 +917,6 @@ TEST(ReductionOpTest, ReduceMean_do_not_keepdims) {
   //  output[i] evaluates to 34.999866485595703
   test.SetOutputRelErr("reduced", 1e-5f);
 #endif
-
   test.Run();
 }
 
@@ -987,7 +986,6 @@ TEST(ReductionOpTest, ReduceMean_keepdims) {
   //  output[i] evaluates to 34.999866485595703
   test.SetOutputRelErr("reduced", 1e-5f);
 #endif
-
   test.Run();
 }
 
@@ -1012,7 +1010,6 @@ TEST(ReductionOpTest, ReduceMean_keepdims_double) {
   //  output[i] evaluates to 34.999866485595703
   test.SetOutputRelErr("reduced", 1e-5f);
 #endif
-
   test.Run();
 }
 

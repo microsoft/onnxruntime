@@ -16,8 +16,10 @@ Pod::Spec.new do |spec|
     A pod for the ONNX Runtime Mobile C/C++ library.
                                     DESC
     spec.library                 = "c++"
-    spec.user_target_xcconfig    = {
+    spec.pod_target_xcconfig     = {
         "OTHER_CPLUSPLUSFLAGS" => "-fvisibility=hidden -fvisibility-inlines-hidden",
+    }
+    spec.user_target_xcconfig    = {
         # TODO workaround - support arm64 iphonesimulator later
         "EXCLUDED_ARCHS[sdk=iphonesimulator*]" => "arm64"
     }
