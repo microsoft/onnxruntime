@@ -34,17 +34,15 @@ jobs:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuild \
-            cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_eager_cpu.txt $(Build.BinariesDirectory)/requirements_torch_eager_cpu.txt
-            python3 -m pip install -r $(Build.BinariesDirectory)/requirements_torch_eager_cpu.txt \
-              /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-                --build_dir /build --cmake_generator Ninja \
-                --config Debug Release \
-                --skip_submodule_sync \
-                --build_shared_lib \
-                --parallel \
-                --build_wheel --enable_training \
-                --enable_onnx_tests \
-                --update --build
+            /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build --cmake_generator Ninja \
+              --config Debug Release \
+              --skip_submodule_sync \
+              --build_shared_lib \
+              --parallel \
+              --build_wheel --enable_training \
+              --enable_onnx_tests \
+              --update --build
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
@@ -65,6 +63,7 @@ jobs:
     displayName: 'build_eager'
     inputs:
       script: |
+        set -e -x
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
           --build_dir /build --cmake_generator Ninja \
           --config Debug Release \
