@@ -70,16 +70,19 @@ jobs:
         value: Dockerfile.ubuntu_cuda11_1_tensorrt7_2
       ${{ if eq(parameters.TrtVersion, '7.1.3.4') }}:
         value: Dockerfile.ubuntu_cuda10_2_tensorrt7_1
+
     - name: build_args
       ${{ if eq(parameters.RunNvidiaContainer, true) }}:
         value: Dockerfile.tensorrt-perf -t $(trtContainer) -o $(Build.SourcesDirectory)/dockerfiles/Dockerfile.tensorrt
       ${{ if ne(parameters.RunNvidiaContainer, true) }}:
         value: Dockerfile.custom-trt-perf -t ${{ parameters.TrtVersion }} -o $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/$(trt_dockerfile)
+
     - name: environment
       ${{ if eq(parameters.RunDocker, true) }}:
         value: docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf 
-      ${{ if neq(parameters.RunDocker, true) }}:
+      ${{ if ne(parameters.RunDocker, true) }}:
         value: machine.sh
+        
     - name: with_arguments
       value: $(environment) -e "$(epList)"
   timeoutInMinutes: 3000 
@@ -98,7 +101,7 @@ jobs:
             displayName: 'Build Python 3.8 Image'
             workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
 
-      - ${{ if neq(parameters.RunDocker, true) }}:
+      - ${{ if ne(parameters.RunDocker, true) }}:
         - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/ort_build_latest.py -b $(branch) -c /usr/local/cuda -o ~/repos/onnxruntime/ -t ${{ parameters.TrtVersion }}'
           displayName: 'Build latest ORT'
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
