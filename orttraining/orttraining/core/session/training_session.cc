@@ -1307,6 +1307,14 @@ std::unordered_set<std::string> TrainingSession::GetStateTensorNames() const {
   for (const auto& p : updated_weight_names_map_) {
     checkpointed_tensor_names.insert(p.second);
   }
+
+  for (auto& node : model_->MainGraph().Nodes()) {
+    if (node.OpType().compare("BatchNormalization") == 0) {
+      checkpointed_tensor_names.insert(node.InputDefs()[3]->Name());
+      checkpointed_tensor_names.insert(node.InputDefs()[4]->Name());
+    }
+  }
+
   checkpointed_tensor_names.insert(
       opt_state_initializer_names_.begin(), opt_state_initializer_names_.end());
   std::unordered_set<std::string> mixed_precision_weight_initializer_names{};
