@@ -14,6 +14,7 @@ from ._fallback import (_FallbackManager,
                        ORTModuleONNXModelException,
                        ORTModuleTorchModelException,
                        wrap_exception)
+from ._gradient_accumulation_manager import GradientAccumulationManager
 from onnxruntime.training.ortmodule import ONNX_OPSET_VERSION
 
 from onnxruntime.capi import _pybind_state as C
@@ -152,6 +153,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # WIP feature to enable caching in Gradient accumulation scenario.
         self._enable_grad_acc_optimization = False
+        self._gradient_accumulation_manager = GradientAccumulationManager()
 
         # Memory aware gradient builder.
         self._use_memory_efficient_gradient = False

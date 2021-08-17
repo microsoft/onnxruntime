@@ -28,7 +28,7 @@ class TrainingManager(GraphExecutionManager):
         self._export_mode = torch.onnx.TrainingMode.TRAINING
 
     @staticmethod
-    def execution_session_run_forward(execution_session, onnx_model, *inputs):
+    def execution_session_run_forward(execution_session, onnx_model, gradient_accumulation_manager, *inputs):
         """Runs the forward graph on execution_session with given model inputs and device"""
 
         # TODO: Try to reuse the output buffers as some of the output tensors are same sizes,
@@ -43,8 +43,8 @@ class TrainingManager(GraphExecutionManager):
 
         forward_outputs = C.OrtValueVector()
         # Run and return module outputs.
-        execution_session.run_forward(forward_inputs, forward_outputs, state)
-        user_outputs = tuple(_utils._ortvalue_to_torch_tensor(forward_output) for forward_output in forward_outputs)
+        execution_session.run_forward(forward_inputs, forward_outputs, state, gradient_accumulation_manager.cache)
+        user_outputs = gradient_accumulation_manager.extract_outputs_and_maybe_update_cache(forward_outputs)
 
         output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
         run_info = _RunStateInfo(state, output_info)
@@ -113,6 +113,10 @@ class TrainingManager(GraphExecutionManager):
                     if self._debug_options.logging.log_level <= _logger.LogLevel.WARNING:
                         warnings.warn("Fast path enabled - skipping checks for rebuilding gradient graph, execution agent creation, and device during training.",
                                       UserWarning)
+                
+                self._gradient_accumulation_manager.initialize(self._enable_grad_acc_optimization, self._flattened_module, self._graph_info)
+        
+            self._gradient_accumulation_manager.maybe_update_cache_before_run()
 
             class _ORTModuleFunction(torch.autograd.Function):
                 '''Use a custom torch.autograd.Function to associate self.backward_graph as the
@@ -135,6 +139,7 @@ class TrainingManager(GraphExecutionManager):
 
                     user_outputs, ctx.run_info = TrainingManager.execution_session_run_forward(self._execution_agent,
                                                                                                self._onnx_models.optimized_model,
+                                                                                               self._gradient_accumulation_manager,
                                                                                                *inputs)
 
                     # Disable materializing grads then None object will not be
@@ -146,8 +151,12 @@ class TrainingManager(GraphExecutionManager):
                     # ORT is NOT relying on save_for_backward() to actually save the tensor,
                     # as this tensor is also kept in ORT's PartialGraphState
                     # This call is to invoke pytorch's version check to detect the potential inplace corruption
+                    # If ORT is caching tensors, the module_output_indices_requires_save_for_backward field
+                    # might also have indices of cached tensors that are not passed over to pytorch, and they don't 
+                    # need marking with save_for_backward()
                     for idx in self._graph_info.module_output_indices_requires_save_for_backward:
-                        ctx.save_for_backward(user_outputs[idx])
+                        if idx < len(self._graph_info.user_output_names):
+                            ctx.save_for_backward(user_outputs[idx])
 
                     # Mark the outputs tensors non-differentiable if requires_grad is False in _graph_info
                     # This will return torch the output tensors with correct requires_grad settings
@@ -273,7 +282,8 @@ class TrainingManager(GraphExecutionManager):
             C.OrtDevice(get_ort_device_type(self._device.type),
                         C.OrtDevice.default_memory(),
                         _utils.get_device_index(self._device)
-                        )] * len(self._graph_info.user_output_names)
+                        )] * (len(self._graph_info.user_output_names) + 
+                              len(self._graph_info.frontier_node_arg_map))
 
         bw_fetches_names = [output.name for output in self._onnx_models.optimized_model.graph.output]
         bw_outputs_device_info = [

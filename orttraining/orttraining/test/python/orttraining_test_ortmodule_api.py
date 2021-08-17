@@ -3140,6 +3140,59 @@ def test_debug_options_log_level_validation_fails_on_type_mismatch():
         _ = DebugOptions(log_level=log_level)
     assert f"Expected log_level of type LogLevel, got {type(log_level)}." in str(ex_info.value)
 
+def test_ortmodule_gradient_accumulation_optimization_correctness():
+    class NeuralNetWithCast(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(NeuralNetWithCast, self).__init__()
+
+            self.fc1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu = torch.nn.ReLU()
+            self.fc2 = torch.nn.Linear(hidden_size, num_classes)
+
+        def forward(self, input1):
+            out = self.fc1(input1)
+            out = self.relu(out)
+            out = self.fc2(out)
+            return out
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model = NeuralNetWithCast(D_in, H, D_out).to(device)
+
+    # baseline model with optimization disabled
+    tgt_model = ORTModule(pt_model)
+    tgt_optimizer = torch.optim.Adam(tgt_model.parameters())
+
+    # model with optimization enabled
+    opt_model = ORTModule(copy.deepcopy(pt_model))
+    opt_model._torch_module._execution_manager(is_training=True)._enable_grad_acc_optimization = True
+    opt_optimizer = torch.optim.Adam(opt_model.parameters())
+
+    def run_step(model, x):
+        with amp.autocast():
+            prediction = model(x)
+            loss = prediction.sum()
+        loss.backward()
+        return loss.detach()
+    
+    def run_optim_step(optimizer):
+        optimizer.step()
+        optimizer.zero_grad()
+    
+    GA_steps = 2
+    tgt_model.zero_grad()
+    opt_model.zero_grad()
+    
+    for step in range(10):
+        x = torch.randn(N, D_in, device=device)
+        tgt_loss = run_step(tgt_model, x)
+        opt_loss = run_step(opt_model, x)
+
+        # assert that loss values match
+        _test_helpers.assert_values_are_close(tgt_loss, opt_loss)
+        if step % GA_steps == 0:
+            run_optim_step(tgt_optimizer)
+            run_optim_step(opt_optimizer)
+
 def test_ortmodule_dict_input():
     class DictNet(torch.nn.Module):
         def __init__(self):
