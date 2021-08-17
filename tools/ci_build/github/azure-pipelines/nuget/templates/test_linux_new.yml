@@ -9,14 +9,12 @@ jobs:
     clean: all
   timeoutInMinutes:  120
   pool: ${{ parameters.AgentPool }}
-  dependsOn:
-  - NuGet_Packaging_${{ parameters.ArtifactSuffix }}
+  #dependsOn:
+  #- NuGet_Packaging_${{ parameters.ArtifactSuffix }}
   condition: succeeded()
   variables:
   - name: OnnxRuntimeBuildDirectory
     value: '$(Build.BinariesDirectory)'
-  - name: CUDA_VERSION
-    value: '11.4'
   steps:
 
   - task: DownloadPipelineArtifact@0
@@ -67,14 +65,6 @@ jobs:
           --volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecuda114xtrt80build \
           /onnxruntime_src/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh /build/nuget-artifact $(NuGetPackageVersionNumber)
         workingDirectory: $(Build.SourcesDirectory)
-
-  - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
-      parameters:
-          buildConfig: 'Release'
-          artifactName: 'onnxruntime-linux-x64-gpu-tensorrt-$(OnnxRuntimeVersion)'
-          artifactNameNoVersionString:  'onnxruntime-linux-x64-gpu-tensorrt'
-          libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
-          commitId: $(OnnxRuntimeGitCommitHash)
 
   - template: templates/component-governance-component-detection-steps.yml
       parameters :
