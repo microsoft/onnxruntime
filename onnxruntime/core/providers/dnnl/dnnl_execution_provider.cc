@@ -186,7 +186,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
       for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
         if (node_set.count(it->GetNode().Index()) == 0) {
           const auto* output_def = output_defs[it->GetSrcArgIndex()];
-          if (subgraph_outputs.count(output_def) == 0) {
+          if (subgraph_outputs.count(output_def) == 0 && graph_outputs.count(output_def) == 0) {
             subgraph_outputs.insert(output_def);
             ordered_subgraph_outputs.push_back(output_def);
           }
