@@ -77,6 +77,7 @@ jobs:
   - name: skipComponentGovernanceDetection
     value: true
   pool: 'Linux-CPU-2019'
+  condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
   dependsOn: Android_CI
   steps:
   - task: DownloadPipelineArtifact@0
