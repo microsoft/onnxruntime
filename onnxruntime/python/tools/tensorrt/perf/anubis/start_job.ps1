@@ -2,7 +2,11 @@ param([string]$file_folder, [string]$account_key, [string]$trt_container)
 
 Add-Type -AssemblyName System.Web
 $wheel_file = [System.IO.Path]::GetFileName((Get-ChildItem $file_folder))
+<<<<<<< HEAD
 $ort_trt_ep_pkg_blob_path = 'ort-trt-ep/' + $wheel_file
+=======
+$ort_trt_ep_pkg_blob_path = 'ort-trt-ep/' + $env:BUILD_BUILDNUMBER + '/' + $wheel_file
+>>>>>>> 6ecf626a9c491caffe3bd481d638b27d14534a6f
 $expiredays = New-TimeSpan -Days 1
 $end = (Get-Date) + $expiredays
 
@@ -14,6 +18,10 @@ $body_trt_perf_compare = @{
    "Name"="TRT_PERF_COMPARE";
    "Parameters" = @{         
         “TRT_VERSION”=$trt_container;
+<<<<<<< HEAD
+=======
+        “BUILD_NUMBER”=$env:BUILD_BUILDNUMBER;
+>>>>>>> 6ecf626a9c491caffe3bd481d638b27d14534a6f
         "ORT_TRT_EP_PKG_SAS_URI"=$ort_trt_ep_pkg_sas_uri};
 }
 

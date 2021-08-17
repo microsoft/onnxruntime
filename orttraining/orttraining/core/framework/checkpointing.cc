@@ -13,7 +13,7 @@
 #include "core/common/path.h"
 #include "core/framework/data_transfer_utils.h"
 #include "core/framework/endian_utils.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/tensor_external_data_info.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/platform/env.h"

@@ -21,5 +21,6 @@
         "LogLevel": "INFO",
         "SaveONNX": true,
         "ONNXPrefix": "my_other_model"
-    }
+    },
+    "UseMemoryEfficientGradient" : true
 }

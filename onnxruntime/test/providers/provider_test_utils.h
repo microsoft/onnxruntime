@@ -778,17 +778,16 @@ class OpTester {
       ORT_ENFORCE(shape.Size() == values_count, values_count, " input values doesn't match tensor size of ",
                   shape.Size());
 
-      auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
-      auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(), shape, allocator);
+      OrtValue value;
+      {
+        auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
+        Tensor::InitOrtValue(DataTypeImpl::GetType<T>(), shape, std::move(allocator), value);
+      }
 
-      auto* data_ptr = p_tensor->template MutableData<T>();
+      auto* data_ptr = value.GetMutable<Tensor>()->template MutableData<T>();
       for (int64_t i = 0; i < values_count; i++) {
         data_ptr[i] = values[i];
       }
-
-      OrtValue value;
-      value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-                 DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 
       std::vector<int64_t> dims_for_proto = GetDimsForProto(dims);
       TTypeProto<T> type_proto(add_shape_to_tensor_data_ ? &dims_for_proto : nullptr);

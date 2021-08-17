@@ -71,6 +71,8 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
         {"Clip", {1, 2}},
         {"Pad", {1, 2}}};
 
+static std::unordered_set<std::string> INVERTIBLE_OPS{"LayerNormalization"};
+
 class GradientGraphBuilder {
  public:
   /**
@@ -127,6 +129,9 @@ class GradientGraphBuilder {
 
   // key: name of the gradient, value: num of gradients pending
   std::unordered_map<std::string, int> pending_;
+
+  // Tracks tensors that are stashed in the forward pass for later use in backward pass.
+  std::unordered_set<std::string> stashed_tensors_;
 
   /**
   Performs a BFS on the graph with STOP_GRADIENT_EDGES constrain

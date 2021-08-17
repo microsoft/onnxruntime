@@ -191,7 +191,7 @@ Status OrtModuleGraphBuilder::BuildGradientGraph(const std::unordered_set<std::s
 
   // Build gradient graph.
   GradientGraphConfiguration gradient_graph_config{};
-  gradient_graph_config.use_invertible_layernorm_grad = config_.use_invertible_layernorm_grad;
+  gradient_graph_config.use_memory_efficient_gradient = config_.use_memory_efficient_gradient;
   gradient_graph_config.set_gradients_as_graph_outputs = true;
   std::unordered_set<std::string> y_node_arg_names(graph_info_.user_output_names.begin(),
                                                    graph_info_.user_output_names.end());

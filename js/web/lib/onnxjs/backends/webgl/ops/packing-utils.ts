@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {getGlChannels} from '../utils';
+
 export function getVecChannels(name: string, rank: number): string[] {
-  return ['x', 'y', 'z', 'w', 'u', 'v'].slice(0, rank).map(d => `${name}.${d}`);
+  return getGlChannels(rank).map(d => `${name}.${d}`);
 }
 
 export function getChannels(name: string, rank: number): string[] {

@@ -46,10 +46,10 @@ void TestBatchNorm(const unordered_map<string, vector<T>>& input_data_map,
     excluded_eps.insert(kOpenVINOExecutionProvider);
   }
 
-// OpenVINO: Disabled due to software limitations
-#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M) || defined(OPENVINO_CONFIG_CPU_FP32)
-  excluded_eps.insert(kOpenVINOExecutionProvider);
-#endif
+  // OpenVINO: Disabled due to software limitations
+  #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M) || defined(OPENVINO_CONFIG_CPU_FP32)
+    excluded_eps.insert(kOpenVINOExecutionProvider);
+  #endif
   test.Run(expect_result, err_str, excluded_eps);
 }
 
@@ -761,7 +761,7 @@ TEST(BatchNormTest, ForwardTrainingTestWithSavedOutputsOpset9) {
 
   // exclude CUDA Execution Provider due to flakiness
   // exclude TRT and OpenVINO for same reasons as seen in TestBatchNorm()
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
 }
 
 TEST(BatchNormTest, ForwardTrainingTestOpset14) {
@@ -787,7 +787,7 @@ TEST(BatchNormTest, ForwardTrainingTestOpset14) {
 
   // exclude CUDA Execution Provider due to flakiness
   // exclude TRT and OpenVINO for same reasons as seen in TestBatchNorm()
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
 }
 
 }  // namespace test

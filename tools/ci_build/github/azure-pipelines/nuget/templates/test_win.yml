@@ -1,14 +1,16 @@
 parameters:
   AgentPool : 'Win-CPU'
+  NugetPackageName : ''
+  ArtifactSuffix: ''
   Skipx86Tests: 'false'
 
 jobs:
-- job: NuGet_Test_Win
+- job: NuGet_Test_Win_${{ parameters.ArtifactSuffix }}
   workspace:
     clean: all
   pool: ${{ parameters.AgentPool }}
   dependsOn:
-  - NuGet_Packaging
+  - NuGet_Packaging_${{ parameters.ArtifactSuffix }}
   condition: succeeded()
   variables:
   - name: OnnxRuntimeBuildDirectory
@@ -47,7 +49,7 @@ jobs:
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact'
     inputs:
-      artifactName: 'drop-signed-nuget'
+      artifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
       targetPath: '$(Build.BinariesDirectory)\nuget-artifact'
 
   - task: DownloadPipelineArtifact@0
@@ -72,6 +74,8 @@ jobs:
      test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x64 $(NuGetPackageVersionNumber)
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .Net Core x64'
+    env:
+      PACKAGENAME: ${{ parameters.NugetPackageName }}
 
   - ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
       - script: |
@@ -79,6 +83,8 @@ jobs:
          test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x86 $(NuGetPackageVersionNumber)
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
         displayName: 'Run End to End Test (C#) .Net Core x86'
+        env:
+          PACKAGENAME: ${{ parameters.NugetPackageName }}
 
   # TODO: Add .Net Framework AnyCPU test task
 
@@ -87,6 +93,8 @@ jobs:
      test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461 x64 $(NuGetPackageVersionNumber)
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .NetFramework x64'
+    env:
+      PACKAGENAME: ${{ parameters.NugetPackageName }}
 
   - ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
       - script: |
@@ -95,6 +103,8 @@ jobs:
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
         displayName: 'Run End to End Test (C#) .NetFramework x86'
         enabled: false
+        env:
+          PACKAGENAME: ${{ parameters.NugetPackageName }}
 
   - template: ../../templates/component-governance-component-detection-steps.yml
     parameters :
