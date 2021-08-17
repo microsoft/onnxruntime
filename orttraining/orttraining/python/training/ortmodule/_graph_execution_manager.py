@@ -383,13 +383,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         grad_builder_config.build_gradient_graph = training
         grad_builder_config.graph_transformer_config = self._get_graph_transformer_config()
         grad_builder_config.enable_caching = self._enable_grad_acc_optimization
-<<<<<<< HEAD
         grad_builder_config.loglevel = _logger.ortmodule_loglevel_to_onnxruntime_c_loglevel(self._debug_options.logging.log_level)
         grad_builder_config.use_memory_efficient_gradient = self._use_memory_efficient_gradient
-=======
-        grad_builder_config.loglevel = _logger.ortmodule_loglevel_to_onnxruntime_c_loglevel(
-            self._debug_options.logging.log_level)
->>>>>>> Add basic PyTorch fallback for ORTModule forward exceptions
         self._graph_builder = C.OrtModuleGraphBuilder()
 
         # It is assumed here that the order and names of the inputs and outputs are not modified by the backend in any way

@@ -14,8 +14,6 @@ from . import amp, checkpoint, optim, model_desc_validation
 
 try:
     from .ortmodule import ORTModule
-    print('******************** try orttraining/orttraining/python/training/__init__.py')
 except ImportError:
     # That is OK iff this is not a ORTModule training package
-    print('******************** ImportError orttraining/orttraining/python/training/__init__.py')
     pass
