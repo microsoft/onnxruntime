@@ -721,30 +721,30 @@ target_include_directories(onnx_test_data_proto PRIVATE ${CMAKE_CURRENT_BINARY_D
 set_target_properties(onnx_test_data_proto PROPERTIES FOLDER "ONNXRuntimeTest")
 onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS external/onnx TARGET onnx_test_data_proto)
 
+#
+# onnxruntime_ir_graph test data
+#
+set(TEST_DATA_SRC ${TEST_SRC_DIR}/testdata)
+set(TEST_DATA_DES $<TARGET_FILE_DIR:${test_data_target}>/testdata)
+
+set(TEST_SAMPLES_SRC ${REPO_ROOT}/samples)
+set(TEST_SAMPLES_DES $<TARGET_FILE_DIR:${test_data_target}>/samples)
+
+# Copy test data from source to destination.
+add_custom_command(
+  TARGET ${test_data_target} PRE_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+  ${TEST_DATA_SRC}
+  ${TEST_DATA_DES})
+
+# Copy test samples from source to destination.
+add_custom_command(
+  TARGET ${test_data_target} PRE_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+  ${TEST_SAMPLES_SRC}
+  ${TEST_SAMPLES_DES})
+
 if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-  #
-  # onnxruntime_ir_graph test data
-  #
-  set(TEST_DATA_SRC ${TEST_SRC_DIR}/testdata)
-  set(TEST_DATA_DES $<TARGET_FILE_DIR:${test_data_target}>/testdata)
-
-  set(TEST_SAMPLES_SRC ${REPO_ROOT}/samples)
-  set(TEST_SAMPLES_DES $<TARGET_FILE_DIR:${test_data_target}>/samples)
-
-  # Copy test data from source to destination.
-  add_custom_command(
-    TARGET ${test_data_target} PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${TEST_DATA_SRC}
-    ${TEST_DATA_DES})
-
-  # Copy test samples from source to destination.
-  add_custom_command(
-    TARGET ${test_data_target} PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${TEST_SAMPLES_SRC}
-    ${TEST_SAMPLES_DES})
-
   if (onnxruntime_USE_DNNL)
     list(APPEND onnx_test_libs dnnl)
     add_custom_command(
