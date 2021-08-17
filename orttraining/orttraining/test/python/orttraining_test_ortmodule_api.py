@@ -18,7 +18,7 @@ from inspect import signature
 import tempfile
 import os
 
-from onnxruntime.training.ortmodule import ORTModule, _utils, _io, DebugOptions, LogLevel
+from onnxruntime.training.ortmodule import ORTModule, _utils, _io, DebugOptions, LogLevel, _fallback
 import _test_helpers
 
 # Import autocasting libs
@@ -182,7 +182,7 @@ class NeuralNetNonDifferentiableOutput(torch.nn.Module):
                                 # True is casted to -1 for Cast(from=bool, to=float), where as pytorch would give 1.0f
         mask2 = torch.lt(out2, 0.02)
         mask2 = mask2.long()
-        
+
         return out1, mask1, out2, mask2     # intentionally place the non-differentiable output in the middle
 
 class NeuralNetChainedLayersWithNonDifferentiableOutput(torch.nn.Module):
@@ -274,8 +274,42 @@ class StatelessModel(torch.nn.Module):
     def forward(self, x):
         return x
 
+class NeuralNetCustomClassOutput(torch.nn.Module):
+    class CustomClass(object):
+        def __init__(self, out1, out2, out3):
+            self.out1 = out1
+            self.out2 = out2
+            self.out3 = out3
+
+    def __init__(self, input_size, hidden_size, num_classes):
+        super(NeuralNetCustomClassOutput, self).__init__()
+
+        self.fc1_1 = torch.nn.Linear(input_size, hidden_size)
+        self.relu1 = torch.nn.ReLU()
+        self.fc1_2 = torch.nn.Linear(hidden_size, num_classes)
+
+        self.fc2_1 = torch.nn.Linear(input_size, hidden_size)
+        self.relu2 = torch.nn.ReLU()
+        self.fc2_2 = torch.nn.Linear(hidden_size, num_classes)
+
+        self.fc3_1 = torch.nn.Linear(input_size, hidden_size)
+        self.relu3 = torch.nn.ReLU()
+        self.fc3_2 = torch.nn.Linear(hidden_size, num_classes)
+
+    def forward(self, input1, input2, input3):
+        out1 = self.fc1_2(self.relu1(self.fc1_1(input1)))
+        out2 = self.fc2_2(self.relu2(self.fc2_1(input2)))
+        out3 = self.fc3_2(self.relu3(self.fc3_1(input3)))
+        return NeuralNetCustomClassOutput.CustomClass(out1, out2, out3)
+
+class MyStrNet(torch.nn.Module):
+    def forward(self, x, my_str):
+        if my_str.lower() == 'hello':
+            print('hi')
+        return x
+
 # TODO: This is a workaround for the problem that pytest is still cleaning up the previous test
-# while the next task already start. 
+# while the next task already start.
 @pytest.fixture(autouse=True)
 def run_before_tests():
     # wait for 50ms before starting the next test
@@ -291,7 +325,7 @@ def _get_bert_for_sequence_classification_model(device, output_attentions = Fals
             num_hidden_layers=1,
             output_attentions = output_attentions,
             output_hidden_states = output_hidden_states,
-            hidden_dropout_prob = hidden_dropout_prob, 
+            hidden_dropout_prob = hidden_dropout_prob,
             attention_probs_dropout_prob = attention_probs_dropout_prob,
     )
     config.return_dict = return_dict
@@ -571,7 +605,7 @@ def test_gradient_correctness():
         x = torch.randn(N, D_in, device=device)
         pt_prediction = run_step(pt_model, x)
         ort_prediction = run_step(ort_model, x)
-        
+
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
@@ -609,7 +643,7 @@ def test_gradient_correctness_conv1d(use_fp16, input_requires_grad):
         x = torch.randn(N, seq_len, C_in, device=device, requires_grad=input_requires_grad)
         pt_prediction = run_step(pt_model, x)
         ort_prediction = run_step(ort_model, x)
-        
+
         if use_fp16:
             _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-3, rtol=1e-3)
             _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=1e-2, atol=2e-2)
@@ -766,7 +800,7 @@ def test_module_with_non_differential_output():
         ort_prediction1, ort_mask1, ort_prediction2, ort_mask2 = run_step(ort_model, x)
 
         # _test_helpers.assert_values_are_close(ort_prediction1, pt_prediction1)   # TODO: this is failing, need to investigate!
-                                                                                   # This will be no reproducible if we change the model forward to 
+                                                                                   # This will be no reproducible if we change the model forward to
                                                                                    # mask1 = torch.gt(out, 0.01)
         _test_helpers.assert_values_are_close(ort_prediction2, pt_prediction2)
         _test_helpers.assert_values_are_close(ort_mask1, pt_mask1)
@@ -819,7 +853,7 @@ def test_duplicated_output(loss_with_duplicated_output):
 
     def run_step(model, input):
         out, out_dup = model(input)
-        loss = out.sum() 
+        loss = out.sum()
         if loss_with_duplicated_output:
             loss = loss + (2 * out_dup).sum()
         loss.backward()
@@ -833,7 +867,7 @@ def test_duplicated_output(loss_with_duplicated_output):
         _test_helpers.assert_values_are_close(ort_prediction1, pt_prediction1)
         _test_helpers.assert_values_are_close(ort_prediction2, pt_prediction2)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-5)
-        
+
 def test_multiple_forward_only_calls():
     device = 'cuda'
     N, D_in, H, D_out = 32, 784, 500, 10
@@ -892,7 +926,7 @@ def test_multiple_overlapping_forward_backward_calls():
 
         prediction2 = model(x2)
         loss2 = prediction2.sum()
-        
+
         loss1.backward()
         loss2.backward()
         return prediction1, prediction2
@@ -905,10 +939,10 @@ def test_multiple_overlapping_forward_backward_calls():
         ort_x2 = pt_x2.clone().detach()
         ort_x1.requires_grad = True
         ort_x2.requires_grad = True
-        
+
         pt_prediction1, pt_prediction2 = run_step(pt_model, pt_x1, pt_x2)
         ort_prediction1, ort_prediction2 = run_step(ort_model, ort_x1, ort_x2)
-        
+
         _test_helpers.assert_values_are_close(ort_prediction1, pt_prediction1)
         _test_helpers.assert_values_are_close(ort_prediction2, pt_prediction2)
         _test_helpers.assert_values_are_close(ort_x1.grad, pt_x1.grad)
@@ -1045,8 +1079,8 @@ def test_identity_elimination():
         # and then eliminated after transformation
         def forward(self, x):
             y = self.fc(x)
-            z = y 
-            return z 
+            z = y
+            return z
 
     device = 'cuda'
     N, D_in, H, D_out = 64, 784, 500, 10
@@ -1085,8 +1119,8 @@ def test_ortmodule_inputs_with_dynamic_shape():
 def test_bert_inputs_with_dynamic_shape():
 
     # create pytorch model with dropout disabled
-    pt_model = _get_bert_for_sequence_classification_model('cuda', 
-        hidden_dropout_prob=0.0, 
+    pt_model = _get_bert_for_sequence_classification_model('cuda',
+        hidden_dropout_prob=0.0,
         attention_probs_dropout_prob=0.0)
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
@@ -1198,7 +1232,7 @@ def test_model_output_with_inplace_update(device):
     with pytest.raises(Exception) as ex_info:
         pt_y1 = run_step(pt_model, pt_x1)
     assert "modified by an inplace operation" in str(ex_info.value)
-    
+
     with pytest.raises(Exception) as ex_info:
         ort_y1 = run_step(ort_model, ort_x1)
     assert "modified by an inplace operation" in str(ex_info.value)
@@ -1474,33 +1508,6 @@ def test_named_tuple_return_value_module(device):
 
 @pytest.mark.parametrize("device", ['cpu', 'cuda'])
 def test_exception_raised_for_custom_class_return_value_module(device):
-    class CustomClass(object):
-        def __init__(self, out1, out2, out3):
-            self.out1 = out1
-            self.out2 = out2
-            self.out3 = out3
-
-    class NeuralNetCustomClassOutput(torch.nn.Module):
-        def __init__(self, input_size, hidden_size, num_classes):
-            super(NeuralNetCustomClassOutput, self).__init__()
-
-            self.fc1_1 = torch.nn.Linear(input_size, hidden_size)
-            self.relu1 = torch.nn.ReLU()
-            self.fc1_2 = torch.nn.Linear(hidden_size, num_classes)
-
-            self.fc2_1 = torch.nn.Linear(input_size, hidden_size)
-            self.relu2 = torch.nn.ReLU()
-            self.fc2_2 = torch.nn.Linear(hidden_size, num_classes)
-
-            self.fc3_1 = torch.nn.Linear(input_size, hidden_size)
-            self.relu3 = torch.nn.ReLU()
-            self.fc3_2 = torch.nn.Linear(hidden_size, num_classes)
-
-        def forward(self, input1, input2, input3):
-            out1 = self.fc1_2(self.relu1(self.fc1_1(input1)))
-            out2 = self.fc2_2(self.relu2(self.fc2_1(input2)))
-            out3 = self.fc3_2(self.relu3(self.fc3_1(input3)))
-            return CustomClass(out1, out2, out3)
 
     N, D_in, H, D_out = 64, 784, 500, 10
     model = NeuralNetCustomClassOutput(D_in, H, D_out).to(device)
@@ -1509,7 +1516,7 @@ def test_exception_raised_for_custom_class_return_value_module(device):
     y = torch.randn(N, D_in, device=device)
     z = torch.randn(N, D_in, device=device)
 
-    with pytest.raises(TypeError) as runtime_error:
+    with pytest.raises(_fallback.ORTModuleIOError) as runtime_error:
         model(x, y, z)
     assert 'ORTModule does not support the following model output type' in str(runtime_error.value)
 
@@ -1546,10 +1553,11 @@ def test_model_with_multiple_devices_cpu_cuda():
             x = self.fc2(x)
             return x
 
-    model = MultipleDeviceModel()
-    with pytest.raises(RuntimeError) as e:
-        model = ORTModule(model)
-    assert str(e.value) == 'ORTModule supports a single device per model for now'
+    pt_model = MultipleDeviceModel()
+    x = torch.randn(20, 10)
+    with pytest.raises(_fallback.ORTModuleFallbackException) as e:
+        ort_model = ORTModule(pt_model)
+    assert str(e.value) == 'ORTModule supports a single device per model'
 
 def test_model_with_multiple_devices_to_to():
     class MultipleDeviceModel(torch.nn.Module):
@@ -1563,10 +1571,11 @@ def test_model_with_multiple_devices_to_to():
             x = self.fc2(x)
             return x
 
-    model = MultipleDeviceModel()
-    with pytest.raises(RuntimeError) as e:
-        model = ORTModule(model)
-    assert str(e.value) == 'ORTModule supports a single device per model for now'
+    pt_model = MultipleDeviceModel()
+    x = torch.randn(20, 10)
+    with pytest.raises(_fallback.ORTModuleFallbackException) as e:
+        ort_model = ORTModule(pt_model)
+    assert str(e.value) == 'ORTModule supports a single device per model'
 
 def test_model_with_multiple_devices_to_cpu():
     class MultipleDeviceModel(torch.nn.Module):
@@ -1580,10 +1589,11 @@ def test_model_with_multiple_devices_to_cpu():
             x = self.fc2(x)
             return x
 
-    model = MultipleDeviceModel()
-    with pytest.raises(RuntimeError) as e:
-        model = ORTModule(model)
-    assert str(e.value) == 'ORTModule supports a single device per model for now'
+    pt_model = MultipleDeviceModel()
+    x = torch.randn(20, 10)
+    with pytest.raises(_fallback.ORTModuleFallbackException) as e:
+        ort_model = ORTModule(pt_model)
+    assert str(e.value) == 'ORTModule supports a single device per model'
 
 def test_model_with_multiple_devices_to_cuda():
     class MultipleDeviceModel(torch.nn.Module):
@@ -1597,10 +1607,12 @@ def test_model_with_multiple_devices_to_cuda():
             x = self.fc2(x)
             return x
 
-    model = MultipleDeviceModel()
-    with pytest.raises(RuntimeError) as e:
-        model = ORTModule(model)
-    assert str(e.value) == 'ORTModule supports a single device per model for now'
+    pt_model = MultipleDeviceModel()
+    x = torch.randn(20, 10)
+    with pytest.raises(_fallback.ORTModuleFallbackException) as e:
+        ort_model = ORTModule(pt_model)
+
+    assert str(e.value) == 'ORTModule supports a single device per model'
 
 @pytest.mark.parametrize("device", ['cuda', 'cuda:0', 'cuda:1', 'cuda:2'])
 def test_model_with_different_cuda_devices(device):
@@ -1778,7 +1790,7 @@ def test_forward_data_and_model_on_different_devices(data_device, model_device):
 
     # Now that the model has been exported, feed in data from device other than the model device
     x = torch.randn(N, D_in, device=data_device)
-    with pytest.raises(RuntimeError) as runtime_error:
+    with pytest.raises(_fallback.ORTModuleDeviceException) as runtime_error:
         ort_model(x)
     assert f"Input argument to forward found on device {torch.device(x.device)}, but expected it to be on module device {ort_model._torch_module._execution_manager(ort_model._is_training())._device}." in str(runtime_error.value)
 
@@ -2866,7 +2878,7 @@ def test_stateless_model_unspecified_device():
         [(UnusedBeginParameterNet(784, 500, 400, 10)),
          (UnusedMiddleParameterNet(784, 500, 400, 10)),
          (UnusedEndParameterNet(784, 500, 400, 10))])
-def test_unused_parameters_does_not_unnecssarily_reinitilize(model):
+def test_unused_parameters_does_not_unnecessarily_reinitialize(model):
     device = 'cuda'
 
     N, D_in, H1, H2, D_out = 64, 784, 500, 400, 10
@@ -2943,15 +2955,10 @@ def test_hf_save_pretrained():
             assert p1.data.ne(p2.data).sum() == 0
 
 def test_input_with_string_exception():
-    class MyStrNet(torch.nn.Module):
-        def forward(self, x, my_str):
-            if my_str.lower() == 'hello':
-                print('hi')
-            return x
 
     model = MyStrNet()
     model = ORTModule(model)
-    with pytest.raises(TypeError) as ex_info:
+    with pytest.raises(_fallback.ORTModuleIOError) as ex_info:
         _ = model(torch.randn(1, 2), 'hello')
     assert "ORTModule does not support the following model data type <class 'str'>" in str(ex_info.value)
 

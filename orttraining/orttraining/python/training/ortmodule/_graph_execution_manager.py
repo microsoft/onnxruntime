@@ -7,6 +7,13 @@ from .debug_options import DebugOptions, LogLevel
 from . import _utils, _io, _logger, torch_cpp_extensions as _cpp_ext, _onnx_models
 from ._custom_autograd_function_exporter import _post_process_after_export
 from ._graph_execution_interface import GraphExecutionInterface
+from ._fallback import (_FallbackManager,
+                       _FallbackPolicy,
+                       ORTModuleFallbackException,
+                       ORTModuleDeviceException,
+                       ORTModuleONNXModelException,
+                       ORTModuleTorchModelException,
+                       wrap_exception)
 from onnxruntime.training.ortmodule import ONNX_OPSET_VERSION
 
 from onnxruntime.capi import _pybind_state as C
@@ -24,7 +31,7 @@ from enum import IntFlag
 from torch.utils.cpp_extension import ROCM_HOME
 
 
-class RunStateInfo(object):
+class _RunStateInfo(object):
     def __init__(self, state, output_info):
         """
         :param state: State of partial run that contains intermediate tensors needed to resume the run later.
@@ -32,6 +39,7 @@ class RunStateInfo(object):
         """
         self.state = state
         self.output_info = output_info
+
 
 class _SkipCheck(IntFlag):
     """Enumeration to specify which checks should be skipped, allowing faster execution"""
@@ -54,18 +62,16 @@ class _SkipCheck(IntFlag):
 
         return _SkipCheck.SKIP_CHECK_DISABLED in self
 
+
 class GraphExecutionManager(GraphExecutionInterface):
-    def __init__(self, module, debug_options: DebugOptions):
-        """Manages building and execution of onnx graphs
-
-        This class is an abstract class and should not directly be instantiated.
-        Please use one of the concrete implementations of GraphExecutionManager.
-
-        Interacts with OrtModuleGraphBuilder to build and optimize
-        the onnx graph, and ExecutionAgent to run the onnx graph.
-        """
+    def __init__(self, module, debug_options: DebugOptions, fallback_manager: _FallbackManager):
+        """Manages construction and execution of ONNX graphs"""
 
         super(GraphExecutionManager, self).__init__(module._original_module)
+
+        # IMPORTANT: Debug and Fallback must the configured first
+        self._debug_options = debug_options
+        self._fallback_manager = fallback_manager
 
         # Original and flattened (tranformed) output module
         self._flattened_module = module
@@ -86,9 +92,6 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # indicators of some logic have been executed previously thus could be skipped for faster training
         self._skip_check = _SkipCheck.SKIP_CHECK_DISABLED
-
-        # Debug flags
-        self._debug_options = debug_options
 
         # Graph transformer config
         # Specify cast propagation strategy. Currently three strategies are available, NONE, INSERT-AND-REDUCE and FLOOD-FILL
@@ -120,16 +123,18 @@ class GraphExecutionManager(GraphExecutionInterface):
         # flag to enable symbolic shape inference for dynamic shape inputs to improve performance
         self._run_symbolic_shape_infer = True
 
-        # A flag saying if custom autograd.Function should be allowed. True means yes and otherwise False.
+        # PyTorch custom Autograd function support
         self._enable_custom_autograd_function = False
+        if self._enable_custom_autograd_function:
+            from ._custom_autograd_function import enable_custom_autograd_support
+            enable_custom_autograd_support()
 
         self._input_info = None
         self._module_output_schema = None
-
-        # TODO: Single device support for now
         self._device = _utils.get_device_from_module(module)
 
-        self._module_parameters = inspect.signature(self._original_module.forward).parameters.values()
+        self._module_parameters = inspect.signature(
+            self._original_module.forward).parameters.values()
 
         # TODO: remove after PyTorch ONNX exporter supports VAR_KEYWORD parameters.
         for input_parameter in self._module_parameters:
@@ -138,7 +143,8 @@ class GraphExecutionManager(GraphExecutionInterface):
                     warnings.warn("The model's forward method has **kwargs parameter which has EXPERIMENTAL support!",
                                   UserWarning)
 
-        self.is_rocm_pytorch = (True if ((torch.version.hip is not None) and (ROCM_HOME is not None)) else False)
+        self.is_rocm_pytorch = (True if (
+            (torch.version.hip is not None) and (ROCM_HOME is not None)) else False)
 
         self._use_external_gpu_allocator = True
         # assign self._torch_alloc and self._torch_free if self._use_external_gpu_allocator is True
@@ -158,10 +164,17 @@ class GraphExecutionManager(GraphExecutionInterface):
             self._torch_free = torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
 
     def _validate_module_type(self, module):
-        """Raises a TypeError if the module is not a torch.nn.Module"""
+        """Raises ORTModuleTorchModelException if the module is not a torch.nn.Module"""
 
         if not isinstance(module, torch.nn.Module):
-            raise TypeError(f"ORTModule only supports torch.nn.Module as input. {type(module)} is not supported.")
+            raise wrap_exception(ORTModuleTorchModelException,
+                                 TypeError(f"ORTModule only supports torch.nn.Module as input. {type(module)} is not supported."))
+
+        # Hard-coded list of unsupported torch.nn.Module goes here for fallback
+        if isinstance(module, torch.nn.DataParallel):
+            raise wrap_exception(ORTModuleTorchModelException,
+                                 TypeError("ORTModule is not compatible with torch.nn.DataParallel. "
+                                           "Please use torch.nn.parallel.DistributedDataParallel instead."))
 
     @staticmethod
     def execution_session_run_forward(execution_session, onnx_model, device, *inputs):
@@ -178,7 +191,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         Returns:
             Returns a tuple (user_outputs, run_info):
             user_outputs: The model output (either torch.Tensor or a container of torch.Tensor)
-            run_info: A RunStateInfo which contains extra information about the execution of the graph
+            run_info: A _RunStateInfo which contains extra information about the execution of the graph
         """
 
         raise NotImplemented
@@ -198,7 +211,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         else:
             self._graph_builder.build()
 
-        self._onnx_models.optimized_model = onnx.load_model_from_string(self._graph_builder.get_model())
+        self._onnx_models.optimized_model = onnx.load_model_from_string(
+            self._graph_builder.get_model())
         self._graph_info = self._graph_builder.get_graph_info()
 
     def _get_session_config(self):
@@ -207,7 +221,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         provider_options = None
         if self._device.type == 'cuda':
             # Configure the InferenceSessions to use the specific GPU on which the model is placed.
-            providers = (["ROCMExecutionProvider"] if self.is_rocm_pytorch else ["CUDAExecutionProvider"])
+            providers = (["ROCMExecutionProvider"] if self.is_rocm_pytorch else [
+                         "CUDAExecutionProvider"])
             providers.append("CPUExecutionProvider")
             if self._use_external_gpu_allocator:
                 provider_options = [{"device_id": str(self._device.index),
@@ -226,7 +241,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         # default to PRIORITY_BASED execution order
         session_options.execution_order = onnxruntime.ExecutionOrder.PRIORITY_BASED
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
-        session_options.log_severity_level = int(self._debug_options.logging.log_level)
+        session_options.log_severity_level = int(
+            self._debug_options.logging.log_level)
 
         return session_options, providers, provider_options
 
@@ -242,14 +258,17 @@ class GraphExecutionManager(GraphExecutionInterface):
         #       Model is not re-exported when the model parameters change. This can happen when the model is a stateful model,
         #       or the user explicitly changed model parameters after the onnx export.
 
-        schema = _io._extract_schema({'args': copy.copy(inputs), 'kwargs': copy.copy(kwargs)})
+        schema = _io._extract_schema(
+            {'args': copy.copy(inputs), 'kwargs': copy.copy(kwargs)})
         if self._onnx_models.exported_model and schema == self._input_info.schema:
             # All required models have already been exported previously
             return False
 
         self._set_device_from_module(inputs, kwargs)
-        self._onnx_models.exported_model = self._get_exported_model(*inputs, **kwargs)
-        _cpp_ext._load_aten_op_executor_cpp_extension_if_needed(self._onnx_models.exported_model)
+        self._onnx_models.exported_model = self._get_exported_model(
+            *inputs, **kwargs)
+        _cpp_ext._load_aten_op_executor_cpp_extension_if_needed(
+            self._onnx_models.exported_model)
         if self._debug_options.save_onnx_models.save:
             self._onnx_models.save_exported_model(self._debug_options.save_onnx_models.path,
                                                   self._debug_options.save_onnx_models.name_prefix,
@@ -273,7 +292,8 @@ class GraphExecutionManager(GraphExecutionInterface):
                                                             inputs,
                                                             kwargs)
         output_names, output_dynamic_axes, self._module_output_schema = \
-            _io.parse_outputs_for_onnx_export_and_extract_schema(self._original_module, inputs, kwargs)
+            _io.parse_outputs_for_onnx_export_and_extract_schema(
+                self._original_module, inputs, kwargs)
         self._input_info.dynamic_axes.update(output_dynamic_axes)
 
         # FlattenedModule needs _InputInfo to expand user input from *args to *args + **kwargs
@@ -285,9 +305,11 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Deepcopy inputs, since input values may change after model run.
         # NOTE: Inputs may contain tensors that have attributes preventing their deepcopy (example grad_fn).
         # Therefore, deepcopy only the data component of the input tensors for export.
-        sample_inputs_copy, sample_kwargs_copy = _io.deepcopy_model_input(*inputs, **kwargs)
+        sample_inputs_copy, sample_kwargs_copy = _io.deepcopy_model_input(
+            *inputs, **kwargs)
         # NOTE: Flattening the input will change the 'input schema', resulting in a re-export
-        sample_inputs_as_tuple = tuple(self._input_info.flatten(sample_inputs_copy, sample_kwargs_copy, self._device))
+        sample_inputs_as_tuple = tuple(self._input_info.flatten(
+            sample_inputs_copy, sample_kwargs_copy, self._device))
         # Ops behaving differently under train/eval mode need to exported with the
         # correct training flag to reflect the expected behavior.
         # For example, the Dropout node in a model is dropped under eval mode.
@@ -308,11 +330,14 @@ class GraphExecutionManager(GraphExecutionInterface):
                                   verbose=self._debug_options.logging.log_level < LogLevel.WARNING,
                                   export_params=False,
                                   keep_initializers_as_inputs=True)
-        except RuntimeError as e:
-            raise RuntimeError('There was an error while exporting the PyTorch model to ONNX: {}'.format(e))
+        except Exception as e:
+            raise wrap_exception(ORTModuleONNXModelException,
+                                 RuntimeError(f'There was an error while exporting the PyTorch model to ONNX: {e}'))
         exported_model = onnx.load_model_from_string(f.getvalue())
 
-        exported_model = _post_process_after_export(exported_model, self._enable_custom_autograd_function)
+        exported_model = _post_process_after_export(exported_model,
+                                                    self._enable_custom_autograd_function,
+                                                    self._debug_options.logging.log_level)
 
         return exported_model
 
@@ -324,7 +349,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         if not self._device or self._device != device:
             self._device = device
             if not self._device:
-                raise RuntimeError('A device must be specified in the model or inputs!')
+                raise wrap_exception(ORTModuleDeviceException,
+                                     RuntimeError('A device must be specified in the model or inputs!'))
 
     def _get_graph_transformer_config(self):
         graph_transformer_config = C.TrainingGraphTransformerConfiguration()
@@ -340,7 +366,8 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # All initializer names along with user inputs are a part of the onnx graph inputs
         # since the onnx model was exported with the flag keep_initializers_as_inputs=True
-        onnx_initializer_names = {p.name for p in self._onnx_models.exported_model.graph.input}
+        onnx_initializer_names = {
+            p.name for p in self._onnx_models.exported_model.graph.input}
 
         # TODO: PyTorch exporter bug: changes the initializer order in ONNX model
         initializer_names = [name for name, _ in self._flattened_module.named_parameters()
@@ -362,14 +389,16 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # It is assumed here that the order and names of the inputs and outputs are not modified by the backend in any way
         # and are kept as they appear in the exported onnx model.
-        self._graph_builder.initialize(self._onnx_models.exported_model.SerializeToString(), grad_builder_config)
+        self._graph_builder.initialize(
+            self._onnx_models.exported_model.SerializeToString(), grad_builder_config)
 
         # TODO: Explore ways to make self._graph_info.initializer_names and self._graph_info.initializer_names_to_train
         #       a set (unordered_set in the backend) that does not require a copy on each reference.
         self._graph_initializer_names = set(initializer_names)
-        self._graph_initializer_names_to_train = set(initializer_names_to_train)
+        self._graph_initializer_names_to_train = set(
+            initializer_names_to_train)
 
         # Initializers can be cached and used since they are expected not to be re-instantiated
         # between forward calls.
-        self._graph_initializers = [param for name, param in self._flattened_module.named_parameters() 
+        self._graph_initializers = [param for name, param in self._flattened_module.named_parameters()
                                     if name in self._graph_initializer_names]
