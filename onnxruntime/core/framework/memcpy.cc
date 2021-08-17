@@ -26,6 +26,7 @@ Status Memcpy::Compute(OpKernelContext* ctx) const {
                                                " X data:", X->DataRaw(), " Y data:", Y->DataRaw());
     }
   } else if (input_type_0->IsSparseTensorType()) {
+#if !defined(ORT_MINIMAL_BUILD)
     const auto* X = ctx->Input<SparseTensor>(0);
     SparseTensor* Y = ctx->OutputSparse(0, X->DenseShape());
     retval = X->Copy(Info().GetDataTransferManager(), Info().GetKernelDef().ExecQueueId(), *Y);
@@ -35,6 +36,7 @@ Status Memcpy::Compute(OpKernelContext* ctx) const {
                                                " to ", Node().OutputDefs()[0]->Name(),
                                                " Input shape:", X->DenseShape(), " Output shape:", Y->DenseShape());
     }
+#endif
   } else {
     ORT_NOT_IMPLEMENTED("Input type not supported: ", DataTypeImpl::ToString(input_type_0));
   }

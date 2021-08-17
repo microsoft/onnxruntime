@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 #pragma once
 
 #include "core/framework/allocator.h"
@@ -16,7 +18,6 @@ class Status;
 #endif
 
 namespace sparse_utils {
-#if !defined(ORT_MINIMAL_BUILD)
 /// <summary>
 /// This function converts dense tensor into Csr format.
 /// Conversion takes place on CPU. Thus if the source
@@ -77,7 +78,6 @@ Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const Spa
 /// <returns>Status instance</returns>
 Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator,
                               const AllocatorPtr& dst_allocator, Tensor& dst);
-#endif  //ORT_MINIMAL_BUILD
 
 /// <summary>
 /// Convert Dense Tensor to COO format.
@@ -97,3 +97,5 @@ Status DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Ten
 
 }  // namespace sparse_utils
 }  // namespace onnxruntime
+
+#endif  //ORT_MINIMAL_BUILD
