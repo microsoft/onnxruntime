@@ -21,7 +21,7 @@ parameters:
   default: false
 
 - name: enable_linux_gpu_training_cu111
-  displayName: 'Whether Linux GPU Cuda 11.4 package is built.'
+  displayName: 'Whether Linux GPU Cuda 11.1 package is built.'
   type: boolean
   default: false
 
