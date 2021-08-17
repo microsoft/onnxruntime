@@ -312,9 +312,12 @@ float GetQuantizationScale(const InitializedTensorSet& initializers, const Node&
 common::Status GetQuantizationZeroPoint(const InitializedTensorSet& initializers,
                                         const Node& node, size_t idx, int32_t& zero_point) {
   std::vector<uint8_t> unpacked_tensor;
-  const auto& zero_point_tensor = *initializers.at(node.InputDefs()[idx]->Name());
+  const auto& name = node.InputDefs()[idx]->Name();
+  const auto& zero_point_tensor = *initializers.at(name);
   ORT_RETURN_IF_ERROR(
       onnxruntime::utils::UnpackInitializerData(zero_point_tensor, node.ModelPath(), unpacked_tensor));
+
+  ORT_RETURN_IF(unpacked_tensor.empty(), "The initializer [", name, "] is empty");
   // Onnx quantization uses uint8 [int8 not yet supported], need to cast to int32_t used by NNAPI
   zero_point = static_cast<int32_t>(unpacked_tensor[0]);
   return Status::OK();
