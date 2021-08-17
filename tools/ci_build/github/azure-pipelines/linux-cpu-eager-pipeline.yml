@@ -47,8 +47,8 @@ jobs:
             python3 -m pip install -r $(Build.BinariesDirectory)/requirements_torch_eager_cpu.txt
             cp $(Build.SourcesDirectory)/tools/ci_build/build.py $(Build.BinariesDirectory)/build.py
             cp $(Build.SourcesDirectory)/tools/ci_build/amd_hipify.py $(Build.BinariesDirectory)/amd_hipify.py
+            cp $(Build.SourcesDirectory)/tools/ci_build/logger.py $(Build.BinariesDirectory)/logger.py
             python3 $(Build.BinariesDirectory)/build.py \
-            --build_dir /build --cmake_generator Ninja \
             --parallel \
             --build_eager_mode --enable_training --enable_pybind
       workingDirectory: $(Build.SourcesDirectory)
@@ -73,6 +73,7 @@ jobs:
       script: |
         set -e -x
         cp $(Build.SourcesDirectory)/tools/ci_build/build.py $(Build.BinariesDirectory)/build.py
+        cp $(Build.SourcesDirectory)/tools/ci_build/amd_hipify.py $(Build.BinariesDirectory)/amd_hipify.py
         python3 $(Build.BinariesDirectory)/build.py \
           --parallel \
           --build_eager_mode --enable_training --enable_pybind
