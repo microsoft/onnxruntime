@@ -11,7 +11,7 @@ t) TRT=${OPTARG};;
 esac
 done 
 
-IMAGE=onnxruntime 
+IMAGE=onnxruntime
 
 docker build --no-cache -t $IMAGE --build-arg TRT=$TRT --build-arg ONNXRUNTIME_BRANCH=$ORT_BRANCH -f $ORT_TRT_DOCKERFILE_PATH . 
 docker build --no-cache --build-arg IMAGE=$IMAGE --build-arg ONNXRUNTIME_BRANCH=$ORT_BRANCH --build-arg TRT_VERSION=$TRT -t $IMAGE_NAME -f $PERF_DOCKERFILE_PATH .
