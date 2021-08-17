@@ -1018,9 +1018,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     else:
         add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "OFF")
 
-    # if args.build_eager_mode:
-    #     import torch
-    #     cmake_args += ["-Donnxruntime_PREBUILT_PYTORCH_PATH=%s" % os.path.dirname(torch.__file__)]
+    if args.build_eager_mode:
+        import torch
+        cmake_args += ["-Donnxruntime_PREBUILT_PYTORCH_PATH=%s" % os.path.dirname(torch.__file__)]
 
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
