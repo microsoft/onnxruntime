@@ -763,10 +763,9 @@ ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto
 
 ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name) {
   // Given we are using the raw_data field in the protobuf, this will work only for little-endian format.
-  ORT_IF_CONSTEXPR (endian::native != endian::little) {
+  ORT_IF_CONSTEXPR(endian::native != endian::little) {
     ORT_THROW("Big endian not supported");
   }
-
 
   // Set name, dimensions, type, and data of the TensorProto.
   ONNX_NAMESPACE::TensorProto tensor_proto;
@@ -826,11 +825,13 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
       *tensor.mutable_string_data() = constant_attribute.strings();
       break;
     }
+#if !defined(ORT_MINIMAL_BUILD)
     case AttributeProto_AttributeType_SPARSE_TENSOR: {
       auto& s = constant_attribute.sparse_tensor();
       ORT_RETURN_IF_ERROR(SparseTensorProtoToDenseTensorProto(s, model_path, tensor));
       break;
     }
+#endif
     default:
       ORT_THROW("Unsupported attribute value type of ", constant_attribute.type(),
                 " in 'Constant' node '", node.name(), "'");
@@ -925,6 +926,7 @@ using SupportedConversionTypeList = onnxruntime::TypeList<float, double, MLFloat
                                                           int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>;
 }  // namespace conversion_internal
 
+#if !defined(ORT_MINIMAL_BUILD)
 common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseTensorProto& sparse,
                                                    const Path& model_path,
                                                    ONNX_NAMESPACE::TensorProto& dense) {
@@ -1019,7 +1021,7 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                  " BUG! Report to onnxruntime team. element_size of: ",
                                  element_size, " is not supported.", " type: ", type);
-     }
+      }
 
       ORT_RETURN_IF_ERROR(status);
     }
@@ -1031,6 +1033,7 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
   }
   return status;
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
 // Determines if this is a type specific zero

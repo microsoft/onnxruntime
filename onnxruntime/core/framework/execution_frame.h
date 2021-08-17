@@ -123,7 +123,9 @@ class IExecutionFrame {
 
   std::vector<int> fetch_mlvalue_idxs_;
 
-  const OrtValueNameIdxMap& ort_value_idx_map_;
+#if !defined(ORT_MINIMAL_BUILD)
+  OrtValueNameIdxMap& ort_value_idx_map_;
+#endif
 };
 
 class ExecutionFrame final : public IExecutionFrame {

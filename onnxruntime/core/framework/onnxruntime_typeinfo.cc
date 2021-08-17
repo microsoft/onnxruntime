@@ -20,7 +20,9 @@
 using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
 using onnxruntime::MLFloat16;
+#if !defined(ORT_MINIMAL_BUILD)
 using onnxruntime::SparseTensor;
+#endif
 using onnxruntime::Tensor;
 using onnxruntime::TensorShape;
 
@@ -119,6 +121,7 @@ OrtStatus* OrtTypeInfo::FromOrtValue(const OrtValue& value, OrtTypeInfo** out) {
   }
 
   if (type->IsSparseTensorType()) {
+#if !defined(ORT_MINIMAL_BUILD)
     OrtTensorTypeAndShapeInfo* info = nullptr;
     const SparseTensor& tensor = value.Get<onnxruntime::SparseTensor>();
     const auto* tensor_data_type = tensor.DataType();
@@ -128,6 +131,9 @@ OrtStatus* OrtTypeInfo::FromOrtValue(const OrtValue& value, OrtTypeInfo** out) {
     }
     *out = new OrtTypeInfo(ONNX_TYPE_SPARSETENSOR, info);
     return nullptr;
+#else
+    return OrtApis::CreateStatus(ORT_FAIL, "SparseTensor is not supported in this build.");
+#endif
   }
 
   if (type->IsTensorSequenceType()) {
@@ -157,17 +163,21 @@ OrtStatus* OrtTypeInfo::FromOrtValue(const OrtValue& value, OrtTypeInfo** out) {
         *out = new OrtTypeInfo(ONNX_TYPE_OPAQUE);
         return nullptr;
       }
+#if !defined(DISABLE_ML_OPS)
       case on::TypeProto::kMapType: {
         return OrtTypeInfo::FromTypeProto(type_proto, out);
       }
+#endif
       case on::TypeProto::kSequenceType: {
         return OrtTypeInfo::FromTypeProto(type_proto, out);
       }
       // Real Tensor support
       case on::TypeProto::kTensorType:
+#if !defined(ORT_MINIMAL_BUILD)
       case on::TypeProto::kSparseTensorType: {
         return OrtApis::CreateStatus(ORT_FAIL, "Tensor types should have been handled already");
       }
+#endif
       default:
         // NOT_IMPLEMENTED
         break;
@@ -229,11 +239,13 @@ OrtStatus* OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* input, Or
           sp = &tensor_type->shape();
         }
       } else if (value_case == on::TypeProto::kSparseTensorType) {
+#if !defined(DISABLE_ML_OPS)
         sparse_type = &input->sparse_tensor_type();
         ten_type = ONNX_TYPE_SPARSETENSOR;
         if (onnxruntime::utils::HasShape(*sparse_type)) {
           sp = &sparse_type->shape();
         }
+#endif
       }
 
       OrtStatus* st = nullptr;
@@ -312,6 +324,7 @@ OrtStatus* OrtTypeInfo::Clone(OrtTypeInfo** out) {
   switch (type) {
     case ONNX_TYPE_TENSOR:
     case ONNX_TYPE_SPARSETENSOR: {
+#if !defined(ORT_MINIMAL_BUILD)
       OrtTensorTypeAndShapeInfo* clone;
       if (auto status = data->Clone(&clone)) {
         return status;
@@ -319,6 +332,9 @@ OrtStatus* OrtTypeInfo::Clone(OrtTypeInfo** out) {
       *out = new OrtTypeInfo(type, clone);
       (*out)->denotation = denotation;
       return nullptr;
+#else
+      return OrtApis::CreateStatus(ORT_FAIL, "SparseTensor is not supported in this build.");
+#endif
     }
     case ONNX_TYPE_SEQUENCE: {
       OrtSequenceTypeInfo* clone;
