@@ -63,7 +63,7 @@ jobs:
     displayName: 'build_eager'
     inputs:
       script: |
-        python3 /onnxruntime_src/tools/ci_build/build.py \
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
           --build_dir /build --cmake_generator Ninja \
           --config Debug Release \
           --skip_submodule_sync \
