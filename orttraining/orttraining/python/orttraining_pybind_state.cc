@@ -18,7 +18,7 @@
 #include "python/onnxruntime_pybind_mlvalue.h"
 
 PYBIND11_MAKE_OPAQUE(std::vector<OrtValue>);
-PYBIND11_MAKE_OPAQUE(std::unordered_map<std::string, OrtValue>);
+PYBIND11_MAKE_OPAQUE(onnxruntime::OrtValueCache);
 
 namespace onnxruntime {
 namespace python {
@@ -330,26 +330,26 @@ void addObjectMethodsForTraining(py::module& m) {
         return py::reinterpret_steal<py::object>(ToDlpack(v->at(idx)));
       });
 
-  py::class_<OrtValueCache>(m, "OrtValueCache")
+  py::class_<OrtValueCache, OrtValueCachePtr>(m, "OrtValueCache")
       .def(py::init<>())
-      .def("insert", [](OrtValueCache& cache, std::string node_arg_name, OrtValue& value) {
-        cache.emplace(node_arg_name, value);
+      .def("insert", [](const OrtValueCachePtr& cache_ptr, std::string node_arg_name, OrtValue& value) {
+        cache_ptr->emplace(node_arg_name, value);
       })
-      .def("keys", [](OrtValueCache& cache) {
+      .def("keys", [](const OrtValueCachePtr& cache_ptr) {
         py::list keys;
-        for(auto kv : cache) {
+        for(auto kv : *cache_ptr.get()) {
           keys.append(kv.first);
         }
         return keys;
       })
-      .def("clear", [](OrtValueCache& cache) {
-        cache.clear();
+      .def("clear", [](const OrtValueCachePtr& cache_ptr) {
+        cache_ptr->clear();
       })
-      .def("count", [](OrtValueCache& cache, std::string node_arg_name) {
-        return cache.count(node_arg_name);
+      .def("count", [](const OrtValueCachePtr& cache_ptr, std::string node_arg_name) {
+        return cache_ptr->count(node_arg_name);
       })
-      .def("remove", [](OrtValueCache& cache, std::string node_arg_name) {
-        const auto& num_entries_erased = cache.erase(node_arg_name);
+      .def("remove", [](const OrtValueCachePtr& cache_ptr, std::string node_arg_name) {
+        const auto& num_entries_erased = cache_ptr->erase(node_arg_name);
         ORT_ENFORCE(num_entries_erased == 1, "NodeArg not found in cache: ", node_arg_name);
       });
 
@@ -554,13 +554,7 @@ void addObjectMethodsForTraining(py::module& m) {
         return std::make_unique<TrainingAgent>(*session->GetSessionHandle(), fw_feed_names, fw_outputs_device_info,
                                                bw_fetches_names, bw_outputs_device_info);
       }))
-      .def("run_forward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state) -> void {
-        Status status = agent->RunForward(feeds, fetches, *state, {});
-        if (!status.IsOK()) {
-          throw std::runtime_error("Error in forward pass execution: " + status.ErrorMessage());
-        }
-      })
-      .def("run_forward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state, const OrtValueCache& cache) -> void {
+      .def("run_forward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state, OrtValueCachePtr cache) -> void {
         Status status = agent->RunForward(feeds, fetches, *state, cache);
         if (!status.IsOK()) {
           throw std::runtime_error("Error in forward pass execution: " + status.ErrorMessage());

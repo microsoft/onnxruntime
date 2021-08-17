@@ -50,14 +50,14 @@ class GradientAccumulationManager(object):
         """
         return self._enabled
 
-    def update_cache_and_return_outputs(self, forward_outputs):
-        """Convert the forward outputs to torch and update cache, if needed
+    def extract_outputs_and_maybe_update_cache(self, forward_outputs):
+        """Extract the user outputs from the forward outputs as torch tensor and update cache, if needed
 
         Args:
             forward_outputs (OrtValueVector): List of outputs returned by forward function
         """
         if not self.enabled:
-            return
+            return tuple(_utils._ortvalue_to_torch_tensor(forward_output) for forward_output in forward_outputs)
         if self._update_cache:
             for i in range(self._cache_start, len(forward_outputs)):
                 self.cache.insert(

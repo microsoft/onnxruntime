@@ -124,10 +124,7 @@ class TrainingAgent(object):
          :param state: State of the graph that is used for executing partial graph runs.
          :param cache: Cache to store stashed OrtValues for intermediate activations.
         """
-        if cache:
-            self._training_agent.run_forward(feeds, fetches, state, cache)
-        else:
-            self._training_agent.run_forward(feeds, fetches, state)
+        self._training_agent.run_forward(feeds, fetches, state, cache)
 
     def run_backward(self, feeds, fetches, state):
         """

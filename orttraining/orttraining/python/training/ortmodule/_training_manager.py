@@ -43,12 +43,8 @@ class TrainingManager(GraphExecutionManager):
 
         forward_outputs = C.OrtValueVector()
         # Run and return module outputs.
-        if gradient_accumulation_manager.enabled:
-            execution_session.run_forward(forward_inputs, forward_outputs, state, gradient_accumulation_manager.cache)
-            user_outputs = gradient_accumulation_manager.update_cache_and_return_outputs(forward_outputs)
-        else:
-            execution_session.run_forward(forward_inputs, forward_outputs, state)
-            user_outputs = tuple(_utils._ortvalue_to_torch_tensor(forward_output) for forward_output in forward_outputs)
+        execution_session.run_forward(forward_inputs, forward_outputs, state, gradient_accumulation_manager.cache)
+        user_outputs = gradient_accumulation_manager.extract_outputs_and_maybe_update_cache(forward_outputs)
 
         output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
         run_info = _RunStateInfo(state, output_info)

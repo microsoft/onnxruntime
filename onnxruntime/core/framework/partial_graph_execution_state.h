@@ -10,7 +10,7 @@
 namespace onnxruntime {
 
 typedef std::unordered_map<std::string, OrtValue> OrtValueCache;
-
+typedef std::shared_ptr<OrtValueCache> OrtValueCachePtr;
 
 struct PartialGraphExecutionState {
  public:

@@ -239,10 +239,10 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
     // if the current node has one output.
     bool reuse_cached_value = false;
     std::string cached_arg_name;
-    if (check_cache_) {
+    if (cache_ != nullptr) {
       if (p_op_kernel->Node().OutputDefs().size() == 1) {
         cached_arg_name = p_op_kernel->Node().OutputDefs()[0]->Name();
-        if (cache_.count(cached_arg_name)) {  // found arg in cache_
+        if (cache_.get()->count(cached_arg_name)) {  // found arg in cache_
           VLOGS(logger, 1) << "Found OrtValue in cache for arg: " << cached_arg_name;
           reuse_cached_value = true;
         }
@@ -331,7 +331,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
         if (!reuse_cached_value) {
           compute_status = p_op_kernel->Compute(&op_kernel_context);
         } else {
-          compute_status = op_kernel_context.SetOutputMLValue(0, cache_.at(cached_arg_name));
+          compute_status = op_kernel_context.SetOutputMLValue(0, cache_.get()->at(cached_arg_name));
         }
       }
       ORT_CATCH(const std::exception& ex) {
