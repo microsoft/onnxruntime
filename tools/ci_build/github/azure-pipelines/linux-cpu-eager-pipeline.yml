@@ -43,6 +43,13 @@ jobs:
               --build_wheel --enable_training \
               --enable_onnx_tests \
               --update --build
+            cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_eager_cpu.txt $(Build.BinariesDirectory)/requirements_torch_eager_cpu.txt
+            /opt/python/cp38-cp38/bin/python3 -m pip install -r $(Build.BinariesDirectory)/requirements_torch_eager_cpu.txt
+            cp $(Build.SourcesDirectory)/tools/ci_build/build.py $(Build.BinariesDirectory)/build.py
+            /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+            --build_dir /build --cmake_generator Ninja \
+            --parallel \
+            --build_eager_mode --enable_training --enable_pybind
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
