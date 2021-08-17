@@ -23,5 +23,9 @@
         "SaveONNX": true,
         "ONNXPrefix": "my_model"
     },
-    "UseMemoryEfficientGradient" : false
+    "UseMemoryEfficientGradient" : false,
+    "FallbackPolicy":
+    [
+        "FALLBACK_DISABLE"
+    ]
 }

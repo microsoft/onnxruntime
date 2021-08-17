@@ -133,7 +133,7 @@ class _FallbackManager(object):
         # Read retry from environment variable for testing purposes
         retry = os.getenv('ORTMODULE_FALLBACK_RETRY', str(retry)).lower() in ['true', '1', 'yes']
 
-        self.policy_exception_map = {_FallbackPolicy.FALLBACK_FORCE_TORCH_FORWARD.value: {ORTModuleFallbackException,
+        self._policy_exception_map = {_FallbackPolicy.FALLBACK_FORCE_TORCH_FORWARD.value: {ORTModuleFallbackException,
                                                                                            ORTModuleDeviceException,
                                                                                            ORTModuleIOError,
                                                                                            ORTModuleTorchModelException,
@@ -176,7 +176,7 @@ class _FallbackManager(object):
         def _set_exception(policy: _FallbackPolicy, exception: Exception, log_level: _logger.LogLevel):
             if policy is not _FallbackPolicy.FALLBACK_DISABLE and \
                     self.policy.is_set(policy) and \
-                    (policy.value in self.policy_exception_map and type(exception) in self.policy_exception_map[policy.value]):
+                    (policy.value in self._policy_exception_map and type(exception) in self._policy_exception_map[policy.value]):
 
                 if log_level <= _logger.LogLevel.WARNING:
                     warnings.warn(
