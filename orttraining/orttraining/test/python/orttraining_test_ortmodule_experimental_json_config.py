@@ -66,6 +66,9 @@ def test_load_config_from_json_1():
         assert ort_model_attributes._debug_options.save_onnx_models.name_prefix == 'my_model'
         assert ort_model_attributes._debug_options.logging.log_level.name == "VERBOSE"
 
+        # test use memory aware gradient builder.
+        assert ort_model_attributes._use_memory_efficient_gradient == False
+
 def test_load_config_from_json_2():
     device = 'cuda'
     model = ORTModule(Net().to(device))
@@ -111,3 +114,6 @@ def test_load_config_from_json_2():
         assert ort_model_attributes._debug_options.save_onnx_models.save == True
         assert ort_model_attributes._debug_options.save_onnx_models.name_prefix == 'my_other_model'
         assert ort_model_attributes._debug_options.logging.log_level.name == "INFO"
+
+        # test use memory aware gradient builder.
+        assert ort_model_attributes._use_memory_efficient_gradient == True

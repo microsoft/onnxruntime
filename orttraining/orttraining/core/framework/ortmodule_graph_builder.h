@@ -25,7 +25,7 @@ struct OrtModuleGraphBuilderConfiguration {
   std::vector<std::string> input_names_require_grad{};
 
   // Graph configuration.
-  bool use_invertible_layernorm_grad = false;
+  bool use_memory_efficient_gradient = false;
   bool build_gradient_graph = true;
   bool enable_caching = false;
 

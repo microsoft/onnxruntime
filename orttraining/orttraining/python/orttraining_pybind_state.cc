@@ -59,7 +59,7 @@ struct TrainingParameters {
   int deepspeed_zero_stage = 0;
   bool enable_grad_norm_clip = true;
   bool set_gradients_as_graph_outputs = false;
-  bool use_invertible_layernorm_grad = false;
+  bool use_memory_efficient_gradient = false;
 
   std::string pipeline_cut_info_string = {};
 
@@ -232,7 +232,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     config.init_optimizer_states = parameters.optimizer_initial_state;
   }
 
-  config.gradient_graph_config.use_invertible_layernorm_grad = parameters.use_invertible_layernorm_grad;
+  config.gradient_graph_config.use_memory_efficient_gradient = parameters.use_memory_efficient_gradient;
   config.gradient_graph_config.set_gradients_as_graph_outputs = parameters.set_gradients_as_graph_outputs;
 
   config.graph_transformer_config.attn_dropout_recompute = parameters.attn_dropout_recompute;
@@ -357,7 +357,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("deepspeed_zero_stage", &TrainingParameters::deepspeed_zero_stage)
       .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip)
       .def_readwrite("set_gradients_as_graph_outputs", &TrainingParameters::set_gradients_as_graph_outputs)
-      .def_readwrite("use_invertible_layernorm_grad", &TrainingParameters::use_invertible_layernorm_grad)
+      .def_readwrite("use_memory_efficient_gradient", &TrainingParameters::use_memory_efficient_gradient)
       .def_readwrite("attn_dropout_recompute", &TrainingParameters::attn_dropout_recompute)
       .def_readwrite("gelu_recompute", &TrainingParameters::gelu_recompute)
       .def_readwrite("transformer_layer_recompute", &TrainingParameters::transformer_layer_recompute)
@@ -599,8 +599,8 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("initializer_names", &OrtModuleGraphBuilderConfiguration::initializer_names)
       .def_readwrite("initializer_names_to_train", &OrtModuleGraphBuilderConfiguration::initializer_names_to_train)
       .def_readwrite("input_names_require_grad", &OrtModuleGraphBuilderConfiguration::input_names_require_grad)
-      .def_readwrite("use_invertible_layernorm_grad",
-                     &OrtModuleGraphBuilderConfiguration::use_invertible_layernorm_grad)
+      .def_readwrite("use_memory_efficient_gradient",
+                     &OrtModuleGraphBuilderConfiguration::use_memory_efficient_gradient)
       .def_readwrite("build_gradient_graph", &OrtModuleGraphBuilderConfiguration::build_gradient_graph)
       .def_readwrite("graph_transformer_config", &OrtModuleGraphBuilderConfiguration::graph_transformer_config)
       .def_readwrite("enable_caching", &OrtModuleGraphBuilderConfiguration::enable_caching)

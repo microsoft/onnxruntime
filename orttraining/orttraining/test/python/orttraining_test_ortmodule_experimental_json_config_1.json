@@ -22,5 +22,6 @@
         "LogLevel": "VERBOSE",
         "SaveONNX": true,
         "ONNXPrefix": "my_model"
-    }
+    },
+    "UseMemoryEfficientGradient" : false
 }
