@@ -49,8 +49,8 @@ jobs:
       script: |     
          ln -sf /data/models $(Build.BinariesDirectory)
 
-  - template: templates/set-version-number-variables-step.yml
-  - template: templates/get-docker-image-steps.yml
+  - template: ../../templates/set-version-number-variables-step.yml
+  - template: ../../templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_4_tensorrt8_0
         Context: tools/ci_build/github/linux/docker
@@ -66,7 +66,7 @@ jobs:
           /onnxruntime_src/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh /build/nuget-artifact $(NuGetPackageVersionNumber)
         workingDirectory: $(Build.SourcesDirectory)
 
-  - template: templates/component-governance-component-detection-steps.yml
+  - template: ../../templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
-  - template: templates/clean-agent-build-directory-step.yml
+  - template: ../../templates/clean-agent-build-directory-step.yml
