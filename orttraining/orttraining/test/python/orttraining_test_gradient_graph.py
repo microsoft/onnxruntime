@@ -54,6 +54,9 @@ class GradientGraphBuilderTest(unittest.TestCase):
         #     at /usr/include/c++/7/bits/hashtable_policy.h:448
         # 448         { return __num % __den; }
         # Seems like `GraphTransformerManager::Register` is not called.
+
+        # There's also problems because loss_node_arg_name isn't getting set properly (even when it's not an empty string).
+        # `GradientGraphBuilder::loss_node_arg_name_` becomes a very long string.
         builder = GradientGraphBuilder(str(path), {'output'}, {'fc1.weight', 'fc1.bias', 'fc2.weight', 'fc2.bias'}, '')
         builder.build()
         # TODO Maybe it should be .ort?
