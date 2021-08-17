@@ -57,13 +57,13 @@ jobs:
       Repository: onnxruntimecuda114xtrt80build
   - task: CmdLine@2
     inputs:
-    script: |
-      mkdir -p $HOME/.onnx
-      docker run --gpus all -e CC=/opt/rh/devtoolset-9/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-9/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all -e OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) -e DisableContribOps=$(DisableContribOps) -e DisableMlOps=$(DisableMlOps) -e IsReleaseBuild=$(IsReleaseBuild) -e PACKAGENAME=${{ parameters.NugetPackageName }} -e BUILD_SOURCESDIRECTORY=/onnxruntime_src -e BUILD_BINARIESDIRECTORY=/build --rm --volume /data/onnx:/data/onnx:ro \
-      --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
-      --volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecuda114xtrt80build \
-      /onnxruntime_src/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh /build/nuget-artifact $(NuGetPackageVersionNumber)
-    workingDirectory: $(Build.SourcesDirectory)
+      script: |
+        mkdir -p $HOME/.onnx
+        docker run --gpus all -e CC=/opt/rh/devtoolset-9/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-9/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all -e OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) -e DisableContribOps=$(DisableContribOps) -e DisableMlOps=$(DisableMlOps) -e IsReleaseBuild=$(IsReleaseBuild) -e PACKAGENAME=${{ parameters.NugetPackageName }} -e BUILD_SOURCESDIRECTORY=/onnxruntime_src -e BUILD_BINARIESDIRECTORY=/build --rm --volume /data/onnx:/data/onnx:ro \
+        --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
+        --volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecuda114xtrt80build \
+        /onnxruntime_src/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh /build/nuget-artifact $(NuGetPackageVersionNumber)
+      workingDirectory: $(Build.SourcesDirectory)
 
   - template: ../../templates/component-governance-component-detection-steps.yml
     parameters :
