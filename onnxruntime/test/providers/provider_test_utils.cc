@@ -851,9 +851,10 @@ std::vector<OrtValue> OpTester::ExecuteModel(
                           expected_shape.NumDimensions());
               for (size_t d = 0; d < inferred_dims.size(); ++d) {
                 // check equal unless the input involved a symbolic dimension
-                if (inferred_dims[d] != -1)
+                if (inferred_dims[d] != -1) {
                   EXPECT_EQ(expected_shape[d], inferred_dims[d])
                       << "Output idx = " << idx << " dim = " << d;
+                }
               }
             }
             Check(expected_data, ort_value.Get<Tensor>(), provider_type);
@@ -1094,7 +1095,8 @@ void OpTester::Run(
               provider_type == onnxruntime::kTensorrtExecutionProvider ||
               provider_type == onnxruntime::kNupharExecutionProvider ||
               provider_type == onnxruntime::kNnapiExecutionProvider ||
-              provider_type == onnxruntime::kCoreMLExecutionProvider)
+              provider_type == onnxruntime::kCoreMLExecutionProvider ||
+              provider_type == onnxruntime::kDnnlExecutionProvider)
             continue;
           auto reg = execution_provider->GetKernelRegistry();
           if (!KernelRegistry::HasImplementationOf(*reg, node, execution_provider->Type())) {

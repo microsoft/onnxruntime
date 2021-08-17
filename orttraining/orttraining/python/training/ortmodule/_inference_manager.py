@@ -18,8 +18,8 @@ class InferenceManager(GraphExecutionManager):
     InferenceManager is resposible for building and running the forward graph of the inference model
     """
 
-    def __init__(self, model):
-        super().__init__(model)
+    def __init__(self, model, debug_options):
+        super().__init__(model, debug_options)
         self._export_mode = torch.onnx.TrainingMode.EVAL
 
     @staticmethod
@@ -67,10 +67,6 @@ class InferenceManager(GraphExecutionManager):
             # If model was exported, then initialize the graph builder
             self._initialize_graph_builder(training=False)
 
-            # Save the onnx model if the model was exported
-            if self._save_onnx:
-                onnx.save(self._onnx_model, self._save_onnx_prefix + '_exported_inference_model.onnx')
-
         # Build the inference graph
         if build_graph:
             self._build_graph()
@@ -86,7 +82,7 @@ class InferenceManager(GraphExecutionManager):
             self._create_execution_agent()
 
         user_outputs, _ = InferenceManager.execution_session_run_forward(self._execution_agent,
-                                                                         self._optimized_onnx_model,
+                                                                         self._onnx_models.optimized_model,
                                                                          self._device,
                                                                          *_io._combine_input_buffers_initializers(
                                                                              self._graph_initializers,
@@ -104,12 +100,14 @@ class InferenceManager(GraphExecutionManager):
         """Build an optimized inference graph using the module_graph_builder"""
 
         super()._build_graph()
-        if self._save_onnx:
-            onnx.save(self._optimized_onnx_model, self._save_onnx_prefix + '_inference.onnx')
+        if self._debug_options.save_onnx_models.save:
+            self._onnx_models.save_optimized_model(self._debug_options.save_onnx_models.path,
+                                                   self._debug_options.save_onnx_models.name_prefix,
+                                                   self._export_mode)
 
     def _create_execution_agent(self):
         """Creates an InferenceAgent that can run forward graph on an inference model"""
 
         session_options, providers, provider_options = self._get_session_config()
-        self._execution_agent = InferenceAgent(self._optimized_onnx_model.SerializeToString(),
+        self._execution_agent = InferenceAgent(self._onnx_models.optimized_model.SerializeToString(),
                                                session_options, providers, provider_options)

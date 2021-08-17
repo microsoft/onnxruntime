@@ -184,10 +184,10 @@ class InferenceSession {
   /**
     * Filter the enabled optimizers (either transformer or rewrite rule) using optimizers_to_disable.
     * For an optimizer to be enabled, it must be allowed at the current optimization level (as specified in
-    * session options), and NOT in optimizers_to_disable. 
+    * session options), and NOT in optimizers_to_disable.
     * This allows finer grained control of the enabled/disabled optimizations.
     * Must be called before Initialize() to take effect.
-    * 
+    *
     * Calling this API is optional.
     * @return OK if success.
     */
@@ -217,12 +217,12 @@ class InferenceSession {
   /**
     * Load an ONNX or ORT format model.
     *
-    * Set SessionOptions session config value ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT to 'ORT' or 'ONNX' to 
+    * Set SessionOptions session config value ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT to 'ORT' or 'ONNX' to
     * explicitly choose model format.
     *
     * If format is not explicitly specified and filename ends in '.ort' it will be inferred to be an ORT format model.
 	* All other files are assumed to be in ONNX format.
-    * 
+    *
     * @param model_uri absolute path of the model file.
     * @return OK if success.
     */
@@ -233,11 +233,11 @@ class InferenceSession {
   /**
     * Load an ONNX or ORT format model.
     *
-    * Set SessionOptions session config value ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT to 'ORT' or 'ONNX' to 
+    * Set SessionOptions session config value ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT to 'ORT' or 'ONNX' to
     * explicitly choose model format.
     *
     * If format is not explicitly specified the model format will be inferred from the bytes, defaulting to ONNX.
-    * 
+    *
     * @param model_data Model data buffer
     * @param model_data_len Model data buffer size
     * @return OK if success.
@@ -309,7 +309,7 @@ class InferenceSession {
 #ifdef ENABLE_TRAINING
   /**
   * Partially run a pre-loaded and pre-intialized model.
-    * @param run_options run options. 
+    * @param run_options run options.
     * @param feeds inputs owned by client code and should not be changed during
     *        execution of this function.
     * @param fetches outputs produced after the executin of this function.
@@ -430,9 +430,9 @@ class InferenceSession {
   }
 
   /**
-    * Add a PrepackedWeightsContainer instance to the session so as to store the pre-packed weights 
+    * Add a PrepackedWeightsContainer instance to the session so as to store the pre-packed weights
     *  of shared initializers to be shared across sessions.
-    * @param prepacked_weights_container PrepackedWeightsContainer instance 
+    * @param prepacked_weights_container PrepackedWeightsContainer instance
     */
   Status AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container);
 
@@ -704,13 +704,31 @@ class InferenceSession {
   bool is_model_proto_parsed_ = false;
   const Environment& environment_;
 
-  // Bytes from an ORT format model.
-  // We store them currently to make the Load + Initialize behave the same way as for an ONNX model
-  // as we need some of the bytes for the Load (create the Model) and some for the Initialize (create SessionState).
+  // View of the bytes from an ORT format model.
+  // If the session is started with an input byte array contains model data, and the caller
+  // specifies that ORT should use the model bytes directly by setting the session config option
+  // "session.use_ort_model_bytes_directly" to "1"
+  //   We use the the byte array directly without copy to reduce peak memory usage
+  //   (Short term) This will require the user to guarantee the life time of the model data
+  //   until the session is created.
+  //   (Longer term) If we are going to use the memory offsets directly for initializers, the model data
+  //   should be alive until the InferenceSession goes away.
+  // If the session is started with an input byte array contains model data, and the caller does not
+  // specify ORT should use the model bytes directly
+  // Or the session is started with a model_uri
+  //   We store them currently in the ort_format_model_bytes_data_holder_ to make the Load + Initialize
+  //   behave the same way as for an ONNX model, as we need some of the bytes for the Load (create the Model)
+  //   and some for the Initialize (create SessionState).
   // Short term we free them after Initialize.
   // Longer term we may want to directly refer to offsets in this buffer for initializers so we don't need to copy
   // those into new OrtValue instances, at which point we won't free them until the InferenceSession goes away.
-  std::vector<uint8_t> ort_format_model_bytes_;
+  gsl::span<const uint8_t> ort_format_model_bytes_;
+
+  // This holds the actual model data
+  // In case if the session is started with an input byte array contains model data, and the caller
+  // specifies that ORT should use the model bytes directly by setting the session config option
+  // "session.use_ort_model_bytes_directly" to "1", this will be empty
+  std::vector<uint8_t> ort_format_model_bytes_data_holder_;
 
   std::shared_ptr<onnxruntime::AllocatorManager> allocator_manager_;
 

@@ -583,11 +583,38 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"momentum", "not a registered function/op", {}},                 // Op not registered.
       {"momentum_multiple", "not a registered function/op", {}},        // Op not registered.
       {"nesterov_momentum", "not a registered function/op", {}},        // Op not registered.
-      {"cast_FLOAT_to_BFLOAT16", "onnx generate bfloat tensor as uint16 type", {}},
-      {"cast_BFLOAT16_to_FLOAT", "onnx generate bfloat tensor as uint16 type", {}},
       {"sequence_insert_at_back", "onnx currently not supporting loading segment", {}},
       {"sequence_insert_at_front", "onnx currently not supporting loading segment", {}},
       {"loop13_seq", "ORT api does not currently support creating empty sequences (needed for this test)", {}},
+      {"cast_FLOAT_to_BFLOAT16", "onnx generate bfloat tensor as uint16 type", {}},
+      {"cast_BFLOAT16_to_FLOAT", "onnx generate bfloat tensor as uint16 type", {}},
+      {"castlike_FLOAT_to_BFLOAT16", "Depends on cast.", {}},
+      {"castlike_BFLOAT16_to_FLOAT", "Depends on cast", {}},
+      {"castlike_FLOAT_to_BFLOAT16_expanded", "Depends on cast.", {}},
+      {"castlike_BFLOAT16_to_FLOAT_expanded", "Depends on cast", {}},
+      {"castlike_FLOAT_to_STRING", "Numpy float to string has unexpected rounding for some results.", {}},
+      {"castlike_FLOAT_to_STRING_expanded", "Numpy float to string has unexpected rounding for some results.", {}},
+      {"bernoulli", "By design. Test data is for informational purpose because the generator is non deterministic."},
+      {"bernoulli_double", "By design. Test data is for informational purpose because the generator is non deterministic."},
+      {"bernoulli_double_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
+      {"bernoulli_seed", "By design. Test data is for informational purpose because the generator is non deterministic."},
+      {"bernoulli_seed_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
+      {"bernoulli_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
+      {"shape", "opset15 updates not supported yet."},
+      {"shape_clip_end", "opset15 updates not supported yet."},
+      {"shape_clip_start", "opset15 updates not supported yet."},
+      {"shape_end_1", "opset15 updates not supported yet."},
+      {"shape_end_negative_1", "opset15 updates not supported yet."},
+      {"shape_example", "opset15 updates not supported yet."},
+      {"shape_start_1", "opset15 updates not supported yet."},
+      {"shape_start_1_end_2", "opset15 updates not supported yet."},
+      {"shape_start_1_end_negative_1", "opset15 updates not supported yet."},
+      {"shape_start_negative_1", "opset15 updates not supported yet."},
+      {"test_optional_get_element", "opset15 updates not supported yet."},
+      {"test_optional_get_element_sequence", "opset15 updates not supported yet."},
+      {"test_optional_has_element", "opset15 updates not supported yet."},
+      {"test_optional_has_element_empty", "opset15 updates not supported yet."},
+
   };
 
 #ifdef DISABLE_ML_OPS

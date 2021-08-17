@@ -23,7 +23,7 @@
 #include "core/framework/fuse_nodes_funcs.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/mem_pattern.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/ort_value_name_idx_map.h"
@@ -347,7 +347,7 @@ class SessionState {
                                std::unique_ptr<SessionState> session_state);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  Status PopulateKernelCreateInfo(KernelRegistryManager& kernel_registry_manager, bool saving_ort_format);
+  Status PopulateKernelCreateInfo(const KernelRegistryManager& kernel_registry_manager, bool saving_ort_format);
 #endif
 
   Status FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,

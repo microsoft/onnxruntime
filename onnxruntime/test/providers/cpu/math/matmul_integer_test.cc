@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/common/cuda_op_test_utils.h"
+#include "test/common/quantization_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 
 #include "core/common/common.h"
@@ -293,21 +294,6 @@ TEST(MatmulIntegerOpTest, MatMulInteger_PerColumn_ND) {
   test.Run();
 }
 
-template <typename T>
-std::vector<T> ToVector(const int* value, int size) {
-  std::vector<T> data(size);
-  for (int i = 0; i < size; i++) {
-    data[i] = static_cast<T>(value[i]);
-  }
-  return data;
-}
-
-template <typename T>
-T GetMiddle(const std::vector<T>& v) {
-  const auto min_max_pair = std::minmax_element(v.begin(), v.end());
-  return (*(min_max_pair.first) + *(min_max_pair.second)) / 2;
-}
-
 // [M x N] = [M x K] x [K x N] = [batch_seq x input_dim] x [input_dim x embed_dim]
 template <typename ScalarB>
 void RunMatMulIntegerU8X8Test(const int M, const int N, const int K, bool non_zero_zp, bool B_is_initializer, bool per_column_zp = false) {
@@ -410,12 +396,9 @@ TEST(MatmulIntegerOpTest, SharedPrepackedWeights) {
 
   std::vector<uint8_t> t2_init_values(1, 13);
 
-  auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<uint8_t>(), TensorShape({1, 1}),
-                                           t2_init_values.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
   OrtValue t2;
-
-  t2.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-          DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  Tensor::InitOrtValue(DataTypeImpl::GetType<uint8_t>(), TensorShape({1, 1}),
+                       t2_init_values.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), t2);
 
   SessionOptions so;
   // Set up T2 as a shared initializer to be shared between sessions

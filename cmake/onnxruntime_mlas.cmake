@@ -36,23 +36,42 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
     )
   endif()
 elseif(MSVC)
-  if(onnxruntime_target_platform STREQUAL "ARM64")
-    set(mlas_platform_srcs
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_neon.cpp
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_udot.cpp
-    )
+  if((onnxruntime_target_platform STREQUAL "ARM64") OR (onnxruntime_target_platform STREQUAL "ARM64EC"))
+    set(PREPROCESS_ARMASM_FLAGS "")
+    set(ARMASM_FLAGS "")
 
-    set(mlas_platform_preprocess_srcs
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64/QgemmU8X8KernelNeon.asm
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64/QgemmU8X8KernelUdot.asm
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64/SgemmKernelNeon.asm
-    )
+    if(onnxruntime_target_platform STREQUAL "ARM64")
+      set(mlas_platform_srcs
+        ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_neon.cpp
+        ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_udot.cpp
+      )
+
+      set(mlas_platform_preprocess_srcs
+        ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64/QgemmU8X8KernelNeon.asm
+        ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64/QgemmU8X8KernelUdot.asm
+        ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64/SgemmKernelNeon.asm
+      )
+    else()
+      set(mlas_platform_srcs
+        ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_neon.cpp
+      )
+
+      set(mlas_platform_preprocess_srcs
+        ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64ec/QgemmU8X8KernelNeon.asm
+        ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64ec/SgemmKernelNeon.asm
+      )
+
+      string(APPEND PREPROCESS_ARMASM_FLAGS " /arm64EC")
+      string(APPEND ARMASM_FLAGS " -machine ARM64EC")
+    endif()
 
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-      set(ARMASM_FLAGS "-g")
-    else()
-      set(ARMASM_FLAGS "")
+      string(APPEND ARMASM_FLAGS " -g")
     endif()
+
+    # Remove double quotes from flag strings.
+    separate_arguments(PREPROCESS_ARMASM_FLAGS NATIVE_COMMAND "${PREPROCESS_ARMASM_FLAGS}")
+    separate_arguments(ARMASM_FLAGS NATIVE_COMMAND "${ARMASM_FLAGS}")
 
     # Run the C precompiler on each input before the assembler.
     foreach(asm_filename ${mlas_platform_preprocess_srcs})
@@ -62,7 +81,7 @@ elseif(MSVC)
       add_custom_command(
         OUTPUT ${obj_filename}
           COMMAND
-              cl.exe /P ${asm_filename} /Fi${preprocess_filename}
+              cl.exe ${PREPROCESS_ARMASM_FLAGS} /P ${asm_filename} /Fi${preprocess_filename}
           COMMAND
               armasm64.exe ${ARMASM_FLAGS} ${preprocess_filename} ${obj_filename}
         DEPENDS ${asm_filename}
@@ -70,7 +89,7 @@ elseif(MSVC)
       )
       list(APPEND mlas_platform_srcs ${obj_filename})
     endforeach()
-  elseif((onnxruntime_target_platform STREQUAL "ARM") OR (onnxruntime_target_platform STREQUAL "ARM64EC"))
+  elseif(onnxruntime_target_platform STREQUAL "ARM")
     set(mlas_platform_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm/sgemmc.cpp
     )

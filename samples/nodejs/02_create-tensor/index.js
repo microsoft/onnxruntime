@@ -1,3 +1,4 @@
+'use strict';
 const Tensor = require('onnxruntime').Tensor;
 
 //
