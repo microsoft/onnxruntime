@@ -65,7 +65,7 @@ jobs:
       script: |
         set -e -x
         cp $(Build.SourcesDirectory)/tools/ci_build/build.py $(Build.BinariesDirectory)/build.py
-        python3 $(Build.BinariesDirectory)/build.py \
+        /opt/python/cp38-cp38/bin/python3 $(Build.BinariesDirectory)/build.py \
           --parallel \
           --build_eager_mode --enable_training --enable_pybind
       workingDirectory: $(Build.SourcesDirectory)
