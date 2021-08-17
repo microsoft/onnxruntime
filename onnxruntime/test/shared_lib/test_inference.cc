@@ -618,6 +618,9 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
 //It has memory leak. The OrtCustomOpDomain created in custom_op_library.cc:RegisterCustomOps function was not freed
 #if defined(__ANDROID__)
 TEST(CApiTest, DISABLED_test_custom_op_library) {
+#elif defined(ENABLE_TRAINING_TORCH_INTEROP)
+// The custom op library is not built when training torch interop is enabled, so we disable it.
+TEST(CApiTest, DISABLED_test_custom_op_library) {
 #else
 TEST(CApiTest, test_custom_op_library) {
 #endif
