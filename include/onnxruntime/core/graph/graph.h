@@ -1373,9 +1373,11 @@ class Graph {
 
   InitializedTensorSet name_to_initial_tensor_;
 
+#if !defined(ORT_MINIMAL_BUILD)
   std::unordered_set<std::reference_wrapper<const std::string>,
                      std::hash<std::string>, std::equal_to<std::string>>
       sparse_tensor_names_;
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
   IOnnxRuntimeOpSchemaCollectionPtr schema_registry_;

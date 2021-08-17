@@ -20,7 +20,9 @@
 using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
 using onnxruntime::MLFloat16;
+#if !defined(ORT_MINIMAL_BUILD)
 using onnxruntime::SparseTensor;
+#endif
 using onnxruntime::Tensor;
 
 ORT_API_STATUS_IMPL(OrtApis::CreateTensorTypeAndShapeInfo, _Outptr_ OrtTensorTypeAndShapeInfo** out) {
@@ -213,9 +215,11 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorTypeAndShape, _In_ const OrtValue* v, _Out
       shape = &tensor.Shape();
       data_type = tensor.DataType();
     } else {
+#if !defined(ORT_MINIMAL_BUILD)
       const SparseTensor& tensor = v->Get<onnxruntime::SparseTensor>();
       shape = &tensor.DenseShape();
       data_type = tensor.DataType();
+#endif
     }
     return GetTensorShapeAndType(*shape, *data_type, out);
   } else {
