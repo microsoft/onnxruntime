@@ -153,6 +153,15 @@ def _load_debug_options(ortmodule_config_accessor, data):
     debug_options = DebugOptions(log_level=log_level, save_onnx=save_onnx, onnx_prefix=onnx_prefix)
     ortmodule_config_accessor._debug_options = debug_options
 
+def _load_use_memory_efficient_gradient(ortmodule_config_accessor, data):
+    """Load UseMemoryEfficientGradient from json file onto ORTModule"""
+
+    assert hasattr(data, _load_use_memory_efficient_gradient.loading_key)
+    log.info(f"Found keyword {_load_use_memory_efficient_gradient.loading_key} in json. Loading attributes from file.")
+
+    assert isinstance(data.UseMemoryEfficientGradient, bool), f"{_load_use_memory_efficient_gradient.loading_key} must be a boolean"
+    ortmodule_config_accessor._use_memory_efficient_gradient = data.UseMemoryEfficientGradient
+
 def _define_load_function_keys():
     """Define static key variables for each loading function"""
 
@@ -165,6 +174,7 @@ def _define_load_function_keys():
     _load_use_static_shape.loading_key = "UseStaticShape"
     _load_skip_check.loading_key = "SkipCheck"
     _load_debug_options.loading_key = "DebugOptions"
+    _load_use_memory_efficient_gradient.loading_key = "UseMemoryEfficientGradient"
 
 def load_from_json(ortmodule, path=None):
     """Load config from json file at given path.
@@ -229,7 +239,8 @@ def load_from_json(ortmodule, path=None):
         _load_run_symbolic_shape_infer.loading_key: _load_run_symbolic_shape_infer,
         _load_use_static_shape.loading_key: _load_use_static_shape,
         _load_skip_check.loading_key: _load_skip_check,
-        _load_debug_options.loading_key: _load_debug_options
+        _load_debug_options.loading_key: _load_debug_options,
+        _load_use_memory_efficient_gradient.loading_key: _load_use_memory_efficient_gradient
     }
 
     for training_mode in [True, False]:
