@@ -554,7 +554,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                                          "TensorRT EP could not open shared library from " + engine_decryption_lib_path_));
     }
     engine_decryption_ = (int (*)(const char*, char*, size_t*))LIBFUNC(handle, "decrypt");
-    engine_encryption_ = (int (*)(const char*, char*, size_t*))LIBFUNC(handle, "encrypt");
+    engine_encryption_ = (int (*)(const char*, char*, size_t))LIBFUNC(handle, "encrypt");
   }
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] TensorRT provider options: "
                         << "device_id: " << device_id_
@@ -1313,11 +1313,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           size_t engine_size = serializedModel->size();
           if (engine_decryption_enable_) {
             // Encrypt engine
-            if (!engine_encryption_(engine_cache_path.c_str(), reinterpret_cast<char*>(serializedModel->data()), &engine_size)) {
+            if (!engine_encryption_(engine_cache_path.c_str(), reinterpret_cast<char*>(serializedModel->data()), engine_size)) {
               return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                      "TensorRT EP could not call engine encryption function encrypt");
             }
-	  } else {
+          } else {
             std::ofstream file(engine_cache_path, std::ios::binary | std::ios::out);
             file.write(reinterpret_cast<char*>(serializedModel->data()), engine_size);
           }
@@ -1661,11 +1661,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           size_t engine_size = serializedModel->size();
           if (trt_state->engine_decryption_enable) {
             // Encrypt engine
-            if (!trt_state->engine_encryption(engine_cache_path.c_str(), reinterpret_cast<char*>(serializedModel->data()), &engine_size)) {
+            if (!trt_state->engine_encryption(engine_cache_path.c_str(), reinterpret_cast<char*>(serializedModel->data()), engine_size)) {
               return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                      "TensorRT EP could not call engine encryption function encrypt");
             }
-		  } else {
+          } else {
             std::ofstream file(engine_cache_path, std::ios::binary | std::ios::out);
             file.write(reinterpret_cast<char*>(serializedModel->data()), engine_size);
           }
@@ -1985,7 +1985,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           auto output_tensor_ptr = ort.GetTensorMutableData<double>(output_tensor[i]);
           if (output_tensor_ptr != nullptr) {
             cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(buffers[binding_index]), output_tensor_ptr, output_dim_sizes[i]);
-          }		
+          }
         }
       }
       return Status::OK();
