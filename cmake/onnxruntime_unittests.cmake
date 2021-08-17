@@ -1111,80 +1111,81 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       set_target_properties(onnxruntime_mlas_test PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1")
     endif()
   endif()
-
-  onnxruntime_add_shared_library_module(custom_op_library ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
-  target_include_directories(custom_op_library PRIVATE ${REPO_ROOT}/include)
-  if(UNIX)
-    if (APPLE)
-      set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker -dead_strip")
-    else()
-      set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker --version-script=${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.lds -Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
-    endif()
-  else()
-    set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-DEF:${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.def")
-  endif()
-  set_property(TARGET custom_op_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG})
-
-  if (onnxruntime_BUILD_JAVA AND NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
-      message(STATUS "Running Java tests")
-      # native-test is added to resources so custom_op_lib can be loaded
-      # and we want to symlink it there
-      set(JAVA_NATIVE_TEST_DIR ${JAVA_OUTPUT_DIR}/native-test)
-      file(MAKE_DIRECTORY ${JAVA_NATIVE_TEST_DIR})
-
-      # delegate to gradle's test runner
-      if(WIN32)
-        add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:custom_op_library>
-                        ${JAVA_NATIVE_TEST_DIR}/$<TARGET_FILE_NAME:custom_op_library>)
-        # On windows ctest requires a test to be an .exe(.com) file
-        # So there are two options 1) Install Chocolatey and its gradle package
-        # That package would install gradle.exe shim to its bin so ctest could run gradle.exe
-        # 2) With standard installation we get gradle.bat. We delegate execution to a separate .cmake file
-        # That can handle both .exe and .bat
-        add_test(NAME onnxruntime4j_test COMMAND ${CMAKE_COMMAND}
-          -DGRADLE_EXECUTABLE=${GRADLE_EXECUTABLE}
-          -DBIN_DIR=${CMAKE_CURRENT_BINARY_DIR}
-          -DREPO_ROOT=${REPO_ROOT}
-          ${ORT_PROVIDER_FLAGS}
-          -P ${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_java_unittests.cmake)
-      else()
-        add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:custom_op_library>
-                        ${JAVA_NATIVE_TEST_DIR}/$<TARGET_LINKER_FILE_NAME:custom_op_library>)
-        add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} ${ORT_PROVIDER_FLAGS}
-              WORKING_DIRECTORY ${REPO_ROOT}/java)
-      endif()
-      set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
-  endif()
-
-  # limit to only test on windows first, due to a runtime path issue on linux
-  if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
-                                    AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
-                                    AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Android")
-                                    AND NOT onnxruntime_BUILD_WEBASSEMBLY
-				    AND NOT onnxruntime_USE_ROCM)
-    file(GLOB_RECURSE test_execution_provider_srcs
-      "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.h"
-      "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.cc"
-      "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
-      "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
-    )
-
-    onnxruntime_add_shared_library_module(test_execution_provider ${test_execution_provider_srcs})
-    add_dependencies(test_execution_provider onnxruntime_providers_shared onnx)
-    target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared)
-    target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnx,INTERFACE_INCLUDE_DIRECTORIES>)
-    target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnxruntime_common,INTERFACE_INCLUDE_DIRECTORIES>)
-    target_include_directories(test_execution_provider PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${ORTTRAINING_ROOT})
-    if(APPLE)
-      set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/exported_symbols.lst")
-    elseif(UNIX)
-      set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/version_script.lds -Xlinker --gc-sections -Xlinker -rpath=\\$ORIGIN")
-    elseif(WIN32)
-      set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/symbols.def")
-    else()
-      message(FATAL_ERROR "test_execution_provider unknown platform, need to specify shared library exports for it")
-    endif()
-  endif()
-
-  include(onnxruntime_fuzz_test.cmake)
 endif()
+
+onnxruntime_add_shared_library_module(custom_op_library ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
+target_include_directories(custom_op_library PRIVATE ${REPO_ROOT}/include)
+if(UNIX)
+  if (APPLE)
+    set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker -dead_strip")
+  else()
+    set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker --version-script=${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.lds -Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
+  endif()
+else()
+  set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-DEF:${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.def")
+endif()
+set_property(TARGET custom_op_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG})
+
+if (onnxruntime_BUILD_JAVA AND NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
+    message(STATUS "Running Java tests")
+    # native-test is added to resources so custom_op_lib can be loaded
+    # and we want to symlink it there
+    set(JAVA_NATIVE_TEST_DIR ${JAVA_OUTPUT_DIR}/native-test)
+    file(MAKE_DIRECTORY ${JAVA_NATIVE_TEST_DIR})
+
+    # delegate to gradle's test runner
+    if(WIN32)
+      add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:custom_op_library>
+                      ${JAVA_NATIVE_TEST_DIR}/$<TARGET_FILE_NAME:custom_op_library>)
+      # On windows ctest requires a test to be an .exe(.com) file
+      # So there are two options 1) Install Chocolatey and its gradle package
+      # That package would install gradle.exe shim to its bin so ctest could run gradle.exe
+      # 2) With standard installation we get gradle.bat. We delegate execution to a separate .cmake file
+      # That can handle both .exe and .bat
+      add_test(NAME onnxruntime4j_test COMMAND ${CMAKE_COMMAND}
+        -DGRADLE_EXECUTABLE=${GRADLE_EXECUTABLE}
+        -DBIN_DIR=${CMAKE_CURRENT_BINARY_DIR}
+        -DREPO_ROOT=${REPO_ROOT}
+        ${ORT_PROVIDER_FLAGS}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_java_unittests.cmake)
+    else()
+      add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:custom_op_library>
+                      ${JAVA_NATIVE_TEST_DIR}/$<TARGET_LINKER_FILE_NAME:custom_op_library>)
+      add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} ${ORT_PROVIDER_FLAGS}
+            WORKING_DIRECTORY ${REPO_ROOT}/java)
+    endif()
+    set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
+endif()
+
+# limit to only test on windows first, due to a runtime path issue on linux
+if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
+                                  AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
+                                  AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Android")
+                                  AND NOT onnxruntime_BUILD_WEBASSEMBLY
+          AND NOT onnxruntime_USE_ROCM)
+  file(GLOB_RECURSE test_execution_provider_srcs
+    "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.h"
+    "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
+  )
+
+  onnxruntime_add_shared_library_module(test_execution_provider ${test_execution_provider_srcs})
+  add_dependencies(test_execution_provider onnxruntime_providers_shared onnx)
+  target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared)
+  target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnx,INTERFACE_INCLUDE_DIRECTORIES>)
+  target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnxruntime_common,INTERFACE_INCLUDE_DIRECTORIES>)
+  target_include_directories(test_execution_provider PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${ORTTRAINING_ROOT})
+  if(APPLE)
+    set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/exported_symbols.lst")
+  elseif(UNIX)
+    set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/version_script.lds -Xlinker --gc-sections -Xlinker -rpath=\\$ORIGIN")
+  elseif(WIN32)
+    set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/symbols.def")
+  else()
+    message(FATAL_ERROR "test_execution_provider unknown platform, need to specify shared library exports for it")
+  endif()
+endif()
+
+include(onnxruntime_fuzz_test.cmake)
+
