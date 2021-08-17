@@ -7,8 +7,7 @@ from onnxruntime.capi import _pybind_state as C
 
 
 class GradientAccumulationManager(object):
-    """
-    Handles Gradient accumulation optimization during training
+    """Handles Gradient accumulation optimization during training
 
     This feature must be enabled once before training and cannot be turned off within a training run.
     """
@@ -45,8 +44,7 @@ class GradientAccumulationManager(object):
 
     @property
     def enabled(self):
-        """
-        Indicates whether gradient accumulation optimization is enabled.
+        """Indicates whether gradient accumulation optimization is enabled.
         """
         return self._enabled
 
@@ -66,8 +64,7 @@ class GradientAccumulationManager(object):
         return tuple(_utils._ortvalue_to_torch_tensor(forward_outputs[i]) for i in range(self._cache_start))
 
     def maybe_update_cache_before_run(self):
-        """
-         Update cache when model parameters are modified and optimization is enabled.
+        """Update cache when model parameters are modified and optimization is enabled.
         """
         # The current implementation relies on param._version, which might not be
         # updated in all cases(eg. inplace update)
