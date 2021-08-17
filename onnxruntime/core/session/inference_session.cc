@@ -1650,7 +1650,8 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
                                     const std::vector<OrtValue>& feeds,
                                     std::vector<OrtValue>& fetches,
                                     PartialGraphExecutionState& state,
-                                    FeedsFetchesManager& feeds_fetches_manager) {
+                                    FeedsFetchesManager& feeds_fetches_manager,
+                                    const OrtValueCachePtr& cache) {
   Status retval = Status::OK();
   std::vector<IExecutionProvider*> exec_providers_to_stop;
   exec_providers_to_stop.reserve(execution_providers_.NumProviders());
@@ -1691,7 +1692,7 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
 
     // execute the graph
     ORT_CHECK_AND_SET_RETVAL(utils::ExecutePartialGraph(*session_state_, feeds_fetches_manager, feeds, fetches,
-                                                        run_logger, state));
+                                                        run_logger, state, cache));
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {
