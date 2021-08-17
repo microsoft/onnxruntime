@@ -73,8 +73,12 @@ class TrainingManager(GraphExecutionManager):
                     # If model was exported, then initialize the graph builder
                     self._initialize_graph_builder(training=True)
 
+                # since the schema was just extracted while trying to export the model and it was either
+                # saved to self._input_info.schema or checked for equality with the self._input_info.schema
+                # it should not need to be updated again. Pass it inside parse_inputs_for_onnx_export.
                 input_info = _io.parse_inputs_for_onnx_export(self._module_parameters,
                                                               self._onnx_models.exported_model,
+                                                              self._input_info.schema,
                                                               inputs,
                                                               kwargs)
 

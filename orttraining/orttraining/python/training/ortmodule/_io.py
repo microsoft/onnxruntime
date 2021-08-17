@@ -85,7 +85,7 @@ class _InputInfo(object):
                  dynamic_axes=None,
                  schema=None,
                  num_positionals=0,
-                 num_positionals_non_none=0,
+                 num_expanded_positionals_non_none=0,
                  keyword_names=None):
         self.names = names
         self.shape = shape
@@ -93,19 +93,19 @@ class _InputInfo(object):
         self.dynamic_axes = dynamic_axes if dynamic_axes else {}
         self.schema = schema if schema else []
         self.num_positionals = num_positionals
-        self.num_positionals_non_none = num_positionals_non_none
+        self.num_expanded_positionals_non_none = num_expanded_positionals_non_none
         self.keyword_names = keyword_names
 
     def __repr__(self) -> str:
         return f'''_InputInfo class:
-            \tNames:                   {self.names}
-            \tShape:                   {self.shape}
-            \tRequire gradient:        {self.require_grad_names}
-            \tDynamic axes:            {self.dynamic_axes}
-            \tSchema:                  {self.schema}
-            \t#Positionals (total):    {self.num_positionals}
-            \t#Positionals (non-None): {self.num_positionals_non_none}
-            \tKeyword names:           {self.keyword_names}'''
+            \tNames:                            {self.names}
+            \tShape:                            {self.shape}
+            \tRequire gradient:                 {self.require_grad_names}
+            \tDynamic axes:                     {self.dynamic_axes}
+            \tSchema:                           {self.schema}
+            \t#Positionals (total):             {self.num_positionals}
+            \t#Expanded Positionals (non-None): {self.num_expanded_positionals_non_none}
+            \tKeyword names:                    {self.keyword_names}'''
 
     def flatten(self, args, kwargs, device):
         '''Flatten args and kwargs in a single tuple of tensors with strict ordering'''
@@ -114,13 +114,18 @@ class _InputInfo(object):
         ret += [_PrimitiveType.get_tensor(kwargs[name], device) if _PrimitiveType.is_primitive_type(kwargs[name])
             else kwargs[name] for name in self.names if name in kwargs]
 
+        # if kwargs is empty, append an empty dictionary at the end of the sample inputs to make exporter
+        # happy. This is because the exporter is confused with kwargs and dictionary inputs otherwise.
+        if not kwargs:
+            ret.append({})
+
         return ret
 
     def unflatten(self, flat_args):
         '''Unflatten tuple of tensors into args and kwargs'''
 
         args = tuple(flat_args[:self.num_positionals])
-        kwargs = {name: arg for name, arg in zip(self.names[self.num_positionals_non_none:], flat_args[self.num_positionals:]) \
+        kwargs = {name: arg for name, arg in zip(self.names[self.num_expanded_positionals_non_none:], flat_args[self.num_positionals:]) \
             if name in self.keyword_names}
         return args, kwargs
 
@@ -141,6 +146,11 @@ def _combine_input_buffers_initializers(params, onnx_input_names, input_info, bu
             # each element of the list is an input by itself
             for inp in current_input:
                 _expand_inputs(inp, non_none_inputs)
+        elif isinstance(current_input, abc.Mapping):
+            # If the input is a mapping (like a dict), expand the dict so that
+            # each element of the dict is an input by itself
+            for _, val in current_input.items():
+                _expand_inputs(val, non_none_inputs)
         elif current_input is not None:
             # else just collect all the non none inputs within non_none_inputs
             non_none_inputs.append(current_input)
@@ -311,24 +321,26 @@ def _extract_schema(data):
     elif isinstance(data, torch.Tensor):
         return _TensorStub(dtype=str(data.dtype), shape_dims=len(data.size()))
 
+    # Instead of replacing the tensor with a stub in the original user input, build the stubbed_schema
+    # from scratch from the user input.
+    stubbed_schema = None
     if isinstance(data, abc.Sequence) and not isinstance(data, str):
         sequence_type = type(data)
-        data = list(data)
-        for idx in range(len(data)):
-            data[idx] = _extract_schema(data[idx])
+        stubbed_schema = [_extract_schema(val) for val in data]
         try:
             # namedtuple can be created by passing the list sequence to method _make
-            data = sequence_type._make(data)
+            stubbed_schema = sequence_type._make(stubbed_schema)
         except AttributeError:
             # If attribute error encountered, create the sequence directly
-            data = sequence_type(data)
+            stubbed_schema = sequence_type(stubbed_schema)
     elif isinstance(data, abc.Mapping):
-        for key in sorted(data):
-            data[key] = _extract_schema(data[key])
+        dict_type = type(data)
+        stubbed_schema = {key: _extract_schema(data[key]) for key in data}
+        stubbed_schema = dict_type(**stubbed_schema)
     else:
         raise wrap_exception(ORTModuleIOError,
                              TypeError(f'ORTModule does not support the following model data type {type(data)}'))
-    return data
+    return stubbed_schema
 
 
 def _parse_outputs_and_extract_names_and_dynamic_axes(module_output):
@@ -408,7 +420,7 @@ class _FlattenedModule(torch.nn.Module):
         return _transform_output_to_flat_tuple(self._original_module(*new_args, **new_kwargs))
 
 
-def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwargs):
+def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, schema, inputs, kwargs):
 
     def _add_dynamic_shape(name, input):
         dynamic_axes[name] = {}
@@ -417,21 +429,35 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwarg
         return dynamic_axes
 
     def _add_input(name, input, onnx_graph, onnx_graph_input_names):
-        if input is None:
-            # Drop all None inputs.
-            return
+        """Returns number of expanded non none inputs that _add_input processed"""
 
+        if input is None:
+            # Drop all None inputs and return 0.
+            return 0
+
+        num_expanded_non_none_inputs = 0
         if isinstance(input, abc.Sequence):
             # If the input is a sequence (like a list), expand the list so that
             # each element of the list is an input by itself.
             for i, val in enumerate(input):
                 # Name each input with the index appended to the original name of the
                 # argument.
-                _add_input(f"{name}_{i}", val, onnx_graph, onnx_graph_input_names)
+                num_expanded_non_none_inputs += \
+                    _add_input(f"{name}_{i}", val, onnx_graph, onnx_graph_input_names)
 
             # Return here since the list by itself is not a valid input.
             # All the elements of the list have already been added as inputs individually.
-            return
+            return num_expanded_non_none_inputs
+        elif isinstance(input, abc.Mapping):
+            # If the input is a mapping (like a dict), expand the dict so that
+            # each element of the dict is an input by itself.
+            for key, val in input.items():
+                num_expanded_non_none_inputs += \
+                    _add_input(f"{name}_{key}", val, onnx_graph, onnx_graph_input_names)
+
+            # Return here since the dict by itself is not a valid input.
+            # All the elements of the dict have already been added as inputs individually.
+            return num_expanded_non_none_inputs
 
         # InputInfo should contain all the names irrespective of whether they are
         # a part of the onnx graph or not.
@@ -442,6 +468,9 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwarg
                 input_names_require_grad.append(name)
             dynamic_axes.update(_add_dynamic_shape(name, input))
             input_shape.append(list(input.size()))
+
+        # A single input non none input was processed, return 1
+        return 1
 
     # Ignore optional inputs explicitly specified as None
     # ONNX exporter may remove unused inputs
@@ -454,6 +483,7 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwarg
     input_names_require_grad = []
     input_shape = []
     var_positional_idx = 0
+    num_expanded_non_none_positional_inputs = 0
 
     for input_idx, input_parameter in enumerate(all_input_parameters):
         if input_parameter.kind == inspect.Parameter.VAR_POSITIONAL:
@@ -463,7 +493,8 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwarg
                 name = f'{input_parameter.name}_{var_positional_idx}'
                 var_positional_idx += 1
                 inp = inputs[args_i]
-                _add_input(name, inp, onnx_graph, onnx_graph_input_names)
+                num_expanded_non_none_positional_inputs += \
+                    _add_input(name, inp, onnx_graph, onnx_graph_input_names)
         elif input_parameter.kind == inspect.Parameter.POSITIONAL_ONLY or\
              input_parameter.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD or\
              input_parameter.kind == inspect.Parameter.KEYWORD_ONLY:
@@ -471,27 +502,32 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwarg
             name = input_parameter.name
             inp = None
             input_idx += var_positional_idx
+            is_positional = True
             if input_idx < len(inputs) and inputs[input_idx] is not None:
                 inp = inputs[input_idx]
             elif name in kwargs and kwargs[name] is not None:
                 inp = kwargs[name]
-            _add_input(name, inp, onnx_graph, onnx_graph_input_names)
+                is_positional = False
+            num_expanded_non_none_inputs_local = \
+                _add_input(name, inp, onnx_graph, onnx_graph_input_names)
+            if is_positional:
+                num_expanded_non_none_positional_inputs += num_expanded_non_none_inputs_local
         elif input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
             # **kwargs is always the last argument of forward()
             for name,inp in kwargs.items():
                 if name not in input_names:
                     _add_input(name, inp, onnx_graph, onnx_graph_input_names)
 
-    # Shallow copy is ok as we need the data structure, not the content
-    schema = _extract_schema({'args': copy.copy(inputs), 'kwargs': copy.copy(kwargs)})
 
+    # input_names have been expanded so to get the correct number of non none
+    # positional names, we need to collect the num_expanded_non_none_positional_inputs.
     return _InputInfo(names=input_names,
                       shape=input_shape,
                       require_grad_names=input_names_require_grad,
                       dynamic_axes=dynamic_axes,
                       schema=schema,
                       num_positionals=len(inputs),
-                      num_positionals_non_none=len([i for i in inputs if i is not None]),
+                      num_expanded_positionals_non_none=num_expanded_non_none_positional_inputs,
                       keyword_names=kwargs.keys())
 
 
