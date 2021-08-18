@@ -71,7 +71,8 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
         {"Clip", {1, 2}},
         {"Pad", {1, 2}}};
 
-static std::unordered_set<std::string> INVERTIBLE_OPS{"LayerNormalization"};
+static std::unordered_set<std::string> INVERTIBLE_OPS{"LayerNormalization",
+                                                      "Relu"};
 
 class GradientGraphBuilder {
  public:
