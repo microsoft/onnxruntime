@@ -59,9 +59,16 @@ def split_and_sort_output(string_list):
     string_list.sort()
     return string_list
 
+def is_dynamic(model): 
+    inp = model.graph.input[0]
+    for dim in inp.type.tensor_type.shape.dim: 
+        if not dim.HasField('dim_value'):
+            return True
+    return False 
+
 def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
     logger.info("running standalone trt")
-    model_path = "--onnx=" + model_path
+    onnx_model_path = "--onnx=" + model_path
     input_shape = []
 
     logger.info(all_inputs_shape)
@@ -75,12 +82,16 @@ def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
         shape = "x".join(shape)
         shape = name + ':' + shape
         input_shape.append(shape)
-
+    
     shapes_arg = '--optShapes=' + ','.join(input_shape)
     logger.info(shapes_arg)
-
+    
     result = {}
-    command = [trtexec, model_path, "--percentile=90", "--explicitBatch", shapes_arg]
+    command = [trtexec, onnx_model_path, "--percentile=90", "--explicitBatch"]
+    
+    model = onnx.load(model_path)
+    if is_dynamic(model):
+        command.extend([shapes_arg])
     if fp16: 
         command.extend(["--fp16"])
     out = get_output(command)
@@ -88,22 +99,19 @@ def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
     tmp = out.split("\n")
     target_list = []
     for t in tmp:
-        if 'mean:' in t:
+        if 'mean' in t:
             target_list.append(t)
 
-        if 'percentile:' in t:
+        if 'percentile' in t:
             target_list.append(t)
 
     target = target_list[2]
-    start = target.find('mean:') + 6
-    end = target.find('ms')
-    result["average_latency_ms"] = target[start:end]
-
-    target = target_list[3]
-    start = target.find('percentile:') + 12
-    end = target.find('ms')
-    result["latency_90_percentile"] = target[start:end]
-
+    avg_latency_match = re.search('mean = (.*?) ms', target)
+    if avg_latency_match:
+        result["average_latency_ms"] = avg_latency_match.group(1) # extract number
+    percentile_match = re.search('percentile\(90%\) = (.*?) ms', target)
+    if percentile_match:
+        result["latency_90_percentile"] = percentile_match.group(1) # extract number
     logger.info(result)
     return result
 

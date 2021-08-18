@@ -452,19 +452,19 @@ TEST(DynamicQuantLSTMTest, SharedPrepackedWeights) {
   std::vector<int64_t> Y_c_dims{num_directions, batch_size, hidden_size};
   test.AddOutput<float>("Y_c", Y_c_dims, Y_c_data);
 
-  auto W_quant_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<int8_t>(), TensorShape(W_dims),
-                                                 w_quant.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+  auto ml_int8 = DataTypeImpl::GetType<int8_t>();
+  OrtMemoryInfo cpu_info(CPU, OrtAllocatorType::OrtDeviceAllocator);
+
   OrtValue W;
+  Tensor::InitOrtValue(ml_int8, TensorShape(W_dims),
+                       w_quant.data(),
+                       cpu_info, W);
 
-  W.Init(W_quant_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-         DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-
-  auto R_quant_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<int8_t>(), TensorShape(R_dims),
-                                                 r_quant.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
   OrtValue R;
+  Tensor::InitOrtValue(ml_int8, TensorShape(R_dims),
+                       r_quant.data(),
+                       cpu_info, R);
 
-  R.Init(R_quant_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-         DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
   SessionOptions so;
 
   // Set up weight(s) as a shared initializer to be shared between sessions

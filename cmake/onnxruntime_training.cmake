@@ -71,7 +71,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   add_dependencies(onnxruntime_training_runner ${onnxruntime_EXTERNAL_DEPENDENCIES} onnx onnxruntime_providers)
 
   if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    target_link_libraries(onnxruntime_training_runner PRIVATE Python::Python)
+    target_link_libraries(onnxruntime_training_runner PRIVATE Python::Module)
   endif()
 
   onnxruntime_add_include_to_target(onnxruntime_training_runner onnxruntime_training onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} onnxruntime_training flatbuffers)
@@ -127,7 +127,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   )
 
   if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    list(APPEND ONNXRUNTIME_LIBS Python::Python)
+    list(APPEND ONNXRUNTIME_LIBS Python::Module)
   endif()
 
   list(APPEND ONNXRUNTIME_LIBS

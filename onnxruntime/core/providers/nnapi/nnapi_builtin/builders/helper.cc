@@ -281,12 +281,8 @@ bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, co
         return false;
       }
 
-      std::unique_ptr<uint8_t[]> unpacked_tensor;
-      size_t tensor_byte_size;
-      auto status = onnxruntime::utils::UnpackInitializerData(
-          zero_tensor,
-          node.ModelPath(),
-          unpacked_tensor, tensor_byte_size);
+      std::vector<uint8_t> unpacked_tensor;
+      auto status = onnxruntime::utils::UnpackInitializerData(zero_tensor, node.ModelPath(), unpacked_tensor);
       if (!status.IsOK()) {
         LOGS_DEFAULT(ERROR) << "Qlinear[Conv/MatMul] error when unpack zero tensor: " << zero_point_name
                             << ", error msg: " << status.ErrorMessage();
@@ -294,8 +290,8 @@ bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, co
       }
 
       // Verify all onnx weight zero point(s) are 0(s)
-      const int8_t* zero_points = reinterpret_cast<const int8_t*>(unpacked_tensor.get());
-      for (size_t i = 0; i < tensor_byte_size; i++) {
+      const int8_t* zero_points = reinterpret_cast<const int8_t*>(unpacked_tensor.data());
+      for (size_t i = 0; i < unpacked_tensor.size(); i++) {
         if (zero_points[i] != 0) {
           LOGS_DEFAULT(VERBOSE) << "u8s8 Qlinear[Conv/MatMul]  only support 0 as zero point, "
                                 << "zero_points[" << i << "] has value: " << zero_points[i];
@@ -315,14 +311,15 @@ float GetQuantizationScale(const InitializedTensorSet& initializers, const Node&
 
 common::Status GetQuantizationZeroPoint(const InitializedTensorSet& initializers,
                                         const Node& node, size_t idx, int32_t& zero_point) {
-  std::unique_ptr<uint8_t[]> unpacked_tensor;
-  size_t tensor_byte_size;
-  const auto& zero_point_tensor = *initializers.at(node.InputDefs()[idx]->Name());
+  std::vector<uint8_t> unpacked_tensor;
+  const auto& name = node.InputDefs()[idx]->Name();
+  const auto& zero_point_tensor = *initializers.at(name);
   ORT_RETURN_IF_ERROR(
-      onnxruntime::utils::UnpackInitializerData(zero_point_tensor, node.ModelPath(),
-                                                unpacked_tensor, tensor_byte_size));
+      onnxruntime::utils::UnpackInitializerData(zero_point_tensor, node.ModelPath(), unpacked_tensor));
+
+  ORT_RETURN_IF(unpacked_tensor.empty(), "The initializer [", name, "] is empty");
   // Onnx quantization uses uint8 [int8 not yet supported], need to cast to int32_t used by NNAPI
-  zero_point = static_cast<int32_t>(unpacked_tensor.get()[0]);
+  zero_point = static_cast<int32_t>(unpacked_tensor[0]);
   return Status::OK();
 }
 
