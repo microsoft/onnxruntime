@@ -17,16 +17,16 @@ def register_custom_op():
 
     # Symbolic definition
     def inverse(g, self):
-        return g.op("com.microsoft::Inverse", self)
+        return g.op("com.microsoft::Inverse", self).setType(self.type())
 
     def gelu(g, self):
-        return g.op("com.microsoft::Gelu", self)
+        return g.op("com.microsoft::Gelu", self).setType(self.type())
 
     def triu(g, self, diagonal):
-        return g.op("com.microsoft::Trilu", self, diagonal, upper_i=1)
+        return g.op("com.microsoft::Trilu", self, diagonal, upper_i=1).setType(self.type())
 
     def tril(g, self, diagonal):
-        return g.op("com.microsoft::Trilu", self, diagonal, upper_i=0)
+        return g.op("com.microsoft::Trilu", self, diagonal, upper_i=0).setType(self.type())
 
     # Op Registration
     register_custom_op_symbolic('::inverse', inverse, _onnx_opset_version)

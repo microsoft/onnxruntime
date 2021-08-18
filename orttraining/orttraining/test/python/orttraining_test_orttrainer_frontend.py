@@ -19,7 +19,7 @@ from onnxruntime.training import _utils, amp, checkpoint, optim, orttrainer, Tra
                                       orttrainer_options as orttrainer_options
 import _test_commons,_test_helpers
 from onnxruntime import SessionOptions
-
+from onnxruntime.training import PropagateCastOpsStrategy
 
 ###############################################################################
 # Testing starts here #########################################################
@@ -78,14 +78,17 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'gelu_recompute': False,
             'transformer_layer_recompute': False,
             'number_recompute_layers': 0,
-            'propagate_cast_ops_level': -1,
-            'propagate_cast_ops_allow': [],
-            'allow_layer_norm_mod_precision': False
+            'allow_layer_norm_mod_precision': False,
+            'propagate_cast_ops_config': {
+                'strategy': PropagateCastOpsStrategy.NONE,
+                'level': -1,
+                'allow': []
+            }
         },
         'utils': {
             'frozen_weights': [],
             'grad_norm_clip': True,
-            'invertible_layer_norm_gradient': False,
+            'memory_efficient_gradient': False,
             'run_symbolic_shape_infer': False
         },
         'debug': {

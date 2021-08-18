@@ -7,23 +7,33 @@
 # --report_url=<string>
 # --report_file=<string, local file path, TXT/JSON file>
 # --commit_hash=<string, full git commit hash>
-# --build_config=<string, JSON format specifying os, arch and config>
 
 import argparse
-import mysql.connector
 import json
 import sys
-import os
+import datetime
+# ingest from dataframe
+import pandas
+from azure.kusto.data import KustoConnectionStringBuilder
+from azure.kusto.ingest import (
+    IngestionProperties,
+    DataFormat,
+    ReportLevel,
+    QueuedIngestClient,
+)
 
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
         description="ONNXRuntime test coverge report uploader for dashboard")
-    parser.add_argument("--report_url", help="URL to the LLVM json report")
+    parser.add_argument("--report_url", type=str, help="URL to the LLVM json report")
     parser.add_argument(
-        "--report_file", help="Path to the local JSON/TXT report", required=True)
-    parser.add_argument("--commit_hash", help="Full Git commit hash", required=True)
-    parser.add_argument("--build_config", help="Build configuration, os, arch and config, in JSON format")
+        "--report_file", type=str, help="Path to the local JSON/TXT report", required=True)
+    parser.add_argument("--commit_hash", type=str, help="Full Git commit hash", required=True)
+    parser.add_argument("--branch", type=str, help="Source code branch")
+    parser.add_argument("--os", type=str, help="Build configuration:os")
+    parser.add_argument("--arch", type=str, help="Build configuration:arch")
+    parser.add_argument("--build_config", type=str, help="Build configuration: build variants")
     return parser.parse_args()
 
 
@@ -52,62 +62,30 @@ def parse_json_report(report_file):
     return result
 
 
-def write_to_db(coverage_data, build_config, args):
+def write_to_db(coverage_data, args):
     # connect to database
-
-    cnx = mysql.connector.connect(
-        user='ort@onnxruntimedashboard',
-        password=os.environ.get('DASHBOARD_MYSQL_ORT_PASSWORD'),
-        host='onnxruntimedashboard.mysql.database.azure.com',
-        database='onnxruntime')
-
-    try:
-        cursor = cnx.cursor()
-
-        # delete old records
-        delete_query = ('DELETE FROM onnxruntime.test_coverage '
-                        'WHERE UploadTime < DATE_SUB(Now(), INTERVAL 30 DAY);'
-                        )
-
-        cursor.execute(delete_query)
-
-        # insert current record
-        insert_query = ('INSERT INTO onnxruntime.test_coverage '
-                        '''(UploadTime, CommitId, Coverage, LinesCovered, TotalLines, OS,
-                          Arch, BuildConfig, ReportURL) '''
-                        'VALUES (Now(), "%s", %f, %d, %d, "%s", "%s", "%s", "%s") '
-                        'ON DUPLICATE KEY UPDATE '
-                        '''UploadTime=Now(), Coverage=%f, LinesCovered=%d, TotalLines=%d,
-                          OS="%s", Arch="%s", BuildConfig="%s", ReportURL="%s"; '''
-                        ) % (args.commit_hash,
-                             coverage_data['coverage'],
-                             coverage_data['lines_covered'],
-                             coverage_data['lines_valid'],
-                             build_config.get('os', 'win'),
-                             build_config.get('arch', 'x64'),
-                             build_config.get('config', 'default'),
-                             args.report_url,
-                             coverage_data['coverage'],
-                             coverage_data['lines_covered'],
-                             coverage_data['lines_valid'],
-                             build_config.get('os', 'win'),
-                             build_config.get('arch', 'x64'),
-                             build_config.get('config', 'default'),
-                             args.report_url
-                             )
-        cursor.execute(insert_query)
-        cnx.commit()
-
-        # # Use below for debugging:
-        # cursor.execute('select * from onnxruntime.test_coverage')
-        # for r in cursor:
-        #     print(r)
-
-        cursor.close()
-        cnx.close()
-    except BaseException as e:
-        cnx.close()
-        raise e
+    cluster = "https://ingest-onnxruntimedashboarddb.southcentralus.kusto.windows.net"
+    kcsb = KustoConnectionStringBuilder.with_az_cli_authentication(cluster)
+    # The authentication method will be taken from the chosen KustoConnectionStringBuilder.
+    client = QueuedIngestClient(kcsb)
+    fields = ["UploadTime", "CommitId", "Coverage", "LinesCovered", "TotalLines", "OS", "Arch", "BuildConfig",
+              "ReportURL", "Branch"]
+    now_str = datetime.datetime.now() .strftime("%Y-%m-%d %H:%M:%S")
+    rows = [[now_str,  args.commit_hash, coverage_data['coverage'],
+             coverage_data['lines_covered'],
+             coverage_data['lines_valid'], args.os.lower(),
+             args.arch.lower(),
+             args.build_config.lower(),
+             args.report_url.lower(),
+             args.branch.lower()]]
+    ingestion_props = IngestionProperties(
+      database="powerbi",
+      table="test_coverage",
+      data_format=DataFormat.CSV,
+      report_level=ReportLevel.FailuresAndSuccesses
+    )
+    df = pandas.DataFrame(data=rows, columns=fields)
+    client.ingest_from_dataframe(df, ingestion_properties=ingestion_props)
 
 
 if __name__ == "__main__":
@@ -120,8 +98,7 @@ if __name__ == "__main__":
         else:
             raise ValueError("Only report extensions txt or json are accepted")
 
-        build_config = json.loads(args.build_config) if args.build_config else {}
-        write_to_db(coverage_data, build_config, args)
+        write_to_db(coverage_data, args)
     except BaseException as e:
         print(str(e))
         sys.exit(1)

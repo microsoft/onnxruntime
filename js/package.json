@@ -12,7 +12,8 @@
     "typescript": "^4.2.4"
   },
   "scripts": {
-    "lint": "eslint . --ext .ts",
-    "format": "clang-format --glob=\"{common/lib/**/*.ts,node/{lib,script,test}/**/*.ts,node/src/**/*.{cc,h},web/{lib,script,test}/**/*.ts}\" --style=file -i"
-  }
+    "lint": "eslint . --ext .ts --ext .tsx",
+    "format": "clang-format --glob=\"{common/lib/**/*.ts,node/{lib,script,test}/**/*.ts,node/src/**/*.{cc,h},web/{lib,script,test}/**/*.ts,react_native/{android,example,ios,lib}/**/*.{ts,mm,java}}\" --style=file -i"
+  },
+  "license": "MIT"
 }

@@ -7,6 +7,16 @@ export function createAscendingArray(size: number): Float32Array {
   return new Float32Array(Array.from({length: size}, (v, i) => (i + 1)));
 }
 
+// Returns an array by injecting 3 zeros after every element in the input array to be used for creating unpacked
+// texture.
+export function generateArrayForUnpackedTexture(input: Float32Array): Float32Array {
+  const output = new Float32Array(input.length * 4);
+  for (let i = 0; i < (input.length * 4); i += 4) {
+    output[i] = input[i / 4];
+  }
+  return output;
+}
+
 // create a webgl texture and fill it with the array content
 export function createTextureFromArray(
     glContext: WebGLContext, dataArray: Float32Array, type: GLenum, width: number, height: number): WebGLTexture {

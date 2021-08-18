@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+'use strict';
+
 const bundleMode = require('minimist')(process.argv)['bundle-mode'] || 'dev';  // 'dev'|'perf'|undefined;
 const karmaPlugins = require('minimist')(process.argv)['karma-plugins'] || undefined;
 const timeoutMocha = require('minimist')(process.argv)['timeout-mocha'] || 60000;
@@ -45,18 +47,20 @@ module.exports = function (config) {
     frameworks: ['mocha'],
     files: [
       { pattern: commonFile },
-      { pattern: 'test/testdata-config.js' },
       { pattern: mainFile },
       { pattern: 'test/testdata-file-cache-*.json', included: false },
-      //{ pattern: 'test/onnx-worker.js', included: false },
       { pattern: 'test/data/**/*', included: false, nocache: true },
       { pattern: 'dist/ort-wasm.wasm', included: false },
       { pattern: 'dist/ort-wasm-threaded.wasm', included: false },
+      { pattern: 'dist/ort-wasm-simd.wasm', included: false },
+      { pattern: 'dist/ort-wasm-simd-threaded.wasm', included: false },
       { pattern: 'dist/ort-wasm-threaded.worker.js', included: false },
     ],
     proxies: {
       '/base/test/ort-wasm.wasm': '/base/dist/ort-wasm.wasm',
       '/base/test/ort-wasm-threaded.wasm': '/base/dist/ort-wasm-threaded.wasm',
+      '/base/test/ort-wasm-simd.wasm': '/base/dist/ort-wasm-simd.wasm',
+      '/base/test/ort-wasm-simd-threaded.wasm': '/base/dist/ort-wasm-simd-threaded.wasm',
       '/base/test/ort-wasm-threaded.worker.js': '/base/dist/ort-wasm-threaded.worker.js',
     },
     plugins: karmaPlugins,
@@ -72,8 +76,8 @@ module.exports = function (config) {
     browserSocketTimeout: 60000,
     hostname: getMachineIpAddress(),
     customLaunchers: {
-      ChromeTest: { base: 'Chrome', flags: ['--window-size=1,1'] },
-      ChromeDebug: { debug: true, base: 'Chrome', flags: ['--remote-debugging-port=9333'] },
+      ChromeTest: { base: 'Chrome', flags: ['--window-size=1,1', '--enable-features=SharedArrayBuffer'] },
+      ChromeDebug: { debug: true, base: 'Chrome', flags: ['--remote-debugging-port=9333', '--enable-features=SharedArrayBuffer'] },
       //
       // ==== BrowserStack browsers ====
       //

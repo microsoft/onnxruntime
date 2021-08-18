@@ -130,20 +130,19 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   const bool is_profiler_enabled = session_state.Profiler().IsEnabled();
   TimePoint tp;
   TimePoint sync_time_begin;
-  TimePoint kernel_begin_time, kernel_end_time;
+  TimePoint kernel_begin_time;
   size_t input_activation_sizes = 0;
   size_t input_parameter_sizes = 0;
   size_t total_output_sizes = 0;
 
   if (is_profiler_enabled) {
-    tp = session_state.Profiler().Now();
+    tp = session_state.Profiler().StartTime();
   }
 
   ExecutionFrame frame{feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state};
-  const std::unordered_set<NodeIndex>* to_be_executed_nodes = nullptr;
 
 #if !defined(ORT_MINIMAL_BUILD)
-  to_be_executed_nodes = session_state.GetToBeExecutedNodes(fetch_mlvalue_idxs);
+  const auto* const to_be_executed_nodes = session_state.GetToBeExecutedNodes(fetch_mlvalue_idxs);
   const bool only_execute_path_to_fetches = only_execute_path_to_fetches_ && (to_be_executed_nodes != nullptr);
 
   if (only_execute_path_to_fetches) {
@@ -151,7 +150,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   }
 #else
   ORT_UNUSED_PARAMETER(only_execute_path_to_fetches_);
-  const bool only_execute_path_to_fetches = false;
 #endif
 
   LOGS(logger, INFO) << "Begin execution";
@@ -169,8 +167,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #ifdef CONCURRENCY_VISUALIZER
   // need unique name for the series. number of nodes should be good enough for a subgraph
   char series_name[MaxSeriesNameLengthInChars] = "MainGraph";
-  if (graph_viewer->IsSubgraph()) {
-    auto s = graph_viewer->ParentNode()->Name().substr(0, MaxSeriesNameLengthInChars - 1);
+  if (graph_viewer.IsSubgraph()) {
+    auto s = graph_viewer.ParentNode()->Name().substr(0, MaxSeriesNameLengthInChars - 1);
     std::copy(s.cbegin(), s.cend(), series_name);
   }
 
@@ -196,10 +194,12 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
     auto node_index = node_exec_plan.node_index;
 
+#if !defined(ORT_MINIMAL_BUILD)
     // If it is not necessary to execute the node.
     if (only_execute_path_to_fetches && to_be_executed_nodes->count(node_index) == 0) {
       continue;
     }
+#endif
 
     const auto& node = *graph_viewer.GetNode(node_exec_plan.node_index);
 
@@ -235,7 +235,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     OpKernelContextInternal op_kernel_context(session_state, frame, *p_op_kernel, logger, terminate_flag_);
     // TODO: log kernel outputs?
     if (is_profiler_enabled) {
-      sync_time_begin = session_state.Profiler().Now();
+      sync_time_begin = session_state.Profiler().StartTime();
     }
 
     // sync before compute
@@ -289,10 +289,11 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       // call compute on the kernel
       VLOGS(logger, 1) << "Computing kernel: " << node_name_for_profiling;
 
+      kernel_begin_time = session_state.Profiler().StartTime();
+
       // Calculate total input sizes for this operation.
       CalculateTotalInputSizes(&op_kernel_context, p_op_kernel,
                                input_activation_sizes, input_parameter_sizes, node_name_for_profiling);
-      kernel_begin_time = session_state.Profiler().Now();
     }
 
     Status compute_status;
@@ -340,7 +341,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     }
 
     if (is_profiler_enabled) {
-      kernel_end_time = session_state.Profiler().Now();
       // Calculate total output sizes for this operation.
       CalculateTotalOutputSizes(&op_kernel_context, total_output_sizes, node_name_for_profiling);
 
@@ -356,9 +356,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                 << " Output_Size=" << total_output_sizes
                 << "\n";
 #endif
+
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      node_name_for_profiling + "_kernel_time",
-                                                     kernel_begin_time, kernel_end_time,
+                                                     kernel_begin_time,
                                                      // Log additional operation args / info.
                                                      {
                                                          {"op_name", p_op_kernel->KernelDef().OpName()},
@@ -370,7 +371,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                                          {"output_size", std::to_string(total_output_sizes)},
                                                          {"thread_scheduling_stats", concurrency::ThreadPool::StopProfiling(session_state.GetThreadPool())},
                                                      });
-      sync_time_begin = session_state.Profiler().Now();
+      sync_time_begin = session_state.Profiler().StartTime();
     }
 
     // sync after compute for outputs

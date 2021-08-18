@@ -80,6 +80,8 @@ public class TensorInfo implements ValueInfo {
           return OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
         case INT8:
           return OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8;
+        case UINT8:
+          return OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8;
         case INT16:
           return OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16;
         case INT32:
@@ -160,6 +162,10 @@ public class TensorInfo implements ValueInfo {
   /**
    * Constructs an array the right shape and type to hold this tensor.
    *
+   * <p>Note for String tensors, this carrier is a single dimensional array with enough space for
+   * all elements as that's the expected format of the native code. It can be reshaped to the
+   * correct shape using {@link OrtUtil#reshape(String[],long[])}.
+   *
    * @return A multidimensional array of the appropriate primitive type (or String).
    * @throws OrtException If the shape isn't representable in Java (i.e. if one of it's indices is
    *     greater than an int).
@@ -175,6 +181,7 @@ public class TensorInfo implements ValueInfo {
         return OrtUtil.newFloatArray(shape);
       case DOUBLE:
         return OrtUtil.newDoubleArray(shape);
+      case UINT8:
       case INT8:
         return OrtUtil.newByteArray(shape);
       case INT16:
@@ -204,8 +211,16 @@ public class TensorInfo implements ValueInfo {
    */
   public static TensorInfo constructFromJavaArray(Object obj) throws OrtException {
     Class<?> objClass = obj.getClass();
-    if (!objClass.isArray() && !objClass.isPrimitive() && !objClass.equals(String.class)) {
-      throw new OrtException("Cannot convert " + objClass + " to a OnnxTensor.");
+    // Check if it's an array or a scalar.
+    if (!objClass.isArray()) {
+      // Check if it's a valid non-array type
+      OnnxJavaType javaType = OnnxJavaType.mapFromClass(objClass);
+      if (javaType == OnnxJavaType.UNKNOWN) {
+        throw new OrtException("Cannot convert " + objClass + " to a OnnxTensor.");
+      } else {
+        // scalar primitive
+        return new TensorInfo(new long[0], javaType, OnnxTensorType.mapFromJavaType(javaType));
+      }
     }
     // Figure out base type and number of dimensions.
     int dimensions = 0;

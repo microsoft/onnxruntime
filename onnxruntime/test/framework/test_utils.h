@@ -8,12 +8,12 @@
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 
 #include "gsl/gsl"
 
 #ifdef USE_CUDA
-#include "core/providers/cuda/cuda_execution_provider.h"
+#include "core/providers/providers.h"
 #endif
 #ifdef USE_ROCM
 #include "core/providers/rocm/rocm_execution_provider.h"
@@ -35,24 +35,9 @@ namespace test {
 // Doesn't work with ExecutionProviders class and KernelRegistryManager
 IExecutionProvider* TestCPUExecutionProvider();
 
-#ifdef USE_CUDA
-// Doesn't work with ExecutionProviders class and KernelRegistryManager
-IExecutionProvider* TestCudaExecutionProvider();
-#endif
-
 #ifdef USE_ROCM
 IExecutionProvider* TestRocmExecutionProvider();
 #endif
-
-#ifdef USE_TENSORRT
-// Doesn't work with ExecutionProviders class and KernelRegistryManager
-IExecutionProvider* TestTensorrtExecutionProvider();
-#endif
-
-#ifdef USE_OPENVINO
-IExecutionProvider* TestOpenVINOExecutionProvider();
-#endif
-
 #ifdef USE_NNAPI
 IExecutionProvider* TestNnapiExecutionProvider();
 #endif
@@ -84,16 +69,12 @@ void CreateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, const s
                    OrtValue* p_mlvalue) {
   TensorShape shape(dims);
   auto element_type = DataTypeImpl::GetType<T>();
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
-                                                                      shape,
-                                                                      alloc);
-  if (value.size() > 0) {
-    CopyVectorToTensor(value, *p_tensor);
-  }
+  Tensor::InitOrtValue(element_type, shape, std::move(alloc), *p_mlvalue);
 
-  p_mlvalue->Init(p_tensor.release(),
-                  DataTypeImpl::GetType<Tensor>(),
-                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  if (!value.empty()) {
+    Tensor& tensor = *p_mlvalue->GetMutable<Tensor>();
+    CopyVectorToTensor(value, tensor);
+  }
 }
 
 // Lifetime of data_buffer should be managed by the caller.
@@ -102,25 +83,14 @@ void CreateMLValue(const std::vector<int64_t>& dims, T* data_buffer, const OrtMe
                    OrtValue* p_mlvalue) {
   TensorShape shape(dims);
   auto element_type = DataTypeImpl::GetType<T>();
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
-                                                                      shape,
-                                                                      data_buffer,
-                                                                      info);
-  p_mlvalue->Init(p_tensor.release(),
-                  DataTypeImpl::GetType<Tensor>(),
-                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  Tensor::InitOrtValue(element_type, shape, data_buffer, info, *p_mlvalue);
 }
 
 template <typename T>
 void AllocateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, OrtValue* p_mlvalue) {
   TensorShape shape(dims);
   auto element_type = DataTypeImpl::GetType<T>();
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
-                                                                      shape,
-                                                                      alloc);
-  p_mlvalue->Init(p_tensor.release(),
-                  DataTypeImpl::GetType<Tensor>(),
-                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  Tensor::InitOrtValue(element_type, shape, std::move(alloc), *p_mlvalue);
 }
 
 // Returns a map with the number of occurrences of each operator in the graph.

@@ -21,3 +21,4 @@ class FusionGeluApproximation(Fusion):
         new_node.domain = "com.microsoft"
         self.nodes_to_remove.append(node)
         self.nodes_to_add.append(new_node)
+        self.node_name_to_graph_name[new_node.name] = self.this_graph_name

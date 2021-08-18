@@ -9,7 +9,7 @@
 #include "core/framework/execution_provider.h"
 #include "core/common/status.h"
 #include "core/graph/basic_types.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/session/inference_session.h"
 #include "core/common/logging/logging.h"
 
@@ -75,6 +75,7 @@ class IOBinding {
     * This simply collects the outputs obtained after calling Run() inside the @param outputs.
     */
   const std::vector<std::string>& GetOutputNames() const;
+  const std::vector<OrtValue>& GetOutputs() const;
   std::vector<OrtValue>& GetOutputs();
 
   const std::vector<std::string>& GetInputNames() const;

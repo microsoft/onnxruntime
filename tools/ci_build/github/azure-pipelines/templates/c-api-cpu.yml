@@ -62,7 +62,7 @@ jobs:
       inputs:
         script: |
           mkdir -p $HOME/.onnx
-          docker run --rm -e CC=/opt/rh/devtoolset-9/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-9/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
+          docker run --rm -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecpubuild /bin/bash -c "/opt/python/cp37-cp37m/bin/python3 \
           /onnxruntime_src/tools/ci_build/build.py --build_java --build_dir /build --config Release \
           --skip_submodule_sync  --parallel --build_shared_lib ${{ parameters.AdditionalBuildFlags }} && cd /build/Release && make install DESTDIR=/build/linux-x64"
@@ -108,8 +108,10 @@ jobs:
 - job: MacOS_C_API_Packaging_CPU_x64
   workspace:
     clean: all
+  variables:
+    MACOSX_DEPLOYMENT_TARGET: '10.13'
   pool: 
-    vmImage: 'macOS-10.14'
+    vmImage: 'macOS-10.15'
   timeoutInMinutes:  120
   steps:
     - template: set-version-number-variables-step.yml
@@ -126,7 +128,7 @@ jobs:
         export ONNX_ML=1
         export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
         sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
-        sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
+        sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
         brew install libomp
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_java ${{ parameters.AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config Release
       displayName: 'Build and Test MacOS'
@@ -169,26 +171,22 @@ jobs:
 
 - template: win-ci.yml
   parameters:
-    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
-    OrtNugetPackageId: ${{ parameters.OrtNugetPackageId }}
-    job_name_suffix: x86_${{ parameters.BuildVariant }}
+    job_name_suffix: CPU_x86_${{ parameters.BuildVariant }}
     EnvSetupScript: setup_env_x86.bat
     buildArch: x86
     msbuildPlatform: Win32
     packageName: x86
-    buildparameter: --x86 ${{ parameters.AdditionalBuildFlags }} ${{ parameters.AdditionalWinBuildFlags}}
+    buildparameter: ${{ parameters.AdditionalBuildFlags }} ${{ parameters.AdditionalWinBuildFlags}}
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: false
 
 - template: win-ci.yml
   parameters:
-    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
-    OrtNugetPackageId: ${{ parameters.OrtNugetPackageId }}
-    job_name_suffix: arm_${{ parameters.BuildVariant }}
+    job_name_suffix: CPU_arm_${{ parameters.BuildVariant }}
     EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: arm
@@ -199,11 +197,9 @@ jobs:
 
 - template: win-ci.yml
   parameters:
-    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
-    OrtNugetPackageId: ${{ parameters.OrtNugetPackageId }}
-    job_name_suffix: arm64_${{ parameters.BuildVariant }}
+    job_name_suffix: CPU_arm64_${{ parameters.BuildVariant }}
     EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: arm64
@@ -214,11 +210,9 @@ jobs:
 
 - template: win-ci.yml
   parameters:
-    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
-    OrtNugetPackageId: ${{ parameters.OrtNugetPackageId }}
-    job_name_suffix: x64_${{ parameters.BuildVariant }}
+    job_name_suffix: CPU_x64_${{ parameters.BuildVariant }}
     EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: x64
@@ -296,7 +290,7 @@ jobs:
     displayName: 'Clean Agent Directories'
     condition: always()
 
-- job: NuGet_Packaging
+- job: NuGet_Packaging_CPU
   workspace:
     clean: all
   pool: 'Win-CPU-2021'
@@ -447,7 +441,7 @@ jobs:
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline NuGet Artifact'
     inputs:
-      artifactName: 'drop-signed-nuget'
+      artifactName: 'drop-signed-nuget-CPU'
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
   - powershell: |
@@ -466,7 +460,7 @@ jobs:
       arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-  - task: BinSkim@3
+  - task: BinSkim@4
     displayName: 'Run BinSkim'
 
   - task: RoslynAnalyzers@2
@@ -485,7 +479,24 @@ jobs:
     displayName: 'Clean Agent Directories'
     condition: always()
 
-- template: ../nuget/templates/test_all_os.yml
+
+- template: ../nuget/templates/test_win.yml
+  parameters:
+    AgentPool : 'Win-CPU-2021'
+    Skipx86Tests : false
+    NugetPackageName : 'Microsoft.ML.OnnxRuntime'
+    ArtifactSuffix: 'CPU'
+
+- template: ../nuget/templates/test_linux.yml
+  parameters:
+    AgentPool : Linux-CPU
+    NugetPackageName : 'Microsoft.ML.OnnxRuntime'
+    ArtifactSuffix: 'CPU'
+
+- template: ../nuget/templates/test_macos.yml
+  parameters:
+    AgentPool : macOS-10.15
+    ArtifactSuffix: 'CPU'
 
 - job: Publish_NuGet_Package_And_Report
   workspace:
@@ -495,20 +506,20 @@ jobs:
   - name: GDN_CODESIGN_TARGETDIRECTORY
     value: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
   pool: 'Win-CPU-2021'
-  condition: and (succeeded(), and (${{ parameters.PublishingNuget }}, and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master'))))
+  condition: and (succeeded(), and (${{ parameters.PublishingNuget }}, eq(variables['Build.SourceBranch'], 'refs/heads/master')))
   dependsOn:
-  - NuGet_Test_Win
-  - NuGet_Test_Linux
+  - NuGet_Test_Win_CPU
+  - NuGet_Test_Linux_CPU
   - NuGet_Test_MacOS
   steps:
 
   - template: set-version-number-variables-step.yml
 
-  - template: ../nuget/templates/upload-binary-sizes-from-nuget-package.yml
-    parameters:
-      downloadPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
-      gitCommitHash: $(OnnxRuntimeGitCommitHashShort)
-      buildVariant: ${{ parameters.BuildVariant }}
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Signed NuGet Package'
+    inputs:
+      artifactName: 'drop-signed-nuget-CPU'
+      targetPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
 
   - template: ../nuget/templates/get-nuget-package-version-as-variable.yml
     parameters:
@@ -669,7 +680,7 @@ jobs:
   workspace:
     clean: all
   pool: 
-    vmImage: 'macOS-10.14'
+    vmImage: 'macOS-10.15'
   variables:
   - name: runCodesignValidationInjection
     value: false
@@ -697,8 +708,7 @@ jobs:
           popd
           wget https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -P ./
           wget https://oss.sonatype.org/service/local/repositories/google-releases/content/com/google/protobuf/protobuf-java/3.9.2/protobuf-java-3.9.2.jar -P ./
-          sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-          brew install libomp
+          sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
           DYLD_LIBRARY_PATH=./test:${DYLD_LIBRARY_PATH}
           java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.9.2.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
         workingDirectory: '$(Build.BinariesDirectory)/final-jar'

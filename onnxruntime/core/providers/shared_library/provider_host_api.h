@@ -1,5 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+//
+#include "core/framework/provider_options.h"
 
 namespace onnxruntime {
 
@@ -10,7 +12,14 @@ struct Provider {
   // Old simple device_id API to create provider factories, currently used by DNNL And TensorRT
   virtual std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int /*device_id*/) { return nullptr; }
 
-  virtual const void* GetInfo() { return nullptr; }  // Returns a provider specific information interface if it exists
+  virtual void* GetInfo() { return nullptr; }  // Returns a provider specific information interface if it exists
+
+  // Convert provider options struct to ProviderOptions which is a map
+  virtual ProviderOptions GetProviderOptions(const void* /*provider options struct*/) { return {}; }
+
+  // Update provider options from key-value string configuration
+  virtual void UpdateProviderOptions(void* /*provider options to be configured*/, const ProviderOptions& /*key-value string provider options*/){};
+
   virtual void Shutdown() = 0;
 };
 

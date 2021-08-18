@@ -40,6 +40,25 @@ class NhwcTransformerImpl {
     return (it != nhwc_args_.end()) ? it->second.get() : nullptr;
   }
 
+  static bool NchwAxisToNhwc(int64_t& axis, int rank) {
+    if (axis < -rank || axis >= rank) {
+      return false;
+    }
+    bool is_negative_axis = (axis < 0);
+    if (is_negative_axis) {
+      axis = axis + rank;
+    }
+    if (axis == 1) {
+      axis = rank - 1;
+    } else if (axis > 1) {
+      axis = axis - 1;
+    }
+    if (is_negative_axis) {
+      axis = axis - rank;
+    }
+    return true;
+  }
+
   size_t RemoveOutputEdge(Node& node, size_t output_index);
   void CreateNhwcArgument(Node& node, Node& nhwc_node, int rank, size_t output_index);
   void CreateNhwcArgument(Node& node, Node& nhwc_node, int rank);
@@ -52,6 +71,7 @@ class NhwcTransformerImpl {
   void TransformMaxPool(Node& node);
   void TransformSplit(Node& node);
   void TransformPad(Node& node);
+  void TransformQLinearConcat(Node& node);
 
   Graph& graph_;
 
@@ -228,6 +248,45 @@ void NhwcTransformerImpl::TransformQLinearActivation(Node& node) {
   CreateNhwcArgument(node, node, nhwc_input->rank_);
 }
 
+void NhwcTransformerImpl::TransformQLinearConcat(Node& node) {
+  auto& input_defs = node.MutableInputDefs();
+
+  int rank = 0;
+  for (size_t def_index = 2, def_count = input_defs.size(); def_index < def_count; def_index += 3) {
+    auto* nhwc_input = LookupNhwcArgument(input_defs[def_index]);
+    if (nhwc_input == nullptr || (def_index > 2 && nhwc_input->rank_ != rank)) {
+      return;
+    }
+    if (def_index == 2) {
+      rank = nhwc_input->rank_;
+    }
+  }
+
+  // Change the axis attribute accordingly for NCHW to NHWC model.
+  const auto* axis_attr = graph_utils::GetNodeAttribute(node, "axis");
+  if (axis_attr != nullptr && utils::HasInt(*axis_attr)) {
+    int64_t axis = axis_attr->i();
+    if (!NchwAxisToNhwc(axis, rank)) {
+      // direct return on invalid axis
+      return;
+    }
+    node.AddAttribute("axis", axis);
+  } else {
+    // direct return on invalid node
+    return;
+  }
+
+  for (size_t def_index = 2, def_count = input_defs.size(); def_index < def_count; def_index += 3) {
+    // Update the node to directly use the NHWC inputs and decrement the original
+    // use counts of the NHWC inputs.
+    auto* nhwc_input = LookupNhwcArgument(input_defs[def_index]);
+    input_defs[def_index] = nhwc_input->nhwc_arg_;
+    nhwc_input->remaining_original_uses_--;
+  }
+
+  CreateNhwcArgument(node, node, rank);
+}
+
 void NhwcTransformerImpl::TransformQLinearGlobalAveragePool(Node& node) {
   auto& input_defs = node.MutableInputDefs();
 
@@ -300,20 +359,13 @@ void NhwcTransformerImpl::TransformSplit(Node& node) {
   const auto* axis_attr = graph_utils::GetNodeAttribute(node, "axis");
   if (axis_attr != nullptr && utils::HasInt(*axis_attr)) {
     int64_t axis = axis_attr->i();
-    if (axis < -nhwc_input->rank_ || axis >= nhwc_input->rank_) {
+    if (!NchwAxisToNhwc(axis, nhwc_input->rank_)) {
       // direct return on invalid axis
       return;
     }
-    if (axis < 0) {
-      axis = axis + nhwc_input->rank_;
-    }
-    if (axis == 1) {
-      axis = nhwc_input->rank_ - 1;
-    } else if (axis > 1) {
-      axis = axis - 1;
-    }
     node.AddAttribute("axis", axis);
   }
+  // default axis is 0 when attribute not exists, which do not need update
 
   // Update the node to directly use the NHWC inputs and decrement the original
   // use counts of the NHWC inputs.
@@ -375,8 +427,11 @@ void NhwcTransformerImpl::Transform(Node& node) {
   } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearLeakyRelu", {1}, kMSDomain) ||
              graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearSigmoid", {1}, kMSDomain)) {
     TransformQLinearActivation(node);
-  } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearGlobalAveragePool", {1}, kMSDomain)) {
+  } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearGlobalAveragePool", {1}, kMSDomain) ||
+             graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearAveragePool", {1}, kMSDomain)) {
     TransformQLinearGlobalAveragePool(node);
+  } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearConcat", {1}, kMSDomain)) {
+    TransformQLinearConcat(node);
   } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {12})) {
     TransformMaxPool(node);
   } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Split", {2, 11, 13})) {

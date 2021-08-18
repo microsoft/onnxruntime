@@ -1,32 +1,22 @@
 <p align="center"><img width="50%" src="docs/images/ONNX_Runtime_logo_dark.png" /></p>
 
-**ONNX Runtime** is a cross-platform **inference and training machine-learning accelerator** compatible with deep learning frameworks, PyTorch and TensorFlow/Keras, as well as classical machine learning libraries such as scikit-learn, and more.
+**ONNX Runtime is a cross-platform inference and training machine-learning accelerator**.
 
-ONNX Runtime uses the portable [ONNX](https://onnx.ai) computation graph format, backed by execution providers optimized for operating systems, drivers and hardware.
+**ONNX Runtime inference** can enable faster customer experiences and lower costs, supporting models from deep learning frameworks such as PyTorch and TensorFlow/Keras as well as classical machine learning libraries such as scikit-learn, LightGBM, XGBoost, etc. ONNX Runtime is compatible with different hardware, drivers, and operating systems, and provides optimal performance by leveraging hardware accelerators where applicable alongside graph optimizations and transforms. [Learn more &rarr;](https://www.onnxruntime.ai/docs/#onnx-runtime-for-inferencing)
 
-Common use cases for ONNX Runtime:
-
-* Improve inference performance for a wide variety of ML models
-* Reduce time and cost of training large models
-* Train in Python but deploy into a C#/C++/Java app
-* Run with optimized performance on different hardware and operating systems
-* Support models created in several different frameworks
-
-[ONNX Runtime inference](https://www.onnxruntime.ai/docs/get-started/inference.html) APIs are stable and production-ready since the [1.0 release](https://github.com/microsoft/onnxruntime/releases/tag/v1.0.0) in October 2019 and can enable faster customer experiences and lower costs.
-
-[ONNX Runtime training](https://www.onnxruntime.ai/docs/get-started/training.html) feature was introduced in May 2020 in preview. This feature supports acceleration of PyTorch training on multi-node NVIDIA GPUs for transformer models. Additional updates for this feature are coming soon.
+**ONNX Runtime training** can accelerate the model training time on multi-node NVIDIA GPUs for transformer models with a one-line addition for existing PyTorch training scripts. [Learn more &rarr;](https://www.onnxruntime.ai/docs/#onnx-runtime-for-training)
 
 
 ## Get Started
 
-**http://onnxruntime.ai/**
-* [Install](https://www.onnxruntime.ai/docs/get-started/install.html)
-* [Inference](https://www.onnxruntime.ai/docs/get-started/inference.html)
-* [Training](https://www.onnxruntime.ai/docs/get-started/training.html)
-* [Documentation](https://www.onnxruntime.ai/docs/)
-* [Samples and Tutorials](https://www.onnxruntime.ai/docs/tutorials/)
-* [Build Instructions](https://www.onnxruntime.ai/docs/how-to/build.html)
-* [Frequently Asked Questions](./docs/FAQ.md)
+**General Information**: [onnxruntime.ai](https://onnxruntime.ai)
+
+**Usage documention and tutorials**: [onnxruntime.ai/docs](https://onnxruntime.ai/docs)
+
+**Companion sample repositories**: 
+- ONNX Runtime Inferencing: [microsoft/onnxruntime-inference-examples](https://github.com/microsoft/onnxruntime-inference-examples)
+- ONNX Runtime Training: [microsoft/onnxruntime-training-examples](https://github.com/microsoft/onnxruntime-training-examples)
+
 
 ## Build Pipeline Status
 |System|CPU|GPU|EPs|
@@ -41,7 +31,7 @@ Common use cases for ONNX Runtime:
 
 ## Data/Telemetry
 
-This project may collect usage data and send it to Microsoft to help improve our products and services. See the [privacy statement](docs/Privacy.md) for more details.
+Windows distributions of this project may collect usage data and send it to Microsoft to help improve our products and services. See the [privacy statement](docs/Privacy.md) for more details.
 
 ## Contributions and Feedback
 
@@ -49,7 +39,7 @@ We welcome contributions! Please see the [contribution guidelines](CONTRIBUTING.
 
 For feature requests or bug reports, please file a [GitHub Issue](https://github.com/Microsoft/onnxruntime/issues).
 
-For general discussion or questions, please use [Github Discussions](https://github.com/microsoft/onnxruntime/discussions).
+For general discussion or questions, please use [GitHub Discussions](https://github.com/microsoft/onnxruntime/discussions).
 
 ## Code of Conduct
 

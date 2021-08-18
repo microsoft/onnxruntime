@@ -31,7 +31,7 @@ void RunTest(int64_t axis, const std::vector<int64_t> split_sizes, const ShapeAn
       test.AddAttribute("split", split_sizes);
     }
   } else if (!skip_split_if_empty) {
-    test.AddMissingOptionalInput<int64_t>();
+    test.AddOptionalInputEdge<int64_t>();
   }
 
   int i = 0;
@@ -92,6 +92,10 @@ static void SplitTestInt() {
                       7, 8}});
 
   RunTest<T>(axis, {}, input, outputs, false);  //TensorRT parser: Assertion failed: axis != BATCH_DIM
+}
+
+TEST(SplitOperatorTest, Axis0EqualSplitInt8) {
+  SplitTestInt<int8_t>();
 }
 
 TEST(SplitOperatorTest, Axis0EqualSplitInt32) {

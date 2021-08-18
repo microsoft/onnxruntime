@@ -25,7 +25,7 @@ def parse_arguments():
     parser.add_argument("--is_release_build", required=False, default=None, type=str,
                         help="Flag indicating if the build is a release build. Accepted values: true/false.")
     parser.add_argument("--execution_provider", required=False, default='None', type=str,
-                        choices=['dnnl', 'openvino', 'tensorrt', 'None'],
+                        choices=['cuda', 'dnnl', 'openvino', 'tensorrt', 'None'],
                         help="The selected execution provider for this build.")
 
     return parser.parse_args()
@@ -47,7 +47,15 @@ def generate_owners(list, owners):
     list.append('<owners>' + owners + '</owners>')
 
 
-def generate_description(list, description):
+def generate_description(list, package_name):
+    description = ''
+
+    if package_name == 'Microsoft.AI.MachineLearning':
+        description = 'This package contains Windows ML binaries.'
+    elif 'Microsoft.ML.OnnxRuntime' in package_name:  # This is a Microsoft.ML.OnnxRuntime.* package
+        description = 'This package contains native shared library artifacts ' \
+                      'for all supported platforms of ONNX Runtime.'
+
     list.append('<description>' + description + '</description>')
 
 
@@ -153,8 +161,7 @@ def generate_metadata(list, args):
     generate_version(metadata_list, args.package_version)
     generate_authors(metadata_list, 'Microsoft')
     generate_owners(metadata_list, 'Microsoft')
-    generate_description(metadata_list, 'This package contains native shared library artifacts '
-                                        'for all supported platforms of ONNX Runtime.')
+    generate_description(metadata_list, args.package_name)
     generate_copyright(metadata_list, '\xc2\xa9 ' + 'Microsoft Corporation. All rights reserved.')
     generate_tags(metadata_list, 'ONNX ONNX Runtime Machine Learning')
     generate_icon_url(metadata_list, 'https://go.microsoft.com/fwlink/?linkid=2049168')
@@ -177,7 +184,6 @@ def generate_files(list, args):
     is_dml_package = args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML'
     is_windowsai_package = args.package_name == 'Microsoft.AI.MachineLearning'
 
-    includes_cuda = is_cuda_gpu_package or is_cpu_package  # Why does the CPU package ship the cuda provider headers?
     includes_winml = is_windowsai_package
     includes_directml = (is_dml_package or is_windowsai_package) and not args.is_store_build and (
         args.target_architecture == 'x64' or args.target_architecture == 'x86')
@@ -195,6 +201,7 @@ def generate_files(list, args):
                               'dnnl_ep_shared_lib': 'onnxruntime_providers_dnnl.dll',
                               'tensorrt_ep_shared_lib': 'onnxruntime_providers_tensorrt.dll',
                               'openvino_ep_shared_lib': 'onnxruntime_providers_openvino.dll',
+                              'cuda_ep_shared_lib': 'onnxruntime_providers_cuda.dll',
                               'onnxruntime_perf_test': 'onnxruntime_perf_test.exe',
                               'onnx_test_runner': 'onnx_test_runner.exe'}
 
@@ -210,6 +217,7 @@ def generate_files(list, args):
                               'dnnl_ep_shared_lib': 'libonnxruntime_providers_dnnl.so',
                               'tensorrt_ep_shared_lib': 'libonnxruntime_providers_tensorrt.so',
                               'openvino_ep_shared_lib': 'libonnxruntime_providers_openvino.so',
+                              'cuda_ep_shared_lib': 'libonnxruntime_providers_cuda.so',
                               'onnxruntime_perf_test': 'onnxruntime_perf_test',
                               'onnx_test_runner': 'onnx_test_runner'}
 
@@ -229,16 +237,13 @@ def generate_files(list, args):
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path,
                                                         'include\\onnxruntime\\core\\session\\onnxruntime_*.h') +
                       '" target="build\\native\\include" />')
+    files_list.append('<file src=' + '"' + os.path.join(args.sources_path,
+                                                        'include\\onnxruntime\\core\\framework\\provider_options.h') +
+                      '" target="build\\native\\include" />')
     files_list.append('<file src=' + '"' +
                       os.path.join(args.sources_path,
                                    'include\\onnxruntime\\core\\providers\\cpu\\cpu_provider_factory.h') +
                       '" target="build\\native\\include" />')
-
-    if includes_cuda:
-        files_list.append('<file src=' + '"' +
-                          os.path.join(args.sources_path,
-                                       'include\\onnxruntime\\core\\providers\\cuda\\cuda_provider_factory.h') +
-                          '" target="build\\native\\include" />')
 
     if args.execution_provider == 'openvino':
         files_list.append('<file src=' + '"' +
@@ -335,6 +340,9 @@ def generate_files(list, args):
                           nuget_dependencies['providers_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                          nuget_dependencies['cuda_ep_shared_lib']) +
+                          runtimes_target + args.target_architecture + '\\native" />')
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['tensorrt_ep_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
 
@@ -352,6 +360,14 @@ def generate_files(list, args):
                           runtimes_target + args.target_architecture + '\\native" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['openvino_ep_shared_lib']) +
+                          runtimes_target + args.target_architecture + '\\native" />')
+
+    if args.execution_provider == "cuda" or is_cuda_gpu_package:
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                          nuget_dependencies['providers_shared_lib']) +
+                          runtimes_target + args.target_architecture + '\\native" />')
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                          nuget_dependencies['cuda_ep_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
 
     # process all other library dependencies
@@ -468,7 +484,7 @@ def validate_platform():
 
 def validate_execution_provider(execution_provider):
     if is_linux():
-        if not (execution_provider == 'None' or execution_provider == 'dnnl'
+        if not (execution_provider == 'None' or execution_provider == 'dnnl' or execution_provider == 'cuda'
                 or execution_provider == 'tensorrt' or execution_provider == 'openvino'):
             raise Exception('On Linux platform nuget generation is supported only '
                             'for cpu|cuda|dnnl|tensorrt|openvino execution providers.')

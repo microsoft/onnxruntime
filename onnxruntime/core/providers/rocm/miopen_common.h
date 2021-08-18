@@ -44,5 +44,17 @@ struct Consts<half> {
   static const float One;
 };
 
+// As of ROCm 4.2, miopenReduceTensor() requires alpha/beta to be the same data
+// type as the input type. This differs from cudnnReduceTensor() and other
+// MIOpen/cuDNN APIs where alpha/beta are float when input type is half (float16).
+//
+// NOTE: this workaround can be removed in ROCm 4.3:
+//       https://github.com/ROCmSoftwarePlatform/MIOpen/pull/914
+template <typename ElemType>
+struct ReduceConsts {
+  static const ElemType Zero;
+  static const ElemType One;
+};
+
 }  // namespace rocm
 }  // namespace onnxruntime

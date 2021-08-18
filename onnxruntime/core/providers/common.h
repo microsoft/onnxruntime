@@ -6,8 +6,10 @@
 #include <cstdint>
 #include <functional>
 
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
+#endif
 
 namespace onnxruntime {
 
@@ -135,9 +137,9 @@ inline Status ComputePadAndOutputShape(const int64_t in_dim,
   return Status::OK();
 }
 
-template <class Map, class Key>
-inline bool Contains(const Map& map, const Key& key) {
-  return map.find(key) != map.end();
+template <class AssociativeContainer, class Key>
+inline bool Contains(const AssociativeContainer& container, const Key& key) {
+  return container.find(key) != container.end();
 }
 
 // Note: This helper function will not have overflow protection
