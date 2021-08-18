@@ -81,6 +81,7 @@ tar --strip 1 -xf /tmp/src/node-v12.16.3-linux-x64.tar.gz -C /usr
 cd /tmp/src
 GetFile https://downloads.gradle-dn.com/distributions/gradle-6.3-bin.zip /tmp/src/gradle-6.3-bin.zip
 unzip /tmp/src/gradle-6.3-bin.zip
+rm -rf/usr/local/gradle/*
 mv /tmp/src/gradle-6.3 /usr/local/gradle
 
 if ! [ -x "$(command -v protoc)" ]; then
