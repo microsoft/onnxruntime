@@ -769,45 +769,49 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     set(onnx_test_runner_common_srcs ${onnx_test_runner_common_srcs})
     set(GETOPT_LIB_WIDE win_getopt_wide)
   endif()
+endif()
 
+set(onnx_test_libs
+  onnxruntime_test_utils
+  ${ONNXRUNTIME_TEST_LIBS}
+  onnx_test_data_proto
+  ${onnxruntime_EXTERNAL_LIBRARIES})
 
-  set(onnx_test_libs
-    onnxruntime_test_utils
-    ${ONNXRUNTIME_TEST_LIBS}
-    onnx_test_data_proto
-    ${onnxruntime_EXTERNAL_LIBRARIES})
+if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+  list(APPEND onnx_test_libs onnxruntime_language_interop onnxruntime_pyop)
+endif()
 
-  if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-    list(APPEND onnx_test_libs onnxruntime_language_interop onnxruntime_pyop)
+onnxruntime_add_executable(onnx_test_runner ${onnx_test_runner_src_dir}/main.cc)
+if(MSVC)
+  target_compile_options(onnx_test_runner PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
+          "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
+endif()
+if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+  set_target_properties(onnx_test_runner PROPERTIES
+    XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
+  )
+endif()
+
+target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
+target_include_directories(onnx_test_runner PRIVATE ${ONNXRUNTIME_ROOT})
+if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+  target_link_libraries(onnx_test_runner PRIVATE Python::Python)
+endif()
+set_target_properties(onnx_test_runner PROPERTIES FOLDER "ONNXRuntimeTest")
+
+if (onnxruntime_USE_TVM)
+  if (WIN32)
+    target_link_options(onnx_test_runner PRIVATE "/STACK:4000000")
   endif()
+endif()
 
-  onnxruntime_add_executable(onnx_test_runner ${onnx_test_runner_src_dir}/main.cc)
-  if(MSVC)
-    target_compile_options(onnx_test_runner PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
-            "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
-  endif()
-  if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
-    set_target_properties(onnx_test_runner PROPERTIES
-      XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
-    )
-  endif()
+install(TARGETS onnx_test_runner
+        ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        BUNDLE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-  target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
-  target_include_directories(onnx_test_runner PRIVATE ${ONNXRUNTIME_ROOT})
-  set_target_properties(onnx_test_runner PROPERTIES FOLDER "ONNXRuntimeTest")
-
-  if (onnxruntime_USE_TVM)
-    if (WIN32)
-      target_link_options(onnx_test_runner PRIVATE "/STACK:4000000")
-    endif()
-  endif()
-
-  install(TARGETS onnx_test_runner
-          ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-          LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-          BUNDLE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
-          RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
-
+if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   if(onnxruntime_BUILD_BENCHMARKS)
     SET(BENCHMARK_DIR ${TEST_SRC_DIR}/onnx/microbenchmark)
     onnxruntime_add_executable(onnxruntime_benchmark
@@ -1159,39 +1163,37 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   endif()
 endif()
 
-  # limit to only test on windows first, due to a runtime path issue on linux
-  if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
-                                    AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
-                                    AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Android")
-                                    AND NOT onnxruntime_BUILD_WEBASSEMBLY
-                                    AND NOT onnxruntime_USE_ROCM)
-    file(GLOB_RECURSE test_execution_provider_srcs
-      "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.h"
-      "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.cc"
-      "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
-      "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
-    )
+# limit to only test on windows first, due to a runtime path issue on linux
+if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
+                                  AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
+                                  AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Android")
+                                  AND NOT onnxruntime_BUILD_WEBASSEMBLY
+                                  AND NOT onnxruntime_USE_ROCM)
+  file(GLOB_RECURSE test_execution_provider_srcs
+    "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.h"
+    "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
+  )
 
-    onnxruntime_add_shared_library_module(test_execution_provider ${test_execution_provider_srcs})
-    add_dependencies(test_execution_provider onnxruntime_providers_shared onnx)
-    target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared)
-    target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnx,INTERFACE_INCLUDE_DIRECTORIES>)
-    target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnxruntime_common,INTERFACE_INCLUDE_DIRECTORIES>)
-    target_include_directories(test_execution_provider PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${ORTTRAINING_ROOT})
-    if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-      target_link_libraries(test_execution_provider PRIVATE Python::Python)
-    endif()
-    if(APPLE)
-      set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/exported_symbols.lst")
-    elseif(UNIX)
-      set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/version_script.lds -Xlinker --gc-sections -Xlinker -rpath=\\$ORIGIN")
-    elseif(WIN32)
-      set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/symbols.def")
-    else()
-      message(FATAL_ERROR "test_execution_provider unknown platform, need to specify shared library exports for it")
-    endif()
+  onnxruntime_add_shared_library_module(test_execution_provider ${test_execution_provider_srcs})
+  add_dependencies(test_execution_provider onnxruntime_providers_shared onnx)
+  target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared)
+  target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnx,INTERFACE_INCLUDE_DIRECTORIES>)
+  target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnxruntime_common,INTERFACE_INCLUDE_DIRECTORIES>)
+  target_include_directories(test_execution_provider PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${ORTTRAINING_ROOT})
+  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+    target_link_libraries(test_execution_provider PRIVATE Python::Python)
   endif()
-
-if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-  include(onnxruntime_fuzz_test.cmake)
+  if(APPLE)
+    set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/exported_symbols.lst")
+  elseif(UNIX)
+    set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/version_script.lds -Xlinker --gc-sections -Xlinker -rpath=\\$ORIGIN")
+  elseif(WIN32)
+    set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/symbols.def")
+  else()
+    message(FATAL_ERROR "test_execution_provider unknown platform, need to specify shared library exports for it")
+  endif()
 endif()
+
+include(onnxruntime_fuzz_test.cmake)
