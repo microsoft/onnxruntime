@@ -456,6 +456,20 @@ class PlannerImpl {
     return ci.kernel_def->HasExternalOutputs();
   }
 
+  size_t GetATenOpContextIdIndex(const Node& node) const {
+    size_t index = node.OutputDefs().size();
+    if (node.GetExecutionProviderType() == kCudaExecutionProvider && node.OpType() == "ATenOp" &&
+        node.Domain() == kMSDomain) {
+      const auto& attrs = node.GetAttributes();
+      std::string attr_name = "requires_grad";
+      if (attrs.find(attr_name) != attrs.end() && utils::HasInts(attrs.at(attr_name)) &&
+          !attrs.at(attr_name).ints().empty()) {
+        index = node.OutputDefs().size() - 1;
+      }
+    }
+    return index;
+  }
+
   Status ComputeUseCounts() {
     // Note: for every ml-value, its definition must appear before all its uses in a topological sort of a valid model
     std::unordered_set<std::string> graph_inputs;
@@ -541,6 +555,7 @@ class PlannerImpl {
       auto outputs = pnode->OutputDefs();
       auto num_outputs = outputs.size();
       bool has_external_outputs = HasExternalOutputs(*pnode);
+      size_t context_id_index = GetATenOpContextIdIndex(*pnode);
       for (size_t i = 0; i < num_outputs; ++i) {
         auto* node_output = outputs[i];
         if (!node_output->Exists()) continue;
@@ -548,7 +563,8 @@ class PlannerImpl {
         ProcessDef(index, node_output);
         // Ensures external outputs will not be reused.
         UseCount(index) += (has_external_outputs ? 2 : 1);
-        auto allocator = exec_provider->GetAllocator(0, p_kernel_def->OutputMemoryType(i));
+        OrtMemType mem_type = i == context_id_index ? OrtMemTypeCPUInput : p_kernel_def->OutputMemoryType(i);
+        auto allocator = exec_provider->GetAllocator(0, mem_type);
         ORT_ENFORCE(allocator);
         plan_.SetLocation(static_cast<size_t>(index),
                           allocator->Info());

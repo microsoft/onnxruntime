@@ -189,6 +189,7 @@ struct EinsumTypedComputeProcessor;
 
 namespace contrib {
 class ATenOp;
+class ATenOpGrad;
 class Group;
 class PassThrough;
 class YieldOp;

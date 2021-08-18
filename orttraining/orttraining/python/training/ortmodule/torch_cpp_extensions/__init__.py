@@ -38,7 +38,8 @@ def run_once_aten_op_executor(f):
 def _load_aten_op_executor_cpp_extension():
     from onnxruntime.training.ortmodule.torch_cpp_extensions import aten_op_executor
     C.register_aten_op_executor(str(aten_op_executor.is_tensor_argument_address()),
-                                str(aten_op_executor.execute_aten_operator_address()))
+                                str(aten_op_executor.execute_aten_operator_address()),
+                                str(aten_op_executor.execute_aten_op_backward_address()))
 
 
 def _load_aten_op_executor_cpp_extension_if_needed(onnx_model):

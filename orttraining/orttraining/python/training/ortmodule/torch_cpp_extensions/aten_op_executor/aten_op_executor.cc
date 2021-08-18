@@ -116,6 +116,7 @@ class ATenOperatorCache {
     return instance;
   }
 
+  // TODO: add lock. Currently we are executing nodes sequentially, so lock is not needed.
   const ATenOperator& GetOperator(const std::string& op_name, const std::string& overload_name) {
     auto key = std::make_pair(op_name, overload_name);
     if (ops_.find(key) == ops_.end()) {
@@ -159,6 +160,46 @@ class ATenOperatorCache {
   std::unordered_map<std::pair<std::string, std::string>, ATenOperator, PairHash> ops_;
 };
 
+// AutogradContext saves forward inputs that require grad, and the output tensor.
+// Backward executor will call output.backward, and fetch input grads from input tensors.
+struct AutogradContext {
+  std::vector<c10::IValue> inputs;
+  std::vector<bool> is_optional_inputs;
+  c10::IValue output;
+};
+
+class AutogradContextCache {
+ public:
+  static AutogradContextCache& Instance() {
+    static AutogradContextCache instance;
+    return instance;
+  }
+
+  // TODO: add lock. Currently we are executing nodes sequentially, so lock is not needed.
+  int64_t Insert(const AutogradContext& autograd_context) {
+    int64_t context_id = CreateId();
+    autograd_contexts_.emplace(context_id, autograd_context);
+    return context_id;
+  }
+
+  AutogradContext Pop(int64_t context_id) {
+    auto it = autograd_contexts_.find(context_id);
+    TORCH_INTERNAL_ASSERT(it != autograd_contexts_.end());
+    AutogradContext autograd_context = it->second;
+    autograd_contexts_.erase(it);
+    return autograd_context;
+  }
+
+ private:
+  static int64_t CreateId() {
+    static std::atomic<int64_t> context_id_{0};
+    return context_id_++;
+  }
+
+  AutogradContextCache() = default;
+  std::unordered_map<int64_t, AutogradContext> autograd_contexts_;
+};
+
 // Backend uses this function to check if an argument is CPU input (non-tensor argument) or not.
 bool IsTensorArgument(const char* op_name, const char* overload_name, size_t index) {
   const auto& aten_op = ATenOperatorCache::Instance().GetOperator(op_name, overload_name);
@@ -166,8 +207,31 @@ bool IsTensorArgument(const char* op_name, const char* overload_name, size_t ind
   return aten_op.elem_kinds[index] == c10::TypeKind::TensorType;
 }
 
+c10::IValue ExecuteInternal(const std::shared_ptr<torch::jit::Operator>& op, const std::vector<c10::IValue>& arguments,
+                            size_t return_size, std::vector<DLManagedTensor*>& result) {
+  torch::jit::Stack stack;
+  for (size_t i = 0; i < arguments.size(); i++) {
+    torch::jit::push(stack, arguments[i]);
+  }
+
+  op->getOperation()(&stack);
+  c10::IValue first_output;
+  bool is_first = true;
+  for (const auto& ret : torch::jit::pop(stack, return_size)) {
+    if (is_first) {
+      first_output = ret;
+      is_first = false;
+    }
+    const auto& tensor = ret.toTensor();
+    result.emplace_back(at::toDLPack(tensor.is_contiguous() ? tensor : tensor.contiguous()));
+  }
+
+  return first_output;
+}
+
 std::vector<DLManagedTensor*> ExecuteATenOperator(const char* op_name, const char* overload_name,
-                                                  const std::vector<DLManagedTensor*>& dlpacks) {
+                                                  const std::vector<DLManagedTensor*>& dlpacks,
+                                                  const std::vector<int64_t>& requires_grad, int64_t* p_context_id) {
   const auto& aten_op = ATenOperatorCache::Instance().GetOperator(op_name, overload_name);
   TORCH_INTERNAL_ASSERT(dlpacks.size() == aten_op.argument_size);
   std::vector<c10::IValue> arguments;
@@ -175,16 +239,45 @@ std::vector<DLManagedTensor*> ExecuteATenOperator(const char* op_name, const cha
     arguments.emplace_back(aten_op.ToIValueArgument(dlpacks[i], i));
   }
 
-  torch::jit::Stack stack;
-  for (size_t i = 0; i < arguments.size(); i++) {
-    torch::jit::push(stack, arguments[i]);
+  AutogradContext autograd_context;
+  for (size_t i = 0; i < requires_grad.size(); i++) {
+    bool is_optional = aten_op.is_optional_arguments[i];
+    if (is_optional) {
+      arguments[i].toOptional<at::Tensor>().value().requires_grad_(true);
+    } else {
+      arguments[i].toTensor().requires_grad_(true);
+    }
+
+    autograd_context.inputs.emplace_back(arguments[i]);
+    autograd_context.is_optional_inputs.emplace_back(is_optional);
   }
 
-  aten_op.op->getOperation()(&stack);
+  TORCH_INTERNAL_ASSERT(p_context_id || requires_grad.empty());
   std::vector<DLManagedTensor*> result;
-  for (const auto& ret : torch::jit::pop(stack, aten_op.return_size)) {
-    const auto& tensor = ret.toTensor();
-    result.emplace_back(at::toDLPack(tensor.is_contiguous() ? tensor : tensor.contiguous()));
+  if (p_context_id) {
+    // We need to enable Autograd in case there is not.
+    c10::AutoGradMode auto_grad_mode(true);
+    autograd_context.output = ExecuteInternal(aten_op.op, arguments, aten_op.return_size, result);
+    *p_context_id = AutogradContextCache::Instance().Insert(autograd_context);
+  } else {
+    ExecuteInternal(aten_op.op, arguments, aten_op.return_size, result);
+  }
+
+  return result;
+}
+
+std::vector<DLManagedTensor*> ExecuteATenOpBackward(DLManagedTensor* dlpack, int64_t context_id) {
+  // Add this according to the PyGILState_Check in torch/csrc/autograd/python_engine.cpp.
+  // Otherwise, the autograd engine will not work.
+  pybind11::gil_scoped_release no_gil;
+  AutogradContext autograd_context = AutogradContextCache::Instance().Pop(context_id);
+  autograd_context.output.toTensor().backward(at::fromDLPack(dlpack));
+  std::vector<DLManagedTensor*> result;
+  for (size_t i = 0; i < autograd_context.inputs.size(); i++) {
+    at::Tensor intput_grad = autograd_context.is_optional_inputs[i]
+                                 ? autograd_context.inputs[i].toOptional<at::Tensor>().value().grad()
+                                 : autograd_context.inputs[i].toTensor().grad();
+    result.emplace_back(at::toDLPack(intput_grad.is_contiguous() ? intput_grad : intput_grad.contiguous()));
   }
 
   return result;
@@ -192,8 +285,10 @@ std::vector<DLManagedTensor*> ExecuteATenOperator(const char* op_name, const cha
 
 size_t is_tensor_argument_address() { return reinterpret_cast<size_t>(&IsTensorArgument); }
 size_t execute_aten_operator_address() { return reinterpret_cast<size_t>(&ExecuteATenOperator); }
+size_t execute_aten_op_backward_address() { return reinterpret_cast<size_t>(&ExecuteATenOpBackward); }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("is_tensor_argument_address", &is_tensor_argument_address, "Address of tensor argument check.");
   m.def("execute_aten_operator_address", &execute_aten_operator_address, "Address of Aten operator executor");
+  m.def("execute_aten_op_backward_address", &execute_aten_op_backward_address, "Address of Aten op backward executor");
 }

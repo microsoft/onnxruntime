@@ -301,6 +301,8 @@ class GradientBuilderBase {
 
   AttributeProto AttributeDefinitionToAttributeProto(const GradientNodeAttributeDefinition& attr_def) const;
 
+  void HandleATenOpGradient(const std::vector<int64_t>& requires_grad) const;
+
  private:
   friend class GradientGraphBuilder;
 

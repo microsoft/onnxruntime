@@ -75,46 +75,12 @@ def register_gradient(domain, name, *attributes):
     return gradient_wrapper
 
 
-# For ATenOp, we need to provide op_name and overload name.
-@register_gradient('com.microsoft', 'ATenOp', 'aten::embedding', '')
-def embedding_gradient():
-    return [
-        ('Constant', [], ['Const_0'], {'value': {'value': 0, 'dtype': 'int', 'is_tensor': True}}),
-        ('Shape', ['I(0)'], ['Shape_X']),
-        ('Gather', ['Shape_X', 'Const_0'], ['Gather_X_0'], {'axis': {'value': 0, 'dtype': 'int'}}),
-        (('ATenOp', 'com.microsoft'), ['GO(0)', 'I(1)', 'Gather_X_0', 'I(2)', 'I(3)', 'I(4)'], [
-         'GI(0)'], {'name': {'value': 'aten::embedding_backward', 'dtype': 'string'}}),
-    ]
-
-
-@register_gradient('com.microsoft', 'ATenOp', 'aten::max_pool2d_with_indices', '')
-def max_pool2d_gradient():
-    return [
-        (('ATenOp', 'com.microsoft'), ['GO(0)', 'I(0)', 'I(1)', 'I(2)', 'I(3)', 'I(4)', 'I(5)', 'O(1)'], [
-         'GI(0)'], {'name': {'value': 'aten::max_pool2d_with_indices_backward', 'dtype': 'string'}}),
-    ]
-
-
-@register_gradient('com.microsoft', 'ATenOp', 'aten::unfold', '')
-def unfold_gradient():
-    return [
-        ('Shape', ['I(0)'], ['Shape_X']),
-        (('ATenOp', 'com.microsoft'), ['GO(0)', 'Shape_X', 'I(1)', 'I(2)', 'I(3)'], [
-         'GI(0)'], {'name': {'value': 'aten::unfold_backward', 'dtype': 'string'}}),
-    ]
-
-
-@register_gradient('com.microsoft', 'ATenOp', 'aten::avg_pool2d', '')
-def avg_pool2d_gradient():
-    return [
-        (('ATenOp', 'com.microsoft'), ['GO(0)', 'I(0)', 'I(1)', 'I(2)', 'I(3)', 'I(4)', 'I(5)', 'I(6)'], [
-         'GI(0)'], {'name': {'value': 'aten::avg_pool2d_backward', 'dtype': 'string'}}),
-    ]
-
-
-@register_gradient('com.microsoft', 'ATenOp', 'aten::_adaptive_avg_pool2d', '')
-def adaptive_avg_pool2d_gradient():
-    return [
-        (('ATenOp', 'com.microsoft'), ['GO(0)', 'I(0)'], [
-         'GI(0)'], {'name': {'value': 'aten::_adaptive_avg_pool2d_backward', 'dtype': 'string'}}),
-    ]
+# For ATenOp, need to provide op_name and overload name. For example:
+#
+# @register_gradient('com.microsoft', 'ATenOp', 'aten::unfold', '')
+# def unfold_gradient():
+#     return [
+#         ('Shape', ['I(0)'], ['Shape_X']),
+#         (('ATenOp', 'com.microsoft'), ['GO(0)', 'Shape_X', 'I(1)', 'I(2)', 'I(3)'], [
+#          'GI(0)'], {'name': {'value': 'aten::unfold_backward', 'dtype': 'string'}}),
+#     ]

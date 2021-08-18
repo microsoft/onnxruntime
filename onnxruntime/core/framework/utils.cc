@@ -782,7 +782,8 @@ bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index)
   }
 
 #ifdef ENABLE_TRAINING
-  if (node.GetExecutionProviderType() == kCudaExecutionProvider && node.OpType() == "ATenOp" && node.Domain() == kMSDomain) {
+  if (node.GetExecutionProviderType() == kCudaExecutionProvider && node.OpType() == "ATenOp" &&
+      node.Domain() == kMSDomain) {
     const auto& attrs = node.GetAttributes();
     ORT_ENFORCE(utils::HasString(attrs.at("name")));
     std::string op_name = attrs.at("name").s();
@@ -796,6 +797,22 @@ bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index)
 #else
   ORT_UNUSED_PARAMETER(node);
 #endif
+
+  return false;
+}
+
+bool IsOutputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index) {
+  if (p_kci && p_kci->kernel_def->IsOutputOnCpu(index)) {
+    return true;
+  }
+
+  if (node.GetExecutionProviderType() == kCudaExecutionProvider && node.OpType() == "ATenOp" &&
+      node.Domain() == kMSDomain) {
+    const auto& attrs = node.GetAttributes();
+    std::string attr_name = "requires_grad";
+    return attrs.find(attr_name) != attrs.end() && utils::HasInts(attrs.at(attr_name)) &&
+           !attrs.at(attr_name).ints().empty() && index == node.OutputDefs().size() - 1;
+  }
 
   return false;
 }

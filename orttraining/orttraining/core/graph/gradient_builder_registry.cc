@@ -105,6 +105,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Identity", GetIdentityGradient);
   REGISTER_GRADIENT_BUILDER("PythonOp", GetPythonOpGradient);
   REGISTER_GRADIENT_BUILDER("ScatterND", GetScatterNDGradient);
+  REGISTER_GRADIENT_BUILDER("ATenOp", GetATenOpGradient);
 
   REGISTER_GRADIENT_BUILDER("ExternalGradient", GetExternalGradient);
 };

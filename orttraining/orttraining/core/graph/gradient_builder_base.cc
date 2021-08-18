@@ -405,5 +405,22 @@ AttributeProto GradientBuilderBase::AttributeDefinitionToAttributeProto(
   return attr_proto;
 }
 
+// NOTE THAT we are changing the ATenOp forward node. If any of the input requires grad, we need to:
+// 1. set the requires_grad attribute in ATenOp so we can get this info during ATenOp forward execution and pass to
+// ATenOp executor.
+// 2. Append a new CPU INT scalar to outputs to pass context ID to ATenOpGrad for backward execution.
+void GradientBuilderBase::HandleATenOpGradient(const std::vector<int64_t>& requires_grad) const {
+  Node* p_node = graph_->GetNode(node_->Index());
+  ORT_ENFORCE(!requires_grad.empty() && p_node->OpType() == "ATenOp" && p_node->Domain() == kMSDomain);
+  p_node->GetMutableAttributes().emplace("requires_grad",
+                                         ONNX_NAMESPACE::MakeAttribute("requires_grad", requires_grad));
+  ONNX_NAMESPACE::TypeProto scalar_int64;
+  scalar_int64.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  scalar_int64.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  NodeArg* p_node_arg = &graph_->GetOrCreateNodeArg(unique_node_prefix_ + "context_id", &scalar_int64);
+  p_node->MutableOutputDefs().emplace_back(p_node_arg);
+  graph_->AddValueInfo(p_node_arg);
+}
+
 }  // namespace training
 }  // namespace onnxruntime

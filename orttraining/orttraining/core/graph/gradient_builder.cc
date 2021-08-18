@@ -1734,6 +1734,26 @@ IMPLEMENT_GRADIENT_BUILDER(GetExternalGradient) {
   return result;
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetATenOpGradient) {
+  size_t num_inputs = GetSrcNodeInputSize();
+  std::vector<int64_t> requires_grad;
+  std::vector<ArgDef> output_args;
+  for (size_t i = 0; i < num_inputs; i++) {
+    if (IsGradientRequiredForSrcNodeInput(i)) {
+      requires_grad.emplace_back(static_cast<int64_t>(i));
+      output_args.emplace_back(GI(i));
+    }
+  }
+
+  if (requires_grad.empty()) {
+    return std::vector<NodeDef>{};
+  }
+
+  HandleATenOpGradient(requires_grad);
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"ATenOpGrad", kMSDomain, 1}, {GO(0), O(GetSrcNodeOutputSize() - 1)}, output_args)};
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
   std::vector<NodeDef> result;
   auto src_attrs = SrcNodeAttributes();
