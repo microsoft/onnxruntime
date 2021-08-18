@@ -81,11 +81,11 @@ tar --strip 1 -xf /tmp/src/node-v12.16.3-linux-x64.tar.gz -C /usr
 cd /tmp/src
 GetFile https://downloads.gradle-dn.com/distributions/gradle-6.3-bin.zip /tmp/src/gradle-6.3-bin.zip
 unzip /tmp/src/gradle-6.3-bin.zip
-rm -rf /usr/local/gradle/*
+# rm -rf /usr/local/gradle/*
 mv /tmp/src/gradle-6.3 /usr/local/gradle
 
 if ! [ -x "$(command -v protoc)" ]; then
-  source ${0/%install_deps.sh/..\/install_protobuf.sh}
+  source ${0/%install_deps_eager.sh/..\/install_protobuf.sh}
 fi
 
 export ONNX_ML=1
@@ -93,8 +93,8 @@ export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
 
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
 do
-  ${PYTHON_EXE} -m pip install -r ${0/%install_deps\.sh/requirements\.txt}
-  ${PYTHON_EXE} -m pip install -r ${0/%install_deps\.sh/..\/training\/ortmodule\/stage1\/requirements_torch_eager_cpu.txt}
+  ${PYTHON_EXE} -m pip install -r ${0/%install_deps_eager\.sh/requirements\.txt}
+  ${PYTHON_EXE} -m pip install -r ${0/%install_deps_eager\.sh/..\/training\/ortmodule\/stage1\/requirements_torch_eager_cpu.txt}
 done
 
 cd /tmp/src
