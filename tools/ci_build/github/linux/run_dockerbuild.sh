@@ -88,7 +88,9 @@ elif [ $BUILD_OS = "yocto" ]; then
 elif [ $BUILD_DEVICE = "gpu" ]; then
         # This code path is only for training. Inferecing pipeline uses CentOS
         IMAGE="$BUILD_OS-gpu_training"
-        # Training did not need build shared library
+        # Current build script doesn't support building shared lib with Python dependency. To enable building with PythonOp,
+        # We need to avoid `--no-undefined` when building shared lib (Otherwise, CIs will report `undefined symbols`), but removing that would bring some other concerns.
+        # Plus the fact training did not need build shared library, we disable the --build_shared_lib for training CIs.
         NEED_BUILD_SHARED_LIB=false
         INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -t"
         if [[ $INSTALL_DEPS_DISTRIBUTED_SETUP = true ]]; then
