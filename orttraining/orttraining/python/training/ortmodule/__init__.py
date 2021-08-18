@@ -43,6 +43,10 @@ except ORTModuleFallbackException as e:
 except ImportError as e:
     raise RuntimeError(f'PyTorch {MINIMUM_RUNTIME_PYTORCH_VERSION_STR} must be installed in order to run ONNX Runtime ORTModule frontend!') from e
 
+# PyTorch custom Autograd function support
+from ._custom_autograd_function import enable_custom_autograd_support
+enable_custom_autograd_support()
+
 # Verify whether PyTorch C++ extensions are already compiled
 
 if not is_torch_cpp_extensions_installed(TORCH_CPP_DIR) and '-m' not in sys.argv:

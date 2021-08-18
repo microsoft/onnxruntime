@@ -126,9 +126,6 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # PyTorch custom Autograd function support
         self._enable_custom_autograd_function = False
-        if self._enable_custom_autograd_function:
-            from ._custom_autograd_function import enable_custom_autograd_support
-            enable_custom_autograd_support()
 
         self._input_info = None
         self._module_output_schema = None
