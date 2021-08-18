@@ -14,6 +14,15 @@ from onnxruntime.training.ortmodule import ORTModule
 torch.manual_seed(1)
 onnxruntime.set_seed(1)
 
+def torch_version_lower_than(v):
+    current_versions = torch.__version__.split("+")[0].split(".")
+    target_verions = v.split("+")[0].split(".")
+    assert len(current_versions) == len(target_verions)
+    for v1, v2 in zip(current_versions, target_verions):
+        if int(v1) > int(v2):
+            return False
+    
+    return True
 
 def test_GeLU():
     @torch.jit.script
@@ -562,7 +571,8 @@ def test_EvalTest():
     # Test pure inferencing scenarios, when inputs don't requires_grad.
     run_evaluate_test_and_compare(model_builder, input_generator, label_input)
 
-
+@pytest.mark.skipif(torch_version_lower_than("1.10.0"),
+    reason='PyTorch older than 1.10.0 has bugs for exporting multiple output custom function')
 def test_TwoOutputFunction():
     class TwoOutputFunction(torch.autograd.Function):
         @staticmethod
@@ -697,7 +707,8 @@ def test_InnerModuleCall():
     result_pth = get_inner_module_call_result(x.detach(), 'cpu', False)
     compare_tensor_list(result_ort, result_pth)
 
-
+@pytest.mark.skipif(torch_version_lower_than("1.10.0"),
+    reason='PyTorch older than 1.10.0 has bugs for exporting multiple output custom function')
 def test_Share_Input():
     class TwoOutputFunction(torch.autograd.Function):
         @staticmethod
@@ -817,7 +828,8 @@ def test_GeLU_When_Autograd_Func_Fallback_Not_Enabled():
         inputs_on_device = [x_ort.to(device)]
         output = model(*inputs_on_device)
     except RuntimeError as e:
-        assert "Detected autograd functions usage in current model, the run will fail" in str(e)
+        assert "This is an invalid model. Error in Node:PythonOp_" in str(e) and \
+            " has output size 1 not in range [min=" in str(e)
 
 def test_MultipleStream_InForwardFunction():
     class MultipleStreamFunction(torch.autograd.Function):
