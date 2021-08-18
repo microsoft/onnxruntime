@@ -281,20 +281,18 @@ Status ModelBuilder::RegisterInitializers() {
     std::tie(index, size, padded_size) = initializers[i++];
     const uint8_t* src = nullptr;
     // uint8_t data need unpack, need a holder for free memory after copy
-    std::unique_ptr<uint8_t[]> unpacked_tensor;
+    std::vector<uint8_t> unpacked_tensor;
     switch (tensor.data_type()) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
         src = reinterpret_cast<const uint8_t*>(GetTensorFloatData(tensor));
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-        size_t tensor_byte_size;
         ORT_RETURN_IF_ERROR(
-            onnxruntime::utils::UnpackInitializerData(tensor, graph_viewer_.ModelPath(),
-                                                      unpacked_tensor, tensor_byte_size));
-        ORT_RETURN_IF_NOT(size == tensor_byte_size,
-                          "initializer tensor: ", tensor.name(), "'s size: ", tensor_byte_size,
+            onnxruntime::utils::UnpackInitializerData(tensor, graph_viewer_.ModelPath(), unpacked_tensor));
+        ORT_RETURN_IF_NOT(size == unpacked_tensor.size(),
+                          "initializer tensor: ", tensor.name(), "'s size: ", unpacked_tensor.size(),
                           " should match the calculated size: ", size);
-        src = unpacked_tensor.get();
+        src = unpacked_tensor.data();
         break;
         // default:
         // We should not get anything else here since we already checked in the 1st pass

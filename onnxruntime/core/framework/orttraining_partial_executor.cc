@@ -233,6 +233,22 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
     // construct OpKernelContext
     // TODO: log kernel inputs?
     OpKernelContextInternal op_kernel_context(session_state, frame, *p_op_kernel, logger, false);
+
+    // Cache lookup. Currently we only cache single-output nodes,
+    // to keep memory overhead impact in check. Hence we only look in cache
+    // if the current node has one output.
+    bool reuse_cached_value = false;
+    std::string cached_arg_name;
+    if (cache_ != nullptr) {
+      if (p_op_kernel->Node().OutputDefs().size() == 1) {
+        cached_arg_name = p_op_kernel->Node().OutputDefs()[0]->Name();
+        if (cache_.get()->count(cached_arg_name)) {  // found arg in cache_
+          VLOGS(logger, 1) << "Found OrtValue in cache for arg: " << cached_arg_name;
+          reuse_cached_value = true;
+        }
+      }
+    }
+
     // TODO: log kernel outputs?
     if (is_profiler_enabled) {
       sync_time_begin = session_state.Profiler().StartTime();
@@ -312,7 +328,11 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
           ORT_RETURN_IF_ERROR(utils::VerifyInputTensorsAllocatedContiguously(&op_kernel_context));
         }
 #endif
-        compute_status = p_op_kernel->Compute(&op_kernel_context);
+        if (!reuse_cached_value) {
+          compute_status = p_op_kernel->Compute(&op_kernel_context);
+        } else {
+          compute_status = op_kernel_context.SetOutputMLValue(0, cache_.get()->at(cached_arg_name));
+        }
       }
       ORT_CATCH(const std::exception& ex) {
         ORT_HANDLE_EXCEPTION([&]() {
