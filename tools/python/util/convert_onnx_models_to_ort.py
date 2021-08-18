@@ -5,7 +5,6 @@ import argparse
 import os
 import pathlib
 import typing
-import sys
 
 import onnxruntime as ort
 from .ort_format_model import create_config_from_models
@@ -146,10 +145,6 @@ def _get_optimization_level(level):
     raise ValueError('Invalid optimization level of ' + level)
 
 
-def is_macOS():
-    return sys.platform.startswith("darwin")
-
-
 def parse_args():
     parser = argparse.ArgumentParser(
         os.path.basename(__file__),
@@ -219,12 +214,8 @@ def convert_onnx_models_to_ort():
     if args.use_nnapi and 'NnapiExecutionProvider' not in ort.get_available_providers():
         raise ValueError('The NNAPI Execution Provider was not included in this build of ONNX Runtime.')
 
-    if args.use_coreml:
-        if not is_macOS():
-            # Check if the script is run on a Mac Device in this case
-            raise ValueError('--use_coreml option requires a MacOS environment.')
-        if 'CoreMLExecutionProvider' not in ort.get_available_providers():
-            raise ValueError('The CoreML Execution Provider was not included in this build of ONNX Runtime.')
+    if args.use_coreml and 'CoreMLExecutionProvider' not in ort.get_available_providers():
+        raise ValueError('The CoreML Execution Provider was not included in this build of ONNX Runtime.')
 
     _convert(model_path_or_dir, args.optimization_level, args.use_nnapi, args.use_coreml, custom_op_library,
              args.save_optimized_onnx_model, args.allow_conversion_failures)

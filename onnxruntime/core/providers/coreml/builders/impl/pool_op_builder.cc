@@ -4,20 +4,24 @@
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/coreml/builders/helper.h"
-#include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
+#ifdef __APPLE__
+#include "core/providers/coreml/builders/model_builder.h"
+#include "builder_utils.h"
+#endif
 
 #include "base_op_builder.h"
-#include "builder_utils.h"
 
 namespace onnxruntime {
 namespace coreml {
 
 class PoolOpBuilder : public BaseOpBuilder {
   // Add operator related
+#ifdef __APPLE__
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+#endif
 
   // Operator support related
  private:
@@ -27,6 +31,7 @@ class PoolOpBuilder : public BaseOpBuilder {
 
 // Add operator related
 
+#ifdef __APPLE__
 Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                             const Node& node,
                                             const logging::Logger& logger) const {
@@ -105,6 +110,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
+#endif
 
 // Operator support related
 bool PoolOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& /* input_params */,
@@ -173,8 +179,8 @@ void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
       };
 
   op_registrations.builders.push_back(std::make_unique<PoolOpBuilder>());
-  for (const auto& op_type : op_types) {
-    op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+  for (const auto& type : op_types) {
+    op_registrations.op_builder_map.emplace(type, op_registrations.builders.back().get());
   }
 }
 
