@@ -15,7 +15,7 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_eager_cpu
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuild
@@ -40,7 +40,7 @@ jobs:
               --skip_submodule_sync \
               --build_shared_lib \
               --parallel \
-              --build_wheel --enable_training\
+              --build_wheel --build_eager_mode --enable_training --enable_pybind\
               --enable_onnx_tests \
               --update --build
       workingDirectory: $(Build.SourcesDirectory)
@@ -59,26 +59,6 @@ jobs:
          python3 -m pip install -r $(Build.BinariesDirectory)/requirements_torch_eager_cpu.txt
          ln -sf /data/models $(Build.BinariesDirectory)
          
-  - task: CmdLine@2
-    displayName: 'build_eager'
-    inputs:
-      script: |
-        mkdir -p $HOME/.onnx
-        docker run --rm \
-          --volume /data/onnx:/data/onnx:ro \
-          --volume $(Build.SourcesDirectory):/onnxruntime_src \
-          --volume $(Build.BinariesDirectory):/build \
-          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
-          -e NIGHTLY_BUILD \
-          -e BUILD_BUILDNUMBER \
-          onnxruntimecpubuild \
-            /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-              --build_dir /build --cmake_generator Ninja \
-              --parallel \
-              --build_eager_mode --enable_training --enable_pybind
-      workingDirectory: $(Build.SourcesDirectory)
-
   - task: CmdLine@2
     displayName: 'Install Release python package'
     inputs:
