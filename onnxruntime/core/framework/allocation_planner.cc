@@ -544,7 +544,7 @@ class PlannerImpl {
           } else {
             // Only process if within a subgraph and if there is no explicit consumer of an
             // outer scope arg or a sub-graph input at this graph level
-            if (is_subgraph && is_outer_scope_arg && arg_has_explicit_consumer.count(index) == 0) {
+            if (is_subgraph && arg_has_explicit_consumer.count(index) == 0) {
               auto iter = outer_scope_arg_to_location_map_.find(name);
               ORT_ENFORCE(iter != outer_scope_arg_to_location_map_.end());
               plan_.SetLocation(static_cast<size_t>(index), iter->second);

@@ -368,7 +368,8 @@ class SessionState {
                                   const SessionOptions& session_options,
                                   bool remove_initializers,
                                   std::unordered_map<std::string, size_t>& constant_initializers_use_count,
-                                  const std::unordered_map<OrtValueName, OrtMemoryInfo>& implicit_inputs_to_location_map = {});
+                                  const std::unordered_map<OrtValueName, OrtMemoryInfo>& implicit_inputs_to_location_map = {},
+                                  bool graph_info_already_created = false);
 
 #ifdef ENABLE_TRAINING
   Status GeneratePatternGroupCache(

@@ -1188,7 +1188,29 @@ static Status OuterScopeNodeArgLocationAccumulator(const SequentialExecutionPlan
     return Status::OK();
   };
 
-  return Node::ForEachWithIndex(parent_node.ImplicitInputDefs(), process_implicit_input);
+  ORT_RETURN_IF_ERROR(Node::ForEachWithIndex(parent_node.ImplicitInputDefs(), process_implicit_input));
+
+  const auto& subgraph_inputs = subgraph.GetInputs();
+
+  auto process_input = [&plan, &ort_value_name_to_idx_map, &outer_scope_arg_to_location_map, &subgraph_inputs](const NodeArg& input, size_t arg_idx) {
+    const auto& name = input.Name();
+    ORT_TRY {
+      outer_scope_arg_to_location_map.insert({subgraph_inputs[arg_idx]->Name(), plan.GetLocation(Index(ort_value_name_to_idx_map, name))});
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
+      });
+    }
+
+    return Status::OK();
+  };
+
+  if (subgraph_inputs.size() > 0) {
+    return Node::ForEachWithIndex(parent_node.InputDefs(), process_input);
+  }
+
+  return Status::OK();
 }
 
 Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
@@ -1197,8 +1219,11 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                               const SessionOptions& session_options,
                                               bool remove_initializers,
                                               std::unordered_map<std::string, size_t>& constant_initializers_use_count,
-                                              const std::unordered_map<OrtValueName, OrtMemoryInfo>& implicit_inputs_to_location_map) {
-  CreateGraphInfo();
+                                              const std::unordered_map<OrtValueName, OrtMemoryInfo>& implicit_inputs_to_location_map,
+                                              bool graph_info_already_created) {
+  if (!graph_info_already_created) {
+    CreateGraphInfo();
+  }
 
   // ignore any outer scope args we don't know about. this can happen if a node contains multiple subgraphs.
   std::vector<const NodeArg*> valid_outer_scope_node_args;
@@ -1316,14 +1341,15 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       SessionState& subgraph_session_state = *entry->second;
 
       // recurse
+      subgraph_session_state.CreateGraphInfo();
+
       std::unordered_map<OrtValueName, OrtMemoryInfo> outer_scope_arg_to_location_map;
-      GraphViewer subgraph_graph_viewer(subgraph_session_state.graph_);
       ORT_RETURN_IF_ERROR(OuterScopeNodeArgLocationAccumulator(*p_seq_exec_plan_, GetOrtValueNameIdxMap(),
-                                                               node, subgraph_graph_viewer,
+                                                               node, subgraph_session_state.GetGraphViewer(),
                                                                outer_scope_arg_to_location_map));
       ORT_RETURN_IF_ERROR(subgraph_session_state.FinalizeSessionStateImpl(
           graph_location, kernel_registry_manager, &node, subgraph_session_options,
-          remove_initializers, constant_initializers_use_count, outer_scope_arg_to_location_map));
+          remove_initializers, constant_initializers_use_count, outer_scope_arg_to_location_map, true));
 
       // setup all the info for handling the feeds and fetches used in subgraph execution
       auto* p_op_kernel = GetMutableKernel(node.Index());
