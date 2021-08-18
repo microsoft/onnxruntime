@@ -2364,7 +2364,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         node.since_version_ = node.op_->since_version();
 
         if (node.op_->Deprecated()) {
-            node.op_ = nullptr;
+          node.op_ = nullptr;
         }
       }
 
@@ -2451,7 +2451,7 @@ void Graph::InitFunctionBodyForNode(Node& node) {
       function_container_.emplace_back(std::move(func_ptr));
       node.SetFunctionBody(*function_container_.back());
     }
-    ORT_CATCH(const std::exception& ) {
+    ORT_CATCH(const std::exception&) {
       // Return without using this function op's expansion. No need to fail just yet.
       // If ORT has a specialized kernel for this op then execution will proceed
       return;
@@ -3144,10 +3144,9 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
       // Dense tensors larger than the threshold are added to the external file.
       TensorProto* output_proto = result.add_initializer();
 
-      size_t tensor_bytes_size = 0;
-      std::unique_ptr<uint8_t[]> raw_data;
-      ORT_THROW_IF_ERROR(utils::UnpackInitializerData(initializer, Path(), raw_data, tensor_bytes_size));
-
+      std::vector<uint8_t> raw_data;
+      ORT_THROW_IF_ERROR(utils::UnpackInitializerData(initializer, Path(), raw_data));
+      size_t tensor_bytes_size = raw_data.size();
       if (tensor_bytes_size < initializer_size_threshold) {
         *output_proto = initializer;
         continue;
