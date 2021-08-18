@@ -13,10 +13,7 @@ class ORTTensorImpl final : public c10::TensorImpl {
  public:
   explicit ORTTensorImpl(OrtValue tensor, const at::TensorOptions& options)
     : c10::TensorImpl(
-        c10::DispatchKeySet {
-          c10::DispatchKey::ORT,
-          c10::DispatchKey::AutogradORT
-        },
+        c10::DispatchKeySet{c10::DispatchKey::ORT},
         options.dtype(),
         options.device()) {
     set_tensor(tensor);
