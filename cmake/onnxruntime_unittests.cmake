@@ -1157,13 +1157,14 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       endif()
       set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
   endif()
+endif()
 
   # limit to only test on windows first, due to a runtime path issue on linux
   if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
                                     AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
                                     AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Android")
                                     AND NOT onnxruntime_BUILD_WEBASSEMBLY
-            AND NOT onnxruntime_USE_ROCM)
+                                    AND NOT onnxruntime_USE_ROCM)
     file(GLOB_RECURSE test_execution_provider_srcs
       "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.h"
       "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.cc"
@@ -1177,6 +1178,9 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnx,INTERFACE_INCLUDE_DIRECTORIES>)
     target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnxruntime_common,INTERFACE_INCLUDE_DIRECTORIES>)
     target_include_directories(test_execution_provider PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${ORTTRAINING_ROOT})
+    if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+      target_link_libraries(test_execution_provider PRIVATE Python::Python)
+    endif()
     if(APPLE)
       set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/exported_symbols.lst")
     elseif(UNIX)
@@ -1188,5 +1192,6 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     endif()
   endif()
 
+if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   include(onnxruntime_fuzz_test.cmake)
 endif()
