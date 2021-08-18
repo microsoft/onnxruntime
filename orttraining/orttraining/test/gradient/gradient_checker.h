@@ -106,8 +106,7 @@ class GradientChecker {
                                                 const std::vector<TensorInfo>& x_infos,
                                                 const std::vector<TensorInfo>& y_infos,
                                                 std::vector<std::vector<X_T>>* x_datas,
-                                                std::vector<std::vector<Y_T>>* y_datas,
-                                                std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr);
+                                                std::vector<std::vector<Y_T>>* y_datas);
 
   Status InitOpTesterWithGraph(OpTester& op_tester,
                                const std::vector<TensorInfo>& x_infos,
@@ -142,8 +141,7 @@ class GradientChecker {
                                          std::vector<std::vector<Y_T>>* y_datas,
                                          std::vector<std::vector<JAC_T>>* jacobian_ts,
                                          const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes,
-                                         bool add_shape = true,
-                                         std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr);
+                                         bool add_shape = true);
 
   Status ComputeGradientErrorInternal(const training::OpDef& op_name,
                                       const std::vector<TensorInfo>& x_infos,
