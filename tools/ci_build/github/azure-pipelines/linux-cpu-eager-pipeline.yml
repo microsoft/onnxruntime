@@ -74,6 +74,7 @@ jobs:
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuild \
             /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build --cmake_generator Ninja \
               --parallel \
               --build_eager_mode --enable_training --enable_pybind
       workingDirectory: $(Build.SourcesDirectory)
