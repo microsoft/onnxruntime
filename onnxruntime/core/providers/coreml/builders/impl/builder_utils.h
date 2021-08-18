@@ -5,6 +5,8 @@
 
 #pragma once
 
+#ifdef __APPLE__
+
 #include <unordered_map>
 #include "core/common/status.h"
 #include "core/graph/basic_types.h"
@@ -39,3 +41,5 @@ void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
 
 }  // namespace coreml
 }  // namespace onnxruntime
+
+#endif

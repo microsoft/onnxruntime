@@ -3,7 +3,9 @@
 
 #include <core/providers/common.h>
 
+#ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
+#endif
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/shared/utils/utils.h"
 
@@ -35,7 +37,7 @@ bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node
 }
 
 // Add operator related
-
+#ifdef __APPLE__
 Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
                                         const logging::Logger& logger) const {
   OpBuilderInputParams input_params(model_builder.GetGraphViewer());
@@ -67,6 +69,7 @@ BaseOpBuilder::CreateNNLayer(const std::string& layer_name) {
   layer->set_name(layer_name);
   return layer;
 }
+#endif
 
 // Operator support related
 
