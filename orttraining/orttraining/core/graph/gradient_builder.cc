@@ -783,12 +783,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGatherElementsGradient) {
 };
 
 IMPLEMENT_GRADIENT_BUILDER(GetReluGradient) {
-  ArgDef mask{};
-  if (IsTensorStashed(O(0, false).name)) {
-    mask = O(0);
-  } else {
-    mask = I(0);
-  }
+  ArgDef mask = IsTensorStashed(O(0, false).name) ? O(0) : I(0);
   return std::vector<NodeDef>{
       NodeDef(OpDef{"ReluGrad", kMSDomain, 1},
               {GO(0), mask},
