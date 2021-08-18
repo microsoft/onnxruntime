@@ -47,11 +47,11 @@ common::Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_prot
                                     const ONNX_NAMESPACE::TensorProto& input, const MemBuffer& m, OrtValue& value);
 /**
  * @brief Deserialize a TensorProto into a preallocated empty Tensor
- * @param env 
- * @param model_path 
+ * @param env
+ * @param model_path
  * @param tensor_proto  source data
  * @param tensorp       destination empty tensor
- * @return 
+ * @return
 */
 common::Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
                                    const ONNX_NAMESPACE::TensorProto& tensor_proto,
@@ -304,15 +304,23 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model
  * Unpack the data from an initializer tensor
  * Please note, this function does not unpack string_data of an initializer tensor
  * @param initializer       given initializer tensor
- * @param initializer_dir   model_path to construct external data dir path. When this is empty, current dir is used.
- * @param unpacked_tensor   the data from the initializer in byte form
- * @param tensor_byte_size  the byte size of the unpacked_tensor
+ * @param model_path        model_path to construct external data dir path. When this is empty, current dir is used.
+ * @param unpacked_tensor   the vector holds data from the initializer in byte form
  * @returns                 Status::OK() if data is unpacked successfully
  */
 common::Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
                                      const Path& model_path,
-                                     std::unique_ptr<unsigned char[]>& unpacked_tensor,
-                                     size_t& tensor_byte_size) ORT_MUST_USE_RESULT;
+                                     std::vector<uint8_t>& unpacked_tensor);
 
+/**
+ * Unpack the data from an internal initializer tensor, will return error when the given initializer
+ * contains external data
+ * Please note, this function does not unpack string_data of an initializer tensor
+ * @param initializer       given initializer tensor
+ * @param unpacked_tensor   the vector holds data from the initializer in byte form
+ * @returns                 Status::OK() if data is unpacked successfully
+ */
+common::Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
+                                     std::vector<uint8_t>& unpacked_tensor);
 }  // namespace utils
 }  // namespace onnxruntime
