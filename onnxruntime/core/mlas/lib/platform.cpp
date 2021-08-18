@@ -17,6 +17,10 @@ Abstract:
 
 #include "mlasi.h"
 
+#if defined(MLAS_TARGET_POWER) && defined(__linux__)
+#include <sys/auxv.h>
+#endif
+
 #if defined(MLAS_TARGET_ARM64)
 #if defined(_WIN32)
 // N.B. Support building with downlevel versions of the Windows SDK.
@@ -126,13 +130,13 @@ Return Value:
     //
 
     this->GemmFloatKernel = MlasGemmFloatKernelSse;
+    this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchSse;
+    this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchSse;
 
 #if defined(MLAS_TARGET_AMD64)
 
     this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Sse;
     this->GemmDoubleKernel = MlasGemmDoubleKernelSse;
-    this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchSse;
-    this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchSse;
     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelSse;
     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelSse;
     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelSse;
@@ -170,7 +174,7 @@ Return Value:
     __cpuid(1, Cpuid1[0], Cpuid1[1], Cpuid1[2], Cpuid1[3]);
 #endif
 
-#if defined(MLAS_TARGET_AMD64) && defined(_MSC_VER)
+#if defined(_MSC_VER)
 
     //
     // Check if the processor supports SSE 4.1 instructions.
@@ -277,7 +281,7 @@ Return Value:
                     this->GemvU8S8Kernel = MlasGemvU8S8KernelAvxVnni;
                 }
 
-#if !defined(MLAS_AVX512F_UNSUPPORTED)
+#if !defined(ORT_MINIMAL_BUILD)
 
                 //
                 // Check if the processor supports AVX512F features and the
@@ -297,20 +301,15 @@ Return Value:
                     this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelAvx512F;
                     this->ComputeExpF32Kernel = MlasComputeExpF32KernelAvx512F;
                     this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelAvx512F;
-                    this->NchwcBlockSize = 16;
-                    this->PreferredBufferAlignment = 64;
-
-#if !defined(MLAS_AVX512F_INTRINSICS_UNSUPPORTED)
                     this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelAvx512F;
                     this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8KernelAvx512F;
-#endif
+                    this->NchwcBlockSize = 16;
+                    this->PreferredBufferAlignment = 64;
 
                     //
                     // Check if the processor supports AVX512 core features
                     // (AVX512BW/AVX512DQ/AVX512VL).
                     //
-
-#if !defined(MLAS_AVX512CORE_UNSUPPORTED)
 
                     if ((Cpuid7[1] & 0xC0020000) == 0xC0020000) {
 
@@ -329,12 +328,9 @@ Return Value:
                             this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Vnni;
                         }
                     }
-
-#endif // MLAS_AVX512CORE_UNSUPPORTED
-
                 }
 
-#endif // MLAS_AVX512F_UNSUPPORTED
+#endif // ORT_MINIMAL_BUILD
 
             }
 
@@ -368,6 +364,19 @@ Return Value:
     }
 
 #endif // MLAS_TARGET_ARM64
+#if defined(MLAS_TARGET_POWER)
+  this->GemmFloatKernel = MlasSgemmKernel;
+#if defined(__linux__)  && defined(POWER10)
+#if (defined(__GNUC__) && ((__GNUC__ > 10) || (__GNUC__== 10 && __GNUC_MINOR__ >= 2))) || \
+    (defined(__clang__) && (__clang_major__ >= 12))
+  unsigned long hwcap2 = getauxval(AT_HWCAP2);
+  bool HasP10Instructions = ((hwcap2 & PPC_FEATURE2_MMA) && (hwcap2 & PPC_FEATURE2_ARCH_3_1));
+  if (HasP10Instructions) {
+    this->GemmFloatKernel = MlasSgemmKernelPOWER10;
+  }
+#endif
+#endif
+#endif
 
 }
 

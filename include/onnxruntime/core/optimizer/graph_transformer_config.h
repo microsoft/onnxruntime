@@ -51,7 +51,7 @@ struct GraphTransformerConfiguration {
       return (s1 == s2) == false;
     }
 
-    int level{-1}; /* -1 => no cast propagation,
+    int level{1}; /* -1 => no cast propagation,
                        0 => use user specified list of opcodes to allow moving cast operations,
                        1 => use ORT predefined list of level 1 opcodes in addition to the user specified allow opcodes
                        2 => use ORT predefined list of level 2 opcodes in addition to the user specified allow opcodes

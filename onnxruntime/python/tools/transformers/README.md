@@ -19,7 +19,7 @@ Due to CUDA implementation of Attention kernel, maximum number of attention head
 ## Export a transformer model to ONNX
 
 PyTorch could export model to ONNX. The tf2onnx and keras2onnx tools can be used to convert model that trained by Tensorflow.
-Huggingface transformers has a [notebook](https://github.com/huggingface/transformers/blob/master/notebooks/04-onnx-export.ipynb) shows an example of exporting a pretrained model to ONNX.
+Huggingface transformers has a [notebook](https://github.com/huggingface/notebooks/blob/master/examples/onnx-export.ipynb) shows an example of exporting a pretrained model to ONNX.
 For Keras2onnx, please refer to its [example script](https://github.com/onnx/keras-onnx/blob/master/applications/nightly_build/test_transformers.py).
 For tf2onnx, please refer to its [BERT tutorial](https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/BertTutorial.ipynb).
 

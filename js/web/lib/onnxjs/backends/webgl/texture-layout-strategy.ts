@@ -67,7 +67,9 @@ export class PreferLogicalStrategy implements TextureLayoutStrategy {
       wh[0] /= 2;
       wh[1] /= 2;
     }
-
+    if (prefs && prefs.reverseWH) {
+      return [wh[1], wh[0]];
+    }
     return wh;
   }
 

@@ -148,6 +148,11 @@ Status GatherND::Compute(OpKernelContext* context) const {
 
   auto* output_tensor = context->Output(0, TensorShape(std::move(shape)));
 
+  // Bail out early in case the output is going to be empty
+  if (output_tensor->Shape().Size() == 0) {
+    return Status::OK();
+  }
+
   Prepare p;
   concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
   if (input_tensor->IsDataTypeString()) {

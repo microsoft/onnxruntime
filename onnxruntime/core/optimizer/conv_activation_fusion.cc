@@ -96,12 +96,12 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
 
-    if (!graph.GetNodeOutputsInGraphOutputs(*node).empty()) {
+    if (graph.NodeProducesGraphOutput(*node)) {
       continue;
     }
 
     if (node->GetExecutionProviderType() == onnxruntime::kCudaExecutionProvider) {
-      if (node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type() != 
+      if (node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type() !=
           ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
         continue;
       }
@@ -121,23 +121,31 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
         graph_utils::FinalizeNodeFusion(graph, {conv_node, act_node}, fused_conv);
         modified = true;
       } else if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", {6, 7, 13, 14})) {
+        if (next_node.GetOutputEdgesCount() != 1) {
+          continue;
+        }
         const auto& last_node = *(next_node.OutputNodesBegin());
         if (last_node.GetExecutionProviderType() != node->GetExecutionProviderType()) {
           continue;
         }
-        if (graph_utils::IsSupportedOptypeVersionAndDomain(last_node, "Relu", {6, 13, 14}) && 
-            next_node.GetOutputEdgesCount() == 1) {
+        if (graph_utils::IsSupportedOptypeVersionAndDomain(last_node, "Relu", {6, 13, 14})) {
           Node& conv_node = *node;
           Node& add_node = *graph.GetNode(next_node.Index());
           Node& act_node = *graph.GetNode(last_node.Index());
           auto conv_inputs = conv_node.MutableInputDefs();
           auto conv_outputs = conv_node.MutableOutputDefs();
           auto add_inputs = add_node.MutableInputDefs();
-          for (auto add_input : add_inputs) {
-            if (add_input->Name() != conv_outputs[0]->Name()) {
+          int32_t dependent = 0, independent = 0;
+          for (auto add_input: add_inputs) {
+            if (add_input->Name() == conv_outputs[0]->Name()) {
+              dependent++;
+            } else {
               conv_inputs.push_back(add_input);
-              break;
+              independent++;
             }
+          }
+          if (dependent != 1 || independent != 1) {
+            continue;
           }
           auto node_name = graph.GenerateNodeName(conv_node.Name() + "_" +
                                                   add_node.Name() + "_" +

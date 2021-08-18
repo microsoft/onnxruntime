@@ -165,7 +165,7 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
   };
 
  protected:
-  int GetBIdx() override { return IN_B; }
+  int GetBIdx() const override { return IN_B; }
 };
 
 class MatMulIntegerToFloat final : public MatMulIntegerToFloatBase {
@@ -185,7 +185,7 @@ class MatMulIntegerToFloat final : public MatMulIntegerToFloatBase {
   };
 
  protected:
-  int GetBIdx() override { return IN_B; }
+  int GetBIdx() const override { return IN_B; }
 
  private:
   // a scale and b scale may be switched in fusion stage because of lack of shape information.

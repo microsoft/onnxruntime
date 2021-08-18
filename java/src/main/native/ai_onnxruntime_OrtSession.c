@@ -260,14 +260,18 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_run
     jobject* javaOutputStrings;
     checkOrtStatus(jniEnv, api, api->AllocatorAlloc(allocator,sizeof(jobject)*numOutputs,(void**)&javaOutputStrings));
 
-    // Extract the names of the input values.
+    // Extract a C array of longs which are pointers to the input tensors.
+    // Need to convert longs to OrtValue* in case we run on non-64bit systems
+    jlong* inputTensors = (*jniEnv)->GetLongArrayElements(jniEnv,tensorArr,NULL);
+    const OrtValue** inputValues;
+    checkOrtStatus(jniEnv, api, api->AllocatorAlloc(allocator,sizeof(OrtValue*)*numInputs,(void**)&inputValues));
+
+    // Extract the names and native pointers of the input values.
     for (int i = 0; i < numInputs; i++) {
         javaInputStrings[i] = (*jniEnv)->GetObjectArrayElement(jniEnv,inputNamesArr,i);
         inputNames[i] = (*jniEnv)->GetStringUTFChars(jniEnv,javaInputStrings[i],NULL);
+        inputValues[i] = (OrtValue*)inputTensors[i];
     }
-
-    // Extract a C array of longs which are pointers to the input tensors.
-    jlong* inputTensors = (*jniEnv)->GetLongArrayElements(jniEnv,tensorArr,NULL);
 
     // Extract the names of the output values, and allocate their output array.
     OrtValue** outputValues;
@@ -281,7 +285,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_run
     // Actually score the inputs.
     //printf("inputTensors = %p, first tensor = %p, numInputs = %ld, outputValues = %p, numOutputs = %ld\n",inputTensors,(OrtValue*)inputTensors[0],numInputs,outputValues,numOutputs);
     //ORT_API_STATUS(OrtRun, _Inout_ OrtSession* sess, _In_ OrtRunOptions* run_options, _In_ const char* const* input_names, _In_ const OrtValue* const* input, size_t input_len, _In_ const char* const* output_names, size_t output_names_len, _Out_ OrtValue** output);
-    checkOrtStatus(jniEnv,api,api->Run(session, runOptions, (const char* const*) inputNames, (const OrtValue* const*) inputTensors, numInputs, (const char* const*) outputNames, numOutputs, outputValues));
+    checkOrtStatus(jniEnv,api,api->Run(session, runOptions, (const char* const*) inputNames, (const OrtValue* const*) inputValues, numInputs, (const char* const*) outputNames, numOutputs, outputValues));
     // Release the C array of pointers to the tensors.
     (*jniEnv)->ReleaseLongArrayElements(jniEnv,tensorArr,inputTensors,JNI_ABORT);
 
@@ -307,6 +311,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_run
 
     // Release the buffers
     checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, (void*)inputNames));
+    checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, (void*)inputValues));
     checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, (void*)outputNames));
     checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, javaInputStrings));
     checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, javaOutputStrings));

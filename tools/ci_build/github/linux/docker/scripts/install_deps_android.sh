@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-python3 -m pip install cmake==3.20.2
+python3 -m pip install cmake==3.21.0
 
 cmake --version
 

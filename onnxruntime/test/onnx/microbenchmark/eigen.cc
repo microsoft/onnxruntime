@@ -5,12 +5,6 @@
 #endif
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
-#elif defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4267)
-#pragma warning(disable : 4127)
-#pragma warning(disable : 4805)
-#pragma warning(disable : 4554)
 #endif
 
 #ifndef EIGEN_USE_THREADS
@@ -22,8 +16,6 @@
 #include <unsupported/Eigen/CXX11/src/Tensor/TensorDeviceThreadPool.h>
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
-#elif defined(_MSC_VER)
-#pragma warning(pop)
 #endif
 
 #include <benchmark/benchmark.h>

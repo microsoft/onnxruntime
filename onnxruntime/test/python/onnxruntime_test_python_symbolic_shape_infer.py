@@ -134,6 +134,32 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         ]
         self._check_shapes(graph, inferred.graph, expected_shapes)
 
+    def test_softmax_cross_entropy_loss(self):
+        hidden_size = 1024
+
+        nodes = [
+            helper.make_node("SoftmaxCrossEntropyLoss",
+                             inputs=["logits", "labels"],
+                             outputs=["loss"]),
+        ]
+
+        inputs = [
+            helper.make_tensor_value_info('logits', TensorProto.FLOAT, ['b', 's', hidden_size]),
+            helper.make_tensor_value_info('labels', TensorProto.INT32, ['b', 's']),
+        ]
+
+        outputs = [
+            helper.make_tensor_value_info('loss', TensorProto.FLOAT, None),
+        ]
+
+        graph = helper.make_graph(nodes, "SoftmaxCrossEntropyLoss_Test", inputs, outputs, [])
+        model = helper.make_model(graph)
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        expected_shapes = [
+            helper.make_tensor_value_info('loss', TensorProto.FLOAT, [])
+        ]
+        self._check_shapes(graph, inferred.graph, expected_shapes)
 
 class TestSymbolicShapeInferenceForSlice(unittest.TestCase):
     def check_slice_of_concat(self, input_dims, start, end, step, expected_output_dim):

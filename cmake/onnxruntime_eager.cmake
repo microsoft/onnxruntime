@@ -20,3 +20,5 @@ set_target_properties(onnxruntime_eager PROPERTIES FOLDER "ONNXRuntime")
 if (onnxruntime_ENABLE_TRAINING)
   target_include_directories(onnxruntime_session PRIVATE ${ORTTRAINING_ROOT})
 endif()
+
+

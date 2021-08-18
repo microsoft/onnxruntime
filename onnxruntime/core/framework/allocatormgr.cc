@@ -3,7 +3,7 @@
 
 #include "core/framework/allocatormgr.h"
 #include "core/framework/bfc_arena.h"
-#include "core/framework/mimalloc_arena.h"
+#include "core/framework/mimalloc_allocator.h"
 #include "core/common/logging/logging.h"
 #include <mutex>
 #include <sstream>
@@ -48,11 +48,11 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
         return nullptr;
     }
 
-#ifdef USE_MIMALLOC
-    return std::shared_ptr<IArenaAllocator>(
-        std::make_unique<MiMallocArena>(std::move(device_allocator), max_mem));
+#ifdef USE_MIMALLOC_ARENA_ALLOCATOR
+    return std::shared_ptr<IAllocator>(
+        std::make_unique<MiMallocAllocator>(max_mem));
 #else
-    return std::shared_ptr<IArenaAllocator>(
+    return std::shared_ptr<IAllocator>(
         std::make_unique<BFCArena>(std::move(device_allocator),
                                    max_mem,
                                    arena_extend_str,

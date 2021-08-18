@@ -59,7 +59,7 @@ TEST(LayerNormTest, BERTLayerNorm_NoBias) {
   std::vector<float> scale_data = random.Uniform<float>(scale_dims, 0.0f, 1.0f);
   tester.AddInput<float>("Scale", scale_dims, scale_data);
 
-  tester.AddMissingOptionalInput<float>();
+  tester.AddOptionalInputEdge<float>();
 
   tester.AddReferenceOutputs("testdata/layernorm_no_bias.onnx");
 

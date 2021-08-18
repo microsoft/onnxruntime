@@ -145,7 +145,19 @@ static bool RegisterCustomSchemas() {
           }
         }
         return nodes;
-      }());
+      }(),
+                    []() {
+                      std::vector<OperatorSetIdProto> operator_sets(2);
+                      auto& onnx_opset = operator_sets[0];
+                      onnx_opset.set_domain("");
+                      onnx_opset.set_version(11);
+
+                      auto& test_opset = operator_sets[1];
+                      test_opset.set_domain(kMSNchwcDomain);
+                      test_opset.set_version(1);
+
+                      return operator_sets;
+                    }());
 
   return true;
 }

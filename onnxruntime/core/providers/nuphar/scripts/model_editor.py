@@ -26,7 +26,7 @@ def trim_unused_outputs(node, graph):
     return trimmed
 
 # squeeze init states, and split forward/reverse for bidirectional
-def handle_init_state(init_state, nf, num_directions):
+def handle_init_state(init_state, nf, num_directions, onnx_opset_ver):
     if not init_state:
         return None
     if not nf.get_initializer(init_state) is None:
@@ -34,9 +34,9 @@ def handle_init_state(init_state, nf, num_directions):
     if num_directions == 2:
         split_names = [init_state + '_split_0', init_state + '_split_1']
         nf.make_node('Split', init_state, {'axis':0}, split_names) # [1, batch, hidden]
-        return [nf.make_node('Squeeze', s, {'axes':[0]}) for s in split_names]
+        return [nf.make_node_with_axes('Squeeze', s, [0], onnx_opset_ver) for s in split_names]
     else:
-        return [nf.make_node('Squeeze', init_state, {'axes':[0]})]
+        return [nf.make_node_with_axes('Squeeze', init_state, [0], onnx_opset_ver)]
 
 # handle some common attributes between LSTM/GRU/RNN
 def handle_common_attributes(node, default_activations):
@@ -63,7 +63,7 @@ def handle_common_attributes(node, default_activations):
     return direction, num_directions, activations
 
 # get batch_size, and create batch_node if needed
-def handle_batch_size(X, nf, need_batch_node):
+def handle_batch_size(X, nf, need_batch_node, onnx_opset_ver):
     X_vi = nf.get_value_info(X)
     assert X_vi
     dim = get_shape_from_type_proto(X_vi.type)[1]
@@ -71,7 +71,14 @@ def handle_batch_size(X, nf, need_batch_node):
         # only need to create batch_node for symbolic batch_size
         # otherwise, just use numpy.zeros
         X_shape = nf.make_node('Shape', X)
-        node = nf.make_node('Slice', X_shape, {'axes':[0],'starts':[1],'ends':[2]})
+        if onnx_opset_ver < 11:
+            node = nf.make_node('Slice', X_shape, {'axes':[0],'starts':[1],'ends':[2]})
+        else:
+            node = nf.make_node('Slice', [X_shape,
+                                          np.asarray([1]), #starts
+                                          np.asarray([2]), #ends
+                                          np.asarray([0])  #axes
+                                         ])
     else:
         node = None
     return dim, node
@@ -103,7 +110,7 @@ def declare_seq_len_in_subgraph(seq_len, nf_body, prefix, batch_size):
     return seq_len_subgraph
 
 # hook subgraph outputs, with condition from seq_len_subgraph
-def handle_subgraph_outputs(nf_body, seq_len_subgraph, batch_size, hidden_size, subgraph_output_or_default):
+def handle_subgraph_outputs(nf_body, seq_len_subgraph, batch_size, hidden_size, subgraph_output_or_default, onnx_opset_ver):
     final_subgraph_output = []
     if seq_len_subgraph:
         seq_len_output = nf_body.make_node('Sub', [seq_len_subgraph, np.asarray([1]).astype(np.int32)])
@@ -114,7 +121,7 @@ def handle_subgraph_outputs(nf_body, seq_len_subgraph, batch_size, hidden_size, 
         final_subgraph_output.append(seq_len_output)
 
         # since seq_len is rank-1, need to unsqueeze for Where op on rank-2 states
-        condition = nf_body.make_node('Unsqueeze', nf_body.make_node('Greater', [seq_len_subgraph, np.zeros(shape=(), dtype=np.int32)]), {'axes':[1]})
+        condition = nf_body.make_node_with_axes('Unsqueeze', nf_body.make_node('Greater', [seq_len_subgraph, np.zeros(shape=(), dtype=np.int32)]), [1], onnx_opset_ver)
         for valid, default in subgraph_output_or_default:
             final_subgraph_output.append(nf_body.make_node('Where', [condition, valid, default]))
     else:
@@ -131,10 +138,10 @@ def handle_subgraph_outputs(nf_body, seq_len_subgraph, batch_size, hidden_size, 
     return final_subgraph_output
 
 # unsqueeze/concat for the final outputs from scans, when the LSTM/GRU/RNN node is bidirectional
-def handle_final_scan_outputs(node, nf, scan_outputs, state_outputs, num_directions):
+def handle_final_scan_outputs(node, nf, scan_outputs, state_outputs, num_directions, onnx_opset_ver):
     if num_directions == 2:
         def _bidirectional(outputs, axis, hook_output_name):
-            outputs = [nf.make_node('Unsqueeze', x, {'axes':[axis]}) for x in outputs]
+            outputs = [nf.make_node_with_axes('Unsqueeze', x, [axis], onnx_opset_ver) for x in outputs]
             nf.make_node('Concat', outputs, {'axis':axis}, output_names=hook_output_name)
 
         if node.output[0]:
@@ -143,9 +150,9 @@ def handle_final_scan_outputs(node, nf, scan_outputs, state_outputs, num_directi
             _bidirectional(state_outputs[i_o - 1], 0, node.output[i_o])
     else:
         if node.output[0]:
-            nf.make_node('Unsqueeze', scan_outputs[0], {'axes':[1]}, output_names=node.output[0])
+            nf.make_node_with_axes('Unsqueeze', scan_outputs[0], [1], onnx_opset_ver, output_names=node.output[0])
         for i_o in range(1, len(node.output)):
-            nf.make_node('Unsqueeze', state_outputs[i_o - 1], {'axes':[0]}, output_names=node.output[i_o])
+            nf.make_node_with_axes('Unsqueeze', state_outputs[i_o - 1], [0], onnx_opset_ver, output_names=node.output[i_o])
 
 def convert_loop_to_scan(node, out_main_graph, keep_unconvertible_loop_ops):
     assert node.op_type == 'Loop'
@@ -244,7 +251,7 @@ def convert_loop_to_scan(node, out_main_graph, keep_unconvertible_loop_ops):
 
     return scan 
 
-def convert_lstm_to_scan(node, out_main_graph):
+def convert_lstm_to_scan(node, out_main_graph, onnx_opset_ver):
     assert node.op_type == 'LSTM'
     nf = NodeFactory(out_main_graph)
     with nf.scoped_prefix(node.output[0]) as scoped_prefix:
@@ -271,13 +278,13 @@ def convert_lstm_to_scan(node, out_main_graph):
 
         # split initializer if needed:
         is_same_init = InitHa == InitCa
-        InitHa = handle_init_state(InitHa, nf, num_directions)
+        InitHa = handle_init_state(InitHa, nf, num_directions, onnx_opset_ver)
         if is_same_init:
             InitCa = InitHa
         else:
-            InitCa = handle_init_state(InitCa, nf, num_directions)
+            InitCa = handle_init_state(InitCa, nf, num_directions, onnx_opset_ver)
 
-        batch_size, batch_node = handle_batch_size(X, nf, InitHa is None or InitCa is None)
+        batch_size, batch_node = handle_batch_size(X, nf, InitHa is None or InitCa is None, onnx_opset_ver)
 
         scan_outputs = []
         scan_h_outputs = []
@@ -348,7 +355,7 @@ def convert_lstm_to_scan(node, out_main_graph):
                 prev_h_proj = nf_body.make_node('MatMul', [prev_h_subgraph, Rt])
                 sum_x_proj_h_proj_bias = nf_body.make_node('Add', [X_proj_subgraph, prev_h_proj])
                 split_outputs = ['split_i', 'split_o', 'split_f', 'split_c']
-                nf_body.make_node('Split', sum_x_proj_h_proj_bias, {"axis":1, "split":[hidden_size]*4}, output_names=split_outputs)
+                nf_body.make_split_node(sum_x_proj_h_proj_bias, [hidden_size]*4, onnx_opset_ver, {"axis":1}, output_names=split_outputs)
                 # manually add shape inference to split outputs
                 for split_o in split_outputs:
                     nf_body.make_value_info(split_o,
@@ -370,7 +377,8 @@ def convert_lstm_to_scan(node, out_main_graph):
                                                            hidden_size,
                                                            [(h_subgraph, prev_h_subgraph),
                                                             (c_subgraph, prev_c_subgraph)] +
-                                                           ([(h_subgraph, np.zeros(shape=(), dtype=np.float32))] if node.output[0] else [])) # skip scan output if node.output[0] is empty
+                                                           ([(h_subgraph, np.zeros(shape=(), dtype=np.float32))] if node.output[0] else []), # skip scan output if node.output[0] is empty
+                                                           onnx_opset_ver)
 
                 scan_attribs = {'body':scan_body,
                                 'scan_input_directions':[is_backward],
@@ -386,7 +394,7 @@ def convert_lstm_to_scan(node, out_main_graph):
                 if node.output[0]:
                     scan_outputs.append(subgraph_outputs[3])
 
-        handle_final_scan_outputs(node, nf, scan_outputs, [scan_h_outputs, scan_c_outputs], num_directions)
+        handle_final_scan_outputs(node, nf, scan_outputs, [scan_h_outputs, scan_c_outputs], num_directions, onnx_opset_ver)
 
     # remove old initializers
     nf.remove_initializer(node.input[1])
@@ -399,7 +407,7 @@ def convert_lstm_to_scan(node, out_main_graph):
         nf.remove_initializer(node.input[6], allow_empty=True)
     return True
 
-def convert_gru_to_scan(node, out_main_graph):
+def convert_gru_to_scan(node, out_main_graph, onnx_opset_ver):
     assert node.op_type == 'GRU'
     nf = NodeFactory(out_main_graph)
     with nf.scoped_prefix(node.output[0]) as scoped_prefix:
@@ -415,9 +423,9 @@ def convert_gru_to_scan(node, out_main_graph):
 
         hidden_size = NodeFactory.get_attribute(node, 'hidden_size')
         linear_before_reset = NodeFactory.get_attribute(node, 'linear_before_reset')
-        InitHa = handle_init_state(InitHa, nf, num_directions)
+        InitHa = handle_init_state(InitHa, nf, num_directions, onnx_opset_ver)
 
-        batch_size, batch_node = handle_batch_size(X, nf, InitHa is None)
+        batch_size, batch_node = handle_batch_size(X, nf, InitHa is None, onnx_opset_ver)
         if InitHa is None:
             zero_init_state = default_init_state(X, batch_size, batch_node, hidden_size, nf)
 
@@ -482,7 +490,7 @@ def convert_gru_to_scan(node, out_main_graph):
                 # Ht = (1 - zt) (.) ht + zt (.) Ht-1
 
                 split_X_outputs = ['split_Xzr', 'split_Xh']
-                nf_body.make_node('Split', X_proj_subgraph, {"axis":1, "split":[2*hidden_size, hidden_size]}, output_names=split_X_outputs)
+                nf_body.make_split_node(X_proj_subgraph, [2*hidden_size, hidden_size], onnx_opset_ver, attributes={"axis":1}, output_names=split_X_outputs)
                 nf_body.make_value_info('split_Xzr',
                                         data_type=onnx.TensorProto.FLOAT,
                                         shape=(batch_size, 2*hidden_size))
@@ -495,7 +503,7 @@ def convert_gru_to_scan(node, out_main_graph):
                 if linear_before_reset:
                     prev_h_proj = nf_body.make_node('Add', [nf_body.make_node('MatMul', [prev_h_subgraph, R_t]), np.concatenate((np.zeros(2*hidden_size).astype(np.float32), Rbh))])
                     split_prev_h_outputs = ['split_Hzr', 'split_Hh']
-                    nf_body.make_node('Split', prev_h_proj, {"axis":1, "split":[2*hidden_size, hidden_size]}, output_names=split_prev_h_outputs)
+                    nf_body.make_split_node(prev_h_proj, [2*hidden_size, hidden_size], onnx_opset_ver, {"axis":1}, output_names=split_prev_h_outputs)
                     nf_body.make_value_info('split_Hzr',
                                             data_type=onnx.TensorProto.FLOAT,
                                             shape=(batch_size, 2*hidden_size))
@@ -504,7 +512,7 @@ def convert_gru_to_scan(node, out_main_graph):
                                             shape=(batch_size, hidden_size))
                     ztrt = nf_body.make_node(activation_f, nf_body.make_node('Add', ['split_Hzr', 'split_Xzr']))
                     split_ztrt_outputs = ['split_zt', 'split_rt']
-                    nf_body.make_node('Split', ztrt, {"axis":1, "split":[hidden_size, hidden_size]}, output_names=split_ztrt_outputs)
+                    nf_body.make_split_node(ztrt, [hidden_size, hidden_size], onnx_opset_ver, {"axis":1}, output_names=split_ztrt_outputs)
                     nf_body.make_value_info('split_zt',
                                             data_type=onnx.TensorProto.FLOAT,
                                             shape=(batch_size, hidden_size))
@@ -515,7 +523,7 @@ def convert_gru_to_scan(node, out_main_graph):
                 else:
                     ztrt = nf_body.make_node(activation_f, nf_body.make_node('Add', [nf_body.make_node('MatMul', [prev_h_subgraph, Rzr_t]), 'split_Xzr']))
                     split_ztrt_outputs = ['split_zt', 'split_rt']
-                    nf_body.make_node('Split', ztrt, {"axis":1, "split":[hidden_size, hidden_size]}, output_names=split_ztrt_outputs)
+                    nf_body.make_split_node(ztrt, [hidden_size, hidden_size], onnx_opset_ver, {"axis":1}, output_names=split_ztrt_outputs)
                     nf_body.make_value_info('split_zt',
                                             data_type=onnx.TensorProto.FLOAT,
                                             shape=(batch_size, hidden_size))
@@ -534,7 +542,8 @@ def convert_gru_to_scan(node, out_main_graph):
                                                            batch_size,
                                                            hidden_size,
                                                            [(Ht, prev_h_subgraph)] +
-                                                           ([(Ht, np.zeros(shape=(), dtype=np.float32))] if node.output[0] else []))
+                                                           ([(Ht, np.zeros(shape=(), dtype=np.float32))] if node.output[0] else []),
+                                                           onnx_opset_ver)
 
                 scan_attribs = {'body':scan_body,
                                 'scan_input_directions':[is_backward],
@@ -549,7 +558,7 @@ def convert_gru_to_scan(node, out_main_graph):
                 if node.output[0]:
                     scan_outputs.append(subgraph_outputs[2])
 
-        handle_final_scan_outputs(node, nf, scan_outputs, [scan_h_outputs], num_directions)
+        handle_final_scan_outputs(node, nf, scan_outputs, [scan_h_outputs], num_directions, onnx_opset_ver)
 
     # remove old initializers
     nf.remove_initializer(node.input[1])
@@ -560,7 +569,7 @@ def convert_gru_to_scan(node, out_main_graph):
         nf.remove_initializer(node.input[5], allow_empty=True)
     return True
 
-def convert_rnn_to_scan(node, out_main_graph):
+def convert_rnn_to_scan(node, out_main_graph, onnx_opset_ver):
     assert node.op_type == 'RNN'
     nf = NodeFactory(out_main_graph)
     with nf.scoped_prefix(node.output[0]) as scoped_prefix:
@@ -576,9 +585,9 @@ def convert_rnn_to_scan(node, out_main_graph):
 
         hidden_size = NodeFactory.get_attribute(node, 'hidden_size')
 
-        InitHa = handle_init_state(InitHa, nf, num_directions)
+        InitHa = handle_init_state(InitHa, nf, num_directions, onnx_opset_ver)
 
-        batch_size, batch_node = handle_batch_size(X, nf, InitHa is None)
+        batch_size, batch_node = handle_batch_size(X, nf, InitHa is None, onnx_opset_ver)
         if InitHa is None:
             zero_init_state = default_init_state(X, batch_size, batch_node, hidden_size, nf)
 
@@ -641,7 +650,8 @@ def convert_rnn_to_scan(node, out_main_graph):
                                                            batch_size,
                                                            hidden_size,
                                                            [(Ht, prev_h_subgraph)] +
-                                                           ([(Ht, np.zeros(shape=(), dtype=np.float32))] if node.output[0] else []))
+                                                           ([(Ht, np.zeros(shape=(), dtype=np.float32))] if node.output[0] else []),
+                                                           onnx_opset_ver)
 
                 scan_attribs = {'body':scan_body,
                                 'scan_input_directions':[is_backward],
@@ -656,7 +666,7 @@ def convert_rnn_to_scan(node, out_main_graph):
                 if node.output[0]:
                     scan_outputs.append(subgraph_outputs[2])
 
-        handle_final_scan_outputs(node, nf, scan_outputs, [scan_h_outputs], num_directions)
+        handle_final_scan_outputs(node, nf, scan_outputs, [scan_h_outputs], num_directions, onnx_opset_ver)
 
     # remove old initializers
     nf.remove_initializer(node.input[1])
@@ -672,7 +682,7 @@ def convert_loop_to_scan_model(input_model, output_model, keep_unconvertible_loo
     out_mp = onnx.ModelProto()
     out_mp.CopyFrom(in_mp)
     out_mp.ir_version = 5 # update ir version to avoid requirement of initializer in graph input
-    ensure_opset(out_mp, 9) # bump up to ONNX opset 9, which is required for Scan
+    onnx_opset_ver = ensure_opset(out_mp, 9) # bump up to ONNX opset 9, which is required for Scan
     out_mp.graph.ClearField('node')
     cast_node_to_remove = []
     loop_cond_initializer_to_remove = []
@@ -744,19 +754,19 @@ def convert_to_scan_model(input_model, output_model):
     out_mp = onnx.ModelProto()
     out_mp.CopyFrom(in_mp)
     out_mp.ir_version = 5 # update ir version to avoid requirement of initializer in graph input
-    ensure_opset(out_mp, 9) # bump up to ONNX opset 9, which is required for Scan
+    onnx_opset_ver = ensure_opset(out_mp, 9) # bump up to ONNX opset 9, which is required for Scan
     out_mp.graph.ClearField('node')
     for in_n in in_mp.graph.node:
         if in_n.op_type in ['LSTM', 'GRU', 'RNN']:
             in_n = trim_unused_outputs(in_n, in_mp.graph)
         if in_n.op_type == 'LSTM':
-            if convert_lstm_to_scan(in_n, out_mp.graph):
+            if convert_lstm_to_scan(in_n, out_mp.graph, onnx_opset_ver):
                 continue
         if in_n.op_type == 'GRU':
-            if convert_gru_to_scan(in_n, out_mp.graph):
+            if convert_gru_to_scan(in_n, out_mp.graph, onnx_opset_ver):
                 continue
         if in_n.op_type == 'RNN':
-            if convert_rnn_to_scan(in_n, out_mp.graph):
+            if convert_rnn_to_scan(in_n, out_mp.graph, onnx_opset_ver):
                 continue
         out_n = out_mp.graph.node.add()
         out_n.CopyFrom(in_n)

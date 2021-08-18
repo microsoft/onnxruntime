@@ -8,6 +8,10 @@
 #include "core/framework/execution_frame.h"
 
 namespace onnxruntime {
+
+typedef std::unordered_map<std::string, OrtValue> OrtValueCache;
+typedef std::shared_ptr<OrtValueCache> OrtValueCachePtr;
+
 struct PartialGraphExecutionState {
  public:
   PartialGraphExecutionState() {
@@ -28,7 +32,7 @@ struct PartialGraphExecutionState {
                                     const SessionState& session_state) {
     if (execution_frame_ == nullptr) {
       execution_frame_ = std::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
-                                                                  fetch_allocators, session_state);
+                                                          fetch_allocators, session_state);
     } else {
       execution_frame_->UpdateFeeds(feed_mlvalue_idxs, feeds);
       execution_frame_->UpdateFetches(fetch_mlvalue_idxs, fetches, session_state.GetInitializedTensors());

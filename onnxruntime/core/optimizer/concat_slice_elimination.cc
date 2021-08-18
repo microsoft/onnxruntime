@@ -30,7 +30,6 @@ Status ConcatSliceElimination::ApplyImpl(Graph& graph, bool& modified, int graph
 
     if (ConcatSliceElimination::FuseConcatSliceSubgraph(concat, graph, logger)) {
       fused_count++;
-      LOGS(logger, INFO) << "Fused concat node: " << concat.OutputDefs()[0]->Name();
       modified = true;
     }
   }
@@ -244,6 +243,8 @@ bool ConcatSliceElimination::FuseConcatSliceSubgraph(Node& concat, Graph& graph,
     replace_cnt++;
   }
   if (replace_cnt == 3) {
+    LOGS(logger, INFO) << "Fused concat node: " << concat.OutputDefs()[0]->Name();
+
     //delete the slice nodes and concat node
     graph_utils::RemoveNodeOutputEdges(graph, concat);
     graph.RemoveNode(concat.Index());

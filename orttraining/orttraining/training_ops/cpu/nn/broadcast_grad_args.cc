@@ -78,8 +78,9 @@ Status BroadcastGradientArgs<T>::Compute(OpKernelContext* context) const {
     T* B_axes_data = B_axes->template MutableData<T>();
     std::copy(b_axes.begin(), b_axes.end(), B_axes_data);
   }
-  if (!A_axes && !B_axes)
+  if (!A_axes && !B_axes) {
     LOGS_DEFAULT(WARNING) << "No output found for op BroadcastGradientArgs.";
+  }
 
   return Status::OK();
 }

@@ -71,9 +71,11 @@ class KernelRegistryManager {
   static bool HasImplementationOf(const KernelRegistryManager& r, const Node& node, const std::string& provider_type);
 #endif
 
-  Status SearchKernelRegistry(const onnxruntime::Node& node,
-                              uint64_t kernel_def_hash,
-                              /*out*/ const KernelCreateInfo** kernel_create_info) const;
+  /**
+   * Search the kernel registries given a kernel def hash.
+   */
+  bool SearchKernelRegistriesByHash(uint64_t kernel_def_hash,
+                                    const KernelCreateInfo** kernel_create_info) const;
 
   std::unique_ptr<OpKernel> CreateKernel(const onnxruntime::Node& node,
                                          const IExecutionProvider& execution_provider,

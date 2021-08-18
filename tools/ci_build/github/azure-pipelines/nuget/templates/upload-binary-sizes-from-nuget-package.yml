@@ -9,13 +9,13 @@ parameters:
 
 - name: buildVariant
   type: string
-  default: 'openmp'
-
+  default: 'CPU'
+  
 steps:
 - task: DownloadPipelineArtifact@0
   displayName: 'Download Pipeline Artifact - Signed NuGet Package'
   inputs:
-    artifactName: 'drop-signed-nuget'
+    artifactName: 'drop-signed-nuget-${{ parameters.buildVariant }}'
     targetPath: '${{ parameters.downloadPath }}'
 
 - task: UsePythonVersion@0

@@ -25,7 +25,7 @@ class MatMulInteger final : public MatMulIntegerBase {
   enum OutputTensors : int { OUT_Y = 0 };
 
  protected:
-  int GetBIdx() override { return IN_B; }
+  int GetBIdx() const override { return IN_B; }
 };
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(

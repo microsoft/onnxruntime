@@ -6,12 +6,12 @@
 
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
+#include "core/common/optional.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/containers.h"
 #include "core/util/math.h"
 #endif
 #include "core/util/math_cpuonly.h"
-#include "core/common/optional.h"
 #include "core/platform/threadpool.h"
 #include "core/common/safeint.h"
 #include <cmath>

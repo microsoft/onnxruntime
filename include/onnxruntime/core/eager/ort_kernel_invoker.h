@@ -13,6 +13,7 @@
 #include "core/graph/constants.h"
 #include "core/session/environment.h"
 #include "core/graph/basic_types.h"
+#include "core/graph/model.h"
 
 namespace onnxruntime {
 #ifdef __GNUC__
@@ -21,8 +22,10 @@ namespace onnxruntime {
 
 class ORTInvoker {
  public:
-  ORTInvoker(std::unique_ptr<IExecutionProvider> execution_provider, const logging::Logger& logger) : 
-      execution_provider_(std::move(execution_provider)), logger_(logger) {
+  ORTInvoker(std::unique_ptr<IExecutionProvider> execution_provider, 
+             const logging::Logger& logger,
+             const IOnnxRuntimeOpSchemaRegistryList& custom_op_registries) : 
+      execution_provider_(std::move(execution_provider)), logger_(logger), custom_op_registries_(custom_op_registries) {
     if (!execution_provider_) {
     ORT_THROW("Execution provider is nullptr");
     }
@@ -43,6 +46,9 @@ class ORTInvoker {
  private:
   std::unique_ptr<IExecutionProvider> execution_provider_;
   const logging::Logger& logger_;
+  // custom ops for current execution provider
+  // we need the op schema to resolve the output type during invoke
+  const IOnnxRuntimeOpSchemaRegistryList& custom_op_registries_;
 };
 
 #ifdef __GNUC__

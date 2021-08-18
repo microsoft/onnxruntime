@@ -9,15 +9,8 @@ if ! rpm -q --quiet epel-release ; then
 fi
 
 echo "installing for os major version : $os_major_version"
-yum install -y which gdb redhat-lsb-core expat-devel libcurl-devel tar unzip curl zlib-devel make libunwind icu aria2 rsync bzip2 git bzip2-devel
+yum install -y which gdb redhat-lsb-core expat-devel tar unzip zlib-devel make libunwind  aria2  bzip2 bzip2-devel
 
-if [ "$os_major_version" == "7" ]; then
-    # install dotnet core dependencies
-    yum install -y lttng-ust openssl-libs krb5-libs libicu libuuid
-    # install dotnet runtimes
-    yum install -y https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm
-    yum install -y dotnet-sdk-2.1
-fi
 
 # Install Java
 # Install automatic documentation generation dependencies

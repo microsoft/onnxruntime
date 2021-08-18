@@ -1,8 +1,13 @@
 import os
-import sys
 import unittest
 import math
 import torch
+
+from parity_utilities import find_transformers_source
+if find_transformers_source():
+    from optimizer import optimize_model
+else:
+    from onnxruntime.transformers.optimizer import optimize_model
 
 
 class HuggingfaceGelu(torch.nn.Module):
@@ -41,9 +46,6 @@ class TestGeluFusions(unittest.TestCase):
             self.assertEqual(len(bert_model.get_nodes_by_op_type(op_type)), count)
 
     def test_fusions(self):
-        sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-        from onnxruntime.transformers.optimizer import optimize_model
-
         for test_case in test_cases:
             source, operator, model_class = test_case
             model = model_class()

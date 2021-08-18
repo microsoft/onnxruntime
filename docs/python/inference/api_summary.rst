@@ -158,19 +158,50 @@ Load and run a model
 The main class *InferenceSession* wraps these functionalities
 in a single place.
 
-.. autoclass:: onnxruntime.ModelMetadata
-    :members:
+Main class
+----------
 
 .. autoclass:: onnxruntime.InferenceSession
     :members:
+    :inherited-members:
 
-.. autoclass:: onnxruntime.NodeArg
-    :members:
+Options
+-------
 
 .. autoclass:: onnxruntime.RunOptions
     :members:
 
 .. autoclass:: onnxruntime.SessionOptions
+    :members:
+
+Data
+----
+
+.. autoclass:: onnxruntime.OrtValue
+    :members:
+
+.. autoclass:: onnxruntime.SparseTensor
+    :members:
+
+Devices
+-------
+
+.. autoclass:: onnxruntime.IOBinding
+    :members:
+
+.. autoclass:: onnxruntime.OrtDevice
+    :members:
+
+Internal classes
+----------------
+
+These classes cannot be instantiated by users but they are returned
+by methods or functions of this libary.
+
+.. autoclass:: onnxruntime.ModelMetadata
+    :members:
+
+.. autoclass:: onnxruntime.NodeArg
     :members:
 
 Backend

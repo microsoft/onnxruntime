@@ -14,13 +14,14 @@ jobs:
   - template: templates/run-docker-build-steps.yml
     parameters:
       RunDockerBuildArgs: |
-        -o ubuntu20.04 -p 3.8 -d gpu -r $(Build.BinariesDirectory) \
+        -o ubuntu20.04 -d gpu \
         -t onnxruntime_ortmodule_distributed_tests_image \
         -x " \
           --config RelWithDebInfo \
+          --use_cuda --cuda_version=11.1 --cuda_home=/usr/local/cuda-11.1 --cudnn_home=/usr/local/cuda-11.1 \
           --enable_training \
           --update --build \
-          --build_wheel \
+          --build_wheel --cmake_extra_defines onnxruntime_ENABLE_TRAINING_TORCH_INTEROP=ON \
           " \
         -m \
         -u \
@@ -42,7 +43,7 @@ jobs:
         --volume $(Build.BinariesDirectory):/build \
         --volume /mnist:/mnist \
         onnxruntime_ortmodule_distributed_tests_image \
-          bash -c "python3 -m pip install /build/RelWithDebInfo/dist/onnxruntime*.whl ; rm -rf /build/RelWithDebInfo/onnxruntime/ ; /build/RelWithDebInfo/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_distributed_tests.py --mnist /mnist' --cwd /build/RelWithDebInfo" \
+          bash -c "rm -rf /build/RelWithDebInfo/onnxruntime/ && python3 -m pip install /build/RelWithDebInfo/dist/onnxruntime*.whl && python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install && /build/RelWithDebInfo/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_distributed_tests.py --mnist /mnist' --cwd /build/RelWithDebInfo" \
     displayName: 'Run orttraining_ortmodule_distributed_tests.py'
     condition: succeededOrFailed()
     timeoutInMinutes: 30

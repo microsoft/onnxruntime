@@ -33,7 +33,7 @@ class QLinearMatMul : public MatMulIntegerBase {
   };
 
  protected:
-  int GetBIdx() override {
+  int GetBIdx() const override {
     return IN_B;
   }
 };

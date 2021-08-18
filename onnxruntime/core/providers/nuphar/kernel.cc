@@ -167,7 +167,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Cast,
     kOnnxDomain,
     6,
-    8,
+    12,
     kNupharExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::AllFixedSizeTensorTypes())
@@ -177,7 +177,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
 ONNX_OPERATOR_KERNEL_EX(
     Cast,
     kOnnxDomain,
-    9,
+    13,
     kNupharExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::AllFixedSizeTensorExceptHalfTypes())
@@ -188,7 +188,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Gather,
     kOnnxDomain,
     1,
-    10,
+    12,
     kNupharExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
@@ -199,7 +199,19 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
 ONNX_OPERATOR_KERNEL_EX(
     Gather,
     kOnnxDomain,
+    13,
+    kNupharExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
+                                                        DataTypeImpl::GetTensorType<int64_t>()}),
+    nuphar::NupharKernel);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    GatherElements,
+    kOnnxDomain,
     11,
+    12,
     kNupharExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
@@ -210,7 +222,7 @@ ONNX_OPERATOR_KERNEL_EX(
 ONNX_OPERATOR_KERNEL_EX(
     GatherElements,
     kOnnxDomain,
-    11,
+    13,
     kNupharExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
@@ -286,10 +298,22 @@ ONNX_OPERATOR_KERNEL_EX(
                                                         DataTypeImpl::GetTensorType<int64_t>()}),
     nuphar::NupharKernel);
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     ScatterElements,
     kOnnxDomain,
     11,
+    12,
+    kNupharExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
+                                                        DataTypeImpl::GetTensorType<int64_t>()}),
+    nuphar::NupharKernel);
+
+ONNX_OPERATOR_KERNEL_EX(
+    ScatterElements,
+    kOnnxDomain,
+    13,
     kNupharExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())

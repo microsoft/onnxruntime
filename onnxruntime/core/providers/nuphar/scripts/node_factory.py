@@ -132,6 +132,28 @@ class NodeFactory:
         node.CopyFrom(helper.make_node(op_type, input_names, output_names, name, **attributes))
         return node
 
+    # Squeeze/Unsqueeze/ReduceSum changed axes to input[1] in opset 13
+    def make_node_with_axes(self, op_type, input, axes, onnx_opset_ver, attributes={}, output_names=None):
+        assert op_type in ['Squeeze', 'Unsqueeze', 'ReduceSum']
+        if onnx_opset_ver < 13:
+            attributes.update({'axes':axes})
+            return self.make_node(op_type, input, attributes=attributes, output_names=output_names)
+        else:
+            axes = np.asarray(axes).astype(np.int64)
+            if type(input) == list:
+                input = input + [axes]
+            else:
+                input = [input, axes]
+            return self.make_node(op_type, input, attributes=attributes, output_names=output_names)
+
+    # Split changed split to input[1] in opset 13
+    def make_split_node(self, input, split, onnx_opset_ver, attributes, output_names=None):
+        if onnx_opset_ver < 13:
+            attributes.update({'split':split})
+            return self.make_node('Split', input, attributes=attributes, output_names=output_names)
+        else:
+            split = np.asarray(split).astype(np.int64)
+            return self.make_node('Split', [input, split], attributes=attributes, output_names=output_names)
 
 def ensure_opset(mp, ver, domains=['onnx', '']):
     if type(domains) == str:

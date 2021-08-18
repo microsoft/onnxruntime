@@ -1061,10 +1061,8 @@ Return Value:
 
         size_t RowsHandled;
 
-#if defined(MLAS_TARGET_AMD64_IX86)
+#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER)
         RowsHandled = MlasPlatform.GemmFloatKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
-#elif defined(MLAS_TARGET_POWER)
-        RowsHandled = MlasSgemmKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
 #else
         if (ZeroMode) {
             RowsHandled = MlasSgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);

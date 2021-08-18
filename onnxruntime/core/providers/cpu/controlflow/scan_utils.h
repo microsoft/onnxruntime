@@ -9,7 +9,7 @@
 #include "core/common/common.h"
 #include "core/framework/allocator.h"
 #include "core/framework/feeds_fetches_manager.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/ort_value_tensor_slicer.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/cpu/controlflow/scan.h"

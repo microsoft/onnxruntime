@@ -94,9 +94,9 @@ def init_pytorch_model(model_name, tf_checkpoint_path):
 
     parent_path = tf_checkpoint_path.rpartition('/')[0]
     config_path = glob.glob(parent_path + "/*config.json")
-    config = model_config() if len(config_path) is 0 else model_config.from_json_file(str(config_path[0]))
+    config = model_config() if len(config_path) == 0 else model_config.from_json_file(str(config_path[0]))
 
-    if TFMODELS[model_name][2] is "":
+    if TFMODELS[model_name][2] == "":
         from transformers import AutoModelForPreTraining
         init_model = AutoModelForPreTraining.from_config(config)
     else:
@@ -115,7 +115,7 @@ def convert_tf_checkpoint_to_pytorch(model_name, config, init_model, tf_checkpoi
     if is_tf2 is False:
         load_tf_weight_func = getattr(module, load_tf_weight_func_name)
     else:
-        if TFMODELS[model_name][0] is not "bert":
+        if TFMODELS[model_name][0] != "bert":
             raise NotImplementedError("Only support tf2 ckeckpoint for Bert model")
         from transformers import convert_bert_original_tf2_checkpoint_to_pytorch
         load_tf_weight_func = convert_bert_original_tf2_checkpoint_to_pytorch.load_tf2_weights_in_bert

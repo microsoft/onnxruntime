@@ -11,7 +11,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T>
+template <typename T, typename T1, typename T2>
 class BatchNormalizationGrad final : public CudaKernel {
  public:
   BatchNormalizationGrad(const OpKernelInfo& info)

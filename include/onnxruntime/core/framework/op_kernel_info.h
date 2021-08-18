@@ -5,7 +5,7 @@
 
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_def_builder.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/op_node_proto_helper.h"
 #include "core/graph/graph_viewer.h"
 #include "gsl/gsl"

@@ -5,7 +5,7 @@ import {GlslContext, GlslLib, GlslLibRoutineNode, TopologicalSortGlslRoutines} f
 import {replaceInlines} from './glsl-function-inliner';
 import {glslRegistry} from './glsl-registered-libs';
 import {getDefaultFragShaderMain, getFragShaderPreamble} from './glsl-source';
-import {ProgramInfo, VariableInfo} from './types';
+import {ProgramInfo, TextureLayout, VariableInfo} from './types';
 import {WebGLContext} from './webgl-context';
 
 /**
@@ -21,8 +21,10 @@ export class GlslPreprocessor {
   readonly libs: {[name: string]: GlslLib} = {};
   readonly glslLibRoutineDependencyGraph: {[routineName: string]: GlslLibRoutineNode} = {};
 
-  constructor(glContext: WebGLContext, programInfo: ProgramInfo) {
-    this.context = new GlslContext(glContext, programInfo);
+  constructor(
+      glContext: WebGLContext, programInfo: ProgramInfo, inputTextureLayouts: TextureLayout[],
+      outputTextureLayout: TextureLayout) {
+    this.context = new GlslContext(glContext, programInfo, inputTextureLayouts, outputTextureLayout);
 
     // construct GlslLibs
     Object.keys(glslRegistry).forEach((name: string) => {
@@ -68,14 +70,14 @@ export class GlslPreprocessor {
     // append main() function
     if (!this.context.programInfo.hasMain) {
       source = `${source}
-      ${getDefaultFragShaderMain(this.context.glContext.version, programInfo.outputLayout.shape.length)}`;
+      ${getDefaultFragShaderMain(this.context.glContext.version, this.context.outputTextureLayout.shape.length)}`;
     }
     // replace inlines
     source = replaceInlines(source);
 
     // concat final source string
     return `${getFragShaderPreamble(this.context.glContext.version)}
-    ${this.getUniforms(programInfo.samplers, programInfo.variables)}
+    ${this.getUniforms(programInfo.inputNames, programInfo.variables)}
     ${this.getImports(source)}
     ${source}`;
   }

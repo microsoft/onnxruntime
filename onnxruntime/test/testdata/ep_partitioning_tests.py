@@ -25,21 +25,9 @@ def create_model_1():
     # Naively creating groups based on iterating this order and whether a node is supported gives the following groups
     # (a1), (s1), (a2), (s2), (a3, a4). This is similar to what most EPs do currently.
     #
-    # If we also consider downstream nodes with all inputs available when adding via the topological sort we get two
-    # less groups as s2 gets added with s1.
-    # (a1), (s1, s2), (a2, a3, a4)
-    #
-    # If the EP handles Sub that's fine. If the EP handles Add that's not.
-    #
-    # Finally, if we do a partition aware sort, and prefer unhandled nodes first to maximize the inputs that would be
-    # available each time we go to the EP, we can choose either of the root nodes (a1 or s1) to start at.
-    #
-    # If the EP is handling Sub we would start with a1 and get the same groups as above - which is perfectly fine as
-    # there's a single partition with (s1, s2) run on the EP.
-    #
-    # If the EP is handling Add we would start with s1 (due to preferring unhandled nodes first) and get the following
-    # groups, which also achieves a single partition of the handled nodes.
-    # (s2, s2), (a1, a2, a3, a4)
+    # To improve on that, we may consider all reachable supported nodes when iterating the topological ordering.
+    # In this model, regardless of whether Add or Sub is supported, we get the groups (s1, s2), (a1, a2, a3, a4).
+    # One of those groups is the resulting partition.
     #
     # So if this model is loaded in a partitioning test, there should only be one partition running on the EP regardless
     # of whether Add or Sub is supported by it.

@@ -1,0 +1,12 @@
+trigger: none
+
+stages:
+- template: templates/py-packaging-training-cuda-stage.yml
+  parameters:
+    build_py_parameters: --enable_training --update --build
+    torch_version: '1.8.1'
+    cuda_version: '11.1'
+    gcc_version: 9
+    cmake_cuda_architectures: 37;50;52;60;61;70;75;80
+    docker_file: Dockerfile.manylinux2014_training_cuda11_1
+    agent_pool: Onnxruntime-Linux-GPU

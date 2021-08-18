@@ -261,12 +261,10 @@ def export_longformer(model, onnx_model_path, export_padding):
 
 def optimize_longformer(onnx_model_path, fp32_model_path, fp16_model_path=None):
     from onnx import load_model
-    from onnxruntime.transformers.onnx_model_bert import BertOnnxModel, BertOptimizationOptions
+    from onnxruntime.transformers.onnx_model_bert import BertOnnxModel
     model = load_model(onnx_model_path, format=None, load_external_data=True)
-    optimization_options = BertOptimizationOptions('bert')
-    optimizer = BertOnnxModel(model, num_heads=16,
-                              hidden_size=768)  # paramters does not matter since attention fusion is not needed.
-    optimizer.optimize(optimization_options)
+    optimizer = BertOnnxModel(model)
+    optimizer.optimize()
 
     use_external_data_format = False
     if fp32_model_path:

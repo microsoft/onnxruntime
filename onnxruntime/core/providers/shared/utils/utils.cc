@@ -5,9 +5,9 @@
 #include "utils.h"
 
 #include <core/common/safeint.h>
+#include <core/framework/tensorprotoutils.h>
 #include <core/graph/graph.h>
-
-#include "core/providers/common.h"
+#include <core/providers/common.h>
 
 namespace onnxruntime {
 
@@ -66,7 +66,13 @@ bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node,
         LOGS(logger, VERBOSE) << "Input min of Clip must be known";
         return false;
       }
-      min = GetTensorFloatData(*initializers.at(min_name))[0];
+      std::vector<uint8_t> unpacked_tensor;
+      auto status = onnxruntime::utils::UnpackInitializerData(*initializers.at(min_name), unpacked_tensor);
+      if (!status.IsOK()) {
+        LOGS(logger, ERROR) << "Error while unpack min tensor: " << status.ErrorMessage();
+        return false;
+      }
+      min = reinterpret_cast<float*>(unpacked_tensor.data())[0];
     }
 
     if (node.InputDefs().size() > 2) {  // we have input max
@@ -75,7 +81,13 @@ bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node,
         LOGS(logger, VERBOSE) << "Input max of Clip must be known";
         return false;
       }
-      max = GetTensorFloatData(*initializers.at(max_name))[0];
+      std::vector<uint8_t> unpacked_tensor;
+      auto status = onnxruntime::utils::UnpackInitializerData(*initializers.at(max_name), unpacked_tensor);
+      if (!status.IsOK()) {
+        LOGS(logger, ERROR) << "Error while unpack max tensor: " << status.ErrorMessage();
+        return false;
+      }
+      max = reinterpret_cast<float*>(unpacked_tensor.data())[0];
     }
   }
 

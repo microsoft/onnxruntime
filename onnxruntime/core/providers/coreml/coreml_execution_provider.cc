@@ -1,17 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "coreml_execution_provider.h"
+#include "core/providers/coreml/coreml_execution_provider.h"
 
 #include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
+#include "core/providers/partitioning_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
-#include "model/model.h"
-#include "model/host_utils.h"
-#include "builders/helper.h"
-#include "builders/model_builder.h"
+#include "core/providers/coreml/builders/helper.h"
+#include "core/providers/coreml/builders/model_builder.h"
+#include "core/providers/coreml/model/host_utils.h"
+#include "core/providers/coreml/model/model.h"
 
 namespace onnxruntime {
 
@@ -49,121 +50,33 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
     return result;
   }
 
-  /*
-  Very basic search for groups of nodes that can be handled by the EP.
-  This doesn't work perfectly if you have a scenario like the following where A and D could be handled by the EP
-  but B is between them in the topological sort as you'll get two single node capabilities. However if can also
-  be advantageous if C and E could be handled by the EP as they would be combined with D even though not connected.
-  Not sure how often each of these scenarios happens.
-
-    A  B  C
-    | /   |
-    D     E
-    |     |
-
-  Would probably be better to walk the edges for each node the EP can handle as they are iterated in topological order,
-  accumulating nodes (and saving which ones have been taken) until you run out. This would guarantee all
-  connected nodes that can be handled are grouped together.
-  */
-
   const auto& logger = *GetLogger();
 
-  bool has_neural_engine = coreml::HasNeuralEngine(logger);
+  const bool has_neural_engine = coreml::HasNeuralEngine(logger);
   if ((coreml_flags_ & COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE) && !has_neural_engine) {
     LOGS(logger, VERBOSE) << "The current system does not have Apple Neural Engine";
     return result;
   }
 
-  const auto node_groups = coreml::GetSupportedNodes(graph_viewer, logger);
+  const auto supported_nodes = coreml::GetSupportedNodes(graph_viewer, logger);
 
-  if (node_groups.empty()) {
-    return result;
-  }
-
-  const auto& graph_output_list = graph_viewer.GetOutputs();
-  std::unordered_set<const NodeArg*> graph_outputs(graph_output_list.cbegin(), graph_output_list.cend());
-
-  size_t num_of_supported_nodes = 0;
-  for (const auto& group : node_groups) {
-    if (group.empty())
-      continue;
-
-    num_of_supported_nodes += group.size();
-    LOGS(logger, VERBOSE) << "CoreMLExecutionProvider::GetCapability, current supported node group size: "
-                          << group.size();
-
-    std::unordered_set<NodeIndex> node_set;
-    node_set.reserve(group.size());
-    for (const auto& index : group) {
-      node_set.insert(index);
-    }
-
-    std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
-
-    std::unordered_set<const NodeArg*> node_outputs;
-    std::unordered_set<const NodeArg*> subgraph_inputs;
-    std::unordered_set<const NodeArg*> subgraph_outputs;
-    std::vector<const NodeArg*> ordered_subgraph_inputs;
-    std::vector<const NodeArg*> ordered_subgraph_outputs;
-
-    for (const auto& index : group) {
-      sub_graph->nodes.push_back(index);
-      const auto* node = graph_viewer.GetNode(index);
-
-      for (const auto* input : node->InputDefs()) {
-        // if the node input was not produced by this subgraph, add it to the subgraph inputs.
-        if (node_outputs.count(input) == 0) {
-          if (subgraph_inputs.count(input) == 0) {
-            subgraph_inputs.insert(input);
-            ordered_subgraph_inputs.push_back(input);
-          }
-        }
-      }
-
-      const auto& output_defs = node->OutputDefs();
-      for (const auto* output_def : output_defs) {
-        node_outputs.insert(output_def);
-        // if output is overall graph output we need to produce it.
-        if (graph_outputs.count(output_def) != 0) {
-          ordered_subgraph_outputs.push_back(output_def);
-        }
-      }
-
-      // if output connects to a node not in this subgraph we need to produce it
-      for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
-        if (node_set.count(it->GetNode().Index()) == 0) {
-          const auto* output_def = output_defs[it->GetSrcArgIndex()];
-          if (subgraph_outputs.count(output_def) == 0) {
-            subgraph_outputs.insert(output_def);
-            ordered_subgraph_outputs.push_back(output_def);
-          }
-        }
-      }
-    }
-
-    // Assign inputs and outputs to subgraph's meta_def
+  const auto gen_metadef_name = [&]() {
     uint64_t model_hash;
     int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
-    auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
-    meta_def->name = "COREML_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id);
-    meta_def->domain = kMSDomain;
-    meta_def->since_version = 1;
-    meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
+    return MakeString(COREML, "_", model_hash, "_", metadef_id);
+  };
 
-    for (const auto& input : ordered_subgraph_inputs) {
-      meta_def->inputs.push_back(input->Name());
-    }
+  result = utils::CreateSupportedPartitions(graph_viewer, supported_nodes, {},
+                                            gen_metadef_name, COREML);
 
-    for (const auto& output : ordered_subgraph_outputs) {
-      meta_def->outputs.push_back(output->Name());
-    }
+  const auto num_of_partitions = result.size();
+  const auto num_of_supported_nodes = std::transform_reduce(
+      result.begin(), result.end(),
+      size_t{0}, std::plus<>{},
+      [](const auto& partition) -> size_t {
+        return partition && partition->sub_graph ? partition->sub_graph->nodes.size() : 0;
+      });
 
-    sub_graph->SetMetaDef(std::move(meta_def));
-
-    result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
-  }
-
-  auto num_of_partitions = result.size();
   const auto summary_msg = MakeString(
       "CoreMLExecutionProvider::GetCapability,",
       " number of partitions supported by CoreML: ", num_of_partitions,
@@ -278,6 +191,11 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
           if (model->IsScalarOutput(output_name))
             output_shape.clear();
 
+          // Since CoreML EP only accepts int32 output type and onnx requires int64 output,
+          // We are going to set the model output (from int32) ->int64
+          if (model->IsInt64Output(output_name))
+            output_type = ONNX_NAMESPACE::TensorProto_DataType_INT64;
+
           auto* output_tensor =
               ort.KernelContext_GetOutput(context, i, output_shape.data(), output_shape.size());
 
@@ -288,6 +206,9 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
               break;
             case ONNX_NAMESPACE::TensorProto_DataType_INT32:
               output_buffer = ort.GetTensorMutableData<int32_t>(output_tensor);
+              break;
+            case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+              output_buffer = ort.GetTensorMutableData<int64_t>(output_tensor);
               break;
             default:
               return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,

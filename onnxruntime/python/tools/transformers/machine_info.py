@@ -45,10 +45,12 @@ class MachineInfo():
             "gpu": gpu_info,
             "cpu": self.get_cpu_info(),
             "memory": self.get_memory_info(),
-            "python": self._try_get(cpu_info, ["python_version"]),
             "os": platform.platform(),
+            "python": self._try_get(cpu_info, ["python_version"]),
+            "onnx": self.get_onnx_info(),
+            "onnxconverter_common": self.get_onnxconverter_common_info(),
             "onnxruntime": self.get_onnxruntime_info(),
-            "onnxruntime_tools": self.get_onnxruntime_tools_info(),
+            "transformers": self.get_transformers_info(),
             "pytorch": self.get_pytorch_info(),
             "tensorflow": self.get_tensorflow_info()
         }
@@ -62,7 +64,10 @@ class MachineInfo():
     def _try_get(self, cpu_info: Dict, names: List) -> str:
         for name in names:
             if name in cpu_info:
-                return cpu_info[name]
+                value = cpu_info[name]
+                if isinstance(value, (list, tuple)):
+                    return ",".join(value)
+                return value
         return ""
 
     def get_cpu_info(self) -> Dict:
@@ -107,6 +112,24 @@ class MachineInfo():
             result["cuda_visible"] = environ['CUDA_VISIBLE_DEVICES']
         return result
 
+    def get_onnx_info(self) -> Dict:
+        try:
+            import onnx
+            return {"version": onnx.__version__}
+        except ImportError as error:
+            if not self.silent:
+                self.logger.exception(error)
+            return None
+
+    def get_onnxconverter_common_info(self) -> Dict:
+        try:
+            import onnxconverter_common
+            return {"version": onnxconverter_common.__version__}
+        except ImportError as error:
+            if not self.silent:
+                self.logger.exception(error)
+            return None
+
     def get_onnxruntime_info(self) -> Dict:
         try:
             import onnxruntime
@@ -123,10 +146,10 @@ class MachineInfo():
                 self.logger.exception(exception, False)
             return None
 
-    def get_onnxruntime_tools_info(self) -> Dict:
+    def get_transformers_info(self) -> Dict:
         try:
-            import onnxruntime_tools
-            return {"version": onnxruntime_tools.__version__}
+            import transformers
+            return {"version": transformers.__version__}
         except ImportError as error:
             if not self.silent:
                 self.logger.exception(error)

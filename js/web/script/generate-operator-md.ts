@@ -8,8 +8,8 @@ import * as path from 'path';
 
 import {Attribute} from '../lib/onnxjs/attribute';
 import {WEBGL_OP_RESOLVE_RULES} from '../lib/onnxjs/backends/webgl/op-resolve-rules';
-import {Operator} from '../lib/onnxjs/operators';
 import {OpSet, resolveOperator} from '../lib/onnxjs/opset';
+import {Tensor} from '../lib/onnxjs/tensor';
 
 function checkSupport(type: string, range: [number, number], rules: readonly OpSet.ResolveRule[]) {
   const node = {name: '', opType: type, inputs: [], outputs: [], attributes: new Attribute(undefined)};
@@ -31,13 +31,13 @@ function formatDesc(opType: string, range: [number, number], support: boolean, l
   }
   return versionDesc;
 }
-function dummyOpConstructor(): Operator {
-  return {} as any as Operator;
+function dummyOpImpl(): Tensor[] {
+  return {} as any as Tensor[];
 }
 
 const ops = new Map<string, Map<string, number[]>>();
 const webglCheckOnlyRules =
-    WEBGL_OP_RESOLVE_RULES.map(rule => [rule[0], rule[1], rule[2], dummyOpConstructor] as OpSet.ResolveRule);
+    WEBGL_OP_RESOLVE_RULES.map(rule => [rule[0], rule[1], rule[2], dummyOpImpl] as OpSet.ResolveRule);
 
 fs.readFileSync(path.join(__dirname, '../../../cmake/external/onnx/onnx/defs/operator_sets.h'), 'utf8')
     .split(/\r?\n/)

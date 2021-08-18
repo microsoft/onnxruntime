@@ -45,6 +45,36 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_providers_shared.dll"
+          Condition="Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_providers_shared.dll')">
+      <Link>onnxruntime_providers_shared.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_providers_cuda.dll"
+          Condition="Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_providers_cuda.dll')">
+      <Link>onnxruntime_providers_cuda.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_providers_dnnl.dll"
+          Condition="Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_providers_dnnl.dll')">
+      <Link>onnxruntime_providers_dnnl.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_providers_tensorrt.dll"
+          Condition="Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_providers_tensorrt.dll')">
+      <Link>onnxruntime_providers_tensorrt.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_providers_openvino.dll"
+          Condition="Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_providers_openvino.dll')">
+      <Link>onnxruntime_providers_openvino.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
     <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\dnnl.dll"
           Condition="('$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')) AND
                      Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\dnnl.dll')">

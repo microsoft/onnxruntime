@@ -636,6 +636,14 @@ ORT_API_STATUS_IMPL(winmla::ModelAddOperator,
         attr->set_f(*reinterpret_cast<const float*>(raw_data));
         break;
       }
+      case onnx::AttributeProto_AttributeType_STRING: {
+        if (tensor->Shape().Size() != 1) {
+          return OrtApis::CreateStatus(ORT_ENGINE_ERROR, "Expected a single string value!");
+        }
+        auto raw_data = tensor->DataRaw();
+        attr->set_s(*reinterpret_cast<const std::string*>(raw_data));
+        break;
+      }
       case onnx::AttributeProto_AttributeType_INTS: {
         auto raw_data = tensor->DataRaw();
         for (int j = 0; j < tensor->Shape().Size(); j++) {

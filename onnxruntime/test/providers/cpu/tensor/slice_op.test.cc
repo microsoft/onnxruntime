@@ -559,7 +559,7 @@ TEST(SliceTest, OptionalAxesInputAloneMissing) {
   testv10.AddInput<float>("data", input_dims, input_vals);
   testv10.AddInput<int64_t>("starts", {static_cast<int64_t>(starts.size())}, starts);
   testv10.AddInput<int64_t>("ends", {static_cast<int64_t>(ends.size())}, ends);
-  testv10.AddMissingOptionalInput<int64_t>();
+  testv10.AddOptionalInputEdge<int64_t>();
   testv10.AddInput<int64_t>("steps", {static_cast<int64_t>(steps.size())}, steps);
   testv10.AddOutput<float>("output", output_dims, output_vals);
   testv10.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});

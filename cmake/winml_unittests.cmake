@@ -12,6 +12,7 @@ set(WINML_TEST_INC_DIR
   ${REPO_ROOT}/cmake/external/protobuf/src
   ${REPO_ROOT}/cmake/external/wil/include
   ${REPO_ROOT}/cmake/external/SafeInt
+  ${REPO_ROOT}/cmake/external/optional-lite/include
   ${CMAKE_CURRENT_BINARY_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated

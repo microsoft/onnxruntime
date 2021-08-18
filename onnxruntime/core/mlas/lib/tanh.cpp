@@ -119,7 +119,13 @@ Return Value:
 
         float Value = *Input++;
 
-        Value = std::min(MlasTanhConstants.UpperRange, std::max(MlasTanhConstants.LowerRange, Value));
+        // This odd two-step process exists to ensure an input value of NaN carries through 
+        // without modification because "std::min" and "std::max" return unreliable results 
+        // when NaNs are involved, and it's clear from the test's reference outputs that 
+        // they want a NaN on output whenever the input is a NaN.
+        float v_tmp;
+        v_tmp = (Value < MlasTanhConstants.LowerRange) ? MlasTanhConstants.LowerRange : Value;
+        Value = (v_tmp > MlasTanhConstants.UpperRange) ? MlasTanhConstants.UpperRange : v_tmp;
 
         float ValueSquared = Value * Value;
 

@@ -3,6 +3,12 @@
 
 import {EnvImpl} from './env-impl';
 export declare namespace Env {
+  export type WasmPrefixOrFilePaths = string|{
+    'ort-wasm.wasm'?: string;
+    'ort-wasm-threaded.wasm'?: string;
+    'ort-wasm-simd.wasm'?: string;
+    'ort-wasm-simd-threaded.wasm'?: string;
+  };
   export interface WebAssemblyFlags {
     /**
      * set or get number of thread(s). If omitted or set to 0, number of thread(s) will be determined by system. If set
@@ -24,6 +30,12 @@ export declare namespace Env {
      * value indicates no timeout is set. (default is 0)
      */
     initTimeout?: number;
+
+    /**
+     * Set a custom URL prefix to the .wasm files or a set of overrides for each .wasm file. The override path should be
+     * an absolute path.
+     */
+    wasmPaths?: WasmPrefixOrFilePaths;
   }
 
   export interface WebGLFlags {

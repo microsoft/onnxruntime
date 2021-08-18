@@ -109,7 +109,32 @@ class Model(object):
             return self._tab.String(o + self._tab.Pos)
         return None
 
-def ModelStart(builder): builder.StartObject(9)
+    # Model
+    def MetadataProps(self, j):
+        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(22))
+        if o != 0:
+            x = self._tab.Vector(o)
+            x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
+            x = self._tab.Indirect(x)
+            from ort_flatbuffers_py.experimental.fbs.StringStringEntry import StringStringEntry
+            obj = StringStringEntry()
+            obj.Init(self._tab.Bytes, x)
+            return obj
+        return None
+
+    # Model
+    def MetadataPropsLength(self):
+        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(22))
+        if o != 0:
+            return self._tab.VectorLen(o)
+        return 0
+
+    # Model
+    def MetadataPropsIsNone(self):
+        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(22))
+        return o == 0
+
+def ModelStart(builder): builder.StartObject(10)
 def ModelAddIrVersion(builder, irVersion): builder.PrependInt64Slot(0, irVersion, 0)
 def ModelAddOpsetImport(builder, opsetImport): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(opsetImport), 0)
 def ModelStartOpsetImportVector(builder, numElems): return builder.StartVector(4, numElems, 4)
@@ -120,4 +145,6 @@ def ModelAddModelVersion(builder, modelVersion): builder.PrependInt64Slot(5, mod
 def ModelAddDocString(builder, docString): builder.PrependUOffsetTRelativeSlot(6, flatbuffers.number_types.UOffsetTFlags.py_type(docString), 0)
 def ModelAddGraph(builder, graph): builder.PrependUOffsetTRelativeSlot(7, flatbuffers.number_types.UOffsetTFlags.py_type(graph), 0)
 def ModelAddGraphDocString(builder, graphDocString): builder.PrependUOffsetTRelativeSlot(8, flatbuffers.number_types.UOffsetTFlags.py_type(graphDocString), 0)
+def ModelAddMetadataProps(builder, metadataProps): builder.PrependUOffsetTRelativeSlot(9, flatbuffers.number_types.UOffsetTFlags.py_type(metadataProps), 0)
+def ModelStartMetadataPropsVector(builder, numElems): return builder.StartVector(4, numElems, 4)
 def ModelEnd(builder): return builder.EndObject()

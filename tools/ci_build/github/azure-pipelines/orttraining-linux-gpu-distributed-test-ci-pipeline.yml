@@ -14,9 +14,10 @@ jobs:
   - template: templates/run-docker-build-steps.yml
     parameters:
       RunDockerBuildArgs: |
-        -o ubuntu20.04 -p 3.8 -d gpu -r $(Build.BinariesDirectory) \
+        -o ubuntu20.04 -d gpu \
         -t onnxruntime_distributed_tests_image \
         -x " \
+          --use_cuda --cuda_version=11.1 --cuda_home=/usr/local/cuda-11.1 --cudnn_home=/usr/local/cuda-11.1 \
           --config RelWithDebInfo \
           --enable_training \
           --update --build \

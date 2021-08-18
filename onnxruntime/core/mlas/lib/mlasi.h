@@ -497,6 +497,7 @@ extern "C" {
 #endif
 #elif defined(MLAS_TARGET_POWER)
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernel;
+    MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelPOWER10;
 #else
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZero;
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelAdd;
@@ -702,8 +703,10 @@ struct MLAS_PLATFORM {
 
     MLAS_PLATFORM(void);
 
-#if defined(MLAS_TARGET_AMD64_IX86)
+#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER)
     MLAS_GEMM_FLOAT_KERNEL* GemmFloatKernel;
+    const MLAS_GEMM_U8X8_DISPATCH* GemmU8S8Dispatch;
+    const MLAS_GEMM_U8X8_DISPATCH* GemmU8U8Dispatch;
 #endif
 
 #if defined(MLAS_TARGET_AMD64)
@@ -711,10 +714,8 @@ struct MLAS_PLATFORM {
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1TransposeBRoutine;
     MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* TransposePackB16x4Routine;
     MLAS_GEMM_DOUBLE_KERNEL* GemmDoubleKernel;
-    const MLAS_GEMM_U8X8_DISPATCH* GemmU8S8Dispatch;
     MLAS_GEMM_U8S8_KERNEL* GemmU8S8Kernel;
     MLAS_GEMV_U8S8_KERNEL* GemvU8S8Kernel;
-    const MLAS_GEMM_U8X8_DISPATCH* GemmU8U8Dispatch;
     MLAS_GEMM_U8U8_KERNEL* GemmU8U8Kernel;
     MLAS_CONV_FLOAT_KERNEL* ConvNchwFloatKernel;
     MLAS_CONV_FLOAT_KERNEL* ConvNchwcFloatKernel;
@@ -904,7 +905,7 @@ MlasConvDepthwiseFloat_CHW(
 #if defined(MLAS_TARGET_ARM)
 #define MLAS_NEON_INTRINSICS
 #define MLAS_NEON32_INTRINSICS
-#elif defined(MLAS_TARGET_ARM64)
+#elif defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_ARM64EC)
 #define MLAS_NEON_INTRINSICS
 #define MLAS_NEON64_INTRINSICS
 #elif defined(MLAS_TARGET_POWER)
@@ -1626,7 +1627,7 @@ MlasMaximumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_max_ps(Vector1, Vector2);
 #elif defined(MLAS_VSX_INTRINSICS)
-    return vec_sel(Vector2, Vector1, vec_cmpgt(Vector1, Vector2));
+    return vec_sel(vec_sel(vec_sel(Vector2, Vector1, vec_cmpgt(Vector1, Vector2)), Vector1, vec_cmpne(Vector1, Vector1)), Vector2, vec_cmpne(Vector2, Vector2));
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_f32x4_max(Vector1, Vector2);
 #else
@@ -1643,7 +1644,7 @@ MlasMinimumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_min_ps(Vector1, Vector2);
 #elif defined(MLAS_VSX_INTRINSICS)
-    return vec_sel(Vector2, Vector1, vec_cmpgt(Vector2, Vector1));
+    return vec_sel(vec_sel(vec_sel(Vector2, Vector1, vec_cmpgt(Vector2, Vector1)), Vector1, vec_cmpne(Vector1, Vector1)), Vector2, vec_cmpne(Vector2, Vector2));
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_f32x4_min(Vector1, Vector2);
 #else

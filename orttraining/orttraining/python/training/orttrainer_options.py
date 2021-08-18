@@ -201,7 +201,7 @@ class ORTTrainerOptions(object):
                                 },
                                 'propagate_cast_ops_level': {
                                     'type': 'integer',
-                                    'default': -1
+                                    'default': 1
                                 },
                                 'propagate_cast_ops_allow': {
                                     'type': 'list',
@@ -229,7 +229,7 @@ class ORTTrainerOptions(object):
                             'type' : 'boolean',
                             'default' : True
                         },
-                        'invertible_layer_norm_gradient' : {
+                        'memory_efficient_gradient' : {
                             'type' : 'boolean',
                             'default' : False
                         },
@@ -382,7 +382,7 @@ class ORTTrainerOptions(object):
                 INSERT_AND_REDUCE strategy inserts and reduces cast operations around the nodes with allowed opcodes.
                 FLOOD_FILL strategy expands float16 regions in the graph using the allowed opcodes, and unlike
                 INSERT_AND_REDUCE does not touch opcodes outside expanded float16 region.
-            graph_transformer.propagate_cast_ops_config.level(integer, default -1)
+            graph_transformer.propagate_cast_ops_config.level(integer, default 1)
                 Optimize by moving Cast operations if propagate_cast_ops_level is non-negative.
                 Use predetermined list of opcodes considered safe to move before/after cast operation
                 if propagate_cast_ops_level is positive and use propagate_cast_ops_allow otherwise.
@@ -406,8 +406,8 @@ class ORTTrainerOptions(object):
             list of model parameter names to skip training (weights don't change)
         utils.grad_norm_clip (bool, default is True):
             enables gradient norm clipping for 'AdamOptimizer' and 'LambOptimizer'
-        utils.invertible_layer_norm_gradient (bool, default is False):
-            enables use of invertible layer norm gradients
+        utils.memory_efficient_gradient (bool, default is False):
+            enables use of memory aware gradient builder.
         utils.run_symbolic_shape_infer (bool, default is False):
             runs symbolic shape inference on the model
         debug (dict):
@@ -755,7 +755,7 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'type': 'boolean',
                 'default': True
             },
-            'invertible_layer_norm_gradient': {
+            'memory_efficient_gradient': {
                 'type': 'boolean',
                 'default': False
             },

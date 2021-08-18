@@ -3,7 +3,13 @@
 
 #include "core/graph/constants.h"
 #include "core/graph/featurizers_ops/featurizers_defs.h"
-#include "core/graph/onnx_protobuf.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "onnx/defs/schema.h"
+#else
+#include "onnx/defs/data_type_utils.h"
+#endif
+#include "onnx/onnx_pb.h"
+#include "onnx/onnx-operators_pb.h"
 #include "core/graph/op.h"
 
 #define MS_FEATURIZERS_OPERATOR_SCHEMA(name) MS_FEATURIZERS_OPERATOR_SCHEMA_UNIQ_HELPER(__COUNTER__, name)

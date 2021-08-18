@@ -379,6 +379,55 @@ inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
   }
 }
 
+
+inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
+                                                     cublasOperation_t transa,
+                                                     cublasOperation_t transb,
+                                                     int m, int n, int k,
+                                                     const float* alpha,
+                                                     const __half* A, int lda,
+                                                     long long int strideA,
+                                                     const __half* B, int ldb,
+                                                     long long int strideB,
+                                                     const float* beta,
+                                                     __half* C, int ldc,
+                                                     long long int strideC,
+                                                     int batch_count,
+                                                     const cudaDeviceProp& prop) {
+  const HalfGemmOptions* half_options = HalfGemmOptions::GetInstance();
+  onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, half_options->GetMathMode());
+  if (half_options->IsCompute16F()) {    
+    // The alpha and beta shall have same precision as compute type.
+    uint16_t h_a = onnxruntime::math::floatToHalf(*alpha);
+    uint16_t h_b = onnxruntime::math::floatToHalf(*beta);
+    return cublasGemmStridedBatchedEx(handle,
+                                      transa,
+                                      transb,
+                                      m, n, k,
+                                      &h_a,
+                                      A, CUDA_R_16F, lda, strideA,
+                                      B, CUDA_R_16F, ldb, strideB,
+                                      &h_b,
+                                      C, CUDA_R_16F, ldc, strideC,
+                                      batch_count,
+                                      half_options->GetComputeType(),
+                                      CUBLAS_GEMM_DEFAULT);
+  } else {
+    return cublasGemmStridedBatchedEx(handle,
+                                      transa,
+                                      transb,
+                                      m, n, k,
+                                      alpha,
+                                      A, CUDA_R_16F, lda, strideA,
+                                      B, CUDA_R_16F, ldb, strideB,
+                                      beta,
+                                      C, CUDA_R_16F, ldc, strideC,
+                                      batch_count,
+                                      half_options->GetComputeType(),
+                                      CUBLAS_GEMM_DEFAULT);
+  }
+}
+
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
                                                      cublasOperation_t transa,

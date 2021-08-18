@@ -47,7 +47,10 @@ Abstract:
 #if defined(_M_ARM64) || defined(__aarch64__)
 #define MLAS_TARGET_ARM64
 #endif
-#if defined(_M_ARM) || defined(_M_ARM64EC) || defined(__arm__)
+#if defined(_M_ARM64EC)
+#define MLAS_TARGET_ARM64EC
+#endif
+#if defined(_M_ARM) || defined(__arm__)
 #define MLAS_TARGET_ARM
 #endif
 #if defined(__VSX__)
@@ -527,6 +530,7 @@ struct MLAS_GEMM_U8X8_SHAPE_PARAMS {
     size_t N = 0;
     size_t K = 0;
     bool BIsSigned = false;
+    bool IsAccumulateMode = false;
 };
 
 struct MLAS_GEMM_U8X8_DATA_PARAMS {
@@ -966,8 +970,8 @@ MlasQuantizeLinear(
 /**
  * @brief Requantize a block of the intermediate buffer to the output buffer,
  *        optionally adding the supplied bias
- * 
- * @param Input                     Input matrix 
+ *
+ * @param Input                     Input matrix
  * @param InputLeadingDimension     Input matrix leading dimension
  * @param Output                    Output matrix
  * @param OutputLeadingDimension    Output matrix leading dimension

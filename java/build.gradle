@@ -170,7 +170,7 @@ test {
 	if (cmakeBuildDir != null) {
 		workingDir cmakeBuildDir
 	}
-	systemProperties System.getProperties().subMap(['USE_CUDA'])
+	systemProperties System.getProperties().subMap(['USE_CUDA', 'USE_TENSORRT', 'USE_DNNL', 'USE_OPENVINO'])
 	testLogging {
 		events "passed", "skipped", "failed"
 		showStandardStreams = true

@@ -23,7 +23,7 @@ jobs:
     sln_platform: 'x64'
     CudaVersion: '10.2'
     OrtPackageId: 'Microsoft.ML.OnnxRuntime.Gpu'
-    BuildConfigurations: ['Debug', 'RelWithDebInfo']
+    BuildConfigurations: ['RelWithDebInfo']
     # Enable unreleased onnx opsets in CI builds
     # This facilitates testing the implementation for the new opsets
     AllowReleasedOpsetOnly: '0'

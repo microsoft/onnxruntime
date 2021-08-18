@@ -154,6 +154,15 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
       case ONNX_NAMESPACE::TensorProto_DataType_INT32:
         multi_array->set_datatype(COREML_SPEC::ArrayFeatureType::INT32);
         break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+        if (!is_input) {
+          // If we have an int64 output type, since COREML_SPEC:ArrayFeatureType does not support INT64
+          // we assign it to be INT32 here
+          multi_array->set_datatype(COREML_SPEC::ArrayFeatureType::INT32);
+          // Record the output names and we need to change them back to Int64 when CoreML EP returns these values to ORT
+          AddInt64Output(name);
+        }
+        break;
       default: {
         // TODO: support other type
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -203,6 +212,7 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model, const std::string& p
   ORT_RETURN_IF_ERROR(SaveCoreMLModel(path));
   model.reset(new Model(path, logger_, coreml_flags_));
   model->SetScalarOutputs(std::move(scalar_outputs_));
+  model->SetInt64Outputs(std::move(int64_outputs_));
   model->SetInputOutputInfo(std::move(input_output_info_));
   return model->LoadModel();
 }
@@ -223,6 +233,10 @@ Status ModelBuilder::SaveCoreMLModel(const std::string& path) {
 
 void ModelBuilder::AddScalarOutput(const std::string& output_name) {
   scalar_outputs_.insert(output_name);
+}
+
+void ModelBuilder::AddInt64Output(const std::string& output_name) {
+  int64_outputs_.insert(output_name);
 }
 
 void ModelBuilder::AddLayer(std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer) {

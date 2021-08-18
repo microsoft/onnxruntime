@@ -24,6 +24,7 @@ steps:
   displayName: 'Download onnxruntime_training_data.zip data'
 
 - script: |-
+    export ROCM_HOME=/opt/rocm
     python tools/ci_build/build.py \
     --config RelWithDebInfo \
     --enable_training \

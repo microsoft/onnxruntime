@@ -69,14 +69,14 @@ void TestMatMulIntegerToFloat(const std::vector<int64_t>& A_dims,
     test.AddInput<uint8_t>("a_zero_point", {1}, A_zero_point);
     test.AddInput<T>("b_zero_point", {b_scale_zp_size}, B_zero_point);
   } else {
-    test.AddMissingOptionalInput<T>();
-    test.AddMissingOptionalInput<T>();
+    test.AddOptionalInputEdge<T>();
+    test.AddOptionalInputEdge<T>();
   }
 
   if (has_bias) {
     test.AddInput<float>("bias", {B_dims.back()}, Bias);
   } else {
-    test.AddMissingOptionalInput<float>();
+    test.AddOptionalInputEdge<float>();
   }
 
   test.AddReferenceOutputs(reference_model);

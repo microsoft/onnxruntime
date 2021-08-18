@@ -163,10 +163,10 @@ class MlasFgemmTest : public MlasTestBase {
     //
     // Skip the test if the B buffer cannot be packed.
     //
-
-    if (Packed && (N == 0 || K == 0)) {
-      return;
-    }
+    if constexpr (Packed) {
+      if (N == 0 || K == 0)
+        return;
+    }    
 
     const T* A = BufferA.GetBuffer(K * M * BatchSize);
     const T* B = BufferB.GetBuffer(N * K * BatchSize);

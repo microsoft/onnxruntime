@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+'use strict';
+
 const path = require('path');
 const webpack = require('webpack');
 const NodePolyfillPlugin = require('node-polyfill-webpack-plugin');
@@ -173,7 +175,9 @@ function buildTestRunnerConfig({
     },
     plugins: [
       new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] }),
-      new NodePolyfillPlugin(),
+      new NodePolyfillPlugin({
+        excludeAliases: ["console"]
+      }),
     ],
     module: {
       rules: [{

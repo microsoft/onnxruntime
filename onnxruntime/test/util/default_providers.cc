@@ -97,7 +97,7 @@ std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider() {
 // For any non - Android system, NNAPI will only be used for ort model converter
 // Make it unavailable here, you can still manually append NNAPI EP to session for model conversion
 #if defined(USE_NNAPI) && defined(__ANDROID__)
-  return CreateExecutionProviderFactory_Nnapi(0)->CreateProvider();
+  return CreateExecutionProviderFactory_Nnapi(0, {})->CreateProvider();
 #else
   return nullptr;
 #endif

@@ -626,14 +626,9 @@ TEST(SessionStateTest, SharedInitalizersWithPrePackingTest) {
     // Enable shared initializer
     OrtMemoryInfo mem_info(CPU, OrtDeviceAllocator);
     std::vector<float> float_data(1, 1);
-    std::unique_ptr<Tensor> tensor =
-        std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape(std::vector<int64_t>{1}), reinterpret_cast<void*>(float_data.data()), mem_info, 0);
-
     auto value = std::make_unique<OrtValue>();
-    auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-    value->Init(tensor.release(),
-                ml_tensor,
-                ml_tensor->GetDeleteFunc());
+    Tensor::InitOrtValue(DataTypeImpl::GetType<float>(),
+                         TensorShape(std::vector<int64_t>{1}), reinterpret_cast<void*>(float_data.data()), mem_info, *value);
 
     sess_options.AddInitializer("node_0_input_1", value.get());
 
@@ -701,14 +696,9 @@ TEST(SessionStateTest, SharedInitalizersWithPrePackingTest) {
     // Enable shared initializer
     OrtMemoryInfo mem_info(CPU, OrtDeviceAllocator);
     std::vector<float> float_data(1, 1);
-    std::unique_ptr<Tensor> tensor =
-        std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape(std::vector<int64_t>{1}), reinterpret_cast<void*>(float_data.data()), mem_info, 0);
-
     auto value = std::make_unique<OrtValue>();
-    auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-    value->Init(tensor.release(),
-                ml_tensor,
-                ml_tensor->GetDeleteFunc());
+    Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape(std::vector<int64_t>{1}),
+                         reinterpret_cast<void*>(float_data.data()), mem_info, *value);
 
     sess_options.AddInitializer("node_0_input_1", value.get());
 

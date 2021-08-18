@@ -90,7 +90,7 @@ void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
 common::Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
                                   const ONNX_NAMESPACE::TensorProto& tensor) {
   auto data_type = tensor.data_type();
-  if (data_type = ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     const float* data = GetTensorFloatData(tensor);
     auto num_elements = SafeInt<size_t>(Product(tensor.dims()));
     CreateCoreMLWeight(weight, data, num_elements);

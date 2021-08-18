@@ -53,7 +53,7 @@ class MatMulComputeHelper {
       left_offsets_ = {0};
       right_offsets_ = {0};
       ORT_RETURN_IF_NOT(K_ == right_shape[right_num_dims - 2] ||
-                            transb && K_ == right_shape[right_num_dims - 1],
+                            (transb && K_ == right_shape[right_num_dims - 1]),
                         "MatMul dimension mismatch");
       return Status::OK();
     }

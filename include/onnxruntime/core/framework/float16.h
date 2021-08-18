@@ -40,7 +40,7 @@ struct BFloat16 {
   explicit BFloat16() = default;
   explicit BFloat16(uint16_t v) : val(v) {}
   explicit BFloat16(float v) {
-    if (endian::native == endian::little) {
+    ORT_IF_CONSTEXPR(endian::native == endian::little) {
       std::memcpy(&val, reinterpret_cast<char*>(&v) + sizeof(uint16_t), sizeof(uint16_t));
     } else {
       std::memcpy(&val, &v, sizeof(uint16_t));
@@ -51,7 +51,7 @@ struct BFloat16 {
     float result;
     char* const first = reinterpret_cast<char*>(&result);
     char* const second = first + sizeof(uint16_t);
-    if (endian::native == endian::little) {
+    ORT_IF_CONSTEXPR(endian::native == endian::little) {
       std::memset(first, 0, sizeof(uint16_t));
       std::memcpy(second, &val, sizeof(uint16_t));
     } else {

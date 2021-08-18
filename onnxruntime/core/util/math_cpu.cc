@@ -22,18 +22,10 @@
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
-#else
-#pragma warning(push)
-#pragma warning(disable : 4267)
-#pragma warning(disable : 4127)
-#pragma warning(disable : 4805)
-#pragma warning(disable : 6255)
 #endif
 #include "Eigen/src/Core/arch/Default/Half.h"
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
-#else
-#pragma warning(pop)
 #endif
 using onnxruntime::concurrency::ThreadPool;
 
@@ -652,72 +644,46 @@ void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64
                                                     int64_t pad_l, int64_t pad_b, int64_t pad_r, int64_t stride_h,
                                                     int64_t stride_w, float* data_im, CPUMathUtil* context) {
   const int64_t output_h =
-      (height + pad_b + pad_t - (dilation_h * (kernel_h - 1) + 1)) / stride_h +
-      1;
+      (height + pad_b + pad_t - (dilation_h * (kernel_h - 1) + 1)) / stride_h + 1;
   const int64_t output_w =
-      (width + pad_l + pad_r - (dilation_w * (kernel_w - 1) + 1)) / stride_w +
-      1;
-  const int64_t hwc = height * width * channels;
+      (width + pad_l + pad_r - (dilation_w * (kernel_w - 1) + 1)) / stride_w + 1;
+  const int64_t output_hw = output_h * output_w;
+  const int64_t hw = height * width;
+  const int64_t hwc = hw * channels;
   Set<float, CPUMathUtil>(gsl::narrow<ptrdiff_t>(hwc), 0, data_im, context);
 
   // Fast path for zero padding and no dilation
   // From Torch, modified THNN_(unfolded_acc)
-  if (dilation_h == 1 && dilation_w == 1 && pad_l == 0 && pad_r == 0 &&
-      pad_t == 0 && pad_b == 0) {
-    for (auto k = 0; k < channels * kernel_h * kernel_w; k++) {
-      const auto nip = k / (kernel_h * kernel_w);
-      const auto rest = k % (kernel_h * kernel_w);
-      const auto kh = rest / kernel_w;
-      const auto kw = rest % kernel_w;
-      const auto* dst = data_col +
-                        nip * (kernel_h * kernel_w * output_h * output_w) +
-                        kh * (kernel_w * output_h * output_w) + kw * (output_h * output_w);
-      auto* src = data_im + nip * (height * width);
-      for (auto y = 0; y < output_h; y++) {
-        const auto iy = y * stride_h + kh;
-        const auto ix = kw;
-        if (stride_w == 1) {
-          auto offsrc = src + (iy * width + ix);
-          const auto offdst = dst + (y * output_w);
-          for (auto i = 0; i < output_w; ++i) {
-            offsrc[i] += offdst[i];
-          }
-        } else {
-          for (auto x = 0; x < output_w; x++) {
-            auto offsrc = src + (iy * width + ix + x * stride_w);
-            const auto offdst = dst + (y * output_w + x);
-            *offsrc += *offdst;
-          }
-        }
-      }
-    }
-    return;
-  }
-
-  // Fast path for equal padding
-  if (pad_l == pad_r && pad_t == pad_b) {
-    // From Intel, https://github.com/BVLC/caffe/pull/3536
-    const int64_t pad_h = pad_t;
-    const int64_t pad_w = pad_l;
-    const int64_t channel_size = height * width;
-    for (int64_t channel = channels; channel--; data_im += channel_size) {
-      for (int64_t kernel_row = 0; kernel_row < kernel_h; kernel_row++) {
-        for (int64_t kernel_col = 0; kernel_col < kernel_w; kernel_col++) {
-          int64_t input_row = -pad_h + kernel_row * dilation_h;
-          for (int64_t output_rows = output_h; output_rows; output_rows--) {
-            if (!is_a_ge_zero_and_a_lt_b(input_row, height)) {
-              data_col += output_w;
+  if (dilation_h == 1 && dilation_w == 1 && pad_l == 0 && pad_r == 0 && pad_t == 0 && pad_b == 0) {
+    // Src (column) data cursor
+    auto* src = data_col;
+    // End of dst (image) data
+    auto* dst_end = data_im + hwc;
+    // Dst cursor step at end of row
+    auto dst_row_step = stride_h * width - stride_w * output_w;
+    // Dst channel data
+    for (auto* dst_cb = data_im; dst_cb < dst_end; dst_cb += hw) {
+      // First dst row for current kernel row
+      auto* dst_hb = dst_cb;
+      for (auto kh = 0; kh < kernel_h; ++kh, dst_hb += width) {
+        // First dst element for current kernel element
+        auto* dst_wb = dst_hb;
+        for (auto kw = 0; kw < kernel_w; ++kw, ++dst_wb) {
+          // Dst cursor
+          auto* dst = dst_wb;
+          // End of source data for kernel element
+          for (auto* src_he = src + output_hw; src < src_he; dst += dst_row_step) {
+            // End of source row
+            auto* src_we = src + output_w;
+            if (stride_w == 1) {
+              for (; src < src_we; ++src, ++dst) {
+                *dst += *src;
+              }
             } else {
-              int64_t input_col = -pad_w + kernel_col * dilation_w;
-              for (int64_t output_col = output_w; output_col; output_col--) {
-                if (is_a_ge_zero_and_a_lt_b(input_col, width)) {
-                  data_im[input_row * width + input_col] += *data_col;
-                }
-                data_col++;
-                input_col += stride_w;
+              for (; src < src_we; ++src, dst += stride_w) {
+                *dst += *src;
               }
             }
-            input_row += stride_h;
           }
         }
       }
@@ -726,23 +692,36 @@ void Col2im<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, int64
   }
 
   // Fallback
-  const int64_t dkernel_h = dilation_h * (kernel_h - 1) + 1;
-  const int64_t dkernel_w = dilation_w * (kernel_w - 1) + 1;
 
-  int64_t height_col = (height + pad_t + pad_b - dkernel_h) / stride_h + 1;
-  int64_t width_col = (width + pad_l + pad_r - dkernel_w) / stride_w + 1;
-  int64_t channels_col = channels * kernel_h * kernel_w;
-  for (int64_t c = 0; c < channels_col; ++c) {
-    int64_t w_offset = c % kernel_w;
-    int64_t h_offset = (c / kernel_w) % kernel_h;
-    int64_t c_im = c / kernel_h / kernel_w;
-    for (int64_t h = 0; h < height_col; ++h) {
-      for (int64_t w = 0; w < width_col; ++w) {
-        int64_t h_pad = h * stride_h - pad_t + h_offset * dilation_h;
-        int64_t w_pad = w * stride_w - pad_l + w_offset * dilation_w;
-        if (h_pad >= 0 && h_pad < height && w_pad >= 0 && w_pad < width) {
-          data_im[(c_im * height + h_pad) * width + w_pad] +=
-              data_col[(c * height_col + h) * width_col + w];
+  // Src (col data) cursor
+  auto* src = data_col;
+  // End of dst (image) data
+  auto* dst_end = data_im + hwc;
+  // Begin of src channel data
+  for (auto* dst = data_im; dst < dst_end; dst += hw) {
+    // Current kernel element starting vertical offset in dst data
+    int64_t h_offset = -pad_t * width;
+    int64_t h_offset_end = h_offset + kernel_h * dilation_h * width;
+    for (; h_offset < h_offset_end; h_offset += dilation_h * width) {
+      // Current kernel element starting horizontal offset in dst data
+      int64_t w_offset = -pad_l;
+      int64_t w_offset_end = w_offset + kernel_w * dilation_w;
+      for (; w_offset < w_offset_end; w_offset += dilation_w) {
+        // End of src channel data
+        auto* src_ce = src + output_hw;
+        // Dst row offset
+        for (int64_t h = h_offset; src < src_ce; h += stride_h * width) {
+          // End of src row data
+          auto* src_we = src + output_w;
+          if (is_a_ge_zero_and_a_lt_b(h, hw)) {
+            for (int64_t w = w_offset; src < src_we; src++, w += stride_w) {
+              if (is_a_ge_zero_and_a_lt_b(w, width)) {
+                dst[h + w] += *src;
+              }
+            }
+          } else {
+            src = src_we;
+          }
         }
       }
     }

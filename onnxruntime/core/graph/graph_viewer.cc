@@ -200,7 +200,7 @@ const std::vector<const NodeArg*>& GraphViewer::GetOutputs() const noexcept {
 }
 
 // Get graph value infos.
-const std::vector<const NodeArg*>& GraphViewer::GetValueInfo() const noexcept {
+const std::unordered_set<const NodeArg*>& GraphViewer::GetValueInfo() const noexcept {
   return graph_->GetValueInfo();
 }
 

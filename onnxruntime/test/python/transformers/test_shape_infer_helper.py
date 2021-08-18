@@ -1,14 +1,17 @@
-import os
 import unittest
-import sys
 import pytest
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-
-from onnxruntime.transformers.onnx_exporter import export_onnx_model_from_pt
-from onnxruntime.transformers.huggingface_models import MODELS
-from onnxruntime.transformers.benchmark_helper import Precision
-from onnxruntime.transformers.shape_infer_helper import *
+from parity_utilities import find_transformers_source
+if find_transformers_source():
+    from onnx_exporter import export_onnx_model_from_pt
+    from huggingface_models import MODELS
+    from benchmark_helper import Precision
+    from shape_infer_helper import SymbolicShapeInferenceHelper
+else:
+    from onnxruntime.transformers.onnx_exporter import export_onnx_model_from_pt
+    from onnxruntime.transformers.huggingface_models import MODELS
+    from onnxruntime.transformers.benchmark_helper import Precision
+    from onnxruntime.transformers.shape_infer_helper import SymbolicShapeInferenceHelper
 
 
 class SymbolicShapeInferenceHelperTest(unittest.TestCase):

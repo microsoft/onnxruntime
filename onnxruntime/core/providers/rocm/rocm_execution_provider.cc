@@ -279,14 +279,22 @@ Status ROCMExecutionProvider::OnRunStart() {
   while (it != deferred_release_cpu_ptr_.end()) {
     auto& e = it->first;
     auto& v = it->second;
-    // note that hipEventQuery returns hipSucess before first hipEventRecord
-    if (v.recorded && hipSuccess == hipEventQuery(e)) {
-      for (auto p : v.cpu_ptrs) {
-        cpu_alloc->Free(p);
+    // note that hipEventQuery returns hipSuccess before first hipEventRecord
+    if (v.recorded) {
+      auto event_query_status = hipEventQuery(e);
+      if (event_query_status == hipSuccess) {
+        for (auto p : v.cpu_ptrs) {
+          cpu_alloc->Free(p);
+        }
+        HIP_RETURN_IF_ERROR(hipEventDestroy(e));
+        it = deferred_release_cpu_ptr_.erase(it);
+      } else if (event_query_status == hipErrorNotReady) {
+        // ignore and clear the error if not ready
+        hipGetLastError();
+        it++;
+      } else {
+        HIP_RETURN_IF_ERROR(event_query_status);
       }
-      hipEvent_t expired_event = it->first;
-      it = deferred_release_cpu_ptr_.erase(it);
-      HIP_RETURN_IF_ERROR(hipEventDestroy(expired_event));
     } else {
       ++it;
     }

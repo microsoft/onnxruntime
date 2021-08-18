@@ -10,7 +10,7 @@
 #include "core/framework/framework_common.h"
 #include "core/graph/node_arg.h"
 #endif
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 
 namespace onnxruntime {
 namespace training {

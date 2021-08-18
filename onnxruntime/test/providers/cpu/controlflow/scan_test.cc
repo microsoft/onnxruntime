@@ -289,7 +289,7 @@ static void RunTest_v8(const std::string test_name, int64_t batch_size, int64_t 
   }
 
   if (sequence_lens == nullptr) {
-    test.AddMissingOptionalInput<int64_t>();
+    test.AddOptionalInputEdge<int64_t>();
   } else {
     std::vector<int64_t> sequence_lens_dims{batch_size};
     test.AddInput<int64_t>("sequence_lens", sequence_lens_dims, *sequence_lens);
@@ -1076,7 +1076,7 @@ void MixedTypeInputs(bool is_v8) {
     seq_shape.insert(seq_shape.begin(), batch_size);
     state_shape.insert(state_shape.begin(), batch_size);
 
-    test.AddMissingOptionalInput<int64_t>();
+    test.AddOptionalInputEdge<int64_t>();
   }
 
   test.AddAttribute("body", scan_body);
@@ -1138,7 +1138,7 @@ void UnknownDimInSubgraphOutput(bool is_v8, bool mixed_execution_providers = fal
     seq_shape.insert(seq_shape.begin(), batch_size);
     state_shape.insert(state_shape.begin(), batch_size);
 
-    test.AddMissingOptionalInput<int64_t>();
+    test.AddOptionalInputEdge<int64_t>();
   }
 
   test.AddAttribute("body", scan_body);

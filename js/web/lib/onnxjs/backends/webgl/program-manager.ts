@@ -7,7 +7,7 @@ import {Logger, Profiler} from '../../instrument';
 import {GlslPreprocessor} from './glsl-preprocessor';
 import {getVertexShaderSource} from './glsl-source';
 import {TextureLayoutStrategy} from './texture-layout-strategy';
-import {Artifact, ProgramInfo, RunData, TextureData, UniformData, VariableInfo} from './types';
+import {Artifact, ProgramInfo, ProgramVariable, TextureData, TextureLayout, VariableInfo} from './types';
 import {WebGLContext} from './webgl-context';
 
 /**
@@ -36,23 +36,23 @@ export class ProgramManager {
   setArtifact(key: unknown, artifact: Artifact): void {
     this.repo.set(key, artifact);
   }
-  run(buildArtifact: Artifact, runData: RunData): void {
+  run(buildArtifact: Artifact, inputs: TextureData[], output: TextureData): void {
     this.profiler.event('op', `ProgramManager.run ${buildArtifact.programInfo.name ?? 'unknown kernel'}`, () => {
       const gl = this.glContext.gl;
       const program = buildArtifact.program;
       gl.useProgram(program);
       try {
-        this.bindOutput(runData.outputTextureData);
+        this.bindOutput(output);
         if (!this.attributesBound) {
           this.bindAttributes(buildArtifact.attribLocations);
         }
-        this.bindUniforms(buildArtifact.uniformLocations, runData.uniformData, runData.inputTextureDatas);
+        this.bindUniforms(buildArtifact.uniformLocations, buildArtifact.programInfo.variables ?? [], inputs);
       } catch (err) {
         Logger.error('ProgramManager', buildArtifact.programInfo.shaderSource);
         throw err;
       }
       this.profiler.event('backend', 'GlContext.draw()', () => {
-        this.doDraw(buildArtifact, runData);
+        this.glContext.draw();
       });
     }, this.glContext);
   }
@@ -62,28 +62,20 @@ export class ProgramManager {
     }
     this.repo.forEach(a => this.glContext.deleteProgram(a.program));
   }
-  build(programInfo: ProgramInfo): Artifact {
+  build(programInfo: ProgramInfo, inputTextureLayouts: TextureLayout[], outputTextureLayout: TextureLayout): Artifact {
     return this.profiler.event('backend', 'ProgramManager.build', () => {
-      const preprocessor = new GlslPreprocessor(this.glContext, programInfo);
+      const preprocessor = new GlslPreprocessor(this.glContext, programInfo, inputTextureLayouts, outputTextureLayout);
       const fragScript = preprocessor.preprocess();
       const program = this.compile(fragScript);
       const artifact = {
         programInfo,
         program,
         uniformLocations: this.getUniformLocations(
-            program, preprocessor.context.programInfo.samplers, preprocessor.context.programInfo.variables),
+            program, preprocessor.context.programInfo.inputNames, preprocessor.context.programInfo.variables),
         attribLocations: this.getAttribLocations(program)
       };
       return artifact;
     });
-  }
-  protected doDraw(artifact: Artifact, runData: RunData): void {
-    if (runData.draw) {
-      Logger.verbose('ProgramManager', 'Custom draw function');
-      runData.draw(this.glContext, artifact);
-    } else {
-      this.glContext.draw();
-    }
   }
   protected compile(fragShaderScript: string): WebGLProgram {
     if (!this.vertexShader) {
@@ -115,10 +107,15 @@ ${fragShaderScript}
     this.glContext.setVertexAttributes(positionHandle, textureCoordHandle);
     this.attributesBound = true;
   }
-  bindUniforms(uniformLocations: Artifact.UniformLocations, uniformData: UniformData, textures: TextureData[]): void {
+  bindUniforms(uniformLocations: Artifact.UniformLocations, variables: ProgramVariable[], textures: TextureData[]):
+      void {
     const gl = this.glContext.gl;
     let texturePosition = 0;
     for (const {name, type, location, arrayLength} of uniformLocations) {
+      const value = variables.find(v => v.name === name)?.data;
+      if (type !== 'sampler2D' && !value) {
+        throw new Error(`variable '${name}' does not have data defined in program info`);
+      }
       switch (type) {
         case 'sampler2D':
           this.bindTexture(textures[texturePosition], location, texturePosition);
@@ -126,16 +123,16 @@ ${fragShaderScript}
           break;
         case 'float':
           if (arrayLength) {
-            gl.uniform1fv(location, uniformData[name] as number[]);
+            gl.uniform1fv(location, value as number[]);
           } else {
-            gl.uniform1f(location, uniformData[name] as number);
+            gl.uniform1f(location, value as number);
           }
           break;
         case 'int':
           if (arrayLength) {
-            gl.uniform1iv(location, uniformData[name] as number[]);
+            gl.uniform1iv(location, value as number[]);
           } else {
-            gl.uniform1i(location, uniformData[name] as number);
+            gl.uniform1i(location, value as number);
           }
           break;
         default:

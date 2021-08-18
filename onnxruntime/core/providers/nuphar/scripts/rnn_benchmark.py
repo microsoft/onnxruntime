@@ -17,13 +17,13 @@ from onnx import IR_VERSION
 import os
 from timeit import default_timer as timer
 
-def generate_model(rnn_type, input_dim, hidden_dim, bidirectional, layers, model_name, batch_one=True, has_seq_len=False):
+def generate_model(rnn_type, input_dim, hidden_dim, bidirectional, layers, model_name, batch_one=True, has_seq_len=False, onnx_opset_ver=7):
     model = onnx.ModelProto()
     model.ir_version = IR_VERSION
     
     opset = model.opset_import.add()
     opset.domain == 'onnx'
-    opset.version = 7
+    opset.version = onnx_opset_ver
     num_directions = 2 if bidirectional else 1
 
     X = 'input'

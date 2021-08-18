@@ -185,22 +185,23 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
       bool need_reduce_db = db_output_tensor && b_shape.Size() != dy_shape.Size();
       IAllocatorUniquePtr<T> temp_da_allocator, temp_db_allocator;
       T* da_data_ref = nullptr;
-      if (da_output_tensor)
+      if (da_output_tensor) {
         if (need_reduce_da) {
           temp_da_allocator = GetScratchBuffer<T>(dy_shape.Size());
           da_data_ref = temp_da_allocator.get();
         } else {
           da_data_ref = da_data;
         }
+      }
       T* db_data_ref = nullptr;
-      if (db_output_tensor)
+      if (db_output_tensor) {
         if (need_reduce_db) {
           temp_db_allocator = GetScratchBuffer<T>(dy_shape.Size());
           db_data_ref = temp_db_allocator.get();
         } else {
           db_data_ref = db_data;
         }
-
+      }
       ImplDivGrad<CudaT>(
           Stream(),
           prepare.output_rank_or_simple_broadcast,

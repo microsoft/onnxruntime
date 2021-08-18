@@ -43,7 +43,7 @@
 #include "core/optimizer/unsqueeze_elimination.h"
 #include "core/optimizer/qdq_transformer/qdq_propagation.h"
 #include "core/optimizer/qdq_transformer/qdq_s8_to_u8.h"
-#include "core/optimizer/qdq_transformer/qdq_transformer.h"
+#include "core/optimizer/qdq_transformer/qdq_selector_action_transformer.h"
 #include "core/optimizer/qdq_transformer/relu_quantizelinear.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
@@ -174,7 +174,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       if (!disable_quant_qdq) {
         transformers.emplace_back(std::make_unique<QDQS8ToU8Transformer>(cpu_ep));
         transformers.emplace_back(std::make_unique<QDQPropagationTransformer>(cpu_ep));
-        transformers.emplace_back(std::make_unique<QDQTransformer>());
+        transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>());
       }
 
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(cpu_ep));
