@@ -189,9 +189,9 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    static int iteration = 0;
+    session_state.IncrementGraphExecutionCounter();
     size_t program_counter = 0;
-    utils::NodeDumpContext dump_context { ++iteration, program_counter };
+    utils::NodeDumpContext dump_context { session_state.GetGraphExecutionCounter(), program_counter };
 #endif
 
 

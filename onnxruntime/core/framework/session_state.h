@@ -100,7 +100,8 @@ class SessionState {
         data_transfer_mgr_(data_transfer_mgr),
         use_deterministic_compute_(use_deterministic_compute),
         enable_mem_reuse_(enable_mem_reuse),
-        prepacked_weights_container_(prepacked_weights_container) {
+        prepacked_weights_container_(prepacked_weights_container),
+        graph_executions_counter_(0) {
     SetupAllocators();
   }
 
@@ -317,6 +318,14 @@ class SessionState {
     return used_shared_pre_packed_weights_counter_;
   }
 
+  void IncrementGraphExecutionCounter() {
+    ++graph_executions_counter_;
+  }
+
+  size_t GetGraphExecutionCounter() const {
+    return graph_executions_counter_;
+  }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
@@ -502,6 +511,9 @@ class SessionState {
   // Counter for number of times a shared version of the pre-packed weight corresponding to
   // a constant initialized weight was used by the session state
   size_t used_shared_pre_packed_weights_counter_ = 0;
+
+  // Counter for number of times the session graph has been executed
+  size_t graph_executions_counter_ = 0;
 };
 
 }  // namespace onnxruntime

@@ -106,7 +106,7 @@ struct NodeDumpOptions {
 
 struct NodeDumpContext {
   // which execution pass are we on?
-  int iteration;
+  size_t iteration;
   // which node are we on?
   size_t program_counter;
 };

@@ -29,7 +29,7 @@ struct TensorMetadata {
   std::string producer;
   std::string consumer;
   std::string device_type;
-  int step;
+  size_t step;
 };
 
 bool FilterNode(const NodeDumpOptions& dump_options, const Node& node) {
@@ -229,7 +229,7 @@ bool TensorExistsInSqlDb(const TensorMetadata& tensor_metadata) {
 
   SQL_OK(sqlite3_reset(stmt));
   SQL_OK(sqlite3_bind_text(stmt, 1, tensor_metadata.name.c_str(), -1, SQLITE_TRANSIENT));
-  SQL_OK(sqlite3_bind_int(stmt, 2, tensor_metadata.step));
+  SQL_OK(sqlite3_bind_int(stmt, 2, (int)tensor_metadata.step));
   SqlStepWithRetry(stmt, SQLITE_ROW);
   bool exists = sqlite3_column_int(stmt, 0) > 0;
   SqlStepWithRetry(stmt, SQLITE_DONE);
