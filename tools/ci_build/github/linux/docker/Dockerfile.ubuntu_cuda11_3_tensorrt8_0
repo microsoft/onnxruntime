@@ -6,7 +6,7 @@
 
 ARG CUDA_VERSION=11.3.1
 ARG OS_VERSION=18.04
-FROM nvidia/cuda:${CUDA_VERSION}-cudnn8-devel-ubuntu${OS_VERSION}
+FROM nvidia/cuda:11.4.0-cudnn8-devel-ubuntu${OS_VERSION}
 
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_BRANCH=master
