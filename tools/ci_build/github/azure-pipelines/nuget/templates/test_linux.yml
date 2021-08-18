@@ -17,15 +17,25 @@ jobs:
     value: '$(Build.BinariesDirectory)'
   steps:
 
-  - task: DownloadPipelineArtifact@0
+  - task: DownloadPipelineArtifact@2
     displayName: 'Download Signed NuGet'
     inputs:
+      source: 'specific'
+      project: 'Lotus'
+      pipeline: '940'
+      runVersion: 'specific'
+      runId: '169395'
       artifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
-  - task: DownloadPipelineArtifact@0
+  - task: DownloadPipelineArtifact@2
     displayName: 'Download Linux CustomOp TestData'
     inputs:
+      source: 'specific'
+      project: 'Lotus'
+      pipeline: '940'
+      runVersion: 'specific'
+      runId: '169395'
       artifactName: 'drop-linux'
       targetPath: '$(Build.BinariesDirectory)/testdata'
 
