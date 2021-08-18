@@ -49,7 +49,7 @@ Tensor* OpKernelContext::Output(int index, const std::initializer_list<int64_t>&
   return Output(index, TensorShape(shape));
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
 SparseTensor* OpKernelContext::OutputSparse(int index, const TensorShape& shape) {
   auto p_ml_value = OutputMLValue(index, shape);
   return p_ml_value ? p_ml_value->GetMutable<SparseTensor>() : nullptr;

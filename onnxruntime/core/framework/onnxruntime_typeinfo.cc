@@ -20,7 +20,7 @@
 using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
 using onnxruntime::MLFloat16;
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
 using onnxruntime::SparseTensor;
 #endif
 using onnxruntime::Tensor;
@@ -121,7 +121,7 @@ OrtStatus* OrtTypeInfo::FromOrtValue(const OrtValue& value, OrtTypeInfo** out) {
   }
 
   if (type->IsSparseTensorType()) {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
     OrtTensorTypeAndShapeInfo* info = nullptr;
     const SparseTensor& tensor = value.Get<onnxruntime::SparseTensor>();
     const auto* tensor_data_type = tensor.DataType();
@@ -173,7 +173,7 @@ OrtStatus* OrtTypeInfo::FromOrtValue(const OrtValue& value, OrtTypeInfo** out) {
       }
       // Real Tensor support
       case on::TypeProto::kTensorType:
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
       case on::TypeProto::kSparseTensorType: {
         return OrtApis::CreateStatus(ORT_FAIL, "Tensor types should have been handled already");
       }
@@ -230,7 +230,7 @@ OrtStatus* OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* input, Or
     case on::TypeProto::kSparseTensorType: {
       ONNXType ten_type = ONNX_TYPE_UNKNOWN;
       const on::TypeProto_Tensor* tensor_type = nullptr;
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
       const on::TypeProto_SparseTensor* sparse_type = nullptr;
 #endif
       const on::TensorShapeProto* sp = nullptr;
@@ -241,7 +241,7 @@ OrtStatus* OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* input, Or
           sp = &tensor_type->shape();
         }
       } else if (value_case == on::TypeProto::kSparseTensorType) {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
         sparse_type = &input->sparse_tensor_type();
         ten_type = ONNX_TYPE_SPARSETENSOR;
         if (onnxruntime::utils::HasShape(*sparse_type)) {
@@ -326,7 +326,7 @@ OrtStatus* OrtTypeInfo::Clone(OrtTypeInfo** out) {
   switch (type) {
     case ONNX_TYPE_TENSOR:
     case ONNX_TYPE_SPARSETENSOR: {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
       OrtTensorTypeAndShapeInfo* clone;
       if (auto status = data->Clone(&clone)) {
         return status;

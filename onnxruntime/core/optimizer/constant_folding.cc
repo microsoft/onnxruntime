@@ -62,9 +62,15 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   std::function<bool(const std::string&)> is_sparse_initializer_check = [&graph](const std::string& name) -> bool {
     return graph.IsSparseInitializer(name);
   };
+#else
+  std::function<bool(const std::string&)> is_sparse_initializer_check = [&](const std::string& /*name*/) -> bool {
+    return false;
+  };
+#endif
 
   for (NodeIndex i : order) {
     auto* node = graph.GetNode(i);

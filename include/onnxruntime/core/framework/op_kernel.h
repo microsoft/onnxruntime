@@ -327,7 +327,7 @@ struct BuildKernelDefConstraintsImpl {
   }
 };
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
 template <typename... Types>
 struct BuildKernelDefSparseConstraintsImpl {
   std::vector<MLDataType> operator()() const {
@@ -344,7 +344,7 @@ inline std::vector<MLDataType> BuildKernelDefConstraints() {
   return BuildKernelDefConstraintsImpl<Types...>{}();
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
 template <typename... Types>
 inline std::vector<MLDataType> BuildKernelDefSparseConstraints() {
   return BuildKernelDefSparseConstraintsImpl<Types...>{}();
@@ -357,7 +357,7 @@ inline std::vector<MLDataType> BuildKernelDefConstraintsFromTypeList() {
   return boost::mp11::mp_apply<BuildKernelDefConstraintsImpl, L>{}();
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
 template <typename L>
 inline std::vector<MLDataType> BuildKernelDefSparseConstraintsFromTypeList() {
   return boost::mp11::mp_apply<BuildKernelDefSparseConstraintsImpl, L>{}();

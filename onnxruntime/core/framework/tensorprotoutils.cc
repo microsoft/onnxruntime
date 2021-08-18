@@ -825,7 +825,7 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
       *tensor.mutable_string_data() = constant_attribute.strings();
       break;
     }
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
     case AttributeProto_AttributeType_SPARSE_TENSOR: {
       auto& s = constant_attribute.sparse_tensor();
       ORT_RETURN_IF_ERROR(SparseTensorProtoToDenseTensorProto(s, model_path, tensor));
@@ -926,7 +926,7 @@ using SupportedConversionTypeList = onnxruntime::TypeList<float, double, MLFloat
                                                           int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>;
 }  // namespace conversion_internal
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
 common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseTensorProto& sparse,
                                                    const Path& model_path,
                                                    ONNX_NAMESPACE::TensorProto& dense) {

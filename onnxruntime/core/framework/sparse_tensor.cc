@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
 
 #include "core/framework/data_types.h"
 #include "core/framework/sparse_tensor.h"
@@ -467,4 +467,4 @@ Status SparseTensor::Copy(const IDataTransfer& data_transfer, SparseTensor& dst_
 
 }  // namespace onnxruntime
 
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(DISABLE_SPARSE_TENSORS)

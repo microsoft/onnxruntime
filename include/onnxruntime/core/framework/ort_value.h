@@ -13,7 +13,7 @@
 #include "core/framework/TensorSeq.h"
 
 namespace onnxruntime {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
 class SparseTensor;
 #endif
 }  // namespace onnxruntime
@@ -116,7 +116,7 @@ inline onnxruntime::TensorSeq* OrtValue::GetMutable<onnxruntime::TensorSeq>() {
   return static_cast<onnxruntime::TensorSeq*>(data_.get());
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
 template <>
 inline const onnxruntime::SparseTensor& OrtValue::Get<onnxruntime::SparseTensor>() const {
   ORT_ENFORCE(IsSparseTensor(), "Trying to get a SparseTensor, but got: ", onnxruntime::DataTypeImpl::ToString(type_));

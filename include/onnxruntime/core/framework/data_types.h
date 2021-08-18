@@ -53,7 +53,7 @@ using VectorInt64 = std::vector<int64_t>;
 
 class DataTypeImpl;
 class TensorTypeBase;
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
 class SparseTensorTypeBase;
 #endif
 class SequenceTensorTypeBase;
@@ -116,7 +116,7 @@ class DataTypeImpl {
     return nullptr;
   }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
   // Returns this if this is of sparse-tensor-type and null otherwise
   virtual const SparseTensorTypeBase* AsSparseTensorType() const {
     return nullptr;
@@ -144,7 +144,7 @@ class DataTypeImpl {
   template <typename elemT>
   static MLDataType GetSequenceTensorType();
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
   // Return the MLDataType for a concrete sparse tensor type.
   template <typename elemT>
   static MLDataType GetSparseTensorType();
@@ -161,7 +161,7 @@ class DataTypeImpl {
 
   static const TensorTypeBase* TensorTypeFromONNXEnum(int type);
   static const NonTensorTypeBase* SequenceTensorTypeFromONNXEnum(int type);
-#if !defined(ORT_MINIMAL_BUILD)  
+#if !defined(DISABLE_SPARSE_TENSORS)  
   static const SparseTensorTypeBase* SparseTensorTypeFromONNXEnum(int type);
 #endif
 
@@ -290,7 +290,7 @@ struct IsTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_
                                               double, uint32_t, uint64_t, BFloat16> {
 };
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
 /// Use "IsSparseTensorContainedType<T>::value" to test if a type T
 /// is permitted as the element-type of a sparse-tensor.
 
@@ -451,7 +451,7 @@ class TensorType : public TensorTypeBase {
   }
 };
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
 /// Common base-class for all sparse-tensors (with different element types).
 class SparseTensorTypeBase : public DataTypeImpl {
  public:
@@ -511,7 +511,7 @@ class SparseTensorType : public SparseTensorTypeBase {
     TensorElementTypeSetter<elemT>::SetSparseTensorElementType(mutable_type_proto());
   }
 };
-#endif // !defined(ORT_MINIMAL_BUILD)
+#endif // !defined(DISABLE_SPARSE_TENSORS)
 
 /**
   * \brief Provide a specialization for your C++ Non-tensor type
@@ -862,7 +862,7 @@ class PrimitiveDataType : public PrimitiveDataTypeBase {
     return TensorType<ELEM_TYPE>::Type();               \
   }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
 #define ORT_REGISTER_SPARSE_TENSOR_TYPE(ELEM_TYPE)            \
   template <>                                                 \
   MLDataType SparseTensorType<ELEM_TYPE>::Type() {            \

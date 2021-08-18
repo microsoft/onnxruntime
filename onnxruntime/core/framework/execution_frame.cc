@@ -29,7 +29,7 @@ IExecutionFrame::IExecutionFrame(const OrtValueNameIdxMap& ort_value_idx_map,
                                  const std::vector<int>& fetch_mlvalue_idxs)
     : node_index_info_(node_index_info),
       all_values_size_(static_cast<size_t>(ort_value_idx_map.MaxIdx()) + 1),
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
       fetch_mlvalue_idxs_(fetch_mlvalue_idxs),
       ort_value_idx_map_(ort_value_idx_map)
 #else
@@ -158,7 +158,7 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
                     "OrtValue shape verification failed. Current shape:", tensor.Shape(),
                     " Requested shape:", shape ? shape->ToString() : "null");
       } else if (p_ort_value->IsSparseTensor()) {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
         const SparseTensor& sp_tensor = p_ort_value->Get<SparseTensor>();
         ORT_ENFORCE(shape && sp_tensor.DenseShape() == *shape,
                     "OrtValue shape verification failed. Current shape:", sp_tensor.DenseShape(),
@@ -223,7 +223,7 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
   OrtMemoryInfo cpu_mem_info("Cpu", OrtDeviceAllocator);
   AllocatorPtr cpu_allocator = GetAllocator(cpu_mem_info);
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
   // 1. resize the all_value_ vector
   all_values_.resize(all_values_size_);
 #endif
@@ -259,7 +259,7 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
     //   - update optimizers to not convert something to an initializer that is a graph output
     //     (e.g. constant folding)
     if (IsOutput(ort_value_index)) {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
       std::string name;
       ORT_THROW_IF_ERROR(ort_value_idx_map_.GetName(ort_value_index, name));
       const bool is_sparse_initializer = is_initializer_sparse_func(name);
@@ -336,7 +336,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
       session_state_(session_state),
       mem_patterns_(nullptr),
       planner_(nullptr) {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
   Init(
       feed_mlvalue_idxs, feeds, session_state.GetInitializedTensors(),
       [&session_state](const std::string& name) -> bool {
@@ -628,7 +628,7 @@ static Status AllocateTensorSequence(OrtValue& ort_value) {
   return Status::OK();
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
 static Status AllocateSparseTensor(OrtValue& mlvalue, const DataTypeImpl& ml_type, AllocatorPtr allocator,
                                    const TensorShape& shape, bool create_fence,
                                    const SessionState& session_state) {
@@ -723,7 +723,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
 
     return Status::OK();
   } else if (ml_type->IsSparseTensorType()) {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
     return AllocateSparseTensor(ort_value, *ml_type, GetAllocator(alloc_info),
                                 *shape, per_alloc_plan.create_fence_if_async, session_state_);
 #else

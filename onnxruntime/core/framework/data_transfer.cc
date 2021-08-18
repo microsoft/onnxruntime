@@ -23,7 +23,7 @@ common::Status IDataTransfer::CopyTensors(const std::vector<IDataTransfer::SrcDs
   return Status::OK();
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
 common::Status IDataTransfer::CopySparseTensors(const std::vector<SparseSrcDstPair>& src_dst_pairs) const {
   for (const auto& pair : src_dst_pairs) {
     ORT_RETURN_IF_ERROR(pair.src.get().Copy(*this, pair.dst, pair.exec_queue_id));

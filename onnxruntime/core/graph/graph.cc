@@ -69,7 +69,7 @@ static bool UsingLatestOnnxOpset(const DomainToVersionMap& opset_versions) {
 static Status MergeShapeInfo(const std::string& output_name,
                              const TypeProto& source, TypeProto& target,
                              bool strict, const logging::Logger& logger) {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
   if (!(utils::HasTensorType(source) && utils::HasTensorType(target)) &&
       !(utils::HasSparseTensorType(source) && utils::HasSparseTensorType(target))) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
@@ -83,7 +83,7 @@ static Status MergeShapeInfo(const std::string& output_name,
     if (utils::HasTensorType(source)) {
       ONNX_NAMESPACE::mergeInShapeInfo(source.tensor_type(), *target.mutable_tensor_type());
     } else {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
       ONNX_NAMESPACE::mergeInShapeInfo(source.sparse_tensor_type(), *target.mutable_sparse_tensor_type());
 #endif
     }
@@ -102,7 +102,7 @@ static Status MergeShapeInfo(const std::string& output_name,
       if (utils::HasTensorType(source)) {
         ONNX_NAMESPACE::UnionShapeInfo(utils::GetShape(source), *target.mutable_tensor_type());
       } else {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
         ONNX_NAMESPACE::UnionShapeInfo(utils::GetShape(source), *target.mutable_sparse_tensor_type());
 #endif
       }
@@ -211,7 +211,7 @@ const TensorShapeProto* NodeArg::Shape() const {
       }
       return nullptr;
     }
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
     case TypeProto::kSparseTensorType: {
       if (utils::HasShape(type->sparse_tensor_type())) {
         return &(type->sparse_tensor_type().shape());
@@ -234,7 +234,7 @@ bool NodeArg::HasTensorOrScalarShape() const {
   const auto type_case = type->value_case();
   switch (type_case) {
     case TypeProto::kTensorType:
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
     case TypeProto::kSparseTensorType:
       // Standard tensor has a valid shape field while
       // scalar's shape is empty. Thus, we don't need to
@@ -257,7 +257,7 @@ void NodeArg::SetShape(const TensorShapeProto& shape) {
     case TypeProto::kTensorType:
       *(node_arg_info_.mutable_type()->mutable_tensor_type()->mutable_shape()) = shape;
       break;
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
     case TypeProto::kSparseTensorType:
       *(node_arg_info_.mutable_type()->mutable_sparse_tensor_type()->mutable_shape()) = shape;
       break;
@@ -277,7 +277,7 @@ void NodeArg::ClearShape() {
     case TypeProto::kTensorType:
       node_arg_info_.mutable_type()->mutable_tensor_type()->clear_shape();
       break;
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
     case TypeProto::kSparseTensorType:
       node_arg_info_.mutable_type()->mutable_sparse_tensor_type()->clear_shape();
       break;
@@ -342,7 +342,7 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
 
       break;
     }
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
     case TypeProto::kSparseTensorType: {
       const auto& input_tensor_type = input_type.sparse_tensor_type();
       const auto input_tensor_elem_type = input_tensor_type.elem_type();
@@ -835,7 +835,7 @@ ADD_LIST_ATTR_IMPL(std::string, AttributeProto_AttributeType::AttributeProto_Att
 ADD_LIST_ATTR_IMPL(TensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TENSORS, tensors)
 ADD_LIST_ATTR_IMPL(GraphProto, AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPHS, graphs)
 ADD_LIST_ATTR_IMPL(TypeProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TYPE_PROTOS, type_protos)
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
 ADD_ATTR_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSOR, sparse_tensor)
 ADD_LIST_ATTR_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSORS, sparse_tensors)
 #endif
@@ -1016,7 +1016,7 @@ Graph::Graph(const Model& owning_model,
     const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
     auto status = utils::ConstantNodeProtoToTensorProto(node, model_path, *tensor);
     ORT_ENFORCE(status.IsOK(), status.ToString());
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
     if (node.attribute(0).type() == AttributeProto_AttributeType_SPARSE_TENSOR) {
       auto p = sparse_tensor_names_.emplace(tensor->name());
       ORT_ENFORCE(p.second, "Duplicate constant node sparse initializer name: '", tensor->name(), "' Model is invalid.");
@@ -1033,7 +1033,7 @@ Graph::Graph(const Model& owning_model,
                      }),
       graph_mutable_nodes->end());
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
   // For now we convert sparse_intializer to dense tensors
   // since there are currently no supported ops that consume sparse
   // initializers directly. We remove them from graph_proto. We will reconstitute them
@@ -1802,7 +1802,7 @@ bool FullyDefinedType(const TypeProto& type_proto) {
       auto& tensor_type = type_proto.tensor_type();
       return utils::HasElemType(tensor_type);
     }
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
     case TypeProto::kSparseTensorType: {
       auto& tensor_type = type_proto.sparse_tensor_type();
       return utils::HasElemType(tensor_type);
@@ -1951,7 +1951,7 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     return graph_inferencer;
   }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
   // XXX: When we changed and kept sparse constant initializers in sparse form,
   // we would adjust this method
   const SparseTensorProto* getInputSparseData(size_t) const override {
@@ -2251,7 +2251,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
         if (utils::HasTensorType(onnx_inferred_type)) {
           *merge_target.mutable_tensor_type()->mutable_shape() = *output_def->Shape();
         }
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
         else if (utils::HasSparseTensorType(onnx_inferred_type)) {
           *merge_target.mutable_sparse_tensor_type()->mutable_shape() = *output_def->Shape();
         }
@@ -2703,7 +2703,7 @@ bool Graph::IsInitializedTensor(const std::string& name) const {
   return name_to_initial_tensor_.count(name) > 0;
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
 bool Graph::IsSparseInitializer(const std::string& name) const {
   return sparse_tensor_names_.count(name) > 0;
 }
@@ -2715,12 +2715,12 @@ void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
   found = iter != name_to_initial_tensor_.end();
   if (found) {
     name_to_initial_tensor_.erase(iter);
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
     sparse_tensor_names_.erase(tensor_name);
 #endif
     SetGraphResolveNeeded();
   } else {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
     ORT_ENFORCE(sparse_tensor_names_.count(tensor_name) == 0, "sparse_tensor_names_ not in sync with name_to_initial_tensor_");
 #endif
   }
@@ -2788,7 +2788,7 @@ bool Graph::GetInitializedTensor(const std::string& tensor_name, const TensorPro
 
 void Graph::CleanAllInitializedTensors() noexcept {
   name_to_initial_tensor_.clear();
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
   sparse_tensor_names_.clear();
 #endif
 
@@ -2939,14 +2939,14 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   auto inputs = SaveInputsOutputsToOrtFormat(builder, graph_inputs_including_initializers_);
   auto outputs = SaveInputsOutputsToOrtFormat(builder, graph_outputs_);
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
   std::vector<flatbuffers::Offset<fbs::SparseTensor>> sparse_initializers_data;
   sparse_initializers_data.reserve(sparse_tensor_names_.size());
   const auto sparse_end = sparse_tensor_names_.end();
 #endif
 
   std::vector<flatbuffers::Offset<fbs::Tensor>> initializers_data;
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
   assert(sparse_tensor_names_.size() <= name_to_initial_tensor_.size());
   initializers_data.reserve(name_to_initial_tensor_.size() - sparse_tensor_names_.size());
 #else
@@ -2954,7 +2954,7 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 #endif
   const auto& model_path = ModelPath();
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
   for (const auto& pair : name_to_initial_tensor_) {
     if (sparse_tensor_names_.find(pair.first) == sparse_end) {
       flatbuffers::Offset<fbs::Tensor> fbs_tensor;
@@ -3006,7 +3006,7 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   gb.add_node_edges(node_edges);
   gb.add_inputs(inputs);
   gb.add_outputs(outputs);
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
   gb.add_sparse_initializers(sparse_initializers);
 #endif
   fbs_graph = gb.Finish();
@@ -3137,7 +3137,7 @@ const ONNX_NAMESPACE::GraphProto& Graph::ToGraphProto() {
 }
 
 ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
   if (!GraphProtoSyncNeeded() && sparse_tensor_names_.empty()) {
     return *graph_proto_;
   }
@@ -3154,7 +3154,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
   // if it exists
   const auto& model_path = ModelPath();
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
   // We want to make sure that sparse initializers do not appear
   // as dense duplicates within the initializers list.
   if (!sparse_tensor_names_.empty()) {
@@ -3188,11 +3188,11 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
   int64_t external_offset = 0;
 
   // Add the initializers to the result graph.
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
   const auto sparse_end = sparse_tensor_names_.end();
 #endif
   for (const auto& initializer : graph_proto_->initializer()) {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
     if (sparse_end != sparse_tensor_names_.find(initializer.name())) {
       // Sparse tensors are added to the ONNX file.
       auto& sparse_initializer = *result.add_sparse_initializer();
@@ -3943,7 +3943,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
 
   // Initializers
   auto fbs_initializers = fbs_graph.initializers();
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
   auto fbs_sparse_initializers = fbs_graph.sparse_initializers();
   flatbuffers::uoffset_t map_size = (fbs_initializers != nullptr ? fbs_initializers->size() : 0U) +
                                     (fbs_sparse_initializers != nullptr ? fbs_sparse_initializers->size() : 0U);
@@ -3970,7 +3970,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
     }
   }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
   if (fbs_sparse_initializers) {
     sparse_tensor_names_.reserve(fbs_sparse_initializers->size());
     const auto& model_path = ModelPath();

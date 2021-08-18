@@ -123,7 +123,7 @@ class IExecutionFrame {
 
   std::vector<int> fetch_mlvalue_idxs_;
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
   OrtValueNameIdxMap& ort_value_idx_map_;
 #endif
 };

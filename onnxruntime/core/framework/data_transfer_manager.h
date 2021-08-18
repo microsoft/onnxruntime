@@ -23,7 +23,7 @@ class DataTransferManager {
   common::Status CopyTensor(const Tensor& src, Tensor& dst) const;
   common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const;
   common::Status CopyTensors(const std::vector<IDataTransfer::SrcDstPair>& src_dst_pairs) const;
-  #if !defined(ORT_MINIMAL_BUILD)
+  #if !defined(DISABLE_SPARSE_TENSORS)
   common::Status CopySparseTensor(const SparseTensor& src, SparseTensor& dst) const;
   common::Status CopySparseTensor(const SparseTensor& src, SparseTensor& dst, int exec_queue_id) const;
   common::Status CopySparseTensors(const std::vector<IDataTransfer::SparseSrcDstPair>& src_dst_pairs) const;

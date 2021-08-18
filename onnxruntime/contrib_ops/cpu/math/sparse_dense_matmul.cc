@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
 
 #include "core/framework/sparse_tensor.h"
 #include "core/providers/cpu/math/gemm_matmul_common.h"
@@ -211,4 +211,4 @@ Status SparseToDenseMatMul::Compute(OpKernelContext* ctx) const {
 }  // namespace contrib
 }  // namespace onnxruntime
 
-#endif //!defined(ORT_MINIMAL_BUILD)
+#endif //!defined(DISABLE_SPARSE_TENSORS)

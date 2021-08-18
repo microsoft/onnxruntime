@@ -250,7 +250,7 @@ std::pair<COMPARE_RESULT, std::string> CompareSeqOfMapToFloat(const T& real_outp
   return std::make_pair(COMPARE_RESULT::SUCCESS, "");
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
 std::pair<COMPARE_RESULT, std::string> CompareSparseTensors(const SparseTensor& actual, const SparseTensor& expected,
                                                             double per_sample_tolerance, double relative_per_sample_tolerance,
                                                             bool post_processing) {
@@ -290,7 +290,7 @@ std::pair<COMPARE_RESULT, std::string> CompareSparseTensors(const SparseTensor& 
 
   return std::make_pair(COMPARE_RESULT::SUCCESS, "");
 }
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 // The expected_shape could contain unknown dimensions, but the real_shape cannot
 bool AreShapesEqual(const std::vector<int64_t>& real_shape, const ::ONNX_NAMESPACE::TensorShapeProto& expected_shape) {
@@ -354,7 +354,7 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& o, const 
     return CompareTwoTensors(outvalue, expected_tensor, per_sample_tolerance, relative_per_sample_tolerance,
                              post_processing);
   } else if (o.IsSparseTensor()) {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
     TEST_RETURN_IF_NOT(expected_mlvalue.IsSparseTensor(), COMPARE_RESULT::TYPE_MISMATCH,
                        "SparseTensor is not expected as output");
     TEST_RETURN_IF_ERROR(CompareSparseTensors(o.Get<SparseTensor>(), expected_mlvalue.Get<SparseTensor>(),

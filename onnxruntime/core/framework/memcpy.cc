@@ -26,7 +26,7 @@ Status Memcpy::Compute(OpKernelContext* ctx) const {
                                                " X data:", X->DataRaw(), " Y data:", Y->DataRaw());
     }
   } else if (input_type_0->IsSparseTensorType()) {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
     const auto* X = ctx->Input<SparseTensor>(0);
     SparseTensor* Y = ctx->OutputSparse(0, X->DenseShape());
     retval = X->Copy(Info().GetDataTransferManager(), Info().GetKernelDef().ExecQueueId(), *Y);

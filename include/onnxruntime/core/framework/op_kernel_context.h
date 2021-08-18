@@ -69,7 +69,7 @@ class OpKernelContext {
     return *output_ptr;
   }
 
-  #if !defined(ORT_MINIMAL_BUILD)
+  #if !defined(DISABLE_SPARSE_TENSORS)
   // Fetch a sparse-tensor output corresponding to the specified index.
   // shape must specify the shape of the underlying dense-tensor.
   // Memory allocation for the output may happen when this method is invoked,
@@ -212,7 +212,7 @@ inline Tensor* OpKernelContext::Output<Tensor>(int index) {
   return p_ml_value->GetMutable<Tensor>();
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
 template <>
 inline SparseTensor* OpKernelContext::Output<SparseTensor>(int index) {
   OrtValue* p_ml_value = GetOutputMLValue(index);

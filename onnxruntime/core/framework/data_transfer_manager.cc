@@ -31,7 +31,7 @@ Status DataTransferManager::CopyTensor(const Tensor& src, Tensor& dst) const {
   return CopyTensor(src, dst, 0);
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
 common::Status DataTransferManager::CopySparseTensor(const SparseTensor& src, SparseTensor& dst) const {
   return CopySparseTensor(src, dst, 0);
 }
@@ -58,7 +58,7 @@ Status DataTransferManager::CopyTensor(const Tensor& src, Tensor& dst, int exec_
                          dst.Location().device.ToString());
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
 Status DataTransferManager::CopySparseTensor(const SparseTensor& src, SparseTensor& dst, int exec_queue_id) const {
   if (src.DenseShape().Size() != dst.DenseShape().Size()) {
     return Status(ONNXRUNTIME, FAIL, "Tensor size mismatch");
@@ -132,7 +132,7 @@ common::Status DataTransferManager::CopyTensors(const std::vector<IDataTransfer:
   return Status::OK();
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
 common::Status DataTransferManager::CopySparseTensors(const std::vector<IDataTransfer::SparseSrcDstPair>& src_dst_pairs) const {
   if (src_dst_pairs.empty())
     return Status::OK();

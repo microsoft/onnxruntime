@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
 
 #pragma once
 
@@ -98,4 +98,4 @@ Status DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Ten
 }  // namespace sparse_utils
 }  // namespace onnxruntime
 
-#endif  //ORT_MINIMAL_BUILD
+#endif  //!defined(DISABLE_SPARSE_TENSORS)

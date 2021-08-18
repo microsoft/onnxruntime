@@ -1586,7 +1586,7 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
         ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(feed_name, input_shape, expected_shape));
       }
     } else if (input_ml_value.IsSparseTensor()) {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
       if (!expected_type->IsSparseTensorType()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
                                " is not expected to be of type sparse tensor.");

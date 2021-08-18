@@ -516,6 +516,8 @@ def parse_arguments():
                         help="Disable contrib ops (reduces binary size)")
     parser.add_argument("--disable_ml_ops", action='store_true',
                         help="Disable traditional ML ops (reduces binary size)")
+    parser.add_argument("--disable_sparse_tensors", action='store_true',
+                        help="Disable traditional sparse tensor data types (reduces binary size)")
     parser.add_argument("--disable_rtti", action='store_true', help="Disable RTTI (reduces binary size)")
     parser.add_argument("--disable_exceptions", action='store_true',
                         help="Disable exceptions to reduce binary size. Requires --minimal_build.")
@@ -733,6 +735,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 or args.arm64ec or args.arm else "OFF"),
         "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
         "-Donnxruntime_DISABLE_ML_OPS=" + ("ON" if args.disable_ml_ops else "OFF"),
+        "-Donnxruntime_DISABLE_SPARSE_TENSORS=" + ("ON" if args.disable_sparse_tensors else "OFF"),
         "-Donnxruntime_DISABLE_RTTI=" + ("ON" if args.disable_rtti else "OFF"),
         "-Donnxruntime_DISABLE_EXCEPTIONS=" + ("ON" if args.disable_exceptions else "OFF"),
         "-Donnxruntime_DISABLE_ORT_FORMAT_LOAD=" + ("ON" if args.disable_ort_format_load else "OFF"),

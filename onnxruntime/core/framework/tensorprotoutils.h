@@ -85,7 +85,7 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
                                               const Path& model_path,
                                               ONNX_NAMESPACE::TensorProto& tensor);
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
 // Convert a SparseTensorProto to a dense TensorProto
 // If the SparseTensorProto contains external data then it loads the data and converts to dense tensor proto
 // The resulting TensorProto will contain the data as raw data.
@@ -125,7 +125,7 @@ inline bool HasShape(const ONNX_NAMESPACE::TypeProto_Tensor& ten_proto) {
   return ten_proto.has_shape();
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
 inline bool HasSparseTensorType(const ONNX_NAMESPACE::TypeProto& type_proto) {
   return type_proto.value_case() == ONNX_NAMESPACE::TypeProto::kSparseTensorType;
 }

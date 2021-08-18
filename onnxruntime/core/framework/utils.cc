@@ -139,7 +139,7 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
                          source_tensor.Shape(),
                          allocator, target_mlvalue);
   } else if (source_mlvalue.IsSparseTensor()) {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
     const SparseTensor& source_tensor = source_mlvalue.Get<SparseTensor>();
     auto p_tensor = std::make_unique<SparseTensor>(source_tensor.DataType(),
                                                    source_tensor.DenseShape(),
@@ -190,7 +190,7 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
                                  const MLValueCopyInfo& copy_info,
                                  const OrtValue& source_mlvalue,
                                  OrtValue& target_mlvalue,
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
                                  std::vector<IDataTransfer::SrcDstPair>* copy_tensor_pairs = nullptr,
                                  std::vector<IDataTransfer::SparseSrcDstPair>* copy_sparse_pairs = nullptr)
 #else
@@ -219,7 +219,7 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
       ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(source_tensor, *p_output_tensor));
     }
   } else if (source_mlvalue.IsSparseTensor()) {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
     const auto& source_tensor = source_mlvalue.Get<SparseTensor>();
     SparseTensor* p_output_tensor = target_mlvalue.GetMutable<SparseTensor>();
     if (copy_sparse_pairs != nullptr) {
@@ -463,7 +463,7 @@ static void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager
     if (feed.IsTensor()) {
       feed_locations[i] = feed.Get<Tensor>().Location().device;
     } else if (feed.IsSparseTensor()) {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
       feed_locations[i] = feed.Get<SparseTensor>().Location().device;
 #endif
     }
@@ -478,7 +478,7 @@ static void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager
       if (fetch.IsTensor()) {
         fetch_alloc_info[i] = &fetch.Get<Tensor>().Location();
       } else if (fetch.IsSparseTensor()) {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
         fetch_alloc_info[i] = &fetch.Get<SparseTensor>().Location();
 #endif
       }
@@ -497,12 +497,12 @@ static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
 
   new_feeds.resize(num_feeds);
   std::vector<IDataTransfer::SrcDstPair> batched_data_transfers;
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
   std::vector<IDataTransfer::SparseSrcDstPair> batched_sparse_data_transfers;
 #endif
 
   for (size_t idx = 0; idx < num_feeds; ++idx) {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
     ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], orig_feeds[idx], new_feeds[idx],
                                            &batched_data_transfers, &batched_sparse_data_transfers));
 #else
@@ -515,7 +515,7 @@ static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
     ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensors(batched_data_transfers));
   }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
   if (!batched_sparse_data_transfers.empty()) {
     ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopySparseTensors(batched_sparse_data_transfers));
   }
@@ -534,7 +534,7 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
 
   MLValueCopyInfo copy_info;
   ORT_RETURN_IF_ERROR(CalculateStaticCopyInfoForFeed(session_state, input_name, copy_info));
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
   copy_info.source_device = (orig_mlvalue.IsTensor())
                                 ? orig_mlvalue.Get<Tensor>().Location().device
                                 : orig_mlvalue.Get<SparseTensor>().Location().device;
@@ -553,12 +553,12 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
   user_fetches.resize(num_outputs);
 
   std::vector<IDataTransfer::SrcDstPair> batched_data_transfers;
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
   std::vector<IDataTransfer::SparseSrcDstPair> batched_sparse_data_transfers;
 #endif
 
   for (size_t idx = 0; idx < num_outputs; ++idx) {
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
     ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], fetches[idx], user_fetches[idx],
                                            &batched_data_transfers, &batched_sparse_data_transfers));
 #else
@@ -571,7 +571,7 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
     ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensors(batched_data_transfers));
   }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(DISABLE_SPARSE_TENSORS)
   if (!batched_sparse_data_transfers.empty()) {
     ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopySparseTensors(batched_sparse_data_transfers));
   }
