@@ -1404,8 +1404,6 @@ TEST(GradientCheckerTest, UnsqueezeGrad) {
 
 // TODO: Reshape missing
 
-
-// TODO fix flaky test for CUDA (failing random seed: 4133818171)
 TEST(GradientCheckerTest, BatchNormalizationGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
@@ -1413,10 +1411,6 @@ TEST(GradientCheckerTest, BatchNormalizationGrad) {
   float error_tolerance = 2e-2f;
   float epsilon = 1e-05f;
   float momentum = 0.1f;
-
-  // For now run on CPU only
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCpuExecutionProvider());
 
   // image data example where input dimensions are (N X C X H X W)
   {
@@ -1437,10 +1431,7 @@ TEST(GradientCheckerTest, BatchNormalizationGrad) {
     TensorInfo saved_var_info(channel_shape, false);
 
     gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, bias_info, mean_info, var_info}, {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
-                                          {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)},
-                                          /* check_not_have_gradient =*/ true,
-                                          /* check_not_have_shape_inferencing = */ false,
-                                          &execution_providers);
+                                          {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)});
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -1463,10 +1454,7 @@ TEST(GradientCheckerTest, BatchNormalizationGrad) {
     TensorInfo saved_var_info(channel_shape, false);
 
     gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, bias_info, mean_info, var_info}, {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
-                                          {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)},
-                                          /* check_not_have_gradient =*/ true,
-                                          /* check_not_have_shape_inferencing = */ false,
-                                          &execution_providers);
+                                          {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)});
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -1489,10 +1477,7 @@ TEST(GradientCheckerTest, BatchNormalizationGrad) {
     TensorInfo saved_var_info(channel_shape, false);
 
     gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, bias_info, mean_info, var_info}, {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
-                                          {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)},
-                                          /* check_not_have_gradient =*/ true,
-                                          /* check_not_have_shape_inferencing = */ false,
-                                          &execution_providers);
+                                          {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)});
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -1515,10 +1500,7 @@ TEST(GradientCheckerTest, BatchNormalizationGrad) {
     TensorInfo saved_var_info(channel_shape, false);
 
     gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, bias_info, mean_info, var_info}, {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
-                                          {MakeAttribute("momentum", momentum)},
-                                          /* check_not_have_gradient =*/ true,
-                                          /* check_not_have_shape_inferencing = */ false,
-                                          &execution_providers);
+                                          {MakeAttribute("momentum", momentum)});
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -1541,10 +1523,7 @@ TEST(GradientCheckerTest, BatchNormalizationGrad) {
     TensorInfo saved_var_info(channel_shape, false);
 
     gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, bias_info, mean_info, var_info}, {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
-                                          {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)},
-                                          /* check_not_have_gradient =*/ true,
-                                          /* check_not_have_shape_inferencing = */ false,
-                                          &execution_providers);
+                                          {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)});
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
