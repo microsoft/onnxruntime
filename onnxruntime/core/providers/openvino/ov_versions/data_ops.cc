@@ -75,6 +75,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Ceil", V_2020_4, {"GPU"}},
     {"Ceil", V_2021_3, {"MYRIAD"}},
     {"Ceil", V_2021_2, {"GPU", "MYRIAD"}},
+    {"Ceil", V_2021_4, {"All"}},
     {"Clip", V_2020_4, {"All"}},
     {"Concat", V_2020_4, {"All"}},
     {"Constant", V_2020_4, {"All"}},
@@ -109,6 +110,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Less", V_2020_4, {"All"}},
     {"Log", V_2020_4, {"All"}},
     {"Loop", V_2021_3, {"MYRIAD"}},
+    {"Loop", V_2021_4, {"All"}},
     {"LRN", V_2020_4, {"All"}},
     {"LSTM", V_2020_4, {"All"}},
     {"MatMul", V_2020_4, {"All"}},
@@ -163,6 +165,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Tan", V_2020_4, {"CPU", "GPU"}},
     {"Tanh", V_2020_4, {"All"}},
     {"Tile", V_2021_3, {"MYRIAD"}},
+    {"Tile", V_2021_3, {"All"}},
     {"Transpose", V_2020_4, {"All"}},
     {"TopK", V_2020_4, {"All"}},
     {"Unsqueeze", V_2020_4, {"All"}},
@@ -247,8 +250,11 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"Equal", V_2021_2, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Reshape", V_2021_3, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Ceil", V_2021_3, {"MYRIAD"}});
+  no_dimension_supported_.push_back({"Ceil", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"Loop", V_2021_3, {"MYRIAD"}});
+  no_dimension_supported_.push_back({"Loop", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"ReduceMin", V_2021_3, {"MYRIAD"}});
+  no_dimension_supported_.push_back({"ReduceMin", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"QuantizeLinear", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"DequantizeLinear", V_2021_4, {"All"}});
   
