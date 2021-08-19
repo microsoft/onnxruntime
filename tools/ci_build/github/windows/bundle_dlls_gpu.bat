@@ -8,8 +8,15 @@ FOR /R %%i IN (*.nupkg) do (
    set filename=%%~ni
    IF NOT "!filename:~25,7!"=="Managed" (
        mkdir runtimes\linux-x64\native
-       move onnxruntime-linux-x64\lib\libonnxruntime.so.1* runtimes\linux-x64\native\libonnxruntime.so
-       move onnxruntime-linux-x64\lib\libonnxruntime_providers_* runtimes\linux-x64\native
+       move onnxruntime-linux-x64-gpu\lib\libonnxruntime_providers_* runtimes\linux-x64\native
+       move onnxruntime-linux-x64-gpu-tensorrt\lib\libonnxruntime.so.1* runtimes\linux-x64\native\libonnxruntime.so
+       move onnxruntime-linux-x64-gpu-tensorrt\lib\libonnxruntime_providers_shared.so runtimes\linux-x64\native\libonnxruntime_providers_shared.so
+       move onnxruntime-linux-x64-gpu-tensorrt\lib\libonnxruntime_providers_tensorrt.so runtimes\linux-x64\native\libonnxruntime_providers_tensorrt.so
+       mkdir runtimes\win-x64\native
+       move onnxruntime-win-tensorrt-x64\lib\onnxruntime_providers_tensorrt.dll runtimes\win-x64\native\onnxruntime_providers_tensorrt.dll
+       move onnxruntime-win-tensorrt-x64\lib\onnxruntime.dll runtimes\win-x64\native\onnxruntime.dll
+       move onnxruntime-win-tensorrt-x64\lib\onnxruntime.lib runtimes\win-x64\native\onnxruntime.lib
+       move onnxruntime-win-tensorrt-x64\lib\onnxruntime.pdb runtimes\win-x64\native\onnxruntime.pdb
        7z a  %%~ni.nupkg runtimes
    )
-)
+) 
