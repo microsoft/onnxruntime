@@ -18,8 +18,8 @@ def torch_version_lower_than(v):
     current_versions = torch.__version__.split("+")[0].split(".")
     target_verions = v.split("+")[0].split(".")
     assert len(current_versions) == len(target_verions)
-    for v1, v2 in zip(current_versions, target_verions):
-        if int(v1) > int(v2):
+    for i in range(2):
+        if int(current_versions[i]) > int(target_verions[i]):
             return False
     
     return True
