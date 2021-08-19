@@ -312,8 +312,9 @@ common::Status GetQuantizationScale(const InitializedTensorSet& initializers, co
   ORT_RETURN_IF_ERROR(
       onnxruntime::utils::UnpackInitializerData(scale_tensor, node.ModelPath(), unpacked_tensor));
 
-  ORT_RETURN_IF(unpacked_tensor.size() != 4, "The initializer [", name, "] should have size 4 as a float scalar,",
-                " actual size: ", unpacked_tensor.size());
+  // The scale should be one or more floats
+  ORT_RETURN_IF(unpacked_tensor.size() < 4, "The initializer [", name, "] should have one or more floats ",
+                "with size no less than 4, actual size: ", unpacked_tensor.size());
   scale = reinterpret_cast<const float*>(unpacked_tensor.data())[0];
   return Status::OK();
 }
