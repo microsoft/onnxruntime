@@ -11,6 +11,7 @@
 #include "python/onnxruntime_pybind_state_common.h"
 #include "orttraining/core/framework/torch/dlpack_python.h"
 #include <core/session/provider_bridge_ort.h>
+#include "ort_customops.h"
 
 namespace onnxruntime{
 namespace python{
@@ -67,6 +68,9 @@ void addObjectMethodsForEager(py::module& m){
       if (!status.IsOK())
         throw std::runtime_error(status.ErrorMessage());
     });
+
+  auto customop_module = m.def_submodule("custom_ops");
+  torch_ort::eager::GenerateCustomOpsBindings(customop_module);
 }
 
 }
