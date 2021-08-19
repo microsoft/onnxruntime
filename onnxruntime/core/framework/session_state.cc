@@ -1125,10 +1125,10 @@ static bool IsNodeWhereNodeInputsAreSameAsExplicitSubgraphInputs(const Node& nod
   return (op_type == "Loop" || (op_type == "Scan" && since_version >= 9));
 }
 
-// The following method accumulates the locations of implicit inputs to a control flow node
-// at the current graph level. This information will be used in the allocation planner
-// while determining the location of such implicit inputs in that level of the subgraph.
-// This method will not be called for the main graph (there is no "outer scope" to the main graph).
+// The following method accumulates the locations of all inputs (implicit and explicit)
+// to a control flow node at the current graph level. This information will be used in
+// the allocation planner while determining the location of such inputs in the subgraph.
+// This method will not be called for the main graph (there is no concept of "outer scope" for the main graph).
 static Status OuterScopeNodeArgLocationAccumulator(const SequentialExecutionPlan& plan,
                                                    const OrtValueNameIdxMap& ort_value_name_to_idx_map,
                                                    const Node& parent_node,
