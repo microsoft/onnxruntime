@@ -75,13 +75,13 @@ Status BatchNormalizationGrad<T>::Compute(OpKernelContext* ctx) const {
   EigenArrayMap<T> dX_arr(dX_data, sample_size, N * C);
 
   for (size_t nc = 0; nc < N * C; ++nc) {
-    int c = nc % C;
+    size_t c = nc % C;
     dBias_arr(c) += dY_arr.col(nc).sum();
     dScale_arr(c) +=
         ((X_arr.col(nc) - mean_arr(c)) * inv_std_arr(c) * dY_arr.col(nc)).sum();
   }
   for (size_t nc = 0; nc < N * C; ++nc) {
-    int c = nc % C;
+    size_t c = nc % C;
     dX_arr.col(nc) = scaled_inv_std(c) *
                       (dY_arr.col(nc) * N * sample_size - dBias_arr(c) -
                        (X_arr.col(nc) - mean_arr(c)) * dScale_arr(c) * inv_std_arr(c));
