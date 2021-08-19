@@ -419,10 +419,6 @@ void DataOps::populate_op_mode_supported() {
                                const auto& attributes = node->GetAttributes();
                                auto out_shape_attr = attributes.find("output_shape");
 
-                               //tensor type does not support output_shape in Attributes
-                               if (out_shape_attr != attributes.end())
-                                  return true;
-
                                // If the device is GPU
                                if (device_id_.find("GPU") != std::string::npos) {
                                  auto conv_filter = attributes.find("kernel_shape");
