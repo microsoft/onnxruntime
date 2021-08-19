@@ -25,6 +25,11 @@ parameters:
   type: string
   default: ''
 
+- name: trtEnabled  
+  displayName: Include TRT EP libraries? 
+  type: boolean
+  default: true
+
 steps:
     - task: CmdLine@2
       displayName: 'Copy build artifacts for zipping'
@@ -59,6 +64,19 @@ steps:
 
         workingDirectory: '$(Build.BinariesDirectory)\${{parameters.buildConfig}}'
 
+    - task: CmdLine@2
+      displayName: 'Copy TensorRT EP build artifacts for zipping'
+      condition: and(succeeded(), eq('${{ parameters.trtEnabled}}', true))
+      inputs:
+        script: |
+          mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}
+          mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
+
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_tensorrt.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.pdb $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.lib $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
 
     - template: win-esrp-dll.yml
       parameters:
