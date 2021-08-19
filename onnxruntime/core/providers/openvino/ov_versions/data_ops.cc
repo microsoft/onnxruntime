@@ -144,6 +144,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Reshape", V_2020_4, {"All"}},
     {"RoiAlign", V_2021_1, {"All"}},
     {"Round", V_2021_2, {"MYRIAD"}},
+    {"Round", V_2021_4, {"All"}},
     {"Scatter", V_2021_1, {"MYRIAD"}},
     {"ScatterElements", V_2021_2, {"MYRIAD"}},
     {"Selu", V_2020_4, {"CPU", "GPU"}},
