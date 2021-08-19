@@ -539,10 +539,10 @@ def parse_arguments():
     parser.add_argument(
         "--build_eager_mode", action='store_true',
         help="Build ONNXRuntime micro-benchmarks.")
-    parser.add_argument('--eager_customop_module', default=None, 
-        help='Module containing custom op mappings for eager mode.')
-    parser.add_argument('--eager_customop_header', default=None, 
-        help='Header containing custom op definitions for eager mode.')
+    parser.add_argument('--eager_customop_module', default=None,
+                        help='Module containing custom op mappings for eager mode.')
+    parser.add_argument('--eager_customop_header', default=None,
+                        help='Header containing custom op definitions for eager mode.')
 
     return parser.parse_args()
 
@@ -2159,12 +2159,13 @@ def main():
 
             def gen_ops(gen_cpp_name: str, header_file: str, ops_module: str, custom_ops: bool):
                 gen_cpp_scratch_name = gen_cpp_name + '.working'
-                print(f'Generating ORT ATen overrides (output_file: {gen_cpp_name}, header_file: {header_file}, ops_module: {ops_module}), custom_ops: {custom_ops}')
+                print(f'Generating ORT ATen overrides (output_file: {gen_cpp_name}, header_file: {header_file},'
+                      f'ops_module: {ops_module}), custom_ops: {custom_ops}')
 
-                cmd = [sys.executable, os.path.join(os.path.join(eager_root_dir, 'opgen', 'opgen.py')), 
-                '--output_file', gen_cpp_scratch_name,
-                '--ops_module', ops_module,
-                '--header_file', header_file]
+                cmd = [sys.executable, os.path.join(os.path.join(eager_root_dir, 'opgen', 'opgen.py')),
+                       '--output_file', gen_cpp_scratch_name,
+                       '--ops_module', ops_module,
+                       '--header_file', header_file]
 
                 if custom_ops:
                     cmd += ["--custom_ops"]
@@ -2172,8 +2173,8 @@ def main():
                 subprocess.check_call(cmd)
 
                 import filecmp
-                if not os.path.isfile(gen_cpp_name) \
-                    or not filecmp.cmp(gen_cpp_name, gen_cpp_scratch_name, shallow=False):
+                if (not os.path.isfile(gen_cpp_name) or
+                   not filecmp.cmp(gen_cpp_name, gen_cpp_scratch_name, shallow=False)):
                     os.rename(gen_cpp_scratch_name, gen_cpp_name)
                 else:
                     os.remove(gen_cpp_scratch_name)
@@ -2197,8 +2198,8 @@ def main():
                 if not args.eager_customop_module:
                     args.eager_customop_module = os.path.join(eager_root_dir, 'opgen/opgen/custom_ops.py')
 
-                gen_ops(os.path.join(eager_root_dir, 'ort_customops.g.cpp'), args.eager_customop_header, args.eager_customop_module, True)
-
+                gen_ops(os.path.join(eager_root_dir, 'ort_customops.g.cpp'),
+                        args.eager_customop_header, args.eager_customop_module, True)
 
             gen_ort_aten_ops()
 
