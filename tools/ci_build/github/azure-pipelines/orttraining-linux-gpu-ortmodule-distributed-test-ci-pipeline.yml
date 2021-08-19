@@ -4,7 +4,7 @@ jobs:
 - job: Onnxruntime_Linux_GPU_ORTModule_Distributed_Test
 
   timeoutInMinutes: 120
-  pool: 'Linux-Multi-GPU-V100'
+  pool: 'Onnxruntime-Linux-GPU-NC24sv3'
 
   steps:
   - checkout: self
@@ -29,7 +29,7 @@ jobs:
         -e
       DisplayName: 'Build'
 
-  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/mnist" -d "/mnist"
+  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/mnist" -d "/mnist"
     displayName: 'Mount MNIST'
     condition: succeededOrFailed()
 
