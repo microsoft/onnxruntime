@@ -98,6 +98,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Gather", V_2020_4, {"All"}},
     {"GatherElements", V_2021_3, {"MYRIAD"}},
     {"GatherND", V_2021_2, {"MYRIAD"}},
+    {"GatherND", V_2021_4, {"All"}},
     {"Gemm", V_2020_4, {"All"}},
     {"GlobalAveragePool", V_2020_4, {"All"}},
     {"GlobalLpPool", V_2020_4, {"CPU", "GPU"}},
