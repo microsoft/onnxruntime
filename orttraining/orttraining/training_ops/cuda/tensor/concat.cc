@@ -53,9 +53,7 @@ Status ConcatTraining::ComputeInternal(OpKernelContext* ctx) const {
   auto element_bytes = p.output_tensor->DataType()->Size();
   int block_size_inside_axis_dim = static_cast<int>(p.output_axis_pitch / p.output_tensor->Shape()[p.axis]);
   int block_size_including_axis_dim = static_cast<int>(p.output_axis_pitch);
-  input_ptr.CopyToGpu();
   if (std::all_of(concat_sizes.begin(), concat_sizes.end(), [&] (int64_t i) {return i == concat_sizes[0];})) {
-
     if (input_count <= 32) {
       // pass by value to avoid host-to-device copy on same stream
       TArray<const void*, 32> input_table(input_count);
@@ -73,6 +71,7 @@ Status ConcatTraining::ComputeInternal(OpKernelContext* ctx) const {
  
     } else {
       // too many inputs, so copy sizes to device memory
+      input_ptr.CopyToGpu();
       ORT_RETURN_IF_ERROR(ConcatSameConcatDimImpl(Stream(),
                                  element_bytes,
                                  block_size_including_axis_dim,
@@ -85,6 +84,7 @@ Status ConcatTraining::ComputeInternal(OpKernelContext* ctx) const {
   } else {
     // input sizes vary, copy input sizes and range metadata to device
     // todo: pass by value when few inputs
+    input_ptr.CopyToGpu();
     CudaAsyncBuffer<int64_t> concat_sizes_gpu(this, concat_sizes);
     CudaAsyncBuffer<int64_t> axis_dimension_input_output_mapping_gpu(this, axis_dimension_input_output_mapping);
     CudaAsyncBuffer<int64_t> concat_sizes_range_gpu(this, concat_sizes_range);

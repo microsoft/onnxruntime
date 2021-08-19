@@ -8,13 +8,13 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T>
+template <typename T, typename OutputIndexToMemoryMap>
 __global__ void _SplitKernelSameSplitDim(const fast_divmod block_size_including_axis_dim_div,
                              const fast_divmod block_size_inside_axis_dim_div,
 			     const fast_divmod split_dim_size,
                              const int num_outputs,
                              const T* input_data,
-                             void** output_ptr,
+                             OutputIndexToMemoryMap output_ptr,
                              const CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   CUDA_LONG output_pos = 0;
@@ -37,6 +37,7 @@ __global__ void _SplitKernelSameSplitDim(const fast_divmod block_size_including_
   reinterpret_cast<T*>(output_ptr[output_index])[output_pos] = input_data[id];
 }
 
+template <typename OutputIndexToMemoryMap>
 Status SplitSameSplitDimImpl(cudaStream_t stream,
                  const size_t element_size,
                  const int block_size_including_axis_dim,
@@ -44,7 +45,7 @@ Status SplitSameSplitDimImpl(cudaStream_t stream,
                  const int64_t split_size,
                  const int num_outputs,
                  const void* input_data,
-                 void** output_ptr,
+                 OutputIndexToMemoryMap output_ptr,
                  const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
 
@@ -91,7 +92,26 @@ Status SplitSameSplitDimImpl(cudaStream_t stream,
   return Status::OK();
 }
 
+template Status SplitSameSplitDimImpl<void**>(cudaStream_t stream,
+                 const size_t element_size,
+                 const int block_size_including_axis_dim,
+                 const int block_size_inside_axis_dim,
+                 const int64_t split_size,
+                 const int num_outputs,
+                 const void* input_data,
+                 void** output_ptr,
+                 const size_t N);
 
+template Status SplitSameSplitDimImpl<TArray<void*,32>>(cudaStream_t stream,
+                 const size_t element_size,
+                 const int block_size_including_axis_dim,
+                 const int block_size_inside_axis_dim,
+                 const int64_t split_size,
+                 const int num_outputs,
+                 const void* input_data,
+                 TArray<void*,32> output_ptr,
+                 const size_t N);
+ 
 template <typename T>
 __global__ void _SplitKernel(const fast_divmod block_size_including_axis_dim_div,
                              const fast_divmod block_size_inside_axis_dim_div,

@@ -65,7 +65,6 @@ Status SplitTraining::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   if (input_tensor->Shape().Size() > 0) {
-    output_ptr.CopyToGpu();
 
     std::vector<int64_t> split_sizes_range(split_sizes);
     for (size_t i = 1; i < split_sizes_range.size(); ++i) {
@@ -75,7 +74,23 @@ Status SplitTraining::ComputeInternal(OpKernelContext* ctx) const {
     size_t element_size = input_tensor->DataType()->Size();
 
     if (std::all_of(split_sizes.begin(), split_sizes.end(), [&] (int64_t i) {return i == split_sizes[0];})) {
-      ORT_RETURN_IF_ERROR(SplitSameSplitDimImpl(Stream(),
+      if (num_outputs <= 32) {
+        TArray<void*, 32> output_table(num_outputs);
+        for (int i = 0; i < num_outputs; ++i) {
+  	  output_table[i] = output_ptr_span[i];
+        }
+        ORT_RETURN_IF_ERROR(SplitSameSplitDimImpl(Stream(),
+                                  element_size,
+                                  block_size_including_axis_dim,
+                                  block_size_inside_axis_dim,
+				  split_sizes[0],
+                                  num_outputs,
+                                  input_data,
+                                  output_table,
+                                  input_shape.Size()));
+      } else {
+        output_ptr.CopyToGpu();
+        ORT_RETURN_IF_ERROR(SplitSameSplitDimImpl(Stream(),
                                   element_size,
                                   block_size_including_axis_dim,
                                   block_size_inside_axis_dim,
@@ -84,8 +99,9 @@ Status SplitTraining::ComputeInternal(OpKernelContext* ctx) const {
                                   input_data,
                                   output_ptr.GpuPtr(),
                                   input_shape.Size()));
-
+      }
     } else {
+      output_ptr.CopyToGpu();
       CudaAsyncBuffer<int64_t> split_sizes_gpu(this, split_sizes);
       CudaAsyncBuffer<int64_t> split_sizes_range_gpu(this, split_sizes_range);
       CudaAsyncBuffer<int64_t> axis_dimension_input_output_mapping_gpu(this, axis_dimension_input_output_mapping);
