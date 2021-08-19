@@ -1100,7 +1100,7 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
 
 static Status Index(const OrtValueNameIdxMap& ort_value_name_idx_map,
                     const OrtValueName& name,
-                    /*out*/ OrtValueIndex value) {
+                    /*out*/ OrtValueIndex& value) {
   return ort_value_name_idx_map.GetIdx(name, value);
 }
 

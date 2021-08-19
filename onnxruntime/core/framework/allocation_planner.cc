@@ -549,8 +549,19 @@ class PlannerImpl {
 
             if (is_subgraph && node_arg_has_explicit_consumer.count(index) == 0) {
               auto iter = outer_scope_node_arg_to_location_map_.find(name);
-              ORT_ENFORCE(iter != outer_scope_node_arg_to_location_map_.end());
-              plan_.SetLocation(static_cast<size_t>(index), iter->second);
+              bool found_in_outer_scope_location_map = (iter != outer_scope_node_arg_to_location_map_.end());
+
+              if (!is_graph_input) {
+                // Failing this enforce for an implicit subgraph input points to an internal error somewhere.
+                // For certain older opsets (Scan-8), we may not have added explicit subgraph inputs
+                // to the outer scope location map. See explanation in IsNodeWhereNodeInputsAreSameAsExplicitSubgraphInputs()
+                // called in FinalizeSessionStateImpl() in SessionState.
+                ORT_ENFORCE(found_in_outer_scope_location_map);
+              }
+
+              if (found_in_outer_scope_location_map) {
+                plan_.SetLocation(static_cast<size_t>(index), iter->second);
+              }
             }
           }
         }
