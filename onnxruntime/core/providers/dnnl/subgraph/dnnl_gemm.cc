@@ -101,8 +101,8 @@ void DnnlGemm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   dnnl::matmul::primitive_desc matmul_pd;
   matmul_pd = dnnl::matmul::primitive_desc(matmul_d, matmul_attr, eng);
 
-  auto matmul_a_mem = sp.GetMemoryAndReshape(node.Input(IN_A), matmul_pd.src_desc(), eng);
-  auto matmul_b_mem = sp.GetMemoryAndReshape(node.Input(IN_B), matmul_pd.weights_desc(), eng);
+  auto matmul_a_mem = sp.GetMemoryAndReshape(node.Input(IN_A), matmul_pd.src_desc(), eng, transA);
+  auto matmul_b_mem = sp.GetMemoryAndReshape(node.Input(IN_B), matmul_pd.weights_desc(), eng, transB);
   auto matmul_dst_mem = dnnl::memory(matmul_pd.dst_desc(), eng);
 
   auto matmul_op = dnnl::matmul(matmul_pd);

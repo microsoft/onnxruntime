@@ -377,7 +377,7 @@ bool DnnlBinaryNodeCapability::IsDimensionSupported(const Node* node) const {
 bool DnnlGemmNodeCapability::Supported(const Node* node) const {
   if (!_matmul.Supported(node)) return false;
   if (!_binary.Supported(node)) return false;
-  if (!IsAttributeSupported(node)) return false;
+  //if (!IsAttributeSupported(node)) return false;
   return true;
 }
 
