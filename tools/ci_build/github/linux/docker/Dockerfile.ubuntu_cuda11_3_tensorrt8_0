@@ -4,10 +4,10 @@
 # --------------------------------------------------------------
 # Dockerfile to run ONNXRuntime with TensorRT integration
 
-ARG CUDA_VERSION=11.3.1
 ARG OS_VERSION=18.04
 FROM nvidia/cuda:11.4.0-cudnn8-devel-ubuntu${OS_VERSION}
 
+ENV CUDA_VERSION=11.3.1
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_BRANCH=master
 ARG TRT=8.0.1.6 
@@ -37,7 +37,7 @@ RUN pip install setuptools>=41.0.0
 RUN v="${TRT%.*}-1+cuda${CUDA_VERSION%.*}" &&\
     apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/7fa2af80.pub &&\
     apt-get update &&\
-    sudo apt-get install libnvinfer8=${v} libnvonnxparsers8=${v} libnvparsers8=${v} libnvinfer-plugin8=${v} \
+    sudo apt-get install -y libnvinfer8=${v} libnvonnxparsers8=${v} libnvparsers8=${v} libnvinfer-plugin8=${v} \
         libnvinfer-dev=${v} libnvonnxparsers-dev=${v} libnvparsers-dev=${v} libnvinfer-plugin-dev=${v} \
         python3-libnvinfer=${v}
 

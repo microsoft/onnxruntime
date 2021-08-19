@@ -4,13 +4,13 @@
 # --------------------------------------------------------------
 # Dockerfile to run ONNXRuntime with TensorRT integration
 
-ARG CUDA_VERSION=11.1
 ARG OS_VERSION=18.04
 FROM nvidia/cuda:11.4.0-cudnn8-devel-ubuntu${OS_VERSION}
 
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_BRANCH=master
 ARG TRT=7.2.3.4
+ENV CUDA_VERSION=11.1
 
 RUN apt-get update &&\
     apt-get install -y sudo git bash unattended-upgrades wget
