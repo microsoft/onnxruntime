@@ -701,10 +701,9 @@ MlasGemmU8X8GetDispatch(
         GemmU8X8Dispatch = MlasPlatform.GemmU8U8Dispatch;
     }
 #elif defined(MLAS_TARGET_ARM64)
-    if (BIsSigned && USE_NEONS8_KERNEL) {
+    GemmU8X8Dispatch = MlasPlatform.GemmU8X8Dispatch;
+    if (USE_NEONS8_KERNEL && BIsSigned && GemmU8X8Dispatch == &MlasGemmU8X8DispatchNeon) {
         GemmU8X8Dispatch = &MlasGemmS8S8DispatchNeon;
-    } else {
-        GemmU8X8Dispatch = MlasPlatform.GemmU8X8Dispatch;
     }
 #elif defined(MLAS_TARGET_ARM64EC) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
     GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
