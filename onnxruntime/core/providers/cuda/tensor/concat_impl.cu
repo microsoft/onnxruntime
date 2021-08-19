@@ -9,12 +9,12 @@ namespace onnxruntime {
 namespace cuda {
 
 // concat dimension are same for all inputs
-template <typename T>
+template <typename T, typename InputIndexToMemoryMap>
 __global__ void _ConcatKernelSameConcatDim(const fast_divmod block_size_including_axis_dim_div,
                               const fast_divmod block_size_inside_axis_dim_div,
                               const fast_divmod concat_dim_size,
                               T* output_data,
-                              const void** input_ptr,
+                              InputIndexToMemoryMap input_ptr,
                               const CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   CUDA_LONG input_pos = 0;
@@ -37,13 +37,14 @@ __global__ void _ConcatKernelSameConcatDim(const fast_divmod block_size_includin
   output_data[id] = reinterpret_cast<const T*>(input_ptr[input_index])[input_pos];
 }
 
+template <typename InputIndexToMemoryMap>
 Status ConcatSameConcatDimImpl(cudaStream_t stream,
   const size_t element_bytes,
   const int block_size_including_axis_dim,
   const int block_size_inside_axis_dim,
   const int64_t concat_size,
   void* output_data,
-  const void** input_ptr,
+  const InputIndexToMemoryMap input_ptr,
   const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
 
@@ -89,6 +90,26 @@ Status ConcatSameConcatDimImpl(cudaStream_t stream,
 
   return Status::OK();
 }
+
+// input tensors addresses in device memory
+template Status ConcatSameConcatDimImpl<const void**>(cudaStream_t stream,
+  const size_t element_bytes,
+  const int block_size_including_axis_dim,
+  const int block_size_inside_axis_dim,
+  const int64_t concat_size,
+  void* output_data,
+  const void** input_ptr,
+  const size_t N);
+
+// input tensor addresses passed by value
+template Status ConcatSameConcatDimImpl<TArray<const void*,32>>(cudaStream_t stream,
+  const size_t element_bytes,
+  const int block_size_including_axis_dim,
+  const int block_size_inside_axis_dim,
+  const int64_t concat_size,
+  void* output_data,
+  TArray<const void*,32> input_ptr,
+  const size_t N);
 
 template <typename T>
 __global__ void _ConcatKernel(const fast_divmod block_size_including_axis_dim_div,
