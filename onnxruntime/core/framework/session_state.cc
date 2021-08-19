@@ -1138,7 +1138,7 @@ static Status OuterScopeNodeArgLocationAccumulator(const SequentialExecutionPlan
   auto process_implicit_input = [&plan, &ort_value_name_to_idx_map,
                                  &outer_scope_arg_to_location_map](const NodeArg& input, size_t /*arg_idx*/) {
     const auto& name = input.Name();
-    OrtValueIndex index;
+    OrtValueIndex index = -1;
     ORT_RETURN_IF_ERROR(Index(ort_value_name_to_idx_map, name, index));
     outer_scope_arg_to_location_map.insert({name, plan.GetLocation(index)});
     return Status::OK();
@@ -1154,7 +1154,7 @@ static Status OuterScopeNodeArgLocationAccumulator(const SequentialExecutionPlan
   auto process_input = [&plan, &ort_value_name_to_idx_map, &outer_scope_arg_to_location_map,
                         &subgraph_inputs](const NodeArg& input, size_t arg_idx) {
     const auto& name = input.Name();
-    OrtValueIndex index;
+    OrtValueIndex index = -1;
     ORT_RETURN_IF_ERROR(Index(ort_value_name_to_idx_map, name, index));
 
     // Store the location of the outer scope value in the map using the subgraph input as the key
