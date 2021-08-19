@@ -336,9 +336,9 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
       session_state_(session_state),
       mem_patterns_(nullptr),
       planner_(nullptr) {
-#if !defined(DISABLE_SPARSE_TENSORS)
   Init(
       feed_mlvalue_idxs, feeds, session_state.GetInitializedTensors(),
+#if !defined(DISABLE_SPARSE_TENSORS)
       [&session_state](const std::string& name) -> bool {
         int idx = -1;
         if (session_state.GetOrtValueNameIdxMap().GetIdx(name, idx).IsOK()) {
@@ -346,8 +346,12 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
         }
         return false;
       },
-      fetches);
+#else
+      [&](const std::string& /*name*/) -> bool {
+        return false;
+      },
 #endif
+      fetches);
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   MemoryInfo::IncreaseIteration();
@@ -369,7 +373,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
   // and we have execution plan generated, try to setup
   // memory pattern optimization.
   if (session_state.GetEnableMemoryPattern() && session_state.GetExecutionPlan()) {
-    std::vector<std::reference_wrapper<const TensorShape>> input_shapes;
+    std::vector<std::reference_wrapper<const TensorShape> > input_shapes;
     bool all_tensors = true;
     // Reserve mem to avoid re-allocation.
     input_shapes.reserve(feeds.size());
