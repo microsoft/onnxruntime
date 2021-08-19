@@ -1098,12 +1098,31 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
                                   remove_initializers, constant_initializers_use_count);
 }
 
-static OrtValueIndex Index(const OrtValueNameIdxMap& ort_value_name_idx_map,
-                           const OrtValueName& name) {
-  OrtValueIndex result;
-  auto status = ort_value_name_idx_map.GetIdx(name, result);
-  ORT_THROW_IF_ERROR(status);
-  return result;
+static Status Index(const OrtValueNameIdxMap& ort_value_name_idx_map,
+                    const OrtValueName& name,
+                    /*out*/ OrtValueIndex value) {
+  return ort_value_name_idx_map.GetIdx(name, value);
+}
+
+static bool IsNodeWhereNodeInputsAreSameAsExplicitSubgraphInputs(const Node& node) {
+  const auto& op_type = node.OpType();
+  int since_version = node.SinceVersion();
+
+  // TODO: Re-visit this method if more subgraph ops get accepted into ONNX
+
+  // At the time of writing, there are only 3 ops in ONNX that have subgraphs
+  // 1) If
+  // 2) Loop
+  // 3) Scan
+
+  // `If` - The op doesn't have explicit subgraph inputs (return false)
+  // `Loop`- In all opset versions of Loop (at the time of writing) the node inputs
+  // have a one-to-one mapping between them and the explicit subgraph inputs
+  // of the subgraph held in the Loop (return true)
+  // `Scan` - Except opset 8 version of Scan (at the time of writing), all other
+  // versions have the same one-to-one mapping as Loop (return true for opset > 8)
+
+  return (op_type == "Loop" || (op_type == "Scan" && since_version >= 9));
 }
 
 // The following method accumulates the locations of implicit inputs to a control flow node
@@ -1113,31 +1132,43 @@ static OrtValueIndex Index(const OrtValueNameIdxMap& ort_value_name_idx_map,
 static Status OuterScopeNodeArgLocationAccumulator(const SequentialExecutionPlan& plan,
                                                    const OrtValueNameIdxMap& ort_value_name_to_idx_map,
                                                    const Node& parent_node,
+                                                   const GraphViewer& subgraph,
                                                    /*out*/ std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_arg_to_location_map) {
+  // Process implicit inputs to the node
   auto process_implicit_input = [&plan, &ort_value_name_to_idx_map,
                                  &outer_scope_arg_to_location_map](const NodeArg& input, size_t /*arg_idx*/) {
     const auto& name = input.Name();
-    ORT_TRY {
-      outer_scope_arg_to_location_map.insert({name, plan.GetLocation(Index(ort_value_name_to_idx_map, name))});
-    }
-    ORT_CATCH(const std::exception& ex) {
-      ORT_HANDLE_EXCEPTION([&]() {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
-      });
-    }
+    OrtValueIndex index;
+    ORT_RETURN_IF_ERROR(Index(ort_value_name_to_idx_map, name, index));
+    outer_scope_arg_to_location_map.insert({name, plan.GetLocation(index)});
+    return Status::OK();
+  };
+
+  ORT_RETURN_IF_ERROR(Node::ForEachWithIndex(parent_node.ImplicitInputDefs(), process_implicit_input));
+
+  // Process explicit inputs to the node
+  // (they are passed through as explicit subgraph inputs and hence requires a re-mapping of names
+  // to their corresponding names in the inner nested subgraph(s) held by the node)
+  const auto& subgraph_inputs = subgraph.GetInputs();
+
+  auto process_input = [&plan, &ort_value_name_to_idx_map, &outer_scope_arg_to_location_map,
+                        &subgraph_inputs](const NodeArg& input, size_t arg_idx) {
+    const auto& name = input.Name();
+    OrtValueIndex index;
+    ORT_RETURN_IF_ERROR(Index(ort_value_name_to_idx_map, name, index));
+
+    // Store the location of the outer scope value in the map using the subgraph input as the key
+    // as that will be the referenced name in the subgraph (i.e.) re-mapping of names is required
+    outer_scope_arg_to_location_map.insert({subgraph_inputs[arg_idx]->Name(), plan.GetLocation(index)});
 
     return Status::OK();
   };
 
-  // For now we just pass along the location info of just the implicit inputs to the subgraph.
-  // In future, we may want to extend this to node inputs as well that will be passed
-  // through as "explicit" inputs to the subgraph. To enable this, there is logic to add
-  // regarding mapping arg names at this level of the graph to their corresponding subgraph
-  // input name counterparts.
-  // We want to that to avoid copies for explicit graph inputs that are "passed through"
-  // to a nested subgraph.
-  // See similar comment in the allocation planner.
-  return Node::ForEachWithIndex(parent_node.ImplicitInputDefs(), process_implicit_input);
+  if (IsNodeWhereNodeInputsAreSameAsExplicitSubgraphInputs(parent_node)) {
+    return Node::ForEachWithIndex(parent_node.InputDefs(), process_input);
+  }
+
+  return Status::OK();
 }
 
 Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
@@ -1146,8 +1177,11 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                               const SessionOptions& session_options,
                                               bool remove_initializers,
                                               std::unordered_map<std::string, size_t>& constant_initializers_use_count,
-                                              const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map) {
-  CreateGraphInfo();
+                                              const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
+                                              bool graph_info_already_created) {
+  if (!graph_info_already_created) {
+    CreateGraphInfo();
+  }
 
   // ignore any outer scope args we don't know about. this can happen if a node contains multiple subgraphs.
   std::vector<const NodeArg*> valid_outer_scope_node_args;
@@ -1259,13 +1293,19 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       SessionState& subgraph_session_state = *entry->second;
 
       // recurse
+
+      // We need to create graph info for the subgraphs because information accumulated there
+      // is used in OuterScopeNodeArgLocationAccumulator()
+      subgraph_session_state.CreateGraphInfo();
+
       std::unordered_map<OrtValueName, OrtMemoryInfo> subgraph_outer_scope_node_arg_to_location_map;
       ORT_RETURN_IF_ERROR(OuterScopeNodeArgLocationAccumulator(*p_seq_exec_plan_, GetOrtValueNameIdxMap(),
                                                                node,
+                                                               subgraph_session_state.GetGraphViewer(),
                                                                subgraph_outer_scope_node_arg_to_location_map));
       ORT_RETURN_IF_ERROR(subgraph_session_state.FinalizeSessionStateImpl(
           graph_location, kernel_registry_manager, &node, subgraph_session_options, remove_initializers,
-          constant_initializers_use_count, subgraph_outer_scope_node_arg_to_location_map));
+          constant_initializers_use_count, subgraph_outer_scope_node_arg_to_location_map, true));
 
       // setup all the info for handling the feeds and fetches used in subgraph execution
       auto* p_op_kernel = GetMutableKernel(node.Index());
