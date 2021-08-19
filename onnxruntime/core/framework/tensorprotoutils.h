@@ -94,6 +94,7 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
                                                    const Path& model_path,
                                                    ONNX_NAMESPACE::TensorProto& dense);
 
+#if !defined(ORT_MINIMAL_BUILD)
 // Convert a TensorProto to a SparseTensorProto
 // If the tensorproto contains external data then it loads the data and converts to sparse tensor
 // The resulting SparseTensorProto will contain the data as raw data
@@ -101,6 +102,7 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
 common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto& dense,
                                               const Path& model_path,
                                               ONNX_NAMESPACE::SparseTensorProto& sparse);
+#endif  // !ORT_MINIMAL_BUILD
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 #endif
 

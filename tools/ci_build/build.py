@@ -517,7 +517,7 @@ def parse_arguments():
     parser.add_argument("--disable_ml_ops", action='store_true',
                         help="Disable traditional ML ops (reduces binary size)")
     parser.add_argument("--disable_sparse_tensors", action='store_true',
-                        help="Disable traditional sparse tensor data types (reduces binary size)")
+                        help="Disable sparse tensor data types (reduces binary size)")
     parser.add_argument("--disable_rtti", action='store_true', help="Disable RTTI (reduces binary size)")
     parser.add_argument("--disable_exceptions", action='store_true',
                         help="Disable exceptions to reduce binary size. Requires --minimal_build.")

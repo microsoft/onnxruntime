@@ -144,8 +144,7 @@ static bool RegisterCustomSchemas() {
             node.set_domain(kMSNchwcDomain);
           }
         }
-        return nodes;
-      }(),
+        return nodes; }(),
                     []() {
                       std::vector<OperatorSetIdProto> operator_sets(2);
                       auto& onnx_opset = operator_sets[0];
@@ -245,6 +244,7 @@ static void ConstructSparseTensor(const std::string& name,
   std::copy(shape.cbegin(), shape.cend(), m_dims.begin());
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 static void ValidateSparseTensorProto(const SparseTensorProto& proto) {
   // check values. We always generate float
   EXPECT_EQ(proto.values().data_type(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
@@ -274,6 +274,7 @@ static void ValidateSparseTensorProto(const SparseTensorProto& proto) {
   auto expected_shape = gsl::make_span(sparse_details::shape);
   EXPECT_THAT(actual_shape, testing::ContainerEq(expected_shape));
 }
+#endif
 
 TEST_F(GraphTest, SimpleAddWithoutDomain) {
   ModelProto m;
@@ -1798,6 +1799,7 @@ TEST_F(GraphTest, AddRemoveInitializerHandling) {
                                  << num_initializers << " remain.";
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 TEST_F(GraphTest, SparseInitializerHandling) {
   const char* const input_initializer_name = "x";
   Model model("SparseInitializerHandling", false, *logger_);
@@ -1848,6 +1850,7 @@ TEST_F(GraphTest, SparseInitializerHandling) {
     ValidateSparseTensorProto(model_proto_get.graph().sparse_initializer().at(0));
   }
 }
+#endif  //!defined(DISABLE_SPARSE_TENSORS)
 
 TEST_F(GraphTest, SetInputsAndSetOutputs_NewInputAndOutput) {
   std::shared_ptr<Model> model;

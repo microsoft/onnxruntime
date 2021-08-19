@@ -214,7 +214,7 @@ struct ProviderHostImpl : ProviderHost {
                                               const AllocatorPtr& dst_allocator, Tensor& dst) override {
     return sparse_utils::SparseCooToDenseTensor(data_manager, src, cpu_allocator, dst_allocator, dst);
   }
-#endif  // ORT_MINIMAL_BUILD
+#endif  // !ORT_MINIMAL_BUILD
   Status sparse_utils__DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
                                               const AllocatorPtr& dst_allocator, bool linear_indexs, SparseTensor& dst) override {
     return sparse_utils::DenseTensorToSparseCoo(data_manager, src, cpu_allocator, dst_allocator, linear_indexs, dst);

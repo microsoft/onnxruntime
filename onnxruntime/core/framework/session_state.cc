@@ -201,9 +201,11 @@ Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& o
     constant_initialized_tensors_.insert({ort_value_index, ort_value});
   }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   if (sparse) {
     sparse_initialized_tensors_.insert(ort_value_index);
   }
+#endif
 
   return Status::OK();
 }
@@ -214,9 +216,11 @@ const std::unordered_map<int, OrtValue>& SessionState::GetConstantInitializedTen
   return constant_initialized_tensors_;
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 bool SessionState::IsSparseInitializer(int ort_value_index) const {
   return sparse_initialized_tensors_.count(ort_value_index) > 0;
 }
+#endif
 
 #ifdef ENABLE_TRAINING
 Status SessionState::GetInitializedTensors(
