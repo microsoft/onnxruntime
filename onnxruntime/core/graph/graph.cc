@@ -75,6 +75,11 @@ static Status MergeShapeInfo(const std::string& output_name,
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Source and target must both be either tensors or sparse tensors");
   }
+#else
+  if (!(utils::HasTensorType(source) && utils::HasTensorType(target))) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Source and target must both be tensors");
+  }
 #endif
 
   auto status = Status::OK();
@@ -342,8 +347,8 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
 
       break;
     }
-#if !defined(DISABLE_SPARSE_TENSORS)
     case TypeProto::kSparseTensorType: {
+#if !defined(DISABLE_SPARSE_TENSORS)
       const auto& input_tensor_type = input_type.sparse_tensor_type();
       const auto input_tensor_elem_type = input_tensor_type.elem_type();
       const auto current_tensor_elem_type = current_type.sparse_tensor_type().elem_type();
@@ -372,8 +377,8 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
           *current_type.mutable_sparse_tensor_type() = input_tensor_type;
         }
       }
-    } break;
 #endif
+    } break;
     case TypeProto::kSequenceType:
     case TypeProto::kMapType:
     case TypeProto::kOptionalType:
@@ -1951,13 +1956,11 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     return graph_inferencer;
   }
 
-#if !defined(DISABLE_SPARSE_TENSORS)
   // XXX: When we changed and kept sparse constant initializers in sparse form,
   // we would adjust this method
   const SparseTensorProto* getInputSparseData(size_t) const override {
     return nullptr;
   }
-#endif
 
  private:
   Node& node_;
@@ -2952,9 +2955,9 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 #else
   initializers_data.reserve(name_to_initial_tensor_.size());
 #endif
-  const auto& model_path = ModelPath();
 
 #if !defined(DISABLE_SPARSE_TENSORS)
+  const auto& model_path = ModelPath();
   for (const auto& pair : name_to_initial_tensor_) {
     if (sparse_tensor_names_.find(pair.first) == sparse_end) {
       flatbuffers::Offset<fbs::Tensor> fbs_tensor;
@@ -3152,9 +3155,9 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
   // Path of the owning model
   // This is used for constructing full path for external data
   // if it exists
-  const auto& model_path = ModelPath();
 
 #if !defined(DISABLE_SPARSE_TENSORS)
+  const auto& model_path = ModelPath();
   // We want to make sure that sparse initializers do not appear
   // as dense duplicates within the initializers list.
   if (!sparse_tensor_names_.empty()) {
@@ -3181,7 +3184,6 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
                                                                        size_t initializer_size_threshold) const {
   GraphProto result;
   ToGraphProtoInternal(result);
-  const auto& model_path = ModelPath();
 
   std::ofstream external_stream(external_file_name, std::ofstream::out | std::ofstream::binary);
   ORT_ENFORCE(external_stream.is_open());
@@ -3189,8 +3191,10 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
 
   // Add the initializers to the result graph.
 #if !defined(DISABLE_SPARSE_TENSORS)
+  const auto& model_path = ModelPath();
   const auto sparse_end = sparse_tensor_names_.end();
 #endif
+
   for (const auto& initializer : graph_proto_->initializer()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
     if (sparse_end != sparse_tensor_names_.find(initializer.name())) {
@@ -3198,9 +3202,8 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
       auto& sparse_initializer = *result.add_sparse_initializer();
       auto status = utils::DenseTensorToSparseTensorProto(initializer, model_path, sparse_initializer);
       ORT_ENFORCE(status.IsOK(), "Failed to convert dense initializer to sparse");
-    }
+    } else {
 #endif
-    else {
       // Dense tensors larger than the threshold are added to the external file.
       TensorProto* output_proto = result.add_initializer();
 
@@ -3236,7 +3239,9 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
       output_proto->set_doc_string(initializer.doc_string());
 
       external_offset += tensor_bytes_size;
+#if !defined(DISABLE_SPARSE_TENSORS)
     }
+#endif
   }
 
   return result;

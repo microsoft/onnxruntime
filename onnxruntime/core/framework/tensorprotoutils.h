@@ -101,7 +101,7 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
 common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto& dense,
                                               const Path& model_path,
                                               ONNX_NAMESPACE::SparseTensorProto& sparse);
-#endif  // !ORT_MINIMAL_BUILD
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 #endif
 
 inline bool HasDimValue(const ONNX_NAMESPACE::TensorShapeProto_Dimension& dim) {
@@ -139,30 +139,37 @@ inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_SparseTensor& ten_proto)
   return ten_proto.elem_type() != ONNX_NAMESPACE::TensorProto::UNDEFINED;
 }
 
-inline bool HasShape(const ONNX_NAMESPACE::TypeProto& type_proto) {
-  if (HasTensorType(type_proto) && HasShape(type_proto.tensor_type())) {
-    return true;
-  }
-  return HasSparseTensorType(type_proto) && HasShape(type_proto.sparse_tensor_type());
-}
-
 inline bool HasElementType(const ONNX_NAMESPACE::TypeProto& type_proto) {
   if (HasTensorType(type_proto) && HasElemType(type_proto.tensor_type())) {
     return true;
   }
   return HasSparseTensorType(type_proto) && HasElemType(type_proto.sparse_tensor_type());
 }
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
+
+inline bool HasShape(const ONNX_NAMESPACE::TypeProto& type_proto) {
+  if (HasTensorType(type_proto) && HasShape(type_proto.tensor_type())) {
+    return true;
+  }
+#if !defined(DISABLE_SPARSE_TENSORS)
+  if (HasSparseTensorType(type_proto) && HasShape(type_proto.sparse_tensor_type())) {
+    return true;
+  }
+#endif
+  return false;
+}
 
 inline const ONNX_NAMESPACE::TensorShapeProto& GetShape(const ONNX_NAMESPACE::TypeProto& type_proto) {
   if (HasTensorType(type_proto) && HasShape(type_proto.tensor_type())) {
     return type_proto.tensor_type().shape();
   }
+#if !defined(DISABLE_SPARSE_TENSORS)
   if (HasSparseTensorType(type_proto) && HasShape(type_proto.sparse_tensor_type())) {
     return type_proto.sparse_tensor_type().shape();
   }
+#endif
   ORT_THROW("TypeProto must have shape for this to run");
 }
-#endif
 
 inline bool HasRawData(const ONNX_NAMESPACE::TensorProto& ten_proto) {
   // Can not be UNDEFINED and can not be STRING but test for STRING is usually performed separately

@@ -843,6 +843,7 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
   return Status::OK();
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 template <typename T>
 static Status CopySparseData(size_t n_sparse_elements,
                              const ONNX_NAMESPACE::TensorProto& indices,
@@ -906,14 +907,16 @@ static Status CopySparseData(size_t n_sparse_elements,
 
   return status;
 }
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 namespace conversion_internal {
+#if !defined(DISABLE_SPARSE_TENSORS)
 struct UnsupportedSparseDataType {
   void operator()(int32_t dt_type, Status& status) const {
     status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported sparse tensor data type of ", dt_type);
   }
 };
-
+#endif
 template <typename T>
 struct GetElementSize {
   Status operator()(size_t& element_size) const {
@@ -1033,7 +1036,6 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
   }
   return status;
 }
-#endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
 // Determines if this is a type specific zero
@@ -1157,6 +1159,7 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
 }
 
 #endif  // !ORT_MINIMAL_BUILD
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 template common::Status GetSizeInBytesFromTensorProto<kAllocAlignment>(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                                                        size_t* out);
