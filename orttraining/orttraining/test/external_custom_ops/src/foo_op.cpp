@@ -10,8 +10,8 @@ void FooShapeInference(InferenceContext &ctx) {
 static const char FooDoc[] = "Foo copies input tensor to the output tensor.";
 ONNX_OPERATOR_SET_SCHEMA_EX(
     Foo,
-    comApollo,
-    "com.apollo",
+    comExamples,
+    "com.examples",
     1,
     false,
     OpSchema()
@@ -48,8 +48,8 @@ ONNX_OPERATOR_SET_SCHEMA_EX(
 using namespace ONNX_NAMESPACE;
 static bool registerOps() {
   auto &d = OpSchemaRegistry::DomainToVersionRange::Instance();
-  d.AddDomainToVersion("com.apollo", 1, 1);
-  auto schema = GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(comApollo, 1, Foo)>();
+  d.AddDomainToVersion("com.examples", 1, 1);
+  auto schema = GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(comExamples, 1, Foo)>();
   RegisterSchema(schema);
   std::cerr << "Successfully registered custom op" <<std::endl;
   return true;
