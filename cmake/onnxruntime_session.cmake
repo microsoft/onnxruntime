@@ -40,6 +40,3 @@ if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
   target_include_directories(onnxruntime_session PRIVATE ${ORTTRAINING_ROOT})
 endif()
 
-if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
-  target_compile_definitions(onnxruntime_session PRIVATE DEBUG_NODE_INPUTS_OUTPUTS)
-endif() 
