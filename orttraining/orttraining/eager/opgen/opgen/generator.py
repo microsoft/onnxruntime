@@ -390,7 +390,7 @@ class ORTGen:
     writer: writer.SourceWriter,
     generated_funcs: List[MappedOpFunction]):
     writer.writeline()
-    writer.writeline('void GenerateCustomOpsBindings(pybind11::module_ m) {')
+    writer.writeline('void GenerateCustomOpsBindings(pybind11::module m) {')
     writer.push_indent()
     writer.writeline('ORT_LOG_DEBUG << "GenerateCustomOpsBindings init";')
 
