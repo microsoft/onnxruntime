@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef GridSampleKernal  // disable the unit tests until the kernel is added and remove it.
-
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "core/util/math.h"
@@ -132,6 +130,4 @@ TEST(GridsampleContribOpTest, gridsample_mode_bicubic) {
 
 }  // namespace test
 }  // namespace onnxruntime
-
-#endif
 
