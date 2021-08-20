@@ -331,7 +331,7 @@ class Node {
   ADD_ATTR_INTERFACES(std::string)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TensorProto)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::GraphProto)
-#if !defined(DISABLE_SPARSE_TENSORS)
+#if !defined(S)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::SparseTensorProto)
 #endif
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TypeProto)
@@ -1373,7 +1373,7 @@ class Graph {
 
   InitializedTensorSet name_to_initial_tensor_;
 
-#if !defined(DISABLE_SPARSE_TENSORS)
+#if !defined(S)
   std::unordered_set<std::reference_wrapper<const std::string>,
                      std::hash<std::string>, std::equal_to<std::string>>
       sparse_tensor_names_;
