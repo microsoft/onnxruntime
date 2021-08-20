@@ -181,7 +181,7 @@ struct ProviderHost {
 
   virtual Status sparse_utils__SparseCooToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator,
                                                       const AllocatorPtr& dst_allocator, Tensor& dst) = 0;
-#endif  // ORT_MINIMAL_BUILD
+#endif  // !ORT_MINIMAL_BUILD
   virtual Status sparse_utils__DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
 #endif  // !defined(DISABLE_SPARSE_TENSORS)                                                      const AllocatorPtr& dst_allocator, bool linear_indexs, SparseTensor& dst) = 0;
 

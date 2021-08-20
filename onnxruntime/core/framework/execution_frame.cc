@@ -223,10 +223,8 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
   OrtMemoryInfo cpu_mem_info("Cpu", OrtDeviceAllocator);
   AllocatorPtr cpu_allocator = GetAllocator(cpu_mem_info);
 
-#if !defined(DISABLE_SPARSE_TENSORS)
   // 1. resize the all_value_ vector
   all_values_.resize(all_values_size_);
-#endif
 
   // 2. Handle non-empty output vector
   if (!fetches.empty()) {
@@ -263,9 +261,11 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
       std::string name;
       ORT_THROW_IF_ERROR(ort_value_idx_map_.GetName(ort_value_index, name));
       const bool is_sparse_initializer = is_initializer_sparse_func(name);
+#endif
       const Tensor& src = entry.second.Get<Tensor>();  // all initializers in ONNX are tensors
       OrtValue& dest = all_values_[ort_value_index];
 
+#if !defined(DISABLE_SPARSE_TENSORS)
       if (is_sparse_initializer) {
         if (!dest.IsAllocated()) {
           auto p_tensor = std::make_unique<SparseTensor>();
@@ -280,6 +280,7 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
                                                                 cpu_allocator, allocator, has_linear_coo_index,
                                                                 *dest.GetMutable<SparseTensor>()));
       } else {
+#endif  //  !defined(DISABLE_SPARSE_TENSORS)
         if (!dest.IsAllocated()) {
           // NOTE: This doesn't need to support ExecutionFrame custom allocators as they only come into play
           // for a subgraph with an output of unknown shape that needs to be accumulated by the control flow node.
@@ -288,6 +289,7 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
           Tensor::InitOrtValue(src.DataType(), src.Shape(), std::move(allocator), dest);
         }
         ORT_THROW_IF_ERROR(CopyTensor(src, *dest.GetMutable<Tensor>()));
+#if !defined(DISABLE_SPARSE_TENSORS)
       }
 #endif
     } else {

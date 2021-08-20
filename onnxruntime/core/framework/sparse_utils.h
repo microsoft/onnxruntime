@@ -18,6 +18,7 @@ class Status;
 #endif
 
 namespace sparse_utils {
+#if !defined(ORT_MINIMAL_BUILD)
 /// <summary>
 /// This function converts dense tensor into Csr format.
 /// Conversion takes place on CPU. Thus if the source
@@ -78,6 +79,7 @@ Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const Spa
 /// <returns>Status instance</returns>
 Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator,
                               const AllocatorPtr& dst_allocator, Tensor& dst);
+#endif  //!ORT_MINIMAL_BUILD
 
 /// <summary>
 /// Convert Dense Tensor to COO format.

@@ -68,6 +68,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
   }
 }
 
+#if !defined(DISABLE_SPARSE_TENSOR)
 #if !defined(ORT_MINIMAL_BUILD)
 TEST(OrtFormatCustomOpTests, ConvertOnnxModelToOrt) {
   const std::basic_string<ORTCHAR_T> onnx_file = ORT_TSTR("testdata/foo_1.onnx");
@@ -120,6 +121,7 @@ TEST(OrtFormatCustomOpTests, ConvertOnnxModelToOrt) {
 #endif
 }
 #endif  // if !defined(ORT_MINIMAL_BUILD)
+#endif  // if !defined(DISABLE_SPARSE_TENSOR)
 
 // the saved ORT format model has the CPU EP assigned to the custom op node, so we only test if we're not using the
 // CUDA EP for the test.
