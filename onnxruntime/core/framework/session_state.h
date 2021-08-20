@@ -318,6 +318,7 @@ class SessionState {
     return used_shared_pre_packed_weights_counter_;
   }
 
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
   void IncrementGraphExecutionCounter() {
     ++graph_executions_counter_;
   }
@@ -325,6 +326,7 @@ class SessionState {
   size_t GetGraphExecutionCounter() const {
     return graph_executions_counter_;
   }
+#endif
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
@@ -512,8 +514,10 @@ class SessionState {
   // a constant initialized weight was used by the session state
   size_t used_shared_pre_packed_weights_counter_ = 0;
 
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
   // Counter for number of times the session graph has been executed
   size_t graph_executions_counter_ = 0;
+#endif
 };
 
 }  // namespace onnxruntime
