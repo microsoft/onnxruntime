@@ -55,5 +55,5 @@ static bool registerOps() {
   return true;
 }
 static bool ret = registerOps();
-PYBIND11_MODULE(custom_ops, m) {
+PYBIND11_MODULE(orttraining_external_custom_ops, m) {
 }

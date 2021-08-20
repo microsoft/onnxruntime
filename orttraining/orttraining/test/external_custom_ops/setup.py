@@ -23,13 +23,13 @@ class CMakeBuild(build_ext):
             ["cmake", "--build", "."], cwd=self.build_temp
         )
 
-setup(name='custom_ops',
+setup(name='orttraining_external_custom_ops',
     version='0.1',
     author='',
     author_email='',
-    description='Apollo onnxruntime custom ops',
+    description='External custom ops example',
     long_description='',
-    ext_modules=[CMakeExtension('custom_ops')],
+    ext_modules=[CMakeExtension('orttrainng_external_custom_ops')],
     cmdclass=dict(build_ext=CMakeBuild),
     zip_safe=False
 )
