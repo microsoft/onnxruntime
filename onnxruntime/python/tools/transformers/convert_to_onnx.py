@@ -25,7 +25,7 @@ import json
 from pathlib import Path
 from packaging import version
 from transformers import AutoConfig
-from gpt2_helper import DEFAULT_TOLERANCE, PRETRAINED_GPT2_MODELS
+from gpt2_helper import DEBUG_OUTPUTS, DEFAULT_TOLERANCE, PRETRAINED_GPT2_MODELS
 from gpt2_beamsearch_helper import Gpt2HelperFactory, MODEL_CLASSES
 from gpt2_beamsearch_tester import Gpt2TesterFactory
 from quantize_helper import QuantizeHelper
@@ -94,6 +94,14 @@ def parse_arguments():
         choices=list(Precision),
         help="Precision of model to run. fp32 for full precision, fp16 for half precision, and int8 for quantization")
 
+    parser.add_argument(
+        "-t",
+        "--test_cases",
+        required=False,
+        type=int,
+        default=1000,
+        help="Number of test cases for parity")
+
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
 
@@ -134,6 +142,12 @@ def parse_arguments():
                                        default=0.95,
                                        help='Nuclear/top-p sampling accumulation probability.')
     sampling_option_group.add_argument('--do_sample_top_k', type=int, default=0, help='Use top-k if non-zero.')
+
+    fp16_option_group = parser.add_argument_group("float to float16 conversion parameters that works when \"--precision fp16\" is specified")
+    fp16_option_group.add_argument('--keep_io_types', required=False, action='store_true', help='Use float32 for past inputs, present and logits outputs.')
+    fp16_option_group.set_defaults(keep_io_types=False)
+    fp16_option_group.add_argument('--op_block_list', nargs='+', default=[], help='List of operators (like Attention Gather Add LayerNormalization FastGelu MatMul) to compute in float32 instead of float16.')
+    fp16_option_group.add_argument('--node_block_list', nargs='+', default=[], help='List of node names to compute in float32 instead of float16.')
 
     args = parser.parse_args()
 
@@ -219,21 +233,36 @@ def main():
 
     logger.info(f"Exporting ONNX model to {raw_onnx_model}")
     use_padding = MODEL_CLASSES[args.model_class][2]
-    gpt2helper.export_onnx(model,
-                           device,
-                           raw_onnx_model,
-                           args.verbose,
-                           args.use_external_data_format,
-                           has_position_ids=use_padding,
-                           has_attention_mask=use_padding)
+
+    if DEBUG_OUTPUTS and os.path.exists(raw_onnx_model):
+        logger.warn(f"skip exporting onnx since file existed: {raw_onnx_model}")
+    else:
+        gpt2helper.export_onnx(model,
+                            device,
+                            raw_onnx_model,
+                            args.verbose,
+                            args.use_external_data_format,
+                            has_position_ids=use_padding,
+                            has_attention_mask=use_padding)
+
+    fp16_params = {"keep_io_types":  args.keep_io_types}
+    if args.node_block_list:
+        fp16_params["node_block_list"] = args.node_block_list
+    if args.op_block_list:
+        fp16_params["op_block_list"] = args.op_block_list
+
+    is_io_float16 = (args.precision == Precision.FLOAT16 and not args.keep_io_types)
 
     if args.optimize_onnx or args.precision != Precision.FLOAT32:
-        output_path = onnx_model_paths[str(args.precision) if args.precision != Precision.INT8 else 'fp32']
+        output_path = onnx_model_paths[str(args.precision) if args.precision != Precision.INT8 else 'fp32']       
 
-        logger.info(f"Optimizing model to {output_path}")
-        gpt2helper.optimize_onnx(raw_onnx_model, output_path, args.precision == Precision.FLOAT16,
-                                 model.config.num_attention_heads, model.config.hidden_size,
-                                 args.use_external_data_format)
+        if DEBUG_OUTPUTS and os.path.exists(output_path):
+            logger.warn(f"skip optimizing since file existed: {output_path}")
+        else:
+            logger.info(f"Optimizing model to {output_path}")
+            gpt2helper.optimize_onnx(raw_onnx_model, output_path, args.precision == Precision.FLOAT16,
+                                     model.config.num_attention_heads, model.config.hidden_size,
+                                     args.use_external_data_format, **fp16_params)
     else:
         output_path = raw_onnx_model
 
@@ -253,15 +282,70 @@ def main():
 
     session = create_onnxruntime_session(output_path, args.use_gpu, enable_all_optimization=True, verbose=args.verbose)
     if session is not None:
-        gpt2helper.test_parity(session,
-                               model,
-                               device,
-                               args.precision == Precision.FLOAT16,
-                               rtol=args.tolerance,
-                               atol=args.tolerance,
-                               model_class=args.model_class,
-                               has_position_ids=use_padding,
-                               has_attention_mask=use_padding)
+        diff_percentiles = gpt2helper.test_parity(session,
+                                                  model,
+                                                  device,
+                                                  is_io_float16,
+                                                  rtol=args.tolerance,
+                                                  atol=args.tolerance,
+                                                  model_class=args.model_class,
+                                                  has_position_ids=use_padding,
+                                                  has_attention_mask=use_padding,
+                                                  total_test_cases=args.test_cases,
+                                                  verbose=args.verbose)
+
+        latency = gpt2helper.test_performance(session,
+                                              model,
+                                              device,
+                                              is_io_float16,
+                                              total_runs=100,
+                                              use_io_binding=True,
+                                              model_class=args.model_class,
+                                              has_position_ids=use_padding,
+                                              has_attention_mask=use_padding,
+                                              batch_size=8,
+                                              sequence_length=1,
+                                              past_sequence_length=32)
+
+        if args.precision == Precision.FLOAT16:
+            logger.info(f"fp16 conversion parameters:{fp16_params}")
+        logger.info(f"Max diff Percentiles={diff_percentiles}")
+        logger.info(f"Latency={latency:.1f}ms for batch_size=8,sequence_length=1,past_sequence_length=32")
+
+        # Write results to file
+        import csv
+        csv_filename = "gpt2_parity_results.csv"
+        latency_name = "average_latency(batch_size=8,sequence_length=1,past_sequence_length=32)"
+        csv_file_existed = os.path.exists(csv_filename)
+        with open(csv_filename, mode="a", newline='') as csv_file:
+            column_names = [
+                "model_name", "model_class", "gpu", "precision", "optimizer", "test_cases",
+                "keep_io_types", "op_block_list", "node_block_list",
+                latency_name,
+                "diff_50_percentile", "diff_90_percentile","diff_95_percentile", "diff_99_percentile",
+                "onnx_file_size"
+            ]
+            csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
+            if not csv_file_existed:
+                csv_writer.writeheader()
+            row = {
+                "model_name": args.model_name_or_path,
+                "model_class": args.model_class,
+                "gpu": args.use_gpu,
+                "precision": args.precision,
+                "optimizer": args.optimize_onnx,
+                "test_cases": args.test_cases,
+                "keep_io_types": args.keep_io_types,
+                "op_block_list": args.op_block_list,
+                "node_block_list": args.node_block_list,
+                latency_name: f"{latency:.2f}",
+                "diff_50_percentile": diff_percentiles["50"],
+                "diff_90_percentile": diff_percentiles["90"],
+                "diff_95_percentile": diff_percentiles["95"],
+                "diff_99_percentile": diff_percentiles["99"],
+                "onnx_file_size": os.path.getsize(output_path)
+            }
+            csv_writer.writerow(row)
 
     if args.input_test_file:
         test_inputs = []
@@ -275,14 +359,13 @@ def main():
 
                 if use_padding:
                     if "attention_mask" in data:
-                        numpy_float = numpy.float16 if args.precision == Precision.FLOAT16 else numpy.float32
-                        attention_mask = torch.from_numpy(numpy.asarray(data["attention_mask"],
-                                                                        dtype=numpy_float)).to(device)
+                        numpy_float = numpy.float16 if is_io_float16 else numpy.float32
+                        attention_mask = torch.from_numpy(numpy.asarray(data["attention_mask"], dtype=numpy_float)).to(device)
                     else:
                         padding = -1
                         attention_mask = (
                             input_ids !=
-                            padding).type(torch.float16 if args.precision == Precision.FLOAT16 else torch.float32)
+                            padding).type(torch.float16 if is_io_float16 else torch.float32)
                         input_ids.masked_fill_(input_ids == padding, 0)
 
                     if "position_ids" in data:
