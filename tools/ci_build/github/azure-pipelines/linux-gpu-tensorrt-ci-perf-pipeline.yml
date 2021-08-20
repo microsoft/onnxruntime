@@ -8,7 +8,7 @@ parameters:
 - name: PostToDashboard
   displayName: Post to Dashboard
   type: boolean
-  default: true
+  default: false
 
 - name: RunTrtContainer
   displayName: Run in TRT Container (or set trtContainer Variable)
@@ -23,7 +23,7 @@ parameters:
 - name: RunPython38
   displayName: Run on Python 3.8
   type: boolean
-  default: false
+  default: true
 
 - name: TrtVersion
   displayName: TensorRT Version
@@ -47,8 +47,7 @@ parameters:
 - name: ModelGroups
   type: object
   default: 
-    - "onnx-zoo-models"
-    - "partner-models"
+    - "[]"
 
 - name: MemTest
   displayName: Run Memory Test
