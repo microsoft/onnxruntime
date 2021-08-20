@@ -3,11 +3,11 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 
+from fusion_base import Fusion
 from logging import getLogger
+import numpy as np
 from onnx import helper, numpy_helper, TensorProto
 from onnx_model import OnnxModel
-from fusion_base import Fusion
-import numpy as np
 
 logger = getLogger(__name__)
 
@@ -48,43 +48,16 @@ class FusionReshape(Fusion):
 
         (unsqueeze_0, gather_0, shape_0) = path0
 
+        path1 = self.model.match_parent_path(concat_node, ['Unsqueeze', 'Gather', 'Shape'], [1, 0, 0],
+                                             output_name_to_node)
+        if path1 is None:
+            return
+        (unsqueeze_1, gather_1, shape_1) = path1
+
         shape = []
         gather_value = self.model.get_constant_value(gather_0.input[1])
         if gather_value == 0:
             shape.append(0)
-
-        path1 = self.model.match_parent_path(concat_node, ['Unsqueeze', 'Gather', 'Shape'], [1, 0, 0],
-                                             output_name_to_node)
-        if path1 is None:
-            # Adjust for Bart
-            if len(concat_node.input) == 4:
-                input_1_proto = self.model.get_initializer(concat_node.input[1])
-                input_2_proto = self.model.get_initializer(concat_node.input[2])
-                input_3_proto = self.model.get_initializer(concat_node.input[3])
-                if input_1_proto is None or input_2_proto is None or input_3_proto is None:
-                    return
-                input_1 = numpy_helper.to_array(input_1_proto)
-                input_2 = numpy_helper.to_array(input_2_proto)
-                input_3 = numpy_helper.to_array(input_3_proto)
-                if input_1[0] == -1 and input_2[0] > 0 and input_3[0] > 0:
-                    shape.extend(input_1)
-                    shape.extend(input_2)
-                    shape.extend(input_3)
-
-                    gemm_path = self.model.match_parent_path(reshape_node, ['Add', 'MatMul'], [0, 1],
-                                                             output_name_to_node)
-                    if gemm_path is None:
-                        return
-                    top_matmul = gemm_path[-1]
-                    root_input = top_matmul.input[0]
-
-                    if shape_0.input[0] != root_input:
-                        return
-
-                    self.replace_reshape_node(shape, reshape_node, concat_node)
-            return
-
-        (unsqueeze_1, gather_1, shape_1) = path1
 
         gather_value = self.model.get_constant_value(gather_1.input[1])
         if gather_value == 1:
@@ -153,30 +126,17 @@ class FusionReshape(Fusion):
                 shape.append(concat_value)
 
         root_input = reshape_node.input[0]
-        root_input_1 = None
-        ok_to_delete_path = True
-        # Adjust for Bart
-        gemm_path = self.model.match_parent_path(reshape_node, ['Mul', 'Add', 'MatMul'], [0, 0, 1], output_name_to_node)
-        if gemm_path is not None:
-            top_matmul = gemm_path[-1]
-            root_input_1 = top_matmul.input[0]
-
         same_shape_input = True
         for shape_node in shape_nodes:
             if shape_node.input[0] != root_input:
                 same_shape_input = False
-            if root_input_1 is not None and shape_node.input[0] == root_input_1:
-                same_shape_input = True
-                ok_to_delete_path = False
 
         if not same_shape_input:
             return
 
         self.replace_reshape_node(shape, reshape_node, concat_node)
 
-        # TODO: generic deletion from bottom-up
-        if ok_to_delete_path:
-            self.nodes_to_remove.extend(path0)
-            self.nodes_to_remove.extend(path1)
-            self.nodes_to_remove.extend(path2)
-            self.nodes_to_remove.extend(path3)
+        self.nodes_to_remove.extend(path0)
+        self.nodes_to_remove.extend(path1)
+        self.nodes_to_remove.extend(path2)
+        self.nodes_to_remove.extend(path3)
