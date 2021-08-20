@@ -135,7 +135,7 @@ jobs:
         displayName: 'Copy Artifacts'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
-    - template: component-governance-component-detection-steps.yml
+    - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
 
