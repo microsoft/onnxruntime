@@ -1,7 +1,6 @@
-:d
-"
-input1output1"Foo:
-com.apollo	cube_testZ
+:}
+$
+input1output1"Foo:com.examples external_custom_op_example_modelZ
 input1
 
 
@@ -9,6 +8,5 @@ com.apollo	cube_testZ
 output1
 
 
-B
-
-com.apollo
+BB
+com.examples
