@@ -168,9 +168,6 @@ def parse_args():
     parser.add_argument('build_settings_file', type=pathlib.Path,
                         help='Provide the file contains settings for building iOS framework')
 
-    parser.add_argument("--build_dynamic_framework", action='store_true',
-                        help="Build Dynamic Framework (default is build static framework).")
-
     args = parser.parse_args()
 
     if not args.build_settings_file.resolve().is_file():
