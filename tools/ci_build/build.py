@@ -2179,8 +2179,7 @@ def main():
                 else:
                     os.remove(gen_cpp_scratch_name)
 
-            # generate the ort aten backend code
-            def gen_ort_aten_ops():
+            def gen_ort_ops():
                 # generate native aten ops
                 import torch
                 regdecs_path = os.path.join(os.path.dirname(torch.__file__), 'include/ATen/RegistrationDeclarations.h')
@@ -2201,7 +2200,7 @@ def main():
                 gen_ops(os.path.join(eager_root_dir, 'ort_customops.g.cpp'),
                         args.eager_customop_header, args.eager_customop_module, True)
 
-            gen_ort_aten_ops()
+            gen_ort_ops()
 
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home, mpi_home, nccl_home,
