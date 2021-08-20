@@ -170,6 +170,8 @@ class ORTGen:
     writer.writeline('// AUTO-GENERATED CODE! - DO NOT EDIT!')
     writer.writeline(f'// $ python {" ".join(sys.argv)}')
     writer.writeline()
+    writer.writeline('#include "python/onnxruntime_pybind_state_common.h"')
+    writer.writeline()
     writer.writeline('#include <torch/extension.h>')
     writer.writeline()
     writer.writeline('#include <core/providers/dml/OperatorAuthorHelper/Attributes.h>')
