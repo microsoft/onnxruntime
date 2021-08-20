@@ -2,7 +2,7 @@ cerberus
 flatbuffers
 h5py
 numpy >= 1.16.6
-onnx  == @ONNX_VERSION@
+onnx @ONNX_VERSION_SPECIFIER@
 packaging
 protobuf
 sympy
