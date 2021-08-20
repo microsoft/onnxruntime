@@ -17,7 +17,7 @@ jobs:
       Repository: onnxruntimecpubuild
 
   - task: CmdLine@2
-    displayName: 'build'gs
+    displayName: 'build'
     inputs:
       script: |
         mkdir -p $HOME/.onnx
@@ -46,16 +46,16 @@ jobs:
          rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
          python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
 
- - task: CmdLine@2
-   displayName: 'Build and Install custom ops python package'
-   inputs:
-     scripts: |
+  - task: CmdLine@2
+    displayName: 'Build and Install custom ops python package'
+    inputs:
+      scripts: |
          python3 -m pip install $(Build.BinariesDirectory)/external_custom_ops
 
- - task: CmdLine@2
-   displayName: 'Test using external custom op module'
-   inputs:
-     script: |
+  - task: CmdLine@2
+    displayName: 'Test using external custom op module'
+    inputs:
+      script: |
          python3 test.py
-     workingDirectory: $(Build.BinariesDirectory)/external_custom_ops
+      workingDirectory: $(Build.BinariesDirectory)/external_custom_ops
 
