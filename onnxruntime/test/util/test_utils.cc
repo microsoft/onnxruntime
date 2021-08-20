@@ -4,6 +4,7 @@
 #include "test/util/include/test_utils.h"
 
 #include "core/framework/ort_value.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 
 #include "test/util/include/asserts.h"
@@ -113,6 +114,60 @@ void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path, const char* log_id,
   std::vector<OrtValue> fetches;
   ASSERT_STATUS_OK(session_object2.Run(run_options, feeds, output_names, &fetches));
   VerifyOutputs(output_names, expected_fetches, fetches);
+}
+
+void SparseIndicesChecker(const ONNX_NAMESPACE::TensorProto& indices_proto, gsl::span<const int64_t> expected_indicies) {
+  using namespace ONNX_NAMESPACE;
+  gsl::span<const int64_t> ind_span;
+  std::vector<int64_t> converted_indices;
+  TensorShape ind_shape(indices_proto.dims().data(), indices_proto.dims().size());
+  const auto elements = gsl::narrow<size_t>(ind_shape.Size());
+  const bool has_raw_data = indices_proto.has_raw_data();
+  switch (indices_proto.data_type()) {
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+      if (has_raw_data) {
+        const auto& rd = indices_proto.raw_data();
+        ASSERT_EQ(rd.size(), elements * sizeof(int64_t));
+        ind_span = gsl::make_span(reinterpret_cast<const int64_t*>(rd.data()), elements);
+      } else {
+        ind_span = gsl::make_span(indices_proto.int64_data().cbegin(), indices_proto.int64_data().cend());
+      }
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
+      if (has_raw_data) {
+        const auto& rd = indices_proto.raw_data();
+        ASSERT_EQ(rd.size(), elements * sizeof(int32_t));
+        auto int32_span = gsl::make_span(reinterpret_cast<const int32_t*>(rd.data()), elements);
+        converted_indices.insert(converted_indices.cend(), int32_span.cbegin(), int32_span.cend());
+      } else {
+        converted_indices.insert(converted_indices.cend(), indices_proto.int32_data().cbegin(), indices_proto.int32_data().cend());
+      }
+      ind_span = gsl::make_span(converted_indices);
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT16: {
+      ASSERT_TRUE(has_raw_data);
+      const auto& rd = indices_proto.raw_data();
+      ASSERT_EQ(rd.size(), elements * sizeof(int16_t));
+      auto int16_span = gsl::make_span(reinterpret_cast<const int16_t*>(rd.data()), elements);
+      converted_indices.insert(converted_indices.cend(), int16_span.cbegin(), int16_span.cend());
+      ind_span = gsl::make_span(converted_indices);
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
+      ASSERT_TRUE(has_raw_data);
+      const auto& rd = indices_proto.raw_data();
+      ASSERT_EQ(rd.size(), elements);
+      auto int8_span = gsl::make_span(reinterpret_cast<const int8_t*>(rd.data()), elements);
+      converted_indices.insert(converted_indices.cend(), int8_span.cbegin(), int8_span.cend());
+      ind_span = gsl::make_span(converted_indices);
+      break;
+    }
+    default:
+      ASSERT_TRUE(false);
+  }
+  ASSERT_THAT(ind_span, testing::ContainerEq(expected_indicies));
 }
 
 }  // namespace test

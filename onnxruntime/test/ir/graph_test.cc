@@ -10,6 +10,7 @@
 #include "gmock/gmock.h"
 #include "onnx/defs/function.h"
 #include "core/graph/function_impl.h"
+#include "test/framework/test_utils.h"
 
 #ifdef __GNUC__
 #define UNUSED __attribute__((unused))
@@ -233,6 +234,7 @@ static void ConstructSparseTensor(const std::string& name,
   std::copy(values.cbegin(), values.cend(), dest_span.begin());
 
   const std::vector<int64_t>& indices = sparse_details::indices;  // Not to exceed 59
+
   auto& m_indicies = *sparse_proto.mutable_indices();
   m_indicies.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
   *m_indicies.mutable_dims()->Add() = static_cast<int64_t>(indices.size());
@@ -264,10 +266,9 @@ static void ValidateSparseTensorProto(const SparseTensorProto& proto) {
     ++expected_begin;
   }
   // Check indices
-  EXPECT_EQ(proto.indices().data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  const auto& indices = proto.indices();
   auto expected_indices = gsl::make_span(sparse_details::indices);
-  auto actual_indices = gsl::make_span<const int64_t>(proto.indices().int64_data().data(), proto.indices().int64_data_size());
-  EXPECT_THAT(actual_indices, testing::ContainerEq(expected_indices));
+  SparseIndicesChecker(indices, expected_indices);
   // check shape
   const auto& dims = proto.dims();
   auto actual_shape = gsl::make_span<const int64_t>(dims.data(), dims.size());
