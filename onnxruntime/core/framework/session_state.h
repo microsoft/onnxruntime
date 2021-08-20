@@ -100,8 +100,8 @@ class SessionState {
         data_transfer_mgr_(data_transfer_mgr),
         use_deterministic_compute_(use_deterministic_compute),
         enable_mem_reuse_(enable_mem_reuse),
-        prepacked_weights_container_(prepacked_weights_container),
-        graph_executions_counter_(0) {
+        prepacked_weights_container_(prepacked_weights_container) {
+
     SetupAllocators();
   }
 
