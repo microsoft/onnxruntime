@@ -32,7 +32,7 @@ jobs:
           onnxruntimecpubuild \
             /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build \
-              --config Release \
+              --config Debug Release \
               --parallel \
               --build_wheel \
               --enable_training \
@@ -45,6 +45,27 @@ jobs:
       script: |
          rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
          python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
+
+  - task: CmdLine@2
+    displayName: 'Build and Install custom ops python package'
+    inputs:
+      scripts: |
+         python3 -m pip install $(Build.BinariesDirectory)/external_custom_ops
+
+  - task: CmdLine@2
+    displayName: 'Test using external custom op module'
+    inputs:
+      script: |
+         python3 test.py
+      workingDirectory: $(Build.BinariesDirectory)/external_custom_ops
+
+  - task: CmdLine@2
+    displayName: 'Install Debug python package'
+    inputs:
+      script: |
+         rm -rf $(Build.BinariesDirectory)/Debug/onnxruntime $(Build.BinariesDirectory)/Debug/pybind11
+         pip uninstall -y onnxruntime-traning
+         python3 -m pip install $(Build.BinariesDirectory)/Debug/dist/*.whl
 
   - task: CmdLine@2
     displayName: 'Build and Install custom ops python package'
