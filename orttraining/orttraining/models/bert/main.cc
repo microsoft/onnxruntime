@@ -209,7 +209,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         cxxopts::value<bool>()->default_value("false"))
       ("number_recompute_layers", "Number of layers to apply recompute.",
         cxxopts::value<int>()->default_value("0"))
-      ("use_invertible_layernorm_grad", "Specify whether to use invertible laynorm(dropping the input activation)",
+      ("use_memory_efficient_gradient", "Specify whether to use memory aware gradient builder.)",
         cxxopts::value<bool>()->default_value("false"))
       ("debug_break", "Specify whether to break at app start, useful for multi-gpu debugging.",
         cxxopts::value<bool>()->default_value("false"));
@@ -518,7 +518,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         ", ", static_cast<int>(logging::Severity::kFATAL), "].");
     ort_params.vlog_level = flags["ort_vlog_level"].as<int>();
 
-    params.use_invertible_layernorm_grad = flags["use_invertible_layernorm_grad"].as<bool>();
+    params.use_memory_efficient_gradient = flags["use_memory_efficient_gradient"].as<bool>();
   } catch (const exception& e) {
     const std::string msg = "Failed to parse the command line arguments";
     cerr << msg << ": " << e.what() << "\n"
