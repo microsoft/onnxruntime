@@ -193,8 +193,8 @@ class BertOnnxModel(OnnxModel):
 
                     slice_node = reshape_path[-1]
                     if expand_shape_value is not None and shape_value is not None and len(
-                            expand_shape_value) is 2 and len(
-                                shape_value) is 1 and expand_shape_value[1] == shape_value[0]:
+                            expand_shape_value) == 2 and len(
+                                shape_value) == 1 and expand_shape_value[1] == shape_value[0]:
                         node.input[0] = slice_node.output[0]
 
         if nodes_to_remove:

@@ -69,7 +69,7 @@ module.exports = {
     'eqeqeq': ['error', 'smart'],
     'guard-for-in': 'error',
     'id-match': 'error',
-    'max-len': ['error', { 'code': 120 }],
+    'max-len': ['error', { 'code': 120, 'ignorePattern': '^import\\s.+\\sfrom\\s.+;$' }],
     'new-parens': 'error',
     'no-bitwise': 'error',
     'no-caller': 'error',

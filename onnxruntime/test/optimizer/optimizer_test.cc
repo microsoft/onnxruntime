@@ -8,7 +8,7 @@
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/framework/data_types.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/op_kernel.h"
 #include "core/util/math.h"
 #include "core/platform/env.h"
