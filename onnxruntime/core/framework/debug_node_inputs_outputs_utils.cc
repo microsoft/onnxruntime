@@ -514,7 +514,7 @@ void DumpNodeInputs(
 
   for (auto i = 0, end = context.InputCount(); i < end; ++i) {
     if (input_defs[i]->Exists()) {
-      std::cout << "Input " << i << " Name: " << input_defs[i]->Name() << std::endl;
+      std::cout << "Input " << i << " Name: " << input_defs[i]->Name() << "\n";
 
       const auto* type = context.InputType(i);
 
@@ -580,7 +580,7 @@ void DumpNodeOutputs(
 
   for (auto i = 0, end = context.OutputCount(); i < end; ++i) {
     if (output_defs[i]->Exists()) {
-      std::cout << "Output " << i << " Name: " << output_defs[i]->Name() << std::endl;
+      std::cout << "Output " << i << " Name: " << output_defs[i]->Name() << "\n";
 
       const auto* type = context.OutputType(i);
       if (type) {
