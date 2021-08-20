@@ -135,8 +135,9 @@ jobs:
         displayName: 'Copy Artifacts'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: ‘Component Detection’
+    - template: component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
 
     - task: PublishBuildArtifacts@1
       inputs:
