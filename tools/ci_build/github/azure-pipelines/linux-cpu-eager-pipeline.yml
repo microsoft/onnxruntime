@@ -58,7 +58,7 @@ jobs:
     inputs:
       script: |
          rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
-         python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
+         # python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
 
   - task: CmdLine@2
     displayName: 'Run Release unit tests'
