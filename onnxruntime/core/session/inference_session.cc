@@ -1206,7 +1206,8 @@ Status AssignNodesToEpsFromHashesImpl(Graph& graph, const fbs::SessionState& fbs
 
     const KernelCreateInfo* kci = nullptr;
     ORT_RETURN_IF_NOT(kernel_registry_manager.SearchKernelRegistriesByHash(kernel_hash, &kci),
-                      "Failed to find kernel def hash in kernel registries: ", kernel_hash);
+                      "Failed to find kernel def hash (", kernel_hash, ") in kernel registries for ",
+                      node->OpType(), "(", node->SinceVersion(), ") node with name '", node->Name(), "'.");
     node->SetExecutionProviderType(kci->kernel_def->Provider());
   }
 
