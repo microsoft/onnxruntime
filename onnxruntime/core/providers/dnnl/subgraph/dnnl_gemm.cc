@@ -103,14 +103,14 @@ void DnnlGemm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
   auto matmul_a_mem = sp.GetMemoryAndReshape(node.Input(IN_A), matmul_pd.src_desc(), eng, transA);
   auto matmul_b_mem = sp.GetMemoryAndReshape(node.Input(IN_B), matmul_pd.weights_desc(), eng, transB);
-  auto matmul_dst_mem = dnnl::memory(matmul_pd.dst_desc(), eng);
+  auto gemm_dst_mem = dnnl::memory(matmul_pd.dst_desc(), eng);
 
   auto matmul_op = dnnl::matmul(matmul_pd);
 
   std::unordered_map<int, dnnl::memory> args;
   args.insert({DNNL_ARG_SRC, matmul_a_mem});
   args.insert({DNNL_ARG_WEIGHTS, matmul_b_mem});
-  args.insert({DNNL_ARG_DST, matmul_dst_mem});
+  args.insert({DNNL_ARG_DST, gemm_dst_mem});
 
   sp.AddPrimitive(matmul_op, args);
 
@@ -138,16 +138,13 @@ void DnnlGemm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
     auto binary_c_mem = sp.GetMemoryAndReshape(node.Input(IN_C), binary_pd.src1_desc(), eng);
 
-    auto binary_dst_mem = dnnl::memory(binary_pd.dst_desc(), eng);
     auto binary_op = dnnl::binary(binary_pd);
 
-    sp.AddPrimitive(binary_op, {{DNNL_ARG_SRC_0, matmul_dst_mem},
+    sp.AddPrimitive(binary_op, {{DNNL_ARG_SRC_0, gemm_dst_mem},
                                 {DNNL_ARG_SRC_1, binary_c_mem},
-                                {DNNL_ARG_DST, binary_dst_mem}});
-    sp.SetMemory(node.Output(OUT_Y), binary_dst_mem);
-  } else {
-    sp.SetMemory(node.Output(OUT_Y), matmul_dst_mem);
+                                {DNNL_ARG_DST, gemm_dst_mem}});
   }
+  sp.SetMemory(node.Output(OUT_Y), gemm_dst_mem);
 }
 
 float DnnlGemm::GetAlpha(DnnlNode& node) {

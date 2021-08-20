@@ -217,8 +217,6 @@ class DnnlGemmNodeCapability : public DnnlDefaultNodeCapability {
   bool Supported(const Node* node) const override;
 
  private:
-  bool IsAttributeSupported(const Node* node) const;
-
   DnnlMatMulNodeCapability _matmul;
   DnnlBinaryNodeCapability _binary;
 };

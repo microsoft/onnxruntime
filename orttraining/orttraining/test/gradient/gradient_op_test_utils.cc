@@ -200,7 +200,6 @@ void GradientOpTester::Run(
 
           auto reg = execution_provider->GetKernelRegistry();
           const KernelCreateInfo* kci;
-
           auto st = reg->TryFindKernel(node, execution_provider->Type(), &kci);
           if (!st.IsOK()) {
             auto* node_func = node.GetFunctionBody();

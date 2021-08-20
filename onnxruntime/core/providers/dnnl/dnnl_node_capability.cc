@@ -377,26 +377,6 @@ bool DnnlBinaryNodeCapability::IsDimensionSupported(const Node* node) const {
 bool DnnlGemmNodeCapability::Supported(const Node* node) const {
   if (!_matmul.Supported(node)) return false;
   if (!_binary.Supported(node)) return false;
-  //if (!IsAttributeSupported(node)) return false;
-  return true;
-}
-
-/*
-* The Gemm code is correctly handling transposed inputs unless the Gemm
-* ends as part of a larger subgraph.  Untill we are able to figure out
-* why this is causing issues. All Gemm that specify "transA" or "transB"
-* as anything other than `0` will not be supported.
-*/
-bool DnnlGemmNodeCapability::IsAttributeSupported(const Node* node) const {
-  const NodeAttributes& attributes = node->GetAttributes();
-  auto attr = attributes.find("transA");
-  if (attr != attributes.end() && attr->second().i() != 0) {
-    return false;
-  }
-  attr = attributes.find("transB");
-  if (attr != attributes.end() && attr->second().i() != 0) {
-    return false;
-  }
   return true;
 }
 
