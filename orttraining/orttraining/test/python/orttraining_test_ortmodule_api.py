@@ -3401,3 +3401,169 @@ def test_ortmodule_list_dict_input_with_kwargs_and_registered_buffer():
     kwargs_input_copy = copy.deepcopy(kwargs_input)
 
     _test_helpers.assert_values_are_close(pt_model(x, **kwargs_input), ort_model(x_copy, **kwargs_input_copy))
+
+def test_ortmodule_user_defined_method():
+    class UserDefinedMethodsNet(torch.nn.Module):
+        def __init__(self):
+            super(UserDefinedMethodsNet, self).__init__()
+            self.dummy = torch.nn.Parameter(torch.FloatTensor([12]))
+
+        def forward(self, a):
+            return self.dummy + a
+
+        def custom_method_returns_input(self, user_input):
+            return user_input
+
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model = UserDefinedMethodsNet().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    x = torch.randn(N, D_in, device=device)
+    y = copy.deepcopy(x)
+
+    out = ort_model.custom_method_returns_input(x)
+    assert x is out
+
+    pt_out = pt_model(x)
+    ort_out = ort_model(y)
+    _test_helpers.assert_values_are_close(pt_out, ort_out)
+
+def test_ortmodule_user_getattr_gets_successfully():
+    class UserDefinedMethodsNet(torch.nn.Module):
+        def __init__(self):
+            super(UserDefinedMethodsNet, self).__init__()
+            self.dummy = torch.nn.Parameter(torch.FloatTensor([12]))
+
+        def forward(self, a):
+            return self.dummy + a
+
+        def custom_method_returns_input(self, user_input):
+            return user_input
+
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model = UserDefinedMethodsNet().to(device)
+    ort_model = ORTModule(pt_model)
+
+    assert ort_model.custom_method_returns_input == pt_model.custom_method_returns_input
+    assert ort_model.dummy is pt_model.dummy
+
+@pytest.mark.parametrize("attribute", ['True', 'lambda x : x'])
+def test_ortmodule_setattr_new_attribute(attribute):
+    class UserNet(torch.nn.Module):
+        def __init__(self):
+            super(UserNet, self).__init__()
+            self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
+
+        def forward(self, a):
+            return self.dummy + a
+
+    device = 'cuda'
+    pt_model = UserNet().to(device)
+    ort_model = ORTModule(pt_model)
+    ort_model.a_new_attribute = attribute
+
+    assert hasattr(pt_model, 'a_new_attribute')
+    assert pt_model.a_new_attribute == attribute
+    assert 'a_new_attribute' not in ort_model.__dict__
+
+def test_ortmodule_setattr_existing_attribute():
+    class UserNet(torch.nn.Module):
+        def __init__(self):
+            super(UserNet, self).__init__()
+            self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
+
+        def forward(self, a):
+            return self.dummy + a
+
+        def custom_method(self, a):
+            return a
+
+    def my_new_custom_method(self, a, b, c):
+        return a + b + c
+
+    device = 'cuda'
+    pt_model = UserNet().to(device)
+    ort_model = ORTModule(pt_model)
+    ort_model.custom_method = my_new_custom_method
+    ort_model.dummy = torch.nn.Parameter(torch.FloatTensor([12]))
+
+    assert hasattr(pt_model, 'dummy')
+    assert torch.eq(pt_model.dummy, torch.nn.Parameter(torch.FloatTensor([12])))
+    assert hasattr(pt_model, 'custom_method')
+    assert pt_model.custom_method is my_new_custom_method
+
+    assert 'dummy' not in ort_model.__dict__
+
+def test_ortmodule_setattr_ortmodule_attribute():
+    class UserNet(torch.nn.Module):
+        def __init__(self):
+            super(UserNet, self).__init__()
+            self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
+
+        def forward(self, a):
+            return self.dummy + a
+
+    device = 'cuda'
+    pt_model = UserNet().to(device)
+    ort_model = ORTModule(pt_model)
+    ort_model._torch_module = True
+
+    assert not hasattr(pt_model, '_torch_module')
+    assert '_torch_module' in ort_model.__dict__
+    assert ort_model._torch_module == True
+
+def test_ortmodule_setattr_marks_model_for_reexport():
+    class UserNet(torch.nn.Module):
+        def __init__(self, input_flag):
+            super(UserNet, self).__init__()
+            self.dummy = torch.nn.Parameter(torch.FloatTensor([10]))
+            self.input_flag = input_flag
+
+        def forward(self, a):
+            if self.input_flag:
+                return self.dummy + a
+            else:
+                return a
+
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model = UserNet(True).to(device)
+    ort_model = ORTModule(pt_model)
+
+    _ = ort_model(torch.randn(N, D_in, device=device))
+    exported_model1 = ort_model._torch_module._execution_manager(True)._onnx_models.exported_model
+
+    for training_mode in [False, True]:
+        assert ort_model._torch_module._execution_manager(training_mode)._reexport == False
+    ort_model.input_flag = False
+
+    for training_mode in [False, True]:
+        assert ort_model._torch_module._execution_manager(training_mode)._reexport == True
+
+    _ = ort_model(torch.randn(N, D_in, device=device))
+    exported_model2 = ort_model._torch_module._execution_manager(True)._onnx_models.exported_model
+
+    assert exported_model1 != exported_model2
+
+def test_ortmodule_attribute_name_collision():
+    class UserNet(torch.nn.Module):
+        def __init__(self):
+            super(UserNet, self).__init__()
+            self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
+            self._torch_module = True
+
+        def forward(self, a):
+            return self.dummy + a
+
+        def load_state_dict(self):
+            pass
+
+    device = 'cuda'
+    pt_model = UserNet().to(device)
+    with pytest.warns(UserWarning) as warning_record:
+        ort_model = ORTModule(pt_model)
+
+    assert len(warning_record) == 2
+    assert "_torch_module collides with ORTModule's attribute name." in warning_record[0].message.args[0]
+    assert "load_state_dict collides with ORTModule's attribute name." in warning_record[1].message.args[0]

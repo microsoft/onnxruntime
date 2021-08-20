@@ -5,8 +5,10 @@
 
 from ._torch_module_factory import TorchModuleFactory
 from ._torch_module_pytorch import TorchModulePytorch
+from ._torch_module_ort import TorchModuleORT
 from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 from ._custom_gradient_registry import CustomGradientRegistry
+from . import _utils
 from .debug_options import DebugOptions
 from ._fallback import _FallbackManager, _FallbackPolicy, ORTModuleFallbackException, ORTModuleTorchModelException, wrap_exception
 from . import _FALLBACK_INIT_EXCEPTION, MINIMUM_RUNTIME_PYTORCH_VERSION_STR, ORTMODULE_FALLBACK_POLICY, ORTMODULE_FALLBACK_RETRY
@@ -15,6 +17,7 @@ from onnxruntime.training import register_custom_ops_pytorch_exporter
 import functools
 import torch
 from typing import Iterator, Optional, Tuple, TypeVar, Set, Callable
+import warnings
 
 # Needed to override PyTorch methods
 T = TypeVar('T', bound='Module')
@@ -41,13 +44,17 @@ class ORTModule(torch.nn.Module):
         # Fallback settings
         self._fallback_manager = _FallbackManager(policy=ORTMODULE_FALLBACK_POLICY,
                                                   retry=ORTMODULE_FALLBACK_RETRY)
+
+        torch_module = None
         try:
             # Read ORTModule module initialization status
             global _FALLBACK_INIT_EXCEPTION
             if _FALLBACK_INIT_EXCEPTION:
                 raise _FALLBACK_INIT_EXCEPTION
 
-            self._torch_module = TorchModuleFactory()(module, debug_options, self._fallback_manager)
+            super(ORTModule, self).__init__()
+
+            torch_module = TorchModuleFactory()(module, debug_options, self._fallback_manager)
 
             # Create forward dynamically, so each ORTModule instance will have its own copy.
             # This is needed to be able to copy the forward signatures from the original PyTorch models
@@ -66,18 +73,20 @@ class ORTModule(torch.nn.Module):
             self.forward = _forward.__get__(self)
             # Copy the forward signature from the _torch_module's forward signature.
             functools.update_wrapper(
-                self.forward.__func__, self._torch_module.forward.__func__)
-
-            super(ORTModule, self).__init__()
+                self.forward.__func__, torch_module.forward.__func__)
 
             # Support contrib OPs
             register_custom_ops_pytorch_exporter.register_custom_op()
             CustomOpSymbolicRegistry.register_all()
             CustomGradientRegistry.register_all()
 
+            # Make sure that the user defined model does not have any name collisions
+            # with the ORTModule attribute names.
+            _utils.check_for_name_collisions(self, module, ['_torch_module', '_fallback_manager'])
+
         except ORTModuleFallbackException as e:
-            self._torch_module = TorchModulePytorch(module)
-            # TODO: Rework after "custom methods" task is designed
+            torch_module = TorchModulePytorch(module)
+            # TODO: Rework by implementing the "__getattribute__" method.
             #       Assigning all default attributes from user's original torch.nn.Module into ORTModule
             self._backward_hooks = module._backward_hooks
             self._forward_hooks = module._forward_hooks
@@ -92,15 +101,18 @@ class ORTModule(torch.nn.Module):
             self.forward = module.forward
 
             # Exceptions subject to fallback are handled here
-            # import pdb; pdb.set_trace()
             self._fallback_manager.handle_exception(exception=e,
                                                     log_level=debug_options.logging.log_level)
         except Exception as e:
-            self._torch_module = TorchModulePytorch(module)
+            torch_module = TorchModulePytorch(module)
             # Catch-all FALLBACK_FORCE_TORCH_FORWARD fallback is handled here
             self._fallback_manager.handle_exception(exception=e,
                                                     log_level=debug_options.logging.log_level,
                                                     override_policy=_FallbackPolicy.FALLBACK_FORCE_TORCH_FORWARD)
+
+        # Assign self._torch_module after all the ORTModule class attributes have been assigned
+        # else, they will be assigned to self._torch_module.original_module instead
+        self._torch_module = torch_module
 
     # IMPORTANT: DO NOT add code here
     # This declaration is for automatic document generation purposes only
@@ -269,3 +281,39 @@ class ORTModule(torch.nn.Module):
         """Override :meth:`~torch.nn.Module.named_modules`"""
 
         yield from self._torch_module.named_modules(*args, **kwargs)
+
+    def __getattr__(self, name: str):
+        if '_torch_module' in self.__dict__:
+            # If attribute is not found in ORTModule, it must be present in the
+            # user's torch.nn.Module. Forward the call to the user's model.
+            return getattr(self.module, name)
+        else:
+            super(ORTModule, self).__getattr__(name)
+
+    def __setattr__(self, name: str, value) -> None:
+
+        def _setattr_on_user_module(name, value):
+            # Set the attribute on the user's original module
+            setattr(self.module, name, value)
+            # Signal to execution manager to re-export the model.
+            # Re-export will be avoided if _skip_check is enabled.
+            if isinstance(self._torch_module, TorchModuleORT):
+                for training_mode in [False, True]:
+                    self._torch_module._execution_manager(training_mode).mark_for_reexport()
+
+        if isinstance(value, torch.nn.Parameter) or isinstance(value, torch.nn.Module) \
+            or isinstance(value, torch.Tensor):
+            # Any attribute which is either a torch Parameter, Module or
+            # Tensor must be set on the user's model
+            _setattr_on_user_module(name, value)
+        elif name in self.__dict__:
+            # If the name is an attribute of ORTModule, update only ORTModule
+            if '_torch_module' in self.__dict__ and hasattr(self.module, name):
+                warnings.warn(f"User Module attribute name {name} collides with ORTModule attribute name.")
+            self.__dict__[name] = value
+        elif '_torch_module' in self.__dict__:
+            # If the name is an attribute of user model, or is a new attribute, update there.
+            _setattr_on_user_module(name, value)
+        else:
+            # Setting any new attributes should be done on ORTModule only when 'torch_module' is not defined
+            self.__dict__[name] = value

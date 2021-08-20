@@ -7,8 +7,11 @@ from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi import _pybind_state as C
 from ._fallback import _FallbackManager, ORTModuleFallbackException, ORTModuleDeviceException, wrap_exception
 
+import inspect
 import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
+from typing import List
+import warnings
 
 
 def _ortvalue_to_torch_tensor(ortvalue):
@@ -112,3 +115,38 @@ def _create_iobinding(io_binding, inputs, model, device):
 
     for value_info in model.graph.output:
         io_binding.bind_output(value_info.name, device.type, device_id=get_device_index(device))
+
+def check_for_name_collisions(ortmodule: torch.nn.Module, user_module: torch.nn.Module,
+                              ortmodule_non_method_attribute_names: List[str]):
+    """Raises if there are any common attributes between the user's model and ORTModule.
+
+    Args:
+        ortmodule: the ORTModule instance
+        user_module: the user's torch.nn.Module
+        ortmodule_non_method_attribute_names: any non method attribute names that ORTModule sets on itself
+
+    Raises:
+        UserWarning: If there are any overlapping methods between the ortmodule and user_module (except forward)
+    """
+
+    ortmodule_methods = dict(inspect.getmembers(ortmodule, predicate=inspect.ismethod))
+    torch_module_methods = dict(inspect.getmembers(torch.nn.Module, predicate=inspect.isfunction))
+    user_module_methods = inspect.getmembers(user_module,
+        predicate=lambda x : inspect.ismethod(x) and not x.__name__.startswith('__'))
+
+    # Check if any element of ortmodule_non_method_attribute_names is an attribute of user's model
+    for name in ortmodule_non_method_attribute_names:
+        if hasattr(user_module, name):
+            warnings.warn(f"User Module's attribute name {name} collides with ORTModule's attribute name. "
+                    "User Module's attribute may not be returned when trying to retrieve the attribute through ORTModule.")
+
+    # Check if any user defined method collides with ORTModule's method
+    for method_name, method in user_module_methods:
+        if method_name not in torch_module_methods or method.__func__ != torch_module_methods[method_name]:
+            if method_name == 'forward':
+                continue
+
+            # This is a user defined/overriden method. Check for collisions.
+            if method_name in ortmodule_methods:
+                warnings.warn(f"User Module's attribute name {method_name} collides with ORTModule's attribute name. "
+                    "User Module's method may not be called upon invocation through ORTModule.")
