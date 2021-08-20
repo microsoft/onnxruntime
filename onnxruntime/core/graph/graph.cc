@@ -87,11 +87,12 @@ static Status MergeShapeInfo(const std::string& output_name,
   ORT_TRY {
     if (utils::HasTensorType(source)) {
       ONNX_NAMESPACE::mergeInShapeInfo(source.tensor_type(), *target.mutable_tensor_type());
-    } else {
-#if !defined(DISABLE_SPARSE_TENSORS)
-      ONNX_NAMESPACE::mergeInShapeInfo(source.sparse_tensor_type(), *target.mutable_sparse_tensor_type());
-#endif
     }
+#if !defined(DISABLE_SPARSE_TENSORS)
+    else {
+      ONNX_NAMESPACE::mergeInShapeInfo(source.sparse_tensor_type(), *target.mutable_sparse_tensor_type());
+    }
+#endif
   }
   ORT_CATCH(const ONNX_NAMESPACE::InferenceError& ex) {
     // if this model was not created with the latest onnx version, allow the shape inferencing failure (strict == false).
@@ -106,11 +107,12 @@ static Status MergeShapeInfo(const std::string& output_name,
                             << ". Falling back to lenient merge.";
       if (utils::HasTensorType(source)) {
         ONNX_NAMESPACE::UnionShapeInfo(utils::GetShape(source), *target.mutable_tensor_type());
-      } else {
-#if !defined(DISABLE_SPARSE_TENSORS)
-        ONNX_NAMESPACE::UnionShapeInfo(utils::GetShape(source), *target.mutable_sparse_tensor_type());
-#endif
       }
+#if !defined(DISABLE_SPARSE_TENSORS)
+      else {
+        ONNX_NAMESPACE::UnionShapeInfo(utils::GetShape(source), *target.mutable_sparse_tensor_type());
+      }
+#endif
     } else {
       ORT_UNUSED_PARAMETER(logger);
       ORT_UNUSED_PARAMETER(strict);
