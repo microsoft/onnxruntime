@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/providers/shared/utils/utils.h"
+#ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
+#endif
 #include "core/providers/coreml/builders/op_builder_factory.h"
 
 #include "base_op_builder.h"
@@ -12,9 +14,11 @@ namespace coreml {
 
 class ArgMaxOpBuilder : public BaseOpBuilder {
   // Add operator related
+#ifdef __APPLE__
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+#endif
 
   // Operator support related
  private:
@@ -24,6 +28,7 @@ class ArgMaxOpBuilder : public BaseOpBuilder {
 
 // Add operator related
 
+#ifdef __APPLE__
 Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                               const Node& node,
                                               const logging::Logger& /* logger */) const {
@@ -63,6 +68,7 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
+#endif
 
 // Operator support related
 
@@ -84,8 +90,8 @@ bool ArgMaxOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
       const auto& op_type = it->GetNode().OpType();
       if (op_type == "Cast") {
         // Check if the output type of cast node is int32
-        NodeAttrHelper helper(it->GetNode());
-        const auto cast_to_type = helper.Get("to", ONNX_NAMESPACE::TensorProto::UNDEFINED);
+        NodeAttrHelper output_helper(it->GetNode());
+        const auto cast_to_type = output_helper.Get("to", ONNX_NAMESPACE::TensorProto::UNDEFINED);
         if (cast_to_type == ONNX_NAMESPACE::TensorProto::INT32) {
           LOGS(logger, VERBOSE) << "Argmax has both cast and other downstream nodes.";
           return false;

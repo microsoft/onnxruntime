@@ -140,10 +140,9 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   }
 
   ExecutionFrame frame{feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state};
-  const std::unordered_set<NodeIndex>* to_be_executed_nodes = nullptr;
 
 #if !defined(ORT_MINIMAL_BUILD)
-  to_be_executed_nodes = session_state.GetToBeExecutedNodes(fetch_mlvalue_idxs);
+  const auto* const to_be_executed_nodes = session_state.GetToBeExecutedNodes(fetch_mlvalue_idxs);
   const bool only_execute_path_to_fetches = only_execute_path_to_fetches_ && (to_be_executed_nodes != nullptr);
 
   if (only_execute_path_to_fetches) {
@@ -151,7 +150,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   }
 #else
   ORT_UNUSED_PARAMETER(only_execute_path_to_fetches_);
-  const bool only_execute_path_to_fetches = false;
 #endif
 
   LOGS(logger, INFO) << "Begin execution";
@@ -196,10 +194,12 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
     auto node_index = node_exec_plan.node_index;
 
+#if !defined(ORT_MINIMAL_BUILD)
     // If it is not necessary to execute the node.
     if (only_execute_path_to_fetches && to_be_executed_nodes->count(node_index) == 0) {
       continue;
     }
+#endif
 
     const auto& node = *graph_viewer.GetNode(node_exec_plan.node_index);
 

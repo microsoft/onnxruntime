@@ -1711,8 +1711,8 @@ class SymbolicShapeInference:
         # topological sort nodes, note there might be dead nodes so we check if all graph outputs are reached to terminate
         sorted_nodes = []
         sorted_known_vi = set([i.name for i in list(self.out_mp_.graph.input) + list(self.out_mp_.graph.initializer)])
-        if all([o.name in sorted_known_vi for o in self.out_mp_.graph.output]):
-            # Loop/Scan will have all graph output in graph inputs, so don't do topological sort
+        if any([o.name in sorted_known_vi for o in self.out_mp_.graph.output]):
+            # Loop/Scan will have some graph output in graph inputs, so don't do topological sort
             sorted_nodes = self.out_mp_.graph.node
         else:
             while not all([o.name in sorted_known_vi for o in self.out_mp_.graph.output]):
