@@ -41,7 +41,6 @@ struct DeleteOnUnloadPtr {
 #include <unordered_map>
 #include <unordered_set>
 #include <stddef.h>
-#include "onnx/common/stl_backports.h"
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
 #include "core/common/type_list.h"
@@ -169,6 +168,7 @@ struct OpKernelContext;
 struct OpKernelInfo;
 struct PrimitiveDataTypeBase;
 struct Tensor;
+struct SparseTensor;
 struct TensorSeq;
 
 class If;
@@ -188,7 +188,7 @@ template <typename T>
 struct EinsumTypedComputeProcessor;
 
 namespace contrib {
-class ATenOpBase;
+class ATenOp;
 class Group;
 class PassThrough;
 class YieldOp;
@@ -213,6 +213,7 @@ using NameMLValMap = std::unordered_map<std::string, OrtValue>;
 #include "core/framework/data_transfer.h"
 #include "core/framework/execution_provider.h"
 #include "provider_interfaces.h"
+#include "provider_wrappedtypes.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/data_types_internal.h"
 #include "core/framework/tensorprotoutils.h"

@@ -6,7 +6,9 @@
 
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/coreml/builders/helper.h"
+#ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
+#endif
 #include "core/providers/coreml/builders/op_builder_factory.h"
 
 #include "base_op_builder.h"
@@ -16,12 +18,14 @@ namespace coreml {
 
 class ReshapeOpBuilder : public BaseOpBuilder {
   // Add operator related
+#ifdef __APPLE__
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+#endif
 
   // Operator support related
  private:
@@ -34,6 +38,7 @@ class ReshapeOpBuilder : public BaseOpBuilder {
 
 // Add operator related
 
+#ifdef __APPLE__
 void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
 }
@@ -62,6 +67,7 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
+#endif
 
 // Operator support related
 

@@ -65,6 +65,8 @@ if [[ -n "${IMAGE_CACHE_CONTAINER_REGISTRY_NAME}" ]]; then
 fi
 DOCKER_CMD="docker"
 
+
+NEED_BUILD_SHARED_LIB=true
 cd $SCRIPT_DIR/docker
 if [ $BUILD_OS = "android" ]; then
     IMAGE="android"
@@ -84,8 +86,12 @@ elif [ $BUILD_OS = "yocto" ]; then
         --docker-build-args="--build-arg TOOL_CHAIN=$TOOL_CHAIN_SCRIPT --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER}" \
         --dockerfile $DOCKER_FILE --context .
 elif [ $BUILD_DEVICE = "gpu" ]; then
-        #This code path is only for training. Inferecing pipeline uses CentOS
+        # This code path is only for training. Inferecing pipeline uses CentOS
         IMAGE="$BUILD_OS-gpu_training"
+        # Current build script doesn't support building shared lib with Python dependency. To enable building with PythonOp,
+        # We need to avoid `--no-undefined` when building shared lib (Otherwise, CIs will report `undefined symbols`), but removing that would bring some other concerns.
+        # Plus the fact training did not need build shared library, we disable the --build_shared_lib for training CIs.
+        NEED_BUILD_SHARED_LIB=false
         INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -t"
         if [[ $INSTALL_DEPS_DISTRIBUTED_SETUP = true ]]; then
             INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -m"
@@ -102,8 +108,8 @@ elif [[ $BUILD_DEVICE = "tensorrt"* ]]; then
             IMAGE="$BUILD_OS-cuda11.0-cudnn8.0-tensorrt7.1"
             DOCKER_FILE=Dockerfile.ubuntu_tensorrt7_1
         else
-            # TensorRT container release 20.12
-            IMAGE="$BUILD_OS-cuda11.1-cudnn8.0-tensorrt7.2"
+            # TensorRT container release 21.07
+            IMAGE="$BUILD_OS-cuda11.4-cudnn8.2-tensorrt8.0"
             DOCKER_FILE=Dockerfile.ubuntu_tensorrt
         fi
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
@@ -133,6 +139,10 @@ else
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
                 --docker-build-args="${BUILD_ARGS}" \
                 --dockerfile $DOCKER_FILE --context .
+fi
+
+if [[ $NEED_BUILD_SHARED_LIB = true ]]; then
+    BUILD_EXTR_PAR=" --build_shared_lib ${BUILD_EXTR_PAR}"
 fi
 
 if [ -v EXTRA_IMAGE_TAG ]; then

@@ -10,7 +10,7 @@
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
 #include <numpy/arrayobject.h>
 
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/tensor.h"
 #include "core/framework/sparse_tensor.h"
 #include "core/framework/TensorSeq.h"
@@ -25,7 +25,7 @@ void addOrtValueMethods(pybind11::module& m) {
   ortvalue_binding
       // Factory method to create an OrtValue (Tensor) from the given Numpy object
       // The Tensor allocates and manages its own memory (on the specified device) and copies data from the Numpy data buffer
-      .def_static("ortvalue_from_numpy", [](py::object& array_on_cpu, const OrtDevice& device) {
+      .def_static("ortvalue_from_numpy", [](const py::object& array_on_cpu, const OrtDevice& device) {
         if (!IsNumericNumpyArray(array_on_cpu)) {
           throw std::runtime_error("Creation of OrtValues is currently only supported from non-string numpy arrays");
         }
@@ -33,12 +33,12 @@ void addOrtValueMethods(pybind11::module& m) {
         auto ml_value = std::make_unique<OrtValue>();
 
         // The tensor's memory is allocated on the CPU
-        if (strcmp(GetDeviceName(device), CPU) == 0) {
+        if (device.Type() == OrtDevice::CPU) {
           // InputDeflist is null because OrtValue creation is not tied to a specific model
           // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
 
           CreateGenericMLValue(nullptr, GetAllocator(), "", array_on_cpu, ml_value.get(), true);
-        } else if (strcmp(GetDeviceName(device), CUDA) == 0) {
+        } else if (device.Type() == OrtDevice::GPU) {
       // The tensor's memory is allocated on CUDA
 
 #ifdef USE_CUDA
@@ -87,35 +87,39 @@ void addOrtValueMethods(pybind11::module& m) {
           throw std::runtime_error("Creation of OrtValues is currently only supported from non-string numpy arrays");
         }
 
-        auto ml_value = std::make_unique<OrtValue>();
-
-        std::unique_ptr<Tensor> tensor;
-        // The tensor's memory is allocated on the CPU
+        AllocatorPtr allocator;
         if (strcmp(GetDeviceName(device), CPU) == 0) {
-          tensor = std::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, GetAllocator());
+          allocator = GetAllocator();
         } else if (strcmp(GetDeviceName(device), CUDA) == 0) {
-      // The tensor's memory is allocated on CUDA
 #ifdef USE_CUDA
           if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
             throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
           }
-
-          tensor = std::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, GetCudaAllocator(device.Id()));
+          allocator = GetCudaAllocator(device.Id());
 #else
-      throw std::runtime_error(
-          "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
-          "Please use the CUDA package of OnnxRuntime to use this feature.");
+          throw std::runtime_error(
+              "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
+              "Please use the CUDA package of OnnxRuntime to use this feature.");
 #endif
         } else {
           throw std::runtime_error("Unsupported device: Cannot place the OrtValue on this device");
         }
 
-        auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-        ml_value->Init(tensor.release(),
-                       ml_tensor,
-                       ml_tensor->GetDeleteFunc());
-
+        auto ml_value = std::make_unique<OrtValue>();
+        auto ml_type = NumpyTypeToOnnxRuntimeType(type_num);
+        Tensor::InitOrtValue(ml_type, shape, std::move(allocator), *ml_value);
         return ml_value;
+      })
+      // This will create a copy of OrtValue (cheap) and will return as a separate OrtValue object
+      .def_static("ort_value_from_sparse_tensor", [](const PySparseTensor* py_sparse_tensor) -> std::unique_ptr<OrtValue> {
+        return py_sparse_tensor->AsOrtValue();
+      })
+      // This will create a copy of OrtValue(cheap) and will return as a separate SparseTensor object
+      .def("as_sparse_tensor", [](const OrtValue* ort_value) -> std::unique_ptr<PySparseTensor> {
+        if (!ort_value->IsSparseTensor()) {
+          ORT_THROW("This OrtValue does not contain SparseTensor. Check data_type() value.");
+        }
+        return std::make_unique<PySparseTensor>(*ort_value);
       })
       // Get a pointer to Tensor data
       .def("data_ptr", [](OrtValue* ml_value) -> int64_t {
@@ -134,8 +138,10 @@ void addOrtValueMethods(pybind11::module& m) {
       .def("device_name", [](const OrtValue* ort_value) -> std::string {
         if (ort_value->IsTensor()) {
           return std::string(GetDeviceName(ort_value->Get<Tensor>().Location().device));
+        } else if (ort_value->IsSparseTensor()) {
+          return std::string(GetDeviceName(ort_value->Get<SparseTensor>().Location().device));
         } else {
-          ORT_THROW("Only OrtValues that are Tensors are currently supported");
+          ORT_THROW("Only OrtValues that are Tensors/SparseTensors are currently supported");
         }
       })
       .def("shape", [](const OrtValue* ort_value) -> py::list {
@@ -146,7 +152,7 @@ void addOrtValueMethods(pybind11::module& m) {
         py::list shape_arr;
         const auto& dims = (ort_value->IsTensor())
                                ? ort_value->Get<Tensor>().Shape().GetDims()
-                               : ort_value->Get<SparseTensor>().Shape().GetDims();
+                               : ort_value->Get<SparseTensor>().DenseShape().GetDims();
 
         for (auto dim : dims) {
           // For sequence tensors - we would append a list of dims to the outermost list
@@ -163,7 +169,7 @@ void addOrtValueMethods(pybind11::module& m) {
           auto elem_type = ort_value->Get<Tensor>().GetElementType();
           type_proto = DataTypeImpl::TensorTypeFromONNXEnum(elem_type)->GetTypeProto();
         } else if (ort_value->IsSparseTensor()) {
-          auto elem_type = ort_value->Get<SparseTensor>().Values().GetElementType();
+          auto elem_type = ort_value->Get<SparseTensor>().GetElementType();
           type_proto = DataTypeImpl::SparseTensorTypeFromONNXEnum(elem_type)->GetTypeProto();
         } else if (ort_value->IsTensorSequence()) {
           auto elem_type = ort_value->Get<TensorSeq>().DataType()->AsPrimitiveDataType()->GetDataType();

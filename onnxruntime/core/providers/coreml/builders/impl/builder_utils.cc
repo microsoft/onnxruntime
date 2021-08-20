@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef __APPLE__
+
 #include <core/common/safeint.h>
 #include <core/providers/common.h>
 #include "core/providers/shared/utils/utils.h"
@@ -90,7 +92,7 @@ void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
 common::Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
                                   const ONNX_NAMESPACE::TensorProto& tensor) {
   auto data_type = tensor.data_type();
-  if (data_type = ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     const float* data = GetTensorFloatData(tensor);
     auto num_elements = SafeInt<size_t>(Product(tensor.dims()));
     CreateCoreMLWeight(weight, data, num_elements);
@@ -106,3 +108,5 @@ common::Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
 
 }  // namespace coreml
 }  // namespace onnxruntime
+
+#endif
