@@ -63,7 +63,7 @@ def _build_for_ios_sysroot(build_config, intermediates_dir, base_build_command,
         # get the compiled lib path
         framework_dir = os.path.join(
             build_dir_current_arch, build_config, build_config + "-" + sysroot,
-            'onnxruntime.framework' if args.build_dynamic_framework
+            'onnxruntime.framework' if build_dynamic_framework
             else os.path.join('static_framework', 'onnxruntime.framework'))
         ort_libs.append(os.path.join(framework_dir, 'onnxruntime'))
 
