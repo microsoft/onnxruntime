@@ -185,9 +185,6 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    if (state_.GetProgramCounterStart() == 0) {
-      session_state.IncrementGraphExecutionCounter();
-    }
     utils::NodeDumpContext dump_context { session_state.GetGraphExecutionCounter(), 0 };
 #endif
 
