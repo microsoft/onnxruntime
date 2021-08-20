@@ -6,6 +6,7 @@ import onnxruntime
 import pytest
 import torch
 from torch.nn.parameter import Parameter
+from distutils.version import LooseVersion
 
 # Import ORT modules.
 from _test_helpers import *
@@ -15,14 +16,7 @@ torch.manual_seed(1)
 onnxruntime.set_seed(1)
 
 def torch_version_lower_than(v):
-    current_versions = torch.__version__.split("+")[0].split(".")
-    target_verions = v.split("+")[0].split(".")
-    assert len(current_versions) == len(target_verions)
-    for i in range(2):
-        if int(current_versions[i]) > int(target_verions[i]):
-            return False
-    
-    return True
+    return LooseVersion(torch.__version__) < LooseVersion(v)
 
 def test_GeLU():
     @torch.jit.script
