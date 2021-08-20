@@ -124,7 +124,7 @@ def _build_package(args):
     xcframework_dir = os.path.join(build_dir, 'framework_out')
     pathlib.Path(xcframework_dir).mkdir(parents=True, exist_ok=True)
     shutil.copy(os.path.join(REPO_DIR, 'LICENSE'), xcframework_dir)
-    shutil.copy(framework_info_path, xcframework_dir)
+    shutil.copy(framework_info_path, build_dir)
 
     # remove existing xcframework if any
     xcframework_path = os.path.join(xcframework_dir, 'onnxruntime.xcframework')
