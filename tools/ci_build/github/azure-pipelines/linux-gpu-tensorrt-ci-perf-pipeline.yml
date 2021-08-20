@@ -46,6 +46,7 @@ parameters:
 
 - name: ModelGroups
   type: object
+  default: []
 
 - name: MemTest
   displayName: Run Memory Test
