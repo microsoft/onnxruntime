@@ -25,11 +25,14 @@ static void RunAttentionTest(
     int hidden_size,
     int number_of_heads,
     int window,
-    bool use_float16 = false) {
+    bool use_float16 = false,
+    bool enable_cpu = false) {
   int min_cuda_architecture = use_float16 ? 530 : 0;
 
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
-  bool enable_cpu = false;
+  if (enable_cpu) {
+    enable_cuda = false;
+  }
   if (enable_cpu || enable_cuda) {
     OpTester tester("LongformerAttention", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
@@ -152,7 +155,8 @@ static void RunTinyLongformerBatch1(
     std::vector<int>& global_data,
     std::vector<float>& input_data,
     std::vector<float>& output_data,
-    bool use_float16) {
+    bool use_float16,
+    bool enable_cpu = false) {
   int batch_size = 1;
   int one_sided_attention_window_size = 2;
   int hidden_size = 8;
@@ -167,7 +171,7 @@ static void RunTinyLongformerBatch1(
   int sequence_length = static_cast<int>(mask_data.size()) / batch_size;
 
   RunAttentionTest(input_data, weight_data, bias_data, mask_data, global_weight_data, global_bias_data, global_data, output_data,
-                   batch_size, sequence_length, hidden_size, number_of_heads, one_sided_attention_window_size, use_float16);
+                   batch_size, sequence_length, hidden_size, number_of_heads, one_sided_attention_window_size, use_float16, enable_cpu);
 }
 
 static void RunTinyLongformerBatch1(
@@ -175,7 +179,8 @@ static void RunTinyLongformerBatch1(
     std::vector<int>& global_data,
     std::vector<float>& output_data,
     bool use_float16,
-    bool window_cover_whole_sequence = false) {
+    bool window_cover_whole_sequence = false,
+    bool enable_cpu = false) {
   // Total windows size 4 will cover the whole sequence length 4
   std::vector<float> input_data;
   if (window_cover_whole_sequence) {
@@ -195,7 +200,7 @@ static void RunTinyLongformerBatch1(
         -1.0536f, -0.0425f, -1.1194f, -0.6423f, 2.1825f, 0.2547f, 0.6015f, -0.1809f,
         0.5219f, 0.1777f, 0.7090f, -2.1933f, 0.5258f, -0.0639f, -0.8511f, 1.1738f};
   }
-  return RunTinyLongformerBatch1(mask_data, global_data, input_data, output_data, use_float16);
+  return RunTinyLongformerBatch1(mask_data, global_data, input_data, output_data, use_float16, enable_cpu);
 }
 
 TEST(LongformerAttentionTest, LongformerAttention_NoGlobal) {
@@ -351,6 +356,25 @@ TEST(LongformerAttentionTest, LongformerAttention_GlobalMiddle) {
   RunTinyLongformerBatch1(mask_data, global_data, output_data, false);
 }
 */
+
+TEST(LongformerAttentionTest, LongformerAttention_CPU) {
+  std::vector<float> mask_data = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -10000.0f};
+
+  // Global at the start of the sequence
+  std::vector<int> global_data = {1, 1, 0, 0, 0, 0, 0, 0};
+
+  std::vector<float> output_data = {
+      0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f,
+      0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f,
+      0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f,
+      0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f,
+      0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f,
+      0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f,
+      0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f,
+      0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f};
+
+  RunTinyLongformerBatch1(mask_data, global_data, output_data, false, false, true);
+}
 
 }  // namespace test
 }  // namespace onnxruntime
