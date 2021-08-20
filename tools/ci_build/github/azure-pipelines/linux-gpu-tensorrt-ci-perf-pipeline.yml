@@ -42,7 +42,7 @@ parameters:
 - name: PublishWheel
   displayName: Publish Wheel 
   type: boolean
-  default: true
+  default: false
 
 - name: ModelGroups
   type: object
