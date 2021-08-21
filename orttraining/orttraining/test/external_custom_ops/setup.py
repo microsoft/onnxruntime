@@ -3,6 +3,7 @@ import subprocess
 from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext
 from subprocess import CalledProcessError
+import pybind11
 
 class CMakeExtension(Extension):
     def __init__(self, name, sourcedir=""):
@@ -17,6 +18,7 @@ class CMakeBuild(build_ext):
             os.makedirs(self.build_temp)
         subprocess.check_call(
             ["cmake",
+             "-Dpybind11_DIR={}".format(pybind11.get_cmake_dir()),
              "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={}".format(extdir), 
              ext.sourcedir], cwd=self.build_temp)
         subprocess.check_call(
