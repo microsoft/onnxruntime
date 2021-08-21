@@ -55,7 +55,7 @@ bool GetResizeScales(const InitializedTensorSet& initializers,
   std::vector<uint8_t> unpacked_tensor;
   auto status = onnxruntime::utils::UnpackInitializerData(scales_tensor, unpacked_tensor);
   if (!status.IsOK()) {
-    LOGS(logger, ERROR) << "Error while unpack scales_tensor: " << status.ErrorMessage();
+    LOGS(logger, ERROR) << "Error while unpacking scales_tensor: " << status.ErrorMessage();
     return false;
   }
   const float* scales_data = reinterpret_cast<const float*>(unpacked_tensor.data());
@@ -77,7 +77,7 @@ bool GetResizeOutputSizes(const InitializedTensorSet& initializers,
   std::vector<uint8_t> unpacked_tensor;
   auto status = onnxruntime::utils::UnpackInitializerData(sizes_tensor, unpacked_tensor);
   if (!status.IsOK()) {
-    LOGS(logger, ERROR) << "Error while unpack scales_tensor: " << status.ErrorMessage();
+    LOGS(logger, ERROR) << "Error while unpacking sizes_tensor: " << status.ErrorMessage();
     return false;
   }
   const int64_t* sizes_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());

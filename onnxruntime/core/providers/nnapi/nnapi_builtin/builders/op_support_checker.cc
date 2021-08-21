@@ -395,7 +395,7 @@ bool ReshapeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& init
   std::vector<uint8_t> unpacked_tensor;
   auto status = onnxruntime::utils::UnpackInitializerData(perm_tensor, unpacked_tensor);
   if (!status.IsOK()) {
-    LOGS_DEFAULT(ERROR) << "Error while unpack perm_tensor: " << status.ErrorMessage();
+    LOGS_DEFAULT(ERROR) << "Error while unpacking perm_tensor: " << status.ErrorMessage();
     return false;
   }
   const int64_t* raw_perm = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
@@ -1532,7 +1532,7 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
       std::vector<uint8_t> unpacked_tensor;
       auto status = onnxruntime::utils::UnpackInitializerData(scales_tensor, unpacked_tensor);
       if (!status.IsOK()) {
-        LOGS_DEFAULT(ERROR) << "Error while unpack scales_tensor: " << status.ErrorMessage();
+        LOGS_DEFAULT(ERROR) << "Error while unpacking scales_tensor: " << status.ErrorMessage();
         return false;
       }
       const float* scales_data = reinterpret_cast<const float*>(unpacked_tensor.data());
@@ -1551,7 +1551,7 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
       std::vector<uint8_t> unpacked_tensor;
       auto status = onnxruntime::utils::UnpackInitializerData(sizes_tensor, unpacked_tensor);
       if (!status.IsOK()) {
-        LOGS_DEFAULT(ERROR) << "Error while unpack sizes_tensor: " << status.ErrorMessage();
+        LOGS_DEFAULT(ERROR) << "Error while unpacking sizes_tensor: " << status.ErrorMessage();
         return false;
       }
       const int64_t* sizes_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());

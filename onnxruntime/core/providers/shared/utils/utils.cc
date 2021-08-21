@@ -53,7 +53,7 @@ bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node,
       std::vector<uint8_t> unpacked_tensor;
       auto status = onnxruntime::utils::UnpackInitializerData(*initializers.at(min_name), unpacked_tensor);
       if (!status.IsOK()) {
-        LOGS(logger, ERROR) << "Error while unpack min tensor: " << status.ErrorMessage();
+        LOGS(logger, ERROR) << "Error while unpacking min tensor: " << status.ErrorMessage();
         return false;
       }
       min = reinterpret_cast<float*>(unpacked_tensor.data())[0];
@@ -68,7 +68,7 @@ bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node,
       std::vector<uint8_t> unpacked_tensor;
       auto status = onnxruntime::utils::UnpackInitializerData(*initializers.at(max_name), unpacked_tensor);
       if (!status.IsOK()) {
-        LOGS(logger, ERROR) << "Error while unpack max tensor: " << status.ErrorMessage();
+        LOGS(logger, ERROR) << "Error while unpacking max tensor: " << status.ErrorMessage();
         return false;
       }
       max = reinterpret_cast<float*>(unpacked_tensor.data())[0];

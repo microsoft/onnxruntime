@@ -3,12 +3,12 @@
 
 #ifdef __APPLE__
 
-#include <core/common/safeint.h>
-#include <core/framework/tensorprotoutils.h>
-#include <core/providers/common.h>
-#include "core/providers/shared/utils/utils.h"
-#include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/impl/builder_utils.h"
+
+#include "core/common/safeint.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/providers/coreml/builders/helper.h"
+#include "core/providers/shared/utils/utils.h"
 
 #include "coreml/NeuralNetwork.pb.h"
 

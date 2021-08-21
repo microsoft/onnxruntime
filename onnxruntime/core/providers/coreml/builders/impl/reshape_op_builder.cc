@@ -86,7 +86,7 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
   std::vector<uint8_t> unpacked_tensor;
   auto status = onnxruntime::utils::UnpackInitializerData(perm_tensor, unpacked_tensor);
   if (!status.IsOK()) {
-    LOGS(logger, ERROR) << "Error while unpack perm_tensor: " << status.ErrorMessage();
+    LOGS(logger, ERROR) << "Error while unpacking perm_tensor: " << status.ErrorMessage();
     return false;
   }
 
