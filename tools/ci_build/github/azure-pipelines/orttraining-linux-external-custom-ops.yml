@@ -35,6 +35,7 @@ jobs:
               --config Debug Release \
               --parallel \
               --build_wheel \
+              --skip_tests \
               --enable_training \
               --enable_external_custom_op_schemas
       workingDirectory: $(Build.SourcesDirectory)
@@ -50,7 +51,8 @@ jobs:
     displayName: 'Build and Install custom ops python package'
     inputs:
       scripts: |
-         python3 -m pip install $(Build.BinariesDirectory)/external_custom_ops
+         python3 -m pip install .
+      working Directory: $(Build.BinariesDirectory)/external_custom_ops
 
   - task: CmdLine@2
     displayName: 'Test using external custom op module'
@@ -64,14 +66,16 @@ jobs:
     inputs:
       script: |
          rm -rf $(Build.BinariesDirectory)/Debug/onnxruntime $(Build.BinariesDirectory)/Debug/pybind11
-         pip uninstall -y onnxruntime-traning
+         python3 -m pip uninstall -y onnxruntime-traning
          python3 -m pip install $(Build.BinariesDirectory)/Debug/dist/*.whl
 
   - task: CmdLine@2
     displayName: 'Build and Install custom ops python package'
     inputs:
       scripts: |
-         python3 -m pip install $(Build.BinariesDirectory)/external_custom_ops
+         python3 -m pip uninstall -y orttraining_external_custom_ops
+         python3 -m pip install .
+      workingDirectory: $(Build.BinariesDirectory)/external_custom_ops
 
   - task: CmdLine@2
     displayName: 'Test using external custom op module'
