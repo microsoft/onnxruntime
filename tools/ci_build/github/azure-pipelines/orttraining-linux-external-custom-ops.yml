@@ -50,9 +50,9 @@ jobs:
   - task: CmdLine@2
     displayName: 'Build and Install custom ops python package'
     inputs:
-      scripts: |
+      script: |
          python3 -m pip install .
-      working Directory: $(Build.BinariesDirectory)/external_custom_ops
+      workingDirectory: $(Build.BinariesDirectory)/external_custom_ops
 
   - task: CmdLine@2
     displayName: 'Test using external custom op module'
@@ -72,7 +72,7 @@ jobs:
   - task: CmdLine@2
     displayName: 'Build and Install custom ops python package'
     inputs:
-      scripts: |
+      script: |
          python3 -m pip uninstall -y orttraining_external_custom_ops
          python3 -m pip install .
       workingDirectory: $(Build.BinariesDirectory)/external_custom_ops
