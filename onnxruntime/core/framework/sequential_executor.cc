@@ -186,6 +186,12 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       profile::Color::Black);
 #endif
 
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+    size_t program_counter = 0;
+    utils::NodeDumpContext dump_context { session_state.GetGraphExecutionCounter(), program_counter };
+#endif
+
+
   for (const auto& node_exec_plan : exec_plan_vec) {
     if (terminate_flag_) {
       LOGS(logger, WARNING) << "Exiting due to terminate flag being set to true.";
@@ -271,7 +277,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       }
     }
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    utils::DumpNodeInputs(op_kernel_context, p_op_kernel->Node(), session_state);
+    dump_context.program_counter = program_counter++;
+    utils::DumpNodeInputs(dump_context, op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
 
     const std::string node_name_for_profiling = [&]() -> std::string {
@@ -418,7 +425,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     }
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    utils::DumpNodeOutputs(op_kernel_context, p_op_kernel->Node(), session_state);
+    utils::DumpNodeOutputs(dump_context, op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
 
     // free ml-values corresponding to this node
