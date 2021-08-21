@@ -4,10 +4,11 @@
 #include <math.h>
 
 #include "core/providers/common.h"
-#include "core/providers/cpu/tensor/reshape_helper.h"
-
-#include "core/providers/shared/utils/utils.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/providers/coreml/builders/helper.h"
+#include "core/providers/cpu/tensor/reshape_helper.h"
+#include "core/providers/shared/utils/utils.h"
+
 #ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
 #endif
@@ -40,7 +41,9 @@ class ResizeOpBuilder : public BaseOpBuilder {
 };
 
 // Helper functions
-bool GetResizeScales(const InitializedTensorSet& initializers, const Node& node, std::vector<float>& scales) {
+bool GetResizeScales(const InitializedTensorSet& initializers,
+                     const Node& node, std::vector<float>& scales,
+                     const logging::Logger& logger) {
   const auto& input_defs = node.InputDefs();
   if (input_defs.size() < 3)
     return false;
@@ -49,12 +52,20 @@ bool GetResizeScales(const InitializedTensorSet& initializers, const Node& node,
   if (scales_tensor.dims_size() != 1 || scales_tensor.dims()[0] != 4)
     return false;
 
-  const float* scales_data = GetTensorFloatData(scales_tensor);
+  std::vector<uint8_t> unpacked_tensor;
+  auto status = onnxruntime::utils::UnpackInitializerData(scales_tensor, unpacked_tensor);
+  if (!status.IsOK()) {
+    LOGS(logger, ERROR) << "Error while unpacking scales_tensor: " << status.ErrorMessage();
+    return false;
+  }
+  const float* scales_data = reinterpret_cast<const float*>(unpacked_tensor.data());
   scales = std::vector<float>{scales_data, scales_data + 4};
   return true;
 }
 
-bool GetResizeOutputSizes(const InitializedTensorSet& initializers, const Node& node, std::vector<int64_t>& sizes) {
+bool GetResizeOutputSizes(const InitializedTensorSet& initializers,
+                          const Node& node, std::vector<int64_t>& sizes,
+                          const logging::Logger& logger) {
   const auto& input_defs = node.InputDefs();
   if (input_defs.size() < 4)
     return false;
@@ -63,7 +74,13 @@ bool GetResizeOutputSizes(const InitializedTensorSet& initializers, const Node& 
   if (sizes_tensor.dims_size() != 1 || sizes_tensor.dims()[0] != 4)
     return false;
 
-  const int64_t* sizes_data = GetTensorInt64Data(sizes_tensor);
+  std::vector<uint8_t> unpacked_tensor;
+  auto status = onnxruntime::utils::UnpackInitializerData(sizes_tensor, unpacked_tensor);
+  if (!status.IsOK()) {
+    LOGS(logger, ERROR) << "Error while unpacking sizes_tensor: " << status.ErrorMessage();
+    return false;
+  }
+  const int64_t* sizes_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
   sizes = std::vector<int64_t>{sizes_data, sizes_data + 4};
   return true;
 }
@@ -106,14 +123,15 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   if (input_defs.size() == 3) {  // use scales
     std::vector<float> scales;
-    ORT_RETURN_IF_NOT(GetResizeScales(initializers, node, scales), "Error getting resize scales");
+    ORT_RETURN_IF_NOT(GetResizeScales(initializers, node, scales, logger), "Error getting resize scales");
     coreml_upsample->add_scalingfactor(static_cast<int64_t>(scales[2]));
     coreml_upsample->add_scalingfactor(static_cast<int64_t>(scales[3]));
   } else {  // we already checked number of inputs in IsOpSupportedImpl
     std::vector<int64_t> input_shape;
     ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Error getting input shape");
     std::vector<int64_t> output_sizes;
-    ORT_RETURN_IF_NOT(GetResizeOutputSizes(initializers, node, output_sizes), "Error getting resize output_sizes");
+    ORT_RETURN_IF_NOT(GetResizeOutputSizes(initializers, node, output_sizes, logger),
+                      "Error getting resize output_sizes");
     coreml_upsample->add_scalingfactor(static_cast<int64_t>(output_sizes[2] / input_shape[2]));
     coreml_upsample->add_scalingfactor(static_cast<int64_t>(output_sizes[3] / input_shape[3]));
   }
@@ -205,7 +223,7 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
     // We want to check if the scales or sizes are not trying to resize on N/C channels here
     if (input_defs.size() == 3) {  // we are using scales
       std::vector<float> scales;
-      if (!GetResizeScales(initializers, node, scales))
+      if (!GetResizeScales(initializers, node, scales, logger))
         return false;
 
       float scale_n = scales[0];
@@ -235,7 +253,7 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
     } else {
       // we are using sizes
       std::vector<int64_t> output_sizes;
-      if (!GetResizeOutputSizes(initializers, node, output_sizes))
+      if (!GetResizeOutputSizes(initializers, node, output_sizes, logger))
         return false;
 
       auto output_size_n = output_sizes[0];

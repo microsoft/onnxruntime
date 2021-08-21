@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include <core/common/safeint.h>
-
+#include "core/framework/tensorprotoutils.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #ifdef __APPLE__
@@ -40,15 +40,16 @@ void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   }
 }
 
-/* static */ std::vector<int64_t> GetAxes(ModelBuilder& model_builder, const Node& node) {
-  std::vector<int64_t> axes;
+/* static */ Status GetAxes(ModelBuilder& model_builder, const Node& node, std::vector<int64_t>& axes) {
   // Squeeze opset 13 use input as axes
   if (node.SinceVersion() > 12) {
     // If axes is not provided, return an empty axes as default to squeeze all
     if (node.InputDefs().size() > 1) {
       const auto& initializers(model_builder.GetInitializerTensors());
       const auto& axes_tensor = *initializers.at(node.InputDefs()[1]->Name());
-      const int64_t* raw_axes = GetTensorInt64Data(axes_tensor);
+      std::vector<uint8_t> unpacked_tensor;
+      ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(axes_tensor, unpacked_tensor));
+      const int64_t* raw_axes = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
       const auto size = SafeInt<size_t>(axes_tensor.dims()[0]);
       axes.resize(size);
       for (size_t i = 0; i < size; i++) {
@@ -60,7 +61,7 @@ void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
     axes = helper.Get("axes", std::vector<int64_t>());
   }
 
-  return axes;
+  return Status::OK();
 }
 
 Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
@@ -69,7 +70,8 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(model_builder, node);
 
   auto* coreml_squeeze = layer->mutable_squeeze();
-  std::vector<int64_t> axes = GetAxes(model_builder, node);
+  std::vector<int64_t> axes;
+  ORT_RETURN_IF_ERROR(GetAxes(model_builder, node, axes));
   if (axes.empty()) {
     coreml_squeeze->set_squeezeall(true);
   } else {
