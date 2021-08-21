@@ -52,14 +52,14 @@ jobs:
     inputs:
       script: |
          python3 -m pip install .
-      workingDirectory: $(Build.BinariesDirectory)/external_custom_ops
+      workingDirectory: $(Build.BinariesDirectory)/Release/external_custom_ops
 
   - task: CmdLine@2
     displayName: 'Test using external custom op module'
     inputs:
       script: |
          python3 test.py
-      workingDirectory: $(Build.BinariesDirectory)/external_custom_ops
+      workingDirectory: $(Build.BinariesDirectory)/Release/external_custom_ops
 
   - task: CmdLine@2
     displayName: 'Install Debug python package'
@@ -75,12 +75,12 @@ jobs:
       script: |
          python3 -m pip uninstall -y orttraining_external_custom_ops
          python3 -m pip install .
-      workingDirectory: $(Build.BinariesDirectory)/external_custom_ops
+      workingDirectory: $(Build.BinariesDirectory)/Debug/external_custom_ops
 
   - task: CmdLine@2
     displayName: 'Test using external custom op module'
     inputs:
       script: |
          python3 test.py
-      workingDirectory: $(Build.BinariesDirectory)/external_custom_ops
+      workingDirectory: $(Build.BinariesDirectory)/Debug/external_custom_ops
 
