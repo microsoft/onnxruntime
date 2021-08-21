@@ -3,7 +3,7 @@ trigger: none
 stages:
 - template: templates/py-packaging-training-cuda-stage.yml
   parameters:
-    build_py_parameters: --enable_training --update --build
+    build_py_parameters: --enable_training --update --build 
     torch_version: '1.9.0'
     cuda_version: '10.2'
     gcc_version: 8

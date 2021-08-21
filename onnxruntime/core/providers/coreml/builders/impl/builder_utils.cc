@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef __APPLE__
+
 #include <core/common/safeint.h>
 #include <core/providers/common.h>
 #include "core/providers/shared/utils/utils.h"
@@ -106,3 +108,5 @@ common::Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
 
 }  // namespace coreml
 }  // namespace onnxruntime
+
+#endif

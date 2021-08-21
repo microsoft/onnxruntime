@@ -297,8 +297,7 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
 
   // TODO support other data types
   const uint8_t* src = nullptr;
-  std::unique_ptr<uint8_t[]> unpacked_tensor;
-  size_t tensor_byte_size;
+  std::vector<uint8_t> unpacked_tensor;
 
   switch (tensor.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
@@ -308,8 +307,8 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       ORT_RETURN_IF_ERROR(
           onnxruntime::utils::UnpackInitializerData(tensor, model_builder.GetGraphViewer().ModelPath(),
-                                                    unpacked_tensor, tensor_byte_size));
-      src = unpacked_tensor.get();
+                                                    unpacked_tensor));
+      src = unpacked_tensor.data();
       break;
     }
     default:
@@ -389,8 +388,7 @@ static Status AddInitializerTransposed(ModelBuilder& model_builder,
 
   // TODO support other data types
   const uint8_t* src = nullptr;
-  std::unique_ptr<uint8_t[]> unpacked_tensor;
-  size_t tensor_byte_size;
+  std::vector<uint8_t> unpacked_tensor;
   switch (tensor.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       src = reinterpret_cast<const uint8_t*>(GetTensorFloatData(tensor));
@@ -399,8 +397,8 @@ static Status AddInitializerTransposed(ModelBuilder& model_builder,
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       ORT_RETURN_IF_ERROR(
           onnxruntime::utils::UnpackInitializerData(tensor, model_builder.GetGraphViewer().ModelPath(),
-                                                    unpacked_tensor, tensor_byte_size));
-      src = unpacked_tensor.get();
+                                                    unpacked_tensor));
+      src = unpacked_tensor.data();
       break;
     }
     default:
@@ -2615,18 +2613,18 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
       const auto& initializers(model_builder.GetInitializerTensors());
 
       const auto& tensor = *initializers.at(input_name);
-      std::unique_ptr<uint8_t[]> unpacked_tensor;
-      size_t tensor_byte_size;
+      std::vector<uint8_t> unpacked_tensor;
       ORT_RETURN_IF_ERROR(
           onnxruntime::utils::UnpackInitializerData(tensor, model_builder.GetGraphViewer().ModelPath(),
-                                                    unpacked_tensor, tensor_byte_size));
+                                                    unpacked_tensor));
+      size_t tensor_byte_size = unpacked_tensor.size();
       const auto data_type = tensor.data_type();
       if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-        const int64_t* tensor_data = reinterpret_cast<const int64_t*>(unpacked_tensor.get());
+        const int64_t* tensor_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
         size_t size = tensor_byte_size / sizeof(int64_t);
         data.insert(data.end(), tensor_data, tensor_data + size);
       } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
-        const int32_t* tensor_data = reinterpret_cast<const int32_t*>(unpacked_tensor.get());
+        const int32_t* tensor_data = reinterpret_cast<const int32_t*>(unpacked_tensor.data());
         size_t size = tensor_byte_size / sizeof(int32_t);
         data.insert(data.end(), tensor_data, tensor_data + size);
       } else {
