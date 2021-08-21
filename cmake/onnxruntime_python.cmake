@@ -619,6 +619,7 @@ if (onnxruntime_USE_COREML)
 endif()
 
 if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
+  message(STATUS "Copying external_custom_ops test folder.")
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory 
