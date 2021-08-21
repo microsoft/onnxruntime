@@ -1252,6 +1252,9 @@ Status TransformGraphForOrtFormatModel(onnxruntime::Graph& graph, const Executio
   }
 #endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 
+#else
+  ORT_UNUSED_PARAMETER(providers);
+  ORT_UNUSED_PARAMETER(session_state);
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   ORT_RETURN_IF_ERROR(AssignNodesToEpsFromHashes(graph, serialized_session_state,
