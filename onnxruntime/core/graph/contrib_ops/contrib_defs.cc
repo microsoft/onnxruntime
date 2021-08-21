@@ -1916,6 +1916,179 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
         FusedMatMulShapeInference(ctx);
       });
 
+    static const char* NonZero_doc = R"DOC(
+  Behaves similar to https://github.com/onnx/onnx/blob/master/docs/Operators.md#NonZero
+  returns a tensor that contains coordinates for non-zero entries. Even though the input
+  is a sparse tensor, that usually does not contain zeros, the model logic may construct
+  sparse tensor containing explicit zeros that convey model specific meaning.
+  If the input sparse tensor has 2-D COO indices, the output shape would be (nnz,2) with 2 coordinates per
+  non-zero entry. If the input sparse tensor contains 1-D COO indices, the output would contain flat indices
+  of shape (nnz).
+
+  XXX: Should be make the output shape fixed regardless on the input COO indices shape? 
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(NonZero)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "A", "2-dimensional sparse matrix A. Either COO format either 1-D or 2-D index", "T")
+      .Output(0, "B", "1 or 2-dimensional dense matrix B", "T1")
+      .TypeConstraint("T", {"sparse_tensor(float)"}, "Constrain to float at this time")
+      .TypeConstraint("T1", {"tensor(int64)"}, "Index type")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Output type is index type
+        propagateElemTypeFromDtypeToOutput(ctx, TensorProto_DataType_INT64, 0);
+        // Output shape is runtime dependent and can not be inferred as it depends on
+        // the input sparse tensor COO indices shape.
+      }) ;
+
+    static const char* SparseGemm_doc = R"DOC(
+  Behaves as to https://github.com/onnx/onnx/blob/master/docs/Operators.md#Gemm
+  XXX: can we do without transpose now?
+  XXX: It has a lot of common code with SparseToDenseMatMul which we can reuse.
+  Should we merge it?
+)DOC";
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Gemm)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "A", "Sparse matrix (M,K) A COO format", "T")
+      .Input(1, "B", "Sparse matrix (K,N) ", "T")
+      .Input(2, "C", "1 or 2 - dimensional sparse matrix B", "T", ONNX_NAMESPACE::OpSchema::Optional)
+      .Output(0, "Y", "Matrix multiply results", "T")
+      .Attr(
+          "alpha",
+          "Scalar multiplier for the product of the input tensors A * B.",
+          AttributeProto::FLOAT,
+          1.0f)
+        .Attr(
+            "beta",
+            "Scalar multiplier for the product of the input tensor C.",
+            AttributeProto::FLOAT,
+            .0f)
+      .Attr(
+          "transA",
+          "Whether A should be transposed on the last two dimensions before doing multiplication",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Attr(
+          "transB",
+          "Whether B should be transposed on the last two dimensions before doing multiplication",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Output(0, "Y", "Matrix multiply results", "T")
+      .TypeConstraint("T", {"sparse_tensor(float)"}, "Constrain input and output float at this time")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          const auto* input_type0 = ctx.getInputType(0);
+          const auto* input_type1 = ctx.getInputType(1);
+          if (nullptr == input_type0 || nullptr == input_type1) {
+            fail_type_inference("At least on of the inputs missing a type");
+          }
+          if (getTensorElementType(*input_type0) != getTensorElementType(*input_type1)) {
+            fail_type_inference("Both inputs must have the same element type");
+          }
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          // TODO: replace with ONNX one when that one is fixed
+          sparseCompatibleMatmulShapeInference(ctx, 0, 1);
+      });
+
+    static const char* Sum_doc = R"DOC(
+  Behaves as to https://github.com/onnx/onnx/blob/master/docs/Operators.md#Sum
+  For 1-D input COO index format it would output flat 1-D index and for 
+  2-D input COO index format it would output 2-D COO index.
+  Both inputs must have the same dense shape and is the output
+  XXX: We are not implementing broadcasting at this time, thus all inputs
+  and the output must have exactly the same shape at this time.
+)DOC";
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Sum)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "A", "1 or 2 - dimensional sparse matrix A COO format", "T")
+      .Input(1, "B", "1 or 2 - dimensional sparse matrix B", "T")
+      .Output(0, "Y", "Sum of the respective elements of A and B", "T")
+      .TypeConstraint("T", {"sparse_tensor(float)"}, "Constrain input and output float at this time")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          const auto* input_type0 = ctx.getInputType(0);
+          const auto* input_type1 = ctx.getInputType(1);
+          if (nullptr == input_type0 || nullptr == input_type1) {
+            fail_type_inference("At least on of the inputs missing a type");
+          }
+          if (getTensorElementType(*input_type0) != getTensorElementType(*input_type1)) {
+            fail_type_inference("Both inputs must have the same element type");
+          }
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+          if (!hasInputShape(ctx, 0) || !hasInputShape(ctx, 1)) {
+            return;
+          }
+          // Verify input shapes are the same
+          const auto& shape0 = getInputShape(ctx, 0);
+          const auto& shape1 = getInputShape(ctx, 1);
+          if (shape0.dim_size() != shape1.dim_size()) {
+            fail_shape_inference("Both inputs must have the same shape");
+          }
+
+          auto& dims0 = shape0.dim();
+          auto& dims1 = shape1.dim();
+          for (int i = 0, dim_size = shape0.dim_size(); i < dim_size; ++i) {
+            auto& dim0 = dims0.Get(i);
+            auto& dim1 = dims1.Get(i);
+            if (dim0 != dim1) {
+              fail_shape_inference("Input dims at: ", i, " do not match");
+            }
+          }
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+        });
+
+    static const char* Binarizer_doc = R"DOC(
+The operator will accept a single sparse tensor input and will output
+a sparse tensor of the same shape and type. For each of the elements it
+would compare the value of the 'threshold' attribute and for all values above the threshold
+it would set the output value for the same index to T(1) and T(0) otherwise.
+
+XXX: Can output be simply an integer or a boolean?
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Binarizer)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "A", "A sparse matrix of numeric type", "T")
+      .Attr(
+        "threshold",
+        "A boundary value",
+        AttributeProto::INT,
+        static_cast<int64_t>(0))
+       .Output(0, "Y", "Matrix multiply results", "T")
+       .TypeConstraint("T", {"sparse_tensor(float)"}, "Constrain input and output float at this time")
+       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+        });
+
+    static const char* Bucketizer_doc = R"DOC(
+This operator behaves similar to https://pytorch.org/docs/stable/generated/torch.bucketize.html
+XXX: the output would be a sparse tensor of the same shape, but each value in it would be replaced
+to an index of the corresponding bucket.
+XXX: The output type attribute will be omitted for now. Fixed to int64_t.
+)DOC";
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Bucketizer)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "A", "A sparse matrix of numeric type", "T")
+      .Input(0, "B", "1-D Boundaries tensor", "T1")
+        .Attr(
+            "tolerance",
+            "A boundary value",
+            AttributeProto::FLOAT,
+            std::numeric_limits<float>::epsilon())
+       .Output(0, "Y", "Sparse tensor where values are indices to the boundaries tensor", "T")
+      .TypeConstraint("T", {"sparse_tensor(float)"}, "Constrain input to float at this time")
+      .TypeConstraint("T1", {"sparse_tensor(int64)"}, "index type")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          // Output type is index type
+          propagateElemTypeFromDtypeToOutput(ctx, TensorProto_DataType_INT64, 0);
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+        });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(SparseToDenseMatMul)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -1948,8 +2121,15 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
            "tensor(uint64)", "tensor(uint32)"},
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        // 1- dense tensor to output
-        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        const auto* input_type0 = ctx.getInputType(0);
+        const auto* input_type1 = ctx.getInputType(1);
+        if (nullptr == input_type0 || nullptr == input_type1) {
+          fail_type_inference("At least on of the inputs missing a type");
+        }
+        if (getTensorElementType(*input_type0) != getTensorElementType(*input_type1)) {
+          fail_type_inference("Both inputs must have the same element type");
+        }
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
         // TODO: replace with ONNX one when that one is fixed
         sparseCompatibleMatmulShapeInference(ctx, 0, 1);
       });
