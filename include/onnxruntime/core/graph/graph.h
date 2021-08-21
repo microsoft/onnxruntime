@@ -203,7 +203,7 @@ class Node {
     return ConstPointerContainer<std::vector<NodeArg*>>(definitions_.output_defs);
   }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD)
   /**
   Helper to iterate through the container returned by #MutableInputDefs() or #MutableOutputDefs() and call the provided function.
   @param node_args Collection of NodeArgs returned by #MutableInputDefs() or #MutableOutputDefs()
@@ -222,6 +222,14 @@ class Node {
     }
     return common::Status::OK();
   }
+
+  /** Gets a modifiable collection of the Node's implicit input definitions. */
+  std::vector<NodeArg*>& MutableImplicitInputDefs() noexcept {
+    return definitions_.implicit_input_defs;
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   /** Gets a modifiable count of arguments for each of the Node's explicit inputs.
   @todo This should be removed in favor of a method that updates the input args and the count.
         Currently these operations are separate which is not a good setup. */
@@ -230,11 +238,6 @@ class Node {
   /** Gets a modifiable collection of the Node's input definitions. */
   std::vector<NodeArg*>& MutableInputDefs() noexcept {
     return definitions_.input_defs;
-  }
-
-  /** Gets a modifiable collection of the Node's implicit input definitions. */
-  std::vector<NodeArg*>& MutableImplicitInputDefs() noexcept {
-    return definitions_.implicit_input_defs;
   }
 
   /** Gets a modifiable collection of the Node's output definitions. */

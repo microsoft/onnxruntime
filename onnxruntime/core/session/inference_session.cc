@@ -32,12 +32,11 @@
 #include "core/framework/utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
-#include "core/optimizer/transformer_memcpy.h"
+#include "core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
-#include "core/optimizer/graph_transformer_utils.h"
-#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
+#include "core/optimizer/transformer_memcpy.h"
 #include "core/platform/Barrier.h"
 #include "core/platform/ort_mutex.h"
 #include "core/platform/threadpool.h"
@@ -59,6 +58,10 @@
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 #include "core/framework/customregistry.h"
 #include "core/session/custom_ops.h"
+#endif
+
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#include "core/optimizer/ort_format_runtime_optimization/utils.h"
 #endif
 
 using namespace ONNX_NAMESPACE;
@@ -955,38 +958,8 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-Status InferenceSession::PartitionOrtFormatModel(onnxruntime::Graph& graph,
-                                                 const ExecutionProviders& providers,
-                                                 KernelRegistryManager& kernel_registry_manager,
-                                                 SessionState& session_state) const {
-  std::unordered_map<std::string, uint64_t> compiled_kernel_hashes;
-
-  GraphPartitioner partitioner(kernel_registry_manager, providers);
-  ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state.ExportDll(),
-                                                       session_state.GetMutableFuncMgr(),
-                                                       GraphPartitioner::Mode::kOrtFormatLoad,
-                                                       &compiled_kernel_hashes));
-
 #if defined(ENABLE_ORT_FORMAT_LOAD)
-  if (!compiled_kernel_hashes.empty()) {
-    session_state.SetCompiledKernelHashes(std::move(compiled_kernel_hashes));
-  }
-#endif
 
-  return Status::OK();
-}
-
-Status InferenceSession::TransformGraphForOrtFormatModel(Graph& graph) {
-  const auto qdq_transformer = QDQSelectorActionTransformer();
-  bool modified = false;
-  ORT_RETURN_IF_ERROR(qdq_transformer.Apply(graph, modified, *session_logger_));
-  return Status::OK();
-}
-
-#endif
-
-#if defined(ENABLE_ORT_FORMAT_LOAD)
 template <typename T>
 static Status LoadOrtModelBytes(const std::basic_string<T>& model_uri,
                                 std::basic_string<ORTCHAR_T>& model_location,
@@ -1111,6 +1084,7 @@ Status InferenceSession::LoadOrtModel(std::function<Status()> load_ort_format_mo
 
   return Status::OK();
 }
+
 #endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
 bool InferenceSession::IsInitialized() const {
@@ -1174,8 +1148,29 @@ common::Status InferenceSession::AddPrePackedWeightsContainer(PrepackedWeightsCo
   return Status::OK();
 }
 
-namespace {
 #if defined(ENABLE_ORT_FORMAT_LOAD)
+namespace {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
+                               const ExecutionProviders& providers,
+                               KernelRegistryManager& kernel_registry_manager,
+                               SessionState& session_state) {
+  std::unordered_map<std::string, uint64_t> compiled_kernel_hashes;
+
+  GraphPartitioner partitioner(kernel_registry_manager, providers);
+  ORT_RETURN_IF_ERROR(partitioner.Partition(graph, session_state.ExportDll(),
+                                            session_state.GetMutableFuncMgr(),
+                                            GraphPartitioner::Mode::kOrtFormatLoad,
+                                            &compiled_kernel_hashes));
+
+  if (!compiled_kernel_hashes.empty()) {
+    session_state.SetCompiledKernelHashes(std::move(compiled_kernel_hashes));
+  }
+
+  return Status::OK();
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
 Status AssignNodesToEpsFromHashesImpl(Graph& graph, const fbs::SessionState& fbs_session_state,
                                       const KernelRegistryManager& kernel_registry_manager) {
   const auto* const fbs_sub_graph_session_states = fbs_session_state.sub_graph_session_states();
@@ -1229,8 +1224,43 @@ Status AssignNodesToEpsFromHashes(Graph& graph, const fbs::SessionState& fbs_ses
   ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph, logger));
   return Status::OK();
 }
-#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
+
+Status TransformGraphForOrtFormatModel(onnxruntime::Graph& graph, const ExecutionProviders& providers,
+                                       KernelRegistryManager& kernel_registry_manager,
+                                       SessionState& session_state,
+                                       const experimental::fbs::SessionState& serialized_session_state,
+                                       const logging::Logger& logger) {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  // nodes are already partitioned, but a custom EP may compile some at runtime.
+  // run the partitioning to allow that to happen.
+  //
+  // We always have the CPU EP, so only need to run this if some other EP is enabled
+  if (providers.NumProviders() > 1) {
+    ORT_RETURN_IF_ERROR(PartitionOrtFormatModel(graph, providers, kernel_registry_manager,
+                                                session_state));
+  }
+
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+  {
+    const auto runtime_transformers = std::vector<std::unique_ptr<GraphTransformer>>{};
+    // TODO enable transformers
+    //const auto runtime_transformers = optimizer_utils::GenerateOrtFormatRuntimeTransformers();
+    for (const auto& runtime_transformer : runtime_transformers) {
+      bool modified = false;
+      ORT_RETURN_IF_ERROR(runtime_transformer->Apply(graph, modified, logger));
+    }
+  }
+#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+  ORT_RETURN_IF_ERROR(AssignNodesToEpsFromHashes(graph, serialized_session_state,
+                                                 kernel_registry_manager, logger));
+
+  return Status::OK();
+}
 }  // namespace
+#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
 common::Status InferenceSession::Initialize() {
   Status status = Status::OK();
@@ -1372,24 +1402,14 @@ common::Status InferenceSession::Initialize() {
     } else
 #endif  // !defined(ORT_MINIMAL_BUILD)
     {
-      ORT_ENFORCE(loading_ort_format);
+      ORT_ENFORCE(loading_ort_format && serialized_session_state != nullptr);
 
 #if defined(ENABLE_ORT_FORMAT_LOAD)
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-      // nodes are already partitioned, but a custom EP may compile some at runtime.
-      // run the partitioning to allow that to happen.
-      //
-      // We always have the CPU EP, so only need to run this if some other EP is enabled
-      if (execution_providers_.NumProviders() > 1) {
-        ORT_RETURN_IF_ERROR_SESSIONID_(PartitionOrtFormatModel(graph, execution_providers_, kernel_registry_manager_,
-                                                               *session_state_));
-      }
-
-      ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraphForOrtFormatModel(graph));
-#endif
-
-      ORT_RETURN_IF_ERROR_SESSIONID_(
-          AssignNodesToEpsFromHashes(graph, *serialized_session_state, kernel_registry_manager_, *session_logger_));
+      ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraphForOrtFormatModel(graph, execution_providers_,
+                                                                     kernel_registry_manager_,
+                                                                     *session_state_,
+                                                                     *serialized_session_state,
+                                                                     *session_logger_));
 #else  // defined(ENABLE_ORT_FORMAT_LOAD)
       ORT_NOT_IMPLEMENTED("ORT format loading not enabled.");
 #endif
