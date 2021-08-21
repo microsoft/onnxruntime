@@ -111,19 +111,22 @@ def _build_package(args):
     # build framework for individual sysroot
     framework_dirs = []
     framework_info_path = ''
+    public_headers_path = ''
     for sysroot in build_settings['build_osx_archs']:
         framework_dir = _build_for_ios_sysroot(
             build_config, intermediates_dir, base_build_command, sysroot,
             build_settings['build_osx_archs'][sysroot], args.build_dynamic_framework)
         framework_dirs.append(framework_dir)
-        # podspec for each sysroot are the same, pick one of them
+        # podspec and headers for each sysroot are the same, pick one of them
         if not framework_info_path:
             framework_info_path = os.path.join(os.path.dirname(framework_dir), 'framework_info.json')
+            public_headers_path = os.path.join(os.path.dirname(framework_dir), 'onnxruntime.framework', 'Headers')
 
     # create the folder for xcframework and copy the LICENSE and podspec file
     xcframework_dir = os.path.join(build_dir, 'framework_out')
     pathlib.Path(xcframework_dir).mkdir(parents=True, exist_ok=True)
     shutil.copy(os.path.join(REPO_DIR, 'LICENSE'), xcframework_dir)
+    shutil.copytree(public_headers_path, os.path.join(xcframework_dir, 'Headers'), dirs_exist_ok=True)
     shutil.copy(framework_info_path, build_dir)
 
     # remove existing xcframework if any

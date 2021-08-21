@@ -10,6 +10,7 @@ Pod::Spec.new do |spec|
     spec.vendored_frameworks    = "onnxruntime.xcframework"
     spec.static_framework       = true
     spec.weak_framework         = [ @WEAK_FRAMEWORK@ ]
+    spec.source_files           = "Headers/*.h"
     spec.preserve_paths         = [ @LICENSE_FILE@ ]
     spec.description            = <<-DESC
     A pod for the ONNX Runtime Mobile C/C++ library.
