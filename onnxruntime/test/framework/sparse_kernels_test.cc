@@ -1676,7 +1676,6 @@ TEST(SparseTensorConversionTests, CooConversion) {
 #endif
 }
 #endif  // !ORT_MINIMAL_BUILD
-#endif  //  !defined(DISABLE_SPARSE_TENSORS)
 
 TEST(SparseTensorConversionTests, BlockSparse) {
   auto* cpu_provider = TestCPUExecutionProvider();
@@ -1803,5 +1802,7 @@ TEST(SparseTensorConversionTests, BlockSparse) {
                            indices_span.cbegin(), indices_span.cend()));
   }
 }
+#endif  //  !defined(DISABLE_SPARSE_TENSORS)
+
 }  // namespace test
 }  // namespace onnxruntime
