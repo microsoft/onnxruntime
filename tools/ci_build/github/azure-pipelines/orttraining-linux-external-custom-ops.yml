@@ -51,6 +51,7 @@ jobs:
     displayName: 'Build and Install custom ops python package'
     inputs:
       script: |
+         python3 -m pip install pybind11
          python3 -m pip install .
       workingDirectory: $(Build.BinariesDirectory)/Release/external_custom_ops
 
