@@ -36,7 +36,13 @@ jobs:
           onnxruntimecpubuildeagermode \
             /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
+              --config Debug Release \
+              --skip_submodule_sync \
+              --build_shared_lib \
+              --parallel \
               --build_eager_mode --enable_training --enable_pybind \
+              --enable_onnx_tests \
+              --build_java --build_nodejs --update --build
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
@@ -52,13 +58,15 @@ jobs:
          cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_eager_cpu.txt $(Build.BinariesDirectory)/requirements_torch_eager_cpu.txt
          python3 -m pip install -r $(Build.BinariesDirectory)/requirements_torch_eager_cpu.txt
          ln -sf /data/models $(Build.BinariesDirectory)
+         cd $(Build.SourcesDirectory)/java
+         /usr/local/gradle/bin/gradle "cmakeCheck" "-DcmakeBuildDir=$(Build.BinariesDirectory)/Release"
          
   - task: CmdLine@2
     displayName: 'Install Release python package'
     inputs:
       script: |
          rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
-         # python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
+         python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
 
   - task: CmdLine@2
     displayName: 'Run Release unit tests'
