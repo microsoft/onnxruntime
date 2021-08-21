@@ -1866,19 +1866,19 @@ if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
   add_compile_definitions(DEBUG_NODE_INPUTS_OUTPUTS)
 endif()
 
-if (NOT (CMAKE_SYSTEM_NAME STREQUAL "Linux") AND onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
-  message(FATAL_ERROR "External custom operator schemas feature is only supported on Linux")
-endif()
-
-if (NOT ${ONNX_CUSTOM_PROTOC_EXECUTABLE} STREQUAL "" AND onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
-  message(FATAL_ERROR "External custom operator schemas is not supported with the user specified protc executable")
-endif()
-
-if (NOT onnxruntime_ENABLE_TRAINING AND onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
-  message(FATAL_ERROR "External custom operator schemas is supported only with --enable-training option")
-endif()
-
 if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
+  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    message(FATAL_ERROR "External custom operator schemas feature is only supported on Linux")
+  endif()
+
+  if (NOT ${ONNX_CUSTOM_PROTOC_EXECUTABLE} STREQUAL "")
+    message(FATAL_ERROR "External custom operator schemas is not supported with the user specified protc executable")
+  endif()
+
+  if (NOT onnxruntime_ENABLE_TRAINING)
+    message(FATAL_ERROR "External custom operator schemas is supported only with --enable-training option")
+  endif()
+
   add_custom_target(install_protobuf ALL DEPENDS protobuf::libprotobuf  protobuf::protoc)
   add_custom_command(
     TARGET install_protobuf
@@ -1887,3 +1887,4 @@ if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
     COMMENT "Installing protobuf"
   )
 endif()
+
