@@ -1,3 +1,4 @@
+cmake_minimum_required(VERSION 3.20)
 project(orttraining_external_custom_ops)
 find_package(pybind11 REQUIRED)
 find_package(PythonInterp 3)
