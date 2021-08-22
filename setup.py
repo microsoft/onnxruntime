@@ -257,7 +257,8 @@ with open(README) as f:
 
 # Include files
 # Gather all files under onnxruntime/external directory.
-extra.extend(list(str(Path(*Path(x).parts[1:])) for x in list(iglob(path.join(path.join("onnxruntime","external"),'**/*.*'), recursive=True))))
+extra.extend(list(str(Path(*Path(x).parts[1:])) for x in list(iglob(
+    path.join(path.join("onnxruntime", "external"), '**/*.*'), recursive=True))))
 
 packages = [
     'onnxruntime',
