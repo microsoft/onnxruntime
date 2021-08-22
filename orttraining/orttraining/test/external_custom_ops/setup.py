@@ -19,7 +19,7 @@ class CMakeBuild(build_ext):
         subprocess.check_call(
             ["cmake",
              "-Dpybind11_DIR={}".format(pybind11.get_cmake_dir()),
-             "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={}".format(extdir), 
+             "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={}".format(extdir),
              ext.sourcedir], cwd=self.build_temp)
         subprocess.check_call(
             ["cmake", "--build", "."], cwd=self.build_temp
