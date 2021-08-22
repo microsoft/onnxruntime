@@ -541,7 +541,7 @@ def parse_arguments():
 
     parser.add_argument(
         "--enable_external_custom_op_schemas", action='store_true',
-        help="Expose ONNX symobols in python library and add necessary header files to the wheel to enable registering user defined custom operation schemas")
+        help="Enable registering user defined custom operation schemas at shared library load time")
 
     return parser.parse_args()
 
@@ -790,7 +790,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
         # enable custom operators in onnxruntime-extensions
         "-Donnxruntime_ENABLE_EXTENSION_CUSTOM_OPS=" + ("ON" if args.enable_onnxruntime_extensions else "OFF"),
-        "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS=" + ("ON" if args.enable_external_custom_op_schemas else "OFF"),
+        "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS=" + ("ON" if args.enable_external_custom_op_schemas
+                                                              else "OFF"),
     ]
     # It should be default ON in CI build pipelines, and OFF in packaging pipelines.
     # And OFF for the people who are not actively developing onnx runtime.
