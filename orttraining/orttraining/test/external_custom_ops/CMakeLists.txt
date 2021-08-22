@@ -8,17 +8,16 @@ add_compile_definitions(ONNX_NAMESPACE=onnx)
 add_compile_definitions(ONNX_USER_LITE_PROTO=ON)
 add_library(orttraining_external_custom_ops SHARED src/foo_op.cpp)
 
-if ("${PYTHON_SITE_PACKAGES}" STREQUAL "")
-  execute_process ( COMMAND python -c "from distutils.sysconfig import get_python_lib; print(get_python_lib())"
-                    OUTPUT_VARIABLE PYTHON_SITE_PACKAGES
+if ("${ONNXRUNTIME_EXTERNAL_INCLUDE}" STREQUAL "")
+  execute_process ( COMMAND python -c "import os; import onnxruntime; print(os.path.join(os.path.join(os.path.dirname(onnxruntime.__file__), 'external'), 'include'))"
+                    OUTPUT_VARIABLE ONNXRUNTIME_EXTERNAL_INCLUDE
                     OUTPUT_STRIP_TRAILING_WHITESPACE)
 endif()
 
-if ("${ONNX_INCLUDE_DIR}" STREQUAL "")
-  execute_process ( COMMAND python -c "import os;import onnx; print(os.path.dirname(os.path.dirname(onnx.__file__)))"
-                    OUTPUT_VARIABLE ONNX_INCLUDE_DIR
+if ("${ONNX_INCLUDE}" STREQUAL "")
+  execute_process ( COMMAND python -c "import os; import onnx; print(os.path.dirname(os.path.dirname(onnx.__file__)))"
+                    OUTPUT_VARIABLE ONNX_INCLUDE
                     OUTPUT_STRIP_TRAILING_WHITESPACE)
 endif()
-
-target_include_directories(orttraining_external_custom_ops PUBLIC ${ONNX_INCLUDE_DIR} ${PYTHON_SITE_PACKAGES}/onnxruntime/external/include/)
+target_include_directories(orttraining_external_custom_ops PUBLIC ${ONNX_INCLUDE} ${ONNXRUNTIME_EXTERNAL_INCLUDE})
 pybind11_add_module(orttraining_external_custom_ops src/foo_op.cpp)
