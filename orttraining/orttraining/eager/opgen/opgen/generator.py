@@ -449,15 +449,15 @@ class ORTGen:
     # Parse the Torch schema from the JSON comment that follows each C++ decl
     # and link associated Torch and C++ decls (functions, parameters, returns)
     for cpp_func in tu:
-      if cpp_func.semicolon and cpp_func.semicolon.trailing_trivia:
+      if self._custom_ops == True:
+        # customops don't have torch schema
+        cpp_func.torch_func = None
+        yield cpp_func
+      elif cpp_func.semicolon and cpp_func.semicolon.trailing_trivia:
         for trivia in cpp_func.semicolon.trailing_trivia:
           if trivia.kind == lexer.TokenKind.SINGLE_LINE_COMMENT:
             yield self._parse_and_link_torch_function_decl(cpp_func, trivia)
             break
-      # customops don't have torch schema
-      elif self._custom_ops == True:
-        cpp_func.torch_func = None
-        yield cpp_func
 
   def _parse_and_link_torch_function_decl(
     self,
