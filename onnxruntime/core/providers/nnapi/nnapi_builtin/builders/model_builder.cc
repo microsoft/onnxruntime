@@ -284,8 +284,6 @@ Status ModelBuilder::RegisterInitializers() {
     std::vector<uint8_t> unpacked_tensor;
     switch (tensor.data_type()) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-        src = reinterpret_cast<const uint8_t*>(GetTensorFloatData(tensor));
-        break;
       case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
         ORT_RETURN_IF_ERROR(
             onnxruntime::utils::UnpackInitializerData(tensor, graph_viewer_.ModelPath(), unpacked_tensor));
