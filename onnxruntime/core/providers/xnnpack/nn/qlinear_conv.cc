@@ -8,6 +8,11 @@
 #include "core/providers/common.h"
 #include <xnnpack.h>
 
+#ifdef PROFILE
+#include <iostream>
+#include <chrono>
+#endif
+
 namespace onnxruntime {
 namespace xnnpack_ep {
 class QLinearConv : public OpKernel {
@@ -110,6 +115,10 @@ class QLinearConv : public OpKernel {
 };
 
 Status QLinearConv::Compute(OpKernelContext* context) const {
+#ifdef PROFILE
+  auto start = std::chrono::steady_clock::now();
+#endf
+
   const Tensor* X = context->Input<Tensor>(0);
   const Tensor* W = context->Input<Tensor>(3);
   const auto& W_shape = W->Shape();
@@ -208,13 +217,29 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
         Wdata, Bdata,
         Y_zero_point_value, Y_scale_value,
         0, 255,
-        0 /* flags */,
+        group_input_channels == 1 && group_output_channels == 1 ? XNN_FLAG_DEPTHWISE_CONVOLUTION : 0 /* flags */,
         &conv_op);
     ORT_ENFORCE(status == xnn_status_success);
   }
 
+#ifdef PROFILE
+  auto start_setup = std::chrono::steady_clock::now();
+#endif
   ORT_ENFORCE(xnn_status_success == xnn_setup_convolution2d_nhwc_qu8(conv_op, N, input_shape[0], input_shape[1], Xdata, Ydata, nullptr));
+
+#ifdef PROFILE
+  auto start_run = std::chrono::steady_clock::now();
+#endif
+
   ORT_ENFORCE(xnn_status_success == xnn_run_operator(conv_op, nullptr));
+  
+#ifdef PROFILE
+  auto end = std::chrono::steady_clock::now();
+  std::cout << Node().Name()
+            << "C:" << std::chrono::duration<double, std::milli>(start_setup - start).count()
+            << ", S:" << std::chrono::duration<double, std::milli>(start_run - start_setup).count()
+            << ", R:" << std::chrono::duration<double, std::milli>(end - start_run).count() << std::endl;
+#endif
 
   return Status::OK();
 }
