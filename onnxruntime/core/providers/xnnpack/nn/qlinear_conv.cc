@@ -44,6 +44,8 @@ class QLinearConv : public OpKernel {
     auto W_zero_point_value = *(W_zero_point->template Data<uint8_t>());
     auto Y_zero_point_value = *(Y_zero_point->template Data<uint8_t>());
 
+    (void)W_zero_point_value;
+
     const Tensor* X_scale;
     const Tensor* W_scale;
     const Tensor* Y_scale;
@@ -82,7 +84,7 @@ class QLinearConv : public OpKernel {
     const auto* Wdata = W->Data<uint8_t>();
     const auto* Bdata = B != nullptr ? B->template Data<int32_t>() : nullptr;
 
-    auto status = xnn_create_convolution2d_nhwc_qu8(
+    auto status = xnn_create_convolution2d_nhwc_qs8(
         static_cast<uint32_t>(pads[0]),
         static_cast<uint32_t>(pads[3]),
         static_cast<uint32_t>(pads[2]),
@@ -98,11 +100,14 @@ class QLinearConv : public OpKernel {
         static_cast<size_t>(group_output_channels),
         static_cast<size_t>(C * group_count),
         static_cast<size_t>(M),
-        X_zero_point_value, X_scale_value,
-        W_zero_point_value, W_scale_value,
-        Wdata, Bdata,
-        Y_zero_point_value, Y_scale_value,
-        0, 255,
+        static_cast<int8_t>(X_zero_point_value),
+        X_scale_value,
+        W_scale_value,
+        reinterpret_cast<const int8_t*>(Wdata),
+        Bdata,
+        static_cast<int8_t>(Y_zero_point_value),
+        Y_scale_value,
+        -127, 127,
         0 /* flags */,
         &conv_op_);
     ORT_ENFORCE(status == xnn_status_success);
@@ -117,7 +122,7 @@ class QLinearConv : public OpKernel {
 Status QLinearConv::Compute(OpKernelContext* context) const {
 #ifdef PROFILE
   auto start = std::chrono::steady_clock::now();
-#endf
+#endif
 
   const Tensor* X = context->Input<Tensor>(0);
   const Tensor* W = context->Input<Tensor>(3);
@@ -134,6 +139,8 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
   auto X_zero_point_value = *(X_zero_point->template Data<uint8_t>());
   auto W_zero_point_value = *(W_zero_point->template Data<uint8_t>());
   auto Y_zero_point_value = *(Y_zero_point->template Data<uint8_t>());
+
+  (void)W_zero_point_value;
 
   const Tensor* X_scale = context->Input<Tensor>(1);
   const Tensor* W_scale = context->Input<Tensor>(4);
@@ -196,7 +203,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
 
   xnn_operator_t conv_op = conv_op_;
   if (conv_op == nullptr) {
-    auto status = xnn_create_convolution2d_nhwc_qu8(
+    auto status = xnn_create_convolution2d_nhwc_qs8(
         static_cast<uint32_t>(pads[0]),
         static_cast<uint32_t>(pads[3]),
         static_cast<uint32_t>(pads[2]),
@@ -212,11 +219,14 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
         static_cast<size_t>(group_output_channels),
         static_cast<size_t>(C * group_count),
         static_cast<size_t>(M),
-        X_zero_point_value, X_scale_value,
-        W_zero_point_value, W_scale_value,
-        Wdata, Bdata,
-        Y_zero_point_value, Y_scale_value,
-        0, 255,
+        static_cast<int8_t>(X_zero_point_value),
+        X_scale_value,
+        W_scale_value,
+        reinterpret_cast<const int8_t*>(Wdata),
+        Bdata,
+        static_cast<int8_t>(Y_zero_point_value),
+        Y_scale_value,
+        -127, 127,
         group_input_channels == 1 && group_output_channels == 1 ? XNN_FLAG_DEPTHWISE_CONVOLUTION : 0 /* flags */,
         &conv_op);
     ORT_ENFORCE(status == xnn_status_success);
@@ -225,14 +235,18 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
 #ifdef PROFILE
   auto start_setup = std::chrono::steady_clock::now();
 #endif
-  ORT_ENFORCE(xnn_status_success == xnn_setup_convolution2d_nhwc_qu8(conv_op, N, input_shape[0], input_shape[1], Xdata, Ydata, nullptr));
+  ORT_ENFORCE(xnn_status_success == xnn_setup_convolution2d_nhwc_qs8(
+                                        conv_op,
+                                        N, input_shape[0], input_shape[1],
+                                        reinterpret_cast<const int8_t*>(Xdata),
+                                        reinterpret_cast<int8_t*>(Ydata), nullptr));
 
 #ifdef PROFILE
   auto start_run = std::chrono::steady_clock::now();
 #endif
 
   ORT_ENFORCE(xnn_status_success == xnn_run_operator(conv_op, nullptr));
-  
+
 #ifdef PROFILE
   auto end = std::chrono::steady_clock::now();
   std::cout << Node().Name()
