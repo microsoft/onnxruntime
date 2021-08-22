@@ -4,6 +4,7 @@ from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext
 from subprocess import CalledProcessError
 import pybind11
+import onnx
 
 class CMakeExtension(Extension):
     def __init__(self, name, sourcedir=""):
@@ -19,6 +20,7 @@ class CMakeBuild(build_ext):
         subprocess.check_call(
             ["cmake",
              "-Dpybind11_DIR={}".format(pybind11.get_cmake_dir()),
+             "-DONNX_INCLUDE_DIR={}".format(os.path.dirname(os.path.dirname(onnx.__file__))),
              "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={}".format(extdir),
              ext.sourcedir], cwd=self.build_temp)
         subprocess.check_call(
