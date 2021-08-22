@@ -32,7 +32,7 @@ jobs:
           onnxruntimecpubuild \
             /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build \
-              --config Release \
+              --config Debug Release \
               --parallel \
               --build_wheel \
               --skip_tests \
