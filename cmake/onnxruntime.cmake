@@ -16,11 +16,12 @@ endif()
 
 # This macro is to get the path of header files for mobile packaging, for iOS and Android
 macro(get_mobile_api_headers _HEADERS)
-  # include both c and cxx api
+  # include both c and cxx api, and stubs to provide graceful error if EP is not included in build 
   set(${_HEADERS}
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_c_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_inline.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/provider_stubs.h"
   )
 
   # need to add header files for enabled EPs
