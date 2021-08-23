@@ -668,7 +668,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #if !defined(__APPLE__)
       LOGS_DEFAULT(WARNING) << "CoreML execution provider can only be used to generate ORT format model in this build.";
 #endif
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CoreML(0));
+      return onnxruntime::CreateExecutionProviderFactory_CoreML(0)->CreateProvider();
 #endif
   } else {
     // check whether it is a dynamic load EP:
