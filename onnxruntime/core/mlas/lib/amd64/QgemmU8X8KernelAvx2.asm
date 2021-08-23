@@ -277,9 +277,31 @@ ComputeBlockU8S8AvxVnni MACRO ColumnCount, RowCount, VectorOffset, BroadcastOffs
 
 ComputeBlockLoopU8S8 MACRO Isa, ColumnCount, RowCount
 
+        LOCAL   ComputeBlockBy4Loop
+        LOCAL   ProcessRemainingBlocks
         LOCAL   ComputeBlockBy1Loop
+        LOCAL   ComputeBlockLoopExit
 
         mov     rsi,r9                      ; reload row length remaining
+
+IF (ColumnCount EQ 16) AND (RowCount EQ 1)
+        sub     rsi,4*4
+        jb      ProcessRemainingBlocks
+
+ComputeBlockBy4Loop:
+        ComputeBlockU8S8&Isa& ColumnCount, RowCount, 0*64, 0
+        ComputeBlockU8S8&Isa& ColumnCount, RowCount, 1*64, 4
+        ComputeBlockU8S8&Isa& ColumnCount, RowCount, 2*64, 8
+        ComputeBlockU8S8&Isa& ColumnCount, RowCount, 3*64, 12
+        add     rcx,4*4                     ; advance matrix A by 4 quads
+        add     rdx,4*64                    ; advance matrix B
+        sub     rsi,4*4
+        jae     ComputeBlockBy4Loop
+
+ProcessRemainingBlocks:
+        add     rsi,4*4                     ; correct for over-subtract above
+        jz      ComputeBlockLoopExit
+ENDIF
 
 ComputeBlockBy1Loop:
         ComputeBlockU8S8&Isa& ColumnCount, RowCount, 0, 0
@@ -290,6 +312,8 @@ ENDIF
         add     rdx,64                      ; advance matrix B
         sub     rsi,4
         jnz     ComputeBlockBy1Loop
+
+ComputeBlockLoopExit:
 
         ENDM
 

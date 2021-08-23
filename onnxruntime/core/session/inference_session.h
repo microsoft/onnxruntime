@@ -316,12 +316,15 @@ class InferenceSession {
     * @param state State of the graph needed to resume partial graph run.
     * @param feeds_fetches_manager Contains feed/fetches name to internal indices mapping and information for device
     *                              copy/checks.
+    * @param cache Contains node arg name to OrtValue map stashed from previous run
+    *              for frontier tensors
   */
   common::Status PartialRun(onnxruntime::RunOptions& run_options,
                             const std::vector<OrtValue>& feeds,
                             std::vector<OrtValue>& fetches,
                             PartialGraphExecutionState& state,
-                            FeedsFetchesManager& feeds_fetches_manager);
+                            FeedsFetchesManager& feeds_fetches_manager,
+                            const OrtValueCachePtr& cache);
 #endif
 
   /**

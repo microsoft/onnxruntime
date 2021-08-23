@@ -9,16 +9,6 @@ parameters:
   type: boolean
   default: false
 
-- name: IsReleaseBuild
-  displayName: Is a release build? Set it to true if you are doing an Onnx Runtime release.
-  type: boolean
-  default: false
-
-- name: OrtNugetPackageId
-  displayName: Package name for nuget
-  type: string
-  default: 'Microsoft.ML.OnnxRuntime'
-
 - name: EnvSetupScript
   displayName: Package name for nuget
   type: string
@@ -63,7 +53,7 @@ parameters:
   default: 'onnxruntime'
 
 jobs:
-- job: Windows_Packaging_CPU_${{ parameters.job_name_suffix }}
+- job: Windows_Packaging_${{ parameters.job_name_suffix }}
   workspace:
     clean: all
   pool: ${{ parameters.ort_build_pool_name }}
@@ -252,7 +242,7 @@ jobs:
       #Manually set msBuildCommandline so that we can also set CAExcludePath
       - task: SDLNativeRules@3
         displayName: 'Run the PREfast SDL Native Rules for MSBuild'
-        condition: and (succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['PythonVersion'], '3.7')))
+        condition: and (succeeded(), eq(variables['msbuildPlatform'], 'x64'))
         inputs:
           msBuildArchitecture: amd64
           setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019"  --build_shared_lib --enable_onnx_tests  $(TelemetryOption) ${{ parameters.buildparameter }} --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
