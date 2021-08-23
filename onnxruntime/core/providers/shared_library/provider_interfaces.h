@@ -228,6 +228,14 @@ struct ProviderHost {
 
   // Utils::DataTypeUtils
   virtual const std::string* Utils__DataTypeUtils__ToType(const ONNX_NAMESPACE::TypeProto& type_proto) = 0;
+  virtual std::vector<std::unique_ptr<ComputeCapability>> utils__CreateSupportedPartitions(
+    const GraphViewer& graph_viewer,
+    const std::unordered_set<const Node*>& supported_nodes,
+    const std::unordered_set<std::string>& stop_ops,
+    //const GenerateMetadefNameFn& generate_metadef_name,
+    const std::function<std::string()>& generate_metadef_name,
+    const std::string& execution_provider_name,
+    bool debug_output = false) = 0; 
 
   // int64s
   virtual int int64s__size(const ONNX_NAMESPACE::int64s* p) = 0;
@@ -310,6 +318,7 @@ struct ProviderHost {
   virtual void TensorProto__operator_delete(ONNX_NAMESPACE::TensorProto* p) = 0;
   virtual void TensorProto__operator_assign(ONNX_NAMESPACE::TensorProto* p, const ONNX_NAMESPACE::TensorProto& v) = 0;
   virtual bool TensorProto__has_name(const ONNX_NAMESPACE::TensorProto* p) = 0;
+  virtual const std::string& TensorProto__name(const ONNX_NAMESPACE::TensorProto* p) = 0; 
   virtual int TensorProto__dims_size(const ONNX_NAMESPACE::TensorProto* p) = 0;
   virtual const ONNX_NAMESPACE::int64s& TensorProto__dims(const ONNX_NAMESPACE::TensorProto* p) = 0;
   virtual bool TensorProto__has_data_location(const ONNX_NAMESPACE::TensorProto* p) = 0;
@@ -568,15 +577,24 @@ struct ProviderHost {
 
   virtual NodeArg& Graph__GetOrCreateNodeArg(Graph* p, const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) = 0;
 
+  virtual void Graph__AddOuterScopeNodeArg(Graph* p, const std::string& name) = 0;
+  virtual bool Graph__IsOuterScopeValue(const Graph* p, const std::string& name) = 0;
+
   virtual Status Graph__Resolve(Graph* p) = 0;
   virtual void Graph__AddInitializedTensor(Graph* p, const ONNX_NAMESPACE::TensorProto& tensor) = 0;
   virtual Node& Graph__AddNode(Graph* p, const std::string& name, const std::string& op_type, const std::string& description, const std::vector<NodeArg*>& input_args, const std::vector<NodeArg*>& output_args, const NodeAttributes* attributes, const std::string& domain) = 0;
+  virtual Node& Graph__AddNode(Graph* p, const Node& other) = 0;
 
   virtual const std::vector<const NodeArg*>& Graph__GetOutputs(const Graph* p) noexcept = 0;
   virtual void Graph__SetOutputs(Graph* p, const std::vector<const NodeArg*>& outputs) = 0;
+  virtual void Graph__SetInputs(Graph* p, const std::vector<const NodeArg*>& inputs) = 0;
 
   virtual const std::vector<const NodeArg*>& Graph__GetInputs(const Graph* p) noexcept = 0;
   virtual bool Graph__GetInitializedTensor(const Graph* p, const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) = 0;
+
+  virtual const std::string& Graph__Name(const Graph* p) noexcept = 0;
+  virtual const Graph* Graph__ParentGraph(const Graph* p) = 0;
+  virtual bool Graph__IsSubgraph(const Graph* p) = 0;
 
   // GraphViewer
   virtual void GraphViewer__operator_delete(GraphViewer* p) = 0;
@@ -589,6 +607,7 @@ struct ProviderHost {
   virtual const NodeArg* GraphViewer__GetNodeArg(const GraphViewer* p, const std::string& name) = 0;
 
   virtual bool GraphViewer__IsSubgraph(const GraphViewer* p) = 0;
+  virtual const Graph& GraphViewer__GetGraph(const GraphViewer* p) = 0;
   virtual bool GraphViewer__IsConstantInitializer(const GraphViewer* p, const std::string& name, bool check_outer_scope) = 0;
   virtual int GraphViewer__NumberOfNodes(const GraphViewer* p) noexcept = 0;
   virtual int GraphViewer__MaxNodeIndex(const GraphViewer* p) noexcept = 0;

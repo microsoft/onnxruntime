@@ -138,6 +138,7 @@ struct TensorProto final {
   void operator=(const TensorProto& v) { g_host->TensorProto__operator_assign(this, v); }
 
   bool has_name() const { return g_host->TensorProto__has_name(this); }
+  const std::string& name() const {return g_host->TensorProto__name(this); } 
 
   int dims_size() const { return g_host->TensorProto__dims_size(this); }
   const int64s& dims() const { return g_host->TensorProto__dims(this); }
@@ -264,7 +265,14 @@ namespace onnxruntime {
 
 namespace utils {
 bool IsDataTypeString(MLDataType dt_type);
-
+  inline std::vector<std::unique_ptr<ComputeCapability>> CreateSupportedPartitions(
+    const GraphViewer& graph_viewer,
+    const std::unordered_set<const Node*>& supported_nodes,
+    const std::unordered_set<std::string>& stop_ops,
+    //const GenerateMetadefNameFn& generate_metadef_name,
+    const std::function<std::string()>& generate_metadef_name,
+    const std::string& execution_provider_name,
+    bool debug_output = false) { return g_host->utils__CreateSupportedPartitions(graph_viewer, supported_nodes, stop_ops, generate_metadef_name, execution_provider_name, debug_output); }
 }  // namespace utils
 
 namespace Utils {
@@ -611,16 +619,25 @@ struct Graph final {
 
   NodeArg& GetOrCreateNodeArg(const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) { return g_host->Graph__GetOrCreateNodeArg(this, name, p_arg_type); }
 
+  void AddOuterScopeNodeArg(const std::string& name) { return g_host->Graph__AddOuterScopeNodeArg(this, name); }
+  bool IsOuterScopeValue(const std::string& name) const { return g_host->Graph__IsOuterScopeValue(this, name); }
+
   Status Resolve() { return g_host->Graph__Resolve(this); }
   void AddInitializedTensor(const ONNX_NAMESPACE::TensorProto& tensor) { return g_host->Graph__AddInitializedTensor(this, tensor); }
   Node& AddNode(const std::string& name, const std::string& op_type, const std::string& description, const std::vector<NodeArg*>& input_args, const std::vector<NodeArg*>& output_args, const NodeAttributes* attributes, const std::string& domain) { return g_host->Graph__AddNode(this, name, op_type, description, input_args, output_args, attributes, domain); }
+  Node& AddNode(const Node& other) { return g_host->Graph__AddNode(this, other); }
 
   const std::vector<const NodeArg*>& GetOutputs() const noexcept { return g_host->Graph__GetOutputs(this); }
   void SetOutputs(const std::vector<const NodeArg*>& outputs) { return g_host->Graph__SetOutputs(this, outputs); }
+  void SetInputs(const std::vector<const NodeArg*>& inputs) { return g_host->Graph__SetInputs(this, inputs); }
 
   const std::vector<const NodeArg*>& GetInputs() const noexcept { return g_host->Graph__GetInputs(this); }
 
   bool GetInitializedTensor(const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) const { return g_host->Graph__GetInitializedTensor(this, tensor_name, value); }
+
+  const std::string& Name() const noexcept { return g_host->Graph__Name(this); }
+  const Graph* ParentGraph() const { return g_host->Graph__ParentGraph(this); }
+  bool IsSubgraph() const { return g_host->Graph__IsSubgraph(this); }
 
   PROVIDER_DISALLOW_ALL(Graph)
 };
@@ -637,6 +654,7 @@ struct GraphViewer final {
   const NodeArg* GetNodeArg(const std::string& name) const { return g_host->GraphViewer__GetNodeArg(this, name); }
 
   bool IsSubgraph() const { return g_host->GraphViewer__IsSubgraph(this); }
+  const Graph& GetGraph() const { return g_host->GraphViewer__GetGraph(this); }
   bool IsConstantInitializer(const std::string& name, bool check_outer_scope) const { return g_host->GraphViewer__IsConstantInitializer(this, name, check_outer_scope); }
 
   int NumberOfNodes() const noexcept { return g_host->GraphViewer__NumberOfNodes(this); }

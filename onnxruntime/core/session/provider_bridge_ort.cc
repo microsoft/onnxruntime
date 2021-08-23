@@ -26,6 +26,7 @@
 #include "core/util/math.h"
 #include "core/framework/sparse_utils.h"
 #include "core/common/string_helper.h"
+#include "core/providers/partitioning_utils.h"
 
 #ifdef ENABLE_TRAINING
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
@@ -280,6 +281,15 @@ struct ProviderHostImpl : ProviderHost {
   // Utils::DataTypeUtils (wrapped)
   const std::string* Utils__DataTypeUtils__ToType(const ONNX_NAMESPACE::TypeProto& type_proto) override { return ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(type_proto); }
 
+  std::vector<std::unique_ptr<ComputeCapability>> utils__CreateSupportedPartitions(
+    const GraphViewer& graph_viewer,
+    const std::unordered_set<const Node*>& supported_nodes,
+    const std::unordered_set<std::string>& stop_ops,
+    //const GenerateMetadefNameFn& generate_metadef_name,
+    const std::function<std::string()>& generate_metadef_name,
+    const std::string& execution_provider_name,
+    bool debug_output = false) { return onnxruntime::utils::CreateSupportedPartitions(graph_viewer, supported_nodes, stop_ops, generate_metadef_name, execution_provider_name, debug_output); }
+
   // int64s (wrapped)
   int int64s__size(const ONNX_NAMESPACE::int64s* p) override { return p->size(); }
   const int64_t& int64s__Get(const ONNX_NAMESPACE::int64s* p, int index) override { return p->Get(index); }
@@ -371,6 +381,7 @@ struct ProviderHostImpl : ProviderHost {
   void TensorProto__operator_delete(ONNX_NAMESPACE::TensorProto* p) override { delete p; }
   void TensorProto__operator_assign(ONNX_NAMESPACE::TensorProto* p, const ONNX_NAMESPACE::TensorProto& v) override { *p = v; }
   bool TensorProto__has_name(const ONNX_NAMESPACE::TensorProto* p) override { return p->has_name(); }
+  const std::string& TensorProto__name(const ONNX_NAMESPACE::TensorProto* p) override { return p->name(); } 
   int TensorProto__dims_size(const ONNX_NAMESPACE::TensorProto* p) override { return p->dims_size(); }
   const ONNX_NAMESPACE::int64s& TensorProto__dims(const ONNX_NAMESPACE::TensorProto* p) override { return p->dims(); }
   bool TensorProto__has_data_location(const ONNX_NAMESPACE::TensorProto* p) override { return p->has_data_location(); }
@@ -644,17 +655,26 @@ struct ProviderHostImpl : ProviderHost {
 
   NodeArg& Graph__GetOrCreateNodeArg(Graph* p, const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) override { return p->GetOrCreateNodeArg(name, p_arg_type); }
 
+  void Graph__AddOuterScopeNodeArg(Graph* p, const std::string& name) override { return p->AddOuterScopeNodeArg(name); }
+  bool Graph__IsOuterScopeValue(const Graph* p, const std::string& name) override { return p->IsOuterScopeValue(name); }
+
   Status Graph__Resolve(Graph* p) override { return p->Resolve(); }
   void Graph__AddInitializedTensor(Graph* p, const ONNX_NAMESPACE::TensorProto& tensor) override { p->AddInitializedTensor(tensor); }
   Node& Graph__AddNode(Graph* p, const std::string& name, const std::string& op_type, const std::string& description, const std::vector<NodeArg*>& input_args, const std::vector<NodeArg*>& output_args, const NodeAttributes* attributes, const std::string& domain) override {
     return p->AddNode(name, op_type, description, input_args, output_args, attributes, domain);
   }
+  Node& Graph__AddNode(Graph* p, const Node& other) override { return p->AddNode(other); } 
 
   const std::vector<const NodeArg*>& Graph__GetOutputs(const Graph* p) noexcept override { return p->GetOutputs(); }
   void Graph__SetOutputs(Graph* p, const std::vector<const NodeArg*>& outputs) override { p->SetOutputs(outputs); }
+  void Graph__SetInputs(Graph* p, const std::vector<const NodeArg*>& inputs) override { p->SetInputs(inputs); }
 
   const std::vector<const NodeArg*>& Graph__GetInputs(const Graph* p) noexcept override { return p->GetInputs(); }
   bool Graph__GetInitializedTensor(const Graph* p, const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) override { return p->GetInitializedTensor(tensor_name, value); }
+
+  const std::string& Graph__Name(const Graph* p) noexcept override { return p->Name(); }
+  const Graph* Graph__ParentGraph(const Graph* p) override { return p->ParentGraph(); }
+  bool Graph__IsSubgraph(const Graph* p) override { return p->IsSubgraph(); }
 
   // GraphViewer (wrapped)
   void GraphViewer__operator_delete(GraphViewer* p) override { delete p; }
@@ -671,6 +691,7 @@ struct ProviderHostImpl : ProviderHost {
   const NodeArg* GraphViewer__GetNodeArg(const GraphViewer* p, const std::string& name) override { return p->GetNodeArg(name); }
 
   bool GraphViewer__IsSubgraph(const GraphViewer* p) override { return p->IsSubgraph(); }
+  const Graph& GraphViewer__GetGraph(const GraphViewer* p) override { return p->GetGraph(); }
   bool GraphViewer__IsConstantInitializer(const GraphViewer* p, const std::string& name, bool check_outer_scope) override { return p->IsConstantInitializer(name, check_outer_scope); }
   int GraphViewer__NumberOfNodes(const GraphViewer* p) noexcept override { return p->NumberOfNodes(); }
   int GraphViewer__MaxNodeIndex(const GraphViewer* p) noexcept override { return p->MaxNodeIndex(); }

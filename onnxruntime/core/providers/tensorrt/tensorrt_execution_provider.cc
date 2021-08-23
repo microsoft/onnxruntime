@@ -21,6 +21,7 @@
 #include <memory>
 #include "flatbuffers/idl.h"
 #include "ort_trt_int8_cal_table.fbs.h"
+#include <iostream> 
 
 #ifdef _WIN32
 #include <windows.h>
@@ -589,6 +590,7 @@ AllocatorPtr TensorrtExecutionProvider::GetAllocator(int id, OrtMemType mem_type
   }
 }
 
+/*
 void TensorrtExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) {
   allocator_ = allocator_manager->GetAllocator(device_id_, OrtMemTypeDefault);
   if (nullptr == allocator_) {
@@ -610,6 +612,56 @@ void TensorrtExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManag
     allocator_manager->InsertAllocator(cuda_pinned_alloc);
   }
   TryInsertAllocator(cuda_pinned_alloc);
+}
+*/
+
+void TensorrtExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) {
+  // Try to get a CUDA allocator from allocator manager first
+  // Used to allocate CUDA device memory
+  allocator_ = allocator_manager->GetAllocator(device_id_, OrtMemTypeDefault);
+  if (nullptr == allocator_) {
+    AllocatorCreationInfo default_memory_info(
+        [](OrtDevice::DeviceId device_id) { return CreateCUDAAllocator(device_id, onnxruntime::CUDA); }, device_id_);
+    allocator_ = CreateAllocator(default_memory_info);
+    allocator_manager->InsertAllocator(allocator_);
+  }
+  TryInsertAllocator(allocator_);
+
+  // OrtMemTypeCPUOutput -- allocated by cudaMallocHost, used to copy CUDA device memory to CPU
+  // Use pinned memory instead of pageable memory make the data transfer faster
+  // Used by node MemcpyToHost only
+  auto cuda_pinned_alloc = allocator_manager->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUOutput);
+  if (nullptr == cuda_pinned_alloc) {
+    AllocatorCreationInfo pinned_memory_info(
+        [](OrtDevice::DeviceId device_id) {
+          return CreateCUDAPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
+        },
+        DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
+
+    cuda_pinned_alloc = CreateAllocator(pinned_memory_info);
+    allocator_manager->InsertAllocator(cuda_pinned_alloc);
+  }
+  TryInsertAllocator(cuda_pinned_alloc);
+
+  auto cuda_cpu_alloc = allocator_manager->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUInput);
+  if (nullptr == cuda_cpu_alloc) {
+    // TODO: this is actually used for the cuda kernels which explicitly ask for inputs from CPU.
+    // This will be refactored/removed when allocator and execution provider are decoupled.
+    // Need to move the OrtMemoryType out of Allocator, that's one thing blocking us to share it with CPU EP
+    // CPUAllocator is OrtMemTypeDefault for CPU EP
+    AllocatorCreationInfo cpu_memory_info(
+        [](int device_id) {
+          return std::make_unique<CPUAllocator>(
+              OrtMemoryInfo("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
+                            OrtMemTypeCPUInput));
+        },
+        DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
+
+    cuda_cpu_alloc = CreateAllocator(cpu_memory_info);
+    allocator_manager->InsertAllocator(cuda_cpu_alloc);
+  }
+  TryInsertAllocator(cuda_cpu_alloc);
+
 }
 
 std::unique_ptr<IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() const {
@@ -820,18 +872,29 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         // Add node and node args
         // If node output is also parent graph output, the  output will be added to the
         // subgraph's output list
+
+        // Add outer scope initializer to the graph build
         std::vector<std::string> subgraph_output_names;
+        //std::vector<const onnxruntime::NodeArg*> graph_inputs;
         for (const auto& index : group.first) {
           const auto& node = graph.GetNode(node_index[index]);
-          std::vector<onnxruntime::NodeArg*> inputs, outputs;
           for (auto input : node->InputDefs()) {
-            auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
-            inputs.push_back(&n_input);
             const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
             if (graph.GetInitializedTensor(input->Name(), initializer)) {
               const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
               if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
                 graph_build.AddInitializedTensor(*(initializer));
+              }
+            } else {
+              const Graph* cur_graph = &graph.GetGraph();
+              while (cur_graph->IsSubgraph()) {
+                cur_graph = cur_graph->ParentGraph();
+                if (cur_graph->GetInitializedTensor(input->Name(), initializer)) {
+                  const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
+                  if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
+                    graph_build.AddInitializedTensor(*(initializer));
+                  }
+                }
               }
             }
           }
@@ -843,17 +906,49 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
               if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
                 graph_build.AddInitializedTensor(*(initializer));
               }
+            } else {
+              const Graph* cur_graph = &graph.GetGraph();
+              while (cur_graph->IsSubgraph()) {
+                cur_graph = cur_graph->ParentGraph();
+                if (cur_graph->GetInitializedTensor(input->Name(), initializer)) {
+                  const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
+                  if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
+                    graph_build.AddInitializedTensor(*(initializer));
+                  }
+                }
+              }
             }
           }
+
+          // Add outer scope inputs to the graph build
+          const Graph* cur_graph = &graph.GetGraph();
+          if (cur_graph->IsSubgraph()) {
+            for (auto input : node->InputDefs()) {
+              if (cur_graph->IsOuterScopeValue(input->Name())) {
+                graph_build.AddOuterScopeNodeArg(input->Name());
+                //auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
+                //graph_inputs.push_back(&n_input);
+              }
+            }
+            for (auto input : node->ImplicitInputDefs()) {
+              if (cur_graph->IsOuterScopeValue(input->Name())) {
+                graph_build.AddOuterScopeNodeArg(input->Name());
+                //auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
+                //graph_inputs.push_back(&n_input);
+              }
+            }
+          }
+
+          // Find node outputs that are also graph outputs 
           for (auto output : node->OutputDefs()) {
-            auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
-            outputs.push_back(&n_output);
             const auto name = output->Name();
             if (graph_output_names.find(name) != graph_output_names.end()) {
               subgraph_output_names.push_back(name);
             }
           }
-          graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
+
+          //graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
+          graph_build.AddNode(*node);
         }
 
         ORT_ENFORCE(graph_build.Resolve().IsOK());
@@ -873,6 +968,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         graph_build.SetOutputs(graph_build_outputs);
         ORT_ENFORCE(graph_build.Resolve().IsOK());
 
+/*
         // Check if input tensors have shapes
         if (iterations > 1) {
           auto graph_inputs = graph_build.GetInputs();
@@ -898,6 +994,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
             }
           }
         }
+*/
 
         // Serialize modelproto to string
         auto graph_viewer = graph_build.CreateGraphViewer();
@@ -1080,9 +1177,10 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   }
 
   // Detect and remove cycles from supported node list
-  RemoveTensorRTGraphCycles(supported_nodes_vector, graph);
+  //RemoveTensorRTGraphCycles(supported_nodes_vector, graph);
 
   // Construct subgraph capability from node list
+/*
   std::vector<std::unique_ptr<ComputeCapability>> result;
   int number_of_trt_nodes = 0;
   for (const auto& group : supported_nodes_vector) {
@@ -1092,6 +1190,35 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
       number_of_trt_nodes += group.first.size();
     }
   }
+*/
+
+  std::vector<std::unique_ptr<ComputeCapability>> result;
+  auto meta_def = IndexedSubGraph_MetaDef::Create();
+  const auto metadef_name = [&]() {
+    uint64_t model_hash;
+    int id = GenerateMetaDefId(graph, model_hash);
+    std::string subgraph_id = std::to_string(model_hash) + "_" + std::to_string(id);
+    const std::string graph_type = graph.IsSubgraph() ? "subgraph" : "graph";
+    const std::string name = "TRTKernel_" + graph_type + "_" + graph.Name() + "_" + subgraph_id;
+    meta_def->name() = name;
+    return name;
+  };
+
+  int number_of_trt_nodes = 0;
+  std::unordered_set<const Node*> supported_nodes;
+  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
+  for (const auto& group : supported_nodes_vector) {
+    if (!group.first.empty()) {
+      for (const auto& index : group.first) {
+        const auto& node = graph.GetNode(node_index[index]);
+        supported_nodes.insert(node);
+      }
+      number_of_trt_nodes += group.first.size();
+    }
+  }
+
+  result = utils::CreateSupportedPartitions(graph, supported_nodes, {},
+                                            metadef_name, kTensorrtExecutionProvider, true);
 
   const int number_of_subgraphs = supported_nodes_vector.size();
   if (number_of_trt_nodes == 0) {
