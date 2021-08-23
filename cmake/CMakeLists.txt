@@ -261,12 +261,6 @@ if(NOT WIN32)
     message(WARNING "Instrument is only supported on Windows now")
     set(onnxruntime_ENABLE_INSTRUMENT OFF)
   endif()
-else()
-  if(WINDOWS_STORE)
-    # cmake/external/protobuf/src/google/protobuf/compiler/subprocess.cc and onnxruntime/core/platform/windows/env.cc call a bunch of Win32 APIs.
-    # For now, we'll set the API family to desktop globally to expose Win32 symbols in headers; this must be fixed!
-    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/FI${CMAKE_CURRENT_SOURCE_DIR}/set_winapi_family_desktop.h>")
-  endif()
 endif()
 
 if(onnxruntime_USE_OPENMP)
@@ -820,6 +814,10 @@ elseif(NOT TARGET_ARCH MATCHES "^(i[3-6]86|AMD64|x86(_64)?|armv[5-8].*|aarch64|a
 elseif(MSVC AND (( CMAKE_SYSTEM_PROCESSOR  MATCHES "^(ARM.*|arm.*)$" ) OR (CMAKE_GENERATOR_PLATFORM  MATCHES "^(ARM.*|arm.*)$" ) ))
   message(WARNING
     "Cpuinfo not included for compilation problems with Windows ARM.")
+  set(CPUINFO_SUPPORTED FALSE)
+elseif(WINDOWS_STORE)
+  message(WARNING
+    "Cpuinfo not included in Windows Store builds")
   set(CPUINFO_SUPPORTED FALSE)
 endif()
 
@@ -1711,8 +1709,8 @@ if (WIN32)
   if (WINDOWS_STORE)
     # Setting WINAPI_FAMILY, WINVER and _WIN32_WINNT restrict the APIs exposed in Windows headers to those available
     # in store or desktop, and that support at least the version of Windows specified
-    # add_compile_definitions(WINAPI_FAMILY=2)
-    add_compile_definitions(WINVER=0x0A00 _WIN32_WINNT=0x0A00)  # Support Windows 10
+    add_compile_definitions(WINAPI_FAMILY=2)  # Windows Store app
+    add_compile_definitions(WINVER=0x0A00 _WIN32_WINNT=0x0A00 NTDDI_VERSION=0x0A000000)  # Support Windows 10 or newer
     # /ZW adds /FUplatform.winmd and /FUwindows.winmd. windows.winmd, in turn, overrides the include path for
     # the cppwinrt headers, which we set to use the WinML built ones.
     # Instead, we use /ZW:nostdlib and force include platform.winml only.
@@ -1721,10 +1719,12 @@ if (WIN32)
     link_directories("${msvc_path}/lib/${onnxruntime_target_platform}/store")
     add_link_options(/APPCONTAINER)
   else()
-    add_compile_definitions(WINVER=0x0601)  # Support Windows 7 and newer
-    # add_compile_definitions(WINAPI_FAMILY=3)
-    # FIXME adding _WIN32_WINNT=0x0601 and WINAPI_FAMILY is desirable. However, it hides some symbols that are used in WRL
-    # headers and breaks the build of WinML. We should have separate WINVER/_WIN32_WINNT definitions for WinML
+    add_compile_definitions(WINAPI_FAMILY=100) # Desktop app
+    if (onnxruntime_USE_WINML)
+      add_compile_definitions(WINVER=0x0602 _WIN32_WINNT=0x0602 NTDDI_VERSION=0x06020000)  # Support Windows 7 and newer
+    else()
+      add_compile_definitions(WINVER=0x0601 _WIN32_WINNT=0x0601 NTDDI_VERSION=0x06010000)  # Support Windows 7 and newer
+    endif()
   endif()
 endif()
 
