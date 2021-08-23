@@ -1950,14 +1950,20 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA, _In_ Or
   return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM, _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* provider_options) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(provider_options);
+  return CreateStatus(ORT_FAIL, "ROCM execution provider is not enabled.");
+}
+
 ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, _In_ int* device_id) {
   ORT_UNUSED_PARAMETER(device_id);
-  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
+  return CreateStatus(ORT_FAIL, "CUDA and ROCM execution provider are not enabled.");
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, _In_ int device_id) {
   ORT_UNUSED_PARAMETER(device_id);
-  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
+  return CreateStatus(ORT_FAIL, "CUDA and ROCM execution provider are not enabled.");
 }
 #endif
 
