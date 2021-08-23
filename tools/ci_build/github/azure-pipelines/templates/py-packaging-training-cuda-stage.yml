@@ -76,10 +76,11 @@ stages:
             CudaVersion: ${{ parameters.cuda_version }}
             DockerFile: ${{ parameters.docker_file }}
             GccVersion: ${{ parameters.gcc_version }}
-      steps:
 
       env:
         NIGHTLY_BLD: $(NIGHTLY_BUILD)
+
+      steps:
 
       - bash: echo $(NIGHTLY_BLD) 'NIGHTLY_BLD'
 
