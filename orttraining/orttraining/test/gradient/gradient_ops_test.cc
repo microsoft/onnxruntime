@@ -663,14 +663,6 @@ TEST(GradientCheckerTest, ReluGrad) {
   EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
 }
 
-#ifdef USE_DNNL
-TEST(GradientCheckerTest, ReluGradDnnl) {
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultDnnlExecutionProvider());
-  UnaryOpGradientTest("Relu", kOnnxDomain, 9, &execution_providers);
-}
-#endif  // USE_DNNL
-
 TEST(GradientCheckerTest, CastGrad) {
   // A dummy test that cast float to float
   // TODO: add more test here
@@ -728,7 +720,7 @@ static std::vector<std::vector<T>> GetRandomValuesForMaxPool(const std::vector<T
   return datas;
 }
 
-void MaxpoolGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>* execution_provider) {
+TEST(GradientCheckerTest, MaxPoolGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"MaxPool"};
@@ -737,9 +729,7 @@ void MaxpoolGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>
   {
     gradient_checker.ComputeGradientError(op_def, {{2, 2, 9}}, {{2, 2, 8}}, &max_error,
                                           GetRandomValuesForMaxPool<float>({{2, 2, 9}}),
-                                          {MakeAttribute("kernel_shape", std::vector<int64_t>{2})},
-                                          true, false,
-                                          execution_provider);
+                                          {MakeAttribute("kernel_shape", std::vector<int64_t>{2})});
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -748,9 +738,7 @@ void MaxpoolGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>
     gradient_checker.ComputeGradientError(op_def, {{2, 3, 5, 5}}, {{2, 3, 4, 4}}, &max_error,
                                           GetRandomValuesForMaxPool<float>({{2, 3, 5, 5}}),
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2}),
-                                           MakeAttribute("strides", std::vector<int64_t>{1, 1})},
-                                          true, false,
-                                          execution_provider);
+                                           MakeAttribute("strides", std::vector<int64_t>{1, 1})});
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -759,9 +747,7 @@ void MaxpoolGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>
     gradient_checker.ComputeGradientError(op_def, {{1, 1, 5, 5}}, {{1, 1, 7, 7}}, &max_error,
                                           GetRandomValuesForMaxPool<float>({{1, 1, 5, 5}}),
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
-                                           MakeAttribute("pads", std::vector<int64_t>{2, 2, 2, 2})},
-                                          true, false,
-                                          execution_provider);
+                                           MakeAttribute("pads", std::vector<int64_t>{2, 2, 2, 2})});
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -770,9 +756,7 @@ void MaxpoolGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>
     gradient_checker.ComputeGradientError(op_def, {{1, 1, 32, 32}}, {{1, 1, 10, 10}}, &max_error,
                                           GetRandomValuesForMaxPool<float>({{1, 1, 32, 32}}),
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{5, 5}),
-                                           MakeAttribute("strides", std::vector<int64_t>{3, 3})},
-                                          true, false,
-                                          execution_provider);
+                                           MakeAttribute("strides", std::vector<int64_t>{3, 3})});
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -780,21 +764,9 @@ void MaxpoolGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>
   {
     gradient_checker.ComputeGradientError(op_def, {{2, 1, 3, 3, 3}}, {{2, 1, 2, 2, 2}}, &max_error,
                                           GetRandomValuesForMaxPool<float>({{2, 1, 3, 3, 3}}),
-                                          {MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2, 2})},
-                                          true, false,
-                                          execution_provider);
+                                          {MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2, 2})});
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
-}
-
-TEST(GradientCheckerTest, MaxPoolGrad) {
-  MaxpoolGradientCheckerTest(nullptr);
-
-#ifdef USE_DNNL
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultDnnlExecutionProvider());
-  MaxpoolGradientCheckerTest(&execution_providers);
-#endif
 }
 
 TEST(GradientCheckerTest, GlobalAveragePoolGrad) {
@@ -1057,15 +1029,17 @@ void ConvGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>* e
 
 TEST(GradientCheckerTest, ConvGrad) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_DNNL
+  // Dnnl EP does not run for ConvGrad unless it is pushed first.
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif
+
   execution_providers.push_back(DefaultCpuExecutionProvider());
 
   if (HasCudaEnvironment(700)) {
     execution_providers.push_back(DefaultCudaExecutionProvider());
   }
 
-#ifdef USE_DNNL
-  execution_providers.push_back(DefaultDnnlExecutionProvider());
-#endif
 
   ConvGradientCheckerTest(&execution_providers);
 }

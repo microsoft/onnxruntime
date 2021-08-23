@@ -54,40 +54,6 @@ DNNLExecutionProvider::DNNLExecutionProvider(const DNNLExecutionProviderInfo& in
 DNNLExecutionProvider::~DNNLExecutionProvider() {
 }
 
-namespace ort_dnnl {
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDnnlExecutionProvider, kOnnxDomain, 7, Gemm);
-
-Status RegisterDNNLKernels(KernelRegistry& kernel_registry) {
-  static const BuildKernelCreateInfoFn function_table[] = {
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDnnlExecutionProvider, kOnnxDomain, 7, Gemm)>,
-  };
-
-  for (auto& function_table_entry : function_table) {
-    ORT_RETURN_IF_ERROR(kernel_registry.Register(function_table_entry()));
-  }
-  return Status::OK();
-}
-
-}  // namespace ort_dnnl
-
-static std::shared_ptr<onnxruntime::KernelRegistry> s_kernel_registry;
-
-void Shutdown_DeleteRegistry() {
-  s_kernel_registry.reset();
-}
-
-std::shared_ptr<KernelRegistry> DNNLExecutionProvider::GetKernelRegistry() const {
-  if (!s_kernel_registry) {
-    s_kernel_registry = KernelRegistry::Create();
-    auto status = ort_dnnl::RegisterDNNLKernels(*s_kernel_registry);
-    if (!status.IsOK())
-      s_kernel_registry.reset();
-    ORT_THROW_IF_ERROR(status);
-  }
-
-  return s_kernel_registry;
-}
-
 std::vector<std::vector<NodeIndex>> DNNLExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer) const {
   std::vector<std::vector<size_t>> supported_node_vecs;
   std::vector<size_t> supported_node_vec;
@@ -220,7 +186,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
       for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
         if (node_set.count(it->GetNode().Index()) == 0) {
           const auto* output_def = output_defs[it->GetSrcArgIndex()];
-          if (subgraph_outputs.count(output_def) == 0) {
+          if (subgraph_outputs.count(output_def) == 0 && graph_outputs.count(output_def) == 0) {
             subgraph_outputs.insert(output_def);
             ordered_subgraph_outputs.push_back(output_def);
           }
