@@ -885,13 +885,10 @@ TEST(QAttentionTest, SharedPrepackedWeights) {
   tester.AddInput<uint8_t>("input_zero_point", {1}, {128});
   tester.AddInput<uint8_t>("weight_zero_point", {1}, {128});
 
-  auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<uint8_t>(), TensorShape(weights_dims),
-                                           weight_data_converted_to_int.data(),
-                                           OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
   OrtValue weight;
-
-  weight.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  Tensor::InitOrtValue(DataTypeImpl::GetType<uint8_t>(), TensorShape(weights_dims),
+                       weight_data_converted_to_int.data(),
+                       OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), weight);
 
   SessionOptions so;
 

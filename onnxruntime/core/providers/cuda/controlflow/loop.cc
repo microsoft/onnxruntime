@@ -5,7 +5,7 @@
 #include "core/providers/cuda/controlflow/loop.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_fwd.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;

@@ -13,7 +13,7 @@ class OrtEPTests(unittest.TestCase):
   def test_import_custom_eps(self):
     torch_ort.set_device(0, 'CPUExecutionProvider', {})
 
-    torch_ort._register_provider_lib('TestExecutionProvider', self.get_test_execution_provider_path())
+    torch_ort._register_provider_lib('TestExecutionProvider', self.get_test_execution_provider_path(), 'ProviderEntryPoint')
     torch_ort.set_device(1, 'TestExecutionProvider', {'device_id':'0', 'some_config':'val'})
     ort_device = torch_ort.device(1)
 

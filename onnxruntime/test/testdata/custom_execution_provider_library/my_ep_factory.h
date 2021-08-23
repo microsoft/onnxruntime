@@ -10,7 +10,7 @@ extern "C" {
 
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_MyEP, _In_ OrtSessionOptions* options, int device_id);
 
-ORT_API(onnxruntime::Provider*, GetProvider);
+ORT_API(onnxruntime::Provider*, ProviderEntryPoint);
 
 #ifdef __cplusplus
 }
