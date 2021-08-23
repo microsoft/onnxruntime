@@ -24,6 +24,7 @@ onnxruntime_add_include_to_target(onnxruntime_session onnxruntime_common onnxrun
 if(onnxruntime_ENABLE_INSTRUMENT)
   target_compile_definitions(onnxruntime_session PUBLIC ONNXRUNTIME_ENABLE_INSTRUMENT)
 endif()
+
 if(NOT MSVC)
   set_source_files_properties(${ONNXRUNTIME_ROOT}/core/session/environment.cc PROPERTIES COMPILE_FLAGS  "-Wno-parentheses")
 endif()
@@ -40,6 +41,7 @@ endif()
 if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
   target_include_directories(onnxruntime_session PRIVATE ${ORTTRAINING_ROOT})
 endif()
+
 if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   onnxruntime_add_include_to_target(onnxruntime_session Python::Module) 
 endif()
