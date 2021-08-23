@@ -1486,10 +1486,28 @@ if (onnxruntime_ENABLE_TRAINING)
       message(STATUS "Please specify ONNX_VERSION using --cmake_extra_defines option")
     endif()
     set(ONNX_VERSION_SPECIFIER "== ${ONNX_VERSION}")
+
+    # If PROTOBUF_VERSION is not specified by the user, inspect it in external/protobuf submodule.
+    if ("${PROTOBUF_VERSION}" STREQUAL "")
+      execute_process(COMMAND git -C ${PROJECT_SOURCE_DIR}/external/protobuf tag --list "[0-9.]*" --points-at OUTPUT_VARIABLE PROTOBUF_VERSION  OUTPUT_STRIP_TRAILING_WHITESPACE)
+      if ("${PROTOBUF_VERSION}" STREQUAL "")
+        execute_process(COMMAND git -C ${PROJECT_SOURCE_DIR}/external/protobuf tag --list "v[0-9.]*" --points-at OUTPUT_VARIABLE PROTOBUF_VERSION  OUTPUT_STRIP_TRAILING_WHITESPACE)
+        string(REGEX REPLACE "^v" "" PROTOBUF_VERSION ${PROTOBUF_VERSION})
+      endif()
+    endif()
+    if ("${PROTOBUF_VERSION}" STREQUAL "")
+      # Require user to specify PROTOBUF_VERSION if the inspection failed.
+      message(FATAL_ERROR "Cannot find external ONNX repository tag.")
+      message(STATUS "Please specify PROTOBUF_VERSION using --cmake_extra_defines option")
+    endif()
+    set(PROTOBUF_VERSION_SPECIFIER "== ${PROTOBUF_VERSION}")
   else()
     set(ONNX_VERSION_SPECIFIER "")
+    set(PROTOBUF_VERSION_SPECIFIER "")
   endif()
+
   message(STATUS "ONNX_VERSION_SPECIFIER = ${ONNX_VERSION_SPECIFIER}")
+  message(STATUS "PROTOBUF_VERSION_SPECIFIER = ${PROTOBUF_VERSION_SPECIFIER}")
   configure_file(../requirements-training.txt.in ${CMAKE_CURRENT_BINARY_DIR}/requirements-training.txt)
 endif()
 
