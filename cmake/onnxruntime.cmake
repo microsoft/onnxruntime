@@ -41,6 +41,7 @@ list(APPEND SYMBOL_FILES "${REPO_ROOT}/tools/ci_build/gen_def.py")
 foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
   list(APPEND SYMBOL_FILES "${ONNXRUNTIME_ROOT}/core/providers/${f}/symbols.txt")
 endforeach()
+list(APPEND SYMBOL_FILES "${ONNXRUNTIME_ROOT}/core/session/symbols.txt")
 
 add_custom_command(OUTPUT ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c
   COMMAND ${Python_EXECUTABLE} "${REPO_ROOT}/tools/ci_build/gen_def.py"

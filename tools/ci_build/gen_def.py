@@ -13,6 +13,20 @@ def parse_arguments():
     parser.add_argument("--config", required=True, nargs="+")
     return parser.parse_args()
 
+def read_symbols(filename: str, allow_dups:bool=False):
+    with open(filename, 'r') as file:
+        for line in file:
+            line = line.strip()
+            if len(line) == 0 or line.startswith('#'):
+                continue
+
+            if line in symbols:
+                if not allow_dups:
+                    print("dup symbol: %s", line)
+                    exit(-1) 
+            else:
+                symbols.add(line)
+
 
 args = parse_arguments()
 print("Generating symbol file for %s" % str(args.config))
@@ -25,12 +39,13 @@ symbols = set()
 for c in args.config:
     file_name = os.path.join(args.src_root, 'core', 'providers', c, 'symbols.txt')
     with open(file_name, 'r') as file:
-        for line in file:
-            line = line.strip()
-            if line in symbols:
-                print("dup symbol: %s", line)
-                exit(-1)
-            symbols.add(line)
+        read_symbols(file_name)
+
+# add stubs from session to provide graceful error message if EP isn't included in the build.
+# this will have dups for EPs that are enabled in the build which is fine as we #ifdef out the stubs
+# in the ORT C API implementation if that is the case
+read_symbols(os.path.join(args.src_root, 'core', 'session', 'symbols.txt'), allow_dups=True)
+
 symbols = sorted(symbols)
 
 symbol_index = 1

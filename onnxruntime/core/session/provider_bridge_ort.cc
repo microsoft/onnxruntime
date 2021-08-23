@@ -213,12 +213,11 @@ struct ProviderHostImpl : ProviderHost {
                                               const AllocatorPtr& dst_allocator, Tensor& dst) override {
     return sparse_utils::SparseCooToDenseTensor(data_manager, src, cpu_allocator, dst_allocator, dst);
   }
-#endif // ORT_MINIMAL_BUILD
+#endif  // ORT_MINIMAL_BUILD
   Status sparse_utils__DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
                                               const AllocatorPtr& dst_allocator, bool linear_indexs, SparseTensor& dst) override {
     return sparse_utils::DenseTensorToSparseCoo(data_manager, src, cpu_allocator, dst_allocator, linear_indexs, dst);
   }
-
 
   // IAllocator (direct)
   bool IAllocator__CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) override { return IAllocator::CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out); }
@@ -1069,6 +1068,11 @@ ProviderOptions GetProviderInfo_Tensorrt(const OrtTensorRTProviderOptions* provi
 
 }  // namespace onnxruntime
 
+// if the EP isn't included in the build we need to do the export from here so the entry point is available
+#ifndef USE_DNNL
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena);
+#endif
+
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
   API_IMPL_BEGIN
   auto factory = onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena);
@@ -1080,6 +1084,10 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessi
   return nullptr;
   API_IMPL_END
 }
+
+#ifndef USE_TENSORRT
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtSessionOptions* options, int device_id);
+#endif
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtSessionOptions* options, int device_id) {
   API_IMPL_BEGIN
@@ -1117,11 +1125,21 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO, _In
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtSessionOptions* options, _In_ const char* device_type) {
+#ifndef USE_TENSORRT
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtSessionOptions* options,
+               _In_ const char* device_type);
+#endif
+
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtSessionOptions* options,
+                    _In_ const char* device_type) {
   OrtOpenVINOProviderOptions provider_options{};
   provider_options.device_type = device_type;
   return OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO(options, &provider_options);
 }
+
+#ifndef USE_CUDA
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id);
+#endif
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id) {
   OrtCUDAProviderOptions provider_options{};
