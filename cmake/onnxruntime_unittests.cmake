@@ -444,8 +444,10 @@ if(onnxruntime_USE_DML)
 endif()
 
 if(onnxruntime_USE_MIGRAPHX)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx onnxruntime_providers_shared)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_migraphx)
 endif()
+
 
 if(onnxruntime_USE_ROCM)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rocm)

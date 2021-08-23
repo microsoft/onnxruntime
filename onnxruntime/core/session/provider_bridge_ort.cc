@@ -994,6 +994,13 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensor
   return nullptr;
 }
 
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id) {
+  if (auto* provider = s_library_tensorrt.Get())
+    return provider->CreateExecutionProviderFactory(device_id);
+
+  return nullptr;
+}
+
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptions* provider_options) {
   if (auto* provider = s_library_tensorrt.Get())
     return provider->CreateExecutionProviderFactory(provider_options);
@@ -1086,6 +1093,18 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtS
   auto factory = onnxruntime::CreateExecutionProviderFactory_Tensorrt(device_id);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Tensorrt: Failed to load shared library");
+  }
+
+  options->provider_factories.push_back(factory);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtSessionOptions* options, int device_id) {
+  API_IMPL_BEGIN
+  auto factory = onnxruntime::CreateExecutionProviderFactory_MIGraphX(device_id);
+  if (!factory) {
+    return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_MIGraphX: Failed to load shared library");
   }
 
   options->provider_factories.push_back(factory);

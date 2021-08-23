@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License
 
+#include "core/framework/ortdevice.h"
+//#include "core/framework/provider_options.h"
+//#include "core/session/onnxruntime_c_api.h"
+
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/compute_capability.h"
