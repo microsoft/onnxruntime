@@ -151,8 +151,8 @@ Status OptimizerExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value,
     return Status::OK();
 #else
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Sparse tensor is not supported in this build");
-  }
 #endif
+  }
 
   if (ml_type->IsTensorSequenceType()) {
     auto element_type = ml_type->AsSequenceTensorBase()->GetElementType();

@@ -1533,6 +1533,7 @@ struct OrtApi {
   ORT_API2_STATUS(UnregisterAllocator, _Inout_ OrtEnv* env,
                   _In_ const OrtMemoryInfo* mem_info);
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   /**
    * Sets *out to 1 iff an OrtValue is a SparseTensor, and 0 otherwise
    * 
@@ -1738,6 +1739,8 @@ struct OrtApi {
    * \param[out] indices out param where the pointer to the internal buffer is returned. Do not free this buffer.
    */
   ORT_API2_STATUS(GetSparseTensorIndices, _In_ const OrtValue* ort_value, enum OrtSparseIndicesFormat indices_format, _Out_ size_t* num_indices, _Outptr_ const void** indices);
+
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 };
 
 /*

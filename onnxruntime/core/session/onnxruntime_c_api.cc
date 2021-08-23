@@ -228,6 +228,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorAsOrtValue, _Inout_ OrtAllocator* alloc
   API_IMPL_END
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 ORT_API_STATUS_IMPL(OrtApis::CreateSparseTensorAsOrtValue, _Inout_ OrtAllocator* allocator, _In_ const int64_t* dense_shape,
                     size_t dense_shape_len, ONNXTensorElementDataType type, _Outptr_ OrtValue** out) {
   API_IMPL_BEGIN
@@ -445,6 +446,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetSparseTensorValues, _In_ const OrtValue* ort_val
   return nullptr;
   API_IMPL_END
 }
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 ORT_API_STATUS_IMPL(OrtApis::CreateCustomOpDomain, _In_ const char* domain, _Outptr_ OrtCustomOpDomain** out) {
   API_IMPL_BEGIN
@@ -882,11 +884,13 @@ ORT_API_STATUS_IMPL(OrtApis::IsTensor, _In_ const OrtValue* value, _Out_ int* ou
   return nullptr;
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 ORT_API_STATUS_IMPL(OrtApis::IsSparseTensor, _In_ const OrtValue* value, _Out_ int* out) {
   auto v = reinterpret_cast<const ::OrtValue*>(value);
   *out = v->IsSparseTensor() ? 1 : 0;
   return nullptr;
 }
+#endif
 
 ORT_API_STATUS_IMPL(OrtApis::GetTensorMutableData, _Inout_ OrtValue* value, _Outptr_ void** output) {
   TENSOR_READWRITE_API_BEGIN
@@ -944,6 +948,7 @@ OrtStatusPtr GetTensorStringSpan(const ::OrtValue& v, gsl::span<const std::strin
       str_span = tensor.DataAsSpan<std::string>();
     }
   } else if (v.IsSparseTensor()) {
+#if !defined(DISABLE_SPARSE_TENSORS)
     const auto& sparse_tensor = v.Get<SparseTensor>();
     if (sparse_tensor.Format() == onnxruntime::SparseFormat::kUndefined) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Sparse Tensor does not contain sparse data");
@@ -952,6 +957,7 @@ OrtStatusPtr GetTensorStringSpan(const ::OrtValue& v, gsl::span<const std::strin
     if (items >= 0) {
       str_span = sparse_tensor.Values().DataAsSpan<std::string>();
     }
+#endif
   } else {
     return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API supports Tensors or SparseTensors");
   }
@@ -2380,6 +2386,7 @@ static constexpr OrtApi ort_api_1_to_9 = {
     &OrtApis::EnableOrtCustomOps,
     &OrtApis::RegisterAllocator,
     &OrtApis::UnregisterAllocator,
+#if !defined(DISABLE_SPARSE_TENSORS)
     &OrtApis::IsSparseTensor,
     &OrtApis::CreateSparseTensorAsOrtValue,
     &OrtApis::FillSparseTensorCoo,
@@ -2394,6 +2401,7 @@ static constexpr OrtApi ort_api_1_to_9 = {
     &OrtApis::GetSparseTensorValues,
     &OrtApis::GetSparseTensorIndicesTypeShape,
     &OrtApis::GetSparseTensorIndices,
+#endif
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)

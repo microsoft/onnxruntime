@@ -229,6 +229,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorTypeAndShape, _In_ const OrtValue* v, _Out
   API_IMPL_END
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 ORT_API_STATUS_IMPL(OrtApis::GetSparseTensorValuesTypeAndShape, _In_ const OrtValue* v,
                     _Outptr_ OrtTensorTypeAndShapeInfo** out) {
   API_IMPL_BEGIN
@@ -279,6 +280,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetSparseTensorIndices, _In_ const OrtValue* v,
   return nullptr;
   API_IMPL_END
 }
+#endif
 
 ORT_API_STATUS_IMPL(OrtApis::GetValueType, _In_ const OrtValue* v, _Out_ ONNXType* out) {
   API_IMPL_BEGIN
