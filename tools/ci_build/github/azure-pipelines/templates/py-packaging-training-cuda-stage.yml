@@ -77,12 +77,7 @@ stages:
             DockerFile: ${{ parameters.docker_file }}
             GccVersion: ${{ parameters.gcc_version }}
 
-      env:
-        NIGHTLY_BLD: $(NIGHTLY_BUILD)
-
       steps:
-
-      - bash: echo $(NIGHTLY_BLD) 'NIGHTLY_BLD'
 
       - bash: echo $(NIGHTLY_BUILD) 'NIGHTLY_BUILD'
 
