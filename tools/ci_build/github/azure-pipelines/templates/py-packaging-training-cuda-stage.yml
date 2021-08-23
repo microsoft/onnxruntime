@@ -81,8 +81,10 @@ stages:
       - task: CmdLine@2
           env:
             NIGHTLY_BLD: $(NIGHTLY_BUILD)
-          - bash: echo $(NIGHTLY_BLD) 'NIGHTLY_BLD'
-          - bash: echo $(NIGHTLY_BUILD) 'NIGHTLY_BUILD'
+
+      - bash: echo $(NIGHTLY_BLD) 'NIGHTLY_BLD'
+
+      - bash: echo $(NIGHTLY_BUILD) 'NIGHTLY_BUILD'
 
       - checkout: self
         clean: true
