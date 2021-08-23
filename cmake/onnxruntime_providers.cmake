@@ -977,53 +977,6 @@ if (onnxruntime_USE_MIGRAPHX)
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
-
-
-
-  # source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_tensorrt_cc_srcs})
-  # onnxruntime_add_shared_library_module(onnxruntime_providers_tensorrt ${onnxruntime_providers_tensorrt_cc_srcs})
-  # onnxruntime_add_include_to_target(onnxruntime_providers_tensorrt onnxruntime_common onnx flatbuffers)
-  # add_dependencies(onnxruntime_providers_tensorrt onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  # target_link_libraries(onnxruntime_providers_tensorrt PRIVATE ${onnxparser_link_libs} ${trt_link_libs} cudart ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers)
-  # target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${onnxruntime_CUDNN_HOME}/include ${eigen_INCLUDE_DIRS} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
-  # # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
-  # install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/tensorrt  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
-  # set_target_properties(onnxruntime_providers_tensorrt PROPERTIES LINKER_LANGUAGE CUDA)
-  # set_target_properties(onnxruntime_providers_tensorrt PROPERTIES FOLDER "ONNXRuntime")
-  # target_compile_definitions(onnxruntime_providers_tensorrt PRIVATE ONNXIFI_BUILD_LIBRARY=1)
-  # target_compile_options(onnxruntime_providers_tensorrt PRIVATE ${DISABLED_WARNINGS_FOR_TRT})
-  # if (WIN32)
-  #   target_compile_options(onnxruntime_providers_tensorrt INTERFACE /wd4267 /wd4244 /wd4996 /wd4456)
-  # endif()
-
-  # # Needed for the provider interface, as it includes training headers when training is enabled
-  # if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
-  #   target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ORTTRAINING_ROOT})
-  # endif()
-
-  # if(APPLE)
-  #   set_property(TARGET onnxruntime_providers_tensorrt APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/core/providers/tensorrt/exported_symbols.lst")
-  #   target_link_libraries(onnxruntime_providers_tensorrt PRIVATE nsync_cpp)
-  # elseif(UNIX)
-  #   set_property(TARGET onnxruntime_providers_tensorrt APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
-  #   set_property(TARGET onnxruntime_providers_tensorrt APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/tensorrt/version_script.lds -Xlinker --gc-sections")
-  #   target_link_libraries(onnxruntime_providers_tensorrt PRIVATE nsync_cpp stdc++fs)
-  # elseif(WIN32)
-  #   set_property(TARGET onnxruntime_providers_tensorrt APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${ONNXRUNTIME_ROOT}/core/providers/tensorrt/symbols.def")
-  # else()
-  #   message(FATAL_ERROR "onnxruntime_providers_tensorrt unknown platform, need to specify shared library exports for it")
-  # endif()
-
-  # install(TARGETS onnxruntime_providers_tensorrt
-  #         ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  #         LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  #         RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
-
-
-
-
-
-
 endif()
 
 if (onnxruntime_USE_ACL)

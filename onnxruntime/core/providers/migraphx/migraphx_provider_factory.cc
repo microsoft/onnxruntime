@@ -30,7 +30,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGrap
 
 }  // namespace onnxruntime
 
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtSessionOptions* options, int device_id) {
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_MIGraphX(device_id));
-  return nullptr;
-}
+//ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtSessionOptions* options, int device_id) {
+//  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_MIGraphX(device_id));
+//  return nullptr;
+//}

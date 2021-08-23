@@ -444,10 +444,11 @@ if(onnxruntime_USE_DML)
 endif()
 
 if(onnxruntime_USE_MIGRAPHX)
+  # list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx onnxruntime_providers_shared)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_migraphx)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx onnxruntime_providers_shared)
 endif()
-
 
 if(onnxruntime_USE_ROCM)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rocm)
@@ -490,7 +491,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${ONNXRUNTIME_INTEROP_TEST_LIBS}
     ${onnxruntime_libs}
     # CUDA, TENSORRT, DNNL, and OpenVINO are dynamically loaded at runtime
-    ${PROVIDERS_MIGRAPHX}
+    # ${PROVIDERS_MIGRAPHX}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_RKNPU}
