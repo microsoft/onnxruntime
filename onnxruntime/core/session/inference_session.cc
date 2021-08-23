@@ -1691,6 +1691,11 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
     ORT_ENFORCE(session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL, "Only sequential mode is supported.");
 
     // execute the graph
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+    if (state.GetProgramCounterStart() == 0) {
+      session_state_->IncrementGraphExecutionCounter();
+    }
+#endif
     ORT_CHECK_AND_SET_RETVAL(utils::ExecutePartialGraph(*session_state_, feeds_fetches_manager, feeds, fetches,
                                                         run_logger, state, cache));
   }
@@ -1801,6 +1806,9 @@ Status InferenceSession::Run(const RunOptions& run_options,
 #endif
 
     // execute the graph
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+    session_state_->IncrementGraphExecutionCounter();
+#endif
     ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
                                                  session_options_.execution_mode, run_options.terminate, run_logger,
                                                  run_options.only_execute_path_to_fetches));

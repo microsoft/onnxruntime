@@ -11,22 +11,6 @@
 
 namespace onnxruntime {
 
-#define GET_TENSOR_DATA(FUNC_NAME, ELEMENT_TYPE, DATA)                                                    \
-  const ELEMENT_TYPE* GetTensor##FUNC_NAME(const ONNX_NAMESPACE::TensorProto& tensor) {                   \
-    bool has_external_data = tensor.has_data_location() &&                                                \
-                             tensor.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL; \
-    ORT_ENFORCE(!has_external_data, "tensor: ", tensor.name(), " has external data");                     \
-    return tensor.DATA().empty()                                                                          \
-               ? reinterpret_cast<const ELEMENT_TYPE*>(tensor.raw_data().data())                          \
-               : tensor.DATA().data();                                                                    \
-  }
-
-GET_TENSOR_DATA(FloatData, float, float_data)
-GET_TENSOR_DATA(Int32Data, int32_t, int32_data)
-GET_TENSOR_DATA(Int64Data, int64_t, int64_data)
-
-#undef GET_TENSOR_DATA
-
 bool GetType(const NodeArg& node_arg, int32_t& type, const logging::Logger& logger) {
   type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
   const auto* type_proto = node_arg.TypeAsProto();
@@ -69,7 +53,7 @@ bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node,
       std::vector<uint8_t> unpacked_tensor;
       auto status = onnxruntime::utils::UnpackInitializerData(*initializers.at(min_name), unpacked_tensor);
       if (!status.IsOK()) {
-        LOGS(logger, ERROR) << "Error while unpack min tensor: " << status.ErrorMessage();
+        LOGS(logger, ERROR) << "Error while unpacking min tensor: " << status.ErrorMessage();
         return false;
       }
       min = reinterpret_cast<float*>(unpacked_tensor.data())[0];
@@ -84,7 +68,7 @@ bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node,
       std::vector<uint8_t> unpacked_tensor;
       auto status = onnxruntime::utils::UnpackInitializerData(*initializers.at(max_name), unpacked_tensor);
       if (!status.IsOK()) {
-        LOGS(logger, ERROR) << "Error while unpack max tensor: " << status.ErrorMessage();
+        LOGS(logger, ERROR) << "Error while unpacking max tensor: " << status.ErrorMessage();
         return false;
       }
       max = reinterpret_cast<float*>(unpacked_tensor.data())[0];
