@@ -45,8 +45,6 @@ jobs:
     inputs:
       script: |
          rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
-         python3 -m pip uninstall -y onnxruntime-traning
-         python3 -m pip install torch
          python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
 
   - task: CmdLine@2
