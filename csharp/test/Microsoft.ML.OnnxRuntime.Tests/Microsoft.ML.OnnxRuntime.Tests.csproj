@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetFramework>netcoreapp2.1</TargetFramework>
     <IsPackable>false</IsPackable>
-    <OnnxRuntimeCsharpRoot>..\..</OnnxRuntimeCsharpRoot>
+    <OnnxRuntimeCsharpRoot>$(ProjectDir)..\..</OnnxRuntimeCsharpRoot>
     <Platforms>AnyCPU;x86</Platforms>
     <OutputPath>bin\$(Configuration)\</OutputPath>
     <IsLinuxBuild Condition="'$(IsLinuxBuild)' == ''">false</IsLinuxBuild>
@@ -75,6 +75,9 @@
   <!-- generate OnnxMl.cs from ONNX protobuf definition -->
   <Target Name="ProtoGen" BeforeTargets="BeforeBuild">
     <Exec Command="$(ProtocExe) -I=$(ProtoSrc) --csharp_out=. $(ProtoSrc)\onnx-ml.proto3" ContinueOnError="false"></Exec>
+    <ItemGroup>
+      <Compile Include="$(ProjectDir)\OnnxMl.cs"/>
+    </ItemGroup>
   </Target>
 
   <ItemGroup>
