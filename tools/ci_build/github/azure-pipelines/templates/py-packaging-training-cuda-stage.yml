@@ -79,8 +79,8 @@ stages:
       steps:
 
       - task: CmdLine@2
-          env:
-            NIGHTLY_BLD: $(NIGHTLY_BUILD)
+        env:
+          NIGHTLY_BLD: $(NIGHTLY_BUILD)
 
       - bash: echo $(NIGHTLY_BLD) 'NIGHTLY_BLD'
 
