@@ -19,8 +19,4 @@ Pod::Spec.new do |spec|
     spec.pod_target_xcconfig    = {
         "OTHER_CPLUSPLUSFLAGS" => "-fvisibility=hidden -fvisibility-inlines-hidden",
     }
-    spec.xcconfig               = {
-        # TODO workaround - support arm64 iphonesimulator later
-        "EXCLUDED_ARCHS[sdk=iphonesimulator*]" => "arm64"
-    }
 end
