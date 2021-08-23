@@ -497,7 +497,7 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchNeon = {
     MLAS_GEMM_U8X8_KERNEL_NEON::PackedStrides.K,
 };
 
-
+#if defined(MLAS_TARGET_ARM64)
 /*-------------------------
  * NEON kernel for signed int8
  */
@@ -970,3 +970,5 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmS8S8DispatchNeon = {
     MLAS_GEMM_S8S8_KERNEL_NEON::PackedK,
     MLAS_GEMM_S8S8_KERNEL_NEON::PackedStrides.K,
 };
+
+#endif  //defined(MLAS_TARGET_ARM64)

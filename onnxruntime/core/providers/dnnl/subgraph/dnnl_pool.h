@@ -34,7 +34,7 @@ class DnnlPool {
   int64_t GetCeilMode(DnnlNode& node);
   int64_t GetCountIncludePadding(DnnlNode& node);
   dnnl::memory::dims GetDilations(DnnlNode& node, PoolShape shape);
-  dnnl::memory::dims GetKernelShape(DnnlNode& node);
+  dnnl::memory::dims GetKernelShape(const dnnl::memory::dims& src_dims, DnnlNode& node);
   /* This will return the calculated padding taking into account the DEPRECATED auto_pad attribute */
   std::vector<int64_t> InferPadding(DnnlNode& node, const dnnl::memory::dims& src_dims, const dnnl::memory::dims& kernel_shape, const dnnl::memory::dims& strides);
   std::vector<int64_t> GetPadding(DnnlNode& node, PoolShape shape);

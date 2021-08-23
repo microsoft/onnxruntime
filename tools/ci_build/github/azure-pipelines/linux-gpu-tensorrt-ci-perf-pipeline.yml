@@ -42,7 +42,7 @@ parameters:
 - name: PublishWheel
   displayName: Publish Wheel 
   type: boolean
-  default: true
+  default: false
 
 - name: ModelGroups
   type: object
@@ -77,11 +77,6 @@ jobs:
   timeoutInMinutes: 3000 
       
   steps:
-    
-    - ${{ if eq(parameters.MemTest, true) }}:
-      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/run_mem_test_docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
-        displayName: 'Run Memory Test'
-        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
 
     - ${{ if eq(parameters.BuildORT, true) }}:
 
@@ -95,6 +90,11 @@ jobs:
           displayName: 'Build latest ORT'
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
     
+      - ${{ if eq(parameters.MemTest, true) }}:
+        - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/run_mem_test_docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
+          displayName: 'Run Memory Test'
+          workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
+
     - ${{ if eq(parameters.RunPython38, true) }}:
         - script: 'docker build --build-arg IMAGE=ort-$(branch) -t ort-$(branch) -f $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.python38 .'
           displayName: 'Build latest ORT Images'
@@ -134,6 +134,10 @@ jobs:
       - script: 'cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/build/result $(Build.SourcesDirectory)/Artifact/result_mem_test'
         displayName: 'Copy Artifacts'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+
+    - template: templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
 
     - task: PublishBuildArtifacts@1
       inputs:

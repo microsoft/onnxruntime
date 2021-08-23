@@ -339,6 +339,8 @@ bool DnnlSumNodeCapability::IsDimensionSupported(const Node* node) const {
   return true;
 }
 
+// DnnlBinaryNodeCapability class
+//-------------------------------------
 bool DnnlBinaryNodeCapability::Supported(const Node* node) const {
   if (!IsTypeSupported(node)) return false;
   if (!IsDimensionSupported(node)) return false;
@@ -367,6 +369,14 @@ bool DnnlBinaryNodeCapability::IsDimensionSupported(const Node* node) const {
   if (src0_is_scalar && src1_is_scalar) {
     return false;
   }
+  return true;
+}
+
+// DnnlGemmNodeCapability class
+//-------------------------------------
+bool DnnlGemmNodeCapability::Supported(const Node* node) const {
+  if (!_matmul.Supported(node)) return false;
+  if (!_binary.Supported(node)) return false;
   return true;
 }
 

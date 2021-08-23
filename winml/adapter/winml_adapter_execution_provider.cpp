@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "pch.h"
+#include "adapter/pch.h"
 
 #include "winml_adapter_c_api.h"
 #include "core/session/ort_apis.h"

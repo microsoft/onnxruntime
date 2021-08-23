@@ -962,7 +962,8 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
       [&kernel_registry_manager, this](const Node& node, uint64_t hash) {
         const KernelCreateInfo* kci = nullptr;
         ORT_RETURN_IF_NOT(kernel_registry_manager.SearchKernelRegistriesByHash(hash, &kci),
-                          "Failed to find kernel def hash in kernel registries: ", hash);
+                          "Failed to find kernel def hash (", hash, ") in kernel registries for ",
+                          node.OpType(), "(", node.SinceVersion(), ") node with name '", node.Name(), "'.");
         kernel_create_info_map_.emplace(node.Index(), gsl::not_null<const KernelCreateInfo*>(kci));
         return Status::OK();
       };
