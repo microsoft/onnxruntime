@@ -92,4 +92,4 @@ class TorchModulePytorch(TorchModuleInterface):
 
     @TorchModuleInterface.module.getter
     def module(self):
-        return self._original_module.module
+        return self._original_module
