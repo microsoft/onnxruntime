@@ -81,11 +81,11 @@ stages:
 
       - bash: echo $(NIGHTLY_BUILD) 'NIGHTLY_BUILD'
 
-      - task: CmdLine@2
-        condition: and(succeeded(), eq(variables.upload_wheel, 'yes'), eq($(NIGHTLY_BUILD), '1'))
-        inputs:
-          script: |
-            echo $(NIGHTLY_BUILD) 'NIGHTLY_BUILD'
+      # - task: CmdLine@2
+      #   condition: and(succeeded(), eq(variables.upload_wheel, 'yes'), eq($(NIGHTLY_BUILD), '1'))
+      #   inputs:
+      #     script: |
+      #       echo $(NIGHTLY_BUILD) 'NIGHTLY_BUILD'
 
 
       - checkout: self
