@@ -425,7 +425,10 @@ if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
     COMMAND ${CMAKE_COMMAND} -E create_symlink
         $<TARGET_FILE_DIR:${build_output_target}>/external/onnx/onnx
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/external/include/onnx
-  )
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${ORTTRAINING_ROOT}/orttraining/test/external_custom_ops
+        $<TARGET_FILE_DIR:${build_output_target}>/external_custom_ops
+    )
 endif()
 
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
@@ -611,15 +614,6 @@ if (onnxruntime_USE_COREML)
     COMMAND ${CMAKE_COMMAND} -E copy
         $<TARGET_FILE:onnxruntime_providers_coreml>
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-  )
-endif()
-
-if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory 
-      ${ORTTRAINING_ROOT}/orttraining/test/external_custom_ops
-      $<TARGET_FILE_DIR:${build_output_target}>/external_custom_ops
   )
 endif()
 
