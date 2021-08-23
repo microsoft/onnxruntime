@@ -79,16 +79,10 @@ stages:
       steps:
 
       - task: CmdLine@2
-        env:
-          NIGHTLY_BLD: $(NIGHTLY_BUILD)
-
-      - bash:
         condition: and(succeeded(), eq(variables.upload_wheel, 'yes'), eq($(NIGHTLY_BUILD), '1'))
-        echo $(NIGHTLY_BLD) 'NIGHTLY_BLD'
-
-      - bash:
-        condition: and(succeeded(), eq(variables.upload_wheel, 'yes'), eq($(NIGHTLY_BUILD), '1'))
-        echo $(NIGHTLY_BUILD) 'NIGHTLY_BUILD'
+        inputs:
+          script: |
+            echo $(NIGHTLY_BUILD) 'NIGHTLY_BUILD'
 
       - checkout: self
         clean: true
