@@ -91,7 +91,7 @@ bool GetProviderInstanceHash(const std::string& type,
   else if (type == kRocmExecutionProvider){
 #ifdef USE_ROCM
     const ROCMExecutionProviderInfo info = GetROCMExecutionProviderInfo(provider_options_map);
-    hash = info.hash()
+    hash = info.hash();
     return true;
 #endif
   }

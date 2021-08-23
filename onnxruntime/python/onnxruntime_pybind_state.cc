@@ -323,7 +323,7 @@ const CUDAExecutionProviderInfo GetCudaExecutionProviderInfo(ProviderInfo_CUDA* 
 
 #ifdef USE_ROCM
 const ROCMExecutionProviderInfo GetROCMExecutionProviderInfo(const ProviderOptionsMap& provider_options_map){
-  const auto it = provider_options_map.find(type);
+  const auto it = provider_options_map.find(kRocmExecutionProvider);
   return it != provider_options_map.end()
             ? ROCMExecutionProviderInfo::FromProviderOptions(it->second)
             : [&]() {
