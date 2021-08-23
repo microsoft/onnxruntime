@@ -183,7 +183,8 @@ struct ProviderHost {
                                                       const AllocatorPtr& dst_allocator, Tensor& dst) = 0;
 #endif  // !ORT_MINIMAL_BUILD
   virtual Status sparse_utils__DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
-#endif  // !defined(DISABLE_SPARSE_TENSORS)                                                      const AllocatorPtr& dst_allocator, bool linear_indexs, SparseTensor& dst) = 0;
+                                                      const AllocatorPtr& dst_allocator, bool linear_indexs, SparseTensor& dst) = 0;
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
   // IAllocator
   virtual bool IAllocator__CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) = 0;
@@ -777,7 +778,7 @@ struct ProviderHost {
 #endif
 #endif
 
-  virtual ProviderHostCPU& GetProviderHostCPU()=0;
+  virtual ProviderHostCPU& GetProviderHostCPU() = 0;
 };
 
 }  // namespace onnxruntime
