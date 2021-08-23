@@ -38,6 +38,15 @@ def run_ortmodule_api_tests(cwd, log, transformers_cache):
     run_subprocess(command, cwd=cwd, log=log, env=env).check_returncode()
 
 
+def run_ortmodule_fallback_tests(cwd, log, transformers_cache):
+    log.debug('Running: ORTModule-API tests')
+
+    env = get_env_with_transformers_cache(transformers_cache)
+
+    command = [sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_ortmodule_fallback.py']
+
+    run_subprocess(command, cwd=cwd, log=log, env=env).check_returncode()
+
 def run_ortmodule_poc_net(cwd, log, no_cuda, data_dir):
     log.debug('Running: ORTModule POCNet for MNIST with --no-cuda arg {}.'.format(no_cuda))
 
@@ -119,6 +128,8 @@ def main():
     #run_ortmodule_custom_autograd_tests(cwd, log)
 
     run_ortmodule_experimental_json_config_tests(cwd, log)
+
+    run_ortmodule_fallback_tests(cwd, log, args.transformers_cache)
 
     return 0
 

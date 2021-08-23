@@ -135,20 +135,12 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
 
   if (source_mlvalue.IsTensor()) {
     const Tensor& source_tensor = source_mlvalue.Get<Tensor>();
-    std::unique_ptr<Tensor> target_tensor = std::make_unique<Tensor>(source_tensor.DataType(),
-                                                                     source_tensor.Shape(),
-                                                                     allocator);
-    auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-    target_mlvalue.Init(target_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+    Tensor::InitOrtValue(source_tensor.DataType(),
+                         source_tensor.Shape(),
+                         allocator, target_mlvalue);
   } else if (source_mlvalue.IsSparseTensor()) {
     const SparseTensor& source_tensor = source_mlvalue.Get<SparseTensor>();
-    auto p_tensor = std::make_unique<SparseTensor>(source_tensor.DataType(),
-                                                   source_tensor.DenseShape(),
-                                                   allocator);
-    auto ml_tensor = DataTypeImpl::GetType<SparseTensor>();
-    target_mlvalue.Init(p_tensor.release(),
-                        ml_tensor,
-                        ml_tensor->GetDeleteFunc());
+    SparseTensor::InitOrtValue(source_tensor.DataType(), source_tensor.DenseShape(), allocator, target_mlvalue);
   } else if (source_mlvalue.IsTensorSequence()) {
     const TensorSeq& source_tensor_seq = source_mlvalue.Get<TensorSeq>();
     auto target_tensor_seq = std::make_unique<TensorSeq>(source_tensor_seq.DataType());
@@ -639,10 +631,12 @@ common::Status ExecuteGraph(const SessionState& session_state,
 #ifdef ENABLE_TRAINING
 common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                                    const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-                                   const logging::Logger& logger, PartialGraphExecutionState& state) {
+                                   const logging::Logger& logger, PartialGraphExecutionState& state,
+                                   const OrtValueCachePtr& cache) {
+
   // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
   FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
-  PartialExecutor executor{state};
+  PartialExecutor executor{state, cache};
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
   const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
 
