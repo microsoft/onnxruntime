@@ -7,6 +7,7 @@ Ensure that dependencies are available and then load the extension module.
 """
 import os
 import platform
+import sys
 
 from . import _ld_preload  # noqa: F401
 
@@ -18,4 +19,6 @@ if platform.system() == "Windows":
             raise ImportError(
                 "Microsoft Visual C++ Redistributable for Visual Studio 2019 not installed on the machine.")
 
+sys.setdlopenflags(os.RTLD_GLOBAL|os.RTLD_NOW|os.RTLD_DEEPBIND)
 from .onnxruntime_pybind11_state import *  # noqa
+sys.setdlopenflags(os.RTLD_LOCAL|os.RTLD_NOW|os.RTLD_DEEPBIND)
