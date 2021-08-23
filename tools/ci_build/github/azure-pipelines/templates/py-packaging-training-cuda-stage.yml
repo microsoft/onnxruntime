@@ -35,6 +35,12 @@ parameters:
     agent_pool.
   type: string
 
+- name: upload_wheel
+  displayName: >
+    upload_wheel.
+  type: string
+  default: 'no'
+
 stages:
 - stage: Python_Packaging
 
@@ -71,6 +77,13 @@ stages:
             DockerFile: ${{ parameters.docker_file }}
             GccVersion: ${{ parameters.gcc_version }}
       steps:
+
+      - task: CmdLine@2
+          env:
+            NIGHTLY_BLD: $(NIGHTLY_BUILD)
+          -bash: echo $(NIGHTLY_BLD) 'NIGHTLY_BLD'
+          -bash: echo $(NIGHTLY_BUILD) 'NIGHTLY_BUILD'
+
       - checkout: self
         clean: true
         submodules: recursive
@@ -194,6 +207,7 @@ stages:
           ArtifactName: onnxruntime_gpu
 
       - task: AzureCLI@2
+        condition: and(succeeded(), eq(variables.upload_wheel, 'yes'))
         inputs:
           azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
           scriptType: 'bash'
@@ -207,7 +221,6 @@ stages:
                 --account_name onnxruntimepackages \
                 --account_key $(orttrainingpackagestorageaccountkey) \
                 --container_name '$web'
-          condition: succeededOrFailed()
           displayName:
 
       - template: component-governance-component-detection-steps.yml
