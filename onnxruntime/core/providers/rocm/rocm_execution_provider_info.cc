@@ -89,4 +89,5 @@ ProviderOptions ROCMExecutionProviderInfo::ToProviderOptions(const ROCMExecution
 
   return options;
 }
+
 }  // namespace onnxruntime

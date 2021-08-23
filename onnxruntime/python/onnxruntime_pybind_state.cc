@@ -36,8 +36,6 @@ const OrtDevice::DeviceType OrtDevice::GPU;
 
 namespace onnxruntime {
 
-constexpr const char* kExecutionProviderSharedLibraryPath = "shared_lib_path";
-constexpr const char* kExecutionProviderSharedLibraryEntry = "provider_factory_entry_point";
 
 }  // namespace onnxruntime
 
@@ -303,6 +301,42 @@ static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExecutionProvider(
   return ep_factory->CreateProvider();
 }
 
+#ifdef USE_CUDA
+const CUDAExecutionProviderInfo GetCudaExecutionProviderInfo(ProviderInfo_CUDA* cuda_provider_info,
+                                                             const ProviderOptionsMap& provider_options_map){
+  ORT_ENFORCE(cuda_provider_info);
+  const auto it = provider_options_map.find(kCudaExecutionProvider);
+  CUDAExecutionProviderInfo info;
+  if (it != provider_options_map.end())
+    cuda_provider_info->CUDAExecutionProviderInfo__FromProviderOptions(it->second, info);
+  else{
+    info.device_id = cuda_device_id;
+    info.gpu_mem_limit = gpu_mem_limit;
+    info.arena_extend_strategy = arena_extend_strategy;
+    info.cudnn_conv_algo_search = cudnn_conv_algo_search;
+    info.do_copy_in_default_stream = do_copy_in_default_stream;
+    info.external_allocator_info = external_allocator_info;
+  }
+  return info;
+}
+#endif
+
+#ifdef USE_ROCM
+const ROCMExecutionProviderInfo GetROCMExecutionProviderInfo(const ProviderOptionsMap& provider_options_map){
+  const auto it = provider_options_map.find(type);
+  return it != provider_options_map.end()
+            ? ROCMExecutionProviderInfo::FromProviderOptions(it->second)
+            : [&]() {
+                ROCMExecutionProviderInfo info{};
+                info.device_id = cuda_device_id;
+                info.gpu_mem_limit = gpu_mem_limit;
+                info.arena_extend_strategy = arena_extend_strategy;
+                info.external_allocator_info = external_allocator_info;
+                return info;
+              }();
+}
+#endif
+
 std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
   InferenceSession* sess,
   const std::string& type,
@@ -467,19 +501,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #ifdef USE_CUDA
     if(auto* cuda_provider_info = TryGetProviderInfo_CUDA())
     {
-      const auto it = provider_options_map.find(type);
-      CUDAExecutionProviderInfo info{};
-      if (it != provider_options_map.end())
-        cuda_provider_info->CUDAExecutionProviderInfo__FromProviderOptions(it->second, info);
-      else {
-        info.device_id = cuda_device_id;
-        info.gpu_mem_limit = gpu_mem_limit;
-        info.arena_extend_strategy = arena_extend_strategy;
-        info.cudnn_conv_algo_search = cudnn_conv_algo_search;
-        info.do_copy_in_default_stream = do_copy_in_default_stream;
-        info.external_allocator_info = external_allocator_info;
-      }
-
+      const CUDAExecutionProviderInfo info = GetCudaExecutionProviderInfo(cuda_provider_info,
+                                                                    provider_options_map);
+      
       // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
       // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
       // since FromProviderOptions might contain external CUDA allocator.
@@ -495,18 +519,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kRocmExecutionProvider) {
 #ifdef USE_ROCM
-    const auto it = provider_options_map.find(type);
-    const ROCMExecutionProviderInfo info =
-        it != provider_options_map.end()
-            ? ROCMExecutionProviderInfo::FromProviderOptions(it->second)
-            : [&]() {
-                ROCMExecutionProviderInfo info{};
-                info.device_id = cuda_device_id;
-                info.gpu_mem_limit = gpu_mem_limit;
-                info.arena_extend_strategy = arena_extend_strategy;
-                info.external_allocator_info = external_allocator_info;
-                return info;
-              }();
+    const ROCMExecutionProviderInfo info = GetROCMExecutionProviderInfo(provider_options_map);
 
     // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
     // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can

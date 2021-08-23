@@ -39,6 +39,14 @@ struct ROCMExecutionProviderInfo {
   bool has_user_compute_stream{false};
   void* user_compute_stream{nullptr};
   ROCMExecutionProviderExternalAllocatorInfo external_allocator_info{};
+  size_t hash() const{
+    return static_cast<size_t>(device_id) ^
+         gpu_mem_limit ^
+         (static_cast<size_t>(arena_extend_strategy) << 16) ^
+         (static_cast<size_t>(miopen_conv_exhaustive_search) << 18) ^
+         (static_cast<size_t>(do_copy_in_default_stream) << 20) ^
+         (static_cast<size_t>(has_user_compute_stream) << 22);
+  }
 
   static ROCMExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const ROCMExecutionProviderInfo& info);
