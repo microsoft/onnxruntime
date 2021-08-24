@@ -290,7 +290,6 @@ jobs:
     inputs:
       scriptPath: 'tools/ci_build/github/linux/extract_and_bundle_gpu_package.sh'
       args: '-a $(Build.BinariesDirectory)/tgz-artifacts'
-      args: '-r $(Build.BinariesDirectory) -a ${{parameters.artifactName}} -l ${{parameters.libraryName}} -c ${{parameters.buildConfig}} -s $(Build.SourcesDirectory) -t ${{parameters.commitId}}'
       workingDirectory: '$(Build.BinariesDirectory)/tgz-artifacts'
 
   - task: ArchiveFiles@2
