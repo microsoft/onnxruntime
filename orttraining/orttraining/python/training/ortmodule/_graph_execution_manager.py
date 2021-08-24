@@ -6,6 +6,7 @@
 from .debug_options import DebugOptions, LogLevel
 from . import _utils, _io, _logger, torch_cpp_extensions as _cpp_ext, _onnx_models
 from ._custom_autograd_function_exporter import _post_process_after_export
+from ._custom_autograd_function import CustomAutogradFunctionEnabler
 from ._graph_execution_interface import GraphExecutionInterface
 from ._fallback import (_FallbackManager,
                        _FallbackPolicy,
@@ -62,29 +63,6 @@ class _SkipCheck(IntFlag):
         """Check whether `_SkipCheck.SKIP_CHECK_DISABLED is set on the `_SkipCheck instance"""
 
         return _SkipCheck.SKIP_CHECK_DISABLED in self
-
-
-class CustomAutogradFunctionEnabler(object):
-    """Used to enable custom autograd function fallback feature. """
-    def __init__(self):
-        self._is_enabled = False
-        def callback_func():
-            from ._custom_autograd_function import enable_custom_autograd_support
-            enable_custom_autograd_support()
-        self._callback = callback_func
-
-    @property
-    def enable_state(self):
-        return self._is_enabled
-
-    @enable_state.setter
-    def enable_state(self, new_val):
-        """Once state updated to True, autograd function runner and custom exporters are registered through callback.
-           This implies that enabling MUST be done before the ONNX model export.
-        """
-        self._is_enabled = new_val
-        if self._is_enabled:
-            self._callback()
 
 
 class GraphExecutionManager(GraphExecutionInterface):

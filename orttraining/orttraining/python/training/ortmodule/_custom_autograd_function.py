@@ -18,3 +18,23 @@ def enable_custom_autograd_support():
     atexit.register(unregister_python_functions)
 
     register_custom_op_symbolic('::prim_PythonOp', _export, 1)
+
+
+class CustomAutogradFunctionEnabler(object):
+    """Used to enable custom autograd function fallback feature. """
+    def __init__(self):
+        self._is_enabled = False
+        self._callback = enable_custom_autograd_support
+
+    @property
+    def enable_state(self):
+        return self._is_enabled
+
+    @enable_state.setter
+    def enable_state(self, new_val):
+        """Once state updated to True, autograd function runner and custom exporters are registered through callback.
+           This implies that enabling MUST be done before the ONNX model export.
+        """
+        self._is_enabled = new_val
+        if self._is_enabled:
+            self._callback()

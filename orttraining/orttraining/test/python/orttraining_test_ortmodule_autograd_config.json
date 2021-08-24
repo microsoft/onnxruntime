@@ -4,7 +4,6 @@
     "RunSymbolicShapeInference": true,
     "DebugOptions":
     {
-        "LogLevel": "INFO",
         "SaveONNX": true,
         "ONNXPrefix": "custom_autograd_ut_"
     }

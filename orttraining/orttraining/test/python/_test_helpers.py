@@ -216,18 +216,14 @@ def run_with_pytorch_on_device(device, model, input_list, label_input, is_eval_m
                 inputs_on_device[i].requires_grad_()
         target = label_input.to(device)
 
-    print("============Forward Starts===============>>>>>")
     output = model(*inputs_on_device)
-    print("============Forward Ends  ===============>>>>>")
     forward_outputs = [output]
     grad_outputs = []
 
     if not is_eval_mode:
         criterion = torch.nn.MSELoss()
         loss = criterion(output, target)
-        print("============Loss Ends  ===============>>>>>")
         loss.backward()
-        print("============Backward Ends  ===============>>>>>")
         for name, param in model.named_parameters():
             if param.requires_grad:
                 grad_outputs.append(param.grad)
