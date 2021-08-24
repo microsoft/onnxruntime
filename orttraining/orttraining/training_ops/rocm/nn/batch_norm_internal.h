@@ -41,7 +41,7 @@ class BatchNormInternal final : public RocmKernel {
 
  private:
   double epsilon_ = 1e-5;
-  int64_t spatial_ = 1;  // default as per spec
+  int64_t spatial_ = 0;  // default as per spec
   miopenBatchNormMode_t miopen_batch_norm_mode_;
   double momentum_;
 };

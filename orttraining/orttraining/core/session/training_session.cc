@@ -1309,7 +1309,7 @@ std::unordered_set<std::string> TrainingSession::GetStateTensorNames() const {
   }
 
   for (auto& node : model_->MainGraph().Nodes()) {
-    if (node.OpType().compare("BatchNormalization") == 0) {
+    if (node.OpType().compare("BatchNormInternal") == 0) {
       checkpointed_tensor_names.insert(node.InputDefs()[3]->Name());
       checkpointed_tensor_names.insert(node.InputDefs()[4]->Name());
     }

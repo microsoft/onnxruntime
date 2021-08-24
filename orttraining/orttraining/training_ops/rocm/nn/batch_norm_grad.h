@@ -36,7 +36,7 @@ class BatchNormalizationGrad final : public RocmKernel {
 
  private:
   double epsilon_ = 1e-5;
-  int64_t spatial_ = 1;
+  int64_t spatial_ = 0;
   miopenBatchNormMode_t miopen_batch_norm_mode_;
 };
 
