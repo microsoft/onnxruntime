@@ -908,33 +908,33 @@ static Status CopySparseData(size_t n_sparse_elements,
   if (indices_shape.NumDimensions() == 1) {
     // flattened indexes
     for (size_t i = 0; i < n_sparse_elements; ++i) {
-      copier(i, static_cast<size_t>(indices_data[i]));
+      copier(i, gsl::narrow<size_t>(indices_data[i]));
     }
   } else if (indices_shape.NumDimensions() == 2) {
     // entries in format {NNZ, rank}
-    size_t rank = static_cast<size_t>(indices_shape[1]);
-    ORT_ENFORCE(rank == dims.size() && rank > 0);
+    auto rank = indices_shape[1];
+    ORT_ENFORCE(rank > 0 && static_cast<size_t>(rank) == dims.size());
     const int64_t* cur_index = indices_data.data();
-    std::vector<size_t> multipliers;
+    std::vector<int64_t> multipliers;
     multipliers.resize(rank);
 
     // calculate sum of inner dimension elements for each dimension.
     // e.g. if shape {2,3,4}, the result should be {3*4, 4, 1}
     multipliers[rank - 1] = 1;
-    for (auto r = static_cast<int64_t>(rank) - 2; r >= 0; --r) {
-      multipliers[r] = static_cast<size_t>(dims[r + 1]) * multipliers[r + 1];
+    for (auto r = rank - 2; r >= 0; --r) {
+      multipliers[r] = SafeInt<int64_t>(dims[r + 1]) * multipliers[r + 1];
     }
 
     // calculate the offset for the entry
     // e.g. if shape was {2,3,4} and entry was (1, 0, 2) the offset is 14
     // as there are 2 rows, each with 12 entries per row
     for (size_t i = 0; i < n_sparse_elements; ++i) {
-      size_t idx = 0;
-      for (size_t j = 0; j < rank; ++j) {
-        idx += static_cast<size_t>(cur_index[j]) * multipliers[j];
+      SafeInt<int64_t> idx = 0;
+      for (int64_t j = 0; j < rank; ++j) {
+        idx += SafeInt<int64_t>(cur_index[j]) * multipliers[j];
       }
 
-      copier(i, idx);
+      copier(i, static_cast<size_t>(idx));
       cur_index += rank;
     }
 
