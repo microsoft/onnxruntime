@@ -52,14 +52,9 @@ jobs:
       artifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
       targetPath: '$(Build.BinariesDirectory)\nuget-artifact'
 
-  - task: DownloadPipelineArtifact@2
+  - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - testdata'
     inputs:
-      #source: 'specific'
-      #project: 'Lotus'
-      #pipeline: '940'
-      #runVersion: 'specific'
-      #runId: '169900'
       artifactName: 'drop-nuget'
       targetPath: '$(Build.BinariesDirectory)\testdata'
 
