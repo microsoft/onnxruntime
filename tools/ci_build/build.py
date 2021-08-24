@@ -2171,15 +2171,14 @@ def main():
             operators_config_file = os.path.abspath(args.include_ops_by_config)
             print('[onnxruntime-extensions] operators_config_file: ', operators_config_file)
 
-            ort_extensions_dir = os.path.join(source_dir, 'cmake', 'external', 'onnxruntime-extensions', 'onnxruntime_extensions')
-            os.chdir(ort_extensions_dir)
-            print('[onnxruntime-extensions] Current directory1: ', os.getcwd())
+            cmake_tool_dir = os.path.join(source_dir, 'cmake', 'external', 'onnxruntime-extensions',
+                                              'ci_build', 'tools')
+            os.chdir(cmake_tool_dir)
 
             # 1. generate _selectedoplist.cmake by operators config file
-            run_subprocess([sys.executable, 'cmake_helper.py', operators_config_file], cwd=ort_extensions_dir)
+            run_subprocess([sys.executable, 'cmake_helper.py', operators_config_file], cwd=cmake_tool_dir)
 
             os.chdir(previous_dir)
-            print('[onnxruntime-extensions] Current directory2: ', os.getcwd())
 
             # 2. set cmake option to select operators from onnxruntime-extensions
             cmake_extra_args += ["-Donnxruntime_EXTENSION_CUSTOM_OPS_SELECTED=ON"]
