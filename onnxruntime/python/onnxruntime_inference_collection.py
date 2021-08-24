@@ -335,16 +335,21 @@ class InferenceSession(Session):
     def _create_inference_session(self, providers, provider_options, disabled_optimizers=None):
         available_providers = C.get_available_providers()
 
-        # Tensorrt can fall back to CUDA. All others fall back to CPU.
-        if 'TensorrtExecutionProvider' in available_providers:
-            self._fallback_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
-        else:
-            self._fallback_providers = ['CPUExecutionProvider']
-
         # validate providers and provider_options before other initialization
         providers, provider_options = check_and_normalize_provider_args(providers,
                                                                         provider_options,
                                                                         available_providers)
+
+        # Tensorrt can fall back to CUDA. All others fall back to CPU.
+        if 'TensorrtExecutionProvider' in available_providers:
+            self._fallback_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+
+            # if Tensorrt is not explicitly specified, use CUDA as default provider
+            if providers == [] :
+                providers = ['CUDAExecutionProvider']
+                provider_options = [{}]
+        else:
+            self._fallback_providers = ['CPUExecutionProvider']
 
         session_options = self._sess_options if self._sess_options else C.get_default_session_options()
         if self._model_path:
