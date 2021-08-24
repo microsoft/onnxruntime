@@ -74,7 +74,7 @@ def _load_enable_custom_autograd_function(ortmodule_config_accessor, data):
     log.info(f"Found keyword {_load_enable_custom_autograd_function.loading_key} in json. Loading attributes from file.")
 
     assert isinstance(data.EnableCustomAutogradFunction, bool), f"{_load_enable_custom_autograd_function.loading_key} must be a boolean"
-    ortmodule_config_accessor._enable_custom_autograd_function = data.EnableCustomAutogradFunction
+    ortmodule_config_accessor._custom_autograd_enabler.enable_state = data.EnableCustomAutogradFunction
 
 
 def _load_allow_layer_norm_mod_precision(ortmodule_config_accessor, data):

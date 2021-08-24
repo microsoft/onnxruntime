@@ -63,6 +63,27 @@ class _SkipCheck(IntFlag):
 
         return _SkipCheck.SKIP_CHECK_DISABLED in self
 
+class CustomAutogradFunctionEnabler(object):
+    def __init__(self):
+        self._is_enabled = False
+        def callback_func():
+            from ._custom_autograd_function import enable_custom_autograd_support
+            enable_custom_autograd_support()
+        self._callback = callback_func
+
+    @property
+    def enable_state(self):
+        return self._is_enabled
+
+    @enable_state.setter
+    def enable_state(self, new_val):
+        if self._is_enabled:
+            return
+
+        self._is_enabled = new_val
+        if self._is_enabled:
+            self._callback()
+
 
 class GraphExecutionManager(GraphExecutionInterface):
     def __init__(self, module, debug_options: DebugOptions, fallback_manager: _FallbackManager):
@@ -125,10 +146,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._run_symbolic_shape_infer = True
 
         # PyTorch custom Autograd function support
-        self._enable_custom_autograd_function = False
-        if self._enable_custom_autograd_function:
-            from ._custom_autograd_function import enable_custom_autograd_support
-            enable_custom_autograd_support()
+        self._custom_autograd_enabler = CustomAutogradFunctionEnabler()
 
         self._input_info = None
         self._module_output_schema = None
@@ -319,7 +337,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         assert self._export_mode is not None, "Please use a concrete instance of ExecutionManager"
 
         try:
-            with torch.set_grad_enabled(self._enable_custom_autograd_function), \
+            with torch.set_grad_enabled(self._custom_autograd_enabler.enable_state), \
                     _logger.suppress_os_stream_output(log_level=self._debug_options.logging.log_level):
                 torch.onnx.export(self._flattened_module,
                                   sample_inputs_as_tuple,
@@ -339,7 +357,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         exported_model = onnx.load_model_from_string(f.getvalue())
 
         exported_model = _post_process_after_export(exported_model,
-                                                    self._enable_custom_autograd_function,
+                                                    self._custom_autograd_enabler.enable_state,
                                                     self._debug_options.logging.log_level)
 
         return exported_model

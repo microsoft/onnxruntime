@@ -44,7 +44,7 @@ def test_load_config_from_json_1():
         assert ort_model_attributes._use_external_gpu_allocator == False
 
         # test enable custom autograd function
-        assert ort_model_attributes._enable_custom_autograd_function == True
+        assert ort_model_attributes._custom_autograd_enabler.enable_state == True
 
         # test allow layer norm mod precision
         assert ort_model_attributes._allow_layer_norm_mod_precision == True
@@ -96,7 +96,7 @@ def test_load_config_from_json_2():
         assert ort_model_attributes._use_external_gpu_allocator == True
 
         # test enable custom autograd function
-        assert ort_model_attributes._enable_custom_autograd_function == False
+        assert ort_model_attributes._custom_autograd_enabler.enable_state == False
 
         # test allow layer norm mod precision
         assert ort_model_attributes._allow_layer_norm_mod_precision == False

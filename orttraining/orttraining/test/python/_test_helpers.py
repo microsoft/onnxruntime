@@ -11,6 +11,7 @@ try:
     from onnxruntime.training.ortmodule import ORTModule
     from onnxruntime.training.ortmodule._graph_execution_manager_factory import GraphExecutionManagerFactory
     from onnxruntime.training.ortmodule._fallback import ORTModuleInitException
+    from onnxruntime.training.ortmodule.experimental.json_config import load_from_json
 except ImportError:
     # Some pipelines do not contain ORTModule
     pass
@@ -194,10 +195,11 @@ def assert_values_are_close(input, other, rtol=1e-05, atol=1e-06):
         assert False, err_msg
 
 def enable_custom_autograd_function(module):
-    for mode in [True, False]:
-        module._torch_module._execution_manager(mode)._enable_custom_autograd_function = True
-        module._torch_module._execution_manager(mode)._save_onnx = True
-        module._torch_module._execution_manager(mode)._save_onnx_prefix = "utbench"
+    # load from json.
+    path_to_json = os.path.join(os.getcwd(), 'orttraining_test_ortmodule_autograd.json')
+    load_from_json(module, path_to_json)
+    assert module._torch_module._execution_manager(True)._custom_autograd_enabler.enable_state == True
+    assert module._torch_module._execution_manager(False)._custom_autograd_enabler.enable_state == True
 
 def run_with_pytorch_on_device(device, model, input_list, label_input, is_eval_mode=False):
     with torch.no_grad():
@@ -214,14 +216,18 @@ def run_with_pytorch_on_device(device, model, input_list, label_input, is_eval_m
                 inputs_on_device[i].requires_grad_()
         target = label_input.to(device)
 
+    print("============Forward Starts===============>>>>>")
     output = model(*inputs_on_device)
+    print("============Forward Ends  ===============>>>>>")
     forward_outputs = [output]
     grad_outputs = []
 
     if not is_eval_mode:
         criterion = torch.nn.MSELoss()
         loss = criterion(output, target)
+        print("============Loss Ends  ===============>>>>>")
         loss.backward()
+        print("============Backward Ends  ===============>>>>>")
         for name, param in model.named_parameters():
             if param.requires_grad:
                 grad_outputs.append(param.grad)

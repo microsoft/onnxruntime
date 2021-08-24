@@ -163,7 +163,7 @@ def _post_process_after_export(exported_model, enable_custom_autograd_function, 
     if is_pythonop_needed and log_level <= _logger.LogLevel.WARNING:
         warnings.warn('Detected autograd functions usage in current model, the run will fail \
                       without enabling \'_enable_custom_autograd_function\'. Please enable it with: \
-                      \'module._execution_manager(is_training_mode)._enable_custom_autograd_function = True\'',
+                      \'module._execution_manager(is_training_mode)._custom_autograd_enabler.enable_state = True\'',
                       UserWarning)
 
     return exported_model
