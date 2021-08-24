@@ -44,7 +44,6 @@ Status DataTransferManager::CopyTensor(const Tensor& src, Tensor& dst, int exec_
     if (!data_transfer->CanCopy(src.Location().device, dst.Location().device)) {
       continue;
     }
-    std::cout << "tensor memcpy in DataTransferManager::CopyTensor" << std::endl;
     return data_transfer->CopyTensor(src, dst, exec_queue_id);
   }
 
