@@ -46,7 +46,7 @@ ONNX_OPERATOR_SET_SCHEMA_EX(
 } // namespace ONNX_NAMESPACE
 
 using namespace ONNX_NAMESPACE;
-static bool registerOps() {
+bool registerOps() {
   auto &d = OpSchemaRegistry::DomainToVersionRange::Instance();
   d.AddDomainToVersion("com.examples", 1, 1);
   auto schema = GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(comExamples, 1, Foo)>();
@@ -54,6 +54,7 @@ static bool registerOps() {
   std::cerr << "Successfully registered custom op" <<std::endl;
   return true;
 }
-static bool ret = registerOps();
+
 PYBIND11_MODULE(orttraining_external_custom_ops, m) {
+  m.def("register_custom_ops", &registerOps, "Register custom operators.");
 }
