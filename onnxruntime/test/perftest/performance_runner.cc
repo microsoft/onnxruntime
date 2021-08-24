@@ -23,6 +23,7 @@ using onnxruntime::Status;
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wunused-result"
 #endif
 #include <unsupported/Eigen/CXX11/ThreadPool>
 #if defined(__GNUC__)
