@@ -47,11 +47,15 @@ ONNX_OPERATOR_SET_SCHEMA_EX(
 
 using namespace ONNX_NAMESPACE;
 bool registerOps() {
+  std::cout << "In registerOps" << std::endl;
   auto &d = OpSchemaRegistry::DomainToVersionRange::Instance();
+  std::cout << "AddDomainToVersion" << std::endl;
   d.AddDomainToVersion("com.examples", 1, 1);
+  std::cout << "GetOpSchema" << std::endl;
   auto schema = GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(comExamples, 1, Foo)>();
+  std::cout << "RegisterSchema" << std::endl;
   RegisterSchema(schema);
-  std::cerr << "Successfully registered custom op" <<std::endl;
+  std::cout << "Successfully registered custom op" << std::endl;
   return true;
 }
 
