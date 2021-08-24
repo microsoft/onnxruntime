@@ -2172,7 +2172,7 @@ def main():
             print('[onnxruntime-extensions] operators_config_file: ', operators_config_file)
 
             cmake_tool_dir = os.path.join(source_dir, 'cmake', 'external', 'onnxruntime-extensions',
-                                              'ci_build', 'tools')
+                                          'ci_build', 'tools')
             os.chdir(cmake_tool_dir)
 
             # 1. generate _selectedoplist.cmake by operators config file
