@@ -79,11 +79,12 @@ void Setup_Concat3D_same_len_N_inputs(OpTester& test, const int num_inputs) {
     return std::next(odata.begin(), 4*num_inputs*i + 2*j + k);
   };
 
-  float counter = 0.0f;
+  float counter = 1.0f;
   std::stringstream ss;
   for (int i = 0; i < num_inputs; i++) {
 
-    std::iota(idata.begin(), idata.end(), ++counter);
+    std::iota(idata.begin(), idata.end(), counter);
+    counter += (float)idata.size();
 
     ss.str("");
     ss << "input" << i;
