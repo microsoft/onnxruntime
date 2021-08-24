@@ -9,6 +9,7 @@
 #include "ort_aten.h"
 #include "ort_backends.h"
 #include "orttraining/core/framework/ortmodule_graph_builder.h"
+#include "ort_customops.h"
 #include <torch/extension.h>
 #include "torch/csrc/autograd/python_variable.h"
 
@@ -67,6 +68,9 @@ void addObjectMethodsForEager(py::module& m){
       if (!status.IsOK())
         throw std::runtime_error(status.ErrorMessage());
     });
+
+  auto customop_module = m.def_submodule("custom_ops");
+  torch_ort::eager::GenerateCustomOpsBindings(customop_module);
 }
 
 }
