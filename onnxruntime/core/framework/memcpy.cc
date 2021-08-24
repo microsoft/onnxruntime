@@ -16,6 +16,7 @@ Status Memcpy::Compute(OpKernelContext* ctx) const {
   if (input_type_0->IsTensorType()) {
     const auto* X = ctx->Input<Tensor>(0);
     Tensor* Y = ctx->Output(0, X->Shape());
+    std::cout << "memcpy in core/framework/memcpy.cc" << std::endl;
     retval = Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
 
     if (!retval.IsOK()) {

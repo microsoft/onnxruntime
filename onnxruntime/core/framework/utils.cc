@@ -211,6 +211,7 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
     if (copy_tensor_pairs != nullptr) {
       copy_tensor_pairs->push_back({source_tensor, *p_output_tensor, 0});
     } else {
+      std::cout << "tensor memcpy in core/framework/utils.cc" << std::endl;
       ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(source_tensor, *p_output_tensor));
     }
   } else if (source_mlvalue.IsSparseTensor()) {
@@ -240,6 +241,7 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
       if (copy_tensor_pairs != nullptr) {
         copy_tensor_pairs->push_back({*source_iter, const_cast<Tensor&>(*target_iter), 0});
       } else {
+        std::cout << "sequence tensor memcpy in core/framework/utils.cc" << std::endl;
         ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(*source_iter, const_cast<Tensor&>(*target_iter)));
       }
       ++source_iter;
@@ -494,6 +496,7 @@ static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
   }
 
   if (!batched_data_transfers.empty()) {
+    std::cout << "tensor memcpy in core/framework/utils.cc CopyInputsAcrossDevices" << std::endl;
     ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensors(batched_data_transfers));
   }
 
@@ -537,6 +540,7 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
   }
 
   if (!batched_data_transfers.empty()) {
+    std::cout << "tensor memcpy in core/framework/utils.cc CopyOutputs AcrossDevices" << std::endl;
     ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensors(batched_data_transfers));
   }
 

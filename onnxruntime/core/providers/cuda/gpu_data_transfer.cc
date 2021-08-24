@@ -53,6 +53,7 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int e
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyHostToDevice, GetStream(exec_queue_id)));
       //CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(GetStream(exec_queue_id))); work
     } else if (src_device.Type() == OrtDevice::GPU) {
+      std::cout << "copy from gpu to gpu" << std::endl;
       // copying between GPU, this is non-blocking
       // Copy only if the two addresses are different.
       if (dst_data != src_data) {
@@ -82,6 +83,7 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int e
     }
    
   } else {
+    std::cout << "copy from cpu to cpu" << std::endl;
     // copying between cpu memory
     memcpy(dst_data, src_data, bytes);
   }

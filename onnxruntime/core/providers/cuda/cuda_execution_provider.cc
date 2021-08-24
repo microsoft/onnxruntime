@@ -32,6 +32,7 @@ class Memcpy final : public OpKernel {
       ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
       Tensor* Y = ctx->Output(0, X->Shape());
       ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor.");
+      std::cout << "----do tensor copy for node: " << Info().node().Name() << std::endl;
       return Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
     } else if (X_type->IsSparseTensorType()) {
       const auto* X = ctx->Input<SparseTensor>(0);
@@ -56,6 +57,7 @@ class Memcpy final : public OpKernel {
       for (size_t i = 0; i < X_size; ++i) {
         const Tensor& source_tensor = X->Get(i);
         std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(), source_tensor.Shape(), alloc);
+        std::cout << "----do sequence copy for node: " << Info().node().Name() << std::endl;
         Status retval = Info().GetDataTransferManager().CopyTensor(source_tensor, *target_tensor, Info().GetKernelDef().ExecQueueId());
         if (!retval.IsOK()) {
           return retval;

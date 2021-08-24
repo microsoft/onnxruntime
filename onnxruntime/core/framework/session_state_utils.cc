@@ -110,7 +110,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
 
     ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_deserialize_tensor));
     // TODO!! Need a temp buffer allocator for non-escape buffers that maybe too big for stack allocation.
-
+    std::cout << "memcpy in core/framework/session_state_utils.cc under deserializetensorproto" << std::endl;
     Status copy_status = data_transfer_mgr.CopyTensor(*p_deserialize_tensor, *p_tensor);
     if (!copy_status.IsOK()) {
       if (copy_status.ErrorMessage().empty()) {

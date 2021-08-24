@@ -497,9 +497,10 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
     if (input.IsTensor()) {
       const auto& data = input.Get<Tensor>();
       Tensor* output = context_.Output(output_idx, data.Shape());
+      std::cout << "copy tensor in Loop " << std::endl;
       session_state_.GetDataTransferMgr().CopyTensor(input.Get<Tensor>(), *output);
     } else if (input.IsTensorSequence()) {
-      if (iter_num_value != 0) {
+      if (iter_num_value < 0) {
         // We can move the subgraph fetches directly into the Loop's fetches.
         TensorSeq* output = context_.Output<TensorSeq>(output_idx);
         *output = std::move(*input.GetMutable<TensorSeq>());
@@ -519,6 +520,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
         }
         for (auto it = data.begin(), end = data.end(); it != end; ++it) {
           Tensor tmp(it->DataType(), onnxruntime::TensorShape(it->Shape()), alloc);
+          std::cout << "copy sequence type tensors in Loop " << std::endl;
           session_state_.GetDataTransferMgr().CopyTensor(*it, tmp);
           tensors.push_back(std::move(tmp));
         }

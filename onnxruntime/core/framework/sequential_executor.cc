@@ -240,9 +240,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
     // sync before compute
     int queue_id = p_op_kernel->KernelDef().ExecQueueId();
-    if (seq_exec_plan.NodeHasFence(node_index) == true) {
-      std::cout << "execute node: " << node.Name() << " queue_id: " << queue_id << " NodeHasFence: " << seq_exec_plan.NodeHasFence(node_index) << std::endl;
-    }
+
+
     
     if (seq_exec_plan.NodeHasFence(node_index)) {
       for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
@@ -319,8 +318,9 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
           ORT_RETURN_IF_ERROR(utils::VerifyInputTensorsAllocatedContiguously(&op_kernel_context));
         }
 #endif
-
+        std::cout << "execute node: " << node.Name() << " queue_id: " << queue_id << " NodeHasFence: " << seq_exec_plan.NodeHasFence(node_index) << std::endl;
         compute_status = p_op_kernel->Compute(&op_kernel_context);
+        std::cout << "execute node: " << node.Name() << " done!!!!!!!!" << std::endl;
       }
       ORT_CATCH(const std::exception& ex) {
         ORT_HANDLE_EXCEPTION([&]() {

@@ -130,6 +130,7 @@ AllocatorPtr OptimizerExecutionFrame::GetAllocatorImpl(const OrtMemoryInfo& info
 }
 
 Status OptimizerExecutionFrame::CopyTensor(const Tensor& src, Tensor& dest) const {
+  std::cout << "tensor memcpy in OptimizerExecutionFrame::CopyTensor" << std::endl;
   return info_.GetDataTransferManager().CopyTensor(src, dest);
 }
 
