@@ -63,7 +63,9 @@ class _SkipCheck(IntFlag):
 
         return _SkipCheck.SKIP_CHECK_DISABLED in self
 
+
 class CustomAutogradFunctionEnabler(object):
+    """Used to enable custom autograd function fallback feature. """
     def __init__(self):
         self._is_enabled = False
         def callback_func():
@@ -77,9 +79,9 @@ class CustomAutogradFunctionEnabler(object):
 
     @enable_state.setter
     def enable_state(self, new_val):
-        if self._is_enabled:
-            return
-
+        """Once state updated to True, autograd function runner and custom exporters are registered through callback.
+           This implies that enabling MUST be done before the ONNX model export.
+        """
         self._is_enabled = new_val
         if self._is_enabled:
             self._callback()
