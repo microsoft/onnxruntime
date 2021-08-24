@@ -12,11 +12,13 @@ EXIT_CODE=1
 
 uname -a
 
-mkdir -p onnxruntime-linux-x64-gpu-tensorrt
+cd $ARTIFACT_DIR 
+
+mkdir -p $ARTIFACT_DIR/onnxruntime-linux-x64-gpu-tensorrt
 tar zxvf $ARTIFACT_DIR/onnxruntime-linux-x64-gpu-tensorrt-*.tgz -C onnxruntime-linux-x64-gpu-tensorrt
 rm $ARTIFACT_DIR/onnxruntime-linux-x64-gpu-tensorrt-*.tgz
 
-mkdir -p onnxruntime-linux-x64-gpu
+mkdir -p $ARTIFACT_DIR/onnxruntime-linux-x64-gpu
 TAR_NAME=`ls $ARTIFACT_DIR/onnxruntime-linux-x64-gpu-*.tgz`
 tar zxvf $ARTIFACT_DIR/onnxruntime-linux-x64-gpu-*.tgz -C onnxruntime-linux-x64-gpu
 rm $ARTIFACT_DIR/onnxruntime-linux-x64-gpu-*.tgz
