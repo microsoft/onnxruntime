@@ -2162,6 +2162,28 @@ def main():
             eager_root_dir = os.path.join(source_dir, "orttraining", "orttraining", "eager")
             gen_ort_aten_ops(eager_root_dir)
 
+        # Note: Please make sure submodule onnxruntime-extensions is already pulled/synced now.
+        # Steps: 1. generate _selectedoplist.cmake by operators config file
+        #        2. set cmake option to select operators from onnxruntime-extensions
+        if is_reduced_ops_build(args) and args.enable_onnxruntime_extensions:
+            previous_dir = os.getcwd()
+
+            operators_config_file = os.path.abspath(args.include_ops_by_config)
+            print('[onnxruntime-extensions] operators_config_file: ', operators_config_file)
+
+            ort_extensions_dir = os.path.join(source_dir, 'cmake', 'external', 'onnxruntime-extensions', 'onnxruntime_extensions')
+            os.chdir(ort_extensions_dir)
+            print('[onnxruntime-extensions] Current directory1: ', os.getcwd())
+
+            # 1. generate _selectedoplist.cmake by operators config file
+            run_subprocess([sys.executable, 'cmake_helper.py', operators_config_file], cwd=ort_extensions_dir)
+
+            os.chdir(previous_dir)
+            print('[onnxruntime-extensions] Current directory2: ', os.getcwd())
+
+            # 2. set cmake option to select operators from onnxruntime-extensions
+            cmake_extra_args += ["-Donnxruntime_EXTENSION_CUSTOM_OPS_SELECTED=ON"]
+
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home, mpi_home, nccl_home,
             tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,

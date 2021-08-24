@@ -1289,8 +1289,13 @@ if (onnxruntime_ENABLE_EXTENSION_CUSTOM_OPS)
 
   # set options for onnxruntime-extensions
   set(OCOS_ENABLE_CTEST OFF CACHE INTERNAL "")
+  set(OCOS_ENABLE_CPP_EXCEPTIONS ON CACHE INTERNAL "")
   set(OCOS_ENABLE_STATIC_LIB ON CACHE INTERNAL "")
-  set(OCOS_ENABLE_SPM_TOKENIZER OFF CACHE INTERNAL "")
+
+  if (onnxruntime_EXTENSION_CUSTOM_OPS_SELECTED)
+    set(OCOS_ENABLE_SELECTED_OPLIST ON CACHE INTERNAL "")
+  endif()
+
   add_subdirectory(external/onnxruntime-extensions EXCLUDE_FROM_ALL)
   # target library or executable are defined in CMakeLists.txt of onnxruntime-extensions
   target_include_directories(ocos_operators PRIVATE ${RE2_INCLUDE_DIR} external/json/include)
