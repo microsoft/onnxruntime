@@ -205,22 +205,22 @@ int IExecutionProvider::ModelMetadefIdGenerator::GenerateId(const onnxruntime::G
     const auto& model_path_str = main_graph.ModelPath().ToPathString();
     if (!model_path_str.empty()) {
       MurmurHash3::x86_128(model_path_str.data(), gsl::narrow_cast<int32_t>(model_path_str.size()), hash[0], &hash);
-    } else {
-      auto hash_str = [&hash](const std::string& str) {
-        MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
-      };
+    }
 
-      // fingerprint the main graph by hashing graph inputs and the ordered outputs from each node
-      for (const auto* node_arg : main_graph.GetInputsIncludingInitializers()) {
-        hash_str(node_arg->Name());
-      }
+    auto hash_str = [&hash](const std::string& str) {
+      MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
+    };
 
-      // note: process nodes in order defined in model to be deterministic
-      for (const auto& node : main_graph.Nodes()) {
-        for (const auto* node_arg : node.OutputDefs()) {
-          if (node_arg->Exists()) {
-            hash_str(node_arg->Name());
-          }
+    // fingerprint the main graph by hashing graph inputs and the ordered outputs from each node
+    for (const auto* node_arg : main_graph.GetInputsIncludingInitializers()) {
+      hash_str(node_arg->Name());
+    }
+
+    // note: process nodes in order defined in model to be deterministic
+    for (const auto& node : main_graph.Nodes()) {
+      for (const auto* node_arg : node.OutputDefs()) {
+        if (node_arg->Exists()) {
+          hash_str(node_arg->Name());
         }
       }
     }
