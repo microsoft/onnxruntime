@@ -163,8 +163,8 @@ def main():
     logger.info("\n===========================================")
     logger.info("=========== System information  ===========")
     logger.info("===========================================")
-    info = get_system_info(args.workspace)
-    pretty_print(pp, info)
+    #info = get_system_info(args.workspace)
+    #pretty_print(pp, info)
     logger.info("\n")
 
 if __name__ == "__main__":

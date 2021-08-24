@@ -207,6 +207,26 @@ def end_memory_tracking(p, trtexec, success):
         os.remove(MEMORY_FILE)
     return mem_usage
 
+def inference_ort_tf(session, ep, ort_inputs, output_names, result_template, repeat_times, batch_size):
+    logger.info("inference tf models")
+    runtimes = []
+    try:
+        runtime = timeit.repeat(lambda: session.run(output_names, ort_inputs), number=1, repeat=repeat_times)
+        runtimes += runtime[1:] # remove warmup
+    
+    except Exception as e:
+        logger.error(e)
+        return None
+
+    logger.info(runtimes)
+
+    result = {}
+    result.update(result_template)
+    result.update({"io_binding": False})
+    latency_result = get_latency_result(runtimes, batch_size)
+    result.update(latency_result)
+    return result
+
 def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_times, batch_size):
     runtimes = []
     if args.input_data == "random":
@@ -723,21 +743,23 @@ def find_model_directory(path):
 
     return model_dir
 
-def find_test_data_directory(path):
-    output = get_output(["find", "-L", path, "-maxdepth", "1", "-name", "test_data*", "-type", "d"])
-    test_data_dir = split_and_sort_output(output)
-    logger.info(test_data_dir)
+def find_test_data(path):
+    output = get_output(["find", "-L", path, "-maxdepth", "1", "-name", "input*"])
+    input_data = split_and_sort_output(output)
+    logger.info(input_data)
 
-    if test_data_dir == ['']:
+    if input_data == ['']:
         return None
 
-    return test_data_dir
+    return input_data
 
 def parse_models_info_from_directory(path, models):
 
-    test_data_dir = find_test_data_directory(path) 
+    
+    test_data = find_test_data(path)
+    #test_data_dir = find_test_data_directory(path) 
 
-    if test_data_dir:
+    if test_data:
         model_name = os.path.split(path)[-1]
         model_name = model_name + '_' + os.path.split(os.path.split(path)[0])[-1] # get opset version as model_name
         model_path = find_model_path(path)
@@ -821,6 +843,61 @@ def convert_model_from_float_to_float16(model_path):
         save_model(new_onnx_model, 'new_fp16_model_by_trt_perf.onnx')
 
     return new_model_path
+
+def get_tf_test_data(path):
+    import pickle 
+
+    output = get_output(["find", path, "-name", "output_names*"])
+    output_names = split_and_sort_output(output)[0]
+    with open(output_names, "rt") as f: 
+        output_names = json.load(f)
+
+    # load inputs
+    output = get_output(["find", ".", "-name", "input*"])
+    input_data = split_and_sort_output(output)[0]
+    with open(input_data, "rb") as f: 
+        input_data = pickle.load(f) 
+    
+    # load outputs
+    output = get_output(["find", ".", "-name", "output*"])
+    output_data = split_and_sort_output(output)[0]
+    output_data = np.load(output_data)
+    
+    return input_data, output_names, output_data
+
+def get_tf_test_data_bak(path):
+    import pickle 
+
+    output = get_output(["find", path, "-name", "test_data*", "-type", "d"])
+    test_data_set_dir = split_and_sort_output(output)
+    logger.info(test_data_set_dir)
+
+    output = get_output(["find", path, "-name", "output_names*"])
+    output_names = split_and_sort_output(output)[0]
+    with open(output_names, "rt") as f: 
+        output_names = json.load(f)
+
+    inputs = []
+    outputs = []
+
+    for test_data_dir in test_data_set_dir:
+        logger.info(test_data_dir) 
+
+        pwd = os.getcwd()
+        os.chdir(test_data_dir)
+
+        # load inputs
+        output = get_output(["find", ".", "-name", "input*"])
+        input_data = split_and_sort_output(output)[0]
+        with open(input_data, "rb") as f: 
+            input_data = pickle.load(f) 
+        
+        # load outputs
+        output = get_output(["find", ".", "-name", "output*"])
+        output_data = split_and_sort_output(output)[0]
+        output_data = np.load(output_data)
+    
+    return input_data, output_names, output_data
 
 def get_test_data(fp16, test_data_dir, all_inputs_shape):
     inputs = []
@@ -941,8 +1018,9 @@ def run_onnxruntime(args, models):
                     test_data_dir = model_info["test_data_path_fp16"]
                     fp16 = False 
             
-            inputs, ref_outputs = get_test_data(fp16, test_data_dir, all_inputs_shape)
-
+            #inputs, ref_outputs = get_test_data(fp16, test_data_dir, all_inputs_shape)
+            inputs, output_names, ref_outputs = get_tf_test_data(test_data_dir) 
+           
             # generate random input data
             if args.input_data == "random":
                 inputs = generate_onnx_model_random_input(args.test_times+1, inputs[0])
@@ -965,6 +1043,7 @@ def run_onnxruntime(args, models):
                 
                 # create onnxruntime inference session
                 try:
+                    print(model_path)
                     sess = create_session(model_path, providers, options)
 
                 except Exception as e:
@@ -1018,15 +1097,17 @@ def run_onnxruntime(args, models):
                         "batch_size": batch_size,
                         "sequence_length": 1,
                         "datetime": str(datetime.now()),}
-                     
+                    
                     if args.track_memory and track_ep_memory(ep): 
                         trtexec = False
                         p = start_memory_tracking()            
-                        result = inference_ort(args, name, sess, ep, inputs, result_template, args.test_times, batch_size)
+                        result = inference_ort_tf(sess, ep, inputs, output_names, result_template, args.test_times, batch_size)
+                        #result = inference_ort(args, name, sess, ep, inputs, result_template, args.test_times, batch_size)
                         success = True if result else False
                         mem_usage = end_memory_tracking(p, trtexec, success)
                     else: 
-                        result = inference_ort(args, name, sess, ep, inputs, result_template, args.test_times, batch_size)
+                        #result = inference_ort(args, name, sess, ep, inputs, result_template, args.test_times, batch_size)
+                        result = inference_ort_tf(sess, ep, inputs, output_names, result_template, args.test_times, batch_size)
                 if result:
                     latency_result[ep] = {}
                     latency_result[ep]["average_latency_ms"] = result["average_latency_ms"]
@@ -1535,7 +1616,7 @@ def parse_arguments():
     
     parser.add_argument("-w", "--workspace", required=False, default="/", help="Workspace to find tensorrt and perf script (with models if parsing with model file)")
     
-    parser.add_argument("--track_memory", required=False, default=True, help="Track CUDA and TRT Memory Usage")
+    parser.add_argument("--track_memory", required=False, default=False, help="Track CUDA and TRT Memory Usage")
 
     parser.add_argument("--ep", required=False, default=None, help="Specify ORT Execution Provider.")
     
