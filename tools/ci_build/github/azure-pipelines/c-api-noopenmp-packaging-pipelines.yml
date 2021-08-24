@@ -350,8 +350,6 @@ jobs:
       artifactName: 'onnxruntime-win-combined-gpu-x64'
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
-
-
 - job: NuGet_Packaging_GPU
   workspace:
     clean: all
