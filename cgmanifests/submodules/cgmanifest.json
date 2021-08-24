@@ -194,7 +194,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "1f4c0311cda3403999b702c996898af5707973a9",
+          "commitHash": "d10b27fe37736d2944630ecd7557cefa95cf87c9",
           "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
         },
         "comments": "git submodule at cmake/external/eigen"
@@ -454,7 +454,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "eab844a87298d500f1924f8a7cadb4cbee426093",
+          "commitHash": "a1241a967ec7920310a696a6c22ae2426752e135",
           "repositoryUrl": "https://github.com/microsoft/onnxruntime-tvm.git"
         },
         "comments": "git submodule at cmake/external/tvm"

@@ -52,3 +52,4 @@ onnxruntime/python/version_info.py
 /tools/perf_util/target/classes
 /tools/perf_util/src/main/resources
 /orttraining/orttraining/eager/ort_aten.g.cpp
+/orttraining/orttraining/eager/ort_customops.g.cpp

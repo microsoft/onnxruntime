@@ -184,6 +184,11 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
       profile::Color::Black);
 #endif
 
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+    utils::NodeDumpContext dump_context { session_state.GetGraphExecutionCounter(), 0 };
+#endif
+
+
   for (size_t program_counter = state_.GetProgramCounterStart();
        program_counter < state_.GetProgramCounterEnd();
        program_counter += 1) {
@@ -287,7 +292,8 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
       }
     }
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    utils::DumpNodeInputs(op_kernel_context, p_op_kernel->Node(), session_state);
+    dump_context.program_counter = program_counter; 
+    utils::DumpNodeInputs(dump_context, op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
 
     const std::string node_name_for_profiling = [&]() -> std::string {
@@ -440,7 +446,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
     }
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    utils::DumpNodeOutputs(op_kernel_context, p_op_kernel->Node(), session_state);
+    utils::DumpNodeOutputs(dump_context, op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
 
     // free ml-values corresponding to this node
