@@ -53,17 +53,13 @@ __global__ void FastGeluKernel(const T a, const T b, const T c, int input_length
 
 template <unsigned TPB>
 __global__ void FastGeluKernel2(const half2 a, const half2 b, const half2 c, int input_length, int bias_length, const half2* input, const half2* bias, half2* output) {
-// half2 arithmetic functions requires cuda architecture >= 5.3
-#if __CUDA_ARCH__ >= 530
   const int idx = blockIdx.x * TPB + threadIdx.x;
-
   if (idx < input_length) {
     const half2 x = input[idx];
     const half2 in = (bias == nullptr) ? x : (x + bias[idx % bias_length]);
     const half2 cdf = a + a * _Tanh(in * (c * in * in + b));
     output[idx] = in * cdf;
   }
-#endif
 }
 
 template <>
