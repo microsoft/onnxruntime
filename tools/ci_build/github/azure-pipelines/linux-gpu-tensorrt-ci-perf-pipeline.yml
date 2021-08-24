@@ -68,7 +68,7 @@ jobs:
         value: Dockerfile.tensorrt-perf -t $(trtContainer) -o $(Build.SourcesDirectory)/dockerfiles/Dockerfile.tensorrt
     - name: environment
       ${{ if ne(parameters.RunMachine, true) }}:
-        value: docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf 
+        value: docker.sh -d d19f58b73288 -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf 
       ${{ if eq(parameters.RunMachine, true) }}:
         value: machine.sh 
     - name: with_arguments
