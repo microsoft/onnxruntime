@@ -196,7 +196,7 @@ def assert_values_are_close(input, other, rtol=1e-05, atol=1e-06):
 
 def enable_custom_autograd_function(module):
     # load from json.
-    path_to_json = os.path.join(os.getcwd(), 'orttraining_test_ortmodule_autograd.json')
+    path_to_json = os.path.join(os.getcwd(), 'orttraining_test_ortmodule_autograd_config.json')
     load_from_json(module, path_to_json)
     assert module._torch_module._execution_manager(True)._custom_autograd_enabler.enable_state == True
     assert module._torch_module._execution_manager(False)._custom_autograd_enabler.enable_state == True
