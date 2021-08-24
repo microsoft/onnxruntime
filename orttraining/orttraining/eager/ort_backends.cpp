@@ -11,12 +11,6 @@
 #include "core/providers/shared_library/provider_host_api.h"
 
 
-#ifdef USE_MSNPU
-  namespace onnxruntime {
-    std::unique_ptr<onnxruntime::IExecutionProvider> CreateMSNPU_ExecutionProvider();
-  }
-#endif
-
 //use the environment from python module
 namespace onnxruntime{
 namespace python{
@@ -28,8 +22,6 @@ namespace torch_ort {
 namespace eager {
 
 using namespace onnxruntime;
-
-constexpr const char* kMSNPUExecutionProvider = "MSNPUExecutionProvider";
 
 ORTBackendsManager& GetORTBackendsManager() {
   auto& env = onnxruntime::python::GetEnv();
@@ -63,14 +55,6 @@ onnxruntime::Status ORTBackendsManager::set_device(size_t device_index, const st
   if (std::find(available_providers.begin(), available_providers.end(), provider_type) != available_providers.end()){
     if (provider_type == kCpuExecutionProvider){
       provider_p = onnxruntime::CreateExecutionProviderFactory_CPU(0)->CreateProvider();
-    }else if (provider_type == kMSNPUExecutionProvider){
-#ifdef USE_MSNPU
-      provider_p = onnxruntime::CreateMSNPU_ExecutionProvider();
-#else
-      return onnxruntime::Status(common::StatusCategory::ONNXRUNTIME,
-                          common::StatusCode::INVALID_ARGUMENT, 
-                          "Execution provider: " + std::string(kMSNPUExecutionProvider) + " is not supported.");
-#endif
     }
   }
   else{
