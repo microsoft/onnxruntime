@@ -2057,7 +2057,7 @@ XXX: Can output be simply an integer or a boolean?
         "A boundary value",
         AttributeProto::INT,
         static_cast<int64_t>(0))
-       .Output(0, "Y", "Matrix multiply results", "T")
+       .Output(0, "Y", "A sparse tensor with 1 or 0 for each of the input values", "T")
        .TypeConstraint("T", {"sparse_tensor(float)"}, "Constrain input and output float at this time")
        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -2089,6 +2089,75 @@ XXX: The output type attribute will be omitted for now. Fixed to int64_t.
           propagateShapeFromInputToOutput(ctx, 0, 0);
         });
 
+    static const char* OneHotEncoder_doc = R"DOC(
+The operator implements a simplified version of sklearn OneHotEncoder
+https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.OneHotEncoder.html
+`categories` attribute contains an array of category values.
+
+The input is a sparse tensor of values.
+
+The operator produces a sparse output with a dense shape that has one more dimension than input.
+That dimension contains sparsified version of 1-of-K category output.
+
+Example:
+categories = [1021, 2002]
+sparse input = [1021, 2002, 1023] dense shape: {10}
+input COO indices = [4, 7, 9]
+
+Output dense shape = {10, 2} // 2 is the number of categories, choices for the last dimension include
+{0, 0}, {1, 0}, {0, 1}
+
+{0, 0} is a combination that would either match no categories or it is absent from the sparse input.
+It will, therefore, be absent in the sparse output.
+
+For the rest of the values, we places ones in the following 2-D indices:
+(4, 0), (7, 1) and 1023 can not be categorized.
+
+The sparse output will have ones at the following flat COO indices: 8 (4 x 2) and 15 (7 x 2 + 1)
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(OneHotEncoder)
+        .SetDomain(kMSDomain)
+        .SinceVersion(1)
+        .Input(0, "A", "2-dimensional sparse matrix A", "T")
+        .Output(0, "Y", "Sparsified 1-of-K output", "T1")
+        .Attr(
+            "categories",
+            "list of cat_ints",
+            AttributeProto::INTS)
+        .Attr(
+            "categories",
+            "list of cat_ints",
+            AttributeProto::STRINGS)
+        .TypeConstraint(
+            "T",
+            {"sparse_tensor(float)", "sparse_tensor(double)",
+             "sparse_tensor(int64)", "sparse_tensor(int32)",
+             "sparse_tensor(uint64)", "sparse_tensor(uint32)"},
+            "Constrain input and output types to numeric tensors.")
+        .TypeConstraint("T1", {"sparse_tensor(int64)"}, "index type")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromDtypeToOutput(ctx, TensorProto_DataType_INT64, 0);
+          if (!hasInputShape(ctx, 0)) {
+            return;
+          }
+          int cat_len = 0;
+          const auto* cat_attr = ctx.getAttribute("cat_str");
+          if (cat_attr && cat_attr->type() == AttributeProto_AttributeType_STRINGS) {
+            cat_len = cat_attr->strings_size();
+          } else if ((cat_attr = ctx.getAttribute("cat_ints")) != nullptr &&
+                                cat_attr->type() == AttributeProto_AttributeType_INTS) {
+            cat_len = cat_attr->ints_size();
+          } else {
+            fail_shape_inference("Can't get categories attribute");
+          }
+          const auto& shape0 = getInputShape(ctx, 0);
+          TensorShapeProto output_shape;
+          *output_shape.add_dim() = shape0.dim(0);
+          output_shape.add_dim()->set_dim_value(cat_len);
+          updateOutputShape(ctx, 0, output_shape, TypeProto::kSparseTensorType);
+    });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(SparseToDenseMatMul)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -2114,12 +2183,12 @@ XXX: The output type attribute will be omitted for now. Fixed to int64_t.
           "T",
           {"sparse_tensor(float)", "sparse_tensor(double)", "sparse_tensor(int64)", "sparse_tensor(int32)",
            "sparse_tensor(uint64)", "sparse_tensor(uint32)"},
-          "Constrain input and output types to float tensors.")
+          "Constrain input and output types to numeric tensors.")
       .TypeConstraint(
           "T1",
           {"tensor(float)", "tensor(double)", "tensor(int64)", "tensor(int32)",
            "tensor(uint64)", "tensor(uint32)"},
-          "Constrain input and output types to float tensors.")
+          "Constrain input and output types to numeric tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         const auto* input_type0 = ctx.getInputType(0);
         const auto* input_type1 = ctx.getInputType(1);
