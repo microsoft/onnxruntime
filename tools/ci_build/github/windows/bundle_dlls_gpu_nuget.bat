@@ -14,6 +14,7 @@ FOR /R %%i IN (*.nupkg) do (
        move onnxruntime-linux-x64-gpu-tensorrt\lib\libonnxruntime_providers_tensorrt.so runtimes\linux-x64\native\libonnxruntime_providers_tensorrt.so
        mkdir runtimes\win-x64\native
        move onnxruntime-win-tensorrt-x64\lib\onnxruntime_providers_tensorrt.dll runtimes\win-x64\native\onnxruntime_providers_tensorrt.dll
+       move onnxruntime-win-tensorrt-x64\lib\onnxruntime_providers_shared.dll runtimes\win-x64\native\onnxruntime_providers_shared.dll
        move onnxruntime-win-tensorrt-x64\lib\onnxruntime.dll runtimes\win-x64\native\onnxruntime.dll
        move onnxruntime-win-tensorrt-x64\lib\onnxruntime.lib runtimes\win-x64\native\onnxruntime.lib
        move onnxruntime-win-tensorrt-x64\lib\onnxruntime.pdb runtimes\win-x64\native\onnxruntime.pdb

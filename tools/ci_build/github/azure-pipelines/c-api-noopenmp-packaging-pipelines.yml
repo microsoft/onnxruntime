@@ -357,7 +357,7 @@ jobs:
   - task: BatchScript@1
     displayName: 'Bundle Native NuGet and other binaries'
     inputs:
-      filename: $(Build.SourcesDirectory)\tools\ci_build\github\windows\bundle_dlls_gpu.bat
+      filename: $(Build.SourcesDirectory)\tools\ci_build\github\windows\bundle_dlls_gpu_nuget.bat
       workingFolder: $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts
 
   - task: CopyFiles@2
