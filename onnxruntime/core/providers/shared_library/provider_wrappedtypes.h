@@ -238,7 +238,9 @@ struct TypeProto final {
     kTensorType = 1,
     kSequenceType = 4,
     kMapType = 5,
+#if !defined(DISABLE_SPARSE_TENSORS)
     kSparseTensorType = 8,
+#endif
     kOpaqueType = 7,
     VALUE_NOT_SET = 0,
   };

@@ -2947,8 +2947,8 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 #if !defined(DISABLE_SPARSE_TENSORS)
   std::vector<flatbuffers::Offset<fbs::SparseTensor>> sparse_initializers_data;
   sparse_initializers_data.reserve(sparse_tensor_names_.size());
-  const auto sparse_end = sparse_tensor_names_.end();
 #endif
+  const auto sparse_end = sparse_tensor_names_.end();
 
   std::vector<flatbuffers::Offset<fbs::Tensor>> initializers_data;
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -2957,16 +2957,17 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 #else
   initializers_data.reserve(name_to_initial_tensor_.size());
 #endif
-
-#if !defined(DISABLE_SPARSE_TENSORS)
   const auto& model_path = ModelPath();
+
   for (const auto& pair : name_to_initial_tensor_) {
     if (sparse_tensor_names_.find(pair.first) == sparse_end) {
       flatbuffers::Offset<fbs::Tensor> fbs_tensor;
       ORT_RETURN_IF_ERROR(
           experimental::utils::SaveInitializerOrtFormat(builder, *pair.second, model_path, fbs_tensor));
       initializers_data.push_back(fbs_tensor);
-    } else {
+    }
+#if !defined(DISABLE_SPARSE_TENSORS)
+    else {
       SparseTensorProto sparse_initializer;
       ORT_RETURN_IF_ERROR(utils::DenseTensorToSparseTensorProto(*pair.second, model_path, sparse_initializer));
       flatbuffers::Offset<fbs::SparseTensor> fbs_sparse_tensor;
@@ -2974,7 +2975,9 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
           experimental::utils::SaveSparseInitializerOrtFormat(builder, sparse_initializer, model_path, fbs_sparse_tensor));
       sparse_initializers_data.push_back(fbs_sparse_tensor);
     }
+#endif
   }
+#if !defined(DISABLE_SPARSE_TENSORS)
   auto sparse_initializers = builder.CreateVector(sparse_initializers_data);
 #endif
   auto initializers = builder.CreateVector(initializers_data);
@@ -3177,6 +3180,8 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
   } else {
     *result.mutable_initializer() = graph_proto_->initializer();
   }
+#else
+  *result.mutable_initializer() = graph_proto_->initializer();
 #endif
 
   return result;
