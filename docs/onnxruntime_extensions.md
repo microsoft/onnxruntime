@@ -8,6 +8,24 @@ onnxruntime-extensions supports many useful custom operators to enhance the text
 ## Build ONNXRuntime with Extensions
 We have supported build onnxruntime-extensions as a static library and link it into ONNXRuntime. To enable custom operators in onnxruntime-extensions, you should add argument `--enable_onnxruntime_extensions` when build ONNXRuntime.
 
+### Build with Operators Config
+Also, you could pass the **required operators config** file by argument `--include_ops_by_config` to customize the operators you want to build in both onnxruntime and onnxruntime-extensions. Example content of **required_operators.config** are:
+```json
+# Generated from model/s
+# domain;opset;op1,op2...
+ai.onnx;12;Add,Cast,Concat,Squeeze
+ai.onnx.contrib;1;GPT2Tokenizer,
+```
+
+In above operators config, `ai.onnx.contrib` is the domain name of operators in onnxruntime-extensions. We would parse this line to generate required operators in onnxruntime-extensions for build.
+
+### Generate Operators Config
+To generate the **required_operators.config** file from model, please follow the guidance [Converting ONNX models to ORT format](https://onnxruntime.ai/docs/how-to/mobile/model-conversion.html).
+
+If your model contains operators from onnxruntime-extensions, please add argument `--custom_op_library` and pass the path to **ortcustomops** shared library built following guidance [share library](https://github.com/microsoft/onnxruntime-extensions#the-share-library-for-non-python).
+
+You could even manually edit the **required_operators.config** if you know the custom operators required and don't want to build the shared library.
+
 ## E2E Example using Custom Operators
 A common NLP task would probably contain several steps, including pre-processing, DL model and post-processing. It would be very efficient and productive to convert the pre/post processing code snippets into ONNX model since ONNX graph is actually a computation graph, and it can represent the most programming code, theoretically.
 
