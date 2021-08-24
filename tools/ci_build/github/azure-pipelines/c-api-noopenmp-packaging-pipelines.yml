@@ -263,6 +263,7 @@ jobs:
   steps:
   - checkout: self
     submodules: false
+  - template: templates/set-version-number-variables-step.yml
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Combined GPU'
     inputs:
