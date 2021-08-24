@@ -857,7 +857,7 @@ static Status CopySparseData(size_t n_sparse_elements,
                           "Sparse Indices raw data size does not match expected.");
         indices_data = gsl::make_span(reinterpret_cast<const int64_t*>(indices.raw_data().data()), elements);
       } else {
-        ORT_RETURN_IF_NOT(indices.int64_data_size() == elements, "Sparse indices int64 data size does not match expected");
+        ORT_RETURN_IF_NOT(indices.int64_data_size() == static_cast<int64_t>(elements), "Sparse indices int64 data size does not match expected");
         indices_data = gsl::make_span(indices.int64_data().data(), elements);
       }
       break;
@@ -868,7 +868,7 @@ static Status CopySparseData(size_t n_sparse_elements,
         auto int32_span = gsl::make_span(reinterpret_cast<const int32_t*>(indices.raw_data().data()), elements);
         indices_values.insert(indices_values.cend(), int32_span.cbegin(), int32_span.cend());
       } else {
-        ORT_RETURN_IF_NOT(indices.int32_data_size() == elements, "Sparse indices int32 data size does not match expected");
+        ORT_RETURN_IF_NOT(indices.int32_data_size() == static_cast<int64_t>(elements), "Sparse indices int32 data size does not match expected");
         indices_values.insert(indices_values.cend(), indices.int32_data().cbegin(), indices.int32_data().cend());
       }
       indices_data = gsl::make_span(indices_values);
