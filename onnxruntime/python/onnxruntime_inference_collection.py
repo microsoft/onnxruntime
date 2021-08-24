@@ -348,6 +348,9 @@ class InferenceSession(Session):
             if providers == [] :
                 providers = ['CUDAExecutionProvider']
                 provider_options = [{}]
+            elif providers == ['TensorrtExecutionProvider']:
+                providers.append('CUDAExecutionProvider')
+                provider_options.append({})
         else:
             self._fallback_providers = ['CPUExecutionProvider']
 
