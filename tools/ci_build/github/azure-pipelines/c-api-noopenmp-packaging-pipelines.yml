@@ -31,6 +31,7 @@ jobs:
     AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
     BuildVariant: 'default'
 
+- job: Linux_C_API_Packaging_GPU_x64
   workspace:
     clean: all
   timeoutInMinutes:  120
