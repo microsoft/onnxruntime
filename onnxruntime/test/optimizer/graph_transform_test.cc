@@ -10,7 +10,7 @@
 
 #include "asserts.h"
 #include "core/framework/data_types.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"

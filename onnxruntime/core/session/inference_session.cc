@@ -1206,7 +1206,8 @@ Status AssignNodesToEpsFromHashesImpl(Graph& graph, const fbs::SessionState& fbs
 
     const KernelCreateInfo* kci = nullptr;
     ORT_RETURN_IF_NOT(kernel_registry_manager.SearchKernelRegistriesByHash(kernel_hash, &kci),
-                      "Failed to find kernel def hash in kernel registries: ", kernel_hash);
+                      "Failed to find kernel def hash (", kernel_hash, ") in kernel registries for ",
+                      node->OpType(), "(", node->SinceVersion(), ") node with name '", node->Name(), "'.");
     node->SetExecutionProviderType(kci->kernel_def->Provider());
   }
 
@@ -1650,7 +1651,8 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
                                     const std::vector<OrtValue>& feeds,
                                     std::vector<OrtValue>& fetches,
                                     PartialGraphExecutionState& state,
-                                    FeedsFetchesManager& feeds_fetches_manager) {
+                                    FeedsFetchesManager& feeds_fetches_manager,
+                                    const OrtValueCachePtr& cache) {
   Status retval = Status::OK();
   std::vector<IExecutionProvider*> exec_providers_to_stop;
   exec_providers_to_stop.reserve(execution_providers_.NumProviders());
@@ -1690,8 +1692,13 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
     ORT_ENFORCE(session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL, "Only sequential mode is supported.");
 
     // execute the graph
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+    if (state.GetProgramCounterStart() == 0) {
+      session_state_->IncrementGraphExecutionCounter();
+    }
+#endif
     ORT_CHECK_AND_SET_RETVAL(utils::ExecutePartialGraph(*session_state_, feeds_fetches_manager, feeds, fetches,
-                                                        run_logger, state));
+                                                        run_logger, state, cache));
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -1800,6 +1807,9 @@ Status InferenceSession::Run(const RunOptions& run_options,
 #endif
 
     // execute the graph
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+    session_state_->IncrementGraphExecutionCounter();
+#endif
     ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
                                                  session_options_.execution_mode, run_options.terminate, run_logger,
                                                  run_options.only_execute_path_to_fetches));

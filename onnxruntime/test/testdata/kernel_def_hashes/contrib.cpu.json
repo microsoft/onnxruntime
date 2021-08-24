@@ -266,5 +266,9 @@
     [
       "QGemm com.microsoft CPUExecutionProvider",
       13737193491843065240
+    ],
+    [
+      "GridSample com.microsoft CPUExecutionProvider",
+      15019666093341768288
     ]
 ]

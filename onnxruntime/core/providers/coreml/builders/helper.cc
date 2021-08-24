@@ -78,11 +78,13 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name, cons
 std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
                                                   const logging::Logger& logger) {
   std::unordered_set<const Node*> supported_nodes{};
-
-  if (!util::HasRequiredBaseOS()) {
-    LOGS(logger, WARNING) << "All ops will fallback to CPU EP, because we do not have supported OS";
-    return supported_nodes;
-  }
+  
+  #ifdef __APPLE__
+    if (!util::HasRequiredBaseOS()) {
+      LOGS(logger, WARNING) << "All ops will fallback to CPU EP, because we do not have supported OS";
+      return supported_nodes;
+    }
+  #endif
 
   const auto& graph_inputs = graph_viewer.GetInputs();
   if (std::any_of(graph_inputs.begin(), graph_inputs.end(),

@@ -8,6 +8,8 @@ import torch
 
 from torch.utils.dlpack import from_dlpack, to_dlpack
 
+from ._fallback import _FallbackManager, ORTModuleFallbackException, ORTModuleIOError, wrap_exception
+
 
 def wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace_flag, training_mode_flag, arg):
     '''
@@ -18,7 +20,7 @@ def wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace_flag, training_mode_fl
     grad_flag: indicate if "arg" requires gradient. This is only valid if
             "arg" is a DLPack tensor.
     tensor_flag: indicate if "arg" is a DLPack tensor.
-    inplace_flag: indicate if "arg" may be modified in custom function. 
+    inplace_flag: indicate if "arg" may be modified in custom function.
     training_mode_flag: indicate if the top-level model is running
                         under training (or inference) mode.
     arg: a DLPack tensor or a normal Python object (e.g, a tuple of ints).
@@ -50,7 +52,7 @@ def call_python_forward_function(
     It conducts basic casting from ORT to Pytorch (before calling "forward_function") and from Pytorch to ORT
     (after calling "forward_function"). It also enable autograd in Pytorch. It formats returned outputs,
     for example, dropping None's from forward_function's output list.
-    
+
     The major difference between call_python_forward_function and call_python_backward_function is that
     in the forward one, we have extra code to process autograd context from Pytorch.
 
@@ -62,12 +64,13 @@ def call_python_forward_function(
         inplace: indicates if args can be modified inside the custom function.
         args: inputs to "backward_function".
     '''
-    def generate_non_leaf_or_not(grad_flag, tensor_flag, arg, is_training_mode):
-        if is_training_mode and tensor_flag and grad_flag:
+
+    def generate_non_leaf_or_not(grad_flag, tensor_flag, arg, is_training_mode, is_inplace):
+        if is_training_mode and tensor_flag and grad_flag and is_inplace:
             # "multiply one" helps change the torch tensor's is_leaf to be False.
             # This is required when the torch tensor is updated in-place during forward pass.
-            # We cannot use view here, because PyTorch handels grad_fn for view differently.
-            non_leaf_arg = arg * arg.new_ones((1,))
+            # We cannot use view here, because PyTorch handles grad_fn for view differently.
+            non_leaf_arg = arg * 1
             return non_leaf_arg
         else:
             return arg
@@ -103,7 +106,8 @@ def call_python_forward_function(
             # are DLPack tensors.
             return wrapped
         else:
-            raise TypeError('Unsupported returned type: ', type(result))
+            raise wrap_exception(ORTModuleIOError,
+                                 TypeError(f'ORTModule does not support the following model output type {type(result)}.'))
 
     try:
         wrapped_args = list(wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace, is_training_mode, arg)
@@ -111,7 +115,7 @@ def call_python_forward_function(
 
         with torch.set_grad_enabled(is_training_mode):
             # Another level of wrap to avoid requires_grad=True for leaf variables.
-            new_wrapped_args = list(generate_non_leaf_or_not(grad_flag, tensor_flag, arg, is_training_mode)
+            new_wrapped_args = list(generate_non_leaf_or_not(grad_flag, tensor_flag, arg, is_training_mode, inplace)
                                     for grad_flag, tensor_flag, arg in zip(requires_grad_flags, tensor_type_flags, wrapped_args))
 
             # Run autograd.Function.apply(...).
@@ -121,12 +125,12 @@ def call_python_forward_function(
             unwrapped_values = wrap_all_outputs(result, is_training_mode)
 
         return tuple(unwrapped_values)
-    except:
+    except Exception as e:
         # Flush buffers. Otherwise, calling this from C++ may lose them.
         print('Exception happens when running ', forward_function)
         sys.stdout.flush()
         sys.stderr.flush()
-        raise
+        raise wrap_exception(ORTModuleFallbackException, e)
 
 
 def call_python_backward_function(
@@ -156,7 +160,8 @@ def call_python_backward_function(
         elif isinstance(result, tuple) or isinstance(result, list):
             return [to_dlpack(value) if value is not None else None for value in result]
         else:
-            raise Exception('Unsupported returned type: ', type(result))
+            raise wrap_exception(ORTModuleIOError,
+                                 TypeError(f'ORTModule does not support the following model output type {type(result)}.'))
 
     try:
         # Backward inputs should not require gradients.
@@ -173,9 +178,9 @@ def call_python_backward_function(
         wrapped_returned_args = wrap_all_outputs(result)
 
         return tuple(wrapped_returned_args)
-    except:
+    except Exception as e:
         # Flush buffers. Otherwise, calling this from C++ may lose them.
         print('Exception happens when running ', backward_function)
         sys.stdout.flush()
         sys.stderr.flush()
-        raise
+        raise wrap_exception(ORTModuleFallbackException, e)
