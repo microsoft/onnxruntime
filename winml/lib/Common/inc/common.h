@@ -27,7 +27,6 @@
 // WIL
 #include <wil/cppwinrt.h>
 #include <wil/result.h>
-#include <wil/wrl.h>
 #include <wil/winrt.h>
 
 // Windows pollutes with preprocessor that redefine OPTIONAL.
