@@ -307,6 +307,61 @@ jobs:
       targetPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
       artifactName: 'onnxruntime-linux-x64-gpu'
 
+- job: Linux_Packaging_combined_GPU_2
+  workspace:
+    clean: all
+  pool: 'Onnxruntime-Linux-GPU'
+  dependsOn:
+  - Linux_Packaging_combined_GPU
+  #- Linux_C_API_Packaging_GPU_TensorRT_x64
+  condition: succeeded()
+  steps:
+  - checkout: self
+    submodules: false
+  - template: templates/set-version-number-variables-step.yml
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Pipeline Artifact - Combined GPU'
+    inputs:
+      source: 'specific'
+      project: 'Lotus'
+      pipeline: '940'
+      runVersion: 'specific'
+      runId: '170894'
+      artifactName: 'onnxruntime-linux-x64-gpu'
+      targetPath: '$(Build.BinariesDirectory)/tgz-artifacts'
+
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Pipeline Artifact - Combined GPU'
+    inputs:
+      source: 'specific'
+      project: 'Lotus'
+      pipeline: '940'
+      runVersion: 'specific'
+      runId: '170894'
+      artifactName: 'onnxruntime-linux-x64-gpu-tensorrt'
+      targetPath: '$(Build.BinariesDirectory)/tgz-artifacts'
+
+  - task: ShellScript@2
+    displayName: 'Shell Script'
+    inputs:
+      scriptPath: 'tools/ci_build/github/linux/extract_and_bundle_gpu_package.sh'
+      args: '-a $(Build.BinariesDirectory)/tgz-artifacts'
+      workingDirectory: '$(Build.BinariesDirectory)/tgz-artifacts'
+
+  - task: ArchiveFiles@2
+    inputs:
+      rootFolderOrFile: '$(Build.BinariesDirectory)/tgz-artifacts/onnxruntime-linux-x64-gpu'
+      includeRootFolder: true
+      archiveType: 'tar' # Options: zip, 7z, tar, wim
+      tarCompression: 'gz'
+      archiveFile: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
+      replaceExistingArchive: true
+
+  - task: PublishPipelineArtifact@1
+    inputs:
+      targetPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
+      artifactName: 'onnxruntime-linux-x64-gpu'
+
 #- job: Windows_Packaging_combined_GPU
   #workspace:
     #clean: all
