@@ -21,7 +21,7 @@
         <projectUrl>https://github.com/onnx/onnxruntime</projectUrl>
 
         <!-- The icon is used in Visual Studio's package manager UI -->
-        <iconUrl>http://github.com/contoso/UsefulStuff/nuget_icon.png</iconUrl>
+        <icon>http://github.com/contoso/UsefulStuff/nuget_icon.png</icon>
 
         <!--
             If true, this value prompts the user to accept the license when
