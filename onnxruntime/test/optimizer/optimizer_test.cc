@@ -77,9 +77,7 @@ TEST(OptimizerTest, Basic) {
   OptimizerExecutionFrame::Info info(nodes, initialized_tensor_set,
                                      graph.ModelPath(),
                                      *cpu_execution_provider.get(),
-                                     [&](const std::string& /*name*/) -> bool {
-                                       return false;
-                                     });
+                                     [](std::string const& ) { return false; });
 #endif  //!defined(DISABLE_SPARSE_TENSORS)
 
   std::vector<int> fetch_mlvalue_idxs{info.GetMLValueIndex("out")};

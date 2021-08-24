@@ -29,13 +29,8 @@ IExecutionFrame::IExecutionFrame(const OrtValueNameIdxMap& ort_value_idx_map,
                                  const std::vector<int>& fetch_mlvalue_idxs)
     : node_index_info_(node_index_info),
       all_values_size_(static_cast<size_t>(ort_value_idx_map.MaxIdx()) + 1),
-#if !defined(DISABLE_SPARSE_TENSORS)
       fetch_mlvalue_idxs_(fetch_mlvalue_idxs),
-      ort_value_idx_map_(ort_value_idx_map)
-#else
-      fetch_mlvalue_idxs_(fetch_mlvalue_idxs)
-#endif
-{
+      ort_value_idx_map_(ort_value_idx_map) {
   ORT_ENFORCE(node_index_info_.GetMaxMLValueIdx() == ort_value_idx_map.MaxIdx(),
               "node_index_info and ort_value_idx_map are out of sync and cannot be used");
 }
@@ -257,15 +252,13 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
     //   - update optimizers to not convert something to an initializer that is a graph output
     //     (e.g. constant folding)
     if (IsOutput(ort_value_index)) {
-#if !defined(DISABLE_SPARSE_TENSORS)
       std::string name;
       ORT_THROW_IF_ERROR(ort_value_idx_map_.GetName(ort_value_index, name));
-      const bool is_sparse_initializer = is_initializer_sparse_func(name);
-#endif
       const Tensor& src = entry.second.Get<Tensor>();  // all initializers in ONNX are tensors
       OrtValue& dest = all_values_[ort_value_index];
 
 #if !defined(DISABLE_SPARSE_TENSORS)
+      const bool is_sparse_initializer = is_initializer_sparse_func(name);
       if (is_sparse_initializer) {
         if (!dest.IsAllocated()) {
           auto p_tensor = std::make_unique<SparseTensor>();
