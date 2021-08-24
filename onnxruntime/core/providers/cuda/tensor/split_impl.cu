@@ -51,12 +51,13 @@ Status SplitSameSplitDimImpl(cudaStream_t stream,
 
   fast_divmod block_size_including_axis_dim_div = fast_divmod(block_size_including_axis_dim);
   fast_divmod block_size_inside_axis_dim_div = fast_divmod(block_size_inside_axis_dim);
+  fast_divmod split_size_div = fast_divmod((int)split_size);
 
   switch (element_size) {
     case sizeof(int8_t):
       _SplitKernelSameSplitDim<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           block_size_including_axis_dim_div, block_size_inside_axis_dim_div,
-          split_size, num_outputs,
+          split_size_div, num_outputs,
           reinterpret_cast<const ToCudaType<int8_t>::MappedType*>(input_data),
           output_ptr,
           (CUDA_LONG)N);
@@ -64,7 +65,7 @@ Status SplitSameSplitDimImpl(cudaStream_t stream,
     case sizeof(int16_t):
       _SplitKernelSameSplitDim<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           block_size_including_axis_dim_div, block_size_inside_axis_dim_div,
-          split_size, num_outputs,
+          split_size_div, num_outputs,
           reinterpret_cast<const ToCudaType<int16_t>::MappedType*>(input_data),
           output_ptr,
           (CUDA_LONG)N);
@@ -72,7 +73,7 @@ Status SplitSameSplitDimImpl(cudaStream_t stream,
     case sizeof(int32_t):
       _SplitKernelSameSplitDim<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           block_size_including_axis_dim_div, block_size_inside_axis_dim_div,
-          split_size, num_outputs,
+          split_size_div, num_outputs,
           reinterpret_cast<const ToCudaType<int32_t>::MappedType*>(input_data),
           output_ptr,
           (CUDA_LONG)N);
@@ -80,7 +81,7 @@ Status SplitSameSplitDimImpl(cudaStream_t stream,
     case sizeof(int64_t):
       _SplitKernelSameSplitDim<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           block_size_including_axis_dim_div, block_size_inside_axis_dim_div,
-          split_size, num_outputs,
+          split_size_div, num_outputs,
           reinterpret_cast<const ToCudaType<int64_t>::MappedType*>(input_data),
           output_ptr,
           (CUDA_LONG)N);
