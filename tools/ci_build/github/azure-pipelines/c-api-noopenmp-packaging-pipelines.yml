@@ -291,6 +291,11 @@ jobs:
       targetType: filePath
       filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\extract_zip_files_gpu.ps1
 
+  - script: |
+     dir
+    workingDirectory: '$(Build.BinariesDirectory)/zip-artifacts'
+    displayName: 'List artifacts'
+
   - task: BatchScript@1
     displayName: 'Bundle CUDA/TRT EP binaries'
     inputs:

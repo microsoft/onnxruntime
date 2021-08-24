@@ -14,5 +14,6 @@ FOR /R %%i IN (*.zip) do (
        move onnxruntime-win-tensorrt-x64\lib\onnxruntime.lib onnxruntime-win-gpu-x64\lib\onnxruntime.lib
        move onnxruntime-win-tensorrt-x64\lib\onnxruntime.pdb onnxruntime-win-gpu-x64\lib\onnxruntime.pdb
        7z a  %%~ni.zip onnxruntime-win-gpu-x64 
+       7z a  %%~ni.zip .\onnxruntime-win-gpu-x64\lib\* 
    )
 ) 
