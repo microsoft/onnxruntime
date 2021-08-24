@@ -47,6 +47,7 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int e
   
   if (dst_device.Type() == OrtDevice::GPU) {
     if (src_device.Type() == OrtDevice::CPU && src_device.MemType() == OrtDevice::MemType::CUDA_PINNED) {
+      std::cout << "copy from pinned to gpu" << std::endl;
       // copy from pinned memory to GPU, this is non-blocking
       //cudaDeviceSynchronize(); work
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyHostToDevice, GetStream(exec_queue_id)));
@@ -60,6 +61,7 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int e
         //CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(GetStream(kCudaStreamDefault))); work
       }
     } else {
+      std::cout << "copy from cpu to gpu" << std::endl;
       // copy from other CPU memory to GPU, this is blocking
       //cudaDeviceSynchronize(); not work
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyHostToDevice, GetStream(kCudaStreamDefault)));
@@ -67,10 +69,12 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int e
     }
   } else if (src_device.Type() == OrtDevice::GPU) {
     if (dst_device.Type() == OrtDevice::CPU && dst_device.MemType() == OrtDevice::MemType::CUDA_PINNED) {
+      std::cout << "copy from gpu to pinned" << std::endl;
       // copying from GPU to pinned memory, this is non-blocking
       //cudaDeviceSynchronize(); work
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToHost, GetStream(exec_queue_id)));
     } else {
+      std::cout << "copy from gpu to cpu" << std::endl;
       // copying from GPU to CPU memory, this is blocking
       //cudaDeviceSynchronize(); not work
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToHost, GetStream(kCudaStreamDefault)));
