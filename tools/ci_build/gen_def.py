@@ -13,7 +13,8 @@ def parse_arguments():
     parser.add_argument("--config", required=True, nargs="+")
     return parser.parse_args()
 
-def read_symbols(filename: str, allow_dups:bool=False):
+
+def read_symbols(filename: str, allow_dups: bool = False):
     with open(filename, 'r') as file:
         for line in file:
             line = line.strip()
