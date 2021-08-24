@@ -255,6 +255,10 @@ jobs:
   workspace:
     clean: all
   pool: 'Win-CPU-2021'
+  #dependsOn:
+  #- Windows_Packaging_gpu
+  #- Windows_Packaging_tensorrt
+  condition: succeeded()
   steps:
   - checkout: self
     submodules: false
@@ -292,6 +296,20 @@ jobs:
     inputs:
       filename: $(Build.SourcesDirectory)\tools\ci_build\github\windows\bundle_dlls_gpu.bat
       workingFolder: $(Build.BinariesDirectory)\zip-artifacts
+
+  - task: CopyFiles@2
+    displayName: 'Copy zip file to: $(Build.ArtifactStagingDirectory)'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\zip-artifacts'
+      Contents: 'onnxruntime-win-gpu-x64-*.zip'
+      TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline Combined GPU Package Artifact'
+    inputs:
+      artifactName: 'Windows-Combied-GPU-Package'
+      targetPath: '$(Build.ArtifactStagingDirectory)'
+
 
 
 #- job: NuGet_Packaging_GPU
