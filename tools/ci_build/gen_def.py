@@ -75,7 +75,6 @@ with open(args.output, 'w') as file:
 
 with open(args.output_source, 'w') as file:
     file.write('#include "core/session/onnxruntime_c_api.h"\n')
-    file.write('#include "core/session/provider_stubs.h"\n')
     for c in args.config:
         # WinML adapter should not be exported in platforms other than Windows.
         # Exporting OrtGetWinMLAdapter is exported without issues using .def file when compiling for Windows

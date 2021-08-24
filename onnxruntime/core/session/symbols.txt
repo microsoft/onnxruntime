@@ -1,6 +1,6 @@
-# we provide stubs for these functions in the ORT C API implementation so that we return a graceful error message 
-# if they are not enabled in the build. this is used from places such as the C# bindings as we don't know 
-# what will be available until runtime so must include the ability to call these functions in all builds.
+# we provide stubs for these functions for EPs that are enabled via C# so that we can return a graceful error message 
+# if they are not enabled in the onnxruntime library being used. the C# bindings don't know what will be available 
+# until runtime so must include the ability to call these functions in all builds.
 OrtSessionOptionsAppendExecutionProvider_CUDA
 OrtSessionOptionsAppendExecutionProvider_DML
 OrtSessionOptionsAppendExecutionProvider_Dnnl

@@ -2041,51 +2041,6 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer
   API_IMPL_END
 }
 
-#if defined(ORT_MINIMAL_BUILD)
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT,
-                    _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptions* tensorrt_options) {
-  ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(tensorrt_options);
-  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled.");
-}
-
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2,
-                    _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options) {
-  ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(tensorrt_options);
-  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled.");
-}
-
-ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptionsV2** out) {
-  ORT_UNUSED_PARAMETER(out);
-  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
-}
-
-ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
-                    _Inout_ OrtTensorRTProviderOptionsV2* tensorrt_options,
-                    _In_reads_(num_keys) const char* const* provider_options_keys,
-                    _In_reads_(num_keys) const char* const* provider_options_values,
-                    size_t num_keys) {
-  ORT_UNUSED_PARAMETER(tensorrt_options);
-  ORT_UNUSED_PARAMETER(provider_options_keys);
-  ORT_UNUSED_PARAMETER(provider_options_values);
-  ORT_UNUSED_PARAMETER(num_keys);
-  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
-}
-
-ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsAsString, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _Inout_ OrtAllocator* allocator,
-                    _Outptr_ char** ptr) {
-  ORT_UNUSED_PARAMETER(tensorrt_options);
-  ORT_UNUSED_PARAMETER(allocator);
-  ORT_UNUSED_PARAMETER(ptr);
-  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
-}
-
-ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptionsV2* ptr) {
-  ORT_UNUSED_PARAMETER(ptr);
-}
-#endif
-
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString,

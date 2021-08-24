@@ -21,7 +21,6 @@ macro(get_mobile_api_headers _HEADERS)
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_c_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_inline.h"
-    "${REPO_ROOT}/include/onnxruntime/core/session/provider_stubs.h"
   )
 
   # need to add header files for enabled EPs
