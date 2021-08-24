@@ -10,11 +10,16 @@
 # license information.
 # -------------------------------------------------------------------------
 
-import torch
 import math
+import numpy
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+
+import os
+
+os.environ["ORT_LONGFORMER_COMPACT_MEMORY"] = str(1)
+
 
 # Script method to capture dynamic loop
 @torch.jit.script
@@ -27,25 +32,34 @@ def as_strided(input_tensor: torch.Tensor, new_tensor: torch.Tensor, window_over
     )
 
     groups = new_tensor.size(1)
-    groupsize = new_tensor.size(2)//window_overlap
+    groupsize = new_tensor.size(2) // window_overlap
 
     res = torch.zeros(new_tensor.size(0), 0, new_tensor.size(2), new_tensor.size(3), device='cpu')
 
     for i in range(groups):
-        tmp = input_tensor[:,i:i+groupsize,:,:]
-        tmp = tmp.view(tmp.size(0), groupsize*window_overlap, tmp.size(3))
+        tmp = input_tensor[:, i:i + groupsize, :, :]
+        tmp = tmp.view(tmp.size(0), groupsize * window_overlap, tmp.size(3))
         res = torch.cat((res, tmp.unsqueeze(1)), dim=1)
 
     return res
 
+
+class Config:
+    batch_size = 1
+    masked_length = 3000
+    sequence_length = 4096
+    hidden_size = 768
+    num_attention_heads = 12
+    attention_probs_dropout_prob = 0.1  # only use in training
+    attention_window = 512
+
+
 class LongformerSelfAttention(nn.Module):
-    def __init__(self, config, layer_id):
+    def __init__(self, config):
         super().__init__()
         if config.hidden_size % config.num_attention_heads != 0:
-            raise ValueError(
-                "The hidden size (%d) is not a multiple of the number of attention "
-                "heads (%d)" % (config.hidden_size, config.num_attention_heads)
-            )
+            raise ValueError("The hidden size (%d) is not a multiple of the number of attention "
+                             "heads (%d)" % (config.hidden_size, config.num_attention_heads))
         self.num_heads = config.num_attention_heads
         self.head_dim = int(config.hidden_size / config.num_attention_heads)
         self.embed_dim = config.hidden_size
@@ -61,26 +75,17 @@ class LongformerSelfAttention(nn.Module):
 
         self.dropout = config.attention_probs_dropout_prob
 
-        self.layer_id = layer_id
-        attention_window = config.attention_window[self.layer_id]
-        assert (
-            attention_window % 2 == 0
-        ), f"`attention_window` for layer {self.layer_id} has to be an even value. Given {attention_window}"
-        assert (
-            attention_window > 0
-        ), f"`attention_window` for layer {self.layer_id} has to be positive. Given {attention_window}"
+        attention_window = config.attention_window
 
         self.one_sided_attn_window_size = attention_window // 2
 
     @staticmethod
     def _pad_and_transpose_last_two_dims(hidden_states_padded, padding):
         """pads rows and then flips rows and columns"""
-        hidden_states_padded = F.pad(
-            hidden_states_padded, padding
-        )  # padding value is not important because it will be overwritten
-        hidden_states_padded = hidden_states_padded.view(
-            *hidden_states_padded.size()[:-2], hidden_states_padded.size(-1), hidden_states_padded.size(-2)
-        )
+        hidden_states_padded = F.pad(hidden_states_padded,
+                                     padding)  # padding value is not important because it will be overwritten
+        hidden_states_padded = hidden_states_padded.view(*hidden_states_padded.size()[:-2],
+                                                         hidden_states_padded.size(-1), hidden_states_padded.size(-2))
         return hidden_states_padded
 
     @staticmethod
@@ -91,14 +96,13 @@ class LongformerSelfAttention(nn.Module):
             chunked_hidden_states, (0, window_overlap + 1)
         )  # total_num_heads x num_chunks x window_overlap x (hidden_dim+window_overlap+1). Padding value is not important because it'll be overwritten
         chunked_hidden_states = chunked_hidden_states.view(
-            total_num_heads, num_chunks, -1
-        )  # total_num_heads x num_chunks x window_overlapL+window_overlapwindow_overlap+window_overlap
-        chunked_hidden_states = chunked_hidden_states[
-            :, :, :-window_overlap
-        ]  # total_num_heads x num_chunks x window_overlapL+window_overlapwindow_overlap
+            total_num_heads, num_chunks,
+            -1)  # total_num_heads x num_chunks x window_overlapL+window_overlapwindow_overlap+window_overlap
+        chunked_hidden_states = chunked_hidden_states[:, :, :
+                                                      -window_overlap]  # total_num_heads x num_chunks x window_overlapL+window_overlapwindow_overlap
         chunked_hidden_states = chunked_hidden_states.view(
-            total_num_heads, num_chunks, window_overlap, window_overlap + hidden_dim
-        )  # total_num_heads x num_chunks, window_overlap x hidden_dim+window_overlap
+            total_num_heads, num_chunks, window_overlap,
+            window_overlap + hidden_dim)  # total_num_heads x num_chunks, window_overlap x hidden_dim+window_overlap
         chunked_hidden_states = chunked_hidden_states[:, :, :, :-1]
         return chunked_hidden_states
 
@@ -123,36 +127,39 @@ class LongformerSelfAttention(nn.Module):
         beginning_mask_2d = torch.ones(affected_seq_len, affected_seq_len + 1, device='cpu').tril().flip(dims=[0])
         beginning_mask = beginning_mask_2d[None, :, None, :]
         ending_mask = beginning_mask.flip(dims=(1, 3))
-        beginning_input = input_tensor[:, :affected_seq_len, :, : affected_seq_len + 1]
+        beginning_input = input_tensor[:, :affected_seq_len, :, :affected_seq_len + 1]
         inf_ = torch.full_like(beginning_input, -float("inf"))
         beginning_input = torch.where(beginning_mask == 1, inf_, beginning_input)  # `== 1` converts to bool or uint8
-        input_tensor[:, :affected_seq_len, :, : affected_seq_len + 1] = beginning_input
+        input_tensor[:, :affected_seq_len, :, :affected_seq_len + 1] = beginning_input
         ending_input = input_tensor[:, -affected_seq_len:, :, -(affected_seq_len + 1):]
         inf_ = torch.full_like(ending_input, -float("inf"))
         ending_input = torch.where(ending_mask == 1, inf_, ending_input)  # `== 1` converts to bool or uint8
-        input_tensor[:, -affected_seq_len:, :, -(affected_seq_len + 1):] = ending_input.view_as(
-            input_tensor[:, -affected_seq_len:, :, -(affected_seq_len + 1):])
+        input_tensor[:, -affected_seq_len:, :,
+                     -(affected_seq_len + 1):] = ending_input.view_as(input_tensor[:, -affected_seq_len:, :,
+                                                                                   -(affected_seq_len + 1):])
         return input_tensor
 
     @staticmethod
     @torch.jit.script
-    def _form_diagonal_attention_scores(diagonal_attention_scores, diagonal_chunked_attention_scores, window_overlap: int):
+    def _form_diagonal_attention_scores(diagonal_attention_scores, diagonal_chunked_attention_scores,
+                                        window_overlap: int):
         # copy parts from diagonal_chunked_attention_scores into the combined matrix of attentions
         # - copying the main diagonal and the upper triangle
-        diagonal_attention_scores[:, :-1, :, window_overlap:] = diagonal_chunked_attention_scores[
-            :, :, :window_overlap, : window_overlap + 1
-        ]
+        diagonal_attention_scores[:, :-1, :,
+                                  window_overlap:] = diagonal_chunked_attention_scores[:, :, :window_overlap, :
+                                                                                       window_overlap + 1]
         dim_1 = diagonal_attention_scores.shape[1]
-        diagonal_attention_scores[:, dim_1-1, :, window_overlap:] = diagonal_chunked_attention_scores[
-            :, -1, window_overlap:, : window_overlap + 1
-        ]
+        diagonal_attention_scores[:, dim_1 - 1, :,
+                                  window_overlap:] = diagonal_chunked_attention_scores[:, -1, window_overlap:, :
+                                                                                       window_overlap + 1]
         # - copying the lower triangle
-        diagonal_attention_scores[:, 1:, :, :window_overlap] = diagonal_chunked_attention_scores[
-            :, :, -(window_overlap + 1) : -1, window_overlap + 1 :
-        ]
-        diagonal_attention_scores[:, 0, 1:window_overlap, 1:window_overlap] = diagonal_chunked_attention_scores[
-            :, 0, : window_overlap - 1, 1 - window_overlap :
-        ]
+        diagonal_attention_scores[:,
+                                  1:, :, :window_overlap] = diagonal_chunked_attention_scores[:, :,
+                                                                                              -(window_overlap + 1):-1,
+                                                                                              window_overlap + 1:]
+        diagonal_attention_scores[:, 0, 1:window_overlap,
+                                  1:window_overlap] = diagonal_chunked_attention_scores[:, 0, :window_overlap - 1,
+                                                                                        1 - window_overlap:]
         return diagonal_attention_scores
 
     def _sliding_chunks_query_key_matmul(self, query: torch.Tensor, key: torch.Tensor, window_overlap: int):
@@ -161,8 +168,8 @@ class LongformerSelfAttention(nn.Module):
         with an overlap of size window_overlap"""
         batch_size, seq_len, num_heads, head_dim = query.size()
         assert (
-            seq_len % (window_overlap * 2) == 0
-        ), f"Sequence length should be multiple of {window_overlap * 2}. Given {seq_len}"
+            seq_len %
+            (window_overlap * 2) == 0), f"Sequence length should be multiple of {window_overlap * 2}. Given {seq_len}"
         assert query.size() == key.size()
 
         chunks_count = seq_len // window_overlap - 1
@@ -179,14 +186,11 @@ class LongformerSelfAttention(nn.Module):
         # bcyd: batch_size * num_heads x chunks x 2window_overlap x head_dim
         # bcxy: batch_size * num_heads x chunks x 2window_overlap x window_overlap
         # chunked_attention_scores = torch.einsum("bcxd,bcyd->bcxy", (chunked_query, chunked_key))  # multiply
-        chunked_attention_scores = torch.matmul(
-            chunked_query, chunked_key.transpose(2, 3)
-        )
+        chunked_attention_scores = torch.matmul(chunked_query, chunked_key.transpose(2, 3))
 
         # convert diagonals into columns
-        diagonal_chunked_attention_scores = self._pad_and_transpose_last_two_dims(
-            chunked_attention_scores, padding=(0, 0, 0, 1)
-        )
+        diagonal_chunked_attention_scores = self._pad_and_transpose_last_two_dims(chunked_attention_scores,
+                                                                                  padding=(0, 0, 0, 1))
 
         # allocate space for the overall attention matrix where the chunks are combined. The last dimension
         # has (window_overlap * 2 + 1) columns. The first (window_overlap) columns are the window_overlap lower triangles (attention from a word to
@@ -194,24 +198,21 @@ class LongformerSelfAttention(nn.Module):
         # followed by window_overlap columns for the upper triangle.
 
         diagonal_attention_scores = diagonal_chunked_attention_scores.new_zeros(
-            (batch_size * num_heads, chunks_count + 1, window_overlap, window_overlap * 2 + 1)
-        )
+            (batch_size * num_heads, chunks_count + 1, window_overlap, window_overlap * 2 + 1))
 
         diagonal_attention_scores = self._form_diagonal_attention_scores(diagonal_attention_scores,
                                                                          diagonal_chunked_attention_scores,
                                                                          window_overlap)
 
         # separate batch_size and num_heads dimensions again
-        diagonal_attention_scores = diagonal_attention_scores.view(
-            batch_size, num_heads, seq_len, 2 * window_overlap + 1
-        ).transpose(2, 1)
+        diagonal_attention_scores = diagonal_attention_scores.view(batch_size, num_heads, seq_len,
+                                                                   2 * window_overlap + 1).transpose(2, 1)
 
         self._mask_invalid_locations(diagonal_attention_scores, window_overlap)
         return diagonal_attention_scores
 
-    def _sliding_chunks_matmul_attn_probs_value(
-        self, attn_probs: torch.Tensor, value: torch.Tensor, window_overlap: int
-    ):
+    def _sliding_chunks_matmul_attn_probs_value(self, attn_probs: torch.Tensor, value: torch.Tensor,
+                                                window_overlap: int):
         """Same as _sliding_chunks_query_key_matmul but for attn_probs and value tensors.
            Returned tensor will be of the same shape as `attn_probs`"""
         batch_size, seq_len, num_heads, head_dim = value.size()
@@ -220,9 +221,8 @@ class LongformerSelfAttention(nn.Module):
         assert attn_probs.size(3) == 2 * window_overlap + 1
         chunks_count = seq_len // window_overlap - 1
         # group batch_size and num_heads dimensions into one, then chunk seq_len into chunks of size 2 window overlap
-        chunked_attn_probs = attn_probs.transpose(1, 2).reshape(
-            batch_size * num_heads, seq_len // window_overlap, window_overlap, 2 * window_overlap + 1
-        )
+        chunked_attn_probs = attn_probs.transpose(1, 2).reshape(batch_size * num_heads, seq_len // window_overlap,
+                                                                window_overlap, 2 * window_overlap + 1)
 
         # group batch_size and num_heads dimensions into one
         value = value.transpose(1, 2).reshape(batch_size * num_heads, seq_len, head_dim)
@@ -232,19 +232,175 @@ class LongformerSelfAttention(nn.Module):
 
         # chunk padded_value into chunks of size 3 window overlap and an overlap of size window overlap
         chunked_value_size = (batch_size * num_heads, chunks_count + 1, 3 * window_overlap, head_dim)
-        
+
         new_tensor = torch.zeros(chunked_value_size, device=padded_value.device, dtype=padded_value.dtype)
         chunked_value = as_strided(padded_value, new_tensor, window_overlap)
 
         chunked_attn_probs = self._pad_by_window_overlap_except_last_row(chunked_attn_probs)
 
-        context = torch.matmul(
-            chunked_attn_probs, chunked_value
-        )
+        context = torch.matmul(chunked_attn_probs, chunked_value)
         return context.view(batch_size, num_heads, seq_len, head_dim).transpose(1, 2)
 
+    @staticmethod
+    def _get_global_attn_indices(is_index_global_attn):
+        """ compute global attn indices required throughout forward pass """
+        # helper variable
+        num_global_attn_indices = is_index_global_attn.long().sum(dim=1)
+
+        # max number of global attn indices in batch
+        max_num_global_attn_indices = num_global_attn_indices.max()
+
+        # indices of global attn
+        is_index_global_attn_nonzero = is_index_global_attn.nonzero().unbind(dim=1)
+
+        # helper variable
+        is_local_index_global_attn = torch.arange(
+            max_num_global_attn_indices, device=is_index_global_attn.device) < num_global_attn_indices.unsqueeze(dim=-1)
+
+        # location of the non-padding values within global attention indices
+        is_local_index_global_attn_nonzero = is_local_index_global_attn.nonzero().unbind(dim=1)
+
+        # location of the padding values within global attention indices
+        is_local_index_no_global_attn_nonzero = (is_local_index_global_attn == 0).nonzero().unbind(dim=1)
+
+        return (
+            max_num_global_attn_indices,
+            is_index_global_attn_nonzero,
+            is_local_index_global_attn_nonzero,
+            is_local_index_no_global_attn_nonzero,
+        )
+
+    def _concat_with_global_key_attn_probs(
+        self,
+        key_vectors,
+        query_vectors,
+        max_num_global_attn_indices,
+        is_index_global_attn_nonzero,
+        is_local_index_global_attn_nonzero,
+        is_local_index_no_global_attn_nonzero,
+    ):
+        batch_size = key_vectors.shape[0]
+
+        # create only global key vectors
+        key_vectors_only_global = torch.zeros([batch_size, max_num_global_attn_indices, self.num_heads, self.head_dim],
+                                              device=key_vectors.device,
+                                              dtype=key_vectors.dtype)
+
+        key_vectors_only_global[is_local_index_global_attn_nonzero] = key_vectors[is_index_global_attn_nonzero]
+        # (batch_size, seq_len, num_heads, max_num_global_attn_indices)
+        # attn_probs_from_global_key = torch.einsum("blhd,bshd->blhs", (query_vectors, key_vectors_only_global))
+        attn_probs_from_global_key = torch.matmul(query_vectors.transpose(1, 2),
+                                                  key_vectors_only_global.transpose(1, 2).transpose(2,
+                                                                                                    3)).transpose(1, 2)
+        attn_probs_from_global_key[is_local_index_no_global_attn_nonzero[0], :, :,
+                                   is_local_index_no_global_attn_nonzero[1]].fill_(-10000.0)
+        return attn_probs_from_global_key
+
+    def _compute_attn_output_with_global_indices(
+        self,
+        value_vectors,
+        attn_probs,
+        max_num_global_attn_indices,
+        is_index_global_attn_nonzero,
+        is_local_index_global_attn_nonzero,
+    ):
+        batch_size = attn_probs.shape[0]
+
+        # cut local attn probs to global only
+        attn_probs_only_global = attn_probs.narrow(-1, 0, max_num_global_attn_indices)
+        # get value vectors for global only
+        value_vectors_only_global = value_vectors.new_zeros(batch_size, max_num_global_attn_indices, self.num_heads,
+                                                            self.head_dim)
+
+        value_vectors_only_global[is_local_index_global_attn_nonzero] = value_vectors[is_index_global_attn_nonzero]
+
+        # use `matmul` because `einsum` crashes sometimes with fp16
+        # attn = torch.einsum('blhs,bshd->blhd', (selected_attn_probs, selected_v))
+        # compute attn output only global
+        attn_output_only_global = torch.matmul(attn_probs_only_global.transpose(1, 2),
+                                               value_vectors_only_global.transpose(1, 2)).transpose(1, 2)
+
+        # reshape attn probs
+        attn_probs_without_global = attn_probs.narrow(-1, max_num_global_attn_indices,
+                                                      attn_probs.size(-1) - max_num_global_attn_indices).contiguous()
+
+        # compute attn output with global
+        attn_output_without_global = self._sliding_chunks_matmul_attn_probs_value(attn_probs_without_global,
+                                                                                  value_vectors,
+                                                                                  self.one_sided_attn_window_size)
+        return attn_output_only_global + attn_output_without_global
+
+    def _compute_global_attn_output_from_hidden(
+        self,
+        hidden_states,
+        max_num_global_attn_indices,
+        is_local_index_global_attn_nonzero,
+        is_index_global_attn_nonzero,
+        is_local_index_no_global_attn_nonzero,
+        is_index_masked,
+    ):
+        seq_len, batch_size = hidden_states.shape[:2]
+
+        # prepare global hidden states
+        global_attn_hidden_states = hidden_states.new_zeros(max_num_global_attn_indices, batch_size, self.embed_dim)
+
+        # global_attn_hidden_states = torch.zeros([max_num_global_attn_indices, batch_size, self.embed_dim], device='cuda:0')
+
+        global_attn_hidden_states[is_local_index_global_attn_nonzero[::-1]] = hidden_states[
+            is_index_global_attn_nonzero[::-1]]
+
+        # global key, query, value
+        global_query_vectors_only_global = self.query_global(global_attn_hidden_states)
+        global_key_vectors = self.key_global(hidden_states)
+        global_value_vectors = self.value_global(hidden_states)
+
+        # normalize
+        global_query_vectors_only_global /= math.sqrt(self.head_dim)
+
+        # reshape
+        global_query_vectors_only_global = (global_query_vectors_only_global.contiguous().view(
+            max_num_global_attn_indices, batch_size * self.num_heads,
+            self.head_dim).transpose(0, 1))  # (batch_size * self.num_heads, max_num_global_attn_indices, head_dim)
+        global_key_vectors = (global_key_vectors.contiguous().view(-1, batch_size * self.num_heads,
+                                                                   self.head_dim).transpose(0, 1)
+                              )  # batch_size * self.num_heads, seq_len, head_dim)
+        global_value_vectors = (global_value_vectors.contiguous().view(-1, batch_size * self.num_heads,
+                                                                       self.head_dim).transpose(0, 1)
+                                )  # batch_size * self.num_heads, seq_len, head_dim)
+
+        # compute attn scores
+        global_attn_scores = torch.bmm(global_query_vectors_only_global, global_key_vectors.transpose(1, 2))
+
+        global_attn_scores = global_attn_scores.view(batch_size, self.num_heads, max_num_global_attn_indices, seq_len)
+
+        global_attn_scores = global_attn_scores.masked_fill(
+            is_index_masked.unsqueeze(1).unsqueeze(2),
+            -10000.0,
+        )
+
+        global_attn_scores = global_attn_scores.view(batch_size * self.num_heads, max_num_global_attn_indices, seq_len)
+
+        # compute global attn probs
+        global_attn_probs_float = F.softmax(global_attn_scores, dim=-1,
+                                            dtype=torch.float32)  # use fp32 for numerical stability
+
+        global_attn_probs = F.dropout(global_attn_probs_float.type_as(global_attn_scores),
+                                      p=self.dropout,
+                                      training=self.training)
+
+        # global attn output
+        global_attn_output = torch.bmm(global_attn_probs, global_value_vectors)
+
+        global_attn_output = global_attn_output.view(batch_size, self.num_heads, max_num_global_attn_indices,
+                                                     self.head_dim)
+
+        return global_attn_output
+
     def forward(
-        self, hidden_states, attention_mask=None, output_attentions=False,
+        self,
+        hidden_states,
+        attention_mask=None,
+        output_attentions=False,
     ):
         """
         LongformerSelfAttention expects `len(hidden_states)` to be multiple of `attention_window`.
@@ -272,8 +428,7 @@ class LongformerSelfAttention(nn.Module):
 
         seq_len, batch_size, embed_dim = hidden_states.size()
         assert (
-            embed_dim == self.embed_dim
-        ), f"hidden_states should have embed_dim = {self.embed_dim}, but has {embed_dim}"
+            embed_dim == self.embed_dim), f"hidden_states should have embed_dim = {self.embed_dim}, but has {embed_dim}"
 
         # normalize query
         query_vectors /= math.sqrt(self.head_dim)
@@ -281,21 +436,17 @@ class LongformerSelfAttention(nn.Module):
         query_vectors = query_vectors.view(seq_len, batch_size, self.num_heads, self.head_dim).transpose(0, 1)
         key_vectors = key_vectors.view(seq_len, batch_size, self.num_heads, self.head_dim).transpose(0, 1)
 
-        attn_scores = self._sliding_chunks_query_key_matmul(
-            query_vectors, key_vectors, self.one_sided_attn_window_size
-        )
+        attn_scores = self._sliding_chunks_query_key_matmul(query_vectors, key_vectors, self.one_sided_attn_window_size)
 
         # values to pad for attention probs
         remove_from_windowed_attention_mask = (attention_mask != 0).unsqueeze(dim=-1).unsqueeze(dim=-1)
 
         # cast to fp32/fp16 then replace 1's with -inf
         float_mask = remove_from_windowed_attention_mask.type_as(query_vectors).masked_fill(
-            remove_from_windowed_attention_mask, -10000.0
-        )
+            remove_from_windowed_attention_mask, -10000.0)
         # diagonal mask with zeros everywhere and -inf inplace of padding
-        diagonal_mask = self._sliding_chunks_query_key_matmul(
-            float_mask.new_ones(size=float_mask.size()), float_mask, self.one_sided_attn_window_size
-        )
+        diagonal_mask = self._sliding_chunks_query_key_matmul(float_mask.new_ones(size=float_mask.size()), float_mask,
+                                                              self.one_sided_attn_window_size)
 
         # pad local attention probs
         attn_scores += diagonal_mask
@@ -358,9 +509,8 @@ class LongformerSelfAttention(nn.Module):
             )
         else:
             # compute local attn only
-            attn_output = self._sliding_chunks_matmul_attn_probs_value(
-                attn_probs, value_vectors, self.one_sided_attn_window_size
-            )
+            attn_output = self._sliding_chunks_matmul_attn_probs_value(attn_probs, value_vectors,
+                                                                       self.one_sided_attn_window_size)
         assert attn_output.size() == (batch_size, seq_len, self.num_heads, self.head_dim), "Unexpected size"
         attn_output = attn_output.transpose(0, 1).reshape(seq_len, batch_size, embed_dim).contiguous()
 
@@ -376,13 +526,12 @@ class LongformerSelfAttention(nn.Module):
                 is_index_masked=is_index_masked,
             )
             # get only non zero global attn output
-            nonzero_global_attn_output = global_attn_output[
-                is_local_index_global_attn_nonzero[0], :, is_local_index_global_attn_nonzero[1]
-            ]
+            nonzero_global_attn_output = global_attn_output[is_local_index_global_attn_nonzero[0], :,
+                                                            is_local_index_global_attn_nonzero[1]]
             attn_output[is_index_global_attn_nonzero[::-1]] = nonzero_global_attn_output.view(
                 #len(is_local_index_global_attn_nonzero[0]), -1
-                is_local_index_global_attn_nonzero[0].shape[0], -1
-            )
+                is_local_index_global_attn_nonzero[0].shape[0],
+                -1)
 
         attn_output = attn_output.transpose(0, 1)
 
@@ -401,173 +550,113 @@ class LongformerSelfAttention(nn.Module):
                 # which is the attention weights of every token attending to its neighbours
                 attn_probs = attn_probs.permute(0, 2, 1, 3)
 
-        outputs = (attn_output, attn_probs) if output_attentions else (attn_output,)
+        outputs = (attn_output, attn_probs) if output_attentions else (attn_output, )
         return outputs
 
-    @staticmethod
-    def _get_global_attn_indices(is_index_global_attn):
-        """ compute global attn indices required throughout forward pass """
-        # helper variable
-        num_global_attn_indices = is_index_global_attn.long().sum(dim=1)
-
-        # max number of global attn indices in batch
-        max_num_global_attn_indices = num_global_attn_indices.max()
-
-        # indices of global attn
-        is_index_global_attn_nonzero = is_index_global_attn.nonzero().unbind(dim=1)
-
-        # helper variable
-        is_local_index_global_attn = torch.arange(
-            max_num_global_attn_indices, device=is_index_global_attn.device
-        ) < num_global_attn_indices.unsqueeze(dim=-1)
-
-        # location of the non-padding values within global attention indices
-        is_local_index_global_attn_nonzero = is_local_index_global_attn.nonzero().unbind(dim=1)
-
-        # location of the padding values within global attention indices
-        is_local_index_no_global_attn_nonzero = (is_local_index_global_attn == 0).nonzero().unbind(dim=1)
-
-        return (
-            max_num_global_attn_indices,
-            is_index_global_attn_nonzero,
-            is_local_index_global_attn_nonzero,
-            is_local_index_no_global_attn_nonzero,
-        )
-
-    def _concat_with_global_key_attn_probs(
-        self,
-        key_vectors,
-        query_vectors,
-        max_num_global_attn_indices,
-        is_index_global_attn_nonzero,
-        is_local_index_global_attn_nonzero,
-        is_local_index_no_global_attn_nonzero,
-    ):
-        batch_size = key_vectors.shape[0]
-
-        # create only global key vectors
-        key_vectors_only_global = torch.zeros(
-            [batch_size, max_num_global_attn_indices, self.num_heads, self.head_dim],
-            device=key_vectors.device,
-            dtype=key_vectors.dtype
-        )
-
-        key_vectors_only_global[is_local_index_global_attn_nonzero] = key_vectors[is_index_global_attn_nonzero]
-        # (batch_size, seq_len, num_heads, max_num_global_attn_indices)
-        # attn_probs_from_global_key = torch.einsum("blhd,bshd->blhs", (query_vectors, key_vectors_only_global))
-        attn_probs_from_global_key = torch.matmul(
-            query_vectors.transpose(1, 2), key_vectors_only_global.transpose(1, 2).transpose(2, 3)
-        ).transpose(1, 2)
-        attn_probs_from_global_key[
-            is_local_index_no_global_attn_nonzero[0], :, :, is_local_index_no_global_attn_nonzero[1]
-        ].fill_(-10000.0)
-        return attn_probs_from_global_key
-
-    def _compute_attn_output_with_global_indices(
-        self,
-        value_vectors,
-        attn_probs,
-        max_num_global_attn_indices,
-        is_index_global_attn_nonzero,
-        is_local_index_global_attn_nonzero,
-    ):
-        batch_size = attn_probs.shape[0]
-
-        # cut local attn probs to global only
-        attn_probs_only_global = attn_probs.narrow(-1, 0, max_num_global_attn_indices)
-        # get value vectors for global only
-        value_vectors_only_global = value_vectors.new_zeros(
-            batch_size, max_num_global_attn_indices, self.num_heads, self.head_dim
-        )
-
-        value_vectors_only_global[is_local_index_global_attn_nonzero] = value_vectors[is_index_global_attn_nonzero]
-
-        # use `matmul` because `einsum` crashes sometimes with fp16
-        # attn = torch.einsum('blhs,bshd->blhd', (selected_attn_probs, selected_v))
-        # compute attn output only global
-        attn_output_only_global = torch.matmul(
-            attn_probs_only_global.transpose(1, 2), value_vectors_only_global.transpose(1, 2)
-        ).transpose(1, 2)
-
-        # reshape attn probs
-        attn_probs_without_global = attn_probs.narrow(
-            -1, max_num_global_attn_indices, attn_probs.size(-1) - max_num_global_attn_indices
-        ).contiguous()
-
-        # compute attn output with global
-        attn_output_without_global = self._sliding_chunks_matmul_attn_probs_value(
-            attn_probs_without_global, value_vectors, self.one_sided_attn_window_size
-        )
-        return  attn_output_only_global + attn_output_without_global
-
-    def _compute_global_attn_output_from_hidden(
+    def ORT_forward(
         self,
         hidden_states,
-        max_num_global_attn_indices,
-        is_local_index_global_attn_nonzero,
-        is_index_global_attn_nonzero,
-        is_local_index_no_global_attn_nonzero,
-        is_index_masked,
+        attention_mask=None,
+        output_attentions=False,
     ):
-        seq_len, batch_size = hidden_states.shape[:2]
+        assert output_attentions is False
 
-        # prepare global hidden states
-        global_attn_hidden_states = hidden_states.new_zeros(max_num_global_attn_indices, batch_size, self.embed_dim)
+        attention_mask = attention_mask.squeeze(dim=2).squeeze(dim=1)
+        global_mask = (attention_mask > 0).int()
 
-        # global_attn_hidden_states = torch.zeros([max_num_global_attn_indices, batch_size, self.embed_dim], device='cuda:0')
+        attention_mask = torch.masked_fill(attention_mask, attention_mask > 0, 0.0)
 
-        global_attn_hidden_states[is_local_index_global_attn_nonzero[::-1]] = hidden_states[
-            is_index_global_attn_nonzero[::-1]
-        ]
+        weight = torch.stack(
+            (self.query.weight.transpose(0, 1), self.key.weight.transpose(0, 1), self.value.weight.transpose(0, 1)),
+            dim=1)
+        weight = weight.reshape(self.embed_dim, 3 * self.embed_dim)
 
-        # global key, query, value
-        global_query_vectors_only_global = self.query_global(global_attn_hidden_states)
-        global_key_vectors = self.key_global(hidden_states)
-        global_value_vectors = self.value_global(hidden_states)
+        bias = torch.stack((self.query.bias, self.key.bias, self.value.bias), dim=0)
+        bias = bias.reshape(3 * self.embed_dim)
 
-        # normalize
-        global_query_vectors_only_global /= math.sqrt(self.head_dim)
+        global_weight = torch.stack((self.query_global.weight.transpose(0, 1), self.key_global.weight.transpose(
+            0, 1), self.value_global.weight.transpose(0, 1)),
+                                    dim=1)
+        global_weight = global_weight.reshape(self.embed_dim, 3 * self.embed_dim)
 
-        # reshape
-        global_query_vectors_only_global = (
-            global_query_vectors_only_global.contiguous()
-            .view(max_num_global_attn_indices, batch_size * self.num_heads, self.head_dim)
-            .transpose(0, 1)
-        )  # (batch_size * self.num_heads, max_num_global_attn_indices, head_dim)
-        global_key_vectors = (
-            global_key_vectors.contiguous().view(-1, batch_size * self.num_heads, self.head_dim).transpose(0, 1)
-        )  # batch_size * self.num_heads, seq_len, head_dim)
-        global_value_vectors = (
-            global_value_vectors.contiguous().view(-1, batch_size * self.num_heads, self.head_dim).transpose(0, 1)
-        )  # batch_size * self.num_heads, seq_len, head_dim)
+        global_bias = torch.stack((self.query_global.bias, self.key_global.bias, self.value_global.bias), dim=0)
+        global_bias = global_bias.reshape(3 * self.embed_dim)
 
-        # compute attn scores
-        global_attn_scores = torch.bmm(global_query_vectors_only_global, global_key_vectors.transpose(1, 2))
+        onnx_model_str = create_longformer_attention_graph(hidden_states, weight, bias, global_weight, global_bias,
+                                                           self.num_heads, self.one_sided_attn_window_size)
 
-        global_attn_scores = global_attn_scores.view(batch_size, self.num_heads, max_num_global_attn_indices, seq_len)
+        ort_inputs = {
+            'input': numpy.ascontiguousarray(hidden_states.cpu().numpy()),
+            'mask': numpy.ascontiguousarray(attention_mask.cpu().numpy()),
+            'global_attention': numpy.ascontiguousarray(global_mask.cpu().numpy()),
+        }
 
-        # global_attn_scores[
-        #     is_local_index_no_global_attn_nonzero[0], :, is_local_index_no_global_attn_nonzero[1], :
-        # ] = -10000.0
+        from onnxruntime import SessionOptions, InferenceSession
+        sess_options = SessionOptions()
+        ort_session = InferenceSession(onnx_model_str, sess_options, providers=['CUDAExecutionProvider'])
+        ort_output = ort_session.run(None, ort_inputs)
 
-        global_attn_scores = global_attn_scores.masked_fill(is_index_masked.unsqueeze(1).unsqueeze(2), -10000.0,)
+        return ort_output
 
-        global_attn_scores = global_attn_scores.view(batch_size * self.num_heads, max_num_global_attn_indices, seq_len)
 
-        # compute global attn probs
-        global_attn_probs_float = F.softmax(
-            global_attn_scores, dim=-1, dtype=torch.float32
-        )  # use fp32 for numerical stability
+def create_longformer_attention_graph(hidden_states, weight, bias, global_weight, global_bias, num_heads_,
+                                      one_sided_attn_window_size_):
+    from onnx import helper, TensorProto
 
-        global_attn_probs = F.dropout(
-            global_attn_probs_float.type_as(global_attn_scores), p=self.dropout, training=self.training
-        )
+    batch_size, sequence_length, hidden_size = list(hidden_states.shape)
 
-        # global attn output
-        global_attn_output = torch.bmm(global_attn_probs, global_value_vectors)
+    nodes = [
+        helper.make_node("LongformerAttention",
+                         ["input", "weights", "bias", "mask", "global_weights", "global_bias", "global_attention"],
+                         ["output"],
+                         "LongformerAttention_0",
+                         num_heads=num_heads_,
+                         one_sided_attn_window_size=one_sided_attn_window_size_),
+    ]
 
-        global_attn_output = global_attn_output.view(
-            batch_size, self.num_heads, max_num_global_attn_indices, self.head_dim
-        )
+    initializers = [
+        helper.make_tensor('weights', TensorProto.FLOAT, [hidden_size, 3 * hidden_size],
+                           weight.flatten().tolist()),
+        helper.make_tensor('bias', TensorProto.FLOAT, [3 * hidden_size],
+                           bias.flatten().tolist()),
+        helper.make_tensor('global_weights', TensorProto.FLOAT, [hidden_size, 3 * hidden_size],
+                           global_weight.flatten().tolist()),
+        helper.make_tensor('global_bias', TensorProto.FLOAT, [3 * hidden_size],
+                           global_bias.flatten().tolist()),
+    ]
 
-        return global_attn_output
+    graph = helper.make_graph(nodes, "LongformerAttention_Graph", [
+        helper.make_tensor_value_info('input', TensorProto.FLOAT, [batch_size, sequence_length, hidden_size]),
+        helper.make_tensor_value_info('mask', TensorProto.FLOAT, [batch_size, sequence_length]),
+        helper.make_tensor_value_info('global_attention', TensorProto.FLOAT, [batch_size, sequence_length]),
+    ], [
+        helper.make_tensor_value_info('output', TensorProto.FLOAT, [batch_size, sequence_length, hidden_size]),
+    ], initializers)
+
+    model = helper.make_model(graph)
+    return model.SerializeToString()
+
+
+def create_inputs(config):
+    input_hidden_states = torch.normal(mean=0.0,
+                                       std=0.1,
+                                       size=(config.batch_size, config.sequence_length,
+                                             config.hidden_size)).to(torch.float32)
+
+    attention_mask_front = 10000 * torch.ones([config.batch_size, 1, 1, config.masked_length], dtype=torch.int32)
+    attention_mask_end = -10000 * torch.ones([config.batch_size, 1, 1, config.sequence_length - config.masked_length],
+                                             dtype=torch.int32)
+    attention_mask = torch.cat([attention_mask_front, attention_mask_end], dim=3)
+
+    return input_hidden_states, attention_mask
+
+
+if __name__ == '__main__':
+    config = Config()
+    input_hidden_states, attention_mask = create_inputs(config)
+
+    attn = LongformerSelfAttention(config)
+    output = attn.forward(input_hidden_states, attention_mask)
+    attn.ORT_forward(input_hidden_states, attention_mask)
+
+    #print(input_hidden_states, attention_mask, output)
