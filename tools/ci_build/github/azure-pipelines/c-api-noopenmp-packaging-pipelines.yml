@@ -255,6 +255,9 @@ jobs:
   workspace:
     clean: all
   pool: 'Win-CPU-2021'
+  steps:
+  - checkout: self
+    submodules: false
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Combined GPU'
     inputs:
