@@ -42,7 +42,7 @@ convert_float_to_float16(model, min_positive_val=1e-7, max_finite_val=1e4, keep_
 
 - `model`: The ONNX model to convert.
 - `min_positive_val`, `max_finite_val`: Constant values will be clipped to these bounds. `0.0`, `nan`, `inf`, and `-inf` will be unchanged.
-- `keep_io_types`: Whether model inputs/outputs should also be converted to float16.
+- `keep_io_types`: Whether model inputs/outputs should be left as float32.
 - `disable_shape_infer`: Skips running onnx shape/type inference. Useful if shape inference is crashing, shapes/types are already present in the model, or types are not needed (types are used to determine where cast ops are needed for unsupported/blocked ops).
 - `op_block_list`: List of op types to leave as float32. By default uses the list from `float16.DEFAULT_OP_BLOCK_LIST`. This list has ops that are not supported for float16 in ONNX Runtime.
 - `node_block_list`: List of node names to leave as float32.
@@ -71,8 +71,8 @@ auto_convert_mixed_precision(model, feed_dict, validate_fn=None, rtol=None, atol
 ```
 
 - `model`: The ONNX model to convert.
-- `validate_fn`: A function accepting two lists of numpy arrays (the outputs of the float32 model and the mixed-precision model, respectively) that returns `True` if the results are sufficiently close and false otherwise. Can be used instead of or in addition to `rtol` and `atol`.
+- `validate_fn`: A function accepting two lists of numpy arrays (the outputs of the float32 model and the mixed-precision model, respectively) that returns `True` if the results are sufficiently close and `False` otherwise. Can be used instead of or in addition to `rtol` and `atol`.
 - `rtol`, `atol`: Absolute and relative tolerances used for validation. See [numpy.allclose](https://numpy.org/doc/stable/reference/generated/numpy.allclose.html) for more information.
-- `keep_io_types`: Whether model inputs/outputs should also be converted to float16.
+- `keep_io_types`: Whether model inputs/outputs should be left as float32.
 
 The mixed precision tool works by converting clusters of ops to float16. If a cluster fails, it is split in half and both clusters are tried independently. A visualization of the cluster sizes is printed as the tool works.
