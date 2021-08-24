@@ -99,6 +99,7 @@ struct TensorrtFuncState {
   std::unordered_map<std::string, float> dynamic_range_map;
   bool engine_decryption_enable;
   int (*engine_decryption)(const char*, char*, size_t*);
+  int (*engine_encryption)(const char*, char*, size_t);
 };
 
 // Logical device representation.
@@ -157,6 +158,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   mutable char model_path_[4096];  // Reserved for max path length
   bool engine_decryption_enable_ = false;
   int (*engine_decryption_)(const char*, char*, size_t*);
+  int (*engine_encryption_)(const char*, char*, size_t);
 
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>> engines_;

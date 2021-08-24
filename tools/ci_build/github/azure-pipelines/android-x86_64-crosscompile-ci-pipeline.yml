@@ -73,12 +73,12 @@ jobs:
 - job: Update_Dashboard
   workspace:
     clean: all
-  pool:
-    vmImage: 'ubuntu-latest'
+  variables:
+  - name: skipComponentGovernanceDetection
+    value: true
+  pool: 'Linux-CPU-2019'
+  condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
   dependsOn: Android_CI
-  # disable update dashboard of Android Code coverage until Azure CI machine cannot access database issue is resolved
-  # condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
-  condition: false
   steps:
   - task: DownloadPipelineArtifact@0
     displayName: 'Download code coverage report'
@@ -86,23 +86,11 @@ jobs:
       artifactName: 'coverage_rpt.txt'
       targetPath: '$(Build.BinariesDirectory)'
 
-  - task: UsePythonVersion@0
+  - task: AzureCLI@2
+    displayName: 'Post Android Code Coverage To DashBoard'
     inputs:
-      versionSpec: '3.x'
-
-  - task: CmdLine@2
-    inputs:
-      script: |
-        python3 -m pip install mysql-connector-python
-
-  - task: PythonScript@0
-    displayName: Post Android Code Coverage To DashBoard
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/post_code_coverage_to_dashboard.py'
-      arguments: >
-        --commit_hash=$(Build.SourceVersion)
-        --report_url="https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)"
-        --report_file="$(Build.BinariesDirectory)/coverage_rpt.txt"
-        --branch $(Build.SourceBranchName) --arch $(Agent.OSArchitecture) --os "android" --build_config nnapi
-    env:
-      DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
+      azureSubscription: AIInfraBuild
+      scriptType: bash
+      scriptPath: $(Build.SourcesDirectory)/tools/ci_build/github/linux/upload_code_coverage_data.sh
+      arguments: '"$(Build.BinariesDirectory)/coverage_rpt.txt" "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" arm android nnapi'
+      workingDirectory: '$(Build.BinariesDirectory)'

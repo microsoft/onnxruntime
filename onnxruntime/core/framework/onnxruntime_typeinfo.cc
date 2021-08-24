@@ -56,7 +56,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetOnnxTypeFromTypeInfo, _In_ const struct OrtTypeI
 
 ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToTensorInfo, _In_ const struct OrtTypeInfo* input,
                     _Outptr_result_maybenull_ const struct OrtTensorTypeAndShapeInfo** out) {
-  *out = input->type == ONNX_TYPE_TENSOR ? input->data : nullptr;
+  *out = (input->type == ONNX_TYPE_TENSOR || input->type == ONNX_TYPE_SPARSETENSOR) ? input->data : nullptr;
   return nullptr;
 }
 

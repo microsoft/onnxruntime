@@ -175,7 +175,9 @@ function buildTestRunnerConfig({
     },
     plugins: [
       new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] }),
-      new NodePolyfillPlugin(),
+      new NodePolyfillPlugin({
+        excludeAliases: ["console"]
+      }),
     ],
     module: {
       rules: [{
