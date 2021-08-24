@@ -1,0 +1,51 @@
+jobs:
+- job: ObjCApiStaticAnalysis
+  
+  pool:
+    vmImage: 'macOS-10.15'
+  
+  timeoutInMinutes: 10
+
+  steps:
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: "3.9"
+      addToPath: true
+      architecture: "x64"
+
+  - script: |
+      pip install codechecker==6.16.0
+    displayName: Install CodeChecker
+
+  - script: |
+      python tools/ci_build/build.py \
+        --build_dir "$(Build.BinariesDirectory)" \
+        --cmake_generator "Unix Makefiles" \
+        --config Debug \
+        --skip_submodule_sync \
+        --build_shared_lib --use_coreml --build_objc \
+        --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON \
+        --update
+    displayName: Generate compile_commands.json
+
+  - script: |
+      codechecker analyze \
+        --file "$(Build.SourcesDirectory)/objectivec/*" \
+        --output "$(Build.BinariesDirectory)/codechecker.analyze.out" \
+        "$(Build.BinariesDirectory)/Debug/compile_commands.json"
+
+      CODECHECKER_ANALYZE_EXIT_CODE=$?
+      echo "codechecker analyze exited with code: ${CODECHECKER_ANALYZE_EXIT_CODE}"
+    displayName: Run CodeChecker analysis
+
+  - script: |
+      # skip results from external dependencies
+      echo "-$(Build.SourcesDirectory)/cmake/external/*" > "$(Build.BinariesDirectory)/codechecker.parse.skipfile"
+
+      codechecker parse \
+        --ignore "$(Build.BinariesDirectory)/codechecker.parse.skipfile" \
+        "$(Build.BinariesDirectory)/codechecker.analyze.out"
+
+      CODECHECKER_PARSE_EXIT_CODE=$?
+      echo "codechecker parse exited with code: ${CODECHECKER_PARSE_EXIT_CODE}"
+    displayName: Show CodeChecker analysis results
