@@ -47,7 +47,7 @@ jobs:
           parameters:
               arch: 'linux-x64'
               buildConfig: 'Release'
-              artifactName: 'onnxruntime-java-linux-tensorrt-x64'
+              artifactName: 'onnxruntime-java-linux-x64-tensorrt'
               version: '$(OnnxRuntimeVersion)'
               libraryName: 'libonnxruntime.so'
               nativeLibraryName: 'libonnxruntime4j_jni.so'
