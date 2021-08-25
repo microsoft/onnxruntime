@@ -1,0 +1,1 @@
+[assembly: Microsoft.ML.OnnxRuntime.Preserve]

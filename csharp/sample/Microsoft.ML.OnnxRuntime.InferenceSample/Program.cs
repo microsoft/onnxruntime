@@ -22,7 +22,7 @@ namespace CSharpUsage
 
         static void UseApi()
         {
-            string modelPath = Directory.GetCurrentDirectory() + @"\squeezenet.onnx";
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 
             // Optional : Create session options and set the graph optimization level for the session
             SessionOptions options = new SessionOptions();

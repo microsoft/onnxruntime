@@ -3,17 +3,18 @@
   <PropertyGroup>
     <TargetFramework>netcoreapp2.1</TargetFramework>
     <IsPackable>false</IsPackable>
-    <OnnxRuntimeCsharpRoot>..\..</OnnxRuntimeCsharpRoot>
+    <OnnxRuntimeCsharpRoot>$(ProjectDir)..\..</OnnxRuntimeCsharpRoot>
     <Platforms>AnyCPU;x86</Platforms>
     <OutputPath>bin\$(Configuration)\</OutputPath>
-    <IsLinuxBuild Condition="'$(IsLinuxBuild)' == ''">false</IsLinuxBuild>
+    <IsLinuxBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))' == 'true'">true</IsLinuxBuild> 
+    <IsWindowsBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">true</IsWindowsBuild> 
+    <IsMacOSBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))' == 'true'">true</IsMacOSBuild> 
     <ProtoSrc>$(OnnxRuntimeCsharpRoot)\..\cmake\external\onnx\onnx</ProtoSrc>
 
     <!-- following attributes were necessary for the migrated Tensor tests -->  
     <LangVersion>7.2</LangVersion>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <SignAssembly>true</SignAssembly> <!-- need signing for friend access to the internals of the Tensors assembly -->
-    <DelaySign>false</DelaySign>
     <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
     <Configurations>Debug;Release;RelWithDebInfo</Configurations>
     <!-- end -->
@@ -27,12 +28,20 @@
     <ProtocExe>$(ProtocDirectory)\protoc</ProtocExe>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(IsLinuxBuild)'=='false'">
+  <PropertyGroup Condition="'$(IsWindowsBuild)'=='true'">
     <!--internal build related properties for Windows -->
     <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
     <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
     <ProtocDirectory Condition="'$(ProtocDirectory)'==''">$(OnnxRuntimeBuildDirectory)\$(Configuration)\external\protobuf\cmake\$(Configuration)</ProtocDirectory>
     <ProtocExe>$(ProtocDirectory)\protoc.exe</ProtocExe>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(IsMacOSBuild)'=='true'">
+    <!--internal build related properties for OSX -->
+    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\MacOS</OnnxRuntimeBuildDirectory>
+    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)</NativeBuildOutputDir>
+    <ProtocDirectory Condition="'$(ProtocDirectory)'==''">$(OnnxRuntimeBuildDirectory)\$(Configuration)\external\protobuf\cmake</ProtocDirectory>
+    <ProtocExe>$(ProtocDirectory)\protoc</ProtocExe>
   </PropertyGroup>
 
   <ItemGroup>
@@ -56,7 +65,6 @@
       <Generator>TextTemplatingFileGenerator</Generator>
       <LastGenOutput>Tensors\TensorOperations.cs</LastGenOutput>
     </None>
-    <None Update="Tensors\TensorTemplate.ttinclude" />
   </ItemGroup> 
 
   <ItemGroup>
@@ -72,12 +80,16 @@
     <ProjectReference Include="$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj" />
   </ItemGroup>
 
-  <Target Name="ProtoGen" BeforeTargets="Build">
+  <Target Name="ProtoGen" BeforeTargets="BeforeBuild">
     <Exec Command="$(ProtocExe) -I=$(ProtoSrc) --csharp_out=. $(ProtoSrc)\onnx-ml.proto3" ContinueOnError="false"></Exec>
   </Target>
-
   <ItemGroup>
-    <None Include="$(NativeBuildOutputDir)\*.dll;$(NativeBuildOutputDir)\*.pdb;$(NativeBuildOutputDir)\libcustom*.so;$(NativeBuildOutputDir)\libcustom*.dylib">
+    <!-- manually include if we're going to generate in this build. otherwise it's automatically included. -->
+    <Compile Include="$(ProjectDir)\OnnxMl.cs" Condition="!Exists('$(ProjectDir)\OnnxMl.cs')"/>
+  </ItemGroup>
+  
+  <ItemGroup>
+    <None Include="$(NativeBuildOutputDir)\*.dll;$(NativeBuildOutputDir)\*.pdb;$(NativeBuildOutputDir)\*.dylib;$(NativeBuildOutputDir)\libcustom*.so;$(NativeBuildOutputDir)\libcustom*.dylib">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>

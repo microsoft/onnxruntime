@@ -1,7 +1,7 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="MSBuild.Sdk.Extras/3.0.22">
 
   <PropertyGroup>
-    <TargetFramework>netstandard1.1</TargetFramework>
+    <TargetFrameworks>netstandard1.1;netstandard2.0;xamarinios10;monoandroid10.0;</TargetFrameworks>
     <Platforms>AnyCPU;x86</Platforms>
     <LangVersion>7.2</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -10,16 +10,22 @@
     <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
 
     <!--internal build related properties-->
-    <OnnxRuntimeRoot>..\..\..</OnnxRuntimeRoot>
+    <OnnxRuntimeRoot>$(ProjectDir)..\..\..</OnnxRuntimeRoot>
     <OnnxRuntimeCsharpRoot>$(OnnxRuntimeRoot)\csharp</OnnxRuntimeCsharpRoot>
     <TargetArchitecture Condition=" '$(TargetArchitecture)' == '' ">x64</TargetArchitecture>  
-    
+
+    <RootNamespace>Microsoft.ML.OnnxRuntime</RootNamespace>
+    <AssemblyName>Microsoft.ML.OnnxRuntime</AssemblyName>
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DebugType>portable</DebugType>
+
     <!--- packaging properties -->
     <OrtPackageId Condition=" '$(OrtPackageId)' == '' ">Microsoft.ML.OnnxRuntime</OrtPackageId>
 
     <!--- The package name is always hardcoded as the package created by this project only contains managed assemblies -->
     <!--- The parameter OrtPackageId is only used for some conditional logic below -->    
-    <PackageId>Microsoft.ML.OnnxRuntime.Managed</PackageId>
+    <PackageId Condition="'$(PackageId)' == '' ">Microsoft.ML.OnnxRuntime.Managed</PackageId>
     <Authors>Microsoft</Authors>
     <PackageVersion Condition=" '$(PackageVersion)' == '' ">0.0</PackageVersion>
     <Version>$(PackageVersion)</Version>
@@ -31,33 +37,51 @@
     <PackageIconUrl>https://go.microsoft.com/fwlink/?linkid=2049168</PackageIconUrl>
     <PackageReleaseNotes>
       Release Def:
-	Branch: $(BUILD_SOURCEBRANCH)
-	Commit: $(BUILD_SOURCEVERSION)
-	Build: https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(BUILD_BUILDID)
+        Branch: $(BUILD_SOURCEBRANCH)
+        Commit: $(BUILD_SOURCEVERSION)
+        Build: https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(BUILD_BUILDID)
     </PackageReleaseNotes>
     <!-- sourcelink flags -->
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
+
     <!-- Optional: Embed source files that are not tracked by the source control manager in the PDB -->
     <!--EmbedUntrackedSources>true</EmbedUntrackedSources-->
+
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <AllowedOutputExtensionsInPackageBuildOutputFolder>$(AllowedOutputExtensionsInPackageBuildOutputFolder);.pdb</AllowedOutputExtensionsInPackageBuildOutputFolder>
     <Configurations>Debug;Release;RelWithDebInfo</Configurations>
+
+    <IsLinuxBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))' == 'true'">true</IsLinuxBuild> 
+    <IsWindowsBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">true</IsWindowsBuild> 
+    <IsMacOSBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))' == 'true'">true</IsMacOSBuild>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(IsLinuxBuild)'=='true'">
-    <!--internal build related properties for Linux -->
-    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Linux</OnnxRuntimeBuildDirectory>
-    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)</NativeBuildOutputDir>
-  </PropertyGroup>
+    <PropertyGroup Condition=" '$(Version)' == '' ">
+        <VersionPrefix Condition=" '$(VersionPrefix)' == '' ">1.0.0</VersionPrefix>
+        <Version Condition=" '$(VersionSuffix)' != '' ">$(VersionPrefix)-$(VersionSuffix)</Version>
+        <Version Condition=" '$(Version)' == '' ">$(VersionPrefix)</Version>
+    </PropertyGroup>
 
-  <PropertyGroup Condition="'$(IsLinuxBuild)'=='false'">
-    <!--internal build related properties for Windows -->
-    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
-    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
-  </PropertyGroup>
+    <PropertyGroup Condition="'$(IsLinuxBuild)'=='true'">
+        <!--internal build related properties for Linux -->
+        <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Linux</OnnxRuntimeBuildDirectory>
+        <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)</NativeBuildOutputDir>
+    </PropertyGroup>
 
-  <!--TODO: this works for single platform only. Need separate packaging scripts for multi-target packaging -->
-  <!--TODO: Find a way to bundle the native symbol files properly -->
-  
+    <PropertyGroup Condition="'$(IsWindowsBuild)'=='true'">
+        <!--internal build related properties for Windows -->
+        <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
+        <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(IsMacOSBuild)'=='true'">
+        <!--internal build related properties for OSX -->
+        <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\MacOS</OnnxRuntimeBuildDirectory>
+        <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)</NativeBuildOutputDir>
+    </PropertyGroup>
+
   <ItemGroup>
     <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\session\onnxruntime_*.h"
           PackagePath="\build\native\include"
@@ -139,10 +163,10 @@
           Pack="true"
           Visible="false"
     />
-    <None Include="$(PackageId).targets" 
-          PackagePath="\build\$(TargetFramework)"
+    <None Include="$(PackageId).targets"
+          PackagePath="build\netstandard1.1\$(PackageId).targets;buildTransitive\netstandard1.1\$(PackageId).targets;build\netstandard2.0\$(PackageId).targets;buildTransitive\netstandard2.0\$(PackageId).targets;"
           Pack="true"
-          Visible="false"
+          Visible="false" 
     />
 
     <!-- Some tools to be packaged in nightly build only, should not be released -->
@@ -159,29 +183,45 @@
           Pack="false"
           Visible="false"
     />
-
   </ItemGroup>
 
   <ItemGroup>
-    <LicenseFile Include="$(OnnxRuntimeCsharpRoot)\..\LICENSE" />
-    <TargetsFile Include="$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime\targets.xml" />
+    <Compile Include="**\*.shared.cs" Link="%(Filename)%(Extension)" />
+    <Compile Include="**\*.shared.*.cs" Link="%(Filename)%(Extension)" />
   </ItemGroup>
 
-  <Target Name="CopyMiscFiles" BeforeTargets="Pack">
+  <ItemGroup Condition="$(TargetFramework.StartsWith('netstandard'))">
+    <PackageReference Include="System.Memory" Version="4.5.4" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
+    <Compile Include="**\*.netstandard.cs" Link="platform\netstandard\%(Filename)%(Extension)" />
+   <Compile Include="**\*.netstandard.*.cs" Link="platform\netstandard\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup Condition="$(TargetFramework.StartsWith('monoandroid'))">
+    <Compile Include="**\*.android.cs" Link="platform\android\%(Filename)%(Extension)" />
+    <Compile Include="**\*.android.*.cs" Link="platform\android\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup Condition="$(TargetFramework.StartsWith('xamarinios')) ">
+    <Compile Include="**\*.ios.cs" Link="platform\ios\%(Filename)%(Extension)" />
+    <Compile Include="**\*.ios.*.cs" Link="platform\ios\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <LicenseFile Include="$(OnnxRuntimeCsharpRoot)\..\LICENSE" Visible="false" />
+    <TargetsFile Include="$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime\targets.xml" Visible="false" />
+  </ItemGroup>
+
+  <Target Name="CopyMiscFiles" BeforeTargets="PreBuildEvent">
     <Copy SourceFiles="@(LicenseFile)" DestinationFiles="@(LicenseFile->'$(OnnxRuntimeCsharpRoot)\..\%(Filename).txt')" />
-    <Copy SourceFiles="@(TargetsFile)" DestinationFiles="@(TargetsFile->'$(OnnxRuntimeCsharpRoot)\src\\Microsoft.ML.OnnxRuntime\$(PackageId).targets')" />
+    <Copy SourceFiles="@(TargetsFile)" DestinationFiles="@(TargetsFile->'$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime\$(PackageId).targets')" />
   </Target>
 
-  <Target Name="CopyPackage" AfterTargets="Pack">
-  <Copy
-    SourceFiles="$(OutputPath)..\$(PackageId).$(PackageVersion).nupkg"
-    DestinationFolder="$(NativeBuildOutputDir)\nuget-artifacts"
-    />
-</Target>
-
-  <ItemGroup>
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
-    <PackageReference Include="System.Memory" Version="4.5.3" />
-  </ItemGroup>
-
+    <Target Name="CopyPackage" AfterTargets="Pack">
+      <Copy
+        SourceFiles="$(OutputPath)\$(PackageId).$(PackageVersion).nupkg"
+        DestinationFolder="$(NativeBuildOutputDir)\nuget-artifacts"
+      />
+    </Target>
+  
 </Project>
