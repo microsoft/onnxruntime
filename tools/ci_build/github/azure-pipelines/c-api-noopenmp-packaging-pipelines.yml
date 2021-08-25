@@ -60,7 +60,7 @@ jobs:
       parameters:
           arch: 'linux-x64'
           buildConfig: 'Release'
-          artifactName: 'onnxruntime-java-linux-gpu-x64'
+          artifactName: 'onnxruntime-java-linux-x64-cuda'
           version: '$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so'
           nativeLibraryName: 'libonnxruntime4j_jni.so'
@@ -133,14 +133,14 @@ jobs:
     displayName: 'Download Pipeline Artifact - Win x64'
     inputs:
       buildType: 'current'
-      artifactName: 'onnxruntime-java-win-gpu-x64'
+      artifactName: 'onnxruntime-java-win-x64-cuda'
       targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
 
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Linux x64'
     inputs:
       buildType: 'current'
-      artifactName: 'onnxruntime-java-linux-gpu-x64'
+      artifactName: 'onnxruntime-java-linux-x64-cuda'
       targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
 
   - task: PowerShell@2
