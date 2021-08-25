@@ -67,10 +67,6 @@ def generate_tags(list, tags):
     list.append('<tags>' + tags + '</tags>')
 
 
-def generate_icon_url(list, icon_url):
-    list.append('<icon>' + icon_url + '</icon>')
-
-
 def generate_license(list):
     list.append('<license type="file">LICENSE.txt</license>')
 
