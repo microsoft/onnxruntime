@@ -257,7 +257,7 @@ class IExecutionProvider {
             NOTE: Ideally this would be a protected method, but to work across the EP bridge it has to be public and 
                   virtual, and ModelMetadefIdGenerator but be defined in the header as well.
    */
-  virtual int GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) const;
+  virtual int GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash, bool enhensive_hashing_enable=false) const;
 
   /**
      Register allocators used for EP
@@ -280,7 +280,7 @@ class IExecutionProvider {
   // multiple sessions.
   class ModelMetadefIdGenerator {
    public:
-    int GenerateId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash);
+    int GenerateId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash, bool enhensive_hashing_enable);
 
    private:
     std::unordered_map<uint64_t, int64_t> main_graph_hash_;  // map graph instance hash to model contents hash
