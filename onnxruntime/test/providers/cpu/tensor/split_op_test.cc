@@ -94,6 +94,10 @@ static void SplitTestInt() {
   RunTest<T>(axis, {}, input, outputs, false);  //TensorRT parser: Assertion failed: axis != BATCH_DIM
 }
 
+TEST(SplitOperatorTest, Axis0EqualSplitInt8) {
+  SplitTestInt<int8_t>();
+}
+
 TEST(SplitOperatorTest, Axis0EqualSplitInt32) {
   SplitTestInt<int32_t>();
 }

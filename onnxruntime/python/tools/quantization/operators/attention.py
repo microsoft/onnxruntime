@@ -22,6 +22,8 @@ class AttentionQuant(QuantOperatorBase):
 
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
             self.quantizer.quantize_inputs(node, [0, 1], reduce_range=True, op_level_per_channel=True)
+        if quantized_input_names is None:
+            return super().quantize()
 
         qattention_name = "" if node.name == "" else node.name + "_quant"
 

@@ -66,7 +66,11 @@ if(onnxruntime_USE_CUDA)
   set(PROVIDERS_CUDA onnxruntime_providers_cuda)
 endif()
 if(onnxruntime_USE_COREML)
-  set(PROVIDERS_COREML onnxruntime_providers_coreml onnxruntime_coreml_proto)
+  if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set(PROVIDERS_COREML onnxruntime_providers_coreml onnxruntime_coreml_proto)
+  else()
+    set(PROVIDERS_COREML onnxruntime_providers_coreml)
+  endif()
 endif()
 if(onnxruntime_USE_NNAPI_BUILTIN)
   set(PROVIDERS_NNAPI onnxruntime_providers_nnapi)
@@ -696,21 +700,23 @@ if (onnxruntime_USE_COREML)
   add_compile_definitions(USE_COREML=1)
 
   # Compile CoreML proto definition to ${CMAKE_CURRENT_BINARY_DIR}/coreml
-  set(COREML_PROTO_ROOT ${PROJECT_SOURCE_DIR}/external/coremltools/mlmodel/format)
-  file(GLOB coreml_proto_srcs
-    "${COREML_PROTO_ROOT}/*.proto"
-  )
-  onnxruntime_add_static_library(onnxruntime_coreml_proto ${coreml_proto_srcs})
-  target_include_directories(onnxruntime_coreml_proto PUBLIC $<TARGET_PROPERTY:${PROTOBUF_LIB},INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}")
-  target_compile_definitions(onnxruntime_coreml_proto PUBLIC $<TARGET_PROPERTY:${PROTOBUF_LIB},INTERFACE_COMPILE_DEFINITIONS>)
-  set_target_properties(onnxruntime_coreml_proto PROPERTIES COMPILE_FLAGS "-fvisibility=hidden")
-  set_target_properties(onnxruntime_coreml_proto PROPERTIES COMPILE_FLAGS "-fvisibility-inlines-hidden")
-  set(_src_sub_dir "coreml/")
-  onnxruntime_protobuf_generate(
-    APPEND_PATH
-    GEN_SRC_SUB_DIR ${_src_sub_dir}
-    IMPORT_DIRS ${COREML_PROTO_ROOT}
-    TARGET onnxruntime_coreml_proto)
+  if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set(COREML_PROTO_ROOT ${PROJECT_SOURCE_DIR}/external/coremltools/mlmodel/format)
+    file(GLOB coreml_proto_srcs
+      "${COREML_PROTO_ROOT}/*.proto"
+    )
+    onnxruntime_add_static_library(onnxruntime_coreml_proto ${coreml_proto_srcs})
+    target_include_directories(onnxruntime_coreml_proto PUBLIC $<TARGET_PROPERTY:${PROTOBUF_LIB},INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}")
+    target_compile_definitions(onnxruntime_coreml_proto PUBLIC $<TARGET_PROPERTY:${PROTOBUF_LIB},INTERFACE_COMPILE_DEFINITIONS>)
+    set_target_properties(onnxruntime_coreml_proto PROPERTIES COMPILE_FLAGS "-fvisibility=hidden")
+    set_target_properties(onnxruntime_coreml_proto PROPERTIES COMPILE_FLAGS "-fvisibility-inlines-hidden")
+    set(_src_sub_dir "coreml/")
+    onnxruntime_protobuf_generate(
+      APPEND_PATH
+      GEN_SRC_SUB_DIR ${_src_sub_dir}
+      IMPORT_DIRS ${COREML_PROTO_ROOT}
+      TARGET onnxruntime_coreml_proto)
+  endif()
 
   # These are shared utils,
   # TODO, move this to a separated lib when used by EPs other than NNAPI and CoreML
@@ -731,15 +737,23 @@ if (onnxruntime_USE_COREML)
     "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/*.cc"
   )
+  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    list(REMOVE_ITEM onnxruntime_providers_coreml_cc_srcs_nested
+    "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/model_builder.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/model_builder.cc"
+    )
+  endif()
 
   # Add CoreML objective c++ source code
-  file(GLOB
-    onnxruntime_providers_coreml_objcc_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/model.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/model.mm"
-    "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/host_utils.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/host_utils.mm"
-  )
+  if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    file(GLOB
+      onnxruntime_providers_coreml_objcc_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/model.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/model.mm"
+      "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/host_utils.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/host_utils.mm"
+    )
+  endif()
 
   set(onnxruntime_providers_coreml_cc_srcs
     ${onnxruntime_providers_coreml_cc_srcs_top}
@@ -750,9 +764,12 @@ if (onnxruntime_USE_COREML)
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_coreml_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_coreml ${onnxruntime_providers_coreml_cc_srcs} ${onnxruntime_providers_coreml_objcc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_coreml onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
-  onnxruntime_add_include_to_target(onnxruntime_providers_coreml onnxruntime_coreml_proto)
-  target_link_libraries(onnxruntime_providers_coreml PRIVATE onnxruntime_coreml_proto "-framework Foundation" "-framework CoreML")
-  add_dependencies(onnxruntime_providers_coreml onnx onnxruntime_coreml_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    onnxruntime_add_include_to_target(onnxruntime_providers_coreml onnxruntime_coreml_proto)
+    target_link_libraries(onnxruntime_providers_coreml PRIVATE onnxruntime_coreml_proto "-framework Foundation" "-framework CoreML")
+    add_dependencies(onnxruntime_providers_coreml onnxruntime_coreml_proto)
+  endif()
+  add_dependencies(onnxruntime_providers_coreml onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_coreml PROPERTIES CXX_STANDARD_REQUIRED ON)
   set_target_properties(onnxruntime_providers_coreml PROPERTIES FOLDER "ONNXRuntime")
   target_include_directories(onnxruntime_providers_coreml PRIVATE ${ONNXRUNTIME_ROOT} ${coreml_INCLUDE_DIRS})

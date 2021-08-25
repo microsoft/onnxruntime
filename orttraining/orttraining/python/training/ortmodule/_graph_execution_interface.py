@@ -8,7 +8,6 @@ from abc import ABC
 class GraphExecutionInterface(ABC):
     def __init__(self, module):
         self._original_module = module
-
         self._validate_module_type(module)
 
     def forward(self):

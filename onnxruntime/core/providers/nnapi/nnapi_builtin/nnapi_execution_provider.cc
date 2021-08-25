@@ -39,7 +39,11 @@ std::unordered_set<std::string> GetPartitioningStopOps(const optional<std::strin
   LOGS_DEFAULT(INFO) << "Using partitioning stop ops list from configuration: \""
                      << partitioning_stop_ops_list.value() << "\".";
   const auto stop_ops = utils::SplitString(partitioning_stop_ops_list.value(), ",");
-  return std::unordered_set<std::string>(stop_ops.begin(), stop_ops.end());
+  std::unordered_set<std::string> stop_ops_set;
+  stop_ops_set.reserve(stop_ops.size());
+  std::transform(stop_ops.cbegin(), stop_ops.cend(), std::inserter(stop_ops_set, stop_ops_set.begin()),
+                 [](const std::string_view& sv) -> std::string { return std::string(sv); });
+  return stop_ops_set;
 }
 
 }  // namespace

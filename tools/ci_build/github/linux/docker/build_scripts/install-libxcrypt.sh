@@ -10,6 +10,25 @@ MY_DIR=$(dirname "${BASH_SOURCE[0]}")
 # Get build utilities
 source $MY_DIR/build_utils.sh
 
+# We need perl 5.14+
+if ! perl -e 'use 5.14.0' &> /dev/null; then
+	check_var ${PERL_ROOT}
+	check_var ${PERL_HASH}
+	check_var ${PERL_DOWNLOAD_URL}
+	fetch_source ${PERL_ROOT}.tar.gz ${PERL_DOWNLOAD_URL}
+	check_sha256sum "${PERL_ROOT}.tar.gz" "${PERL_HASH}"
+
+	tar -xzf ${PERL_ROOT}.tar.gz
+	pushd ${PERL_ROOT}
+	./Configure -des -Dprefix=/tmp/perl-libxcrypt > /dev/null
+	make -j$(nproc) > /dev/null
+	make install > /dev/null
+	popd
+
+	rm -rf ${PERL_ROOT}.tar.gz ${PERL_ROOT}
+	export PATH=/tmp/perl-libxcrypt/bin:${PATH}
+fi
+
 # Install libcrypt.so.1 and libcrypt.so.2
 check_var ${LIBXCRYPT_VERSION}
 check_var ${LIBXCRYPT_HASH}
@@ -50,3 +69,8 @@ rm -rf /manylinux-rootfs
 rm -rf /usr/include/crypt.h
 find /lib* /usr/lib* \( -name 'libcrypt.a' -o -name 'libcrypt.so' -o -name 'libcrypt.so.*' -o -name 'libcrypt-2.*.so' \) -delete
 ldconfig
+
+# Remove temp Perl
+if [ -d /tmp/perl-libxcrypt ]; then
+	rm -rf /tmp/perl-libxcrypt
+fi

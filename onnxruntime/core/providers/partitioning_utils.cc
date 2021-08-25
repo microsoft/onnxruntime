@@ -156,7 +156,9 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
     const Node& node = *nodes_to_process.front();
     nodes_to_process.pop_front();
 
-    const bool is_node_supported = is_node_supported_fn(node);
+    const bool is_node_supported =
+        node.GetExecutionProviderType().empty() &&  // a node that is already assigned to an EP is unsupported
+        is_node_supported_fn(node);
 
     if (!is_node_supported && Contains(supported_group_border, &node)) {
       // an unsupported node on the border will be processed after the current partition node group

@@ -28,6 +28,7 @@ def my_loss(x, target, is_train=True):
     else:
         return F.nll_loss(F.log_softmax(x, dim=1), target, reduction='sum')
 
+
 # Helpers
 def train(args, model, device, train_loader, optimizer, epoch):
     model.train()
@@ -126,6 +127,7 @@ def main():
     # Save model
     if args.save_path:
         torch.save(model.state_dict(), os.path.join(args.save_path, "mnist_cnn.pt"))
+
 
 if __name__ == '__main__':
     main()

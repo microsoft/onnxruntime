@@ -616,7 +616,10 @@ Status Node::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Node& fbs_n
   since_version_ = fbs_node.since_version();
   experimental::utils::LoadStringFromOrtFormat(op_type_, fbs_node.op_type());
   node_type_ = static_cast<Node::Type>(fbs_node.type());
-  experimental::utils::LoadStringFromOrtFormat(execution_provider_type_, fbs_node.execution_provider_type());
+  // we skip populating the saved EP here
+  // the node will either be assigned to another EP by the ORT format model-specific graph partitioning or fall back to
+  // the EP encoded in its kernel def hash
+  //experimental::utils::LoadStringFromOrtFormat(execution_provider_type_, fbs_node.execution_provider_type());
   ORT_RETURN_IF_ERROR(LoadNodeArgsFromOrtFormat(fbs_node.inputs(), definitions_.input_defs));
 
   // attributes
@@ -3149,10 +3152,9 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
       // Dense tensors larger than the threshold are added to the external file.
       TensorProto* output_proto = result.add_initializer();
 
-      size_t tensor_bytes_size = 0;
-      std::unique_ptr<uint8_t[]> raw_data;
-      ORT_THROW_IF_ERROR(utils::UnpackInitializerData(initializer, Path(), raw_data, tensor_bytes_size));
-
+      std::vector<uint8_t> raw_data;
+      ORT_THROW_IF_ERROR(utils::UnpackInitializerData(initializer, Path(), raw_data));
+      size_t tensor_bytes_size = raw_data.size();
       if (tensor_bytes_size < initializer_size_threshold) {
         *output_proto = initializer;
         continue;
