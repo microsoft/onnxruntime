@@ -69,10 +69,6 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)/js/web'
     displayName: 'npm ci /js/web/'
   - script: |
-     npm run pull:wasm
-    workingDirectory: '$(Build.SourcesDirectory)/js/web'
-    displayName: 'Binplace js files'
-  - script: |
      npm run build
     workingDirectory: '$(Build.SourcesDirectory)/js/web'
     displayName: 'Build ort-web'
@@ -176,10 +172,6 @@ jobs:
      npm ci
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'npm ci /js/web/'
-  - script: |
-     npm run pull:wasm
-    workingDirectory: '$(Build.SourcesDirectory)\js\web'
-    displayName: 'Binplace js files'
   - script: |
      npm run build
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
