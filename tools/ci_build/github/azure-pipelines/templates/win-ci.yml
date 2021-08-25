@@ -127,7 +127,7 @@ jobs:
       parameters:
         buildConfig: RelWithDebInfo
         artifactName: 'onnxruntime-win-${{ parameters.packageName }}-$(OnnxRuntimeVersion)'
-        artifactNameNoVersionString: 'drop-onnxruntime-win-${{ parameters.packageName }}'
+        artifactNameNoVersionString: 'onnxruntime-win-${{ parameters.packageName }}'
         commitId: $(OnnxRuntimeGitCommitHash)
         DoEsrp: ${{ parameters.DoEsrp }}
 
@@ -203,7 +203,7 @@ jobs:
       displayName: 'Publish Java temp binaries'
       inputs:
         pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}' 
-        artifactName: 'onnxruntime-java-win-${{ parameters.packageName }}'
+        artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}'
 
     - ${{ if eq(parameters['DoCompliance'], 'true') }}:
       - task: Semmle@0
