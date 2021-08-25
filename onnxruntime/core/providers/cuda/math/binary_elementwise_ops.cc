@@ -205,9 +205,9 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
 #define BINARY_OP_TYPED_VERSIONED_V_BF16(name, class_name, startver, endver)
 #endif
 
-#define BINARY_OP_VERSIONED_HFD(name, startver, endver)         \
-  BINARY_OP_VERSIONED_TYPED(name, startver, endver, MLFloat16)  \
-  BINARY_OP_VERSIONED_TYPED(name, startver, endver, float)      \
+#define BINARY_OP_VERSIONED_HFD(name, startver, endver)        \
+  BINARY_OP_VERSIONED_TYPED(name, startver, endver, MLFloat16) \
+  BINARY_OP_VERSIONED_TYPED(name, startver, endver, float)     \
   BINARY_OP_VERSIONED_TYPED(name, startver, endver, double)
 
 #define BINARY_OP_VERSIONED_UZILHFD(name, startver, endver)   \
@@ -318,15 +318,29 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kOnnxDomain,
     12, 12,
     kCudaExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>()).TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>()),
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>())
+        .TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>()),
+    Pow);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Pow,
+    kOnnxDomain,
+    13, 14,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>())
+        .TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>()),
     Pow);
 
 ONNX_OPERATOR_KERNEL_EX(
     Pow,
     kOnnxDomain,
-    13,
+    15,
     kCudaExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>()).TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>()),
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>())
+        .TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t, float, double, MLFloat16>()),
     Pow);
 
 namespace pow12_internal {
@@ -523,7 +537,6 @@ BINARY_OP_REGISTER_VERSIONED_UZILHFD(Less, 9, 12)
 BINARY_OP_REGISTER_VERSIONED_HFD(Less, 7, 8)
 BINARY_LOGICALOP_REGISTER_UZILHFD(GreaterOrEqual, 12)
 BINARY_LOGICALOP_REGISTER_UZILHFD(LessOrEqual, 12)
-
 
 }  // namespace cuda
 }  // namespace onnxruntime
