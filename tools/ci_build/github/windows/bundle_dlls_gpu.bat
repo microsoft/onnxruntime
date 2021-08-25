@@ -1,7 +1,6 @@
 REM Copyright (c) Microsoft Corporation. All rights reserved.
 REM Licensed under the MIT License.
 
-REM for available runtime identifiers, see https://github.com/dotnet/corefx/blob/release/3.1/pkg/Microsoft.NETCore.Platforms/runtime.json
 set PATH=%CD%;%PATH%
 SETLOCAL EnableDelayedExpansion
 FOR /R %%i IN (*.zip) do (
@@ -17,6 +16,6 @@ FOR /R %%i IN (*.zip) do (
        move onnxruntime-win-tensorrt-x64\lib\onnxruntime.dll !filename!\lib\onnxruntime.dll
        move onnxruntime-win-tensorrt-x64\lib\onnxruntime.lib !filename!\lib\onnxruntime.lib
        move onnxruntime-win-tensorrt-x64\lib\onnxruntime.pdb !filename!\lib\onnxruntime.pdb
-       C:\ProgramData\chocolatey\tools\7z.exe a  %%~ni.zip !filename!\lib
+       7z a  %%~ni.zip !filename!\lib
    )
 )
