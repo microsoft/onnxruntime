@@ -1284,22 +1284,34 @@ if (onnxruntime_USE_TVM)
 endif()
 
 if (onnxruntime_ENABLE_EXTENSION_CUSTOM_OPS)
-  # add compile definition to enable custom operators in onnxruntime-extensions
-  add_compile_definitions(ENABLE_EXTENSION_CUSTOM_OPS)
+  if(EXISTS "${onnxruntime_EXTENSIONS_PATH}")
+    message(STATUS "[onnxruntime-extensions] Building onnxruntime-extensions: ${onnxruntime_EXTENSIONS_PATH}")
 
-  # set options for onnxruntime-extensions
-  set(OCOS_ENABLE_CTEST OFF CACHE INTERNAL "")
-  set(OCOS_ENABLE_STATIC_LIB ON CACHE INTERNAL "")
-  set(OCOS_ENABLE_SPM_TOKENIZER OFF CACHE INTERNAL "")
+    # add compile definition to enable custom operators in onnxruntime-extensions
+    add_compile_definitions(ENABLE_EXTENSION_CUSTOM_OPS)
 
-  if (onnxruntime_EXTENSION_CUSTOM_OPS_SELECTED)
-    set(OCOS_ENABLE_SELECTED_OPLIST ON CACHE INTERNAL "")
+    # set options for onnxruntime-extensions
+    set(OCOS_ENABLE_CTEST OFF CACHE INTERNAL "")
+    set(OCOS_ENABLE_STATIC_LIB ON CACHE INTERNAL "")
+    set(OCOS_ENABLE_SPM_TOKENIZER OFF CACHE INTERNAL "")
+
+    # disable exceptions
+    if (onnxruntime_DISABLE_EXCEPTIONS)
+      set(OCOS_ENABLE_CPP_EXCEPTIONS OFF CACHE INTERNAL "")
+    endif()
+
+    # customize operators used
+    if (onnxruntime_EXTENSION_CUSTOM_OPS_SELECTED)
+      set(OCOS_ENABLE_SELECTED_OPLIST ON CACHE INTERNAL "")
+    endif()
+
+    add_subdirectory(${onnxruntime_EXTENSIONS_PATH} ${onnxruntime_EXTENSIONS_PATH} EXCLUDE_FROM_ALL)
+    # target library or executable are defined in CMakeLists.txt of onnxruntime-extensions
+    target_include_directories(ocos_operators PRIVATE ${RE2_INCLUDE_DIR} external/json/include)
+    target_include_directories(ortcustomops PUBLIC ${onnxruntime_EXTENSIONS_PATH}/shared)
+  else()
+    message(FATAL_ERROR "[onnxruntime-extensions] Could not locate onnxruntime-extensions: ${onnxruntime_EXTENSIONS_PATH}")
   endif()
-
-  add_subdirectory(external/onnxruntime-extensions EXCLUDE_FROM_ALL)
-  # target library or executable are defined in CMakeLists.txt of onnxruntime-extensions
-  target_include_directories(ocos_operators PRIVATE ${RE2_INCLUDE_DIR} external/json/include)
-  target_include_directories(ortcustomops PUBLIC external/onnxruntime-extensions/shared)
 endif()
 
 if (APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Android")

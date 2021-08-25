@@ -360,6 +360,9 @@ def parse_arguments():
     parser.add_argument(
         "--enable_onnxruntime_extensions", action='store_true',
         help="Enable custom operators in onnxruntime-extensions")
+    parser.add_argument(
+        "--onnxruntime_extensions_path", type=str,
+        help="Path to onnxruntime-extensions repo, please make sure the repo has already been pulled/synced.")
 
     # Arguments needed by CI
     parser.add_argument(
@@ -784,7 +787,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_WEBASSEMBLY_MALLOC=" + args.wasm_malloc,
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
-        # enable custom operators in onnxruntime-extensions
+        # Enable custom operators in onnxruntime-extensions
         "-Donnxruntime_ENABLE_EXTENSION_CUSTOM_OPS=" + ("ON" if args.enable_onnxruntime_extensions else "OFF"),
     ]
     # It should be default ON in CI build pipelines, and OFF in packaging pipelines.
@@ -997,6 +1000,36 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             cmake_args += [
                 "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
             ]
+
+    # Append onnxruntime-extensions cmake options
+    if args.enable_onnxruntime_extensions:
+        # use absolute path here because onnxruntime-extensions is outside onnxruntime
+        onnxruntime_extensions_abs_path = os.path.abspath(args.onnxruntime_extensions_path)
+        print('[onnxruntime-extensions] onnxruntime_extensions_path: ', onnxruntime_extensions_abs_path)
+
+        cmake_args += [
+            "-Donnxruntime_EXTENSIONS_PATH=" + onnxruntime_extensions_abs_path
+        ]
+
+        # Note: Please make sure onnxruntime-extensions has already been pulled/synced.
+        # Steps: 1. generate _selectedoplist.cmake by operators config file
+        #        2. set cmake option to select operators from onnxruntime-extensions
+        if is_reduced_ops_build(args):
+            previous_dir = os.getcwd()
+
+            operators_config_file = os.path.abspath(args.include_ops_by_config)
+            print('[onnxruntime-extensions] operators_config_file: ', operators_config_file)
+
+            cmake_tool_dir = os.path.join(onnxruntime_extensions_abs_path, 'tools')
+            os.chdir(cmake_tool_dir)
+
+            # 1. generate _selectedoplist.cmake by operators config file
+            run_subprocess([sys.executable, 'gen_selectedops.py', operators_config_file], cwd=cmake_tool_dir)
+
+            os.chdir(previous_dir)
+
+            # 2. set cmake option to select operators from onnxruntime-extensions
+            cmake_args += ["-Donnxruntime_EXTENSION_CUSTOM_OPS_SELECTED=ON"]
 
     if path_to_protoc_exe:
         cmake_args += [
@@ -1968,6 +2001,13 @@ def main():
             # To debug ONNX Runtime WebAssembly, use ONNX Runtime Web to debug ort-wasm.wasm in browsers.
             raise BuildError("WebAssembly tests cannot be enabled with flag --enable_wasm_debug_info")
 
+    # Check onnxruntime-extensions arguments
+    if args.enable_onnxruntime_extensions:
+        if not args.onnxruntime_extensions_path:
+            raise BuildError("onnxruntime_extensions_path required to build operators in onnxruntime-extensions")
+        if not os.path.exists(args.onnxruntime_extensions_path):
+            raise BuildError("onnxruntime_extensions_path does not exist")
+
     if args.code_coverage and not args.android:
         raise BuildError("Using --code_coverage requires --android")
 
@@ -2161,27 +2201,6 @@ def main():
 
             eager_root_dir = os.path.join(source_dir, "orttraining", "orttraining", "eager")
             gen_ort_aten_ops(eager_root_dir)
-
-        # Note: Please make sure submodule onnxruntime-extensions is already pulled/synced now.
-        # Steps: 1. generate _selectedoplist.cmake by operators config file
-        #        2. set cmake option to select operators from onnxruntime-extensions
-        if is_reduced_ops_build(args) and args.enable_onnxruntime_extensions:
-            previous_dir = os.getcwd()
-
-            operators_config_file = os.path.abspath(args.include_ops_by_config)
-            print('[onnxruntime-extensions] operators_config_file: ', operators_config_file)
-
-            cmake_tool_dir = os.path.join(source_dir, 'cmake', 'external', 'onnxruntime-extensions',
-                                          'ci_build', 'tools')
-            os.chdir(cmake_tool_dir)
-
-            # 1. generate _selectedoplist.cmake by operators config file
-            run_subprocess([sys.executable, 'cmake_helper.py', operators_config_file], cwd=cmake_tool_dir)
-
-            os.chdir(previous_dir)
-
-            # 2. set cmake option to select operators from onnxruntime-extensions
-            cmake_extra_args += ["-Donnxruntime_EXTENSION_CUSTOM_OPS_SELECTED=ON"]
 
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home, mpi_home, nccl_home,
