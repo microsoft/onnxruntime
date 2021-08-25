@@ -18,11 +18,9 @@
 
          <!-- License and project URLs provide links for the gallery -->
         <licenseUrl>http://opensource.org/licenses/MS-PL</licenseUrl>
-        <projectUrl>https://github.com/onnx/onnxruntime</projectUrl>
+        <projectUrl>https://github.com/microsoft/onnxruntime</projectUrl>
 
-        <!-- The icon is used in Visual Studio's package manager UI -->
-        <icon>http://github.com/contoso/UsefulStuff/nuget_icon.png</icon>
-
+ 
         <!--
             If true, this value prompts the user to accept the license when
             installing the package.
