@@ -4,6 +4,9 @@
 #include <onnx/defs/shape_inference.h>
 #include <pybind11/pybind11.h>
 namespace ONNX_NAMESPACE {
+void FooShapeInference(InferenceContext &ctx) {
+  propagateShapeAndTypeFromFirstInput(ctx);
+}
 static const char FooDoc[] = "Foo copies input tensor to the output tensor.";
 ONNX_OPERATOR_SET_SCHEMA_EX(
     Foo,
@@ -19,9 +22,7 @@ ONNX_OPERATOR_SET_SCHEMA_EX(
             "T",
             {"tensor(float)", "tensor(int32)", "tensor(float16)"},
             "Constrain input and output types to signed numeric tensors.")
-        .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-          propagateShapeAndTypeFromFirstInput(ctx);
-        })
+        .TypeAndShapeInferenceFunction(FooShapeInference)
         .SetContextDependentFunctionBodyBuilder(
             [](const FunctionBodyBuildContext& ctx,
                const OpSchema& schema,
