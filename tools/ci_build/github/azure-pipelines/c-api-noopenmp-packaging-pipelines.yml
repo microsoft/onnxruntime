@@ -82,7 +82,6 @@ jobs:
   parameters:
       artifactName: 'onnxruntime-linux-x64-tensorrt-$(OnnxRuntimeVersion)'
       artifactNameNoVersionString: 'onnxruntime-linux-x64-tensorrt'
-      buildJava: true
 
 - template: templates/win-ci.yml
   parameters:
