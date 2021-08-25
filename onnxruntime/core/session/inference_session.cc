@@ -1169,6 +1169,20 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
 
   return Status::OK();
 }
+
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+Status TransformGraphForOrtFormatModel(onnxruntime::Graph& graph, const logging::Logger& logger) {
+  const auto runtime_transformers = std::vector<std::unique_ptr<GraphTransformer>>{};
+  // TODO enable transformers
+  //const auto runtime_transformers = optimizer_utils::GenerateOrtFormatRuntimeTransformers();
+  for (const auto& runtime_transformer : runtime_transformers) {
+    bool modified = false;
+    ORT_RETURN_IF_ERROR(runtime_transformer->Apply(graph, modified, logger));
+  }
+
+  return Status::OK();
+}
+#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 Status AssignNodesToEpsFromHashesImpl(Graph& graph, const fbs::SessionState& fbs_session_state,
@@ -1222,44 +1236,6 @@ Status AssignNodesToEpsFromHashes(Graph& graph, const fbs::SessionState& fbs_ses
                                   const logging::Logger& logger) {
   ORT_RETURN_IF_ERROR(AssignNodesToEpsFromHashesImpl(graph, fbs_session_state, kernel_registry_manager));
   ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph, logger));
-  return Status::OK();
-}
-
-Status TransformGraphForOrtFormatModel(onnxruntime::Graph& graph, const ExecutionProviders& providers,
-                                       KernelRegistryManager& kernel_registry_manager,
-                                       SessionState& session_state,
-                                       const experimental::fbs::SessionState& serialized_session_state,
-                                       const logging::Logger& logger) {
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  // nodes are already partitioned, but a custom EP may compile some at runtime.
-  // run the partitioning to allow that to happen.
-  //
-  // We always have the CPU EP, so only need to run this if some other EP is enabled
-  if (providers.NumProviders() > 1) {
-    ORT_RETURN_IF_ERROR(PartitionOrtFormatModel(graph, providers, kernel_registry_manager,
-                                                session_state));
-  }
-
-#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-  {
-    const auto runtime_transformers = std::vector<std::unique_ptr<GraphTransformer>>{};
-    // TODO enable transformers
-    //const auto runtime_transformers = optimizer_utils::GenerateOrtFormatRuntimeTransformers();
-    for (const auto& runtime_transformer : runtime_transformers) {
-      bool modified = false;
-      ORT_RETURN_IF_ERROR(runtime_transformer->Apply(graph, modified, logger));
-    }
-  }
-#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-
-#else
-  ORT_UNUSED_PARAMETER(providers);
-  ORT_UNUSED_PARAMETER(session_state);
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-
-  ORT_RETURN_IF_ERROR(AssignNodesToEpsFromHashes(graph, serialized_session_state,
-                                                 kernel_registry_manager, logger));
-
   return Status::OK();
 }
 }  // namespace
@@ -1408,11 +1384,23 @@ common::Status InferenceSession::Initialize() {
       ORT_ENFORCE(loading_ort_format && serialized_session_state != nullptr);
 
 #if defined(ENABLE_ORT_FORMAT_LOAD)
-      ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraphForOrtFormatModel(graph, execution_providers_,
-                                                                     kernel_registry_manager_,
-                                                                     *session_state_,
-                                                                     *serialized_session_state,
-                                                                     *session_logger_));
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+      // nodes are already partitioned, but a custom EP may compile some at runtime.
+      // run the partitioning to allow that to happen.
+      //
+      // We always have the CPU EP, so only need to run this if some other EP is enabled
+      if (execution_providers_.NumProviders() > 1) {
+        ORT_RETURN_IF_ERROR(PartitionOrtFormatModel(graph, execution_providers_, kernel_registry_manager_,
+                                                    *session_state_));
+      }
+
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+      ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraphForOrtFormatModel(graph, *session_logger_));
+#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+      ORT_RETURN_IF_ERROR(AssignNodesToEpsFromHashes(graph, *serialized_session_state,
+                                                     kernel_registry_manager_, *session_logger_));
 #else  // defined(ENABLE_ORT_FORMAT_LOAD)
       ORT_NOT_IMPLEMENTED("ORT format loading not enabled.");
 #endif

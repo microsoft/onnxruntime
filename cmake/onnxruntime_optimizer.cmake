@@ -10,6 +10,19 @@ if (onnxruntime_MINIMAL_BUILD)
     "${ONNXRUNTIME_INCLUDE_DIR}/core/optimizer/graph_transformer.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/graph_transformer.cc"
   )
+
+  if (onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+    list(APPEND onnxruntime_optimizer_src_patterns
+      "${ONNXRUNTIME_ROOT}/core/optimizer/ort_format_runtime_optimization/utils.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/ort_format_runtime_optimization/utils.cc"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/qdq_util.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/qdq_util.cc"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/selectors_actions/*.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/selectors_actions/*.cc"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/*.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/*.cc"
+    )
+  endif()
 else()
   list(APPEND onnxruntime_optimizer_src_patterns
     "${ONNXRUNTIME_INCLUDE_DIR}/core/optimizer/*.h"
@@ -22,19 +35,13 @@ else()
     "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/*.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/*.cc"
   )
-endif()
 
-if (onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
-  list(APPEND onnxruntime_optimizer_src_patterns
-    "${ONNXRUNTIME_ROOT}/core/optimizer/ort_format_runtime_optimization/utils.h"
-    "${ONNXRUNTIME_ROOT}/core/optimizer/ort_format_runtime_optimization/utils.cc"
-    "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/qdq_util.h"
-    "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/qdq_util.cc"
-    "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/selectors_actions/*.h"
-    "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/selectors_actions/*.cc"
-    "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/*.h"
-    "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/*.cc"
-  )
+  if (onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+    list(APPEND onnxruntime_optimizer_src_patterns
+      "${ONNXRUNTIME_ROOT}/core/optimizer/ort_format_runtime_optimization/utils.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/ort_format_runtime_optimization/utils.cc"
+    )
+  endif()
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
