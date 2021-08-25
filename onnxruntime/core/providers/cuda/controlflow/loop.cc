@@ -5,7 +5,7 @@
 #include "core/providers/cuda/controlflow/loop.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_fwd.h"
-#include "core/framework/ort_value.h"
+#include "core/providers/cuda/cuda_execution_provider.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -38,9 +38,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Loop,
                                       .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
                                   Loop);
 
-// sequence tensors were also supported in addition to existing support for tensors in opset-13,
-// but we do not support sequence tensors in the cuda Loop kernel because there are no ops that handle
-// sequence tensors on CUDA and supporting it for Loop doesn't add value while that is the case
+// opset-13 supports sequence type for loop carried dependencies
 ONNX_OPERATOR_KERNEL_EX(Loop,
                         kOnnxDomain,
                         13,
@@ -50,7 +48,7 @@ ONNX_OPERATOR_KERNEL_EX(Loop,
                             .InputMemoryType(OrtMemTypeCPUInput, 1)  // 'cond' needs to be on CPU
                             .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                            .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
+                            .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
                         Loop);
 
 static Status ConcatenateGpuOutput(void* stream, std::vector<OrtValue>& per_iteration_output,
@@ -83,6 +81,21 @@ static Status ConcatenateGpuOutput(void* stream, std::vector<OrtValue>& per_iter
 }
 
 Loop::Loop(const OpKernelInfo& info) : onnxruntime::Loop(info) {
+  // We use the IDataTransfer abstraction to perform copies in the Loop implementation.
+  // By default, the GPUDataTransfer class is setup to use the same stream as the EP's compute stream
+  // while performing copies to/from CUDA (do_copy_on_default_stream = true). This is good as we wouldn't
+  // have to do any explicit syncs between the copy and compute streams.
+  // However, there is a user-facing flag that allows users to use a dedicated stream just for copying.
+  // To support using Loop for that case, we would have to do a sync between the copy stream and
+  // the compute stream to avoid data races. At the very least, we need to expose an interface in IDataTransfer
+  // to use a caller provided stream for Loop to provide for the GPUDataTransfer instance to use.
+  // Currently, using a dedicated copy stream has larger negative implications (see comment in GPUDataTransfer's
+  // constructor implementation), and so it is not in a usable state. When it becomes usable again,
+  // we will re-visit this limitation in Loop.
+  bool do_copy_on_default_stream = static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider())->DoCopyOnDefaultStream();
+  ORT_ENFORCE(do_copy_on_default_stream,
+              "Using Loop operator on CUDA while using a dedicated stream for copying "
+              "(a stream that is different than the compute stream) is currently not supported");
   SetConcatOutputFunc(ConcatenateGpuOutput);
   SetComputeStream(static_cast<void*>(info.GetExecutionProvider()->GetComputeStream()));
 }

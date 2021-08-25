@@ -656,7 +656,7 @@ stages:
           workingFolder: '$(Build.BinariesDirectory)'
 
       - script: |
-          python -m pip install -q pyopenssl setuptools wheel numpy==1.16.6
+          python -m pip install -q setuptools wheel numpy==1.16.6
         workingDirectory: '$(Build.BinariesDirectory)'
         displayName: 'Install python modules'
 
@@ -861,7 +861,7 @@ stages:
           workingFolder: '$(Build.BinariesDirectory)'
 
       - script: |
-          python -m pip install -q pyopenssl setuptools wheel numpy==1.16.6
+          python -m pip install -q setuptools wheel numpy==1.16.6
         workingDirectory: '$(Build.BinariesDirectory)'
         displayName: 'Install python modules'
 
