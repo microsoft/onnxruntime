@@ -25,9 +25,9 @@
 
     <!--- The package name is always hardcoded as the package created by this project only contains managed assemblies -->
     <!--- The parameter OrtPackageId is only used for some conditional logic below -->    
-    <PackageId Condition="'$(PackageId)' == '' ">Microsoft.ML.OnnxRuntime.Managed</PackageId>
+    <PackageId>Microsoft.ML.OnnxRuntime.Managed</PackageId>
     <Authors>Microsoft</Authors>
-    <PackageVersion Condition=" '$(PackageVersion)' == '' ">0.0</PackageVersion>
+    <PackageVersion Condition=" '$(PackageVersion)' == '' ">0.0.0</PackageVersion>
     <Version>$(PackageVersion)</Version>
     <Description>This package contains ONNX Runtime for .Net platforms</Description>
     <PackageTags>ONNX;ONNX Runtime;Machine Learning</PackageTags>

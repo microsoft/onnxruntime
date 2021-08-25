@@ -80,6 +80,7 @@
     <ProjectReference Include="$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj" />
   </ItemGroup>
 
+  <!-- create OnnxMl.cs and add to project -->
   <Target Name="ProtoGen" BeforeTargets="BeforeBuild">
     <Exec Command="$(ProtocExe) -I=$(ProtoSrc) --csharp_out=. $(ProtoSrc)\onnx-ml.proto3" ContinueOnError="false"></Exec>
   </Target>
