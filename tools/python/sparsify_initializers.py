@@ -103,7 +103,7 @@ def convert_tensor_to_sparse(tensor,
         return (object(), sparsity)
 
     tensor_data_bytes = tensor_data.nbytes
-    # create np array and cast data to the appropriate type    
+    # create np array and cast data to the appropriate type
     np_values = np.array(values).astype(tensor_data.dtype)
     # create np array and cast data to the inferred index type
     np_indices = np.array(indices).astype(ind_dtype)
@@ -130,7 +130,7 @@ def convert_tensor_to_sparse(tensor,
 
     indicies_tensor = onnx.helper.make_tensor(tensor.name + '_indicies',
                                               ind_data_type,
-                                              [ind_len], 
+                                              [ind_len],
                                               np_indices.tobytes(),
                                               raw=True)
 
