@@ -28,14 +28,18 @@ jobs:
     displayName: Generate compile_commands.json
 
   - script: |
-      TOOLS_BIN_DIR="$(Build.BinariesDirectory)/tools/bin"
-      mkdir -p "${TOOLS_BIN_DIR}"
-      ln -s "(brew --prefix llvm)/bin/clang" "${TOOLS_BIN_DIR}"
-      ln -s "(brew --prefix llvm)/bin/clang-tidy" "${TOOLS_BIN_DIR}"
-      echo "##vso[task.setvariable variable=PATH]${TOOLS_BIN_DIR}:${PATH}"
-    displayName: Put clang tools in path
+      set -e
 
-  - script: echo $PATH
+      LLVM_DIR="$(brew --prefix llvm)"
+      CODECHECKER_CONFIG_FILE="$(dirname $(which codechecker))/../share/codechecker/config/package_layout.json"
+
+      sed -i "" \
+        -e 's#"clangsa": "[^"]*"#"clangsa": "${LLVM_DIR}/bin/clang"#' \
+        -e 's#"clang-tidy": "[^"]*"#"clang-tidy": "${LLVM_DIR}/bin/clang-tidy"#' \
+        "${CODECHECKER_CONFIG_FILE}"
+
+      cat "${CODECHECKER_CONFIG_FILE}"
+    displayName: Update codechecker configuration
 
   - script: |
       codechecker analyze \
