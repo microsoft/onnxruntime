@@ -349,8 +349,9 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
 
       break;
     }
-    case TypeProto::kSparseTensorType: {
+
 #if !defined(DISABLE_SPARSE_TENSORS)
+    case TypeProto::kSparseTensorType: {
       const auto& input_tensor_type = input_type.sparse_tensor_type();
       const auto input_tensor_elem_type = input_tensor_type.elem_type();
       const auto current_tensor_elem_type = current_type.sparse_tensor_type().elem_type();
@@ -379,13 +380,16 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
           *current_type.mutable_sparse_tensor_type() = input_tensor_type;
         }
       }
+
+      break;
+    }
 #endif
-    } break;
     case TypeProto::kSequenceType:
     case TypeProto::kMapType:
     case TypeProto::kOptionalType:
     case TypeProto::kOpaqueType:
     case TypeProto::VALUE_NOT_SET:
+    default:
       break;
   }
 
