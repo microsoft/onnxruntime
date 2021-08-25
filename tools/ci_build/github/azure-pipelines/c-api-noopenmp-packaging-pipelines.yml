@@ -69,7 +69,7 @@ jobs:
       parameters:
           buildConfig: 'Release'
           artifactName: 'onnxruntime-linux-x64-cuda-$(OnnxRuntimeVersion)'
-          artifactNameNoVersionString:  'drop-onnxruntime-linux-x64-cuda'
+          artifactNameNoVersionString:  'onnxruntime-linux-x64-cuda'
           libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
           commitId: $(OnnxRuntimeGitCommitHash)
 
@@ -81,7 +81,7 @@ jobs:
 - template: linux-gpu-tensorrt-packaging-pipeline.yml
   parameters:
       artifactName: 'onnxruntime-linux-x64-tensorrt-$(OnnxRuntimeVersion)'
-      artifactNameNoVersionString: 'drop-onnxruntime-linux-x64-tensorrt'
+      artifactNameNoVersionString: 'onnxruntime-linux-x64-tensorrt'
 
 - template: templates/win-ci.yml
   parameters:
@@ -133,14 +133,14 @@ jobs:
     displayName: 'Download Pipeline Artifact - Win x64'
     inputs:
       buildType: 'current'
-      artifactName: 'drop-onnxruntime-java-win-gpu-x64'
+      artifactName: 'onnxruntime-java-win-gpu-x64'
       targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
 
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Linux x64'
     inputs:
       buildType: 'current'
-      artifactName: 'drop-onnxruntime-java-linux-gpu-x64'
+      artifactName: 'onnxruntime-java-linux-gpu-x64'
       targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
 
   - task: PowerShell@2
@@ -151,8 +151,6 @@ jobs:
       failOnStderr: true
       showWarnings: true
       workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
-
-
 
   - task: CopyFiles@2
     displayName: 'Copy Java Files to Artifact Staging Directory'
@@ -270,13 +268,13 @@ jobs:
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Combined GPU'
     inputs:
-      artifactName: 'drop-onnxruntime-linux-x64-cuda'
+      artifactName: 'onnxruntime-linux-x64-cuda'
       targetPath: '$(Build.BinariesDirectory)/tgz-artifacts'
 
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Combined GPU'
     inputs:
-      artifactName: 'drop-onnxruntime-linux-x64-tensorrt'
+      artifactName: 'onnxruntime-linux-x64-tensorrt'
       targetPath: '$(Build.BinariesDirectory)/tgz-artifacts'
 
   - task: ShellScript@2
@@ -314,13 +312,13 @@ jobs:
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Combined GPU'
     inputs:
-      artifactName: 'drop-onnxruntime-win-x64-cuda'
+      artifactName: 'onnxruntime-win-x64-cuda'
       targetPath: '$(Build.BinariesDirectory)/zip-artifacts'
 
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Combined GPU'
     inputs:
-      artifactName: 'drop-onnxruntime-win-x64-tensorrt'
+      artifactName: 'onnxruntime-win-x64-tensorrt'
       targetPath: '$(Build.BinariesDirectory)/zip-artifacts'
 
   - task: PowerShell@2
@@ -371,25 +369,25 @@ jobs:
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - NuGet'
     inputs:
-      artifactName: 'drop-onnxruntime-win-x64-cuda'
+      artifactName: 'onnxruntime-win-x64-cuda'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - NuGet'
     inputs:
-      artifactName: 'drop-onnxruntime-win-x64-tensorrt'
+      artifactName: 'onnxruntime-win-x64-tensorrt'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - NuGet'
     inputs:
-      artifactName: 'drop-onnxruntime-linux-x64-cuda'
+      artifactName: 'onnxruntime-linux-x64-cuda'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - NuGet'
     inputs:
-      artifactName: 'drop-onnxruntime-linux-x64-tensorrt'
+      artifactName: 'onnxruntime-linux-x64-tensorrt'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
   - task: DownloadPipelineArtifact@2

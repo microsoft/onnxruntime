@@ -203,7 +203,7 @@ jobs:
       displayName: 'Publish Java temp binaries'
       inputs:
         pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}' 
-        artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}'
+        artifactName: 'onnxruntime-java-win-${{ parameters.packageName }}'
 
     - ${{ if eq(parameters['DoCompliance'], 'true') }}:
       - task: Semmle@0
