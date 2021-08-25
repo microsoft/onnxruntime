@@ -127,7 +127,7 @@ jobs:
       parameters:
         buildConfig: RelWithDebInfo
         artifactName: 'onnxruntime-win-${{ parameters.packageName }}-$(OnnxRuntimeVersion)'
-        artifactNameNoVersionString: 'onnxruntime-win-${{ parameters.packageName }}'
+        artifactNameNoVersionString: 'drop-onnxruntime-win-${{ parameters.packageName }}'
         commitId: $(OnnxRuntimeGitCommitHash)
         DoEsrp: ${{ parameters.DoEsrp }}
 
