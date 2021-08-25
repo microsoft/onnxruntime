@@ -271,7 +271,7 @@ class FusionFastGelu(Fusion):
         mul_7978 = self.model.match_parent(mul_before_tanh, 'Mul', None, output_name_to_node)
         if mul_7978 is None:
             return
-        k = self.model.find_constant_input(mul_7978, 0.79788456)
+        k = self.model.find_constant_input(mul_7978, 0.7978, delta=0.0001)
         if k < 0:
             return
         if mul_7978.input[0 if k == 1 else 1] != root_input:
@@ -291,7 +291,7 @@ class FusionFastGelu(Fusion):
         mul_0447 = self.model.match_parent(mul_before_add_1, 'Mul', another, output_name_to_node)
         if mul_0447 is None:
             return
-        m = self.model.find_constant_input(mul_0447, 0.044715)
+        m = self.model.find_constant_input(mul_0447, 0.0447, delta=0.0001)
         if m < 0:
             return
 
