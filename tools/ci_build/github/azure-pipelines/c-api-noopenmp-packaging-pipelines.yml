@@ -311,9 +311,9 @@ jobs:
   workspace:
     clean: all
   pool: 'Win-CPU-2021'
-  dependsOn:
-  - Windows_Packaging_gpu
-  - Windows_Packaging_tensorrt
+  #dependsOn:
+  #- Windows_Packaging_gpu
+  #- Windows_Packaging_tensorrt
   condition: succeeded()
   steps:
   - checkout: self
