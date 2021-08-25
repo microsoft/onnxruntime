@@ -17,10 +17,10 @@ jobs:
       path: $(Pipeline.Workspace)
     displayName: 'Get commit SHA'
   - script: |
-     echo __commit__=$(<$(Pipeline.Workspace)/__commit.txt)
-     echo __commit__=${__commit__//[$'\t\r\n']}
-     echo git fetch origin $__commit__:refs/remotes/origin/$__commit__
-     echo git checkout --force $__commit__
+     __commit__=$(<$(Pipeline.Workspace)/__commit.txt)
+     __commit__=${__commit__//[$'\t\r\n']}
+     git fetch origin $__commit__:refs/remotes/origin/$__commit__
+     git checkout --force $__commit__
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'Read commit SHA and checkout'
   - script: |
