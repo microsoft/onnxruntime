@@ -449,7 +449,6 @@ struct Value : Base<OrtValue> {
   static Value CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len,
                             ONNXTensorElementDataType type);
 
-#if !defined(DISABLE_SPARSE_TENSORS)
   /// <summary>
   /// This is a simple forwarding method to the other overload that helps deducing
   /// data type enum value from the type of the buffer.
@@ -514,13 +513,11 @@ struct Value : Base<OrtValue> {
   /// <param name="indices_shape">indices shape or a {0} for fully sparse</param>
   /// <param name="indices_data">user allocated buffer with indices or nullptr for fully spare tensors</param>
   void UseBlockSparseIndices(const Shape& indices_shape, int32_t* indices_data);
-#endif
 
   template <typename T>
   static Value CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len);
   static Value CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type);
 
-#if !defined(DISABLE_SPARSE_TENSORS)
   /// <summary>
   /// This is a simple forwarding method the below CreateSparseTensor.
   /// This helps to specify data type enum in terms of C++ data type.
@@ -624,8 +621,6 @@ struct Value : Base<OrtValue> {
   template <typename T>
   const T* GetSparseTensorIndicesData(OrtSparseIndicesFormat indices_format, size_t& num_indices) const;
 
-#endif  // !defined(DISABLE_SPARSE_TENSORS)
-
   static Value CreateMap(Value& keys, Value& values);
   static Value CreateSequence(std::vector<Value>& values);
 
@@ -642,13 +637,11 @@ struct Value : Base<OrtValue> {
 
   bool IsTensor() const;
 
-#if !defined(DISABLE_SPARSE_TENSORS)
   /// <summary>
   /// Returns true if the OrtValue contains a sparse tensor
   /// </summary>
   /// <returns></returns>
   bool IsSparseTensor() const;
-#endif
 
   size_t GetCount() const;  // If a non tensor, returns 2 for map and N for sequence, where N is the number of elements
   Value GetValue(int index, OrtAllocator* allocator) const;
@@ -683,7 +676,6 @@ struct Value : Base<OrtValue> {
   template <typename T>
   const T* GetTensorData() const;
 
-#if !defined(DISABLE_SPARSE_TENSORS)
   /// <summary>
   /// The API returns a pointer to an internal buffer of the sparse tensor
   /// containing non-zero values. The API merely does casting. Make sure you
@@ -694,7 +686,6 @@ struct Value : Base<OrtValue> {
   /// <returns>a pointer to the internal values buffer. Do not free this pointer.</returns>
   template <typename T>
   const T* GetSparseTensorValues() const;
-#endif
 
   template <typename T>
   T& At(const std::vector<int64_t>& location);

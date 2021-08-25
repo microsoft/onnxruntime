@@ -37,7 +37,6 @@ Status Memcpy::Compute(OpKernelContext* ctx) const {
                                                " to ", Node().OutputDefs()[0]->Name(),
                                                " Input shape:", X->DenseShape(), " Output shape:", Y->DenseShape());
     }
-
   }
 #endif
   else {
