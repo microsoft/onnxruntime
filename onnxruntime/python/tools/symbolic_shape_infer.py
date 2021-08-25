@@ -187,6 +187,7 @@ class SymbolicShapeInference:
         }
         self.aten_op_dispatcher_ = {
             'aten::embedding': self._infer_Gather,
+            'aten::diagonal': self._infer_aten_diagonal,
             'aten::max_pool2d_with_indices': self._infer_aten_pool2d,
             'aten::unfold': self._infer_aten_unfold,
             'aten::argmax': self._infer_aten_argmax,
@@ -1002,6 +1003,36 @@ class SymbolicShapeInference:
             vi.CopyFrom(
                 helper.make_tensor_value_info(o, vi.type.tensor_type.elem_type,
                                               get_shape_from_sympy_shape(sympy_shape)))
+
+    def _infer_aten_diagonal(self, node):
+        sympy_shape = self._get_sympy_shape(node, 0)
+        rank = len(sympy_shape)
+        offset = self._try_get_value(node, 1)
+        dim1 = self._try_get_value(node, 2)
+        dim2 = self._try_get_value(node, 3)
+
+        assert offset is not None and dim1 is not None and dim2 is not None 
+        dim1 = handle_negative_axis(dim1, rank)
+        dim2 = handle_negative_axis(dim2, rank)
+        
+        new_shape = []
+        for dim, val in enumerate(sympy_shape):
+            if dim not in [dim1, dim2]:
+                new_shape.append(val)
+
+        shape1 = sympy_shape[dim1] 
+        shape2 = sympy_shape[dim2]
+        if offset >= 0:
+            diag_shape = sympy.Max(0, sympy.Min(shape1, shape2 - offset))
+        else:
+            diag_shape = sympy.Max(0, sympy.Min(shape1 + offset, shape2))
+        new_shape.append(diag_shape) 
+
+        if node.output[0]:
+            vi = self.known_vi_[node.output[0]]
+            vi.CopyFrom(
+                helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type,
+                                              get_shape_from_sympy_shape(new_shape)))
 
     def _infer_aten_pool2d(self, node):
         sympy_shape = self._get_sympy_shape(node, 0)
