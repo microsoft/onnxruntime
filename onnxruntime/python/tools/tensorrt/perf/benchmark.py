@@ -1040,8 +1040,8 @@ def run_onnxruntime(args, models):
                 options = onnxruntime.SessionOptions()
                 options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
                 
-                from onnxruntime_extensions import get_library_path as _lib_path
-                options.register_custom_ops_library(_lib_path())
+                #from onnxruntime_extensions import get_library_path as _lib_path
+                #options.register_custom_ops_library(_lib_path())
                 
                 # create onnxruntime inference session
                 try:
