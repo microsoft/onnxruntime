@@ -27,6 +27,7 @@ import numpy as np
 from typing import Dict
 from collections import deque
 from onnx import ModelProto, TensorProto, numpy_helper, load_model
+from onnx_model_bart import BartOnnxModel
 from onnx_model_bert import BertOnnxModel, BertOptimizationOptions
 from onnx_model_bert_tf import BertOnnxModelTF
 from onnx_model_bert_keras import BertOnnxModelKeras
@@ -37,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 # Map model type to tuple: optimizer class, export tools (pytorch, tf2onnx, keras2onnx), and default opt_level
 MODEL_TYPES = {
+    "bart": (BartOnnxModel, "pytorch", 1),
     "bert": (BertOnnxModel, "pytorch", 1),
     "bert_tf": (BertOnnxModelTF, "tf2onnx", 0),
     "bert_keras": (BertOnnxModelKeras, "keras2onnx", 0),
