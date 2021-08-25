@@ -236,7 +236,7 @@ void embedLayerNormalizationShapeInference(InferenceContext& ctx) {
         "gamma should have 2 dimension, dimension size known, "
         "and same hidden size as word_embedding.");
   }
-  
+
   auto& beta_shape = getInputShape(ctx, 6);
   auto& beta_dims = gamma_shape.dim();
   if (beta_dims.size() != 1 ||
@@ -554,8 +554,10 @@ and present state are optional. Present state could appear in output even when p
       .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, input_hidden_size)", "T")
       .Input(1, "weight", "2D input tensor with shape (input_hidden_size, 3 * hidden_size), where hidden_size = num_heads * head_size", "T")
       .Input(2, "bias", "1D input tensor with shape (3 * hidden_size)", "T")
-      .Input(3, "mask_index", "Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, past_sequence_length + sequence_length)"
-                "or (batch_size, sequence_length, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).", "M", OpSchema::Optional)
+      .Input(3, "mask_index",
+             "Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, past_sequence_length + sequence_length)"
+             "or (batch_size, sequence_length, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).",
+             "M", OpSchema::Optional)
       .Input(4, "past", "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).", "T", OpSchema::Optional)
       .Input(5, "extra_add", "additional add to QxK' with shape (batch_size, num_heads, sequence_length, sequence_length).", "T", OpSchema::Optional)
       .Output(0, "output", "3D output tensor with shape (batch_size, append_length, hidden_size)", "T")
@@ -802,7 +804,6 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
       .TypeConstraint("U", {"tensor(float)"}, "Constrain mean and inv_std_var to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
-
 
   static const char* NGramRepeatBlock_ver1_doc = R"DOC(
 Enforce no repetition of n-grams. Scores are set to `-inf` for tokens that form a repeated n-gram if added to the back of the input_ids.
@@ -1916,7 +1917,7 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
         FusedMatMulShapeInference(ctx);
       });
 
-    static const char* NonZero_doc = R"DOC(
+  static const char* NonZero_doc = R"DOC(
   Behaves similar to https://github.com/onnx/onnx/blob/master/docs/Operators.md#NonZero
   returns a tensor that contains coordinates for non-zero entries. Even though the input
   is a sparse tensor, that usually does not contain zeros, the model logic may construct
@@ -1935,120 +1936,253 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         // Output type is index type
         propagateElemTypeFromDtypeToOutput(ctx, TensorProto_DataType_INT64, 0);
-          TensorShapeProto output_shape;
-          auto* dim = output_shape.add_dim();
-          if (hasInputShape(ctx, 0)) {
-            const TensorShapeProto& input_shape = getInputShape(ctx, 0);
-            dim->set_dim_value(input_shape.dim_size());
-          }
-          output_shape.add_dim();
-          updateOutputShape(ctx, 0, output_shape);
-      }) ;
+        TensorShapeProto output_shape;
+        auto* dim = output_shape.add_dim();
+        if (hasInputShape(ctx, 0)) {
+          const TensorShapeProto& input_shape = getInputShape(ctx, 0);
+          dim->set_dim_value(input_shape.dim_size());
+        }
+        output_shape.add_dim();
+        updateOutputShape(ctx, 0, output_shape);
+      });
 
-    static const char* SparseGemm_doc = R"DOC(
-  Behaves as to https://github.com/onnx/onnx/blob/master/docs/Operators.md#Gemm
-  XXX: can we do without transpose now?
-  XXX: It has a lot of common code with SparseToDenseMatMul which we can reuse.
-  Should we merge it?
+  static const char* SparseGather_doc = R"DOC(
+This is a simplified version of ONNX Gather. No axis support.
+The input 0 is a sparse tensor in COO format
+The input 1 is a dense tensor containing COO 1-D indices of elements to gather.
+XXX: How to we handle invalid indices inputs? Ignore?
+The output is a sparse tensor of the same shape as input that contains values
+of the input sparse tensor that match the input 1 indices.
 )DOC";
-  ONNX_CONTRIB_OPERATOR_SCHEMA(Gemm)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SparseGather)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "A", "Sparse matrix in COO format", "T")
+      .Input(1, "B", "Dense matrix containing indices into A ", "T1")
+      .Output(0, "Y", "Filtered A", "T")
+      .TypeConstraint("T", {"sparse_tensor(float)"}, "Constrain input and output float at this time")
+      .TypeConstraint("T1", {"tensor(int64)"}, "Index type")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (!hasInputShape(ctx, 0)) {
+          return;
+        }
+        updateOutputShape(ctx, 0, getInputShape(ctx, 0), TypeProto::kSparseTensorType);
+      });
+
+  static const char* SparseSqueeze_doc = R"DOC(
+Similar to https://github.com/onnx/onnx/blob/master/docs/Operators.md#squeeze
+Removes single dimensional entries designated by axes input.
+For sparse tensors this means that the input must be 2-D and the output 1-D and
+there could be only a single axes entry.
+Output is a reshaped sparse tensor with the same data.
+XXX: Currently operate on 1-D COO indices
+)DOC";
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SparseSequeeze)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "data", "Sparse 2-D matrix in COO format", "T")
+      .Attr(
+          "axes",
+          "Should contain a single value 0 or 1 "
+          "from the back. Accepted range is [-2, 1] where r = rank(data).",
+          AttributeProto::INTS,
+          OPTIONAL_VALUE)
+      .Output(0, "squeezed ", "Reshaped tensor with the same data", "T")
+      .TypeConstraint("T", {"sparse_tensor(float)"}, "Constrain input and output float at this time")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Sparse specific shape inference
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (!hasInputShape(ctx, 0)) {
+          return;
+        }
+        const TensorShapeProto& input_shape = getInputShape(ctx, 0);
+        if (input_shape.dim_size() == 2) {
+          fail_shape_inference("Input must have two dimensions")
+        }
+        const auto* axes_attr = ctx.getAttribute("axes");
+        TensorShapeProto output_shape;
+        if (axes_attr == nullptr) {
+          // Remove all ones
+          for (const auto& d : input_shape.dim()) {
+            if (d.has_dim_value() && d.dim_value() != 1) {
+              *output_shape.add_dim() = d;
+            }
+          }
+        } else {
+          if (axes_attr->type() != AttributeProto_AttributeType_INTS ||
+              axes_attr->ints_size() != 1) {
+            fail_shape_inference("Expecting optional axes to be INTS with a single entry 0 or 1");
+          }
+          const auto axes_v = *axes_attr->ints().cbegin();
+          if (axes_v != 0 && axes_v != 1) {
+            fail_shape_inference("Expecting optional axes to be INTS with a single entry 0 or 1");
+          }
+          const auto& target_dim = input_shape.dim(static_cast<int>(axes_v));
+          if (!target_dim.has_dim_value() || target_dim.dim_value() != 1) {
+            fail_shape_inference("Dim specified by is not equal to 1");
+          }
+          *output_shape.add_dim() = (axes_v == 0) ? input_shape.dim(1) : input_shape.dim(0);
+        }
+        if (output_shape.dim_size() != 1) {
+          fail_shape_inference("Failed to infer 1-D output_shape");
+        }
+        updateOutputShape(ctx, 0, output_shape, TypeProto::kSparseTensorType);
+      });
+
+  static const char* SparseUnsqueeze_doc = R"DOC(
+Similar to https://github.com/onnx/onnx/blob/master/docs/Operators.md#unsqueeze
+Insert single-dimensional entries to the shape of an input tensor (`data`).
+Takes one required input `axes` - which contains a list of dimension indices and this operator will insert a dimension of value `1` into the corresponding index of the output tensor (`expanded`).
+
+For example:
+  Given an input tensor (`data`) of shape [3, 4, 5], then
+  Unsqueeze(data, axes=[0, 4]) outputs a tensor (`expanded`) containing same data as `data` but with shape [1, 3, 4, 5, 1].
+
+The input `axes` should not contain any duplicate entries. It is an error if it contains duplicates.
+The rank of the output tensor (`output_rank`) is the rank of the input tensor (`data`) plus the number of values in `axes`.
+Each value in `axes` should be within the (inclusive) range [-output_rank , output_rank - 1].
+The order of values in `axes` does not matter and can come in any order.
+
+For sparse tensors this means that the input must be 1-D and the output is 2-D and
+there could be only one axes entry.
+
+Output is a reshaped sparse tensor with the same data.
+XXX: Currently operate on 1-D COO indices
+)DOC";
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SparseUnsqueeze)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "data", "Sparse 1-D sparse in COO format", "T")
+      .Attr(
+          "axes",
+          "Should contain a single value [-2, 1]",
+          AttributeProto::INTS)
+      .Output(0, "expanded  ", "Reshaped tensor with the same data as input", "T")
+      .TypeConstraint("T", {"sparse_tensor(float)"}, "Constrain input and output float at this time")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Sparse specific shape inference
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (!hasInputShape(ctx, 0)) {
+          return;
+        }
+        const TensorShapeProto& input_shape = getInputShape(ctx, 0);
+        if (input_shape.dim_size() == 1) {
+          fail_shape_inference("Input must have one dimension")
+        }
+        const auto* axes_attr = ctx.getAttribute("axes");
+        if (axes_attr == nullptr) {
+          fail_shape_inference("Axes attribute is required");
+        } else {
+          if (axes_attr->type() != AttributeProto_AttributeType_INTS ||
+              axes_attr->ints_size() != 1) {
+            fail_shape_inference("Expecting optional axes to be INTS with a single entry 0 or 1");
+          }
+          const auto axes_v = *axes_attr->ints().cbegin();
+          if (axes_v != 0 && axes_v != 1) {
+            fail_shape_inference("Expecting optional axes to be INTS with a single entry 0 or 1");
+          }
+          const auto& target_dim = input_shape.dim(static_cast<int>(axes_v));
+          if (!target_dim.has_dim_value() || target_dim.dim_value() != 1) {
+            fail_shape_inference("Dim specified by is not equal to 1");
+          }
+          TensorShapeProto output_shape;
+          if (axes_v == 0) {
+            output_shape.add_dim()->set_dim_value(1);
+            *output_shape.add_dim() = input_shape.dim(0);
+          } else {
+            *output_shape.add_dim() = input_shape.dim(0);
+            output_shape.add_dim()->set_dim_value(1);
+          }
+          updateOutputShape(ctx, 0, output_shape, TypeProto::kSparseTensorType);
+        }
+      });
+
+  static const char* SparseMatMul_doc = R"DOC(
+  Behaves as to https://github.com/onnx/onnx/blob/master/docs/Operators.md#Matmul
+  No transpose supported
+)DOC";
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SparseMatMul)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Input(0, "A", "Sparse matrix (M,K) A COO format", "T")
       .Input(1, "B", "Sparse matrix (K,N) ", "T")
-      .Input(2, "C", "1 or 2 - dimensional sparse matrix B", "T", ONNX_NAMESPACE::OpSchema::Optional)
       .Output(0, "Y", "Matrix multiply results", "T")
       .Attr(
           "alpha",
           "Scalar multiplier for the product of the input tensors A * B.",
           AttributeProto::FLOAT,
           1.0f)
-        .Attr(
-            "beta",
-            "Scalar multiplier for the product of the input tensor C.",
-            AttributeProto::FLOAT,
-            .0f)
       .Attr(
-          "transA",
-          "Whether A should be transposed on the last two dimensions before doing multiplication",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
-      .Attr(
-          "transB",
-          "Whether B should be transposed on the last two dimensions before doing multiplication",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
+          "beta",
+          "Scalar multiplier for the product of the input tensor C.",
+          AttributeProto::FLOAT,
+          .0f)
       .Output(0, "Y", "Matrix multiply results", "T")
       .TypeConstraint("T", {"sparse_tensor(float)"}, "Constrain input and output float at this time")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          const auto* input_type0 = ctx.getInputType(0);
-          const auto* input_type1 = ctx.getInputType(1);
-          if (nullptr == input_type0 || nullptr == input_type1) {
-            fail_type_inference("At least on of the inputs missing a type");
-          }
-          if (getTensorElementType(*input_type0) != getTensorElementType(*input_type1)) {
-            fail_type_inference("Both inputs must have the same element type");
-          }
-          propagateElemTypeFromInputToOutput(ctx, 0, 0);
-          // TODO: replace with ONNX one when that one is fixed
-          sparseCompatibleMatmulShapeInference(ctx, 0, 1);
+        const auto* input_type0 = ctx.getInputType(0);
+        const auto* input_type1 = ctx.getInputType(1);
+        if (nullptr == input_type0 || nullptr == input_type1) {
+          fail_type_inference("At least on of the inputs missing a type");
+        }
+        if (getTensorElementType(*input_type0) != getTensorElementType(*input_type1)) {
+          fail_type_inference("Both inputs must have the same element type");
+        }
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        // TODO: replace with ONNX one when that one is fixed
+        sparseCompatibleMatmulShapeInference(ctx, 0, 1);
       });
 
-    static const char* Add_doc = R"DOC(
+  static const char* Add_doc = R"DOC(
   Behaves as to https://github.com/onnx/onnx/blob/master/docs/Operators.md#Sum
   For 1-D input COO index format it would output flat 1-D index and for 
   2-D input COO index format it would output 2-D COO index.
-  Both inputs must have the same dense shape and is the output
-  XXX: We are not implementing broadcasting at this time, thus all inputs
-  and the output must have exactly the same shape at this time.
+  The inputs may have different shapes. The output shape is max() over
+  all dimensions.
+  We are not implementing broadcasting as this is not a requirement.
 )DOC";
   ONNX_CONTRIB_OPERATOR_SCHEMA(Add)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Input(0, "A", "1 or 2 - dimensional sparse matrix A COO format", "T")
-      .Input(1, "B", "1 or 2 - dimensional sparse matrix B", "T")
+      .Input(1, "B", "1 or 2 - dimensional sparse matrix B COO format", "T")
       .Output(0, "Y", "Sum of the respective elements of A and B", "T")
       .TypeConstraint("T", {"sparse_tensor(float)"}, "Constrain input and output float at this time")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          const auto* input_type0 = ctx.getInputType(0);
-          const auto* input_type1 = ctx.getInputType(1);
-          if (nullptr == input_type0 || nullptr == input_type1) {
-            fail_type_inference("At least on of the inputs missing a type");
-          }
-          if (getTensorElementType(*input_type0) != getTensorElementType(*input_type1)) {
-            fail_type_inference("Both inputs must have the same element type");
-          }
-          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
-          if (!hasInputShape(ctx, 0) || !hasInputShape(ctx, 1)) {
-            return;
-          }
-          // Verify input shapes are the same
-          const auto& shape0 = getInputShape(ctx, 0);
-          const auto& shape1 = getInputShape(ctx, 1);
-          if (shape0.dim_size() != shape1.dim_size()) {
-            fail_shape_inference("Both inputs must have the same shape");
-          }
+        if (!hasInputShape(ctx, 0) || !hasInputShape(ctx, 1)) {
+          return;
+        }
+        // Verify input shapes are the same
+        const auto& shape0 = getInputShape(ctx, 0);
+        const auto& shape1 = getInputShape(ctx, 1);
+        if (shape0.dim_size() != shape1.dim_size()) {
+          fail_shape_inference("Both inputs must have the same number of dims");
+        }
 
-          auto& dims0 = shape0.dim();
-          auto& dims1 = shape1.dim();
-          for (int i = 0, dim_size = shape0.dim_size(); i < dim_size; ++i) {
-            auto& dim0 = dims0.Get(i);
-            auto& dim1 = dims1.Get(i);
-            if (dim0 != dim1) {
-              fail_shape_inference("Input dims at: ", i, " do not match");
-            }
+        TensorShapeProto output_shape;
+        auto& dims0 = shape0.dim();
+        auto& dims1 = shape1.dim();
+        for (int i = 0, dim_size = shape0.dim_size(); i < dim_size; ++i) {
+          auto& dim0 = dims0.Get(i);
+          auto& dim1 = dims1.Get(i);
+          if (dim0.has_dim_value() && dim1.has_dim_value()) {
+            auto dim_v = std::max(dim0.dim_value(), dim1.dim_value());
+            output_shape.add_dim()->set_dim_value(dim_v);
+          } else {
+            output_shape.add_dim();
           }
-          propagateShapeFromInputToOutput(ctx, 0, 0);
-        });
+        }
+        updateOutputShape(ctx, 0, output_shape, TypeProto::kSparseTensorType);
+      });
 
-    static const char* Binarizer_doc = R"DOC(
+  static const char* Binarizer_doc = R"DOC(
 The operator will accept a single sparse tensor input and will output
 a sparse tensor of the same shape and type. For each of the elements it
 would compare the value of the 'threshold' attribute and for all values above the threshold
 it would set the output value for the same index to T(1) and T(0) otherwise.
-
-XXX: Can output be simply an integer or a boolean?
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Binarizer)
@@ -2056,110 +2190,75 @@ XXX: Can output be simply an integer or a boolean?
       .SinceVersion(1)
       .Input(0, "A", "A sparse matrix of numeric type", "T")
       .Attr(
-        "threshold",
-        "A boundary value",
-        AttributeProto::INT,
-        static_cast<int64_t>(0))
-       .Output(0, "Y", "A sparse tensor with 1 or 0 for each of the input values", "T")
-       .TypeConstraint("T", {"sparse_tensor(float)"}, "Constrain input and output float at this time")
-       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          propagateElemTypeFromInputToOutput(ctx, 0, 0);
-          propagateShapeFromInputToOutput(ctx, 0, 0);
-        });
+          "threshold",
+          "A boundary value",
+          AttributeProto::FLOAT,
+          static_cast<float>(0))
+      .Output(0, "Y", "A sparse tensor with 1 or 0 for each of the input values", "T")
+      .TypeConstraint("T", {"sparse_tensor(float)"}, "Constrain input and output float at this time")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        propagateShapeFromInputToOutput(ctx, 0, 0);
+      });
 
-    static const char* Bucketizer_doc = R"DOC(
-This operator behaves similar to https://pytorch.org/docs/stable/generated/torch.bucketize.html
-XXX: the output would be a sparse tensor of the same shape, but each value in it would be replaced
-to an index of the corresponding bucket.
-XXX: The output type attribute will be omitted for now. Fixed to int64_t.
-)DOC";
-  ONNX_CONTRIB_OPERATOR_SCHEMA(Bucketizer)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .Input(0, "A", "A sparse matrix of numeric type", "T")
-      .Input(0, "B", "1-D Boundaries tensor", "T1")
-        .Attr(
-            "tolerance",
-            "A boundary value",
-            AttributeProto::FLOAT,
-            std::numeric_limits<float>::epsilon())
-       .Output(0, "Y", "Sparse tensor where values are indices to the boundaries tensor", "T")
-      .TypeConstraint("T", {"sparse_tensor(float)"}, "Constrain input to float at this time")
-      .TypeConstraint("T1", {"sparse_tensor(int64)"}, "index type")
-        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          // Output type is index type
-          propagateElemTypeFromDtypeToOutput(ctx, TensorProto_DataType_INT64, 0);
-          propagateShapeFromInputToOutput(ctx, 0, 0);
-        });
-
-    static const char* OneHotEncoder_doc = R"DOC(
+  static const char* OneHotEncoder_doc = R"DOC(
 The operator implements a simplified version of sklearn OneHotEncoder
 https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.OneHotEncoder.html
 `categories` attribute contains an array of category values.
 
-The input is a sparse tensor of values.
+The input is a dense tensor of values.
 
 The operator produces a sparse output with a dense shape that has one more dimension than input.
 That dimension contains sparsified version of 1-of-K category output.
 
 Example:
 categories = [1021, 2002]
-sparse input = [1021, 2002, 1023] dense shape: {10}
-input COO indices = [4, 7, 9]
+dense input = [1021, 2002, 1023] dense shape: {3}
 
-Output dense shape = {10, 2} // 2 is the number of categories, choices for the last dimension include
+Output dense shape = {3, 2} // 2 is the number of categories, choices for the last dimension include
 {0, 0}, {1, 0}, {0, 1}
 
-{0, 0} is a combination that would either match no categories or it is absent from the sparse input.
+{0, 0} is a combination that would either match no categories or it is absent from the input.
 It will, therefore, be absent in the sparse output.
 
 For the rest of the values, we places ones in the following 2-D indices:
-(4, 0), (7, 1) and 1023 can not be categorized.
+(0, 0), (1, 1) and 1023 can not be categorized.
 
-The sparse output will have ones at the following flat COO indices: 8 (4 x 2) and 15 (7 x 2 + 1)
+The sparse output will have ones at the following flat COO indices: 0 and 4 (1 x 3 + 1)
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(OneHotEncoder)
-        .SetDomain(kMSDomain)
-        .SinceVersion(1)
-        .Input(0, "A", "2-dimensional sparse matrix A", "T")
-        .Output(0, "Y", "Sparsified 1-of-K output", "T1")
-        .Attr(
-            "categories",
-            "list of cat_ints",
-            AttributeProto::INTS)
-        .Attr(
-            "categories",
-            "list of cat_ints",
-            AttributeProto::STRINGS)
-        .TypeConstraint(
-            "T",
-            {"sparse_tensor(float)", "sparse_tensor(double)",
-             "sparse_tensor(int64)", "sparse_tensor(int32)",
-             "sparse_tensor(uint64)", "sparse_tensor(uint32)"},
-            "Constrain input and output types to numeric tensors.")
-        .TypeConstraint("T1", {"sparse_tensor(int64)"}, "index type")
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "A", "1-D dense tensor containing values to be categorized", "T")
+      .Output(0, "Y", "1-of-K 2-D sparse tensor output", "T1")
+      .Attr(
+          "categories",
+          "list of cat_ints",
+          AttributeProto::INTS)
+      .TypeConstraint(
+          "T",
+          {"tensor(int64)"},"ints")
+      .TypeConstraint("T1", {"sparse_tensor(int64)"}, "index type")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          propagateElemTypeFromDtypeToOutput(ctx, TensorProto_DataType_INT64, 0);
-          if (!hasInputShape(ctx, 0)) {
-            return;
-          }
-          int cat_len = 0;
-          const auto* cat_attr = ctx.getAttribute("cat_str");
-          if (cat_attr && cat_attr->type() == AttributeProto_AttributeType_STRINGS) {
-            cat_len = cat_attr->strings_size();
-          } else if ((cat_attr = ctx.getAttribute("cat_ints")) != nullptr &&
-                                cat_attr->type() == AttributeProto_AttributeType_INTS) {
-            cat_len = cat_attr->ints_size();
-          } else {
-            fail_shape_inference("Can't get categories attribute");
-          }
-          const auto& shape0 = getInputShape(ctx, 0);
-          TensorShapeProto output_shape;
-          *output_shape.add_dim() = shape0.dim(0);
-          output_shape.add_dim()->set_dim_value(cat_len);
-          updateOutputShape(ctx, 0, output_shape, TypeProto::kSparseTensorType);
-    });
+        propagateElemTypeFromDtypeToOutput(ctx, TensorProto_DataType_INT64, 0);
+        if (!hasInputShape(ctx, 0)) {
+          return;
+        }
+        int cat_len = 0;
+        const AttributeProto* cat_attr = nullptr;
+        if ((cat_attr = ctx.getAttribute("cat_ints")) != nullptr &&
+                   cat_attr->type() == AttributeProto_AttributeType_INTS) {
+          cat_len = cat_attr->ints_size();
+        } else {
+          fail_shape_inference("Can't get categories attribute");
+        }
+        const auto& shape0 = getInputShape(ctx, 0);
+        TensorShapeProto output_shape;
+        *output_shape.add_dim() = shape0.dim(0);
+        output_shape.add_dim()->set_dim_value(cat_len);
+        updateOutputShape(ctx, 0, output_shape, TypeProto::kSparseTensorType);
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SparseToDenseMatMul)
       .SetDomain(kMSDomain)
@@ -3211,7 +3310,7 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
            "seq(tensor(uint64))", "seq(tensor(int8))", "seq(tensor(int16))",
            "seq(tensor(int32))", "seq(tensor(int64))", "seq(tensor(float16))",
            "seq(tensor(float))", "seq(tensor(double))", "seq(tensor(string))",
-           "seq(tensor(bool))", "seq(tensor(complex64))","seq(tensor(complex128))"},
+           "seq(tensor(bool))", "seq(tensor(complex64))", "seq(tensor(complex128))"},
           "Constrains input type to all tensor and sequence types.")
       .TypeConstraint(
           "O",
@@ -3227,36 +3326,36 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
            "optional(seq(tensor(bool)))", "optional(seq(tensor(complex64)))", "optional(seq(tensor(complex128)))"},
           "Constrains output type to all optional tensor or optional sequence types.")
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-          const size_t numOutputs = ctx.getNumOutputs();
-          if (numOutputs != 1) {
-            fail_type_inference("Optional is expected to have an output.");
-          }
+        const size_t numOutputs = ctx.getNumOutputs();
+        if (numOutputs != 1) {
+          fail_type_inference("Optional is expected to have an output.");
+        }
 
-          const size_t numInputs = ctx.getNumInputs();
-          const auto* attr_proto = ctx.getAttribute("type");
+        const size_t numInputs = ctx.getNumInputs();
+        const auto* attr_proto = ctx.getAttribute("type");
 
-          if ((numInputs == 0) && (attr_proto != nullptr)) {
-            if (!attr_proto->has_tp())
-              fail_type_inference(
-                  "Attribute 'type' should be a TypeProto and it should specify a type.");
-            auto attr_tp = attr_proto->tp();
-            ctx.getOutputType(0)
-                ->mutable_optional_type()
-                ->mutable_elem_type()
-                ->CopyFrom(attr_tp);
-          } else if (numInputs == 1) {
-            auto input_type = ctx.getInputType(0);
-            if(input_type == nullptr){
-              fail_type_inference("Input type is null. Type information is expected for the input.");
-            }
-            ctx.getOutputType(0)
-                ->mutable_optional_type()
-                ->mutable_elem_type()
-                ->CopyFrom(*input_type);
-          } else {
-            fail_type_inference("Optional is expected to have either an input or the type attribute set.");
+        if ((numInputs == 0) && (attr_proto != nullptr)) {
+          if (!attr_proto->has_tp())
+            fail_type_inference(
+                "Attribute 'type' should be a TypeProto and it should specify a type.");
+          auto attr_tp = attr_proto->tp();
+          ctx.getOutputType(0)
+              ->mutable_optional_type()
+              ->mutable_elem_type()
+              ->CopyFrom(attr_tp);
+        } else if (numInputs == 1) {
+          auto input_type = ctx.getInputType(0);
+          if (input_type == nullptr) {
+            fail_type_inference("Input type is null. Type information is expected for the input.");
           }
-        });
+          ctx.getOutputType(0)
+              ->mutable_optional_type()
+              ->mutable_elem_type()
+              ->CopyFrom(*input_type);
+        } else {
+          fail_type_inference("Optional is expected to have either an input or the type attribute set.");
+        }
+      });
 
   static const char* OptionalHasElement_ver1_doc = R"DOC(
       Returns true if the optional-type input contains an element. If it is an empty optional-type, this op returns false.
@@ -3286,18 +3385,18 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
           {"tensor(bool)"},
           "Constrains output to a boolean tensor.")
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-          const size_t numInputs = ctx.getNumInputs();
-          if (numInputs != 1) {
-            fail_type_inference("OptionalHasElement is expected to have 1 input.");
-          }
-          const size_t numOutputs = ctx.getNumOutputs();
-          if (numOutputs != 1) {
-            fail_type_inference("OptionalHasElement is expected to have 1 output.");
-          }
-          auto* output_tensor_type = ctx.getOutputType(0)->mutable_tensor_type();
-          output_tensor_type->set_elem_type(TensorProto::BOOL);
-          output_tensor_type->mutable_shape()->Clear();
-          });
+        const size_t numInputs = ctx.getNumInputs();
+        if (numInputs != 1) {
+          fail_type_inference("OptionalHasElement is expected to have 1 input.");
+        }
+        const size_t numOutputs = ctx.getNumOutputs();
+        if (numOutputs != 1) {
+          fail_type_inference("OptionalHasElement is expected to have 1 output.");
+        }
+        auto* output_tensor_type = ctx.getOutputType(0)->mutable_tensor_type();
+        output_tensor_type->set_elem_type(TensorProto::BOOL);
+        output_tensor_type->mutable_shape()->Clear();
+      });
 
   static const char* OptionalGetElement_ver1_doc = R"DOC(
       Outputs the element in the optional-type input'. It is an error if the input value does not have an element "
@@ -3334,23 +3433,23 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
            "seq(tensor(uint64))", "seq(tensor(int8))", "seq(tensor(int16))",
            "seq(tensor(int32))", "seq(tensor(int64))", "seq(tensor(float16))",
            "seq(tensor(float))", "seq(tensor(double))", "seq(tensor(string))",
-           "seq(tensor(bool))", "seq(tensor(complex64))","seq(tensor(complex128))"},
+           "seq(tensor(bool))", "seq(tensor(complex64))", "seq(tensor(complex128))"},
           "Constrain output type to all tensor or sequence types.")
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-          const size_t numInputs = ctx.getNumInputs();
-          if (numInputs != 1) {
-            fail_type_inference("OptionalGetElement must have an input element.");
-          }
-          auto input_type = ctx.getInputType(0);
-          if (input_type == nullptr) {
-            fail_type_inference("Input type is null. Input must have Type information.");
-          }
-          if (!input_type->has_optional_type() || !input_type->optional_type().has_elem_type()) {
-            fail_type_inference("Input must be an optional-type value containing an element with type information.");
-          }
-          ctx.getOutputType(0)
-              ->CopyFrom(input_type->optional_type().elem_type());
-          });
+        const size_t numInputs = ctx.getNumInputs();
+        if (numInputs != 1) {
+          fail_type_inference("OptionalGetElement must have an input element.");
+        }
+        auto input_type = ctx.getInputType(0);
+        if (input_type == nullptr) {
+          fail_type_inference("Input type is null. Input must have Type information.");
+        }
+        if (!input_type->has_optional_type() || !input_type->optional_type().has_elem_type()) {
+          fail_type_inference("Input must be an optional-type value containing an element with type information.");
+        }
+        ctx.getOutputType(0)
+            ->CopyFrom(input_type->optional_type().elem_type());
+      });
 
   static const char* GridSample_ver1_doc = R"DOC(
       Given an `input` and a flow-field `grid`, computes the `output` using `input` values and pixel locations from `grid`.
