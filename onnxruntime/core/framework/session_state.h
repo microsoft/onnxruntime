@@ -338,7 +338,8 @@ class SessionState {
   size_t GetGraphExecutionCounter() const {
     return graph_executions_counter_;
   }
-
+  #endif
+        
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
