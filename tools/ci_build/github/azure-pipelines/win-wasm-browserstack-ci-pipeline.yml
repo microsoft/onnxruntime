@@ -12,6 +12,7 @@ jobs:
       source: 'specific'
       project: 'onnxruntime'
       pipeline: 161
+      preferTriggeringPipeline: true
       artifact: '__commit'
       path: $(Pipeline.Workspace)
     displayName: 'Get commit SHA'
@@ -34,6 +35,7 @@ jobs:
       source: 'specific'
       project: 'onnxruntime'
       pipeline: 161
+      preferTriggeringPipeline: true
       patterns: '$(BuildConfig)_*/**/*'
       path: $(Pipeline.Workspace)/artifacts
     displayName: 'Download WebAssembly artifacts'
@@ -118,6 +120,7 @@ jobs:
       source: 'specific'
       project: 'onnxruntime'
       pipeline: 161
+      preferTriggeringPipeline: true
       artifact: '__commit'
       path: $(Pipeline.Workspace)
     displayName: 'Get commit SHA'
@@ -140,6 +143,7 @@ jobs:
       source: 'specific'
       project: 'onnxruntime'
       pipeline: 161
+      preferTriggeringPipeline: true
       patterns: '$(BuildConfig)_*/**/*'
       path: $(Pipeline.Workspace)\artifacts
     displayName: 'Download WebAssembly artifacts'
