@@ -82,6 +82,8 @@ jobs:
   parameters:
       artifactName: 'onnxruntime-linux-x64-tensorrt-$(OnnxRuntimeVersion)'
       artifactNameNoVersionString: 'onnxruntime-linux-x64-tensorrt'
+      buildJava: true
+      buildJavaOption: '--build_java'
 
 - template: templates/win-ci.yml
   parameters:
@@ -142,6 +144,13 @@ jobs:
       buildType: 'current'
       artifactName: 'drop-onnxruntime-java-linux-x64-cuda'
       targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
+
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Pipeline Artifact - Linux x64'
+    inputs:
+      buildType: 'current'
+      artifactName: 'drop-onnxruntime-java-linux-x64-tensorrt'
+      targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64-tensorrt'
 
   - task: PowerShell@2
     displayName: 'PowerShell Script'
