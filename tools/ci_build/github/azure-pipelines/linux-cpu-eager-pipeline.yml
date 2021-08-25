@@ -63,8 +63,9 @@ jobs:
     displayName: 'Build Eager Mode and run tests'
     inputs:
       script: |
+        rm -rf $(Build.BinariesDirectory)/Debug/onnxruntime $(Build.BinariesDirectory)/Debug/pybind11
         cd /tmp
-        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir /build --build_eager_mode --enable_training --enable_pybind
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --build_eager_mode --enable_training --enable_pybind
       
          
   - task: CmdLine@2
