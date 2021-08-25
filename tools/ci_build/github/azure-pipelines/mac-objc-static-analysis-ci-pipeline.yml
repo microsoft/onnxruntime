@@ -34,12 +34,12 @@ jobs:
       CODECHECKER_CONFIG_FILE="$(dirname $(which codechecker))/../share/codechecker/config/package_layout.json"
 
       sed -i "" \
-        -e 's#"clangsa": "[^"]*"#"clangsa": "${LLVM_DIR}/bin/clang"#' \
-        -e 's#"clang-tidy": "[^"]*"#"clang-tidy": "${LLVM_DIR}/bin/clang-tidy"#' \
+        -e 's#"clangsa": "[^"]*"#"clangsa": "'"${LLVM_DIR}"'/bin/clang"#' \
+        -e 's#"clang-tidy": "[^"]*"#"clang-tidy": "'"${LLVM_DIR}"'/bin/clang-tidy"#' \
         "${CODECHECKER_CONFIG_FILE}"
 
       cat "${CODECHECKER_CONFIG_FILE}"
-    displayName: Update codechecker configuration
+    displayName: Update CodeChecker configuration
 
   - script: |
       codechecker analyze \
