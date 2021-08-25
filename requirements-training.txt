@@ -2,8 +2,8 @@ cerberus
 flatbuffers
 h5py
 numpy >= 1.16.6
-onnx @ONNX_VERSION_SPECIFIER@
+onnx
 packaging
-protobuf @PROTOBUF_VERSION_SPECIFIER@
+protobuf
 sympy
 setuptools>=41.4.0
