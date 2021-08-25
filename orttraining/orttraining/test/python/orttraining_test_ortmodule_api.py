@@ -3513,7 +3513,7 @@ def test_ortmodule_setattr_ortmodule_attribute():
     assert '_torch_module' in ort_model.__dict__
     assert ort_model._torch_module == True
 
-def test_ortmodule_setattr_marks_model_for_reexport():
+def test_ortmodule_setattr_signals_model_changed():
     class UserNet(torch.nn.Module):
         def __init__(self, input_flag):
             super(UserNet, self).__init__()
@@ -3535,11 +3535,11 @@ def test_ortmodule_setattr_marks_model_for_reexport():
     exported_model1 = ort_model._torch_module._execution_manager(True)._onnx_models.exported_model
 
     for training_mode in [False, True]:
-        assert ort_model._torch_module._execution_manager(training_mode)._reexport == False
+        assert ort_model._torch_module._execution_manager(training_mode)._model_has_changed == False
     ort_model.input_flag = False
 
     for training_mode in [False, True]:
-        assert ort_model._torch_module._execution_manager(training_mode)._reexport == True
+        assert ort_model._torch_module._execution_manager(training_mode)._model_has_changed == True
 
     _ = ort_model(torch.randn(N, D_in, device=device))
     exported_model2 = ort_model._torch_module._execution_manager(True)._onnx_models.exported_model

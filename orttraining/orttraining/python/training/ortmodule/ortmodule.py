@@ -299,7 +299,7 @@ class ORTModule(torch.nn.Module):
             # Re-export will be avoided if _skip_check is enabled.
             if isinstance(self._torch_module, TorchModuleORT):
                 for training_mode in [False, True]:
-                    self._torch_module._execution_manager(training_mode).mark_for_reexport()
+                    self._torch_module._execution_manager(training_mode).signal_model_changed()
 
         if isinstance(value, torch.nn.Parameter) or isinstance(value, torch.nn.Module) \
             or isinstance(value, torch.Tensor):
