@@ -384,7 +384,8 @@ jobs:
   - task: DotNetCoreCLI@2
     displayName: 'Build C#'
     inputs:
-      command: build
+      command: custom
+      custom: msbuild
       projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
       configuration: RelWithDebInfo
       arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
