@@ -42,15 +42,15 @@ jobs:
           --skip_submodule_sync --parallel --build_shared_lib ${{ parameters.buildJavaOption }} --use_tensorrt --cuda_version=$(CUDA_VERSION) --cuda_home=/usr/local/cuda-$(CUDA_VERSION) --cudnn_home=/usr --tensorrt_home=/usr --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
         workingDirectory: $(Build.SourcesDirectory)
 
-    - template: templates/java-api-artifacts-package-and-publish-steps-posix.yml
-      condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
-      parameters:
-          arch: 'linux-x64'
-          buildConfig: 'Release'
-          artifactName: 'onnxruntime-java-linux-tensorrt-x64'
-          version: '$(OnnxRuntimeVersion)'
-          libraryName: 'libonnxruntime.so'
-          nativeLibraryName: 'libonnxruntime4j_jni.so'
+    - ${{ if eq(parameters.buildJava, true) }}:
+        - template: templates/java-api-artifacts-package-and-publish-steps-posix.yml
+          parameters:
+              arch: 'linux-x64'
+              buildConfig: 'Release'
+              artifactName: 'onnxruntime-java-linux-tensorrt-x64'
+              version: '$(OnnxRuntimeVersion)'
+              libraryName: 'libonnxruntime.so'
+              nativeLibraryName: 'libonnxruntime4j_jni.so'
 
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
