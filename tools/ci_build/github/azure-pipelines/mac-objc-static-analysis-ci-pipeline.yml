@@ -14,7 +14,7 @@ jobs:
       architecture: "x64"
 
   - script: |
-      pip install codechecker==6.16.0 ninja==1.10.2
+      pip install -r tools/ci_build/github/apple/objectivec/static_analysis/requirements.txt
     displayName: Install tools
 
   - script: |
