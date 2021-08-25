@@ -28,6 +28,16 @@ jobs:
     displayName: Generate compile_commands.json
 
   - script: |
+      TOOLS_BIN_DIR="$(Build.BinariesDirectory)/tools/bin"
+      mkdir -p "${TOOLS_BIN_DIR}"
+      ln -s "(brew --prefix llvm)/bin/clang" "${TOOLS_BIN_DIR}"
+      ln -s "(brew --prefix llvm)/bin/clang-tidy" "${TOOLS_BIN_DIR}"
+      echo "##vso[task.setvariable variable=PATH]${TOOLS_BIN_DIR}:${PATH}"
+    displayName: Put clang tools in path
+
+  - script: echo $PATH
+
+  - script: |
       codechecker analyze \
         --file "$(Build.SourcesDirectory)/objectivec/*" \
                "$(Build.SourcesDirectory)/onnxruntime/core/platform/apple/logging/apple_log_sink.mm" \
