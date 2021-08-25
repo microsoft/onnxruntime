@@ -68,8 +68,8 @@ jobs:
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
           buildConfig: 'Release'
-          artifactName: 'onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion)'
-          artifactNameNoVersionString:  'onnxruntime-linux-x64-gpu'
+          artifactName: 'onnxruntime-linux-x64-cuda-ep-library-$(OnnxRuntimeVersion)'
+          artifactNameNoVersionString:  'onnxruntime-linux-x64-cuda-ep-library'
           libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
           commitId: $(OnnxRuntimeGitCommitHash)
 
@@ -79,6 +79,9 @@ jobs:
     - template: templates/clean-agent-build-directory-step.yml
 
 - template: linux-gpu-tensorrt-packaging-pipeline.yml
+  parameters:
+      artifactName: 'onnxruntime-linux-x64-tensorrt-ep-library-$(OnnxRuntimeVersion)'
+      artifactNameNoVersionString: 'onnxruntime-linux-x64-tensorrt-ep-library'
 
 - template: templates/win-ci.yml
   parameters:
@@ -89,7 +92,7 @@ jobs:
     EnvSetupScript: setup_env_gpu.bat
     buildArch: x64
     msbuildPlatform: x64
-    packageName: gpu-x64
+    packageName: x64-cuda-ep-library
     buildparameter: --use_cuda --cuda_version=11.1 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.1" --cudnn_home="C:\local\cudnn-11.4-windows-x64-v8.2.2.26\cuda" --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;52;60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
@@ -104,7 +107,7 @@ jobs:
     EnvSetupScript: setup_env_gpu.bat
     buildArch: x64
     msbuildPlatform: x64
-    packageName: tensorrt-x64
+    packageName: x64-tensorrt-ep-library
     buildparameter: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.0.1.6.Windows10.x86_64.cuda-11.3.cudnn8.2" --cuda_version=11.1 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.1" --cudnn_home="C:\local\cudnn-11.4-windows-x64-v8.2.2.26\cuda" --enable_onnx_tests --enable_wcos --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;52;60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: false 
@@ -267,13 +270,13 @@ jobs:
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Combined GPU'
     inputs:
-      artifactName: 'onnxruntime-linux-x64-gpu'
+      artifactName: 'onnxruntime-linux-x64-cuda-ep-library'
       targetPath: '$(Build.BinariesDirectory)/tgz-artifacts'
 
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Combined GPU'
     inputs:
-      artifactName: 'onnxruntime-linux-x64-gpu-tensorrt'
+      artifactName: 'onnxruntime-linux-x64-tensorrt-ep-library'
       targetPath: '$(Build.BinariesDirectory)/tgz-artifacts'
 
   - task: ShellScript@2
@@ -295,7 +298,7 @@ jobs:
   - task: PublishPipelineArtifact@1
     inputs:
       targetPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
-      artifactName: 'onnxruntime-linux-x64-combined-gpu'
+      artifactName: 'onnxruntime-linux-x64-gpu'
 
 - job: Windows_Packaging_combined_GPU
   workspace:
@@ -311,13 +314,13 @@ jobs:
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Combined GPU'
     inputs:
-      artifactName: 'onnxruntime-win-gpu-x64'
+      artifactName: 'onnxruntime-win-x64-cuda-ep-library'
       targetPath: '$(Build.BinariesDirectory)/zip-artifacts'
 
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Combined GPU'
     inputs:
-      artifactName: 'onnxruntime-win-tensorrt-x64'
+      artifactName: 'onnxruntime-win-x64-tensorrt-ep-library'
       targetPath: '$(Build.BinariesDirectory)/zip-artifacts'
 
   - task: PowerShell@2
@@ -347,7 +350,7 @@ jobs:
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline Combined GPU Package Artifact'
     inputs:
-      artifactName: 'onnxruntime-win-combined-gpu-x64'
+      artifactName: 'onnxruntime-win-x64-gpu'
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
 - job: NuGet_Packaging_GPU
@@ -368,25 +371,25 @@ jobs:
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - NuGet'
     inputs:
-      artifactName: 'onnxruntime-win-gpu-x64'
+      artifactName: 'onnxruntime-win-x64-cuda-ep-library'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - NuGet'
     inputs:
-      artifactName: 'onnxruntime-win-tensorrt-x64'
+      artifactName: 'onnxruntime-win-x64-tensorrt-ep-library'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - NuGet'
     inputs:
-      artifactName: 'onnxruntime-linux-x64-gpu'
+      artifactName: 'onnxruntime-linux-x64-cuda-ep-library'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - NuGet'
     inputs:
-      artifactName: 'onnxruntime-linux-x64-gpu-tensorrt'
+      artifactName: 'onnxruntime-linux-x64-tensorrt-ep-library'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
   - task: DownloadPipelineArtifact@2

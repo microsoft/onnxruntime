@@ -1,3 +1,12 @@
+parameters:
+- name: artifactName  
+  type: string
+  default: 'onnxruntime-linux-x64-gpu-tensorrt-$(OnnxRuntimeVersion)'
+
+- name: artifactNameNoVersionString
+  type: string
+  default: 'onnxruntime-linux-x64-gpu-tensorrt'
+
 jobs:
 
 - job: Linux_C_API_Packaging_GPU_TensorRT_x64
@@ -28,8 +37,8 @@ jobs:
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
           buildConfig: 'Release'
-          artifactName: 'onnxruntime-linux-x64-gpu-tensorrt-$(OnnxRuntimeVersion)'
-          artifactNameNoVersionString:  'onnxruntime-linux-x64-gpu-tensorrt'
+          artifactName: ${{ parameters.artifactName }} 
+          artifactNameNoVersionString: ${{ parameters.artifactNameNoVersionString }}  
           libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
           commitId: $(OnnxRuntimeGitCommitHash)
 
