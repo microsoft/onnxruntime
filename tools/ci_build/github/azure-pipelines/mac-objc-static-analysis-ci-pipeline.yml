@@ -22,7 +22,6 @@ jobs:
         --build_dir "$(Build.BinariesDirectory)" \
         --cmake_generator "Ninja" \
         --config Debug \
-        --skip_submodule_sync \
         --build_shared_lib --use_coreml --build_objc \
         --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON \
         --update
