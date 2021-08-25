@@ -1921,11 +1921,8 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
   returns a tensor that contains coordinates for non-zero entries. Even though the input
   is a sparse tensor, that usually does not contain zeros, the model logic may construct
   sparse tensor containing explicit zeros that convey model specific meaning.
-  If the input sparse tensor has 2-D COO indices, the output shape would be (nnz,2) with 2 coordinates per
-  non-zero entry. If the input sparse tensor contains 1-D COO indices, the output would contain flat indices
-  of shape (nnz).
 
-  XXX: Should be make the output shape fixed regardless on the input COO indices shape? 
+  The output dense tensor would contain in a row-major order, by dimension, indices of non-zero elements
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(NonZero)
@@ -1938,8 +1935,14 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         // Output type is index type
         propagateElemTypeFromDtypeToOutput(ctx, TensorProto_DataType_INT64, 0);
-        // Output shape is runtime dependent and can not be inferred as it depends on
-        // the input sparse tensor COO indices shape.
+          TensorShapeProto output_shape;
+          auto* dim = output_shape.add_dim();
+          if (hasInputShape(ctx, 0)) {
+            const TensorShapeProto& input_shape = getInputShape(ctx, 0);
+            dim->set_dim_value(input_shape.dim_size());
+          }
+          output_shape.add_dim();
+          updateOutputShape(ctx, 0, output_shape);
       }) ;
 
     static const char* SparseGemm_doc = R"DOC(
@@ -1991,7 +1994,7 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
           sparseCompatibleMatmulShapeInference(ctx, 0, 1);
       });
 
-    static const char* Sum_doc = R"DOC(
+    static const char* Add_doc = R"DOC(
   Behaves as to https://github.com/onnx/onnx/blob/master/docs/Operators.md#Sum
   For 1-D input COO index format it would output flat 1-D index and for 
   2-D input COO index format it would output 2-D COO index.
@@ -1999,7 +2002,7 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
   XXX: We are not implementing broadcasting at this time, thus all inputs
   and the output must have exactly the same shape at this time.
 )DOC";
-  ONNX_CONTRIB_OPERATOR_SCHEMA(Sum)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Add)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Input(0, "A", "1 or 2 - dimensional sparse matrix A COO format", "T")
