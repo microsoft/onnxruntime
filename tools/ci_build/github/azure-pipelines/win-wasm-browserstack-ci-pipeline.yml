@@ -37,7 +37,7 @@ jobs:
       project: 'onnxruntime'
       pipeline: 161
       preferTriggeringPipeline: true
-      patterns: '$(BuildConfig)_*/**/*'
+      patterns: 'Release_*/**/*'
       path: $(Pipeline.Workspace)/artifacts
     displayName: 'Download WebAssembly artifacts'
   - task: CopyFiles@2
@@ -141,7 +141,7 @@ jobs:
       project: 'onnxruntime'
       pipeline: 161
       preferTriggeringPipeline: true
-      patterns: '$(BuildConfig)_*/**/*'
+      patterns: 'Release_*/**/*'
       path: $(Pipeline.Workspace)\artifacts
     displayName: 'Download WebAssembly artifacts'
   - task: CopyFiles@2
