@@ -16,9 +16,9 @@ jobs:
       path: $(Pipeline.Workspace)
     displayName: 'Get commit SHA'
   - script: |
-     set /p __commit__=<$(Pipeline.Workspace)\__commit.txt
-     git fetch origin +%__commit__%:refs/remotes/origin/%__commit__%
-     git checkout --force %__commit__%
+     mapfile __commit__ < $(Pipeline.Workspace)/__commit.txt
+     git fetch origin +$__commit__:refs/remotes/origin/$__commit__
+     git checkout --force $__commit__
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'Read commit SHA and checkout'
   - script: |
@@ -35,22 +35,22 @@ jobs:
       project: 'onnxruntime'
       pipeline: 161
       patterns: '$(BuildConfig)_*/**/*'
-      path: $(Pipeline.Workspace)\artifacts
+      path: $(Pipeline.Workspace)/artifacts
     displayName: 'Download WebAssembly artifacts'
   - task: CopyFiles@2
     inputs:
-      sourceFolder: $(Pipeline.Workspace)\artifacts
+      sourceFolder: $(Pipeline.Workspace)/artifacts
       contents: |
-        **\*.wasm
-      targetFolder: $(Build.SourcesDirectory)\js\web\dist
+        **/*.wasm
+      targetFolder: $(Build.SourcesDirectory)/js/web/dist
       flattenFolders: true
     displayName: 'Binplace dist files'
   - task: CopyFiles@2
     inputs:
-      sourceFolder: $(Pipeline.Workspace)\artifacts
+      sourceFolder: $(Pipeline.Workspace)/artifacts
       contents: |
-        **\*.js
-      targetFolder: $(Build.SourcesDirectory)\js\web\lib\wasm\binding
+        **/*.js
+      targetFolder: $(Build.SourcesDirectory)/js/web/lib/wasm/binding
       flattenFolders: true
     displayName: 'Binplace js files'
   - script: |
