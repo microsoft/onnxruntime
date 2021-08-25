@@ -71,7 +71,7 @@ def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
 
 @register_symbolic('diagonal')
 def diagonal(g, self, offset, dim1, dim2):
-    return g.op("com.microsoft.ATenOp", self, offset, dim1, dim2,
+    return g.op("com.microsoft::ATenOp", self, offset, dim1, dim2,
                 name_s='aten::diagonal')
 
 

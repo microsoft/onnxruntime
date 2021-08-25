@@ -1007,31 +1007,32 @@ class SymbolicShapeInference:
     def _infer_aten_diagonal(self, node):
         sympy_shape = self._get_sympy_shape(node, 0)
         rank = len(sympy_shape)
-
         offset = self._try_get_value(node, 1)
         dim1 = self._try_get_value(node, 2)
         dim2 = self._try_get_value(node, 3)
-        
-        if dim1 is not None:
-            dim1 = handle_negative_axis(dim1, rank)
-        
-        if dim2 is not None:
-            dim2 = handle_negative_axis(dim2, rank)
+
+        assert offset is not None and dim1 is not None and dim2 is not None 
+        dim1 = handle_negative_axis(dim1, rank)
+        dim2 = handle_negative_axis(dim2, rank)
         
         new_shape = []
         for dim, val in enumerate(sympy_shape):
             if dim not in [dim1, dim2]:
                 new_shape.append(val)
 
-        # create a new symbolic dimension for  output
-        nz_len = str(self._new_symbolic_dim_from_output(node, 0, len(new_shape)))
-        new_shape.append(nz_len)
-        
+        shape1 = sympy_shape[dim1] 
+        shape2 = sympy_shape[dim2]
+        if offset >= 0:
+            diag_shape = sympy.Max(0, sympy.Min(shape1, shape2 - offset))
+        else:
+            diag_shape = sympy.Max(0, sympy.Min(shape1 + offset, shape2))
+        new_shape.append(diag_shape) 
+
         if node.output[0]:
             vi = self.known_vi_[node.output[0]]
             vi.CopyFrom(
                 helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type,
-                                              new_shape)
+                                              get_shape_from_sympy_shape(new_shape)))
 
     def _infer_aten_pool2d(self, node):
         sympy_shape = self._get_sympy_shape(node, 0)
