@@ -76,6 +76,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 #ifndef USE_ROCM
   int GetCudnnConvAlgo() const { return info_.cudnn_conv_algo_search; }
 #endif
+  bool DoCopyOnDefaultStream() const { return info_.do_copy_in_default_stream; }
 
   ProviderOptions GetProviderOptions() const override {
     return CUDAExecutionProviderInfo::ToProviderOptions(info_);
