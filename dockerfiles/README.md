@@ -38,7 +38,7 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 # Building and using Docker images
 
 ## CPU
-**Ubuntu 16.04, CPU, Python Bindings**
+**Ubuntu 18.04, CPU, Python Bindings**
 
 1. Build the docker image from the Dockerfile in this repository.
   ```
@@ -209,60 +209,23 @@ If the `device_type` runtime config option is not explicitly specified, CPU will
 
 3. Run the docker image as mentioned in the above steps
 
-## ARM 32v7
-*Public Preview*
+## ARM 32/64
 
-The Dockerfile used in these instructions specifically targets Raspberry Pi 3/3+ running Raspbian Stretch. The same approach should work for other ARM devices, but may require some changes to the Dockerfile such as choosing a different base image (Line 0: `FROM ...`).
+The build instructions are similar to x86 CPU. But if you want to build them on a x86 machine, you need to install qemu-user-static system package (outside of docker instances) first. Then
+	
+1. Build the docker image from the Dockerfile in this repository.
+  ```bash
+  docker build -t onnxruntime-source -f Dockerfile.arm64 ..
+  ```
 
-1. Install dependencies:
+2. Run the Docker image
 
-- DockerCE on your development machine by following the instructions [here](https://docs.docker.com/install/)
-- ARM emulator: `sudo apt-get install -y qemu-user-static`
+  ```bash
+  docker run -it onnxruntime-source
+  ```
 
-2. Create an empty local directory
-    ```bash
-    mkdir onnx-build
-    cd onnx-build
-    ```
-3. Save the Dockerfile from this repo to your new directory: [Dockerfile.arm32v7](./Dockerfile.arm32v7)
-4. Run docker build
-
-    This will build all the dependencies first, then build ONNX Runtime and its Python bindings. This will take several hours.
-    ```bash
-    docker build -t onnxruntime-arm32v7 -f Dockerfile.arm32v7 .
-    ```
-5. Note the full path of the `.whl` file
-
-    - Reported at the end of the build, after the `# Build Output` line.
-    - It should follow the format `onnxruntime-0.3.0-cp35-cp35m-linux_armv7l.whl`, but version number may have changed. You'll use this path to extract the wheel file later.
-6. Check that the build succeeded
-
-    Upon completion, you should see an image tagged `onnxruntime-arm32v7` in your list of docker images:
-    ```bash
-    docker images
-    ```
-7. Extract the Python wheel file from the docker image
-
-    (Update the path/version of the `.whl` file with the one noted in step 5)
-    ```bash
-    docker create -ti --name onnxruntime_temp onnxruntime-arm32v7 bash
-    docker cp onnxruntime_temp:/code/onnxruntime/build/Linux/MinSizeRel/dist/onnxruntime-0.3.0-cp35-cp35m-linux_armv7l.whl .
-    docker rm -fv onnxruntime_temp
-    ```
-    This will save a copy of the wheel file, `onnxruntime-0.3.0-cp35-cp35m-linux_armv7l.whl`, to your working directory on your host machine.
-8. Copy the wheel file (`onnxruntime-0.3.0-cp35-cp35m-linux_armv7l.whl`) to your Raspberry Pi or other ARM device
-9. On device, install the ONNX Runtime wheel file
-    ```bash
-    sudo apt-get update
-    sudo apt-get install -y python3 python3-pip
-    pip3 install numpy
-
-    # Install ONNX Runtime
-    # Important: Update path/version to match the name and location of your .whl file
-    pip3 install onnxruntime-0.3.0-cp35-cp35m-linux_armv7l.whl
-    ```
-10. Test installation by following the instructions [here](https://microsoft.github.io/onnxruntime/)
-
+For ARM32, please use Dockerfile.arm32v7 instead of Dockerfile.arm64.
+	
 ## NVIDIA Jetson TX1/TX2/Nano/Xavier:
 
 These instructions are for [JetPack SDK 4.4](https://developer.nvidia.com/embedded/jetpack).

@@ -359,7 +359,7 @@ def test_InplaceUpdateInputAsOutputNotRequireGradWithMarkDirty():
 
     run_training_test_and_compare(model_builder, input_generator, label_input)
 
-
+@pytest.mark.skip(reason="This test is not correct. All tensors modified by in-place operattions should be mark_dirty(...).")
 def test_InplaceUpdateInputAsOutputRequireGrad():
     class InplaceUpdateInputAsOutputRequireGradFunction(torch.autograd.Function):
         @staticmethod
@@ -412,7 +412,7 @@ def test_InplaceUpdateInputAsOutputRequireGrad():
     run_training_test_and_compare(
         model_builder, input_generator, label_input, ignore_grad_compare=True)
 
-
+@pytest.mark.skip(reason="This test is not correct. All tensors modified by in-place operattions should be mark_dirty(...).")
 def test_InplaceUpdateInputNotAsOutputRequireGrad():
     class InplaceUpdateInputNotAsOutputRequireGradFunction(torch.autograd.Function):
         # without mark_ditry, the inner computation graph is extracted into another subgraph, which is a duplicated computation with the PythonOp.
@@ -843,12 +843,11 @@ def test_MultipleStream_InForwardFunction():
     class MultipleStreamModel(torch.nn.Module):
         def __init__(self, output_size):
             super(MultipleStreamModel, self).__init__()
-            self.linear_a = torch.nn.Linear(output_size, output_size)
             self.relu = MultipleStreamFunction.apply
 
         def forward(self, model_input):
-            model_input = model_input * 0.2
-            out = self.relu(model_input)
+            b = model_input * 0.2
+            out = self.relu(b)
             return out
 
     output_size = 2
@@ -857,19 +856,15 @@ def test_MultipleStream_InForwardFunction():
         return MultipleStreamModel(output_size)
 
     def input_generator():
-        return torch.tensor([2.8, 3.4], requires_grad=True) #torch.randn(output_size, dtype=torch.float)
+        return torch.tensor([2.8, 3.4], requires_grad=True)
 
 
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
     # Test multi-input and multi-output custom function.
-    cpu_output_list, cuda_output_list = run_training_test_and_compare(model_builder, input_generator, label_input)
-
-    expected_ret_list = [torch.tensor([-0.7760, -0.7280])]
-
-    compare_tensor_list(expected_ret_list, cuda_output_list)
-
+    run_training_test_and_compare(model_builder, input_generator, label_input,
+                                  expected_outputs=[torch.tensor([0.224, 0.272])])
 
 def test_NonDefaultStream_InForwardFunction1():
     class MultipleStreamFunction(torch.autograd.Function):
@@ -894,7 +889,6 @@ def test_NonDefaultStream_InForwardFunction1():
     class MultipleStreamModel(torch.nn.Module):
         def __init__(self, output_size):
             super(MultipleStreamModel, self).__init__()
-            self.linear_a = torch.nn.Linear(output_size, output_size)
             self.relu = MultipleStreamFunction.apply
 
         def forward(self, model_input):
@@ -909,18 +903,15 @@ def test_NonDefaultStream_InForwardFunction1():
         return MultipleStreamModel(output_size)
 
     def input_generator():
-        return torch.tensor([2.8, 3.4], requires_grad=True) #torch.randn(output_size, dtype=torch.float)
+        return torch.tensor([2.8, 3.4], requires_grad=True)
 
 
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
     # Test multi-input and multi-output custom function.
-    cpu_output_list, cuda_output_list = run_training_test_and_compare(model_builder, input_generator, label_input)
-
-    expected_ret_list = [torch.tensor([-0.7760, -0.7280])]
-
-    compare_tensor_list(expected_ret_list, cuda_output_list)
+    run_training_test_and_compare(model_builder, input_generator, label_input,
+                                 expected_outputs=[torch.tensor([0.224, 0.272])])
 
 
 def test_NonDefaultStream_InForwardFunction2():
@@ -940,7 +931,6 @@ def test_NonDefaultStream_InForwardFunction2():
     class MultipleStreamModel(torch.nn.Module):
         def __init__(self, output_size):
             super(MultipleStreamModel, self).__init__()
-            self.linear_a = torch.nn.Linear(output_size, output_size)
             self.relu = MultipleStreamFunction.apply
 
         def forward(self, model_input):
@@ -960,18 +950,16 @@ def test_NonDefaultStream_InForwardFunction2():
         return MultipleStreamModel(output_size)
 
     def input_generator():
-        return torch.tensor([2.8, 3.4], requires_grad=True) #torch.randn(output_size, dtype=torch.float)
+        return torch.tensor([2.8, 3.4], requires_grad=True)
 
 
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
     # Test multi-input and multi-output custom function.
-    cpu_output_list, cuda_output_list = run_training_test_and_compare(model_builder, input_generator, label_input)
+    run_training_test_and_compare(model_builder, input_generator, label_input,
+                                  expected_outputs=[torch.tensor([0.224, 0.272])])
 
-    expected_ret_list = [torch.tensor([-0.7760, -0.7280])]
-
-    compare_tensor_list(expected_ret_list, cuda_output_list)
 
 def test_NonDefaultStreamInplaceUpdate_InForwardFunction():
     class MultipleStreamFunction(torch.autograd.Function):
@@ -997,7 +985,6 @@ def test_NonDefaultStreamInplaceUpdate_InForwardFunction():
     class MultipleStreamModel(torch.nn.Module):
         def __init__(self, output_size):
             super(MultipleStreamModel, self).__init__()
-            self.linear_a = torch.nn.Linear(output_size, output_size)
             self.relu = MultipleStreamFunction.apply
 
         def forward(self, model_input):
@@ -1012,15 +999,12 @@ def test_NonDefaultStreamInplaceUpdate_InForwardFunction():
         return MultipleStreamModel(output_size)
 
     def input_generator():
-        return torch.tensor([2.8, 3.4], requires_grad=True) #torch.randn(output_size, dtype=torch.float)
+        return torch.tensor([2.8, 3.4], requires_grad=True)
 
 
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
     # Test multi-input and multi-output custom function.
-    cpu_output_list, cuda_output_list = run_training_test_and_compare(model_builder, input_generator, label_input)
-
-    expected_ret_list = [torch.tensor([-0.7760, -0.7280])]
-
-    compare_tensor_list(expected_ret_list, cuda_output_list)
+    run_training_test_and_compare(model_builder, input_generator, label_input,
+                                  expected_outputs=[torch.tensor([0.224, 0.272])])

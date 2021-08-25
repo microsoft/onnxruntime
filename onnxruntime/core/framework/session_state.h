@@ -23,7 +23,7 @@
 #include "core/framework/fuse_nodes_funcs.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/mem_pattern.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/ort_value_name_idx_map.h"
@@ -101,6 +101,7 @@ class SessionState {
         use_deterministic_compute_(use_deterministic_compute),
         enable_mem_reuse_(enable_mem_reuse),
         prepacked_weights_container_(prepacked_weights_container) {
+
     SetupAllocators();
   }
 
@@ -317,6 +318,16 @@ class SessionState {
     return used_shared_pre_packed_weights_counter_;
   }
 
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+  void IncrementGraphExecutionCounter() {
+    ++graph_executions_counter_;
+  }
+
+  size_t GetGraphExecutionCounter() const {
+    return graph_executions_counter_;
+  }
+#endif
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
@@ -347,7 +358,7 @@ class SessionState {
                                std::unique_ptr<SessionState> session_state);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  Status PopulateKernelCreateInfo(KernelRegistryManager& kernel_registry_manager, bool saving_ort_format);
+  Status PopulateKernelCreateInfo(const KernelRegistryManager& kernel_registry_manager, bool saving_ort_format);
 #endif
 
   Status FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
@@ -504,6 +515,11 @@ class SessionState {
   // Counter for number of times a shared version of the pre-packed weight corresponding to
   // a constant initialized weight was used by the session state
   size_t used_shared_pre_packed_weights_counter_ = 0;
+
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+  // Counter for number of times the session graph has been executed
+  size_t graph_executions_counter_ = 0;
+#endif
 };
 
 }  // namespace onnxruntime

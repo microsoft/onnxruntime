@@ -1,4 +1,4 @@
-#include "pch.h"
+#include "lib/Api.Image/pch.h"
 #include "inc/DisjointBufferHelpers.h"
 
 namespace _winml {

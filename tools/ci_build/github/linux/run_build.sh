@@ -44,7 +44,7 @@ elif [ $BUILD_OS = "yocto" ]; then
 
     make -j$(nproc)
 else
-    COMMON_BUILD_ARGS="--skip_submodule_sync --enable_onnx_tests --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest"
+    COMMON_BUILD_ARGS="--skip_submodule_sync --enable_onnx_tests --parallel --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest"
 
     if [ $BUILD_DEVICE = "gpu" ]; then
         _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2)

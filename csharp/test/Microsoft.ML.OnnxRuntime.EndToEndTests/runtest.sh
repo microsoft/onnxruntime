@@ -29,7 +29,13 @@ if [ $RunTestCsharp = "true" ]; then
   fi
 
   if [ $PACKAGENAME = "Microsoft.ML.OnnxRuntime.Gpu" ]; then
+    export TESTONGPU=ON 
     dotnet test -p:DefineConstants=USE_CUDA $BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore --verbosity detailed
+    if [ $? -ne 0 ]; then
+      echo "Failed to build or execute the end-to-end test"
+      exit 1
+    fi
+    dotnet test -p:DefineConstants=USE_TENSORRT $BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore --verbosity detailed
   else
     dotnet test $BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore --verbosity detailed
   fi
