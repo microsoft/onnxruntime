@@ -4,6 +4,7 @@ jobs:
 - job: Onnxruntime_Eager_Mode
 
   timeoutInMinutes: 120
+  pool: Linux-CPU-2019
 
   steps:
   - checkout: self
