@@ -1077,8 +1077,16 @@ inline bool IsZero(const void* p) {
 
 template <typename T>
 inline void CopyElement(void* dst, const void* src, int64_t dst_index, int64_t src_index) {
-  reinterpret_cast<T*>(dst)[dst_index] = reinterpret_cast<const T*>(src)[src_index];
+  const auto* src_p = reinterpret_cast<const T*>(src) + src_index;
+  auto* dst_p = reinterpret_cast<T*>(dst) + dst_index;
+  memcpy(dst_p, src_p, sizeof(T));
 }
+
+template <>
+inline void CopyElement<uint8_t>(void* dst, const void* src, int64_t dst_index, int64_t src_index) {
+  reinterpret_cast<uint8_t*>(dst)[dst_index] = reinterpret_cast<const uint8_t*>(src)[src_index];
+}
+
 
 template <typename T>
 static void SetIndices(gsl::span<int64_t> gathered_indices,
@@ -1088,7 +1096,13 @@ static void SetIndices(gsl::span<int64_t> gathered_indices,
   auto* ind_dest = reinterpret_cast<T*>(raw_indices.data());
   size_t dest_index = 0;
   for (auto src_index : gathered_indices) {
-    ind_dest[dest_index] = static_cast<T>(src_index);
+    ORT_IF_CONSTEXPR(sizeof(T) == sizeof(int8_t)) {
+      ind_dest[dest_index] = static_cast<T>(src_index);
+    } else {
+      auto* dst = ind_dest + dest_index;
+      T v = static_cast<T>(src_index);
+      memcpy(dst, &v, sizeof(T));
+    }
     ++dest_index;
   }
   indices.set_data_type(utils::ToTensorProtoElementType<T>());
