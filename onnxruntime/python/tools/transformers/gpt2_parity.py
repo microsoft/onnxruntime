@@ -128,7 +128,7 @@ def run_parity(args):
     if args.use_external_data_format:
         fp32_baseline.append("--use_external_data_format")
 
-    #task.run(fp32_baseline, "fp32 baseline")
+    task.run(fp32_baseline, "fp32 baseline")
 
     # The following tests for fp16 requires GPU
     if not args.use_gpu:
