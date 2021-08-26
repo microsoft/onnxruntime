@@ -68,6 +68,12 @@ jobs:
          rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
          python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
 
+  - task: PublishPipelineArtifact@1
+    displayName: 'Publish Release python package (for docs)'
+    inputs:
+      targetPath: $(Build.BinariesDirectory)/Release/dist
+      artifactName: Python Wheel
+
   - task: CmdLine@2
     displayName: 'Run Release unit tests'
     inputs:
@@ -82,6 +88,7 @@ jobs:
          rm -rf $(Build.BinariesDirectory)/Debug/onnxruntime $(Build.BinariesDirectory)/Debug/pybind11
          python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
          python3 -m pip install $(Build.BinariesDirectory)/Debug/dist/*.whl
+
 
   - task: CmdLine@2
     displayName: 'Run Debug unit tests'
