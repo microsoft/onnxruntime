@@ -135,14 +135,14 @@ public:
 
   std::shared_ptr<IExecutionProvider> GetExecutionProviderInstance(const std::string& provider_type,
                                                                    size_t hash){
-    auto it = execution_provider_instances_.find(GetExecutionProviderMapKey(provider_type, hash));
-    return it == execution_provider_instances_.end() ? nullptr : it->second;
+    auto it = execution_provider_instances_map_.find(GetExecutionProviderMapKey(provider_type, hash));
+    return it == execution_provider_instances_map_.end() ? nullptr : it->second;
   }
 
   void AddExecutionProvider(const std::string& provider_type,
                             size_t hash,
                             std::unique_ptr<IExecutionProvider> execution_provider){
-    execution_provider_instances_.insert({GetExecutionProviderMapKey(provider_type, hash),
+    execution_provider_instances_map_.insert({GetExecutionProviderMapKey(provider_type, hash),
                                           std::move(execution_provider)});
   }
 
@@ -155,7 +155,7 @@ private:
   }
 
   std::unique_ptr<Environment> ort_env_;
-  ExecutionProviderMap execution_provider_instances_;
+  ExecutionProviderMap execution_provider_instances_map_;
 };
 
 static std::unique_ptr<ORTTrainingPythonEnv> ort_training_env;
