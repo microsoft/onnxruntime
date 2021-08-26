@@ -18,20 +18,32 @@ if (onnxruntime_USE_DNNL)
   STRING(APPEND CSHARP_PREPROCESSOR_DEFINES "USE_DNNL,")
 endif()
 
-if (onnxruntime_USE_TENSORRT)
-  STRING(APPEND CSHARP_PREPROCESSOR_DEFINES "USE_TENSORRT,")
+if (onnxruntime_USE_DML)
+  STRING(APPEND CSHARP_PREPROCESSOR_DEFINES "USE_DML,")
 endif()
 
 if (onnxruntime_USE_MIGRAPHX)
   STRING(APPEND CSHARP_PREPROCESSOR_DEFINES "USE_MIGRAPHX,")
 endif()
 
-if (onnxruntime_USE_OPENVINO)
-  STRING(APPEND CSHARP_PREPROCESSOR_DEFINES "USE_OPENVINO,")
+if (onnxruntime_USE_NNAPI_BUILTIN)
+  STRING(APPEND CSHARP_PREPROCESSOR_DEFINES "USE_NNAPI,")
 endif()
 
 if (onnxruntime_USE_NUPHAR)
   STRING(APPEND CSHARP_PREPROCESSOR_DEFINES "USE_NUPHAR,")
+endif()
+
+if (onnxruntime_USE_OPENVINO)
+  STRING(APPEND CSHARP_PREPROCESSOR_DEFINES "USE_OPENVINO,")
+endif()
+
+if (onnxruntime_USE_ROCM)
+  STRING(APPEND CSHARP_PREPROCESSOR_DEFINES "USE_ROCM,")
+endif()
+
+if (onnxruntime_USE_TENSORRT)
+  STRING(APPEND CSHARP_PREPROCESSOR_DEFINES "USE_TENSORRT,")
 endif()
 
 include(CSharpUtilities)
@@ -57,7 +69,8 @@ include_external_msproject(Microsoft.ML.OnnxRuntime.PerfTool
 #Exclude them from the ALL_BUILD target, otherwise it will trigger errors like:
 #"Error : Project 'cmake\..\csharp\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj' targets 'netstandard1.1'. It cannot be referenced by a project that targets '.NETFramework,Version=v4.0'."
 #We can't fix it because cmake only supports the "TargetFrameworkVersion" property, not "TargetFramework".
-set_target_properties(Microsoft.ML.OnnxRuntime Microsoft.ML.OnnxRuntime.InferenceSample Microsoft.ML.OnnxRuntime.Tests Microsoft.ML.OnnxRuntime.PerfTool PROPERTIES EXCLUDE_FROM_ALL 1)
+set_target_properties(Microsoft.ML.OnnxRuntime Microsoft.ML.OnnxRuntime.InferenceSample Microsoft.ML.OnnxRuntime.Tests 
+                      Microsoft.ML.OnnxRuntime.PerfTool PROPERTIES EXCLUDE_FROM_ALL 1)
 
 # generate Directory.Build.props
 set(DIRECTORY_BUILD_PROPS_COMMENT "WARNING: This is a generated file, please do not check it in!")

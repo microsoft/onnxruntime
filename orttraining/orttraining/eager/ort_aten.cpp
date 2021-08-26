@@ -174,7 +174,6 @@ at::Tensor empty__memory_format(
 
   assert(dtype_opt.has_value());
   assert(device_opt.has_value());
-  assert(!layout_opt.has_value());
 
   // TODO: validate options and memory format
   // TODO: figure out how to get the correct element type.
