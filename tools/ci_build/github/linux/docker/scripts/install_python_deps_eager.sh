@@ -1,11 +1,6 @@
 #!/bin/bash
 set -e -x
 
-INSTALL_DEPS_DISTRIBUTED_SETUP=false
-ORTMODULE_BUILD=false
-TARGET_ROCM=false
-USE_CONDA=false
-
 while getopts p:h:d:v:tmurc parameter_Option
 do case "${parameter_Option}"
 in
@@ -15,9 +10,9 @@ d) DEVICE_TYPE=${OPTARG};;
 v) CU_VER=${OPTARG};;
 t) INSTALL_DEPS_TRAINING=true;;
 m) INSTALL_DEPS_DISTRIBUTED_SETUP=true;;
-u) ORTMODULE_BUILD=true;;
-r) TARGET_ROCM=true;;
-c) USE_CONDA=true;;
+u) ORTMODULE_BUILD=false;;
+r) TARGET_ROCM=false;;
+c) USE_CONDA=false;;
 esac
 done
 
