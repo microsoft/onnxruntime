@@ -55,3 +55,7 @@ onnxruntime/python/version_info.py
 /orttraining/orttraining/eager/ort_customops.g.cpp
 /csharp/tools/Microsoft.ML.OnnxRuntime.PerfTool/OnnxMl.cs
 /csharp/test/Microsoft.ML.OnnxRuntime.Tests/OnnxMl.cs
+
+# direnv, posh-direnv
+.envrc
+.psenvrc
