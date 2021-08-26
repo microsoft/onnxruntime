@@ -334,7 +334,7 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
         with open(csv_filename, mode="a", newline='') as csv_file:
             column_names = [
                 "experiment", "run_id", "model_name", "model_class", "gpu", "precision", "optimizer", "test_cases",
-                "keep_io_types", "io_block_list", "op_block_list", "node_block_list", latency_name,
+                "keep_io_types", "io_block_list", "op_block_list", "node_block_list", "ORT_TRANSFORMER_OPTIONS", "ORT_CUDA_GEMM_OPTIONS", latency_name,
                 "diff_50_percentile", "diff_90_percentile", "diff_95_percentile", "diff_99_percentile", "diff_pass_rate",
                 "nan_rate", "top1_match_rate", "onnx_size_in_MB"
             ]
@@ -354,6 +354,8 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                 "io_block_list": args.io_block_list,
                 "op_block_list": args.op_block_list,
                 "node_block_list": args.node_block_list,
+                "ORT_TRANSFORMER_OPTIONS": os.getenv('ORT_TRANSFORMER_OPTIONS'),
+                "ORT_CUDA_GEMM_OPTIONS": os.getenv('ORT_CUDA_GEMM_OPTIONS'),
                 latency_name: f"{latency:.2f}",
                 "diff_50_percentile": parity_result["max_diff_percentile_50"],
                 "diff_90_percentile": parity_result["max_diff_percentile_90"],

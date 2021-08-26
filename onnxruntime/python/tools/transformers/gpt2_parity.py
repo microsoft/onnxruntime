@@ -62,15 +62,9 @@ class ParityTask:
             "diff_pass_rate", "nan_rate", "top1_match_rate", "onnx_size_in_MB"
         ]
 
-        options = os.getenv('ORT_TRANSFORMER_OPTIONS')
-        if (options):
-            self.options = f"[ORT_TRANSFORMER_OPTIONS={options}]"
-        else:
-            self.options = ""
-
     def run(self, argv, name):
         results = []
-        experiment_name = self.options + name
+        experiment_name = name
         for i in range(self.total_runs):
             try:
                 result = main(argv, experiment_name=experiment_name, run_id=i, csv_filename=self.csv_path)
@@ -108,7 +102,7 @@ class ParityTask:
         with open(csv_filename, mode="a", newline='') as csv_file:
             column_names = [
                 "experiment", "run_id", "model_name", "model_class", "gpu", "precision", "optimizer", "test_cases",
-                "keep_io_types", "io_block_list", "op_block_list", "node_block_list"
+                "keep_io_types", "io_block_list", "op_block_list", "node_block_list", "ORT_TRANSFORMER_OPTIONS", "ORT_CUDA_GEMM_OPTIONS"
             ] + self.metric_names
 
             csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
