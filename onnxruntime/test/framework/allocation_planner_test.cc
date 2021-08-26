@@ -23,6 +23,12 @@
 
 using namespace ONNX_NAMESPACE;
 
+// Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
+// GCC 4.x doesn't seem to define this and it breaks the pipelines based on CentOS as it uses
+// GCC 4.x.
+// (This static var is referenced in `PassThroughExplicitAndImplicitSubgraphInputs` test)
+const OrtDevice::DeviceType OrtDevice::GPU;
+
 namespace onnxruntime {
 namespace test {
 
@@ -687,8 +693,8 @@ TEST_F(PlannerTest, PassThroughExplicitAndImplicitSubgraphInputs) {
     OrtValueIndex abs_data_1_out_index;
     main_graph_ort_value_index_map.GetIdx("abs_data_1_out", abs_data_1_out_index);
 
-    EXPECT_EQ(main_graph_plan->allocation_plan[abs_data_0_out_index].location.device.Type(), 1);  // 1 == GPU
-    EXPECT_EQ(main_graph_plan->allocation_plan[abs_data_1_out_index].location.device.Type(), 1);  // 1 == GPU
+    EXPECT_EQ(main_graph_plan->allocation_plan[abs_data_0_out_index].location.device.Type(), OrtDevice::GPU);
+    EXPECT_EQ(main_graph_plan->allocation_plan[abs_data_1_out_index].location.device.Type(), OrtDevice::GPU);
   }
 
   // First subgraph (Loop) (L1 graph)
@@ -719,8 +725,8 @@ TEST_F(PlannerTest, PassThroughExplicitAndImplicitSubgraphInputs) {
     // There are no explicit consumers of "abs_data_0_out" and "loop_state_var (abs_data_1_out)" in this scope.
     // There is only one implicit consumer "If". Hence, check that we are preserving the locations of these values
     // from the outer scope, thus deferring any copies till the actual nested subgraph these values are used in.
-    EXPECT_EQ(first_subgraph_plan->allocation_plan[abs_data_0_out_index].location.device.Type(), 1);  // 1 == GPU
-    EXPECT_EQ(first_subgraph_plan->allocation_plan[abs_data_1_out_index].location.device.Type(), 1);  // 1 == GPU
+    EXPECT_EQ(first_subgraph_plan->allocation_plan[abs_data_0_out_index].location.device.Type(), OrtDevice::GPU);
+    EXPECT_EQ(first_subgraph_plan->allocation_plan[abs_data_1_out_index].location.device.Type(), OrtDevice::GPU);
   }
 }
 #endif
