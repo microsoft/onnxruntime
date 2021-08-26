@@ -358,11 +358,9 @@ def parse_arguments():
 
     # Enable onnxruntime-extensions
     parser.add_argument(
-        "--enable_onnxruntime_extensions", action='store_true',
-        help="Enable custom operators in onnxruntime-extensions")
-    parser.add_argument(
         "--onnxruntime_extensions_path", type=str,
-        help="Path to onnxruntime-extensions repo, please make sure the repo has already been pulled/synced.")
+        help="Path to onnxruntime-extensions repo, please make sure the repo has already been pulled/synced. "
+        "Setting this argument also means that you want to enable custom operators in onnxruntime-extensions.")
 
     # Arguments needed by CI
     parser.add_argument(
@@ -787,8 +785,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_WEBASSEMBLY_MALLOC=" + args.wasm_malloc,
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
-        # Enable custom operators in onnxruntime-extensions
-        "-Donnxruntime_ENABLE_EXTENSION_CUSTOM_OPS=" + ("ON" if args.enable_onnxruntime_extensions else "OFF"),
     ]
     # It should be default ON in CI build pipelines, and OFF in packaging pipelines.
     # And OFF for the people who are not actively developing onnx runtime.
@@ -1002,7 +998,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             ]
 
     # Append onnxruntime-extensions cmake options
-    if args.enable_onnxruntime_extensions:
+    if args.onnxruntime_extensions_path:
         # use absolute path here because onnxruntime-extensions is outside onnxruntime
         onnxruntime_extensions_abs_path = os.path.abspath(args.onnxruntime_extensions_path)
         print('[onnxruntime-extensions] onnxruntime_extensions_path: ', onnxruntime_extensions_abs_path)
@@ -2001,12 +1997,11 @@ def main():
             # To debug ONNX Runtime WebAssembly, use ONNX Runtime Web to debug ort-wasm.wasm in browsers.
             raise BuildError("WebAssembly tests cannot be enabled with flag --enable_wasm_debug_info")
 
-    # Check onnxruntime-extensions arguments
-    if args.enable_onnxruntime_extensions:
-        if not args.onnxruntime_extensions_path:
-            raise BuildError("onnxruntime_extensions_path required to build operators in onnxruntime-extensions")
-        if not os.path.exists(args.onnxruntime_extensions_path):
-            raise BuildError("onnxruntime_extensions_path does not exist")
+    # Pre-check onnxruntime-extensions arguments
+    if not args.onnxruntime_extensions_path:
+        raise BuildError("onnxruntime_extensions_path required to build operators in onnxruntime-extensions")
+    if not os.path.exists(args.onnxruntime_extensions_path):
+        raise BuildError("onnxruntime_extensions_path does not exist")
 
     if args.code_coverage and not args.android:
         raise BuildError("Using --code_coverage requires --android")
