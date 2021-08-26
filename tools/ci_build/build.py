@@ -527,7 +527,7 @@ def parse_arguments():
     parser.add_argument("--code_coverage", action='store_true',
                         help="Generate code coverage when targetting Android (only).")
     parser.add_argument(
-        "--ms_experimental", action='store_true', help="Build microsoft experimental operators.")\
+        "--ms_experimental", action='store_true', help="Build all microsoft experimental operators.")\
 
     parser.add_argument(
         "--build_eager_mode", action='store_true',
