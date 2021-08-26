@@ -1583,10 +1583,10 @@ def parse_models_helper(args, models):
         parse_models_info_from_directory(args.model_source, models)
 
 def find_symbolic_shape_infer(): 
-    output = get_output(["find", "-name", "onnxruntime"])
+    output = get_output(["find", "/", "-name", "onnxruntime"])
     ort_dir = split_and_sort_output(output)[0]
     symbolic_shape_output = get_output(["find", ort_dir + "/onnxruntime", "-name", "symbolic_shape_infer.py"]) #use python tools directory
-    symbolic_shape_infer = split_and_sort_output(symbolic_shape_infer)[0]
+    symbolic_shape_infer = split_and_sort_output(symbolic_shape_output)[0]
     return symbolic_shape_infer
 
 def main():
