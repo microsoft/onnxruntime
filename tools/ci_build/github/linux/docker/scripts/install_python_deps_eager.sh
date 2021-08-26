@@ -1,8 +1,6 @@
 #!/bin/bash
 set -e -x
 
-echo "Python version=$PYTHON_VER"
-
 PYTHON_EXE="/usr/bin/python3"
 
 export ONNX_ML=1
