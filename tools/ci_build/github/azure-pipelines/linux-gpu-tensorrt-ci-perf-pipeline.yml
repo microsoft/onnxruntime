@@ -20,11 +20,6 @@ parameters:
   type: boolean
   default: false
 
-- name: RunPython38
-  displayName: Run on Python 3.8
-  type: boolean
-  default: false
-
 - name: TrtVersion
   displayName: TensorRT Version
   type: string
@@ -63,6 +58,8 @@ jobs:
     - Agent.Name -equals K8S-HVZD1T2CL-HVZD1T2
 
   variables:
+    - name: anubis_image
+      value: ort-master-py38
     - name: build
       ${{ if eq(parameters.RunTrtContainer, true) }}:
         value: Dockerfile.tensorrt-perf -t $(trtContainer) -o $(Build.SourcesDirectory)/dockerfiles/Dockerfile.tensorrt
@@ -95,18 +92,17 @@ jobs:
           displayName: 'Build latest ORT'
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
     
-    - ${{ if eq(parameters.RunPython38, true) }}:
-        - script: 'docker build --build-arg IMAGE=ort-$(branch) -t ort-$(branch) -f $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.python38 .'
-          displayName: 'Build latest ORT Images'
-          workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
-          
     - ${{ if eq(parameters.PublishWheel, true) }}:
     
-      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/anubis/copy_wheel.sh -t $(trtContainer)'
+      - script: 'docker build --build-arg IMAGE=ort-master -t $(anubis_image) -f $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.python38 .'
+        displayName: 'Build latest ORT Images'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+      
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/anubis/copy_wheel.sh -t $(trtContainer) -i $(anubis_image)'
         displayName: 'Copy Wheel from Docker'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/anubis'
     
-      - script: 'OUTPUT=$(ls dist) && az storage blob upload --account-name anubiscustomerstorage  --account-key $(account-key) --container-name upload --file $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/dist/*.whl --name ort-trt-ep/$OUTPUT'
+      - script: 'OUTPUT=$(ls dist) && az storage blob upload --account-name anubiscustomerstorage  --account-key $(account-key) --container-name upload --file $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/dist/*.whl --name ort-trt-ep/$(Build.BuildNumber)/$OUTPUT'
         displayName: 'Upload Wheel File'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
