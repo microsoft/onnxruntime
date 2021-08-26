@@ -1,12 +1,9 @@
 #!/bin/bash
 set -e -x
 
-INSTALL_DEPS_TRAINING=false
 INSTALL_DEPS_DISTRIBUTED_SETUP=false
 ORTMODULE_BUILD=false
 TARGET_ROCM=false
-CU_VER="11.1"
-TORCH_VERSION='1.9.0'
 USE_CONDA=false
 
 while getopts p:h:d:v:tmurc parameter_Option
