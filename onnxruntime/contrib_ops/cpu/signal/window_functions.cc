@@ -11,6 +11,7 @@
 #include "core/platform/threadpool.h"
 
 #include <complex>
+#include <cmath>
 
 namespace onnxruntime {
 namespace contrib {
