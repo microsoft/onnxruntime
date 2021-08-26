@@ -1,3 +1,7 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+# This file is used by Python Packaging Pipeline (Training Torch 1.8.1 Cuda 11.1),Python Packaging Pipeline (Training Torch 1.9.0 Cuda 11.1)
 ARG BASEIMAGE=nvcr.io/nvidia/cuda:11.1-cudnn8-devel-centos7
 ARG POLICY=manylinux2014
 ARG PLATFORM=x86_64
@@ -159,13 +163,13 @@ COPY --from=all_python /opt/_internal /opt/_internal/
 COPY build_scripts/finalize.sh \
      build_scripts/update-system-packages.sh \
      build_scripts/python-tag-abi-tag.py \
-     build_scripts/requirements3.6.txt \
-     build_scripts/requirements3.7.txt \
-     build_scripts/requirements3.8.txt \
-     build_scripts/requirements3.9.txt \
-     build_scripts/requirements3.10.txt \
-     build_scripts/requirements-base-tools.txt \
      /build_scripts/
+COPY build_scripts/3.6 /build_scripts/3.6
+COPY build_scripts/3.7 /build_scripts/3.7
+COPY build_scripts/3.8 /build_scripts/3.8
+COPY build_scripts/3.9 /build_scripts/3.9
+COPY build_scripts/3.10 /build_scripts/3.10
+COPY build_scripts/basetools /build_scripts/basetools
 COPY build_scripts/requirements-tools/* /build_scripts/requirements-tools/
 RUN manylinux-entrypoint /build_scripts/finalize.sh && rm -rf /build_scripts
 

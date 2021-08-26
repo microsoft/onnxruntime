@@ -7,17 +7,30 @@ from setuptools import setup, Extension
 from distutils import log as logger
 from distutils.command.build_ext import build_ext as _build_ext
 from glob import glob
-from os import path, getcwd, environ, remove, listdir
+from os import path, getcwd, environ, remove, listdir, chdir, cpu_count
 from shutil import copyfile, copytree, rmtree
 import platform
 import subprocess
 import sys
 import datetime
+import shlex
 
-nightly_build = False
+ONNXRUNTIME_BUILD_CMD = environ.get('ONNXRUNTIME_BUILD_CMD', None)
+if ONNXRUNTIME_BUILD_CMD is not None:
+    cmd = [sys.executable, 'tools/ci_build/build.py', '--config', 'Release', '--update', '--skip_submodule_sync']
+    cmd += shlex.split(ONNXRUNTIME_BUILD_CMD)
+    cmd.append("--build_dir=.")
+    cmd.append("--update")
+    subprocess.run(cmd, check=True)
+    chdir('Release')
+    subprocess.run(['make', '-j%d' % cpu_count(), 'onnxruntime_pybind11_state'], check=True)
+
+nightly_build = environ.get('NIGHTLY_BUILD', None) == '1'
 featurizers_build = False
 package_name = 'onnxruntime'
-wheel_name_suffix = None
+wheel_name_suffix = environ.get('WHEEL_NAME_SUFFIX', None)
+cuda_version = environ.get('ONNXRUNTIME_CUDA_VERSION', None)
+rocm_version = environ.get('ONNXRUNTIME_ROCM_VERSION', None)
 
 
 def parse_arg_remove_boolean(argv, arg_name):
@@ -44,20 +57,18 @@ def parse_arg_remove_string(argv, arg_name_equal):
 featurizers_build = parse_arg_remove_boolean(sys.argv, '--use_featurizers')
 
 if parse_arg_remove_boolean(sys.argv, '--nightly_build'):
-    package_name = 'ort-nightly'
     nightly_build = True
 
-wheel_name_suffix = parse_arg_remove_string(sys.argv, '--wheel_name_suffix=')
+if wheel_name_suffix is None:
+    wheel_name_suffix = parse_arg_remove_string(sys.argv, '--wheel_name_suffix=')
 
-cuda_version = None
-rocm_version = None
 # The following arguments are mutually exclusive
 if parse_arg_remove_boolean(sys.argv, '--use_tensorrt'):
     package_name = 'onnxruntime-gpu-tensorrt' if not nightly_build else 'ort-trt-nightly'
-elif wheel_name_suffix == 'gpu':
+elif wheel_name_suffix == 'gpu' and cuda_version is None:
     # TODO: how to support multiple CUDA versions?
     cuda_version = parse_arg_remove_string(sys.argv, '--cuda_version=')
-elif parse_arg_remove_boolean(sys.argv, '--use_rocm'):
+elif parse_arg_remove_boolean(sys.argv, '--use_rocm') and rocm_version is None:
     package_name = 'onnxruntime-rocm' if not nightly_build else 'ort-rocm-nightly'
     rocm_version = parse_arg_remove_string(sys.argv, '--rocm_version=')
 elif parse_arg_remove_boolean(sys.argv, '--use_openvino'):
@@ -74,30 +85,7 @@ elif parse_arg_remove_boolean(sys.argv, '--use_armnn'):
     package_name = 'onnxruntime-armnn'
 
 
-# PEP 513 defined manylinux1_x86_64 and manylinux1_i686
-# PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
-# PEP 599 defines the following platform tags:
-# manylinux2014_x86_64
-# manylinux2014_i686
-# manylinux2014_aarch64
-# manylinux2014_armv7l
-# manylinux2014_ppc64
-# manylinux2014_ppc64le
-# manylinux2014_s390x
-manylinux_tags = [
-    'manylinux1_x86_64',
-    'manylinux1_i686',
-    'manylinux2010_x86_64',
-    'manylinux2010_i686',
-    'manylinux2014_x86_64',
-    'manylinux2014_i686',
-    'manylinux2014_aarch64',
-    'manylinux2014_armv7l',
-    'manylinux2014_ppc64',
-    'manylinux2014_ppc64le',
-    'manylinux2014_s390x',
-]
-is_manylinux = environ.get('AUDITWHEEL_PLAT', None) in manylinux_tags
+is_manylinux = environ.get('AUDITWHEEL_PLAT', None) is not None
 
 
 class build_ext(_build_ext):
@@ -170,7 +158,8 @@ try:
 
                 self._rewrite_ld_preload(to_preload)
             _bdist_wheel.run(self)
-            if is_manylinux:
+            # Skip this part for CIBUILDWHEEL environment, because CIBUILDWHEEL will run auditwheel for us
+            if is_manylinux and environ.get('CIBUILDWHEEL', None) is None:
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
                 logger.info('repairing %s for manylinux1', file)
                 try:
@@ -249,6 +238,9 @@ README = path.join(getcwd(), "docs/python/README.rst")
 if not path.exists(README):
     this = path.dirname(__file__)
     README = path.join(this, "docs/python/README.rst")
+if not path.exists(README):
+    this = path.dirname(__file__)
+    README = path.join(this, "onnxruntime/README.rst")
 if not path.exists(README):
     raise FileNotFoundError("Unable to find 'README.rst'")
 with open(README) as f:
@@ -414,67 +406,70 @@ with open('VERSION_NUMBER') as f:
     version_number = f.readline().strip()
 if nightly_build:
     # https://docs.microsoft.com/en-us/azure/devops/pipelines/build/variables
-    build_suffix = environ.get('BUILD_BUILDNUMBER')
+    if enable_training:
+        build_suffix = environ.get('BUILD_BUILDNUMBER')
+    else:
+        # A number that monotonically increasing
+        build_suffix = environ.get('BUILD_ID')
     if build_suffix is None:
         # The following line is only for local testing
         build_suffix = str(datetime.datetime.now().date().strftime("%Y%m%d"))
     else:
         build_suffix = build_suffix.replace('.', '')
-
-    if len(build_suffix) > 8 and len(build_suffix) < 12:
-        # we want to format the build_suffix to avoid (the 12th run on 20210630 vs the first run on 20210701):
-        # 2021063012 > 202107011
-        # in above 2021063012 is treated as the latest which is incorrect.
-        # we want to convert the format to:
-        # 20210630012 < 20210701001
-        # where the first 8 digits are date. the last 3 digits are run count.
-        # as long as there are less than 1000 runs per day, we will not have the problem.
-        # to test this code locally, run:
-        # NIGHTLY_BUILD=1 BUILD_BUILDNUMBER=202107011 python tools/ci_build/build.py --config RelWithDebInfo \
-        #   --enable_training --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ \
-        #   --nccl_home /usr/lib/x86_64-linux-gnu/ --build_dir build/Linux --build --build_wheel --skip_tests \
-        #   --cuda_version 11.1
-        def check_date_format(date_str):
-            try:
-                datetime.datetime.strptime(date_str, '%Y%m%d')
-                return True
-            except: # noqa
-                return False
-
-        def reformat_run_count(count_str):
-            try:
-                count = int(count_str)
-                if count >= 0 and count < 1000:
-                    return "{:03}".format(count)
-                elif count >= 1000:
-                    raise RuntimeError(f'Too many builds for the same day: {count}')
-                return ""
-            except: # noqa
-                return ""
-
-        build_suffix_is_date_format = check_date_format(build_suffix[:8])
-        build_suffix_run_count = reformat_run_count(build_suffix[8:])
-        if build_suffix_is_date_format and build_suffix_run_count:
-            build_suffix = build_suffix[:8] + build_suffix_run_count
-    elif len(build_suffix) >= 12:
-        raise RuntimeError(f'Incorrect build suffix: "{build_suffix}"')
-
     if enable_training:
-        from packaging import version
-        from packaging.version import Version
-        # with training package, we need to bump up version minor number so that
-        # nightly releases take precedence over the latest release when --pre is used during pip install.
-        # eventually this shall be the behavior of all onnxruntime releases.
-        # alternatively we may bump up version number right after every release.
-        ort_version = version.parse(version_number)
-        if isinstance(ort_version, Version):
-            # TODO: this is the last time we have to do this!!!
-            # We shall bump up release number right after release cut.
-            if ort_version.major == 1 and ort_version.minor == 8 and ort_version.micro == 0:
-                version_number = '{major}.{minor}.{macro}'.format(
-                    major=ort_version.major,
-                    minor=ort_version.minor + 1,
-                    macro=ort_version.micro)
+        if len(build_suffix) > 8 and len(build_suffix) < 12:
+            # we want to format the build_suffix to avoid (the 12th run on 20210630 vs the first run on 20210701):
+            # 2021063012 > 202107011
+            # in above 2021063012 is treated as the latest which is incorrect.
+            # we want to convert the format to:
+            # 20210630012 < 20210701001
+            # where the first 8 digits are date. the last 3 digits are run count.
+            # as long as there are less than 1000 runs per day, we will not have the problem.
+            # to test this code locally, run:
+            # NIGHTLY_BUILD=1 BUILD_BUILDNUMBER=202107011 python tools/ci_build/build.py --config RelWithDebInfo \
+            #   --enable_training --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ \
+            #   --nccl_home /usr/lib/x86_64-linux-gnu/ --build_dir build/Linux --build --build_wheel --skip_tests \
+            #   --cuda_version 11.1
+            def check_date_format(date_str):
+                try:
+                    datetime.datetime.strptime(date_str, '%Y%m%d')
+                    return True
+                except: # noqa
+                    return False
+
+            def reformat_run_count(count_str):
+                try:
+                    count = int(count_str)
+                    if count >= 0 and count < 1000:
+                        return "{:03}".format(count)
+                    elif count >= 1000:
+                        raise RuntimeError(f'Too many builds for the same day: {count}')
+                    return ""
+                except: # noqa
+                    return ""
+
+            build_suffix_is_date_format = check_date_format(build_suffix[:8])
+            build_suffix_run_count = reformat_run_count(build_suffix[8:])
+            if build_suffix_is_date_format and build_suffix_run_count:
+                build_suffix = build_suffix[:8] + build_suffix_run_count
+        elif len(build_suffix) >= 12:
+            raise RuntimeError(f'Incorrect build suffix: "{build_suffix}"')
+
+            from packaging import version
+            from packaging.version import Version
+            # with training package, we need to bump up version minor number so that
+            # nightly releases take precedence over the latest release when --pre is used during pip install.
+            # eventually this shall be the behavior of all onnxruntime releases.
+            # alternatively we may bump up version number right after every release.
+            ort_version = version.parse(version_number)
+            if isinstance(ort_version, Version):
+                # TODO: this is the last time we have to do this!!!
+                # We shall bump up release number right after release cut.
+                if ort_version.major == 1 and ort_version.minor == 8 and ort_version.micro == 0:
+                    version_number = '{major}.{minor}.{macro}'.format(
+                        major=ort_version.major,
+                        minor=ort_version.minor + 1,
+                        macro=ort_version.micro)
 
     version_number = version_number + ".dev" + build_suffix
 
@@ -485,6 +480,7 @@ if wheel_name_suffix:
     if not (enable_training and wheel_name_suffix == 'gpu'):
         # for training packages, local version is used to indicate device types
         package_name = "{}-{}".format(package_name, wheel_name_suffix)
+
 
 cmd_classes = {}
 if bdist_wheel is not None:

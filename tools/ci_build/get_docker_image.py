@@ -5,9 +5,11 @@
 import argparse
 import collections
 import hashlib
+import pathlib
 import os
 import shlex
 import sys
+import shutil
 from logger import get_logger
 
 
@@ -110,6 +112,25 @@ def update_hash_with_file(file_info: FileInfo, hash_obj):
             hash_obj.update(read_bytes)
 
 
+# Return true if we need to copy manylinux build scripts to context_path
+def is_manylinux(dockerfile_path, context_path):
+    ret = False
+    with open(dockerfile_path, mode="r") as f:
+        for index, line in enumerate(f):
+            if line.strip() == "#Build manylinux2014 docker image begin":
+                ret = True
+                break
+    return ret and not os.path.exists(os.path.join(context_path, 'manylinux-entrypoint'))
+
+
+def find_manylinux_scripts(dockerfile_path):
+    for p in pathlib.Path(dockerfile_path).resolve().parents:
+        print(p / 'manylinux-entrypoint')
+        if (p / 'manylinux-entrypoint').exists():
+            return p
+    return None
+
+
 def generate_tag(dockerfile_path, context_path, docker_build_args_str):
     hash_obj = hashlib.sha256()
     hash_obj.update(docker_build_args_str.encode())
@@ -117,6 +138,10 @@ def generate_tag(dockerfile_path, context_path, docker_build_args_str):
         make_file_info_from_path(dockerfile_path), hash_obj)
     update_hash_with_directory(
         make_file_info_from_path(context_path), hash_obj)
+    if is_manylinux(dockerfile_path, context_path):
+        p = find_manylinux_scripts(dockerfile_path)
+        update_hash_with_file(make_file_info_from_path(p / 'manylinux-entrypoint'), hash_obj)
+        update_hash_with_directory(make_file_info_from_path(p / 'build_scripts'), hash_obj)
     return "image_content_digest_{}".format(hash_obj.hexdigest())
 
 
@@ -156,6 +181,16 @@ def main():
         run(args.docker_path, "pull", full_image_name)
     else:
         log.info("Building image...")
+        if is_manylinux(args.dockerfile, args.context):
+            manyliux_script_root = find_manylinux_scripts(args.dockerfile)
+            log.info("Copying manylinux scripts from %s to %s ..." % (manyliux_script_root, args.dockerfile))
+            shutil.copy(manyliux_script_root / 'manylinux-entrypoint',
+                        pathlib.Path(args.context) / 'manylinux-entrypoint')
+            dest_build_scripts_dir = pathlib.Path(args.context) / 'build_scripts'
+            shutil.copytree(manyliux_script_root / 'build_scripts', dest_build_scripts_dir)
+            if not (dest_build_scripts_dir / 'fixup-mirrors.sh').exists():
+                log.error("File copy failed")
+                return -1
         run(args.docker_path, "build",
             "--pull",
             *shlex.split(args.docker_build_args),
