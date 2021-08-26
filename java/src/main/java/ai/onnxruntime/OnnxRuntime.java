@@ -130,7 +130,9 @@ final class OnnxRuntime {
       libraryDirPathProperty = System.getProperty(ONNXRUNTIME_NATIVE_PATH);
       // Extract and prepare the shared provider library but don't try to load it,
       // the ONNX Runtime native library will load it
-      extractProviderLibrary(ONNXRUNTIME_LIBRARY_SHARED_NAME);
+      if (!isAndroid()) {
+        extractProviderLibrary(ONNXRUNTIME_LIBRARY_SHARED_NAME);
+      }
 
       load(ONNXRUNTIME_LIBRARY_NAME);
       load(ONNXRUNTIME_JNI_LIBRARY_NAME);
@@ -207,6 +209,10 @@ final class OnnxRuntime {
    * @return True if the library is ready for loading by ORT's native code, false otherwise.
    */
   static synchronized boolean extractProviderLibrary(String libraryName) {
+    // Android does not need to extract library and it has no shared provider library
+    if (isAndroid()) {
+      return false;
+    }
     // Check if we've already extracted or check this provider, and it's ready
     if (extractedSharedProviders.contains(libraryName)) {
       return true;
