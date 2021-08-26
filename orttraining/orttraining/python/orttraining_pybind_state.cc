@@ -719,6 +719,8 @@ void addObjectMethodsForTraining(py::module& m) {
                           return std::make_unique<PyGradientGraphBuilder>(builder, *model);
                         }))
       .def("build", [](PyGradientGraphBuilder* gradient_graph_builder) {
+        // FIXME Something is wrong with the memory when calling from Python.
+        // Calling Build in init works, but not here.
         ORT_THROW_IF_ERROR(gradient_graph_builder->builder.Build());
       })
       .def("save", [](PyGradientGraphBuilder* gradient_graph_builder, const std::string& path) {
