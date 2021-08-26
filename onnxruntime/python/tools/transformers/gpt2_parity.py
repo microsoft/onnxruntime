@@ -142,7 +142,7 @@ def run_parity(args):
         baseline.append("--use_external_data_format")
     task.run(baseline, "fp16 baseline")
 
-    if not all:
+    if not args.all:
         logger.info("skip remaining combinations since --all is not specified")
         return
 
