@@ -119,6 +119,9 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       if (config.attn_dropout_recompute) {
         transformers.emplace_back(std::make_unique<AttentionDropoutRecompute>());
       }
+      if (config.expand_recompute) {
+        transformers.emplace_back(std::make_unique<ExpandRecompute>());
+      }
       if (config.transformer_layer_recompute) {
         transformers.emplace_back(std::make_unique<TransformerLayerRecompute>(
             config.number_recompute_layers, compatible_eps));
