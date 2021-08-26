@@ -659,8 +659,6 @@ class OnnxModel:
         if nodes_to_remove:
             self.prune_graph()
             print(f"removed {len(nodes_to_remove)} Cast nodes from float16 model")
-            import onnx
-            onnx.save_model(self.model, "temp.onnx")
 
     def create_node_name(self, op_type, name_prefix=None):
         """Create a unique node name that starts with a prefix (default is operator type).

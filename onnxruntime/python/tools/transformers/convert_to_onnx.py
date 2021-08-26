@@ -170,7 +170,7 @@ def parse_arguments(argv=None):
     return args
 
 
-def main(argv=None, experiment_name="", run_id=0, csv_filename = "gpt2_parity_results.csv"):
+def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_results.csv"):
     result = {}
     from transformers import __version__ as transformers_version
     if version.parse(transformers_version) < version.parse(
@@ -256,12 +256,12 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename = "gpt2_parity_re
     use_padding = MODEL_CLASSES[args.model_class][2]
 
     gpt2helper.export_onnx(model,
-                            device,
-                            raw_onnx_model,
-                            args.verbose,
-                            args.use_external_data_format,
-                            has_position_ids=use_padding,
-                            has_attention_mask=use_padding)
+                           device,
+                           raw_onnx_model,
+                           args.verbose,
+                           args.use_external_data_format,
+                           has_position_ids=use_padding,
+                           has_attention_mask=use_padding)
 
     fp16_params = {"keep_io_types": args.keep_io_types}
     if args.io_block_list:
@@ -278,8 +278,8 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename = "gpt2_parity_re
 
         logger.info(f"Optimizing model to {output_path}")
         gpt2helper.optimize_onnx(raw_onnx_model, output_path, args.precision == Precision.FLOAT16,
-                                    model.config.num_attention_heads, model.config.hidden_size,
-                                    args.use_external_data_format, **fp16_params)
+                                 model.config.num_attention_heads, model.config.hidden_size,
+                                 args.use_external_data_format, **fp16_params)
     else:
         output_path = raw_onnx_model
 

@@ -24,6 +24,7 @@ PRETRAINED_GPT2_MODELS = ['distilgpt2', 'gpt2', 'gpt2-medium', 'gpt2-large', 'gp
 
 DEFAULT_TOLERANCE = {Precision.FLOAT32: 0.0005, Precision.FLOAT16: 0.2, Precision.INT8: 3.0}
 
+
 class GPT2ModelNoPastState(GPT2Model):
     """ Here we wrap a class to disable past state output.
     """
@@ -61,7 +62,7 @@ class MyGPT2Model(GPT2Model):
                 # Since transformers v4.*, past key and values are separated outputs.
                 # Here we concate them into one tensor to be compatible with Attention operator.
                 present.append(torch.cat((result[1][i][0].unsqueeze(0), result[1][i][1].unsqueeze(0)), dim=0))
-            return (result[0], tuple(present)) + result[2:]
+            return (result[0], tuple(present))
 
         return result
 
@@ -133,16 +134,6 @@ class Gpt2Inputs:
         attention_mask = self.attention_mask.to(dtype=torch.float32) if self.attention_mask is not None else None
         past = [p.to(dtype=torch.float32) for p in self.past]
         return Gpt2Inputs(self.input_ids, self.position_ids, attention_mask, past)
-
-    def __str__(self) -> str:
-        return f"input_ids={self.input_ids.tolist()}, position_ids={self.position_ids.tolist()}, attention_mask={self.attention_mask.tolist()}"
-
-    def to(self, device):
-        self.input_ids = self.input_ids.to(device)
-        self.position_ids = self.position_ids.to(device)
-        self.attention_mask = self.attention_mask.to(device)
-        for i, past_i in enumerate(self.past):
-            self.past[i] = past_i.to(device)
 
 
 class Gpt2Helper:
@@ -414,8 +405,6 @@ class Gpt2Helper:
         optimization_options = FusionOptions('gpt2')
         #optimization_options.enable_gelu = False
         #optimization_options.enable_layer_norm = False
-        #optimization_options.enable_skip_layer_norm = False
-        #optimization_options.enable_bias_skip_layer_norm = False
         #optimization_options.enable_attention = False
         m = optimize_model(onnx_model_path,
                            model_type='gpt2',
@@ -615,17 +604,6 @@ class Gpt2Helper:
             pickle.dump(dummy_inputs, f)
         logger.info(f"inputs are saved to dummy_inputs_{i}.pickle")
 
-    @staticmethod
-    def load_inputs(i, device):
-        with open(f'dummy_inputs_{i}.pickle', 'rb') as f:
-            dummy_inputs = pickle.load(f)
-            input_shape = dummy_inputs.input_ids.shape
-            batch_size = input_shape[0]
-            sequence_length = input_shape[1]
-            mask_shape = dummy_inputs.attention_mask.shape
-            past_sequence_length = mask_shape[1] - sequence_length
-            dummy_inputs.to(device)
-            return dummy_inputs, batch_size, sequence_length, past_sequence_length
 
     @staticmethod
     def test_parity(ort_session,
