@@ -1797,7 +1797,7 @@ class SymbolicShapeInference:
                     if self.auto_merge_:
                         if node.op_type in [
                                 'Add', 'Sub', 'Mul', 'Div', 'MatMul', 'MatMulInteger', 'MatMulInteger16', 'Concat',
-                                'Where', 'Sum'
+                                'Where', 'Sum', 'Equal', 'Less', 'Greater', 'LessOrEqual', 'GreaterOrEqual'
                         ]:
                             shapes = [self._get_shape(node, i) for i in range(len(node.input))]
                             if node.op_type in ['MatMul', 'MatMulInteger', 'MatMulInteger16']:

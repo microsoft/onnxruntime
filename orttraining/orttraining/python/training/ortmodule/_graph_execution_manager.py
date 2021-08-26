@@ -121,7 +121,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._run_symbolic_shape_infer = True
 
         # A flag saying if custom autograd.Function should be allowed. True means yes and otherwise False.
-        self._enable_custom_autograd_function = False
+        self._enable_custom_autograd_function = True
 
         self._input_info = None
         self._module_output_schema = None
@@ -254,7 +254,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         if self._run_symbolic_shape_infer:
             self._onnx_models.exported_model = SymbolicShapeInference.infer_shapes(self._onnx_models.exported_model,
-                                                                                   auto_merge=True, guess_output_rank=True)
+                                                                                   auto_merge=True, guess_output_rank=True, verbose=3)
 
         return True
 
@@ -293,11 +293,13 @@ class GraphExecutionManager(GraphExecutionInterface):
         try:
             with torch.set_grad_enabled(self._enable_custom_autograd_function), \
                     _logger.suppress_os_stream_output(log_level=self._debug_options.logging.log_level):
+                from torch.onnx import OperatorExportTypes
                 torch.onnx.export(self._flattened_module,
                                   sample_inputs_as_tuple,
                                   f,
                                   input_names=self._input_info.names,
                                   output_names=output_names,
+                                  operator_export_type=OperatorExportTypes.ONNX_FALLTHROUGH,
                                   opset_version=ONNX_OPSET_VERSION,
                                   do_constant_folding=False,
                                   training=self._export_mode,
