@@ -4,10 +4,12 @@
 # --------------------------------------------------------------------------
 
 from ._torch_module_factory import TorchModuleFactory
+from ._torch_module_pytorch import TorchModulePytorch
 from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 from ._custom_gradient_registry import CustomGradientRegistry
 from .debug_options import DebugOptions
-
+from ._fallback import _FallbackManager, _FallbackPolicy, ORTModuleFallbackException, ORTModuleTorchModelException, wrap_exception
+from . import _FALLBACK_INIT_EXCEPTION, MINIMUM_RUNTIME_PYTORCH_VERSION_STR, ORTMODULE_FALLBACK_POLICY, ORTMODULE_FALLBACK_RETRY
 from onnxruntime.training import register_custom_ops_pytorch_exporter
 
 import functools
@@ -16,6 +18,7 @@ from typing import Iterator, Optional, Tuple, TypeVar, Set, Callable
 
 # Needed to override PyTorch methods
 T = TypeVar('T', bound='Module')
+
 
 class ORTModule(torch.nn.Module):
     """Extends user's :class:`torch.nn.Module` model to leverage ONNX Runtime super fast training engine.
@@ -29,38 +32,75 @@ class ORTModule(torch.nn.Module):
     """
 
     def __init__(self, module, debug_options=None):
-        # Python default arguments are evaluated on function definintion
+        # Python default arguments are evaluated on function definition
         # and not on function invocation. So, if debug_options is not provided,
         # instantiate it inside the function.
         if not debug_options:
             debug_options = DebugOptions()
-        self._torch_module = TorchModuleFactory()(module, debug_options)
 
-        # Create forward dynamically, so each ORTModule instance will have its own copy.
-        # This is needed to be able to copy the forward signatures from the original PyTorch models
-        # and possibly have different signatures for different instances.
-        def _forward(self, *inputs, **kwargs):
-            '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
+        # Fallback settings
+        self._fallback_manager = _FallbackManager(policy=ORTMODULE_FALLBACK_POLICY,
+                                                  retry=ORTMODULE_FALLBACK_RETRY)
+        try:
+            # Read ORTModule module initialization status
+            global _FALLBACK_INIT_EXCEPTION
+            if _FALLBACK_INIT_EXCEPTION:
+                raise _FALLBACK_INIT_EXCEPTION
 
-            ONNX model is exported the first time this method is executed.
-            Next, we build a full training graph with module_gradient_graph_builder.
-            Finally, we instantiate the ONNX Runtime InferenceSession.
-            '''
+            self._torch_module = TorchModuleFactory()(module, debug_options, self._fallback_manager)
 
-            return self._torch_module.forward(*inputs, **kwargs)
+            # Create forward dynamically, so each ORTModule instance will have its own copy.
+            # This is needed to be able to copy the forward signatures from the original PyTorch models
+            # and possibly have different signatures for different instances.
+            def _forward(self, *inputs, **kwargs):
+                '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
 
-        # Bind the forward method.
-        self.forward = _forward.__get__(self)
-        # Copy the forward signature from the _torch_module's forward signature.
-        functools.update_wrapper(
-            self.forward.__func__, self._torch_module.forward.__func__)
+                ONNX model is exported the first time this method is executed.
+                Next, we build a full training graph with module_gradient_graph_builder.
+                Finally, we instantiate the ONNX Runtime InferenceSession.
+                '''
 
-        super(ORTModule, self).__init__()
+                return self._torch_module.forward(*inputs, **kwargs)
 
-        # Support contrib OPs
-        register_custom_ops_pytorch_exporter.register_custom_op()
-        CustomOpSymbolicRegistry.register_all()
-        CustomGradientRegistry.register_all()
+            # Bind the forward method.
+            self.forward = _forward.__get__(self)
+            # Copy the forward signature from the _torch_module's forward signature.
+            functools.update_wrapper(
+                self.forward.__func__, self._torch_module.forward.__func__)
+
+            super(ORTModule, self).__init__()
+
+            # Support contrib OPs
+            register_custom_ops_pytorch_exporter.register_custom_op()
+            CustomOpSymbolicRegistry.register_all()
+            CustomGradientRegistry.register_all()
+
+        except ORTModuleFallbackException as e:
+            self._torch_module = TorchModulePytorch(module)
+            # TODO: Rework after "custom methods" task is designed
+            #       Assigning all default attributes from user's original torch.nn.Module into ORTModule
+            self._backward_hooks = module._backward_hooks
+            self._forward_hooks = module._forward_hooks
+            self._forward_pre_hooks = module._forward_pre_hooks
+            self._parameters = module._parameters
+            self._buffers = module._buffers
+            self._non_persistent_buffers_set = module._non_persistent_buffers_set
+            self._is_full_backward_hook = module._is_full_backward_hook
+            self._state_dict_hooks = module._state_dict_hooks
+            self._load_state_dict_pre_hooks = module._load_state_dict_pre_hooks
+            self._modules = module._modules
+            self.forward = module.forward
+
+            # Exceptions subject to fallback are handled here
+            # import pdb; pdb.set_trace()
+            self._fallback_manager.handle_exception(exception=e,
+                                                    log_level=debug_options.logging.log_level)
+        except Exception as e:
+            self._torch_module = TorchModulePytorch(module)
+            # Catch-all FALLBACK_FORCE_TORCH_FORWARD fallback is handled here
+            self._fallback_manager.handle_exception(exception=e,
+                                                    log_level=debug_options.logging.log_level,
+                                                    override_policy=_FallbackPolicy.FALLBACK_FORCE_TORCH_FORWARD)
 
     # IMPORTANT: DO NOT add code here
     # This declaration is for automatic document generation purposes only
@@ -101,13 +141,12 @@ class ORTModule(torch.nn.Module):
         which does not need model replication and is also recommended by torch to use instead.
         """
 
-        raise NotImplementedError("ORTModule is not compatible with torch.nn.DataParallel. "
-                                  "Please use torch.nn.parallel.DistributedDataParallel instead.")
+        return self._torch_module._replicate_for_data_parallel()
 
     def add_module(self, name: str, module: Optional['Module']) -> None:
-        """Raises a NotImplementedError exception since ORTModule does not support adding modules to it"""
+        """Raises a ORTModuleTorchModelException exception since ORTModule does not support adding modules to it"""
 
-        raise NotImplementedError("ORTModule does not support adding modules to it.")
+        self._torch_module.add_module(name, module)
 
     @property
     def module(self):
@@ -210,11 +249,11 @@ class ORTModule(torch.nn.Module):
         yield from self._torch_module.named_buffers(prefix=prefix, recurse=recurse)
 
     def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
-                                missing_keys, unexpected_keys, error_msgs):
+                              missing_keys, unexpected_keys, error_msgs):
         """Override original method to delegate execution to the original PyTorch user module"""
 
         self._torch_module._load_from_state_dict(state_dict, prefix, local_metadata, strict,
-                                                   missing_keys, unexpected_keys, error_msgs)
+                                                 missing_keys, unexpected_keys, error_msgs)
 
     def named_children(self) -> Iterator[Tuple[str, 'Module']]:
         """Override :meth:`~torch.nn.Module.named_children`"""

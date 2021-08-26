@@ -74,7 +74,8 @@ jobs:
         --staging-dir "$(Build.BinariesDirectory)/staging/onnxruntime-mobile-c" \
         --pod-version ${ORT_POD_VERSION} \
         --framework-info-file "$(Build.BinariesDirectory)/ios_framework/framework_info.json" \
-        --framework-dir "$(Build.BinariesDirectory)/ios_framework/framework_out/onnxruntime.framework"
+        --framework-dir "$(Build.BinariesDirectory)/ios_framework/framework_out/onnxruntime.xcframework" \
+        --public-headers-dir "$(Build.BinariesDirectory)/ios_framework/framework_out/Headers"
     displayName: "Assemble onnxruntime-mobile-c pod files"
 
   - script: |

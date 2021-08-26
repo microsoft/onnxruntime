@@ -161,6 +161,8 @@ def parse_arguments():
     parser.add_argument(
         "--enable_training_ops", action='store_true', help="Enable training ops in inference graph.")
     parser.add_argument(
+        "--enable_training_torch_interop", action='store_true', help="Enable training kernels interop with torch.")
+    parser.add_argument(
         "--disable_nccl", action='store_true', help="Disable Nccl.")
     parser.add_argument(
         "--mpi_home", help="Path to MPI installation dir")
@@ -533,9 +535,14 @@ def parse_arguments():
     parser.add_argument(
         "--ms_experimental", action='store_true', help="Build microsoft experimental operators.")\
 
+    # eager mode
     parser.add_argument(
         "--build_eager_mode", action='store_true',
         help="Build ONNXRuntime micro-benchmarks.")
+    parser.add_argument('--eager_customop_module', default=None,
+                        help='Module containing custom op mappings for eager mode.')
+    parser.add_argument('--eager_customop_header', default=None,
+                        help='Header containing custom op definitions for eager mode.')
 
     return parser.parse_args()
 
@@ -763,6 +770,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_NVTX_PROFILE=" + ("ON" if args.enable_nvtx_profile else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + ("ON" if args.enable_training else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING_OPS=" + ("ON" if args.enable_training_ops else "OFF"),
+        "-Donnxruntime_ENABLE_TRAINING_TORCH_INTEROP=" + ("ON" if args.enable_training_torch_interop else "OFF"),
         # Enable advanced computations such as AVX for some traininig related ops.
         "-Donnxruntime_ENABLE_CPU_FP16_OPS=" + ("ON" if args.enable_training else "OFF"),
         "-Donnxruntime_USE_NCCL=" + ("OFF" if args.disable_nccl else "ON"),
@@ -906,8 +914,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             cmake_args += ["-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=" + args.xcode_code_signing_team_id]
 
     if args.use_coreml:
-        if not is_macOS():
-            raise BuildError("Build CoreML EP requires macOS")
         cmake_args += ["-Donnxruntime_USE_COREML=ON"]
 
     if args.ios:
@@ -2146,21 +2152,56 @@ def main():
             args.rocm_version = ""
 
         if args.build_eager_mode:
-            # generate the ort aten backend code
-            def gen_ort_aten_ops(eager_root_dir):
-                gen_cpp_name = os.path.join(eager_root_dir, "ort_aten.g.cpp")
-                if os.path.exists(gen_cpp_name):
-                    os.remove(gen_cpp_name)
-                subprocess.check_call([
-                    sys.executable,
-                    os.path.join(eager_root_dir, 'opgen', 'opgen.py'),
-                    "--output_file",
-                    gen_cpp_name,
-                    "--use_preinstalled_torch"
-                ])
-
             eager_root_dir = os.path.join(source_dir, "orttraining", "orttraining", "eager")
-            gen_ort_aten_ops(eager_root_dir)
+            if args.eager_customop_module and not args.eager_customop_header:
+                raise Exception('eager_customop_header must be provided when eager_customop_module is')
+            elif args.eager_customop_header and not args.eager_customop_module:
+                raise Exception('eager_customop_module must be provided when eager_customop_header is')
+
+            def gen_ops(gen_cpp_name: str, header_file: str, ops_module: str, custom_ops: bool):
+                gen_cpp_scratch_name = gen_cpp_name + '.working'
+                print(f'Generating ORT ATen overrides (output_file: {gen_cpp_name}, header_file: {header_file},'
+                      f'ops_module: {ops_module}), custom_ops: {custom_ops}')
+
+                cmd = [sys.executable, os.path.join(os.path.join(eager_root_dir, 'opgen', 'opgen.py')),
+                       '--output_file', gen_cpp_scratch_name,
+                       '--ops_module', ops_module,
+                       '--header_file', header_file]
+
+                if custom_ops:
+                    cmd += ["--custom_ops"]
+
+                subprocess.check_call(cmd)
+
+                import filecmp
+                if (not os.path.isfile(gen_cpp_name) or
+                   not filecmp.cmp(gen_cpp_name, gen_cpp_scratch_name, shallow=False)):
+                    os.rename(gen_cpp_scratch_name, gen_cpp_name)
+                else:
+                    os.remove(gen_cpp_scratch_name)
+
+            def gen_ort_ops():
+                # generate native aten ops
+                import torch
+                regdecs_path = os.path.join(os.path.dirname(torch.__file__), 'include/ATen/RegistrationDeclarations.h')
+
+                ops_module = os.path.join(eager_root_dir, 'opgen/opgen/atenops.py')
+                gen_ops(os.path.join(eager_root_dir, 'ort_aten.g.cpp'), regdecs_path, ops_module, False)
+
+                # generate custom ops
+                if not args.eager_customop_header:
+                    args.eager_customop_header = os.path.realpath(os.path.join(
+                        eager_root_dir,
+                        "opgen",
+                        "CustomOpDeclarations.h"))
+
+                if not args.eager_customop_module:
+                    args.eager_customop_module = os.path.join(eager_root_dir, 'opgen/opgen/custom_ops.py')
+
+                gen_ops(os.path.join(eager_root_dir, 'ort_customops.g.cpp'),
+                        args.eager_customop_header, args.eager_customop_module, True)
+
+            gen_ort_ops()
 
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home, mpi_home, nccl_home,
