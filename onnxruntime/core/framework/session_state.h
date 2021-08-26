@@ -101,7 +101,6 @@ class SessionState {
         use_deterministic_compute_(use_deterministic_compute),
         enable_mem_reuse_(enable_mem_reuse),
         prepacked_weights_container_(prepacked_weights_container) {
-
     SetupAllocators();
   }
 
@@ -266,7 +265,7 @@ class SessionState {
   const KernelCreateInfo& GetNodeKernelCreateInfo(NodeIndex node_index) const;
 
   /// Return SessionState for the given Node index and attribute name if found.
-  const SessionState* GetSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name) const;
+  const SessionState* GetSubgraphSessionState(NodeIndex index, const std::string& attribute_name) const;
 
   concurrency::ThreadPool* GetThreadPool() const noexcept { return thread_pool_; }
   concurrency::ThreadPool* GetInterOpThreadPool() const noexcept { return inter_op_thread_pool_; }
