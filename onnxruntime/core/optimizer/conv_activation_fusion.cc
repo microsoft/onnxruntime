@@ -136,7 +136,7 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
           auto conv_outputs = conv_node.MutableOutputDefs();
           auto add_inputs = add_node.MutableInputDefs();
           int32_t dependent = 0, independent = 0;
-          for (auto add_input: add_inputs) {
+          for (auto add_input : add_inputs) {
             if (add_input->Name() == conv_outputs[0]->Name()) {
               dependent++;
             } else {
@@ -179,6 +179,14 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
           } else {
             continue;
           }
+        } else if ((node->GetExecutionProviderType().empty() || node->GetExecutionProviderType() == onnxruntime::kCpuExecutionProvider) &&
+                   graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "HardSigmoid", {6})) {
+          auto* alpha_attr = graph_utils::GetNodeAttribute(next_node, "alpha");
+          auto* beta_attr = graph_utils::GetNodeAttribute(next_node, "beta");
+          float alpha = (alpha_attr == nullptr ? 0.2f : alpha_attr->f());
+          float beta = (beta_attr == nullptr ? 0.5f : beta_attr->f());
+          activation_params.push_back(alpha);
+          activation_params.push_back(beta);
         } else {
           continue;
         }
