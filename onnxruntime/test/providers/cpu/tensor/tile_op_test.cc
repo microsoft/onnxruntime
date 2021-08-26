@@ -151,5 +151,44 @@ TEST(TensorOpTest, TileUint64Type) {
 TEST(TensorOpTest, TileBoolType) {
   RunTestWrapper<bool>();
 }
+
+template <typename T>
+void LargeTileTest(std::vector<T> input,
+             std::vector<int64_t> input_dims,
+             std::vector<int64_t> repeat,
+             std::vector<int64_t> repeat_dims,
+             std::vector<T> output,
+             std::vector<int64_t> output_dims) {
+  OpTester test("Tile");
+  test.AddInput<T>("input", input_dims, input);
+  test.AddInput<int64_t>("repeats", repeat_dims, repeat);
+  test.AddOutput<T>("output", output_dims, output);
+  if (std::is_same<T, int8_t>::value)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT reports error: Assertion Error in makePaddedScale: 0 (regionRanges != nullptr)
+  else
+    test.Run();
+}
+
+TEST(TensorOpTest, LargeTileTest) {
+  const size_t input_size = 256*128;
+  const size_t repeat = 2;
+
+  size_t output_size = input_size * repeat;
+  std::vector<int> input(input_size);
+  std::vector<int> output(output_size);
+  // generate input data
+  int current = 0;
+  auto UniqueNumber = [&current] () { return ++current; };
+  std::generate_n(input.begin(), input.size(), UniqueNumber);
+  //generate output data
+  for(size_t i = 0; i < output_size; i++){
+    output[i] = input[i%input_size];
+  }
+
+  LargeTileTest<int>(input, {1,1,static_cast<int64_t>(input_size)},
+              {1,1,static_cast<int64_t>(repeat)}, {3},
+              output, {1,1,static_cast<int64_t>(output_size)}
+  );
+}
 }  // namespace test
 }  // namespace onnxruntime
