@@ -3,7 +3,7 @@ set -e -x
 
 echo "Python version=$PYTHON_VER"
 
-PYTHON_EXE="/opt/python/cp38-cp38/bin/python3.8"
+PYTHON_EXE="/usr/bin/python3"
 
 export ONNX_ML=1
 export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
