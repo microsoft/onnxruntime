@@ -544,6 +544,10 @@ def parse_arguments():
     parser.add_argument('--eager_customop_header', default=None,
                         help='Header containing custom op definitions for eager mode.')
 
+    # Custom ops libraries to be linked with onnxruntime
+    parser.add_argument(
+        "--custom_ops_libraries", default="", help="List of custom ops libraries to link with onnxruntime.")
+
     return parser.parse_args()
 
 
@@ -791,6 +795,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
         # enable custom operators in onnxruntime-extensions
         "-Donnxruntime_ENABLE_EXTENSION_CUSTOM_OPS=" + ("ON" if args.enable_onnxruntime_extensions else "OFF"),
+        "-Donnxruntime_CUSTOM_OPS_LIBRARIES=" + args.custom_ops_libraries,
     ]
     # It should be default ON in CI build pipelines, and OFF in packaging pipelines.
     # And OFF for the people who are not actively developing onnx runtime.
