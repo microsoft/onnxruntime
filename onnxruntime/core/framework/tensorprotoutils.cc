@@ -1004,9 +1004,7 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
               n_sparse_elements,
               indices, model_path, dims,
               [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
-                const auto* src = static_cast<const uint8_t*>(sparse_data) + from_idx;
-                auto* dst = static_cast<uint8_t*>(dense_data) + to_idx;
-                memcpy(dst, src, sizeof(uint8_t));
+                static_cast<uint8_t*>(dense_data)[to_idx] = static_cast<const uint8_t*>(sparse_data)[from_idx];
               });
 
           break;
