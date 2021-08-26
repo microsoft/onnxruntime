@@ -6,7 +6,7 @@ set -exuo pipefail
 
 
 fixup-mirrors
-if [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
+if [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ] ; then
 	yum -y update
 	if ! localedef -V &> /dev/null; then
 		# somebody messed up glibc-common package to squeeze image size, reinstall the package
@@ -21,12 +21,13 @@ elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ]; then
 	apt-get upgrade -qq -y
 	apt-get clean -qq
 	rm -rf /var/lib/apt/lists/*
-else
+elif [ "${AUDITWHEEL_POLICY}" != "manylinux_2_28" ]; then
 	echo "Unsupported policy: '${AUDITWHEEL_POLICY}'"
 	exit 1
 fi
 fixup-mirrors
 
+if [ "${AUDITWHEEL_POLICY}" != "manylinux_2_28" ]; then
 # do we want to update locales ?
 LOCALE_ARCHIVE=/usr/lib/locale/locale-archive
 TIMESTAMP_FILE=${LOCALE_ARCHIVE}.ml.timestamp
@@ -38,7 +39,7 @@ if [ ! -f ${TIMESTAMP_FILE} ] || [ ${LOCALE_ARCHIVE} -nt ${TIMESTAMP_FILE} ]; th
 	if localedef --list-archive | grep -sq -v -i ^en_US.utf8; then
 		localedef --list-archive | grep -v -i ^en_US.utf8 | xargs localedef --delete-from-archive
 	fi
-	if [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ]; then
+	if [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux_2_28" ]; then
 		mv -f ${LOCALE_ARCHIVE} ${LOCALE_ARCHIVE}.tmpl
 		build-locale-archive --install-langs="en_US.utf8"
 	elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ]; then
@@ -58,6 +59,7 @@ fi
 
 # Fix libc headers to remain compatible with C99 compilers.
 find /usr/include/ -type f -exec sed -i 's/\bextern _*inline_*\b/extern __inline __attribute__ ((__gnu_inline__))/g' {} +
+fi
 
 if [ "${DEVTOOLSET_ROOTPATH:-}" != "" ]; then
 	# remove useless things that have been installed/updated by devtoolset

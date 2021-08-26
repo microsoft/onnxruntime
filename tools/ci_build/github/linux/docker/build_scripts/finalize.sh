@@ -23,7 +23,7 @@ for PREFIX in $(find /opt/_internal/ -mindepth 1 -maxdepth 1 \( -name 'cpython*'
 	PY_VER=$(${PREFIX}/bin/python -c "import sys; print('.'.join(str(v) for v in sys.version_info[:2]))")
 	# Since we fall back on a canned copy of pip, we might not have
 	# the latest pip and friends. Upgrade them to make sure.
-	${PREFIX}/bin/pip install -U --require-hashes -r ${MY_DIR}/requirements${PY_VER}.txt
+	${PREFIX}/bin/pip install -U --require-hashes -r ${MY_DIR}/${PY_VER}/requirements.txt
 	# Create a symlink to PREFIX using the ABI_TAG in /opt/python/
 	ABI_TAG=$(${PREFIX}/bin/python ${MY_DIR}/python-tag-abi-tag.py)
 	ln -s ${PREFIX} /opt/python/${ABI_TAG}
@@ -42,9 +42,9 @@ TOOLS_PATH=/opt/_internal/tools
 source $TOOLS_PATH/bin/activate
 
 # Install default packages
-pip install -U --require-hashes -r $MY_DIR/requirements3.9.txt
+pip install -U --require-hashes -r $MY_DIR/3.9/requirements.txt
 # Install certifi and pipx
-pip install -U --require-hashes -r $MY_DIR/requirements-base-tools.txt
+pip install -U --require-hashes -r $MY_DIR/basetools/requirements.txt
 
 # Make pipx available in PATH,
 # Make sure when root installs apps, they're also in the PATH

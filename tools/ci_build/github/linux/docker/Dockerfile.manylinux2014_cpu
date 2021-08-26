@@ -1,3 +1,7 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+# This file is used by Node.js binding,Python Packaging Pipeline (Training CPU),Zip-Nuget-Java Packaging Pipeline,Linux CPU CI Pipeline,Linux CPU Minimal Build E2E CI Pipeline,Linux CPU x64 NoContribops CI Pipeline,Linux DNNL CI Pipeline,onnxruntime-CI Eager Mode Test V3,orttraining-linux-ci-pipeline
 FROM quay.io/pypa/manylinux2014_x86_64:latest
 
 ENV PATH /usr/local/gradle/bin:/opt/rh/devtoolset-10/root/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin

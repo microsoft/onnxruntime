@@ -132,8 +132,8 @@ if (onnxruntime_BUILD_UNIT_TESTS)
 
   list(APPEND ONNXRUNTIME_LIBS
       onnxruntime_graph
-      onnxruntime_common
-      onnxruntime_mlas
+      ${ONNXRUNTIME_MLAS_LIBS}
+	  onnxruntime_common
       onnxruntime_flatbuffers
   )
 

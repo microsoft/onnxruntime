@@ -53,7 +53,10 @@ def _build_for_ios_sysroot(build_config, intermediates_dir, base_build_command,
         build_dir_current_arch = os.path.join(intermediates_dir, sysroot + "_" + current_arch)
         build_command = base_build_command + [
             '--ios_sysroot=' + sysroot,
-            '--osx_arch=' + current_arch,
+            '--cmake_extra_defines',
+            'CMAKE_OSX_DEPLOYMENT_TARGET=11.0',
+            'CMAKE_OSX_ARCHITECTURES=' + current_arch,
+            'IOS_ARCH=' + current_arch,
             '--build_dir=' + build_dir_current_arch
         ]
 

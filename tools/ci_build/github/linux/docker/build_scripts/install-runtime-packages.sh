@@ -24,7 +24,7 @@ MY_DIR=$(dirname "${BASH_SOURCE[0]}")
 # PEP is missing the package for libSM.so.6 for RPM based system
 
 # MANYLINUX_DEPS: Install development packages (except for libgcc which is provided by gcc install)
-if [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
+if [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux_2_28" ]; then
 	MANYLINUX_DEPS="glibc-devel libstdc++-devel glib2-devel libX11-devel libXext-devel libXrender-devel mesa-libGL-devel libICE-devel libSM-devel"
 elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ]; then
 	MANYLINUX_DEPS="libc6-dev libstdc++-6-dev libglib2.0-dev libx11-dev libxext-dev libxrender-dev libgl1-mesa-dev libice-dev libsm-dev"
@@ -34,7 +34,7 @@ else
 fi
 
 # RUNTIME_DEPS: Runtime dependencies. c.f. install-build-packages.sh
-if [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
+if [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux_2_28" ]; then
 	RUNTIME_DEPS="zlib bzip2 expat ncurses readline tk gdbm libpcap xz openssl keyutils-libs libkadm5 libcom_err libidn libcurl uuid libffi"
 	if [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ]; then
 		RUNTIME_DEPS="${RUNTIME_DEPS} db4"
@@ -109,6 +109,34 @@ elif [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
 		# Install mayeut/devtoolset-10 repo to get devtoolset-10
 		curl -fsSLo /etc/yum.repos.d/mayeut-devtoolset-10.repo https://copr.fedorainfracloud.org/coprs/mayeut/devtoolset-10/repo/custom-1/mayeut-devtoolset-10-custom-1.repo
 	fi
+elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_28" ]; then
+	PACKAGE_MANAGER=dnf
+	BASETOOLS="${BASETOOLS} hostname which"
+	# See https://unix.stackexchange.com/questions/41784/can-yum-express-a-preference-for-x86-64-over-i386-packages
+	echo "multilib_policy=best" >> /etc/yum.conf
+	# Error out if requested packages do not exist
+	echo "skip_missing_names_on_install=False" >> /etc/yum.conf
+	# Make sure that locale will not be removed
+	sed -i '/^override_install_langs=/d' /etc/yum.conf
+	# Exclude mirror holding broken package metadata
+	echo "exclude = d36uatko69830t.cloudfront.net" >> /etc/yum/pluginconf.d/fastestmirror.conf
+	dnf -y update
+	dnf -y install yum-utils curl
+
+ 	#Added by @snnn
+ 	if [ -d "/usr/local/cuda-10.2" ]; then
+ 	  TOOLCHAIN_DEPS="gcc gcc-c++ gcc-gfortran"
+ 	elif [ -d "/usr/local/cuda-11.1" ]; then
+ 	  TOOLCHAIN_DEPS="gcc-toolset-9.x86_64 gcc-toolset-9-gcc.x86_64 gcc-toolset-9-gcc-c++.x86_64 gcc-toolset-9-gcc-gdb-plugin.x86_64 gcc-toolset-9-gcc-gfortran.x86_64"
+ 	else
+ 	  TOOLCHAIN_DEPS="gcc-toolset-10.x86_64 gcc-toolset-10-gcc.x86_64 gcc-toolset-10-gcc-c++.x86_64 gcc-toolset-10-gcc-gdb-plugin.x86_64 gcc-toolset-10-gcc-gfortran.x86_64"
+ 	fi
+	if [ "${AUDITWHEEL_ARCH}" == "x86_64" ]; then
+		# EPEL support (for yasm)
+ 		if ! rpm -q --quiet epel-release ; then
+ 		  dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
+ 		fi		
+	fi
 elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ]; then
 	PACKAGE_MANAGER=apt
 	BASETOOLS="${BASETOOLS} hostname"
@@ -125,6 +153,8 @@ fi
 
 if [ "${PACKAGE_MANAGER}" == "yum" ]; then
 	yum -y install ${BASETOOLS} ${TOOLCHAIN_DEPS} ${MANYLINUX_DEPS} ${RUNTIME_DEPS}
+elif [ "${PACKAGE_MANAGER}" == "dnf" ]; then
+	dnf -y --allowerasing install ${BASETOOLS} ${TOOLCHAIN_DEPS} ${MANYLINUX_DEPS} ${RUNTIME_DEPS}
 elif [ "${PACKAGE_MANAGER}" == "apt" ]; then
 	apt-get install -qq -y --no-install-recommends ${BASETOOLS} ${TOOLCHAIN_DEPS} ${MANYLINUX_DEPS} ${RUNTIME_DEPS}
 else

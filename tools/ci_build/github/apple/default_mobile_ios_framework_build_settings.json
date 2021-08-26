@@ -19,7 +19,6 @@
         "--disable_exceptions",
         "--enable_reduced_operator_type_support",
         "--use_coreml",
-        "--skip_tests",
-        "--apple_deploy_target=11.0"
+        "--skip_tests"
     ]
 }

@@ -1,0 +1,59 @@
+parameters:
+- name: ONNXRUNTIME_CFLAGS
+  type: string
+  default: ''
+- name: ONNXRUNTIME_CXXFLAGS
+  type: string
+  default: ''
+- name: ONNXRUNTIME_BUILD_CMD
+  type: string
+  default: ''
+- name: CIBW_ARCHS
+  type: string
+  default: ''
+
+jobs:
+- job: Linux_CPU_py_Wheels_${{ parameters.CIBW_ARCHS }}
+  timeoutInMinutes: 600
+  workspace:
+    clean: all
+  pool: Linux-CPU  
+  variables:
+    CIBW_ENVIRONMENT: CFLAGS='${{ parameters.ONNXRUNTIME_CFLAGS}}' CXXFLAGS='${{ parameters.ONNXRUNTIME_CXXFLAGS}}' NIGHTLY_BUILD='$(NIGHTLY_BUILD)' BUILD_ID='$(Build.BuildId)' ONNXRUNTIME_BUILD_CMD='${{ parameters.ONNXRUNTIME_BUILD_CMD}}'
+    CIBW_PROJECT_REQUIRES_PYTHON: ">=3.6, <3.11"
+    CIBW_MANYLINUX_X86_64_IMAGE: onnxruntimecpubuild_x86_64
+    CIBW_MANYLINUX_AARCH64_IMAGE: onnxruntimecpubuild_aarch64
+    CIBW_MANYLINUX_PYPY_X86_64_IMAGE: onnxruntimecpubuild_x86_64
+    CIBW_MANYLINUX_PYPY_AARCH64_IMAGE: onnxruntimecpubuild_aarch64
+    CIBW_SKIP: pp*-manylinux_aarch64 cp310-manylinux2014_aarch64
+    CIBW_ARCHS: ${{ parameters.CIBW_ARCHS }}
+
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - template: get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.CIBW_ARCHS }}/python/cpu/Dockerfile
+      Context: tools/ci_build/github/linux/docker/inference/${{ parameters.CIBW_ARCHS }}/python/cpu
+      Repository: onnxruntimecpubuild_${{ parameters.CIBW_ARCHS }}
+
+  - bash: |
+      set -o errexit
+      pip3 install cibuildwheel==2.1.1
+    displayName: Install dependencies
+
+  - bash: python3 -m cibuildwheel --output-dir $(Build.ArtifactStagingDirectory)
+    displayName: Build wheels
+
+  - task: PublishPipelineArtifact@1
+    displayName: 'Publish Artifact: ONNXRuntime python wheel'
+    inputs:
+      artifactName: onnxruntime_linux_cpu_${{ parameters.CIBW_ARCHS }}
+      artifactType: pipeline
+      targetPath: '$(Build.ArtifactStagingDirectory)'
+
+  - template: component-governance-component-detection-steps.yml
+    parameters:
+      condition: 'succeeded'

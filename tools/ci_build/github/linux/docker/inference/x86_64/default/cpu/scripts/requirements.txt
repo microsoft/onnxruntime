@@ -1,0 +1,4 @@
+numpy
+git+http://github.com/onnx/onnx.git@1f63dcb7fcc3a8bf5c3c8e326867ecd6f5c43f35#egg=onnx
+protobuf
+flatbuffers
