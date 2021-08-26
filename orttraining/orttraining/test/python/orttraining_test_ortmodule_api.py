@@ -782,6 +782,39 @@ def test_gradient_correctness_argmax_unfold():
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
+@pytest.mark.parametrize("offset", [-1, 0, 1])
+@pytest.mark.parametrize("dim1, dim2", ([0, 1], [0, 2], [1, 2], [2, 0]))
+def test_gradient_correctness_argmax_diagonal(offset, dim1, dim2):
+    class NeuralNetDiagonal(torch.nn.Module):
+        def __init__(self, offset=0, dim1=0, dim2=1):
+            super(NeuralNetDiagonal, self).__init__()
+            self.offset = offset
+            self.dim1 = dim1
+            self.dim2 = dim2
+
+        def forward(self, input):
+            return torch.diagonal(input, self.offset, self.dim1, self.dim2)
+
+    N, D, H = 16, 256, 128
+    device = 'cuda'
+    pt_model = NeuralNetDiagonal(offset, dim1, dim2).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input):
+        prediction = model(input)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction
+
+    for _ in range(10):
+        pt_input = torch.rand((N, D, H), device=device, requires_grad=True)
+        ort_input = copy.deepcopy(pt_input)
+        pt_prediction = run_step(pt_model, pt_input)
+        ort_prediction = run_step(ort_model, ort_input)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+
 def test_module_with_non_differential_output():
     device = 'cuda'
     N, D_in, H, D_out = 32, 128, 64, 10
