@@ -15,31 +15,14 @@
 namespace onnxruntime {
 namespace sparse_utils {
 
-// Copy element
-using CopyElementFunc = void (*)(void* dest, const void* src, int64_t dest_index, int64_t src_index);
-
-template <typename T>
-inline void CopyElement(void* dst, const void* src, int64_t dst_index, int64_t src_index) {
-  reinterpret_cast<T*>(dst)[dst_index] = reinterpret_cast<const T*>(src)[src_index];
-}
-
-void CopyString(void* dst, const void* src, int64_t dst_index, int64_t src_index) {
-  reinterpret_cast<std::string*>(dst)[dst_index] = reinterpret_cast<const std::string*>(src)[src_index];
-}
-
-template <typename T>
-struct NotZero {
-  bool operator()(T v) const {
-    return v != T{0};
+Status Convert2DCooIndicesTo1D(int64_t cols, gsl::span<const int64_t> input, std::vector<int64_t>& output) {
+  ORT_RETURN_IF_NOT(input.size() % 2 == 0, "2-D indices size must be evenly divisible by 2");
+  for (size_t i = 0, limit = input.size(); i < limit; i += 2) {
+    int64_t ind = input[i] * cols + input[i + 1];
+    output.push_back(ind);
   }
-};
-
-template <>
-struct NotZero<std::string> {
-  bool operator()(const std::string& s) const {
-    return !s.empty();
-  }
-};
+  return Status::OK();
+}
 
 #if !defined(ORT_MINIMAL_BUILD)
 template <typename T, typename ValueRecorder>
@@ -215,7 +198,7 @@ Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const Spa
 
     CopyElementFunc copy_func;
     if (is_string) {
-      copy_func = CopyString;
+      copy_func = CopyElement<std::string>;
     } else {
       const auto element_size = src.DataType()->Size();
       switch (element_size) {
@@ -282,14 +265,9 @@ Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const Spa
 Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src,
                               const AllocatorPtr& cpu_allocator, const AllocatorPtr& dst_allocator, Tensor& dst) {
   const auto& src_dims = src.DenseShape().GetDims();
-  if (src_dims.size() != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Currently do not support dims higher than 2 dimensions: ", src_dims.size());
-  }
-
-  if (!(src.Format() == SparseFormat::kCoo)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input must be of COO format");
-  }
+  ORT_RETURN_IF(src_dims.size() < 1 || src_dims.size() > 2,
+                "Currently support 1-D and 2-D tensors: ", src_dims.size());
+  ORT_RETURN_IF_NOT(src.Format() == SparseFormat::kCoo, "Input must be of COO format");
 
   const bool is_string = src.IsDataTypeString();
   if (is_string && dst_allocator->Info().device.Type() != OrtDevice::CPU) {
@@ -328,7 +306,7 @@ Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const Spa
     const auto element_size = src.DataType()->Size();
     CopyElementFunc copy_func = nullptr;
     if (src.IsDataTypeString()) {
-      copy_func = CopyString;
+      copy_func = CopyElement<std::string>;
     } else {
       switch (element_size) {
         case sizeof(uint8_t):
@@ -414,13 +392,11 @@ Status DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Ten
                     cpu_allocator->Info().device.Type(), " to device type: ", dst_allocator->Info().device.Type());
 
   const auto& src_dims = src.Shape().GetDims();
-  if (src_dims.size() != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Currently do not support dims higher than 2 dimensions: ", src_dims.size());
-  }
+  ORT_RETURN_IF(src_dims.size() < 1 || src_dims.size() > 2,
+                "Currently support 1-D and 2-D tensors: ", src_dims.size());
+  ORT_RETURN_IF(src_dims.size() == 1 && !linear_index, "1-D tensors may only have 1-D indices");
 
   const bool is_string = src.IsDataTypeString();
-
   if (is_string && dst_allocator->Info().device.Type() != OrtDevice::CPU) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Unable to convert strings tensor to a sparse tensor that is not on CPU");
@@ -439,7 +415,7 @@ Status DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Ten
 
   std::vector<int64_t> gathered_indices;
   gathered_indices.reserve(static_cast<size_t>(src.Shape().Size() / 2));
-  const auto cols = src_dims[1];
+  const auto cols = (src_dims.size() == 2) ? src_dims[1] : src_dims[0];
   std::vector<uint8_t> values_8;
   std::vector<uint16_t> values_16;
   std::vector<uint32_t> values_32;
@@ -489,7 +465,7 @@ Status DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Ten
   }
 
   const auto nnz = (linear_index) ? gathered_indices.size() : gathered_indices.size() / 2;
-  assert(static_cast<int64_t>(nnz) == nnz_tensor.Shape().Size() || nnz == values_str.size());
+  assert(gsl::narrow<int64_t>(nnz) == nnz_tensor.Shape().Size() || nnz == values_str.size());
 
   SparseTensor dst_result(src.DataType(), src.Shape(), dst_allocator);
   auto mutator = dst_result.MakeCooData(nnz, gathered_indices.size());

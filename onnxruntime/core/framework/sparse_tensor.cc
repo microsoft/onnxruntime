@@ -251,13 +251,15 @@ SparseTensor::CooView SparseTensor::AsCoo() const {
 
 std::vector<int64_t> SparseTensor::GetCooIndexDims(size_t values_count, size_t index_size) const {
   std::vector<int64_t> index_dims{gsl::narrow<int64_t>(values_count)};
-  if (values_count * 2 == index_size) {
+  if (values_count == index_size) {
+  } else if (values_count * 2 == index_size) {
     // 2-D COO index
     index_dims.push_back(2);
   } else {
-    ORT_ENFORCE(values_count == index_size,
-                "Index size: ", index_size, " must be equal to or twice the values size: ", values_count);
+    ORT_ENFORCE(false, "Index size: ", index_size, " must be equal to or twice the values size: ", values_count);
   }
+  ORT_ENFORCE(dense_shape_.NumDimensions() >= index_dims.size(),
+              "COO Indices shape must have equal or lesser number of dimensions than dense shape");
   return index_dims;
 }
 
@@ -280,7 +282,6 @@ Status SparseTensor::MakeCooData(const IDataTransfer& data_transfer,
                                  const OrtMemoryInfo& data_location,
                                  size_t values_count, const void* values_data,
                                  gsl::span<const int64_t> indices) {
-  ORT_RETURN_IF(IsDataTypeString(), "Use MakeCooStrings");
   auto mutator = MakeCooData(values_count, indices.size());
   if (values_count > 0) {
     auto& dst_values = mutator.Values();
@@ -551,7 +552,7 @@ Status SparseTensor::Copy(const IDataTransfer& data_transfer, SparseTensor& dst_
   }
 
   if (Values().Shape().Size() > 0) {
-    // This instance may either have a contigious buffer which we can copy in one shot
+    // This instance may either have a contiguous buffer which we can copy in one shot
     // or it can point to users buffers, in which case we have to copy each buffer individually
     // strings can not be memcpyed albeit always on CPU.
     if (p_data_ != nullptr) {
@@ -569,7 +570,7 @@ Status SparseTensor::Copy(const IDataTransfer& data_transfer, SparseTensor& dst_
         ORT_RETURN_IF_ERROR(data_transfer.CopyTensor(src, dst, exec_q_id));
       }
     } else {
-      // non-contiguos buffer
+      // non-contiguous buffer
       if (is_string) {
         CopyStrings(Values(), result_values);
       } else {

@@ -262,6 +262,23 @@ void embedLayerNormalizationShapeInference(InferenceContext& ctx) {
   *mask_index_shape.add_dim() = input_ids_dims[0];
   updateOutputShape(ctx, 1, mask_index_shape);
 }
+
+static const std::vector<std::string>& numeric_sparse_tensor_types_except_half() {
+  static const std::vector<std::string> numeric_sparse_tensor_types_except_half = {
+      "sparse_tensor(uint8)",
+      "sparse_tensor(uint16)",
+      "sparse_tensor(uint32)",
+      "sparse_tensor(uint64)",
+      "sparse_tensor(int8)",
+      "sparse_tensor(int16)",
+      "sparse_tensor(int32)",
+      "sparse_tensor(int64)",
+      "sparse_tensor(float)",
+      "sparse_tensor(double)",
+      "sparse_tensor(string)",
+      "sparse_tensor(bool)"};
+  return numeric_sparse_tensor_types_except_half;
+}
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
@@ -1917,6 +1934,31 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
         FusedMatMulShapeInference(ctx);
       });
 
+  static const char* MakeCooSparse_doc = R"DOC(
+This is a utility op that helps migration from dense tensor ops.
+It takes dense tensors that are assembled together into a sparse tensor in
+COO format.
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MakeCooSparse)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "DenseShape", "A 1-D tensor that contains a dense shape of the original dense tensor", "T1")
+      .Input(1, "Values", "A dense tensor that contains non-zero values", "T")
+      .Input(2, "Indices", "Contains either 1-D or 2-D COO indices", "T1")
+      .Output(0, "Output", "Sparse Tensor in COO format", "T2")
+      .TypeConstraint("T", OpSchema::all_tensor_types_with_bfloat(), "All tensor types")
+      .TypeConstraint("T1", {"tensor(int64)"}, "Index type")
+      .TypeConstraint("T2", numeric_sparse_tensor_types_except_half(), "Numeric sparse types")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        auto input_type = ctx.getInputType(1);
+        if (nullptr == input_type) {
+          fail_type_inference("Input 0 expected to have type but instead is null");
+        }
+        auto element_type = getTensorElementType(*input_type);
+        propagateElemTypeFromDtypeToOutput(ctx, element_type, 0, TypeProto::kSparseTensorType);
+      });
+
   static const char* NonZero_doc = R"DOC(
   Behaves similar to https://github.com/onnx/onnx/blob/master/docs/Operators.md#NonZero
   returns a tensor that contains coordinates for non-zero entries. Even though the input
@@ -1929,8 +1971,8 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
   ONNX_CONTRIB_OPERATOR_SCHEMA(NonZero)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "A", "2-dimensional sparse matrix A. Either COO format either 1-D or 2-D index", "T")
-      .Output(0, "B", "1 or 2-dimensional dense matrix B", "T1")
+      .Input(0, "A", "An up to 2 dimensional sparse tensor A. Either COO format either 1-D or 2-D index", "T")
+      .Output(0, "B", "An up to 2-dimensional dense matrix B", "T1")
       .TypeConstraint("T", {"sparse_tensor(float)"}, "Constrain to float at this time")
       .TypeConstraint("T1", {"tensor(int64)"}, "Index type")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -1946,15 +1988,14 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
         updateOutputShape(ctx, 0, output_shape);
       });
 
-  static const char* SparseGather_doc = R"DOC(
+  static const char* Gather_doc = R"DOC(
 This is a simplified version of ONNX Gather. No axis support.
 The input 0 is a sparse tensor in COO format
 The input 1 is a dense tensor containing COO 1-D indices of elements to gather.
-XXX: How to we handle invalid indices inputs? Ignore?
 The output is a sparse tensor of the same shape as input that contains values
 of the input sparse tensor that match the input 1 indices.
 )DOC";
-  ONNX_CONTRIB_OPERATOR_SCHEMA(SparseGather)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Gather)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Input(0, "A", "Sparse matrix in COO format", "T")
@@ -1970,15 +2011,15 @@ of the input sparse tensor that match the input 1 indices.
         updateOutputShape(ctx, 0, getInputShape(ctx, 0), TypeProto::kSparseTensorType);
       });
 
-  static const char* SparseSqueeze_doc = R"DOC(
+  static const char* Squeeze_doc = R"DOC(
 Similar to https://github.com/onnx/onnx/blob/master/docs/Operators.md#squeeze
 Removes single dimensional entries designated by axes input.
 For sparse tensors this means that the input must be 2-D and the output 1-D and
-there could be only a single axes entry.
+there could be only a single axes entry. This means that if the incoming tensor had
+2-D COO indices, they would be converted to 1-D indices.
 Output is a reshaped sparse tensor with the same data.
-XXX: Currently operate on 1-D COO indices
 )DOC";
-  ONNX_CONTRIB_OPERATOR_SCHEMA(SparseSequeeze)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Sequeeze)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Input(0, "data", "Sparse 2-D matrix in COO format", "T")
@@ -2030,7 +2071,7 @@ XXX: Currently operate on 1-D COO indices
         updateOutputShape(ctx, 0, output_shape, TypeProto::kSparseTensorType);
       });
 
-  static const char* SparseUnsqueeze_doc = R"DOC(
+  static const char* Unsqueeze_doc = R"DOC(
 Similar to https://github.com/onnx/onnx/blob/master/docs/Operators.md#unsqueeze
 Insert single-dimensional entries to the shape of an input tensor (`data`).
 Takes one required input `axes` - which contains a list of dimension indices and this operator will insert a dimension of value `1` into the corresponding index of the output tensor (`expanded`).
@@ -2048,9 +2089,8 @@ For sparse tensors this means that the input must be 1-D and the output is 2-D a
 there could be only one axes entry.
 
 Output is a reshaped sparse tensor with the same data.
-XXX: Currently operate on 1-D COO indices
 )DOC";
-  ONNX_CONTRIB_OPERATOR_SCHEMA(SparseUnsqueeze)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Unsqueeze)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Input(0, "data", "Sparse 1-D sparse in COO format", "T")
@@ -2105,20 +2145,14 @@ XXX: Currently operate on 1-D COO indices
   ONNX_CONTRIB_OPERATOR_SCHEMA(SparseMatMul)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "A", "Sparse matrix (M,K) A COO format", "T")
-      .Input(1, "B", "Sparse matrix (K,N) ", "T")
-      .Output(0, "Y", "Matrix multiply results", "T")
+      .Input(0, "A", "Sparse tensor (M,K) COO format", "T")
+      .Input(1, "B", "Sparse tensor (K,N) COO format", "T")
+      .Output(0, "Y", "Sparse tensor (M,N) multiply results", "T")
       .Attr(
           "alpha",
           "Scalar multiplier for the product of the input tensors A * B.",
           AttributeProto::FLOAT,
           1.0f)
-      .Attr(
-          "beta",
-          "Scalar multiplier for the product of the input tensor C.",
-          AttributeProto::FLOAT,
-          .0f)
-      .Output(0, "Y", "Matrix multiply results", "T")
       .TypeConstraint("T", {"sparse_tensor(float)"}, "Constrain input and output float at this time")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         const auto* input_type0 = ctx.getInputType(0);
@@ -2135,11 +2169,9 @@ XXX: Currently operate on 1-D COO indices
       });
 
   static const char* Add_doc = R"DOC(
-  Behaves as to https://github.com/onnx/onnx/blob/master/docs/Operators.md#Sum
-  For 1-D input COO index format it would output flat 1-D index and for 
-  2-D input COO index format it would output 2-D COO index.
-  The inputs may have different shapes. The output shape is max() over
-  all dimensions.
+  Behaves as to https://github.com/onnx/onnx/blob/master/docs/Operators.md#Add
+  The inputs may have different shapes. The output shape will have the max number of dimensions
+  over the input dense shapes and the dims will be max() over corresponding input dimensions.
   We are not implementing broadcasting as this is not a requirement.
 )DOC";
   ONNX_CONTRIB_OPERATOR_SCHEMA(Add)
@@ -2148,32 +2180,22 @@ XXX: Currently operate on 1-D COO indices
       .Input(0, "A", "1 or 2 - dimensional sparse matrix A COO format", "T")
       .Input(1, "B", "1 or 2 - dimensional sparse matrix B COO format", "T")
       .Output(0, "Y", "Sum of the respective elements of A and B", "T")
-      .TypeConstraint("T", {"sparse_tensor(float)"}, "Constrain input and output float at this time")
+      .TypeConstraint("T", numeric_sparse_tensor_types_except_half(), "Constrain input and output float at this time")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
         if (!hasInputShape(ctx, 0) || !hasInputShape(ctx, 1)) {
           return;
         }
-        // Verify input shapes are the same
+
         const auto& shape0 = getInputShape(ctx, 0);
         const auto& shape1 = getInputShape(ctx, 1);
-        if (shape0.dim_size() != shape1.dim_size()) {
-          fail_shape_inference("Both inputs must have the same number of dims");
-        }
+        const auto max_dims = std::max(shape0.dim_size(), shape1.dim_size());
 
+        // Let's make the shape determined at runtime
         TensorShapeProto output_shape;
-        auto& dims0 = shape0.dim();
-        auto& dims1 = shape1.dim();
-        for (int i = 0, dim_size = shape0.dim_size(); i < dim_size; ++i) {
-          auto& dim0 = dims0.Get(i);
-          auto& dim1 = dims1.Get(i);
-          if (dim0.has_dim_value() && dim1.has_dim_value()) {
-            auto dim_v = std::max(dim0.dim_value(), dim1.dim_value());
-            output_shape.add_dim()->set_dim_value(dim_v);
-          } else {
-            output_shape.add_dim();
-          }
+        for (int i = 0; i < max_dims; ++i) {
+          output_shape.add_dim();
         }
         updateOutputShape(ctx, 0, output_shape, TypeProto::kSparseTensorType);
       });
@@ -2237,9 +2259,8 @@ The sparse output will have ones at the following flat COO indices: 0 and 4 (1 x
           "list of cat_ints",
           AttributeProto::INTS)
       .TypeConstraint(
-          "T",
-          {"tensor(int64)"},"ints")
-      .TypeConstraint("T1", {"sparse_tensor(int64)"}, "index type")
+          "T", {"tensor(int64)"}, "ints")
+      .TypeConstraint("T1", {"sparse_tensor(float)"}, "index type")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromDtypeToOutput(ctx, TensorProto_DataType_INT64, 0);
         if (!hasInputShape(ctx, 0)) {
@@ -2248,7 +2269,7 @@ The sparse output will have ones at the following flat COO indices: 0 and 4 (1 x
         int cat_len = 0;
         const AttributeProto* cat_attr = nullptr;
         if ((cat_attr = ctx.getAttribute("cat_ints")) != nullptr &&
-                   cat_attr->type() == AttributeProto_AttributeType_INTS) {
+            cat_attr->type() == AttributeProto_AttributeType_INTS) {
           cat_len = cat_attr->ints_size();
         } else {
           fail_shape_inference("Can't get categories attribute");

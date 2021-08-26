@@ -17,6 +17,7 @@
 #include "core/framework/allocator.h"
 #include "core/framework/callback.h"
 #include "core/framework/data_types.h"
+#include "core/framework/sparse_utils.h"
 #include "core/platform/path_lib.h"
 #include "core/session/ort_apis.h"
 #include "onnx/defs/tensor_proto_util.h"
@@ -1072,30 +1073,6 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-// Determines if this is a type specific zero
-using IsZeroFunc = bool (*)(const void*);
-// Copy element
-using CopyElementFunc = void (*)(void* dest, const void* src, int64_t dest_index, int64_t src_index);
-
-// Here we are not using tolerance for FP types since these dense tensors were
-// created from sparse initializers where zeros were absolute
-template <typename T>
-inline bool IsZero(const void* p) {
-  return (static_cast<T>(0) == *reinterpret_cast<const T*>(p));
-}
-
-template <typename T>
-inline void CopyElement(void* dst, const void* src, int64_t dst_index, int64_t src_index) {
-  const auto* src_p = reinterpret_cast<const T*>(src) + src_index;
-  auto* dst_p = reinterpret_cast<T*>(dst) + dst_index;
-  memcpy(dst_p, src_p, sizeof(T));
-}
-
-template <>
-inline void CopyElement<uint8_t>(void* dst, const void* src, int64_t dst_index, int64_t src_index) {
-  reinterpret_cast<uint8_t*>(dst)[dst_index] = reinterpret_cast<const uint8_t*>(src)[src_index];
-}
-
 
 template <typename T>
 static void SetIndices(gsl::span<int64_t> gathered_indices,
@@ -1118,7 +1095,7 @@ static void SetIndices(gsl::span<int64_t> gathered_indices,
 }
 
 static void SparsifyGeneric(const void* dense_raw_data, size_t n_dense_elements, size_t element_size,
-                            IsZeroFunc is_zero, CopyElementFunc copy,
+                            sparse_utils::IsZeroFunc is_zero, sparse_utils::CopyElementFunc copy,
                             TensorProto& values, TensorProto& indices,
                             size_t& nnz) {
   auto advance = [element_size](const void* start, size_t elements) -> const void* {
@@ -1201,22 +1178,22 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
   switch (element_size) {
     case 1: {
       SparsifyGeneric(dense_data, n_dense_elements, element_size,
-                      IsZero<uint8_t>, CopyElement<uint8_t>, values, indices, nnz);
+                      sparse_utils::IsZero<uint8_t>, sparse_utils::CopyElement<uint8_t>, values, indices, nnz);
       break;
     }
     case 2: {
       SparsifyGeneric(dense_data, n_dense_elements, element_size,
-                      IsZero<uint16_t>, CopyElement<uint16_t>, values, indices, nnz);
+                      sparse_utils::IsZero<uint16_t>, sparse_utils::CopyElement<uint16_t>, values, indices, nnz);
       break;
     }
     case 4: {
       SparsifyGeneric(dense_data, n_dense_elements, element_size,
-                      IsZero<uint32_t>, CopyElement<uint32_t>, values, indices, nnz);
+                      sparse_utils::IsZero<uint32_t>, sparse_utils::CopyElement<uint32_t>, values, indices, nnz);
       break;
     }
     case 8: {
       SparsifyGeneric(dense_data, n_dense_elements, element_size,
-                      IsZero<uint64_t>, CopyElement<uint64_t>, values, indices, nnz);
+                      sparse_utils::IsZero<uint64_t>, sparse_utils::CopyElement<uint64_t>, values, indices, nnz);
       break;
     }
     default:

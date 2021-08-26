@@ -374,6 +374,82 @@ void Check(const OpTester::Data& expected_data, const T& run_output,
                                                       << provider_type;
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
+namespace {
+
+void CheckCooFormat(const SparseTensor& ex_tensor, const SparseTensor& out_tensor,
+                    const std::string& provider_type, const CheckParams& params) {
+  auto ex_view = ex_tensor.AsCoo();
+  auto out_view = out_tensor.AsCoo();
+  TensorCheck<int64_t>()(ex_view.Indices(), out_view.Indices(), provider_type, params);
+}
+
+void CheckCsrFormat(const SparseTensor& ex_tensor, const SparseTensor& out_tensor,
+                    const std::string& provider_type, const CheckParams& params) {
+  auto ex_view = ex_tensor.AsCsr();
+  auto out_view = out_tensor.AsCsr();
+  TensorCheck<int64_t>()(ex_view.Inner(), out_view.Inner(), provider_type, params);
+  TensorCheck<int64_t>()(ex_view.Outer(), out_view.Outer(), provider_type, params);
+}
+
+void CheckBlockSparseFormat(const SparseTensor& ex_tensor, const SparseTensor& out_tensor,
+                      const std::string& provider_type, const CheckParams& params) {
+  auto ex_view = ex_tensor.AsBlockSparse();
+  auto out_view = out_tensor.AsBlockSparse();
+  TensorCheck<int32_t>()(ex_view.Indices(), out_view.Indices(), provider_type, params);
+}
+
+void CheckSparseOutput(const OpTester::Data& expected_data,
+                       const OrtValue& output_value,
+                       const std::string& provider_type) {
+  const auto& ex_tensor = expected_data.data_.Get<SparseTensor>();
+  const auto& out_tensor = output_value.Get<SparseTensor>();
+  ORT_ENFORCE(ex_tensor.DataType() == out_tensor.DataType(),
+              "Data types don't match: Expected: ",
+              DataTypeImpl::ToString(ex_tensor.DataType()),
+              " Output: ", DataTypeImpl::ToString(out_tensor.DataType()),
+              " provider_type: ", provider_type);
+
+  ORT_ENFORCE(ex_tensor.DenseShape() == out_tensor.DenseShape(),
+              "Expected output shape [",
+              ex_tensor.DenseShape().ToString(),
+              "] did not match run output shape [",
+              out_tensor.DenseShape().ToString(), "] for ",
+              expected_data.def_.Name(),
+              " provider_type: ", provider_type);
+
+  ORT_ENFORCE(ex_tensor.Format() == out_tensor.Format(),
+              "Sparse format mismatch:",
+              " Expected: ", ex_tensor.Format(),
+              " Output: ", out_tensor.Format(),
+              " provider_type: ", provider_type);
+
+  const auto element_type = ex_tensor.GetElementType();
+  utils::MLTypeCallDispatcher<bool, float, double, uint8_t, uint16_t, uint32_t, uint64_t,
+                              int8_t, int16_t, int32_t, int64_t, std::string, MLFloat16,
+                              BFloat16>
+      t_disp(element_type);
+
+  t_disp.Invoke<TensorCheck>(ex_tensor.Values(), out_tensor.Values(), provider_type, MakeCheckParams(expected_data));
+
+  switch (ex_tensor.Format()) {
+    case SparseFormat::kCoo:
+      CheckCooFormat(ex_tensor, out_tensor, provider_type, MakeCheckParams(expected_data));
+      break;
+    case SparseFormat::kCsrc:
+      CheckCsrFormat(ex_tensor, out_tensor, provider_type, MakeCheckParams(expected_data));
+      break;
+    case SparseFormat::kBlockSparse:
+      CheckBlockSparseFormat(ex_tensor, out_tensor, provider_type, MakeCheckParams(expected_data));
+      break;
+    default:
+      ORT_THROW("Test infra does not support this sparse format");
+  }
+}
+}  // namespace
+
+#endif  //  !defined(DISABLE_SPARSE_TENSORS)
+
 template <>
 void Check<TensorSeq>(const OpTester::Data& expected_data,
                       const TensorSeq& output_seq,
@@ -432,6 +508,12 @@ void CheckDispatch(MLDataType type, const OpTester::Data& expected_data,
 
 void Check(const OpTester::Data& expected_data, OrtValue& ort_value,
            const std::string& provider_type) {
+#if !defined(DISABLE_SPARSE_TENSORS)
+  if (expected_data.data_.IsSparseTensor()) {
+    return CheckSparseOutput(expected_data, ort_value, provider_type);
+  }
+#endif  //  !defined(DISABLE_SPARSE_TENSORS)
+
   CheckDispatch<
 #if !defined(DISABLE_ML_OPS)
       VectorMapStringToFloat, VectorMapInt64ToFloat,
@@ -552,8 +634,7 @@ void OpTester::AddShapeToTensorData(NodeArg& node_arg, const std::vector<int64_t
 static std::unique_ptr<SparseTensor> MakeSparseTensor(MLDataType data_type, const std::vector<int64_t>& dims) {
   TensorShape shape{dims};
   auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
-  auto p_tensor = std::make_unique<SparseTensor>(data_type, shape, allocator);
-  return p_tensor;
+  return std::make_unique<SparseTensor>(data_type, shape, std::move(allocator));
 }
 
 void OpTester::CopyDataToTensor(gsl::span<const gsl::byte> data, Tensor& dst) {
@@ -592,7 +673,6 @@ void OpTester::AddSparseCooTensorData(std::vector<Data>& data,
   const auto elem_size = data_type->Size();
   const auto dtype = data_type->AsPrimitiveDataType()->GetDataType();
   const auto nnz = values.size_bytes() / elem_size;
-  ORT_ENFORCE(dims.size() == 2U, "Expecting a 2-D dense shape");
   ORT_ENFORCE((nnz == indices.size() || 2 * nnz == indices.size()), "Expecting indices to have either nnz or (2 * nnz) length");
   auto p_tensor = MakeSparseTensor(data_type, dims);
   auto mutator = p_tensor->MakeCooData(nnz, indices.size());
@@ -612,7 +692,6 @@ void OpTester::AddSparseCooTensorStrings(std::vector<Data>& data,
   auto data_type = DataTypeImpl::GetType<std::string>();
   const auto nnz = values.size();
   const auto dtype = data_type->AsPrimitiveDataType()->GetDataType();
-  ORT_ENFORCE(dims.size() == 2U, "Expecting a 2-D dense shape");
   ORT_ENFORCE((nnz == indices.size() || 2 * nnz == indices.size()), "Expecting indices to have either nnz or (2 * nnz) length");
   auto p_tensor = MakeSparseTensor(data_type, dims);
   // linear index is 1-D index, otherwise 2-D index
