@@ -1,4 +1,8 @@
 #!/bin/bash
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+# This file is used by Linux Multi GPU TensorRT CI Pipeline,Linux Nuphar CI Pipeline,Linux OpenVINO CI Pipeline,orttraining-linux-gpu-ci-pipeline
 set -e -o -x
 
 id
