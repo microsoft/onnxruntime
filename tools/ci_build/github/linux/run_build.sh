@@ -23,16 +23,7 @@ done
 
 export PATH=$PATH:/usr/local/gradle/bin
 
-if [ $BUILD_OS = "android" ]; then
-    pushd /onnxruntime_src
-    mkdir build-android && cd build-android
-    if [ $BUILD_DEVICE = "nnapi" ]; then
-        cmake -DCMAKE_TOOLCHAIN_FILE=/android-ndk/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc -Donnxruntime_USE_NNAPI_BUILTIN=ON ../cmake
-    else
-        cmake -DCMAKE_TOOLCHAIN_FILE=/android-ndk/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc ../cmake
-    fi
-    make -j$(nproc)
-elif [ $BUILD_OS = "yocto" ]; then
+if [ $BUILD_OS = "yocto" ]; then
     YOCTO_FOLDER="4.19-warrior"
     if [ $YOCTO_VERSION = "4.14" ]; then
         YOCTO_FOLDER="4.14-sumo"
