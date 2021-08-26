@@ -585,7 +585,7 @@ TEST_F(PlannerTest, PassThroughExplicitAndImplicitSubgraphInputs) {
       auto& loop_state_var_out = graph.GetOrCreateNodeArg("loop_state_var_out", &float_tensor);
 
       // outer scope args
-      auto& outer_scope_1 = graph.GetOrCreateNodeArg("abs_data_0_out", &float_tensor);
+      ORT_IGNORE_RETURN_VALUE(graph.GetOrCreateNodeArg("abs_data_0_out", &float_tensor));
       graph.AddOuterScopeNodeArg("abs_data_0_out");
 
       // cond_in -> cond_out
