@@ -24,23 +24,22 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// A pointer to a underlying native instance of OrtSession
         /// </summary>
-        private IntPtr _nativeHandle;
+        protected IntPtr _nativeHandle;
 
         /// <summary>
         /// Dictionary that represents input metadata
         /// </summary>
-        private Dictionary<string, NodeMetadata> _inputMetadata;
+        protected Dictionary<string, NodeMetadata> _inputMetadata;
 
         /// <summary>
         /// Dictionary that represent output metadata
         /// </summary>
-        private Dictionary<string, NodeMetadata> _outputMetadata;
+        protected Dictionary<string, NodeMetadata> _outputMetadata;
 
         /// <summary>
         /// Dictionary that represents overridableInitializers metadata
         /// </summary>
-        private Dictionary<string, NodeMetadata> _overridableInitializerMetadata;
-		
+        protected Dictionary<string, NodeMetadata> _overridableInitializerMetadata;
         private SessionOptions _builtInSessionOptions = null;
         private RunOptions _builtInRunOptions = null;
         private ModelMetadata _modelMetadata = null;
