@@ -354,7 +354,7 @@ def parse_arguments():
     parser.add_argument(
         "--wasm_malloc", default="dlmalloc", help="Specify memory allocator for WebAssembly")
     parser.add_argument(
-        "--emsdk_version", default="2.0.23", help="Specify version of emsdk")
+        "--emsdk_version", default="2.0.26", help="Specify version of emsdk")
 
     # Enable onnxruntime-extensions
     parser.add_argument(
@@ -2094,32 +2094,10 @@ def main():
             emsdk_dir = os.path.join(source_dir, "cmake", "external", "emsdk")
             emsdk_file = os.path.join(emsdk_dir, "emsdk.bat") if is_windows() else os.path.join(emsdk_dir, "emsdk")
 
-            # apply patch to emsdk/emsdk.py
-            #
-            # Note: this patch fixes bug in emsdk to install a single emscripten tool.
-            #
-            #       should remove patch file and remove "ignore = dirty" in .gitmodules once the following PR get
-            #       merged and included in a new release:
-            #         https://github.com/emscripten-core/emsdk/pull/834
-            shutil.copy(
-                os.path.join(SCRIPT_DIR, "wasm", "emsdk.py.patch"),
-                os.path.join(emsdk_dir, "emsdk.py"))
-
             log.info("Installing emsdk...")
             run_subprocess([emsdk_file, "install", emsdk_version], cwd=emsdk_dir)
             log.info("Activating emsdk...")
             run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
-
-            # apply patch to file_packager.py
-            #
-            # Note: this patch enables file_packager.py to generate JavaScript code to support preload files in Node.js
-            #
-            #       should remove patch file once the following PR get merged and included in a new release:
-            #         https://github.com/emscripten-core/emscripten/pull/11785   (merged, not release yet)
-            #         https://github.com/emscripten-core/emscripten/pull/14372   (merged, not release yet)
-            shutil.copy(
-                os.path.join(SCRIPT_DIR, "wasm", "file_packager.py.patch"),
-                os.path.join(emsdk_dir, "upstream", "emscripten", "tools", "file_packager.py"))
 
         if (args.android or args.ios or args.enable_windows_store or args.build_wasm
                 or is_cross_compiling_on_apple(args)) and args.path_to_protoc_exe is None:
