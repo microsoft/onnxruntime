@@ -47,7 +47,7 @@ jobs:
 - job: NuGet_Packaging_CPU
   workspace:
     clean: all
-  pool: 'Win-CPU-2021'
+  pool: 'chasuntest'
   variables:
     OrtPackageId: ${{ parameters.OrtNugetPackageId }}
     breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
