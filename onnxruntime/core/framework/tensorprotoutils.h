@@ -140,14 +140,19 @@ inline bool HasShape(const ONNX_NAMESPACE::TypeProto_SparseTensor& ten_proto) {
 inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_SparseTensor& ten_proto) {
   return ten_proto.elem_type() != ONNX_NAMESPACE::TensorProto::UNDEFINED;
 }
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 inline bool HasElementType(const ONNX_NAMESPACE::TypeProto& type_proto) {
   if (HasTensorType(type_proto) && HasElemType(type_proto.tensor_type())) {
     return true;
   }
-  return HasSparseTensorType(type_proto) && HasElemType(type_proto.sparse_tensor_type());
-}
+#if !defined(DISABLE_SPARSE_TENSORS)
+  if (HasSparseTensorType(type_proto) && HasElemType(type_proto.sparse_tensor_type()) {
+    return true;
+  }
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
+  return false;
+}
 
 inline bool HasShape(const ONNX_NAMESPACE::TypeProto& type_proto) {
   if (HasTensorType(type_proto) && HasShape(type_proto.tensor_type())) {
