@@ -297,7 +297,7 @@ jobs:
   - task: ArchiveFiles@2
     inputs:
       rootFolderOrFile: '$(Build.BinariesDirectory)/tgz-artifacts/onnxruntime-linux-x64-gpu'
-      includeRootFolder: true
+      includeRootFolder: false 
       archiveType: 'tar' # Options: zip, 7z, tar, wim
       tarCompression: 'gz'
       archiveFile: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
