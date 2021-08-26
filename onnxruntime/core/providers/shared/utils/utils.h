@@ -18,12 +18,6 @@ class Logger;
 class Node;
 class NodeArg;
 
-// Get initialize tensort float/int32/int64 data without unpacking
-// NOTE!!! This will not work when the initializer has external data
-const float* GetTensorFloatData(const ONNX_NAMESPACE::TensorProto& tensor);
-const int32_t* GetTensorInt32Data(const ONNX_NAMESPACE::TensorProto& tensor);
-const int64_t* GetTensorInt64Data(const ONNX_NAMESPACE::TensorProto& tensor);
-
 // Get the min/max of a Clip operator.
 // If min/max are not known initializer tensors, will return false
 // For now we only support getting float min/max,

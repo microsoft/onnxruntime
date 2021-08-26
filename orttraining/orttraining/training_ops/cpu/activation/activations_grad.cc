@@ -8,10 +8,15 @@
 #if defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4127)
+#else
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
 #endif
 #include "unsupported/Eigen/SpecialFunctions"
 #if defined(_MSC_VER)
 #pragma warning(pop)
+#else
+#pragma GCC diagnostic pop
 #endif
 
 #include "core/util/math_cpuonly.h"
