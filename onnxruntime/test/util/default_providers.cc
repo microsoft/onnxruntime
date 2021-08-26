@@ -97,7 +97,7 @@ std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider() {
 // For any non - Android system, NNAPI will only be used for ort model converter
 // Make it unavailable here, you can still manually append NNAPI EP to session for model conversion
 #if defined(USE_NNAPI) && defined(__ANDROID__)
-  return CreateExecutionProviderFactory_Nnapi(0)->CreateProvider();
+  return CreateExecutionProviderFactory_Nnapi(0, {})->CreateProvider();
 #else
   return nullptr;
 #endif
@@ -138,7 +138,9 @@ std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider() {
 }
 
 std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider() {
-#if defined(USE_COREML)
+// For any non - macOS system, CoreML will only be used for ort model converter
+// Make it unavailable here, you can still manually append CoreML EP to session for model conversion
+#if defined(USE_COREML) && defined(__APPLE__)
   // We want to run UT on CPU only to get output value without losing precision
   uint32_t coreml_flags = 0;
   coreml_flags |= COREML_FLAG_USE_CPU_ONLY;

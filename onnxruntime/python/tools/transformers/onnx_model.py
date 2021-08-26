@@ -81,6 +81,20 @@ class OnnxModel:
                             graph_queue.append(g)
         return self.all_graphs
 
+    def get_graphs_input_names(self):
+        input_names = []
+        for graph in self.graphs():
+            for input in graph.input:
+                input_names.append(input.name)
+        return input_names
+
+    def get_graphs_output_names(self):
+        output_names = []
+        for graph in self.graphs():
+            for output in graph.output:
+                output_names.append(output.name)
+        return output_names
+
     def get_graph_by_node(self, node):
         for graph in self.graphs():
             if node in graph.node:
@@ -486,21 +500,24 @@ class OnnxModel:
         # restore opset version
         self.model.opset_import[0].version = original_opset_version
 
-    def convert_model_float32_to_float16(self, cast_input_output=True):
+    def convert_model_float32_to_float16(self, cast_input_output=True, use_symbolic_shape_infer=True):
         """Convert a graph to FLOAT16. By default, we will keep data types of inputs and outputs.
            For decoder model with past_key_values, it is recommended to set cast_input_output=False for better performance.
         Args:
             cast_input_output (bool, optional): keep data type of inputs and outputs, and add Cast nodes to convert float32 inputs to float16, and float16 to float32 for outputs. Defaults to True.
+            use_symbolic_shape_infer (bool, optional): use symbolic shape inference instead of onnx shape inference.
         """
         from packaging.version import Version
         import onnxconverter_common as oc
         if Version(oc.__version__) > Version("1.7.0"):
-            # Use symbolic shape inference since custom operators (like Gelu, SkipLayerNormalization etc) are not recognized by onnx shape inference.
-            shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
-            model_with_shape = shape_infer_helper.infer_shapes(self.model, auto_merge=True, guess_output_rank=False)
-            self.model = oc.float16.convert_float_to_float16(model_with_shape,
+            model = self.model
+            if use_symbolic_shape_infer:
+                # Use symbolic shape inference since custom operators (like Gelu, SkipLayerNormalization etc) are not recognized by onnx shape inference.
+                shape_infer_helper = SymbolicShapeInferenceHelper(model)
+                model = shape_infer_helper.infer_shapes(model, auto_merge=True, guess_output_rank=False)
+            self.model = oc.float16.convert_float_to_float16(model,
                                                              keep_io_types=cast_input_output,
-                                                             disable_shape_infer=True)
+                                                             disable_shape_infer=use_symbolic_shape_infer)
             return
 
         graph = self.model.graph
@@ -799,6 +816,7 @@ class OnnxModel:
                 else:
                     deps_to_nodes[input_name].append(node_idx)
 
+        # Note: this logic only applies to top level graph since a sub graph could use intializer from parent graph
         initializer_names = [init.name for init in graph.initializer]
         graph_input_names = [input.name for input in graph.input]
         input_names = initializer_names + graph_input_names
