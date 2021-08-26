@@ -154,9 +154,6 @@ option(onnxruntime_ENABLE_EAGER_MODE "build ort eager mode")
 # build separate library of schemas of (custom) ops used by ORT (for ONNX to MLIR translation)
 option(onnxruntime_BUILD_OPSCHEMA_LIB "Build op schema library" ON)
 
-# option to enable custom operators in onnxruntime-extensions
-option(onnxruntime_ENABLE_EXTENSION_CUSTOM_OPS "Enable custom operators in onnxruntime-extensions" OFF)
-
 # pre-build python path
 option(onnxruntime_PREBUILT_PYTORCH_PATH "Path to pytorch installation dir")
 
@@ -1283,7 +1280,8 @@ if (onnxruntime_USE_TVM)
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm)
 endif()
 
-if(EXISTS "${onnxruntime_EXTENSIONS_PATH}")
+# onnxruntime-extensions
+if (EXISTS "${onnxruntime_EXTENSIONS_PATH}")
   message(STATUS "[onnxruntime-extensions] Building onnxruntime-extensions: ${onnxruntime_EXTENSIONS_PATH}")
 
   # add compile definition to enable custom operators in onnxruntime-extensions

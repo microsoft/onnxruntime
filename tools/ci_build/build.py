@@ -1026,6 +1026,11 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
 
             # 2. set cmake option to select operators from onnxruntime-extensions
             cmake_args += ["-Donnxruntime_EXTENSION_CUSTOM_OPS_SELECTED=ON"]
+    else:
+        # set onnxruntime_EXTENSIONS_PATH empty explicitly because sometimes it will use cache from last build
+        cmake_args += [
+            "-Donnxruntime_EXTENSIONS_PATH="
+        ]
 
     if path_to_protoc_exe:
         cmake_args += [
@@ -2000,7 +2005,7 @@ def main():
     # Pre-check onnxruntime-extensions arguments
     if args.onnxruntime_extensions_path:
         if not os.path.exists(args.onnxruntime_extensions_path):
-            raise BuildError("onnxruntime_extensions_path does not exist")
+            raise BuildError("[onnxruntime-extensions] onnxruntime_extensions_path does not exist")
 
     if args.code_coverage and not args.android:
         raise BuildError("Using --code_coverage requires --android")
