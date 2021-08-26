@@ -1,0 +1,66 @@
+jobs:
+- job: ObjCStaticAnalysis
+  
+  pool:
+    vmImage: 'macOS-10.15'
+  
+  timeoutInMinutes: 10
+
+  steps:
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: "3.9"
+      addToPath: true
+      architecture: "x64"
+
+  - script: |
+      pip install -r tools/ci_build/github/apple/objectivec/static_analysis/requirements.txt
+    displayName: Install tools
+
+  - script: |
+      python tools/ci_build/build.py \
+        --build_dir "$(Build.BinariesDirectory)" \
+        --cmake_generator "Ninja" \
+        --config Debug \
+        --build_shared_lib --use_coreml --build_objc \
+        --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON \
+        --update
+    displayName: Generate compile_commands.json
+
+  - script: |
+      set -e
+
+      LLVM_DIR="$(brew --prefix llvm)"
+      CODECHECKER_CONFIG_FILE="$(dirname $(which codechecker))/../share/codechecker/config/package_layout.json"
+
+      sed -i "" \
+        -e 's#"clangsa": "[^"]*"#"clangsa": "'"${LLVM_DIR}"'/bin/clang"#' \
+        -e 's#"clang-tidy": "[^"]*"#"clang-tidy": "'"${LLVM_DIR}"'/bin/clang-tidy"#' \
+        "${CODECHECKER_CONFIG_FILE}"
+
+      cat "${CODECHECKER_CONFIG_FILE}"
+    displayName: Update CodeChecker configuration
+
+  - script: |
+      codechecker analyze \
+        --file "$(Build.SourcesDirectory)/objectivec/*" \
+               "$(Build.SourcesDirectory)/onnxruntime/core/platform/apple/logging/apple_log_sink.mm" \
+               "$(Build.SourcesDirectory)/onnxruntime/core/providers/coreml/model/*.mm" \
+        --output "$(Build.BinariesDirectory)/codechecker.analyze.out" \
+        "$(Build.BinariesDirectory)/Debug/compile_commands.json"
+
+      CODECHECKER_ANALYZE_EXIT_CODE=$?
+      echo "codechecker analyze exited with code: ${CODECHECKER_ANALYZE_EXIT_CODE}"
+    displayName: Run CodeChecker analysis
+
+  - script: |
+      # skip results from external dependencies
+      echo "-$(Build.SourcesDirectory)/cmake/external/*" > "$(Build.BinariesDirectory)/codechecker.parse.skipfile"
+
+      codechecker parse \
+        --ignore "$(Build.BinariesDirectory)/codechecker.parse.skipfile" \
+        "$(Build.BinariesDirectory)/codechecker.analyze.out"
+
+      CODECHECKER_PARSE_EXIT_CODE=$?
+      echo "codechecker parse exited with code: ${CODECHECKER_PARSE_EXIT_CODE}"
+    displayName: Show CodeChecker analysis results
