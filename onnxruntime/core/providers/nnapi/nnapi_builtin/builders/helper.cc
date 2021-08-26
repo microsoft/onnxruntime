@@ -304,9 +304,19 @@ bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, co
   return true;
 }
 
-float GetQuantizationScale(const InitializedTensorSet& initializers, const Node& node, size_t idx) {
-  const auto& scale_tensor = *initializers.at(node.InputDefs()[idx]->Name());
-  return GetTensorFloatData(scale_tensor)[0];
+common::Status GetQuantizationScale(const InitializedTensorSet& initializers, const Node& node,
+                                    size_t idx, float& scale) {
+  std::vector<uint8_t> unpacked_tensor;
+  const auto& name = node.InputDefs()[idx]->Name();
+  const auto& scale_tensor = *initializers.at(name);
+  ORT_RETURN_IF_ERROR(
+      onnxruntime::utils::UnpackInitializerData(scale_tensor, node.ModelPath(), unpacked_tensor));
+
+  // The scale should be one or more floats
+  ORT_RETURN_IF(unpacked_tensor.size() < 4, "The initializer [", name, "] should have one or more floats ",
+                "with size no less than 4, actual size: ", unpacked_tensor.size());
+  scale = reinterpret_cast<const float*>(unpacked_tensor.data())[0];
+  return Status::OK();
 }
 
 common::Status GetQuantizationZeroPoint(const InitializedTensorSet& initializers,
