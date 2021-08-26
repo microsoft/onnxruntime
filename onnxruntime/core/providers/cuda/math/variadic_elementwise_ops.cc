@@ -71,25 +71,48 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
 
   using CudaT = typename ToCudaType<T>::MappedType;
 
-  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output.MutableDataRaw(), 0, output.SizeInBytes(), stream));
+  // is there any input having the same shape with output, if yes, we just copy the input to output buffer.
+  size_t index_of_same_shape = -1;
+  for (size_t index = 0; index < inputs.size(); ++index) {
+    if (inputs[index].get().Shape() == output.Shape()) {
+      index_of_same_shape = index;
+      break;
+    }
+  }
 
-  BinaryElementwisePreparation prepare;
-  ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(&output, &inputs[0].get(), &output, &prepare));
+  size_t pivot_index = 0;
+  if (index_of_same_shape > 0) {
+    pivot_index = index_of_same_shape;
+    const Tensor* first_tensor = &inputs[index_of_same_shape].get();
+    const void* src_data = first_tensor->DataRaw();
+    const size_t bytes = first_tensor->SizeInBytes();
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output.MutableDataRaw(), src_data, bytes, cudaMemcpyDeviceToDevice, stream));
+  } else {
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output.MutableDataRaw(), 0, output.SizeInBytes(), stream));
 
-  Impl_Add(
-      stream,
-      prepare.output_rank_or_simple_broadcast,
-      &prepare.lhs_padded_strides,
-      reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
-      &prepare.rhs_padded_strides,
-      reinterpret_cast<const CudaT*>(prepare.rhs_tensor->template Data<T>()),
-      &prepare.fdm_output_strides,
-      prepare.fdm_H,
-      prepare.fdm_C,
-      reinterpret_cast<CudaT*>(prepare.output_tensor->template MutableData<T>()),
-      prepare.output_tensor->Shape().Size());
+    BinaryElementwisePreparation prepare;
+    ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(&output, &inputs[0].get(), &output, &prepare));
 
-  for (size_t index = 1; index < inputs.size(); index++) {
+    Impl_Add(
+        stream,
+        prepare.output_rank_or_simple_broadcast,
+        &prepare.lhs_padded_strides,
+        reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
+        &prepare.rhs_padded_strides,
+        reinterpret_cast<const CudaT*>(prepare.rhs_tensor->template Data<T>()),
+        &prepare.fdm_output_strides,
+        prepare.fdm_H,
+        prepare.fdm_C,
+        reinterpret_cast<CudaT*>(prepare.output_tensor->template MutableData<T>()),
+        prepare.output_tensor->Shape().Size());
+  }
+
+  for (size_t index = 0; index < inputs.size(); ++index) {
+    if (index == pivot_index) {
+      continue;
+    }
+
+    BinaryElementwisePreparation prepare;
     ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(&output, &inputs[index].get(), &output, &prepare));
 
     Impl_General<CudaT, VariadicElementwiseOpTag>(
