@@ -30,6 +30,8 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
       loss_node_arg_name_(loss_node_arg_name),
       gradient_graph_config_(gradient_graph_config),
       logger_(logger) {
+  std::cout << "GradientGraphBuilder::GradientGraphBuilder: loss_node_arg_name: " << loss_node_arg_name << std::endl;
+  std::cout << "GradientGraphBuilder::GradientGraphBuilder: loss_node_arg_name_: " << loss_node_arg_name_ << std::endl;
   auto rule_based_graph_transformer =
       std::make_unique<RuleBasedGraphTransformer>("pre_training_rule_based_graph_transformer");
   rule_based_graph_transformer->Register(std::make_unique<InsertMaxPoolOutput>());
@@ -211,6 +213,7 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
   std::cout << "GradientGraphBuilder::Build: ApplyTransformers done " << opt_ret << std::endl;
   GraphAugmenter::GraphDefs gradient_graph_defs;
   // add "gradient of the loss" node, always 1.
+  std::cout << "GradientGraphBuilder::Build: loss_node_arg_name_: " << loss_node_arg_name_ << std::endl;
   std::cerr << "GradientGraphBuilder::Build: loss_node_arg_name_: " << loss_node_arg_name_ << std::endl;
   if (loss_node_arg_name_ != "") {
     std::cerr << "GradientGraphBuilder::Build: loss_node_arg_name_ not empty." << std::endl;

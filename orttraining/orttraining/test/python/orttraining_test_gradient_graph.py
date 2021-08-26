@@ -57,7 +57,7 @@ class GradientGraphBuilderTest(unittest.TestCase):
 
         # There's also problems because loss_node_arg_name isn't getting set properly (even when it's not an empty string).
         # `GradientGraphBuilder::loss_node_arg_name_` becomes a very long string.
-        builder = GradientGraphBuilder(str(path), {'output'}, {'fc1.weight', 'fc1.bias', 'fc2.weight', 'fc2.bias'}, '')
+        builder = GradientGraphBuilder(str(path), {'output'}, {'fc1.weight', 'fc1.bias', 'fc2.weight', 'fc2.bias'}, 'loss')
         builder.build()
         # TODO Maybe it should be .ort?
         gradient_graph_path = directory_path/'gradient_graph_model.onnx'
