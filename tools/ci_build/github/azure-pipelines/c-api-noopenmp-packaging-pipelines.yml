@@ -321,12 +321,22 @@ jobs:
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Combined GPU'
     inputs:
+      source: 'specific'
+      project: 'Lotus'
+      pipeline: '940'
+      runVersion: 'specific'
+      runId: '171266'
       artifactName: 'onnxruntime-win-x64-cuda'
       targetPath: '$(Build.BinariesDirectory)/zip-artifacts'
 
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Combined GPU'
     inputs:
+      source: 'specific'
+      project: 'Lotus'
+      pipeline: '940'
+      runVersion: 'specific'
+      runId: '171266'
       artifactName: 'onnxruntime-win-x64-tensorrt'
       targetPath: '$(Build.BinariesDirectory)/zip-artifacts'
 
