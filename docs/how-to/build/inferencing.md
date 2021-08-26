@@ -60,9 +60,10 @@ Also, if you want to cross-compile for Apple Silicon in an Intel-based MacOS mac
 
 * Please note that these instructions build the debug build, which may have performance tradeoffs
 * To build the version from each release (which include Windows, Linux, and Mac variants), see these .yml files for reference: [CPU](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/azure-pipelines/nuget/cpu-esrp-pipeline.yml), [GPU](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/azure-pipelines/nuget/gpu-esrp-pipeline.yml)
-* The build script runs all unit tests by default (for native builds and skips tests by default for cross-compiled builds).
+* The build script runs all unit tests by default for native builds and skips tests by default for cross-compiled builds.
+  To skip the tests, run with `--build` or `--update --build`.
 * If you need to install protobuf 3.6.1 from source code (cmake/external/protobuf), please note:
-   * CMake flag protobuf\_BUILD\_SHARED\_LIBS must be turned OFF. After the installation, you should have the 'protoc' executable in your PATH. It is recommended to run `ldconfig` to make sure protobuf libraries are found.
+   * CMake flag `protobuf_BUILD_SHARED_LIBS` must be turned OFF. After the installation, you should have the 'protoc' executable in your PATH. It is recommended to run `ldconfig` to make sure protobuf libraries are found.
    * If you installed your protobuf in a non standard location it would be helpful to set the following env var:`export CMAKE_ARGS="-DONNX_CUSTOM_PROTOC_EXECUTABLE=full path to protoc"` so the ONNX build can find it. Also run `ldconfig <protobuf lib folder path>` so the linker can find protobuf libraries.
 * If you'd like to install onnx from source code (cmake/external/onnx), use:
     ```
@@ -110,21 +111,21 @@ GCC 4.x and below are not supported.
 
 |Description|Command|Additional details|
 |-----------|-----------|-----------|
-|**Basic build**|build.bat (Windows)<br>./build.sh (Linux)||
-|**Release build**|--config Release|Release build. Other valid config values are RelWithDebInfo and Debug.|
-|**Build using parallel processing**|--parallel|This is strongly recommended to speed up the build.|
-|**Build Shared Library**|--build_shared_lib||
-|**Enable Training support**|--enable_training||
+|**Basic build**|`build.bat` (Windows)<br>`./build.sh` (Linux)||
+|**Release build**|`--config` Release|Release build. Other valid config values are RelWithDebInfo and Debug.|
+|**Build using parallel processing**|`--parallel`|This is strongly recommended to speed up the build.|
+|**Build Shared Library**|`--build_shared_lib`||
+|**Enable Training support**|`--enable_training`||
 
 ### APIs and Language Bindings
 
 |API|Command|Additional details|
 |-----------|-----------|-----------|
-|**Python**|--build_wheel||
-|**C# and C Nuget packages**|--build_nuget|Builds C# bindings and creates nuget package. Implies `--build_shared_lib` <br> Detailed instructions can be found [below](#build-nuget-packages).|
-|**WindowsML**|--use_winml<br>--use_dml<br>--build_shared_lib|WindowsML depends on DirectML and the OnnxRuntime shared library|
-|**Java**|--build_java|Creates an onnxruntime4j.jar in the build directory, implies `--build_shared_lib`<br>Compiling the Java API requires [gradle](https://gradle.org) v6.1+ to be installed in addition to the usual requirements.|
-|**Node.js**|--build_nodejs|Build Node.js binding. Implies `--build_shared_lib`|
+|**Python**|`--build_wheel`||
+|**C# and C Nuget packages**|`--build_nuget`|Builds C# bindings and creates nuget package. Implies `--build_shared_lib` <br> Detailed instructions can be found [below](#build-nuget-packages).|
+|**WindowsML**|`--use_winml`<br>`--use_dml`<br>`--build_shared_lib`|WindowsML depends on DirectML and the OnnxRuntime shared library|
+|**Java**|`--build_java`|Creates an onnxruntime4j.jar in the build directory, implies `--build_shared_lib`<br>Compiling the Java API requires [gradle](https://gradle.org) v6.1+ to be installed in addition to the usual requirements.|
+|**Node.js**|`--build_nodejs`|Build Node.js binding. Implies `--build_shared_lib`|
 
 
 #### Build Nuget packages
@@ -213,7 +214,7 @@ ORT_DEBUG_NODE_IO_DUMP_DATA_TO_FILES=1
 ---
 
 ## Architectures
-### 64-bit x86 
+### 64-bit x86
 
 Also known as [x86_64](https://en.wikipedia.org/wiki/X86-64) or AMD64. This is the default.
 
@@ -362,7 +363,7 @@ This option is very fast and allows the package to be built in minutes, but is c
     Then run the docker
 
     Ubuntu:
-    
+
     ```bash
     docker run -v /usr/bin/qemu-aarch64-static:/usr/bin/qemu-aarch64-static -it --rm quay.io/pypa/manylinux2014_aarch64 /bin/bash
     ```
@@ -386,12 +387,12 @@ This option is very fast and allows the package to be built in minutes, but is c
     ```
 
     From the output:
-    
+
     ```
     CONTAINER ID        IMAGE                                COMMAND             CREATED             STATUS              PORTS               NAMES
     5a796e98db05        quay.io/pypa/manylinux2014_aarch64   "/bin/bash"         3 minutes ago       Up 3 minutes                            affectionate_cannon
     ```
-    
+
     You'll see the docker instance id is: 5a796e98db05. Use the following command to export the root filesystem as the sysroot for future use.
 
     ```bash
