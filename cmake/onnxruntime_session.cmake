@@ -5,6 +5,7 @@ file(GLOB onnxruntime_session_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_INCLUDE_DIR}/core/session/*.h"
     "${ONNXRUNTIME_ROOT}/core/session/*.h"
     "${ONNXRUNTIME_ROOT}/core/session/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/session/symbols.txt"
     )
 
 if (onnxruntime_MINIMAL_BUILD)

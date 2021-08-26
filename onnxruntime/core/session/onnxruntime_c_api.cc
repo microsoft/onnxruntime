@@ -1934,42 +1934,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetProfilingStartTimeNs, _In_ const OrtSessi
 
 // End support for non-tensor types
 
-#ifndef USE_ROCM
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM,
-                    _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* rocm_options) {
-  ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(rocm_options);
-  return CreateStatus(ORT_FAIL, "ROCM execution provider is not enabled.");
-}
-#endif
-
-#if defined(ORT_MINIMAL_BUILD)
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO,
-                    _In_ OrtSessionOptions* options, _In_ const OrtOpenVINOProviderOptions* provider_options) {
-  ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(provider_options);
-  return CreateStatus(ORT_FAIL, "OpenVINO execution provider is not enabled.");
-}
-#endif
-
-#if defined(ORT_MINIMAL_BUILD)
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* provider_options) {
-  ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(provider_options);
-  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
-}
-
-ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, _In_ int* device_id) {
-  ORT_UNUSED_PARAMETER(device_id);
-  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
-}
-
-ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, _In_ int device_id) {
-  ORT_UNUSED_PARAMETER(device_id);
-  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
-}
-#endif
-
 ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfg, _In_ size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
                     int max_dead_bytes_per_chunk, _Outptr_ OrtArenaCfg** out) {
   API_IMPL_BEGIN
@@ -2077,51 +2041,6 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer
   API_IMPL_END
 }
 
-#if defined(ORT_MINIMAL_BUILD)
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT,
-                    _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptions* tensorrt_options) {
-  ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(tensorrt_options);
-  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled.");
-}
-
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2,
-                    _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options) {
-  ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(tensorrt_options);
-  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled.");
-}
-
-ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptionsV2** out) {
-  ORT_UNUSED_PARAMETER(out);
-  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
-}
-
-ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
-                    _Inout_ OrtTensorRTProviderOptionsV2* tensorrt_options,
-                    _In_reads_(num_keys) const char* const* provider_options_keys,
-                    _In_reads_(num_keys) const char* const* provider_options_values,
-                    size_t num_keys) {
-  ORT_UNUSED_PARAMETER(tensorrt_options);
-  ORT_UNUSED_PARAMETER(provider_options_keys);
-  ORT_UNUSED_PARAMETER(provider_options_values);
-  ORT_UNUSED_PARAMETER(num_keys);
-  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
-}
-
-ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsAsString, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _Inout_ OrtAllocator* allocator,
-                    _Outptr_ char** ptr) {
-  ORT_UNUSED_PARAMETER(tensorrt_options);
-  ORT_UNUSED_PARAMETER(allocator);
-  ORT_UNUSED_PARAMETER(ptr);
-  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
-}
-
-ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptionsV2* ptr) {
-  ORT_UNUSED_PARAMETER(ptr);
-}
-#endif
-
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString,
@@ -2148,22 +2067,22 @@ but isn't visible in public headers.
 
 So for example, if we wanted to just add some new members to the ort_api_1_to_2, we'd take the following steps:
 
-	In include\onnxruntime\core\session\onnxruntime_c_api.h we'd just add the members to the end of the structure
+    In include\onnxruntime\core\session\onnxruntime_c_api.h we'd just add the members to the end of the structure
 
-	In this file, we'd correspondingly add the member values to the end of the ort_api_1_to_2 structure, and also rename
-	it to ort_api_1_to_3.
+    In this file, we'd correspondingly add the member values to the end of the ort_api_1_to_2 structure, and also rename
+    it to ort_api_1_to_3.
 
-	Then in GetApi we'd make it return ort_api_1_to_3 for versions 1 through 3.
+    Then in GetApi we'd make it return ort_api_1_to_3 for versions 1 through 3.
 
 Second example, if we wanted to add and remove some members, we'd do this:
 
-	In include\onnxruntime\core\session\onnxruntime_c_api.h we'd make a copy of the OrtApi structure and name the
-	old one OrtApi1to2. In the new OrtApi we'd add or remove any members that we desire.
+    In include\onnxruntime\core\session\onnxruntime_c_api.h we'd make a copy of the OrtApi structure and name the
+    old one OrtApi1to2. In the new OrtApi we'd add or remove any members that we desire.
 
-	In this file, we'd create a new copy of ort_api_1_to_2 called ort_api_3 and make the corresponding changes that were
-	made to the new OrtApi.
+    In this file, we'd create a new copy of ort_api_1_to_2 called ort_api_3 and make the corresponding changes that were
+    made to the new OrtApi.
 
-	In GetApi we now make it return ort_api_3 for version 3.
+    In GetApi we now make it return ort_api_3 for version 3.
 */
 
 static constexpr OrtApi ort_api_1_to_9 = {

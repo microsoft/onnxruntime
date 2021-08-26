@@ -110,9 +110,10 @@ jobs:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-tensorrt
-    buildparameter: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.0.1.6.Windows10.x86_64.cuda-11.3.cudnn8.2" --cuda_version=11.1 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.1" --cudnn_home="C:\local\cudnn-11.4-windows-x64-v8.2.2.26\cuda" --enable_onnx_tests --enable_wcos --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;52;60;61;70;75;80"
+    buildparameter: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.0.1.6.Windows10.x86_64.cuda-11.3.cudnn8.2" --cuda_version=11.1 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.1" --cudnn_home="C:\local\cudnn-11.4-windows-x64-v8.2.2.26\cuda" --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;52;60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
-    buildJava: false 
+    buildJava: true 
+    java_artifact_id: onnxruntime_gpu
 
 - template: templates/android-java-api-aar.yml
   parameters:
@@ -135,7 +136,7 @@ jobs:
     displayName: 'Download Pipeline Artifact - Win x64'
     inputs:
       buildType: 'current'
-      artifactName: 'drop-onnxruntime-java-win-x64-cuda'
+      artifactName: 'drop-onnxruntime-java-win-x64-tensorrt'
       targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
 
   - task: DownloadPipelineArtifact@2
@@ -296,7 +297,7 @@ jobs:
   - task: ArchiveFiles@2
     inputs:
       rootFolderOrFile: '$(Build.BinariesDirectory)/tgz-artifacts/onnxruntime-linux-x64-gpu'
-      includeRootFolder: true
+      includeRootFolder: false 
       archiveType: 'tar' # Options: zip, 7z, tar, wim
       tarCompression: 'gz'
       archiveFile: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
