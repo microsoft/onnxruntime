@@ -147,7 +147,7 @@ inline bool HasElementType(const ONNX_NAMESPACE::TypeProto& type_proto) {
     return true;
   }
 #if !defined(DISABLE_SPARSE_TENSORS)
-  if (HasSparseTensorType(type_proto) && HasElemType(type_proto.sparse_tensor_type()) {
+  if (HasSparseTensorType(type_proto) && HasElemType(type_proto.sparse_tensor_type())) {
     return true;
   }
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
