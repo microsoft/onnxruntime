@@ -21,10 +21,7 @@ Foreach-Object {
  $($_.FullName) -match '.*onnxruntime-win-x64-cuda-(.*)'
  $version=$matches[1]
  Rename-Item -Path $($_.FullName) -NewName onnxruntime-win-x64-gpu-$version
-# print dir content only for check
-Get-ChildItem -Path $Env:BUILD_BINARIESDIRECTORY\zip-artifacts
-Get-ChildItem -Path $Env:BUILD_BINARIESDIRECTORY\zip-artifacts\onnxruntime-win-x64-gpu-$version
- $cmd = "7z.exe a $Env:BUILD_BINARIESDIRECTORY\zip-artifacts\onnxruntime-win-x64-gpu-$version.zip -y -o$Env:BUILD_BINARIESDIRECTORY\zip-artifacts\onnxruntime-win-x64-gpu-$version"
+ $cmd = "7z.exe a $Env:BUILD_BINARIESDIRECTORY\zip-artifacts\onnxruntime-win-x64-gpu-$version.zip $Env:BUILD_BINARIESDIRECTORY\zip-artifacts\onnxruntime-win-x64-gpu-$version"
  Write-Output $cmd
  Invoke-Expression -Command $cmd
 }
