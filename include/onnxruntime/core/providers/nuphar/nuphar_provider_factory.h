@@ -10,7 +10,10 @@ extern "C" {
  * \param device_id nuphar device id, starts from zero.
  * \param settings_str Nuphar settings string.
  */
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Nuphar, _In_ OrtSessionOptions* options, int allow_unaligned_buffers, _In_ const char* settings_str);
+// declared in include/onnxruntime/core/session/onnxruntime_c_api.h for convenience and so we can provide a graceful
+// error message if not enabled.
+// ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Nuphar, _In_ OrtSessionOptions* options, 
+//                int allow_unaligned_buffers, _In_ const char* settings_str);
 
 #ifdef __cplusplus
 }
