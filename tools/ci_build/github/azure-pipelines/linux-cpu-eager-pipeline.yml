@@ -23,6 +23,6 @@ jobs:
     displayName: 'build eager mode and run tests'
     inputs:
       script: |
-        docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro -e NIGHTLY_BUILD onnxruntime-ubuntu /usr/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Debug Release --build_shared_lib --cmake_path /usr/bin/cmake --parallel --build_eager_mode --enable_training --enable_pybind
+        docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro -e NIGHTLY_BUILD onnxruntime-ubuntu /usr/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config --parallel --build_eager_mode --enable_training --enable_pybind
       workingDirectory: $(Build.SourcesDirectory)
     condition: succeededOrFailed() # ensure all tests are run
