@@ -23,6 +23,7 @@ from abc import ABC, abstractmethod
 import copy
 import io
 import inspect
+import os
 import onnx
 import onnxruntime
 import torch
@@ -245,6 +246,13 @@ class GraphExecutionManager(GraphExecutionInterface):
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
         session_options.log_severity_level = int(
             self._debug_options.logging.log_level)
+
+        if self._debug_options.save_onnx_models.save:
+            session_options.optimized_model_filepath = \
+                os.path.join(self._debug_options.save_onnx_models.path,
+                             _onnx_models._get_onnx_file_name(
+                                 self._debug_options.save_onnx_models.name_prefix,
+                                 'execution_model', self._export_mode))
 
         return session_options, providers, provider_options
 

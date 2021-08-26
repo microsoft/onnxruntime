@@ -3099,6 +3099,7 @@ def test_debug_options_save_onnx_models_os_environment(mode):
         # assert that the onnx models have been saved
         assert os.path.exists(os.path.join(temporary_dir, f"my_model_torch_exported_{mode}.onnx"))
         assert os.path.exists(os.path.join(temporary_dir, f"my_model_optimized_{mode}.onnx"))
+        assert os.path.exists(os.path.join(temporary_dir, f"my_model_execution_model_{mode}.onnx"))
         del os.environ['ORTMODULE_SAVE_ONNX_PATH']
 
 @pytest.mark.parametrize("mode", ['training', 'inference'])
@@ -3116,9 +3117,11 @@ def test_debug_options_save_onnx_models_cwd(mode):
     # assert that the onnx models have been saved
     assert os.path.exists(os.path.join(os.getcwd(), f"my_cwd_model_torch_exported_{mode}.onnx"))
     assert os.path.exists(os.path.join(os.getcwd(), f"my_cwd_model_optimized_{mode}.onnx"))
+    assert os.path.exists(os.path.join(os.getcwd(), f"my_cwd_model_execution_model_{mode}.onnx"))
 
     os.remove(os.path.join(os.getcwd(), f"my_cwd_model_torch_exported_{mode}.onnx"))
     os.remove(os.path.join(os.getcwd(), f"my_cwd_model_optimized_{mode}.onnx"))
+    os.remove(os.path.join(os.getcwd(), f"my_cwd_model_execution_model_{mode}.onnx"))
 
 def test_debug_options_save_onnx_models_validate_fail_on_non_writable_dir():
 
