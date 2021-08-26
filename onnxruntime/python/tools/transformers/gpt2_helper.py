@@ -628,8 +628,8 @@ class Gpt2Helper:
             f"Running parity test (atol={atol}, test_cases={total_test_cases}, use_io_binding={use_io_binding}, model_class={model_class}, is_float16={is_float16}) ..."
         )
 
-        max_batch_size = 1
-        max_past_seq_len = 2  # Do not use large number here for higher chance of hitting empty past (past_seq_len=0)
+        max_batch_size = 8
+        max_past_seq_len = 4  # Do not use large number here for higher chance of hitting empty past (past_seq_len=0)
         max_seq_len = 2
 
         output_buffers = None
