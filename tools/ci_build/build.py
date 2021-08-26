@@ -1998,10 +1998,9 @@ def main():
             raise BuildError("WebAssembly tests cannot be enabled with flag --enable_wasm_debug_info")
 
     # Pre-check onnxruntime-extensions arguments
-    if not args.onnxruntime_extensions_path:
-        raise BuildError("onnxruntime_extensions_path required to build operators in onnxruntime-extensions")
-    if not os.path.exists(args.onnxruntime_extensions_path):
-        raise BuildError("onnxruntime_extensions_path does not exist")
+    if args.onnxruntime_extensions_path:
+        if not os.path.exists(args.onnxruntime_extensions_path):
+            raise BuildError("onnxruntime_extensions_path does not exist")
 
     if args.code_coverage and not args.android:
         raise BuildError("Using --code_coverage requires --android")
