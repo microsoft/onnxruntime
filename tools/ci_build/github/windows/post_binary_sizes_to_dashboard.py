@@ -67,7 +67,6 @@ def write_to_db(binary_size_data, args):
     branch_name = os.environ.get('BUILD_SOURCEBRANCHNAME', 'master')
     rows = []
     for row in binary_size_data:
-        print(row)
         rows.append([now_str,
                      args.build_id,
                      args.build_project,
@@ -77,7 +76,6 @@ def write_to_db(binary_size_data, args):
                      row['build_config'],
                      row['size'],
                      branch_name.lower()])
-    print(rows)
     ingestion_props = IngestionProperties(
       database="powerbi",
       table="binary_size",
