@@ -75,11 +75,6 @@ jobs:
       
   steps:
     
-    - ${{ if eq(parameters.MemTest, true) }}:
-      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/run_mem_test_docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
-        displayName: 'Run Memory Test'
-        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
-
     - ${{ if eq(parameters.BuildORT, true) }}:
 
       - ${{ if ne(parameters.RunMachine, true) }}:
@@ -94,7 +89,7 @@ jobs:
     
     - ${{ if eq(parameters.PublishWheel, true) }}:
     
-      - script: 'docker build --build-arg IMAGE=4ad69d654f3a -t $(anubis_image) -f $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.python38 .'
+      - script: 'docker build --build-arg IMAGE=ort-master -t $(anubis_image) -f $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.python38 .'
         displayName: 'Build Python 3.8 Images'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
       
@@ -117,6 +112,11 @@ jobs:
         displayName: '${{option}} perf'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
   
+    - ${{ if eq(parameters.MemTest, true) }}:
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/run_mem_test_docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
+        displayName: 'Run Memory Test'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
+
     - script: 'mkdir $(Build.SourcesDirectory)/Artifact'
       displayName: 'Prepare Artifacts Directory'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
