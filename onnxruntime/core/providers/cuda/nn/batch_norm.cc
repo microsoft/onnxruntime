@@ -11,33 +11,45 @@ using namespace std;
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                  \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
-      BatchNormalization,                                         \
-      kOnnxDomain,                                                \
-      7, 8,                                                       \
-      T,                                                          \
-      kCudaExecutionProvider,                                     \
-      (*KernelDefBuilder::Create())                               \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      BatchNorm<T>);                                              \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                       \
-      BatchNormalization,                                         \
-      kOnnxDomain,                                                \
-      9, 13,                                                      \
-      T,                                                          \
-      kCudaExecutionProvider,                                     \
-      (*KernelDefBuilder::Create())                               \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      BatchNorm<T>);                                              \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      BatchNormalization,                                         \
-      kOnnxDomain,                                                \
-      14,                                                         \
-      T,                                                          \
-      kCudaExecutionProvider,                                     \
-      (*KernelDefBuilder::Create())                               \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define REGISTER_KERNEL_TYPED(T)                                   \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                         \
+      BatchNormalization,                                          \
+      kOnnxDomain,                                                 \
+      7, 8,                                                        \
+      T,                                                           \
+      kCudaExecutionProvider,                                      \
+      (*KernelDefBuilder::Create())                                \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),  \
+      BatchNorm<T>);                                               \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                         \
+      BatchNormalization,                                          \
+      kOnnxDomain,                                                 \
+      9, 13,                                                       \
+      T,                                                           \
+      kCudaExecutionProvider,                                      \
+      (*KernelDefBuilder::Create())                                \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),  \
+      BatchNorm<T>);                                               \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                         \
+      BatchNormalization,                                          \
+      kOnnxDomain,                                                 \
+      14, 14,                                                      \
+      T,                                                           \
+      kCudaExecutionProvider,                                      \
+      (*KernelDefBuilder::Create())                                \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())   \
+          .TypeConstraint("U", DataTypeImpl::GetTensorType<T>()),  \
+      BatchNorm<T>);                                               \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                   \
+      BatchNormalization,                                          \
+      kOnnxDomain,                                                 \
+      15,                                                          \
+      T,                                                           \
+      kCudaExecutionProvider,                                      \
+      (*KernelDefBuilder::Create())                                \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())   \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())  \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()), \
       BatchNorm<T>);
 
 template <typename T>

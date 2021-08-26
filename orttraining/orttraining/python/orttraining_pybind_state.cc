@@ -18,6 +18,7 @@
 #include "python/onnxruntime_pybind_mlvalue.h"
 
 PYBIND11_MAKE_OPAQUE(std::vector<OrtValue>);
+PYBIND11_MAKE_OPAQUE(onnxruntime::OrtValueCache);
 
 namespace onnxruntime {
 namespace python {
@@ -59,7 +60,7 @@ struct TrainingParameters {
   int deepspeed_zero_stage = 0;
   bool enable_grad_norm_clip = true;
   bool set_gradients_as_graph_outputs = false;
-  bool use_invertible_layernorm_grad = false;
+  bool use_memory_efficient_gradient = false;
 
   std::string pipeline_cut_info_string = {};
 
@@ -232,7 +233,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     config.init_optimizer_states = parameters.optimizer_initial_state;
   }
 
-  config.gradient_graph_config.use_invertible_layernorm_grad = parameters.use_invertible_layernorm_grad;
+  config.gradient_graph_config.use_memory_efficient_gradient = parameters.use_memory_efficient_gradient;
   config.gradient_graph_config.set_gradients_as_graph_outputs = parameters.set_gradients_as_graph_outputs;
 
   config.graph_transformer_config.attn_dropout_recompute = parameters.attn_dropout_recompute;
@@ -277,13 +278,15 @@ void CopyMPIContextToTrainingParameters(TrainingParameters& parameters, const lo
   parameters.local_rank = MPIContext::GetInstance().GetLocalRank();
   parameters.local_size = MPIContext::GetInstance().GetLocalSize();
   if (parameters.world_rank != MPIContext::GetInstance().GetWorldRank()) {
-    if (parameters.world_rank != 0)
+    if (parameters.world_rank != 0) {
       LOGS(*logger, WARNING) << "TrainingParameters world_rank is not correct, tuned automatically to " << MPIContext::GetInstance().GetWorldRank();
+    }
     parameters.world_rank = MPIContext::GetInstance().GetWorldRank();
   }
   if (parameters.world_size != MPIContext::GetInstance().GetWorldSize()) {
-    if (parameters.world_size != 1)
+    if (parameters.world_size != 1) {
       LOGS(*logger, WARNING) << "TrainingParameters world_size is not correct, tuned automatically to " << MPIContext::GetInstance().GetWorldSize();
+    }
     parameters.world_size = MPIContext::GetInstance().GetWorldSize();
   }
 }
@@ -327,6 +330,29 @@ void addObjectMethodsForTraining(py::module& m) {
         return py::reinterpret_steal<py::object>(ToDlpack(v->at(idx)));
       });
 
+  py::class_<OrtValueCache, OrtValueCachePtr>(m, "OrtValueCache")
+      .def(py::init<>())
+      .def("insert", [](const OrtValueCachePtr& cache_ptr, std::string node_arg_name, OrtValue& value) {
+        cache_ptr->emplace(node_arg_name, value);
+      })
+      .def("keys", [](const OrtValueCachePtr& cache_ptr) {
+        py::list keys;
+        for(auto kv : *cache_ptr.get()) {
+          keys.append(kv.first);
+        }
+        return keys;
+      })
+      .def("clear", [](const OrtValueCachePtr& cache_ptr) {
+        cache_ptr->clear();
+      })
+      .def("count", [](const OrtValueCachePtr& cache_ptr, std::string node_arg_name) {
+        return cache_ptr->count(node_arg_name);
+      })
+      .def("remove", [](const OrtValueCachePtr& cache_ptr, std::string node_arg_name) {
+        const auto& num_entries_erased = cache_ptr->erase(node_arg_name);
+        ORT_ENFORCE(num_entries_erased == 1, "NodeArg not found in cache: ", node_arg_name);
+      });
+
   py::class_<TrainingParameters> parameters(m, "TrainingParameters", R"pbdoc(Configuration information for training.)pbdoc");
   parameters.def(py::init())
       .def_readwrite("loss_output_name", &TrainingParameters::loss_output_name)
@@ -355,7 +381,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("deepspeed_zero_stage", &TrainingParameters::deepspeed_zero_stage)
       .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip)
       .def_readwrite("set_gradients_as_graph_outputs", &TrainingParameters::set_gradients_as_graph_outputs)
-      .def_readwrite("use_invertible_layernorm_grad", &TrainingParameters::use_invertible_layernorm_grad)
+      .def_readwrite("use_memory_efficient_gradient", &TrainingParameters::use_memory_efficient_gradient)
       .def_readwrite("attn_dropout_recompute", &TrainingParameters::attn_dropout_recompute)
       .def_readwrite("gelu_recompute", &TrainingParameters::gelu_recompute)
       .def_readwrite("transformer_layer_recompute", &TrainingParameters::transformer_layer_recompute)
@@ -528,8 +554,8 @@ void addObjectMethodsForTraining(py::module& m) {
         return std::make_unique<TrainingAgent>(*session->GetSessionHandle(), fw_feed_names, fw_outputs_device_info,
                                                bw_fetches_names, bw_outputs_device_info);
       }))
-      .def("run_forward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state) -> void {
-        Status status = agent->RunForward(feeds, fetches, *state);
+      .def("run_forward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state, OrtValueCachePtr cache) -> void {
+        Status status = agent->RunForward(feeds, fetches, *state, cache);
         if (!status.IsOK()) {
           throw std::runtime_error("Error in forward pass execution: " + status.ErrorMessage());
         }
@@ -597,8 +623,8 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("initializer_names", &OrtModuleGraphBuilderConfiguration::initializer_names)
       .def_readwrite("initializer_names_to_train", &OrtModuleGraphBuilderConfiguration::initializer_names_to_train)
       .def_readwrite("input_names_require_grad", &OrtModuleGraphBuilderConfiguration::input_names_require_grad)
-      .def_readwrite("use_invertible_layernorm_grad",
-                     &OrtModuleGraphBuilderConfiguration::use_invertible_layernorm_grad)
+      .def_readwrite("use_memory_efficient_gradient",
+                     &OrtModuleGraphBuilderConfiguration::use_memory_efficient_gradient)
       .def_readwrite("build_gradient_graph", &OrtModuleGraphBuilderConfiguration::build_gradient_graph)
       .def_readwrite("graph_transformer_config", &OrtModuleGraphBuilderConfiguration::graph_transformer_config)
       .def_readwrite("enable_caching", &OrtModuleGraphBuilderConfiguration::enable_caching)
@@ -617,6 +643,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("output_grad_indices_require_full_shape", &GraphInfo::output_grad_indices_require_full_shape)
       .def_readwrite("module_output_indices_requires_save_for_backward", &GraphInfo::module_output_indices_requires_save_for_backward)
       .def_readwrite("frontier_node_arg_map", &GraphInfo::frontier_node_arg_map)
+      .def_readwrite("cached_node_arg_names", &GraphInfo::cached_node_arg_names)
       .def_readwrite("module_output_gradient_name", &GraphInfo::module_output_gradient_name);
 
   py::class_<OrtModuleGraphBuilder> ortmodule_graph_builder(m, "OrtModuleGraphBuilder");

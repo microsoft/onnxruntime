@@ -102,11 +102,11 @@ void RunQAttention(const std::vector<float>& input_data,
   if constexpr (ep == EP::CUDA) {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCudaExecutionProvider());
-    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
   } else {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCpuExecutionProvider());
-    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
   }
 }
 
@@ -885,13 +885,10 @@ TEST(QAttentionTest, SharedPrepackedWeights) {
   tester.AddInput<uint8_t>("input_zero_point", {1}, {128});
   tester.AddInput<uint8_t>("weight_zero_point", {1}, {128});
 
-  auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<uint8_t>(), TensorShape(weights_dims),
-                                           weight_data_converted_to_int.data(),
-                                           OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
   OrtValue weight;
-
-  weight.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  Tensor::InitOrtValue(DataTypeImpl::GetType<uint8_t>(), TensorShape(weights_dims),
+                       weight_data_converted_to_int.data(),
+                       OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), weight);
 
   SessionOptions so;
 

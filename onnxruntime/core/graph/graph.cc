@@ -616,7 +616,10 @@ Status Node::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Node& fbs_n
   since_version_ = fbs_node.since_version();
   experimental::utils::LoadStringFromOrtFormat(op_type_, fbs_node.op_type());
   node_type_ = static_cast<Node::Type>(fbs_node.type());
-  experimental::utils::LoadStringFromOrtFormat(execution_provider_type_, fbs_node.execution_provider_type());
+  // we skip populating the saved EP here
+  // the node will either be assigned to another EP by the ORT format model-specific graph partitioning or fall back to
+  // the EP encoded in its kernel def hash
+  //experimental::utils::LoadStringFromOrtFormat(execution_provider_type_, fbs_node.execution_provider_type());
   ORT_RETURN_IF_ERROR(LoadNodeArgsFromOrtFormat(fbs_node.inputs(), definitions_.input_defs));
 
   // attributes
@@ -1902,6 +1905,11 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     return initializer;
   }
 
+  // ORT does not implement partial data propagation yet so just return nullptr.
+  const TensorShapeProto* getSymbolicInput(size_t) const override {
+    return nullptr;
+  }
+
   GraphInferencer* getGraphAttributeInferencer(const std::string& attribute_name) override {
     GraphInferencer* graph_inferencer = nullptr;
 
@@ -2352,8 +2360,12 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
       auto maxInclusiveVersion = DomainToVersionMap().find(domain)->second;
       node.op_ = schema_registry_->GetSchema(node.OpType(), maxInclusiveVersion, node.Domain());
 
-      if (node.op_ && node.op_->Deprecated()) {
-        node.op_ = nullptr;
+      if (node.op_) {
+        node.since_version_ = node.op_->since_version();
+
+        if (node.op_->Deprecated()) {
+          node.op_ = nullptr;
+        }
       }
 
       InitFunctionBodyForNode(node);
@@ -2362,7 +2374,11 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         return Status(ONNXRUNTIME, FAIL, "Fatal error: " + node.OpType() + " is not a registered function/op");
       }
 
-      node.since_version_ = node.op_->since_version();
+      // For ops without schema (like model local functions set the since version after constructing the schema.
+      // schema construction will happen during function body initialization.
+      if (node.since_version_ == -1) {
+        node.since_version_ = node.op_->since_version();
+      }
     }
 
     ORT_RETURN_IF_ERROR(node.UpdateInputArgCount());
@@ -2429,19 +2445,17 @@ void Graph::InitFunctionBodyForNode(Node& node) {
       onnx_function_proto = *(node.op_->GetFunction());
     }
 
-    // Check function's opset requirements are compatible with model's opset.
-    auto& graphImports = DomainToVersionMap();
-    for (const auto& fn_import : onnx_function_proto.opset_import()) {
-      auto it = graphImports.find(fn_import.domain());
-      if ((it != graphImports.end()) && (it->second != fn_import.version()))
-        return;  // Incompatible. Do not use this function expansion.
+    ORT_TRY {
+      auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
+                                                                  logger_);
+      function_container_.emplace_back(std::move(func_ptr));
+      node.SetFunctionBody(*function_container_.back());
     }
-
-    auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
-                                                                logger_);
-
-    function_container_.emplace_back(std::move(func_ptr));
-    node.SetFunctionBody(*function_container_.back());
+    ORT_CATCH(const std::exception&) {
+      // Return without using this function op's expansion. No need to fail just yet.
+      // If ORT has a specialized kernel for this op then execution will proceed
+      return;
+    }
   }
 }
 
@@ -2770,6 +2784,21 @@ const ONNX_NAMESPACE::TensorProto* Graph::GetConstantInitializer(const std::stri
     // make sure there's not a local value with the same name. if there is it shadows any initializer in outer scope.
     if (IsOuterScopeValue(initializer_name)) {
       initializer = parent_graph_->GetConstantInitializer(initializer_name, check_outer_scope);
+    }
+  }
+
+  return initializer;
+}
+
+const ONNX_NAMESPACE::TensorProto* Graph::GetInitializer(const std::string& initializer_name,
+                                                         bool check_outer_scope) const {
+  const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+  if (GetInitializedTensor(initializer_name, initializer)) {
+    return initializer;
+  } else if (check_outer_scope && IsSubgraph()) {
+    // make sure there's not a local value with the same name. if there is it shadows any initializer in outer scope.
+    if (IsOuterScopeValue(initializer_name)) {
+      initializer = parent_graph_->GetInitializer(initializer_name, check_outer_scope);
     }
   }
 
@@ -3115,10 +3144,9 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
       // Dense tensors larger than the threshold are added to the external file.
       TensorProto* output_proto = result.add_initializer();
 
-      size_t tensor_bytes_size = 0;
-      std::unique_ptr<uint8_t[]> raw_data;
-      ORT_THROW_IF_ERROR(utils::UnpackInitializerData(initializer, Path(), raw_data, tensor_bytes_size));
-
+      std::vector<uint8_t> raw_data;
+      ORT_THROW_IF_ERROR(utils::UnpackInitializerData(initializer, Path(), raw_data));
+      size_t tensor_bytes_size = raw_data.size();
       if (tensor_bytes_size < initializer_size_threshold) {
         *output_proto = initializer;
         continue;

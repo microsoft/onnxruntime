@@ -66,8 +66,8 @@
         "^test_mul_uint8_cpu",
         "^test_add_uint8_cpu",
         "^test_div_uint8_cpu",
-        "^test_batchnorm_*",
-        "^test_bernoulli_*",
+        // Following tests are for opset 15 ops and are not yet implemented in ORT
+        "^test_optional_*",
         //GPU failures
         "^test_batchnorm_epsilon_training_mode_cuda",
         "^test_batchnorm_example_training_mode_cuda",
@@ -311,7 +311,13 @@
         // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
         // e.g. 0.296140194 -> "0.2961402" not "0.29614019". ORT produces the latter with precision set to 8, which
         // doesn"t match the expected output that was generated with numpy.
-        "^test_cast_FLOAT_to_STRING"
+        "^test_cast_FLOAT_to_STRING",
+        "^test_castlike_FLOAT_to_STRING",
+        "^test_castlike_FLOAT_to_STRING_expanded",
+        // The test cases for Bernoulli op are for informational purpose. The generator operator is
+        // non-deterministic and may not produce the same values in different implementations
+        // even if a seed is specified.
+        "^test_bernoulli_*"
     ],
     "test_with_types_disabled_due_to_binary_size_concerns": [
         "^test_bitshift_right_uint16",

@@ -654,6 +654,14 @@ class Graph {
   */
   const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const std::string& name, bool check_outer_scope) const;
 
+  /** returns the initializer's TensorProto if 'name' is an initializer (both constant and overridable). 
+  If the initializer is not found, a nullptr is returned.
+  @param check_outer_scope If true and the graph is a subgraph,
+         check ancestor graph/s for 'name' if not found in 'graph'.
+  @remarks check_outer_scope of true is not supported in a minimal build
+  */
+  const ONNX_NAMESPACE::TensorProto* GetInitializer(const std::string& name, bool check_outer_scope) const;
+
   /** Gets the Graph inputs excluding initializers.
   These are the required inputs to the Graph as the initializers can be optionally overridden via graph inputs.
   @remarks Contains no nullptr values. */

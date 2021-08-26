@@ -9,20 +9,11 @@
 #include <memory.h>
 
 #include "core/platform/ort_mutex.h"
-#include "core/providers/dnnl/subgraph/subgraph.h"
-#include "core/platform/ort_mutex.h"
 #include "dnnl_op_manager.h"
-
-namespace dnnl {
-struct memory;
-};
+#include "core/providers/dnnl/subgraph/dnnl_subgraph.h"
+#include "core/providers/dnnl/subgraph/dnnl_subgraph_primitive.h"
 
 namespace onnxruntime {
-
-// Forward class declaration for DnnlKernel
-namespace ort_dnnl {
-class DnnlKernel;
-}
 
 // Information needed to construct DNNL execution providers.
 struct DNNLExecutionProviderInfo {
@@ -39,158 +30,22 @@ class DNNLExecutionProvider : public IExecutionProvider {
   explicit DNNLExecutionProvider(const DNNLExecutionProviderInfo& info);
   virtual ~DNNLExecutionProvider();
 
-  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
-
-  std::shared_ptr<dnnl::memory> GetWeightsMemoryBuffer(const std::string& weight_key) {
-    auto iter = weights_mem_map_.find(weight_key);
-    if (iter != weights_mem_map_.end())
-      return iter->second;
-    return nullptr;
-  }
-
-  void SetWeightsMemoryBuffer(const std::string& weight_key,
-                              const std::shared_ptr<dnnl::memory>& filter_dst_mem) {
-    weights_mem_map_.insert(std::make_pair(weight_key, filter_dst_mem));
-  }
-
-  OrtMutex& GetMutex() {
-    return mutex_;
-  }
-
-  void SaveAllocatedMemory(IAllocatorUniquePtr<void> buffer) {
-    // keep reordered memory buffers in scope.
-    reordered_buffers_.push_back(std::move(buffer));
-  }
-
-  std::shared_ptr<dnnl::memory> GetBiasMemoryBuffer(const std::string& key) {
-    auto iter = bias_mem_map_.find(key);
-    if (iter != bias_mem_map_.end())
-      return iter->second;
-    return nullptr;
-  }
-
-  // Conv+BathNorm fusion. save scaled bias memory.
-  void SetBiasMemoryBuffer(const std::string& key,
-                           const std::shared_ptr<dnnl::memory>& bias_mem) {
-    bias_mem_map_.insert(std::make_pair(key, bias_mem));
-  }
-
-  void SaveAllocatedBiasMemory(IAllocatorUniquePtr<void> buffer) {
-    // keep reordered memory buffers in scope.
-    biass_buffers_.push_back(std::move(buffer));
-  }
-
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
                 const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override;
 
   common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
-#ifdef ENABLE_TRAINING
-  // Add the DnnlKernel to a map using the NodeIndex key.
-  // Note if the a DnnlKernel already exists this will replace the existing kernel with the
-  // new kernel. This was done so the latest kernel is always placed in the map.
-  void SetForwardKernel(onnxruntime::NodeIndex key, std::shared_ptr<ort_dnnl::DnnlKernel> kernel) {
-    std::lock_guard<OrtMutex> lock(mutex_);
-    fwd_kernel_map_[key] = kernel;
-  }
-
-  // Fetch the kernel using the NodeIndex
-  std::shared_ptr<ort_dnnl::DnnlKernel> GetForwardKernel(onnxruntime::NodeIndex key) {
-    std::lock_guard<OrtMutex> lock(mutex_);
-    return fwd_kernel_map_.at(key);
-  }
-
-  void SetForwardConvKernel(std::string key, std::shared_ptr<ort_dnnl::DnnlKernel> kernel) {
-    std::lock_guard<OrtMutex> lock(mutex_);
-    fwd_conv_kernel_map_[key] = kernel;
-  }
-
-  // Fetch the kernel using the NodeIndex
-  std::shared_ptr<ort_dnnl::DnnlKernel> GetForwardConvKernel(std::string key) {
-    std::lock_guard<OrtMutex> lock(mutex_);
-    return fwd_conv_kernel_map_.at(key);
-  }
-#endif  // ENABLE_TRAINING
- private:
-  // dnnl weights(filer data) memory blocks from first iteration
-  // saved by weights name
-  std::unordered_map<std::string, std::shared_ptr<dnnl::memory>> weights_mem_map_;
-  // Save reordered memory buffers in list so that memory is not freed.
-  std::vector<IAllocatorUniquePtr<void>> reordered_buffers_;
-
-  // conv+batchnorm fusion. normalized bias memory blocks from first iteration
-  std::unordered_map<std::string, std::shared_ptr<dnnl::memory>> bias_mem_map_;
-  // Conv+BathNorm fusion bias memory buffer.
-  std::vector<IAllocatorUniquePtr<void>> biass_buffers_;
-  OrtMutex mutex_;
-
-#ifdef ENABLE_TRAINING
-  // map used to hold and lookup forward DnnlKernels. This should only be needed in when
-  // running in training mode.The backward Kernels need access the forward kernels; typically
-  // to obtain the forward primitive description but it may be need for other items like
-  // accessing workspace memory.
-  std::map<onnxruntime::NodeIndex, std::shared_ptr<ort_dnnl::DnnlKernel>> fwd_kernel_map_;
-
-  // map used to hold and lookup forward DnnlKernels for the Convolution/Convolution Grad
-  // operators. Convolution does not have an edge directly connecting an output from
-  // the forward operator to an input of the backward gradient node. so the fwd_kernel_map_
-  // can not be used, the name of the weight that is an input to both Conv and
-  // ConvGrad is use instead.
-  std::map<std::string, std::shared_ptr<ort_dnnl::DnnlKernel>> fwd_conv_kernel_map_;
-#endif  // ENABLE_TRAINING
-  // SUBGRAPH
- private:
-  static int GetOnnxOpSet(const GraphViewer& graph_viewer) {
-    const auto& dm_to_ver = graph_viewer.DomainToVersionMap();
-    return dm_to_ver.at(kOnnxDomain);
-  }
-
-  std::string GetGraphName(const GraphViewer& graph_viewer) const {
-    std::string graph_name;
-
-    int opset = GetOnnxOpSet(graph_viewer);
-
-    int index = 0;
-    if (graph_viewer.MaxNodeIndex() > 0) {
-      auto first_node = graph_viewer.GetNode(index);
-      while (first_node == nullptr) {
-        index++;
-        first_node = graph_viewer.GetNode(index);
-      }
-      auto first_node_outputs = first_node->OutputDefs();
-      graph_name = graph_viewer.Name() + "_opset-" + std::to_string(opset) + "_" + first_node_outputs[0]->Name();
-    }
-    return graph_name;
-  }
-
-  bool UseSubgraph(const GraphViewer& graph_viewer) const;
-
-
-  void CreateOrUpdateDnnlNode(const Node* node,
-                              std::shared_ptr<ort_dnnl::Subgraph>& subgraph_ptr,
-                              ort_dnnl::Subgraph::SubgraphVariables& sub_var,
-                              bool fused,
-                              std::map<std::string, size_t>& output_to_source_node_map,
-                              NodeAttributes& subgraph_attributes) const;
-
-  // Create Dnnl node, update inputs, outputs and parent nodes
-  // collect attribtes
-  void CreateMetaDef(const GraphViewer& graph_viewer,
-                     const NodeAttributes& subgraph_attributes,
-                     std::shared_ptr<ort_dnnl::Subgraph>& subgraph_ptr,
-                     ort_dnnl::Subgraph::SubgraphVariables& sub_var,
-                     std::vector<std::unique_ptr<ComputeCapability>>& result) const;
-
- public:
-  const std::shared_ptr<ort_dnnl::Subgraph> GetDnnlSubgraph(const std::string& subgraph_id) {
-    return mkl_subgraphs_[subgraph_id];
-  }
 
  private:
   // DnnlOpManager contains information about supported Dnnl Operators
   DnnlOpManager opManager_;
-  mutable std::unordered_map<std::string, std::shared_ptr<ort_dnnl::Subgraph>> mkl_subgraphs_;
+  std::unordered_map<std::string, std::unique_ptr<ort_dnnl::DnnlSubgraph>> subgraphs_;
+  std::unordered_map<std::string, std::unique_ptr<ort_dnnl::DnnlSubgraphPrimitive>> subgraph_primitives_;
+  std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_viewer) const;
+  // dump subgraphs to onnx format for debugging purpose
+  bool dump_subgraphs_ = false;
+  bool debug_log_ = false;
 };
 
 }  // namespace onnxruntime
