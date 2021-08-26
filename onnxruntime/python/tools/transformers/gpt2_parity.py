@@ -70,10 +70,18 @@ class ParityTask:
 
     def run(self, argv, name):
         results = []
+        experiment_name = self.options + name
         for i in range(self.total_runs):
-            result = main(argv, experiment_name=self.options + name, run_id=i, csv_filename=self.csv_path)
+            try:
+                result = main(argv, experiment_name=experiment_name, run_id=i, csv_filename=self.csv_path)
+            except:
+                logger.error(f"Failed to run experiment{experiment_name}")
+                continue
             if result:
                 results.append(result)
+
+        if len(results) == 0:
+            return
 
         # Calculate median value per metric
         all_results = {}
