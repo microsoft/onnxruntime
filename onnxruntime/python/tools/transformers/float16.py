@@ -206,7 +206,8 @@ def convert_float_to_float16(model,
             if isinstance(q, onnx_proto.GraphProto):
                 for n in q.initializer:  # TensorProto type
                     if n.data_type == onnx_proto.TensorProto.FLOAT:
-                        fp32_initializer_counters[n.name] = [0, 0] # two counters: used by fp16 nodes, used by fp32 nodes
+                        fp32_initializer_counters[n.name] = [0,
+                                                             0]  # two counters: used by fp16 nodes, used by fp32 nodes
 
                 for n in q.node:
                     # if n is in the block list (doesn't support float16), no conversion for the node,
@@ -249,7 +250,7 @@ def convert_float_to_float16(model,
                 for n in q.initializer:  # TensorProto type
                     if n.data_type == onnx_proto.TensorProto.FLOAT:
                         # TODO: handle initializer that used by subgraph
-                        if fp32_initializer_counters[n.name][1] == 0: # not used by fp32 node
+                        if fp32_initializer_counters[n.name][1] == 0:  # not used by fp32 node
                             n = convert_tensor_float_to_float16(n, min_positive_val, max_finite_val)
                             value_info_list.append(make_value_info_from_tensor(n))
                         else:

@@ -329,14 +329,16 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
 
         # Write results to file
         import csv
+        from onnxruntime import __version__ as ort_version
         latency_name = "average_latency(batch_size=8,sequence_length=1,past_sequence_length=32)"
         csv_file_existed = os.path.exists(csv_filename)
         with open(csv_filename, mode="a", newline='') as csv_file:
             column_names = [
                 "experiment", "run_id", "model_name", "model_class", "gpu", "precision", "optimizer", "test_cases",
-                "keep_io_types", "io_block_list", "op_block_list", "node_block_list", "ORT_TRANSFORMER_OPTIONS", "ORT_CUDA_GEMM_OPTIONS", latency_name,
-                "diff_50_percentile", "diff_90_percentile", "diff_95_percentile", "diff_99_percentile", "diff_pass_rate",
-                "nan_rate", "top1_match_rate", "onnx_size_in_MB"
+                "keep_io_types", "io_block_list", "op_block_list", "node_block_list", "ORT_TRANSFORMER_OPTIONS",
+                "ORT_CUDA_GEMM_OPTIONS", "onnxruntime", latency_name, "diff_50_percentile", "diff_90_percentile",
+                "diff_95_percentile", "diff_99_percentile", "diff_pass_rate", "nan_rate", "top1_match_rate",
+                "onnx_size_in_MB"
             ]
             csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
             if not csv_file_existed:
@@ -356,6 +358,7 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                 "node_block_list": args.node_block_list,
                 "ORT_TRANSFORMER_OPTIONS": os.getenv('ORT_TRANSFORMER_OPTIONS'),
                 "ORT_CUDA_GEMM_OPTIONS": os.getenv('ORT_CUDA_GEMM_OPTIONS'),
+                "onnxruntime": ort_version,
                 latency_name: f"{latency:.2f}",
                 "diff_50_percentile": parity_result["max_diff_percentile_50"],
                 "diff_90_percentile": parity_result["max_diff_percentile_90"],

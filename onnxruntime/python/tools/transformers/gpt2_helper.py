@@ -604,7 +604,6 @@ class Gpt2Helper:
             pickle.dump(dummy_inputs, f)
         logger.info(f"inputs are saved to dummy_inputs_{i}.pickle")
 
-
     @staticmethod
     def test_parity(ort_session,
                     model,
