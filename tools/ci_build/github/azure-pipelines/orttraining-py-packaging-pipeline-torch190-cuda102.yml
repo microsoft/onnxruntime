@@ -10,3 +10,4 @@ stages:
     cmake_cuda_architectures: 35;37;50;52;60;61;70
     docker_file: Dockerfile.manylinux2014_training_cuda10_2
     agent_pool: Onnxruntime-Linux-GPU-NV6
+    upload_wheel: 'yes'

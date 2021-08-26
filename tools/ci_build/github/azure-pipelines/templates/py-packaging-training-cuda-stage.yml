@@ -35,6 +35,12 @@ parameters:
     agent_pool.
   type: string
 
+- name: upload_wheel
+  displayName: >
+    upload_wheel.
+  type: string
+  default: ''
+
 stages:
 - stage: Python_Packaging
 
@@ -52,24 +58,29 @@ stages:
             CudaVersion: ${{ parameters.cuda_version }}
             DockerFile: ${{ parameters.docker_file }}
             GccVersion: ${{ parameters.gcc_version }}
+            UploadWheel: ${{ parameters.upload_wheel }}
           Python37:
             PythonVersion: '3.7'
             TorchVersion: ${{ parameters.torch_version }}
             CudaVersion: ${{ parameters.cuda_version }}
             DockerFile: ${{ parameters.docker_file }}
             GccVersion: ${{ parameters.gcc_version }}
+            UploadWheel: ${{ parameters.upload_wheel }}
           Python38:
             PythonVersion: '3.8'
             TorchVersion: ${{ parameters.torch_version }}
             CudaVersion: ${{ parameters.cuda_version }}
             DockerFile: ${{ parameters.docker_file }}
             GccVersion: ${{ parameters.gcc_version }}
+            UploadWheel: ${{ parameters.upload_wheel }}
           Python39:
             PythonVersion: '3.9'
             TorchVersion: ${{ parameters.torch_version }}
             CudaVersion: ${{ parameters.cuda_version }}
             DockerFile: ${{ parameters.docker_file }}
             GccVersion: ${{ parameters.gcc_version }}
+            UploadWheel: ${{ parameters.upload_wheel }}
+
       steps:
       - checkout: self
         clean: true
@@ -194,6 +205,7 @@ stages:
           ArtifactName: onnxruntime_gpu
 
       - task: AzureCLI@2
+        condition: and(succeeded(), eq(variables['UploadWheel'], 'yes'))
         inputs:
           azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
           scriptType: 'bash'
@@ -207,7 +219,6 @@ stages:
                 --account_name onnxruntimepackages \
                 --account_key $(orttrainingpackagestorageaccountkey) \
                 --container_name '$web'
-          condition: succeededOrFailed()
           displayName:
 
       - template: component-governance-component-detection-steps.yml
