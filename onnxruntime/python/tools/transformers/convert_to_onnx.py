@@ -326,8 +326,6 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
 
         if args.precision == Precision.FLOAT16:
             logger.info(f"fp16 conversion parameters:{fp16_params}")
-        logger.info(f"Parity result={parity_result}")
-        logger.info(f"Latency={latency:.1f}ms for batch_size=8,sequence_length=1,past_sequence_length=32")
 
         # Write results to file
         import csv
@@ -337,7 +335,7 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
             column_names = [
                 "experiment", "run_id", "model_name", "model_class", "gpu", "precision", "optimizer", "test_cases",
                 "keep_io_types", "io_block_list", "op_block_list", "node_block_list", latency_name,
-                "diff_50_percentile", "diff_90_percentile", "diff_95_percentile", "diff_99_percentile", "parity_score",
+                "diff_50_percentile", "diff_90_percentile", "diff_95_percentile", "diff_99_percentile", "diff_pass_rate",
                 "nan_rate", "top1_match_rate", "onnx_size_in_MB"
             ]
             csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
@@ -361,11 +359,12 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                 "diff_90_percentile": parity_result["max_diff_percentile_90"],
                 "diff_95_percentile": parity_result["max_diff_percentile_95"],
                 "diff_99_percentile": parity_result["max_diff_percentile_99"],
-                "parity_score": parity_result["parity_score"],
+                "diff_pass_rate": parity_result["diff_pass_rate"],
                 "nan_rate": parity_result["nan_rate"],
                 "top1_match_rate": parity_result["top1_match_rate"],
                 "onnx_size_in_MB": "{}".format(int(os.path.getsize(output_path) / 1024 / 1024))
             }
+            logger.info(f"result: {row}")
             result.update(row)
             csv_writer.writerow(row)
 

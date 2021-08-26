@@ -640,8 +640,9 @@ class OnnxModel:
             if node.op_type == "Cast":
                 parent = self.get_parent(node, 0)
                 if parent and parent.op_type == "Cast":
-                    self.replace_input_of_all_nodes(parent.output[0], parent.input[0])
-                    nodes_to_remove.append(parent)
+                    if self.get_children(parent) == 1: # first Cast cannot be removed if its output is used by another node
+                        self.replace_input_of_all_nodes(parent.output[0], parent.input[0])
+                        nodes_to_remove.append(parent)
 
         # Remove the second cast node.
         for node in self.nodes():

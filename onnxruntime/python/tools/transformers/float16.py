@@ -138,7 +138,7 @@ def convert_float_to_float16(model,
         node_block_list = []
     op_block_list = set(op_block_list)
     node_block_list = set(node_block_list)
-    block_list_input = set()
+
     # create a queue for BFS
     queue = []
     value_info_list = []
@@ -195,6 +195,7 @@ def convert_float_to_float16(model,
             value_info_list.append(new_value_info)
             io_casts.add(node_name)
 
+    fp32_initializer_counters = {}
     while queue:
         next_level = []
         for q in queue:
@@ -203,6 +204,10 @@ def convert_float_to_float16(model,
                 next_level.append(q.graph)
             # if q is model.graph, push q.node.attribute (AttributeProto)
             if isinstance(q, onnx_proto.GraphProto):
+                for n in q.initializer:  # TensorProto type
+                    if n.data_type == onnx_proto.TensorProto.FLOAT:
+                        fp32_initializer_counters[n.name] = [0, 0] # two counters: used by fp16 nodes, used by fp32 nodes
+
                 for n in q.node:
                     # if n is in the block list (doesn't support float16), no conversion for the node,
                     # and save the node for further processing
@@ -214,10 +219,14 @@ def convert_float_to_float16(model,
                     for i in range(len(n.output)):
                         if n.output[i] in name_mapping:
                             n.output[i] = name_mapping[n.output[i]]
-                    if n.op_type in op_block_list or n.name in node_block_list:
+
+                    is_node_blocked = n.op_type in op_block_list or n.name in node_block_list
+                    for input in n.input:
+                        if input in fp32_initializer_counters:
+                            fp32_initializer_counters[input][int(is_node_blocked)] += 1
+
+                    if is_node_blocked:
                         node_list.append(n)
-                        for input in n.input:
-                            block_list_input.add(input)
                     else:
                         if n.op_type == 'Cast':
                             for attr in n.attribute:
@@ -238,9 +247,14 @@ def convert_float_to_float16(model,
             # if q is graph, process graph.initializer(TensorProto), input, output and value_info (ValueInfoProto)
             if isinstance(q, onnx_proto.GraphProto):
                 for n in q.initializer:  # TensorProto type
-                    if n.data_type == onnx_proto.TensorProto.FLOAT and n.name not in block_list_input:
-                        n = convert_tensor_float_to_float16(n, min_positive_val, max_finite_val)
-                        value_info_list.append(make_value_info_from_tensor(n))
+                    if n.data_type == onnx_proto.TensorProto.FLOAT:
+                        # TODO: handle initializer that used by subgraph
+                        if fp32_initializer_counters[n.name][1] == 0: # not used by fp32 node
+                            n = convert_tensor_float_to_float16(n, min_positive_val, max_finite_val)
+                            value_info_list.append(make_value_info_from_tensor(n))
+                        else:
+                            # TODO: add a cast node to handle the case that an intiailizer is used by both fp32 and fp16 nodes
+                            assert fp32_initializer_counters[n.name][0] == 0
                 # for all ValueInfoProto with tensor(float) type in input, output and value_info, convert them to
                 # tensor(float16) except map and seq(map). And save them in value_info_list for further processing
                 for n in itertools.chain(q.input, q.output, q.value_info):

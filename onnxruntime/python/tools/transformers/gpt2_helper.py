@@ -625,7 +625,7 @@ class Gpt2Helper:
         config: GPT2Config = model.config
 
         logger.info(
-            f"Running parity test (atol={atol}, test_cases={total_test_cases}, use_io_binding={use_io_binding} model_class={model_class} is_float16={is_float16}) ..."
+            f"Running parity test (atol={atol}, test_cases={total_test_cases}, use_io_binding={use_io_binding}, model_class={model_class}, is_float16={is_float16}) ..."
         )
 
         max_batch_size = 1
@@ -692,7 +692,7 @@ class Gpt2Helper:
             result = {f"max_diff_percentile_{p}": "nan" for p in [50, 90, 95, 99]}
 
         result["top1_match_rate"] = top1_matched_cases * 1.0 / total_test_cases
-        result["parity_score"] = passed_test_cases * 1.0 / total_test_cases
+        result["diff_pass_rate"] = passed_test_cases * 1.0 / total_test_cases
         result["nan_rate"] = (total_test_cases - len(max_abs_diff_list)) * 1.0 / total_test_cases
 
         logger.info(

@@ -59,7 +59,7 @@ class ParityTask:
         self.latency_name = "average_latency(batch_size=8,sequence_length=1,past_sequence_length=32)"
         self.metric_names = [
             self.latency_name, "diff_50_percentile", "diff_90_percentile", "diff_95_percentile", "diff_99_percentile",
-            "parity_score", "nan_rate", "top1_match_rate", "onnx_size_in_MB"
+            "diff_pass_rate", "nan_rate", "top1_match_rate", "onnx_size_in_MB"
         ]
 
         options = os.getenv('ORT_TRANSFORMER_OPTIONS')
