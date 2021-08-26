@@ -22,7 +22,7 @@ class ExecutionProviders {
  public:
   ExecutionProviders() = default;
 
-  common::Status Add(const std::string& provider_id, std::shared_ptr<IExecutionProvider> p_exec_provider) {
+  common::Status Add(const std::string& provider_id, const std::shared_ptr<IExecutionProvider>& p_exec_provider) {
     // make sure there are no issues before we change any internal data structures
     if (provider_idx_map_.find(provider_id) != provider_idx_map_.end()) {
       auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Provider ", provider_id, " has already been registered.");
