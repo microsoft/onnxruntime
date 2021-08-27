@@ -19,6 +19,7 @@ Usage:
 
 Modes:
  suite0                        Run all unittests, all operator tests and node model tests that described in suite test list
+ suite1                        Run all operator tests and node model tests that described in suite test list
  model                         Run a single model test
  unittest                      Run all unittests
  op                            Run a single operator test
@@ -94,7 +95,7 @@ Examples:
 /* eslint-enable max-len */
 
 export declare namespace TestRunnerCliArgs {
-  type Mode = 'suite0'|'model'|'unittest'|'op';
+  type Mode = 'suite0'|'suite1'|'model'|'unittest'|'op';
   type Backend = 'cpu'|'webgl'|'wasm'|'onnxruntime';
   type Environment = 'chrome'|'edge'|'firefox'|'electron'|'safari'|'node'|'bs';
   type BundleMode = 'prod'|'dev'|'perf';

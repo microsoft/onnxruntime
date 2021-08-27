@@ -206,6 +206,23 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr UpdateTensorRTProviderOptions;
         public IntPtr GetTensorRTProviderOptionsAsString;
         public IntPtr ReleaseTensorRTProviderOptions;
+        public IntPtr EnableOrtCustomOps;
+        public IntPtr RegisterAllocator;
+        public IntPtr UnregisterAllocator;
+        public IntPtr IsSparseTensor;
+        public IntPtr CreateSparseTensorAsOrtValue;
+        public IntPtr FillSparseTensorCoo;
+        public IntPtr FillSparseTensorCsr;
+        public IntPtr FillSparseTensorBlockSparse;
+        public IntPtr CreateSparseTensorWithValuesAsOrtValue;
+        public IntPtr UseCooIndices;
+        public IntPtr UseCsrIndices;
+        public IntPtr UseBlockSparseIndices;
+        public IntPtr GetSparseTensorFormat;
+        public IntPtr GetSparseTensorValuesTypeAndShape;
+        public IntPtr GetSparseTensorValues;
+        public IntPtr GetSparseTensorIndicesTypeShape;
+        public IntPtr GetSparseTensorIndices;
     }
 
     internal static class NativeMethods
@@ -463,7 +480,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                 IntPtr /* (OrtEnv*) */ environment,
                                                 //[MarshalAs(UnmanagedType.LPStr)]string modelPath
                                                 byte[] modelPath,
-                                                IntPtr /* (OrtSessionOptions*) */sessopnOptions,
+                                                IntPtr /* (OrtSessionOptions*) */sessionOptions,
                                                 out IntPtr /**/ session);
         public static DOrtCreateSession OrtCreateSession;
 
@@ -719,7 +736,8 @@ namespace Microsoft.ML.OnnxRuntime
 
         // TODO: Symbols not available for iOS
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_ROCM(IntPtr /*(OrtSessionOptions*) */ options, int device_id);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_ROCM(
+            IntPtr /*(OrtSessionOptions*) */ options, int device_id, UIntPtr gpu_mem_limit);
 
         // TODO: Symbols not available for iOS
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
@@ -727,7 +745,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_OpenVINO(
-                                                    IntPtr /*(OrtSessionOptions*)*/ options, IntPtr /*(const char*)*/ device_id);
+            IntPtr /*(OrtSessionOptions*)*/ options, IntPtr /*(const char*)*/ device_id);
 
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Tensorrt(IntPtr /*(OrtSessionOptions*)*/ options, int device_id);

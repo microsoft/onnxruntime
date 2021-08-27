@@ -226,11 +226,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
         // It can be replaced with Gemm(dY_reshape, B_transpose) and reshape.
         // However, there is a performance degradation.
         // Thus this implementation is not implemented.
-        int64_t B_rank = B_shape.size();
-        std::vector<int64_t> B_perm(B_rank);
-        std::iota(B_perm.begin(), B_perm.end(), 0);
-        std::swap(B_perm[B_rank - 1], B_perm[B_rank - 2]);
-
         std::vector<Dimension> output_shape;
         for (size_t i = 0; i < Y_shape.size() - 1; i++) {
           output_shape.push_back(Y_shape[i]);
@@ -240,19 +235,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
         std::vector<int64_t> A_axes;
         ComputeBroadcastBackwardAxes(A_shape, output_shape, &A_axes, nullptr, NodeName());
 
-        result.push_back(
-            NodeDef("Transpose",
-                    {B},
-                    {IA("B_t")},
-                    {MakeAttribute("perm", B_perm)}));
-
         ArgDef matmul_out = A_axes.size() > 0 ? IA("PreReduceGrad0") : GI(0);
 
         result.push_back(
-            NodeDef("MatMul",
-                    {GO(0), IA("B_t")},
-                    {matmul_out}));
-
+            NodeDef(OpDef{"FusedMatMul", kMSDomain, 1},
+                    {GO(0), B},
+                    {matmul_out},
+                     {{"transB", MakeAttribute("transB", int64_t(1))}}));
         if (A_axes.size() > 0) {
           AddReduceSumNode(IA("PreReduceGrad0"), IA("ReduceGrad0"), A_axes, true, result);
           result.push_back(NodeDef("Shape", {A}, {IA("A_shape")}));
@@ -265,11 +254,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
           const std::vector<NodeDef> dB_subgraph = dB_2d_case();
           result.insert(result.end(), dB_subgraph.begin(), dB_subgraph.end());
         } else {
-          int64_t A_rank = A_shape.size();
-          std::vector<int64_t> A_perm(A_rank);
-          std::iota(A_perm.begin(), A_perm.end(), 0);
-          std::swap(A_perm[A_rank - 1], A_perm[A_rank - 2]);
-
           std::vector<Dimension> output_shape;
           for (size_t i = 0; i < Y_shape.size() - 2; i++) {
             output_shape.push_back(Y_shape[i]);
@@ -280,18 +264,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
           std::vector<int64_t> B_axes;
           ComputeBroadcastBackwardAxes(B_shape, output_shape, &B_axes, nullptr, NodeName());
 
-          result.push_back(
-              NodeDef("Transpose",
-                      {A},
-                      {IA("A_t")},
-                      {MakeAttribute("perm", A_perm)}));
-
           ArgDef matmul_out = B_axes.size() > 0 ? IA("PreReduceGrad1") : GI(1);
 
           result.push_back(
-              NodeDef("MatMul",
-                      {IA("A_t"), GO(0)},
-                      {matmul_out}));
+              NodeDef(OpDef{"FusedMatMul", kMSDomain, 1},
+                      {A, GO(0)},
+                      {matmul_out},
+                      {{"transA", MakeAttribute("transA", int64_t(1))}}));
 
           if (B_axes.size() > 0) {
             AddReduceSumNode(IA("PreReduceGrad1"), IA("ReduceGrad1"), B_axes, false, result);

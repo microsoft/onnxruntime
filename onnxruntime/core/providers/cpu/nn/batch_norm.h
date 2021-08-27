@@ -24,7 +24,7 @@
 #include "core/framework/tensor.h"
 #include "core/util/math_cpuonly.h"
 #include "core/providers/cpu/nn/batch_norm_helper.h"
-#include <safeint/SafeInt.hpp>
+#include "core/common/safeint.h"
 
 namespace onnxruntime {
 
