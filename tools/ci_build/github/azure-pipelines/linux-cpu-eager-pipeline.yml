@@ -9,19 +9,19 @@ jobs:
     clean: true
     submodules: recursive
 
-  - task: CmdLine@2
-    displayName: 'Docker build'
+  - task: NodeTool@0
     inputs:
-      script: |
-        docker build --pull -t onnxruntime-ubuntu \
-        --build-arg BUILD_USER=onnxruntimedev \
-        --build-arg BUILD_UID=$(id -u) \
-        --build-arg OS_VERSION=20.04 \
-        --build-arg PYTHON_VERSION=3.8 -f Dockerfile.ubuntu_eager_mode .
-      workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
+      versionSpec: '12.16.3'
+
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_eager_cpu
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      Repository: onnxruntimecpubuildeagermode
 
   - task: CmdLine@2
-    displayName: 'eager mode testing'
+    displayName: 'build'
     inputs:
       script: |
         mkdir -p $HOME/.onnx
@@ -33,13 +33,13 @@ jobs:
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntime-ubuntu \
-            /usr/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-              --build_dir /build \
+          onnxruntimecpubuildeagermode \
+            /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build --cmake_generator Ninja \
               --config Debug Release \
               --skip_submodule_sync \
               --build_shared_lib \
               --parallel \
               --build_eager_mode --enable_training --enable_pybind
       workingDirectory: $(Build.SourcesDirectory)
-    condition: succeededOrFailed() # ensure all tests are run
+
