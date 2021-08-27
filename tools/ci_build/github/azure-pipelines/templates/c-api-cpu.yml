@@ -742,18 +742,11 @@ jobs:
     inputs:
       buildType: 'current'
       artifactName: 'onnxruntime-android-aar'
+      patterns: 'onnxruntime-mobile-$(OnnxRuntimeVersion).aar'
       targetPath: '$(Build.BinariesDirectory)/final-android-aar'
 
   - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(Build.SourcesDirectory)
     displayName: Setup gradle wrapper to use gradle 6.8.3
-
-  - script: |
-      python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
-        --android-sdk-root ${ANDROID_SDK_ROOT} \
-        --create-avd --system-image "system-images;android-30;google_apis;x86_64" \
-        --start --emulator-extra-args="-partition-size 4096" \
-        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-    displayName: Start Android emulator
 
   - script: |
       set -e -x
@@ -763,8 +756,22 @@ jobs:
       cd ./android
       mkdir -p app/libs
       cp $(Build.BinariesDirectory)/final-android-aar/onnxruntime-mobile-$(OnnxRuntimeVersion).aar app/libs/onnxruntime-mobile.aar
+    displayName: Setup Android E2E test project
+    workingDirectory: $(Build.BinariesDirectory)
+
+  - script: |
+      python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
+        --android-sdk-root ${ANDROID_SDK_ROOT} \
+        --create-avd --system-image "system-images;android-30;google_apis;x86" \
+        --start --emulator-extra-args="-partition-size 4096" \
+        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+    displayName: Start Android emulator (x86)
+
+  - script: |
+      set -e -x
+      cd android_test/android
       $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest
-    displayName: Run E2E test for Android
+    displayName: Run E2E test for Android  (x86)
     workingDirectory: $(Build.BinariesDirectory)
 
   - script: |
@@ -772,7 +779,30 @@ jobs:
         --android-sdk-root ${ANDROID_SDK_ROOT} \
         --stop \
         --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-    displayName: Stop Android emulator
+    displayName: Stop Android emulator  (x86)
+    condition: always()
+
+  - script: |
+      python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
+        --android-sdk-root ${ANDROID_SDK_ROOT} \
+        --create-avd --system-image "system-images;android-30;google_apis;arm64-v8a" \
+        --start --emulator-extra-args="-partition-size 4096" \
+        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+    displayName: Start Android emulator (arm64-v8a)
+
+  - script: |
+      set -e -x
+      cd android_test/android
+      $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest
+    displayName: Run E2E test for Android (arm64-v8a)
+    workingDirectory: $(Build.BinariesDirectory)
+
+  - script: |
+      python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
+        --android-sdk-root ${ANDROID_SDK_ROOT} \
+        --stop \
+        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+    displayName: Stop Android emulator (arm64-v8a)
     condition: always()
 
   - template: component-governance-component-detection-steps.yml
