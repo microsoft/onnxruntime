@@ -2,7 +2,7 @@
 set -e -x
 PYTHON_EXE="/usr/bin/python3.8"
 ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps_eager\.sh/requirements\.txt}
-${PYTHON_EXE} -m pip install -r ${0/%install_python_deps_eager.sh/training\/ortmodule\/stage1\/requirements_torch_cpu.txt}
+${PYTHON_EXE} -m pip install -r ${0/%install_python_deps_eager.sh/training\/ortmodule\/stage1\/requirements_torch_eager_cpu.txt}
 
 
 # INSTALL_DEPS_TRAINING=false
