@@ -1798,23 +1798,6 @@ struct OrtCustomOp {
 */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id);
 
-// EPs that provider_bridge_ort.cc handles. Function implementation is there.
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena);
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtSessionOptions* options,
-               _In_ const char* device_type);
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtSessionOptions* options, int device_id);
-
-// EPs conditionally included in the build that are exposed in the C# bindings.
-// Function implementation is in the EP code if enabled, or in onnxruntime/core/session/provider_stubs.cc if not.
-// If not enabled the function will return an error message saying so.
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_DML, _In_ OrtSessionOptions* options, int device_id);
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtSessionOptions* options, int device_id);
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_ROCM,
-               _In_ OrtSessionOptions* options, int device_id, size_t gpu_mem_limit);
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Nnapi, _In_ OrtSessionOptions* options, uint32_t nnapi_flags);
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Nuphar,
-               _In_ OrtSessionOptions* options, int allow_unaligned_buffers, _In_ const char* settings);
-
 #ifdef __cplusplus
 }
 #endif
