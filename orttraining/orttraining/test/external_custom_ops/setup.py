@@ -21,7 +21,8 @@ class CMakeBuild(build_ext):
             ["cmake",
              "-Dpybind11_DIR={}".format(pybind11.get_cmake_dir()),
              "-DONNX_INCLUDE={}".format(os.path.dirname(os.path.dirname(onnx.__file__))),
-             "-DONNXRUNTIME_EXTERNAL_INCLUDE={}".format(os.path.join(os.path.join(os.path.dirname(onnxruntime.__file__), "external"), "include")),
+             "-DONNXRUNTIME_EXTERNAL_INCLUDE={}".format(os.path.join(os.path.join(os.path.dirname(onnxruntime.__file__),
+                                                                                               "external"), "include")),
              "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={}".format(extdir),
              ext.sourcedir], cwd=self.build_temp)
         subprocess.check_call(
