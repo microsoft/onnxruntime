@@ -1295,20 +1295,20 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
             adb_push('onnx_test_runner', device_dir, cwd=cwd)
             adb_shell('chmod +x {}/onnx_test_runner'.format(device_dir))
             run_adb_shell('{0}/onnxruntime_test_all'.format(device_dir))
+
             if args.build_java:
-                adb_install(
-                    os.path.join(
-                        get_config_build_dir(build_dir, config),
-                        "java", "androidtest", "android", "app", "build", "outputs", "apk",
-                        "debug", "app-debug.apk"))
-                adb_install(
-                    os.path.join(
-                        get_config_build_dir(build_dir, config),
-                        "java", "androidtest", "android", "app", "build", "outputs", "apk",
-                        "androidTest", "debug", "app-debug-androidTest.apk"))
-                adb_shell(
-                    'am instrument -w ai.onnxruntime.example.javavalidator.test/androidx.test.runner.AndroidJUnitRunner'
-                    )
+                gradle_executable = 'gradle'
+                # use the gradle wrapper if it exists, the gradlew should be setup under <repo root>/java
+                gradlew_path = os.path.join(source_dir, 'java',
+                                            'gradlew.bat' if is_windows() else 'gradlew')
+                if os.path.exists(gradlew_path):
+                    gradle_executable = gradlew_path
+                android_test_path = os.path.join(cwd, "java", "androidtest", "android")
+                run_subprocess([gradle_executable, '--no-daemon',
+                                '-DminSdkVer={}'.format(args.android_api),
+                                'clean', 'connectedDebugAndroidTest'],
+                               cwd=android_test_path)
+
             if args.use_nnapi:
                 adb_shell('cd {0} && {0}/onnx_test_runner -e nnapi {0}/test'.format(device_dir))
             else:
