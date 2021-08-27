@@ -4,7 +4,7 @@
 #include <onnx/defs/shape_inference.h>
 #include <pybind11/pybind11.h>
 namespace ONNX_NAMESPACE {
-void FooShapeInference(InferenceContext &ctx) {
+void FooShapeInference(InferenceContext& ctx) {
   propagateShapeAndTypeFromFirstInput(ctx);
 }
 static const char FooDoc[] = "Foo copies input tensor to the output tensor.";
@@ -32,8 +32,7 @@ ONNX_OPERATOR_SET_SCHEMA_EX(
                 return false;
               }
               std::vector<ONNX_NAMESPACE::FunctionBodyHelper::NodeDef> body{
-                                                {{"Y"}, "Identity", { "X"}}
-                                                };
+                  {{"Y"}, "Identity", {"X"}}};
               auto func_nodes = ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(body);
               for (const auto& node : func_nodes) {
                 auto new_node = functionProto.add_node();
@@ -43,15 +42,15 @@ ONNX_OPERATOR_SET_SCHEMA_EX(
               return true;
             }));
 
-} // namespace ONNX_NAMESPACE
+}  // namespace ONNX_NAMESPACE
 
 using namespace ONNX_NAMESPACE;
 static bool registerOps() {
-  auto &d = OpSchemaRegistry::DomainToVersionRange::Instance();
+  auto& d = OpSchemaRegistry::DomainToVersionRange::Instance();
   d.AddDomainToVersion("com.examples", 1, 1);
   auto schema = GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(comExamples, 1, Foo)>();
   RegisterSchema(schema);
-  std::cerr << "Successfully registered custom op" <<std::endl;
+  std::cerr << "Successfully registered custom op" << std::endl;
   return true;
 }
 static bool ret = registerOps();
