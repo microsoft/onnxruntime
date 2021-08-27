@@ -834,6 +834,11 @@ def get_test_data(fp16, test_data_dir, all_inputs_shape):
 
     return inputs, ref_outputs
 
+def run_symbolic_shape_inference(model_path, new_model_path): 
+    import onnxruntime.tools.symbolic_shape_infer as symbolic_shape_infer
+    out = symbolic_shape_infer.SymbolicShapeInference.infer_shapes(onnx.load(model_path), auto_merge=True)
+    onnx.save(out, new_model_path)
+
 def create_session(model_path, providers, session_options):
     logger.info(model_path)
     try:
@@ -844,12 +849,8 @@ def create_session(model_path, providers, session_options):
             logger.info("Using model from symbolic_shape_infer.py")
 
             new_model_path = model_path[:].replace(".onnx", "_new_by_trt_perf.onnx")
-            exec = os.environ["SYMBOLIC_SHAPE_INFER"]
-
             if not os.path.exists(new_model_path):
-                p = subprocess.run("python3 " + exec + " --input " + model_path + " --output " + new_model_path + " --auto_merge", shell=True, check=True, )
-                logger.info(p) 
-            
+                run_symbolic_shape_inference(model_path, new_model_path)
             session = onnxruntime.InferenceSession(new_model_path, providers=providers, sess_options=session_options)
             return session
         else:
@@ -1582,13 +1583,6 @@ def parse_models_helper(args, models):
         logger.info("Parsing model information from directory ...")
         parse_models_info_from_directory(args.model_source, models)
 
-def find_symbolic_shape_infer(): 
-    output = get_output(["find", "/", "-name", "onnxruntime"])
-    ort_dir = split_and_sort_output(output)[0]
-    symbolic_shape_output = get_output(["find", ort_dir + "/onnxruntime", "-name", "symbolic_shape_infer.py"]) #use python tools directory
-    symbolic_shape_infer = split_and_sort_output(symbolic_shape_output)[0]
-    return symbolic_shape_infer
-
 def main():
     args = parse_arguments()
     setup_logger(False)
@@ -1598,8 +1592,6 @@ def main():
 
     models = {}
     parse_models_helper(args, models)
-
-    os.environ["SYMBOLIC_SHAPE_INFER"] = find_symbolic_shape_infer()
 
     perf_start_time = datetime.now()
     success_results, model_to_latency, model_to_fail_ep, model_to_metrics = run_onnxruntime(args, models)
