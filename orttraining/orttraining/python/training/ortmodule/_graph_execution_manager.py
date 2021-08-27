@@ -5,6 +5,7 @@
 
 from .debug_options import DebugOptions, LogLevel
 from . import _utils, _io, _logger, torch_cpp_extensions as _cpp_ext, _onnx_models
+from ._custom_autograd_function import is_custom_autograd_function_enabled
 from ._custom_autograd_function_exporter import _post_process_after_export
 from ._graph_execution_interface import GraphExecutionInterface
 from ._fallback import (_FallbackManager,
@@ -125,10 +126,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._run_symbolic_shape_infer = True
 
         # PyTorch custom Autograd function support
-        self._enable_custom_autograd_function = False
-        if self._enable_custom_autograd_function:
-            from ._custom_autograd_function import enable_custom_autograd_support
-            enable_custom_autograd_support()
+        self._enable_custom_autograd_function = is_custom_autograd_function_enabled
 
         self._input_info = None
         self._module_output_schema = None

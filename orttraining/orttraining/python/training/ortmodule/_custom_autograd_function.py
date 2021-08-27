@@ -3,6 +3,8 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+is_custom_autograd_function_enabled=False
+
 # Initialize static objects needed to run custom autograd.Function's.
 def enable_custom_autograd_support():
     from onnxruntime.capi._pybind_state import register_forward_runner, register_backward_runner, unregister_python_functions
@@ -18,3 +20,5 @@ def enable_custom_autograd_support():
     atexit.register(unregister_python_functions)
 
     register_custom_op_symbolic('::prim_PythonOp', _export, 1)
+
+    is_custom_autograd_function_enabled = True
