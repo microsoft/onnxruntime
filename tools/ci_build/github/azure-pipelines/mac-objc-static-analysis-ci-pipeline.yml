@@ -4,7 +4,7 @@ jobs:
   pool:
     vmImage: 'macOS-10.15'
   
-  timeoutInMinutes: 10
+  timeoutInMinutes: 60
 
   steps:
   - task: UsePythonVersion@0
@@ -24,7 +24,8 @@ jobs:
         --config Debug \
         --build_shared_lib --use_coreml --build_objc \
         --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON \
-        --update
+        --update \
+        --build --parallel
     displayName: Generate compile_commands.json
 
   - script: |
