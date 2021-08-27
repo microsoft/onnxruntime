@@ -226,8 +226,7 @@ int IExecutionProvider::ModelMetadefIdGenerator::GenerateId(const onnxruntime::G
       // fingerprint the main graph by hashing graph inputs and the ordered outputs from each node
       for (const auto* node_arg : main_graph.GetInputsIncludingInitializers()) {
         hash_str(node_arg->Name());
-      }
-  
+      }  
       // note: process nodes in order defined in model to be deterministic
       for (const auto& node : main_graph.Nodes()) {
         for (const auto* node_arg : node.OutputDefs()) {
