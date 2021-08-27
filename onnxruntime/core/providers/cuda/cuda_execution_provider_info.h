@@ -45,14 +45,6 @@ struct CUDAExecutionProviderInfo {
   // arena config.
   OrtArenaCfg* default_memory_arena_cfg{nullptr};
   CUDAExecutionProviderExternalAllocatorInfo external_allocator_info{};
-  size_t hash() const{
-    return static_cast<size_t>(device_id) ^
-           gpu_mem_limit ^
-           (static_cast<size_t>(arena_extend_strategy) << 16) ^
-           (static_cast<size_t>(cudnn_conv_algo_search) << 18) ^
-           (static_cast<size_t>(do_copy_in_default_stream) << 20) ^
-           (static_cast<size_t>(has_user_compute_stream) << 22);
-  }
 
   static CUDAExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const CUDAExecutionProviderInfo& info);
