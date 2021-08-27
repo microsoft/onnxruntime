@@ -174,7 +174,7 @@ common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
 #endif
 
 int IExecutionProvider::ModelMetadefIdGenerator::GenerateId(const onnxruntime::GraphViewer& graph_viewer,
-                                                            uint64_t& model_hash, bool enhancive_hashing_enable) {
+                                                            uint64_t& model_hash, bool full_hashing_enable) {
   model_hash = 0;
 
   // find the top level graph
@@ -222,7 +222,7 @@ int IExecutionProvider::ModelMetadefIdGenerator::GenerateId(const onnxruntime::G
       }
     }
     
-	if (model_path.IsEmpty() || enhancive_hashing_enable) {  
+    if (model_path.IsEmpty() || full_hashing_enable) {  
       // fingerprint the main graph by hashing graph inputs and the ordered outputs from each node
       for (const auto* node_arg : main_graph.GetInputsIncludingInitializers()) {
         hash_str(node_arg->Name());
@@ -247,7 +247,7 @@ int IExecutionProvider::ModelMetadefIdGenerator::GenerateId(const onnxruntime::G
   return model_metadef_id_[model_hash]++;
 }
 
-int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash, bool enhancive_hashing_enable) const {
+int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash, bool full_hashing_enable) const {
   ORT_ENFORCE(metadef_id_generator_,
               "IExecutionProvider constructor must be called with true for use_metadef_id_creator");
 
@@ -255,7 +255,7 @@ int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_
   // use a lock when generating an id to be paranoid
   static OrtMutex mutex;
   std::lock_guard<OrtMutex> lock(mutex);
-  return metadef_id_generator_->GenerateId(graph_viewer, model_hash, enhancive_hashing_enable);
+  return metadef_id_generator_->GenerateId(graph_viewer, model_hash, full_hashing_enable);
 }
 
 }  // namespace onnxruntime

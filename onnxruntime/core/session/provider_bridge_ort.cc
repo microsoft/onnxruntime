@@ -241,8 +241,8 @@ struct ProviderHostImpl : ProviderHost {
     return p->IExecutionProvider::Compile(fused_nodes_and_graphs, node_compute_funcs);
   }
 
-  int IExecutionProvider__GenerateMetaDefId(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash, bool enhancive_hashing_enable) override {
-    return p->IExecutionProvider::GenerateMetaDefId(graph_viewer, model_hash, enhancive_hashing_enable);
+  int IExecutionProvider__GenerateMetaDefId(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash, bool full_hashing_enable) override {
+    return p->IExecutionProvider::GenerateMetaDefId(graph_viewer, model_hash, full_hashing_enable);
   }
 
   void IExecutionProvider__RegisterAllocator(IExecutionProvider* p, std::shared_ptr<AllocatorManager> allocator_manager) override {

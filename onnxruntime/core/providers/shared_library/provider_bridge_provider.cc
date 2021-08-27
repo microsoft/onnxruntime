@@ -291,8 +291,8 @@ common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
   return g_host->IExecutionProvider__Compile(this, fused_nodes_and_graphs, node_compute_funcs);
 }
 
-int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash, bool enhancive_hashing_enable) const {
-  return g_host->IExecutionProvider__GenerateMetaDefId(this, graph_viewer, model_hash, enhancive_hashing_enable);
+int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash, bool full_hashing_enable) const {
+  return g_host->IExecutionProvider__GenerateMetaDefId(this, graph_viewer, model_hash, full_hashing_enable);
 }
 
 void IExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) {
