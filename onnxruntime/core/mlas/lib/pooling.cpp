@@ -1289,6 +1289,7 @@ Return Value:
 
 #else
 
+    MLAS_UNREFERENCED_PARAMETER(OutputSize);
     PoolKernelRoutine(&WorkBlock, TotalChannelCount, Input, Output);
 
 #endif

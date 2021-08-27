@@ -69,6 +69,12 @@ def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
     return output
 
 
+@register_symbolic('diagonal')
+def diagonal(g, self, offset, dim1, dim2):
+    return g.op("com.microsoft::ATenOp", self, offset, dim1, dim2,
+                name_s='aten::diagonal')
+
+
 @register_symbolic('max_pool2d')
 def max_pool2d(g, self, kernel_size, stride, padding, dilation, ceil_mode):
     return g.op("com.microsoft::ATenOp", self, kernel_size, stride, padding, dilation, ceil_mode,
