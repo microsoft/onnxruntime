@@ -490,12 +490,21 @@ class OnnxModel:
         self.convert_float_to_float16(use_symbolic_shape_infer=True, keep_io_types=cast_input_output)
 
     def convert_float_to_float16(self, use_symbolic_shape_infer=True, **kwargs):
-        """Convert a graph to FLOAT16. By default, we will keep data types of inputs and outputs.
-           For decoder model with past_key_values, it is recommended to set cast_input_output=False for better performance.
+        """Convert a model to mixed precision. User could specifiy which graph inputs, outputs, operator type or list of nodes shall keep in float32.
+           By default, we use symbolic shape inference to get shape and type information. If not, ONNX shape inference will be used.
+           Note that symbolic/ONNX shape inference might fail, and the conversion might not proceed without shape and type information.
+
         Args:
-            keep_io_types (bool, optional): keep data type of inputs and outputs. Defaults to True.
-            use_symbolic_shape_infer (bool, optional): use symbolic shape inference instead of onnx shape inference.
-            kwargs: parameters for float16 conversion.
+            use_symbolic_shape_infer (bool, optional): use symbolic shape inference instead of onnx shape inference. Defaults to True.
+            min_positive_val (float, optional): minimal positive value. Defaults to 1e-7.
+            max_finite_val (float, optional): maximal finite value. Defaults to 1e4.
+            keep_io_types (Union[bool, List[str]], optional): It could be boolean or a list of float32 input/output names. 
+                                                              If True, model inputs/outputs should be left as float32. Defaults to False.
+            op_block_list (List[str], optional): List of operator types to leave as float32.
+                                                 Defaults to None, which will use `float16.DEFAULT_OP_BLOCK_LIST` as default.
+            node_block_list (List[str], optional): List of node names to leave as float32. Defaults to None.
+            force_fp16_initializers(bool): force converting all float initializers to float16.
+                                           Default to false, which will convert only the one needed to avoid precision loss.
         """
         if "keep_io_types" not in kwargs:
             kwargs["keep_io_types"] = True

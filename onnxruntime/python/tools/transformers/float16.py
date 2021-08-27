@@ -123,11 +123,14 @@ def convert_float_to_float16(model,
         model (ModelProto): The ONNX model to convert.
         min_positive_val (float, optional): minimal positive value. Defaults to 1e-7.
         max_finite_val (float, optional): maximal finite value. Defaults to 1e4.
-        keep_io_types (Union[bool, List[str]], optional): It could be boolean or a list of float32 input/output names. If True, model inputs/outputs should be left as float32. Defaults to False.
+        keep_io_types (Union[bool, List[str]], optional): It could be boolean or a list of float32 input/output names.
+                                                          If True, model inputs/outputs should be left as float32. Defaults to False.
         disable_shape_infer (bool, optional): Skips running onnx shape/type inference. Useful if shape inference has been done. Defaults to False.
-        op_block_list (List[str], optional): List of op types to leave as float32. Defaults to None, which will use `float16.DEFAULT_OP_BLOCK_LIST` as default.
+        op_block_list (List[str], optional): List of op types to leave as float32.
+                                             Defaults to None, which will use `float16.DEFAULT_OP_BLOCK_LIST` as default.
         node_block_list (List[str], optional): List of node names to leave as float32. Defaults to None.
-        force_fp16_initializers(bool): force converting all float initializers to float16. Default to false, which will convert only the one needed to avoid precision loss.
+        force_fp16_initializers(bool): force converting all float initializers to float16.
+                                       Default to false, which will convert only the one needed to avoid precision loss.
     Raises:
         ValueError: input type is not ModelProto.
 
