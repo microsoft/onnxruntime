@@ -27,7 +27,7 @@ Status ATenOp::Compute(OpKernelContext* p_ctx) const {
     }
   }
 
-  int64_t context_id;
+  int64_t context_id = 0;
   int64_t* p_context_id = requires_grad_.empty() ? nullptr : &context_id;
   for (size_t i = 0; i < requires_grad_.size(); i++) {
     ORT_ENFORCE(dlpacks[static_cast<size_t>(requires_grad_[i])]);

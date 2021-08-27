@@ -78,7 +78,7 @@ def diagonal(g, self, offset, dim1, dim2):
 @register_symbolic('max_pool2d')
 def max_pool2d(g, self, kernel_size, stride, padding, dilation, ceil_mode):
     return g.op("com.microsoft::ATenOp", self, kernel_size, stride, padding, dilation, ceil_mode,
-                name_s='aten::max_pool2d')
+                name_s='aten::max_pool2d_with_indices', outputs=2)[0]
 
 
 @register_symbolic('unfold')
@@ -99,4 +99,4 @@ def avg_pool2d(g, self, kernel_size, stride, padding, ceil_mode, count_include_p
 
 @register_symbolic('adaptive_avg_pool2d')
 def adaptive_avg_pool2d(g, self, output_size):
-    return g.op("com.microsoft::ATenOp", self, output_size, name_s='aten::adaptive_avg_pool2d')
+    return g.op("com.microsoft::ATenOp", self, output_size, name_s='aten::_adaptive_avg_pool2d')

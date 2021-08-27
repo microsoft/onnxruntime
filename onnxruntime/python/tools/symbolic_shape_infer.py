@@ -187,12 +187,12 @@ class SymbolicShapeInference:
         }
         self.aten_op_dispatcher_ = {
             'aten::embedding': self._infer_Gather,
-            'aten::max_pool2d': self._infer_aten_pool2d,
+            'aten::max_pool2d_with_indices': self._infer_aten_pool2d,
             'aten::diagonal': self._infer_aten_diagonal,
             'aten::unfold': self._infer_aten_unfold,
             'aten::argmax': self._infer_aten_argmax,
             'aten::avg_pool2d': self._infer_aten_pool2d,
-            'aten::adaptive_avg_pool2d': self._infer_aten_pool2d,
+            'aten::_adaptive_avg_pool2d': self._infer_aten_pool2d,
         }
         self.run_ = True
         self.suggested_merge_ = {}
@@ -1039,10 +1039,13 @@ class SymbolicShapeInference:
         assert len(sympy_shape) == 4
         sympy_shape[-2:] = [self._new_symbolic_dim_from_output(node, 0, i) for i in [2, 3]]
         self._update_computed_dims(sympy_shape)
-        if node.output[0]:
-            vi = self.known_vi_[node.output[0]]
+        for i, o in enumerate(node.output):
+            if not o:
+                continue
+            vi = self.known_vi_[o]
+            elem_type = onnx.TensorProto.INT64 if i == 1 else self.known_vi_[node.input[0]].type.tensor_type.elem_type
             vi.CopyFrom(
-                helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type,
+                helper.make_tensor_value_info(o, elem_type,
                                               get_shape_from_sympy_shape(sympy_shape)))
 
     def _infer_aten_unfold(self, node):
