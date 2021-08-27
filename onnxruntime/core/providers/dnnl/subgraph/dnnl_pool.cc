@@ -31,7 +31,7 @@ void DnnlPool::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     }
   }
 
-  auto kernel_shape = GetKernelShape(node);
+  auto kernel_shape = GetKernelShape(src_dims, node);
   PoolShape shape = static_cast<PoolShape>(kernel_shape.size());
   auto strides = GetStrides(node, shape);
 
@@ -118,7 +118,7 @@ dnnl::memory::dims DnnlPool::GetDilations(DnnlNode& node, PoolShape shape) {
   return dnnl::memory::dims(dilations.begin(), dilations.end());
 }
 
-dnnl::memory::dims DnnlPool::GetKernelShape(DnnlNode& node) {
+dnnl::memory::dims DnnlPool::GetKernelShape(const dnnl::memory::dims& src_dims, DnnlNode& node) {
   auto attr = node.Attributes().find("kernel_shape");
   std::vector<int64_t> kernel_shape;
   if (attr != node.Attributes().end()) {
@@ -128,9 +128,8 @@ dnnl::memory::dims DnnlPool::GetKernelShape(DnnlNode& node) {
     }
     return kernel_shape;
   }
-  // Infer the Kernel shape from the input weights
-  auto weight_dims = node.Input(IN_X).Dim();
-  kernel_shape = std::vector<int64_t>(weight_dims.begin() + 2, weight_dims.end());
+
+  kernel_shape = std::vector<int64_t>(src_dims.begin() + 2, src_dims.end());
   return kernel_shape;
 }
 

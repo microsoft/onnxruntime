@@ -192,6 +192,12 @@ void GradientOpTester::Run(
 
           //if node is not registered for the provider, skip
           node.SetExecutionProviderType(provider_type);
+
+          // provider types that don't use the KernelRegistry
+          if (provider_type == onnxruntime::kDnnlExecutionProvider) {
+            continue;
+          }
+
           auto reg = execution_provider->GetKernelRegistry();
           const KernelCreateInfo* kci;
           auto st = reg->TryFindKernel(node, execution_provider->Type(), &kci);

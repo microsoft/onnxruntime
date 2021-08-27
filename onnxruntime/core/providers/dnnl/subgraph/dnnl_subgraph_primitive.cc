@@ -6,6 +6,7 @@
 #include "dnnl_batchnorm.h"
 #include "dnnl_binary.h"
 #include "dnnl_conv.h"
+#include "dnnl_gemm.h"
 #include "dnnl_lrn.h"
 #include "dnnl_matmul.h"
 #include "dnnl_matmul_integer.h"
@@ -205,6 +206,8 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlBatchNorm().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Conv") {
       DnnlConv().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Gemm") {
+      DnnlGemm().CreatePrimitive(*this, node);
     } else if (node.OpType() == "LRN") {
       DnnlLrn().CreatePrimitive(*this, node);
     } else if (node.OpType() == "MatMul") {
@@ -356,7 +359,7 @@ void DnnlSubgraphPrimitive::SetInitializer(std::string memory_name, dnnl::memory
   }
 }
 
-dnnl::memory DnnlSubgraphPrimitive::GetMemoryAndReshape(ort_dnnl::DnnlTensor tensor, dnnl::memory::desc mem_desc, dnnl::engine eng) {
+dnnl::memory DnnlSubgraphPrimitive::GetMemoryAndReshape(ort_dnnl::DnnlTensor tensor, dnnl::memory::desc mem_desc, dnnl::engine eng, bool transpose) {
   // if found just return
   if (HasMemory(tensor.Name(), mem_desc, eng)) {
     return GetMemory(tensor.Name(), mem_desc, eng);
@@ -372,7 +375,7 @@ dnnl::memory DnnlSubgraphPrimitive::GetMemoryAndReshape(ort_dnnl::DnnlTensor ten
   auto mem_to = dnnl::memory(mem_desc, eng);
 
   // if it is a reshape, ensure reorder is possible by making the same dims
-  if (mem_from.get_desc().dims() != mem_to.get_desc().dims()) {
+  if (mem_from.get_desc().dims() != mem_to.get_desc().dims() || transpose) {
     auto mem_from_dims = mem_from.get_desc().dims();
     auto mem_to_dims = mem_to.get_desc().dims();
     if (Product(mem_from_dims) != Product(mem_to_dims)) {

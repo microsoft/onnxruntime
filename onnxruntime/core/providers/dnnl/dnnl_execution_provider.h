@@ -30,8 +30,6 @@ class DNNLExecutionProvider : public IExecutionProvider {
   explicit DNNLExecutionProvider(const DNNLExecutionProviderInfo& info);
   virtual ~DNNLExecutionProvider();
 
-  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
-
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
                 const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override;

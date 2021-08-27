@@ -229,7 +229,7 @@ endif()
 
 
 if (ARM64 OR ARM OR X86 OR X64 OR X86_64)
-  if((ARM64 OR ARM) AND MSVC)
+  if(WINDOWS_STORE OR ((ARM64 OR ARM) AND MSVC))
     # msvc compiler report syntax error with cpuinfo arm source files
     # and cpuinfo does not have code for getting arm uarch info under windows
   else()
@@ -242,4 +242,3 @@ if (ARM64 OR ARM OR X86 OR X64 OR X86_64)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo clog)
   endif()
 endif()
-
