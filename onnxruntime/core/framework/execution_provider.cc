@@ -214,9 +214,8 @@ int IExecutionProvider::ModelMetadefIdGenerator::GenerateId(const onnxruntime::G
 
       // ensure enough characters are hashed in case model names are short or very similar
       int32_t model_name_length = gsl::narrow_cast<int32_t>(model_name.size());
-      int32_t string_length = model_name_length;
-      int32_t hash_string_length = std::max(model_name_length, 500);
-      while (string_length <= hash_string_length) {
+      int32_t string_length = 0, hash_string_length = 500;
+      while (string_length < hash_string_length) {
         hash_str(model_name);
         string_length += model_name_length;
       }
