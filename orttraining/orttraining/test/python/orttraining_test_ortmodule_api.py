@@ -3535,11 +3535,11 @@ def test_ortmodule_setattr_signals_model_changed():
     exported_model1 = ort_model._torch_module._execution_manager(True)._onnx_models.exported_model
 
     for training_mode in [False, True]:
-        assert ort_model._torch_module._execution_manager(training_mode)._model_has_changed == False
+        assert ort_model._torch_module._execution_manager(training_mode)._original_model_has_changed == False
     ort_model.input_flag = False
 
     for training_mode in [False, True]:
-        assert ort_model._torch_module._execution_manager(training_mode)._model_has_changed == True
+        assert ort_model._torch_module._execution_manager(training_mode)._original_model_has_changed == True
 
     _ = ort_model(torch.randn(N, D_in, device=device))
     exported_model2 = ort_model._torch_module._execution_manager(True)._onnx_models.exported_model

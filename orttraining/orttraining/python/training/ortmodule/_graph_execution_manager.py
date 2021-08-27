@@ -160,7 +160,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # Flag to re-export the model due to attribute change on original module.
         # Re-export will be avoided if _skip_check is enabled.
-        self._model_has_changed = False
+        self._original_model_has_changed = False
 
     def _get_torch_gpu_allocator_function_addresses(self):
         if self._use_external_gpu_allocator and torch.cuda.is_available():
@@ -277,7 +277,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         schema = _io._extract_schema(
             {'args': copy.copy(inputs), 'kwargs': copy.copy(kwargs)})
-        if self._onnx_models.exported_model and schema == self._input_info.schema and not self._model_has_changed:
+        if self._onnx_models.exported_model and schema == self._input_info.schema and not self._original_model_has_changed:
             # All required models have already been exported previously
             return False
 
@@ -423,4 +423,4 @@ class GraphExecutionManager(GraphExecutionInterface):
 
     def signal_model_changed(self):
         """Signals the execution manager to re-export the model on the next forward call"""
-        self._model_has_changed = True
+        self._original_model_has_changed = True

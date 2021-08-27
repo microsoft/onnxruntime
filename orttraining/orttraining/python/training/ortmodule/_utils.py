@@ -116,37 +116,42 @@ def _create_iobinding(io_binding, inputs, model, device):
     for value_info in model.graph.output:
         io_binding.bind_output(value_info.name, device.type, device_id=get_device_index(device))
 
-def check_for_name_collisions(ortmodule: torch.nn.Module, user_module: torch.nn.Module,
-                              ortmodule_non_method_attribute_names: List[str]):
+def check_for_name_collisions(ortmodule: torch.nn.Module, user_module: torch.nn.Module):
     """Raises if there are any common attributes between the user's model and ORTModule.
 
     Args:
         ortmodule: the ORTModule instance
         user_module: the user's torch.nn.Module
-        ortmodule_non_method_attribute_names: any non method attribute names that ORTModule sets on itself
 
     Raises:
-        UserWarning: If there are any overlapping methods between the ortmodule and user_module (except forward)
+        UserWarning: If there are any overlapping attributes between the ortmodule and user_module (except forward)
     """
 
-    ortmodule_methods = dict(inspect.getmembers(ortmodule, predicate=inspect.ismethod))
-    torch_module_methods = dict(inspect.getmembers(torch.nn.Module, predicate=inspect.isfunction))
-    user_module_methods = inspect.getmembers(user_module,
-        predicate=lambda x : inspect.ismethod(x) and not x.__name__.startswith('__'))
+    ortmodule_attributes = dict(inspect.getmembers(ortmodule))
+    torch_module_attributes = dict(inspect.getmembers(torch.nn.Module()))
+    user_module_attributes = inspect.getmembers(user_module)
 
-    # Check if any element of ortmodule_non_method_attribute_names is an attribute of user's model
-    for name in ortmodule_non_method_attribute_names:
-        if hasattr(user_module, name):
-            warnings.warn(f"User Module's attribute name {name} collides with ORTModule's attribute name. "
-                    "User Module's attribute may not be returned when trying to retrieve the attribute through ORTModule.")
-
-    # Check if any user defined method collides with ORTModule's method
-    for method_name, method in user_module_methods:
-        if method_name not in torch_module_methods or method.__func__ != torch_module_methods[method_name]:
-            if method_name == 'forward':
+    # Check if any user defined attribute collides with ORTModule's attributes
+    for attribute_name, attribute in user_module_attributes:
+        if inspect.ismethod(attribute):
+            # Skip the dunder methods
+            if attribute_name.startswith('__'):
                 continue
 
-            # This is a user defined/overriden method. Check for collisions.
-            if method_name in ortmodule_methods:
-                warnings.warn(f"User Module's attribute name {method_name} collides with ORTModule's attribute name. "
-                    "User Module's method may not be called upon invocation through ORTModule.")
+            if attribute_name not in torch_module_attributes or \
+                not inspect.ismethod(torch_module_attributes[attribute_name]) or \
+                attribute.__func__ != torch_module_attributes[attribute_name].__func__:
+
+                if attribute_name == 'forward':
+                    continue
+
+                # This is a user defined/overriden method. Check for collisions.
+                if attribute_name in ortmodule_attributes:
+                    warnings.warn(f"User Module's attribute name {attribute_name} collides with ORTModule's attribute name. "
+                        "User Module's method may not be called upon invocation through ORTModule.")
+        else:
+            if attribute_name not in torch_module_attributes and attribute_name in ortmodule_attributes:
+                # This is a user defined attribute that collides with ORTModule
+                if attribute_name in ortmodule_attributes:
+                    warnings.warn(f"User Module's attribute name {attribute_name} collides with ORTModule's attribute name. "
+                    "User Module's attribute may not be returned when trying to retrieve the attribute through ORTModule.")

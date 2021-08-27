@@ -80,10 +80,6 @@ class ORTModule(torch.nn.Module):
             CustomOpSymbolicRegistry.register_all()
             CustomGradientRegistry.register_all()
 
-            # Make sure that the user defined model does not have any name collisions
-            # with the ORTModule attribute names.
-            _utils.check_for_name_collisions(self, module, ['_torch_module', '_fallback_manager'])
-
         except ORTModuleFallbackException as e:
             torch_module = TorchModulePytorch(module)
             # TODO: Rework by implementing the "__getattribute__" method.
@@ -113,6 +109,11 @@ class ORTModule(torch.nn.Module):
         # Assign self._torch_module after all the ORTModule class attributes have been assigned
         # else, they will be assigned to self._torch_module.original_module instead
         self._torch_module = torch_module
+
+        # Make sure that the user defined model does not have any name collisions
+        # with the ORTModule attribute names.
+        if isinstance(self._torch_module, TorchModuleORT):
+            _utils.check_for_name_collisions(self, module)
 
     # IMPORTANT: DO NOT add code here
     # This declaration is for automatic document generation purposes only
@@ -292,7 +293,11 @@ class ORTModule(torch.nn.Module):
 
     def __setattr__(self, name: str, value) -> None:
 
-        def _setattr_on_user_module(name, value):
+        if name in self.__dict__:
+            # If the name is an attribute of ORTModule, update only ORTModule
+            self.__dict__[name] = value
+        elif '_torch_module' in self.__dict__:
+            # If the name is an attribute of user model, or is a new attribute, update there.
             # Set the attribute on the user's original module
             setattr(self.module, name, value)
             # Signal to execution manager to re-export the model.
@@ -300,20 +305,6 @@ class ORTModule(torch.nn.Module):
             if isinstance(self._torch_module, TorchModuleORT):
                 for training_mode in [False, True]:
                     self._torch_module._execution_manager(training_mode).signal_model_changed()
-
-        if isinstance(value, torch.nn.Parameter) or isinstance(value, torch.nn.Module) \
-            or isinstance(value, torch.Tensor):
-            # Any attribute which is either a torch Parameter, Module or
-            # Tensor must be set on the user's model
-            _setattr_on_user_module(name, value)
-        elif name in self.__dict__:
-            # If the name is an attribute of ORTModule, update only ORTModule
-            if '_torch_module' in self.__dict__ and hasattr(self.module, name):
-                warnings.warn(f"User Module attribute name {name} collides with ORTModule attribute name.")
-            self.__dict__[name] = value
-        elif '_torch_module' in self.__dict__:
-            # If the name is an attribute of user model, or is a new attribute, update there.
-            _setattr_on_user_module(name, value)
         else:
             # Setting any new attributes should be done on ORTModule only when 'torch_module' is not defined
             self.__dict__[name] = value
