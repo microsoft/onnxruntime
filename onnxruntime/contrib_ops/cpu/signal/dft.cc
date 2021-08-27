@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef BUILD_MS_EXPERIMENTAL_OPS
-
 #include "core/providers/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
@@ -13,6 +11,7 @@
 #include "core/platform/threadpool.h"
 
 #include <complex>
+#include <cmath>
 
 namespace onnxruntime {
 namespace contrib {
@@ -517,5 +516,3 @@ Status STFT::Compute(OpKernelContext* ctx) const {
 
 }  // namespace contrib
 }  // namespace onnxruntime
-
-#endif

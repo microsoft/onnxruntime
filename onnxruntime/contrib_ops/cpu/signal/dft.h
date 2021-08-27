@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef BUILD_MS_EXPERIMENTAL_OPS
-
 namespace onnxruntime {
 namespace contrib {
 
@@ -33,5 +31,3 @@ class STFT final : public OpKernel {
 
 }  // namespace contrib
 }  // namespace onnxruntime
-
-#endif

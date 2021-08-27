@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef BUILD_MS_EXPERIMENTAL_OPS
-
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/common.h"
 #include "core/graph/constants.h"
@@ -12,6 +10,7 @@
 #include "onnx/defs/shape_inference.h"
 #include "onnx/defs/tensor_proto_util.h"
 
+#include <cmath>
 
 namespace onnxruntime {
 namespace signal {
@@ -320,5 +319,3 @@ void RegisterSignalSchemas() {
 
 }  // namespace audio
 }  // namespace onnxruntime
-
-#endif
