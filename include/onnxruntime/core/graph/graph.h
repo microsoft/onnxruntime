@@ -331,7 +331,9 @@ class Node {
   ADD_ATTR_INTERFACES(std::string)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TensorProto)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::GraphProto)
+#if !defined(DISABLE_SPARSE_TENSORS)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::SparseTensorProto)
+#endif
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TypeProto)
 
   /** Gets the Node's attributes. */
@@ -625,11 +627,13 @@ class Graph {
   /** Check if a given name is an initializer tensor's name in this graph. */
   bool IsInitializedTensor(const std::string& name) const;
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   /** Check if a given name is a sparse initializer's name in the model 
    * we currently convert sparse_initializer field in the model into dense Tensor instances.
    * However, we sometimes want to check if this initializer was stored as sparse in the model.
   */
   bool IsSparseInitializer(const std::string& name) const;
+#endif
 
   /** Gets an initializer tensor with the provided name.
   @param[out] value Set to the TensorProto* if the initializer is found, or nullptr if not.

@@ -823,11 +823,13 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
       *tensor.mutable_string_data() = constant_attribute.strings();
       break;
     }
+#if !defined(DISABLE_SPARSE_TENSORS)
     case AttributeProto_AttributeType_SPARSE_TENSOR: {
       auto& s = constant_attribute.sparse_tensor();
       ORT_RETURN_IF_ERROR(SparseTensorProtoToDenseTensorProto(s, model_path, tensor));
       break;
     }
+#endif
     default:
       ORT_THROW("Unsupported attribute value type of ", constant_attribute.type(),
                 " in 'Constant' node '", node.name(), "'");
@@ -839,6 +841,7 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
   return Status::OK();
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 template <typename T>
 static Status CopySparseData(size_t n_sparse_elements,
                              const ONNX_NAMESPACE::TensorProto& indices,
@@ -902,14 +905,16 @@ static Status CopySparseData(size_t n_sparse_elements,
 
   return status;
 }
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 namespace conversion_internal {
+#if !defined(DISABLE_SPARSE_TENSORS)
 struct UnsupportedSparseDataType {
   void operator()(int32_t dt_type, Status& status) const {
     status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported sparse tensor data type of ", dt_type);
   }
 };
-
+#endif
 template <typename T>
 struct GetElementSize {
   Status operator()(size_t& element_size) const {
@@ -922,6 +927,7 @@ using SupportedConversionTypeList = onnxruntime::TypeList<float, double, MLFloat
                                                           int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>;
 }  // namespace conversion_internal
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseTensorProto& sparse,
                                                    const Path& model_path,
                                                    ONNX_NAMESPACE::TensorProto& dense) {
@@ -1150,6 +1156,7 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
 }
 
 #endif  // !ORT_MINIMAL_BUILD
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 template common::Status GetSizeInBytesFromTensorProto<kAllocAlignment>(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                                                        size_t* out);
