@@ -3,7 +3,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-#include "core/optimizer/qdq_transformer/qdq_selectors.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 
 #include "core/graph/graph.h"
 #include "core/optimizer/initializer.h"

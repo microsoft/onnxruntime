@@ -253,8 +253,12 @@ common::Status SaveInitializedTensors(
     // any outer scope value is shadowed by a local value and can't override it.
     // due to that check_outer_scope is false
     const bool constant = graph.IsConstantInitializer(name, /* check_outer_scope */ false);
+#if !defined(DISABLE_SPARSE_TENSORS)
     const bool sparse = graph.GetGraph().IsSparseInitializer(name);
     ORT_RETURN_IF_ERROR(save_tensor_func(ort_value_index, ort_value, deleter, constant, sparse));
+#else
+    ORT_RETURN_IF_ERROR(save_tensor_func(ort_value_index, ort_value, deleter, constant, false));
+#endif
 
     VLOGS(logger, 1) << "Added weight with name : " << name << " with index: " << ort_value_index;
   }
