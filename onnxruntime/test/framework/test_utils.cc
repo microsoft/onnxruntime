@@ -11,14 +11,6 @@ IExecutionProvider* TestCPUExecutionProvider() {
   return &cpu_provider;
 }
 
-#ifdef USE_ROCM
-IExecutionProvider* TestRocmExecutionProvider() {
-  static ROCMExecutionProviderInfo info;
-  static ROCMExecutionProvider rocm_provider(info);
-  return &rocm_provider;
-}
-#endif
-
 #ifdef USE_NNAPI
 IExecutionProvider* TestNnapiExecutionProvider() {
   static NnapiExecutionProvider nnapi_provider(0);

@@ -48,7 +48,7 @@ Status ScatterND::ComputeInternal(OpKernelContext* context) const {
 
   if (input_data != output_data) {
     // TODO: Run benchmarks to determine if a dedicated kernel doing data copy will be faster than invoking cudaMemcpy ?
-    cudaMemcpyAsync(output_data, input_data, input_tensor->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream());
+    CUDA_CALL(cudaMemcpyAsync(output_data, input_data, input_tensor->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
   }
 
   // Bail out early

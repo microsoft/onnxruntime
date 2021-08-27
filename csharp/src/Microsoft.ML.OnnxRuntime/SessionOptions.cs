@@ -141,14 +141,13 @@ namespace Microsoft.ML.OnnxRuntime
         /// A helper method to construct a SessionOptions object for ROCM execution.
         /// Use only if ROCM is installed and you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
-        /// <param name="deviceId">Device Id</param>
-        /// <param name="gpuMemLimit">GPU memory limit. Defaults to no limit.</param>
+        /// <param name="deviceId"></param>
         /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
-        public static SessionOptions MakeSessionOptionWithRocmProvider(int deviceId = 0, UIntPtr gpuMemLimit = default)
+        public static SessionOptions MakeSessionOptionWithRocmProvider(int deviceId = 0)
         {
+            //CheckRocmExecutionProviderDLLs();
             SessionOptions options = new SessionOptions();
-            NativeApiStatus.VerifySuccess(
-                NativeMethods.OrtSessionOptionsAppendExecutionProvider_ROCM(options.Handle, deviceId, gpuMemLimit));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_ROCM(options.Handle, deviceId));
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options.Handle, 1));
             return options;
         }
@@ -228,12 +227,10 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
-        /// <param name="deviceId">Device Id</param>
-        /// <param name="gpuMemLimit">GPU memory limit. Defaults to no limit.</param>
-        public void AppendExecutionProvider_ROCM(int deviceId = 0, UIntPtr gpuMemLimit = default)
+        /// <param name="deviceId">integer device ID</param>
+        public void AppendExecutionProvider_ROCM(int deviceId = 0)
         {
-            NativeApiStatus.VerifySuccess(
-                NativeMethods.OrtSessionOptionsAppendExecutionProvider_ROCM(handle, deviceId, gpuMemLimit));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_ROCM(handle, deviceId));
         }
 
         /// <summary>
