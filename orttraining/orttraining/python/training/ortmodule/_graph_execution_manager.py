@@ -217,7 +217,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._onnx_models.optimized_model = onnx.load_model_from_string(
             self._graph_builder.get_model())
 
-        self._onnx_models.optimized_no_grad_model = onnx.load_model_from_string(
+        self._onnx_models.optimized_pre_grad_model = onnx.load_model_from_string(
             self._graph_builder.get_inference_optimized_model())
 
         self._graph_info = self._graph_builder.get_graph_info()
