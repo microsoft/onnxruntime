@@ -188,7 +188,11 @@ NS_ASSUME_NONNULL_BEGIN
 
     for (size_t i = 0; i < nameCount; ++i) {
       auto name = std::unique_ptr<char[], decltype(deleter)>{getName(i, allocator), deleter};
-      [result addObject:[NSString stringWithUTF8String:name.get()]];
+      NSString* nameNsstr = [NSString stringWithUTF8String:name.get()];
+      if (nameNsstr == nil) {
+        ORT_CXX_API_THROW("failed to create name NSString", ORT_FAIL);
+      }
+      [result addObject:nameNsstr];
     }
 
     return result;
