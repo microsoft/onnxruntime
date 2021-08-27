@@ -8,7 +8,7 @@ onnxruntime-extensions supports many useful custom operators to enhance the text
 ## Build ONNXRuntime with Extensions
 We have supported build onnxruntime-extensions as a static library and link it into ONNXRuntime. To enable custom operators from onnxruntime-extensions, you should add argument `--use_extensions`, which will use onnxruntime-extensions from git submodule in path cmake/external/onnxruntime-extensions **by default**. 
 
-If you want to build ONNXRuntime with a pre-pulled onnxruntime-extensions, pass extra argument `--extensions_path_override <path-to-onnxruntime-extensions>`.
+If you want to build ONNXRuntime with a pre-pulled onnxruntime-extensions, pass extra argument `--extensions_overridden_path <path-to-onnxruntime-extensions>`.
 
 Note: Please remember to use `--minimal_build custom_ops` when you build minimal runtime with custom operators from onnxruntime-extensions.
 

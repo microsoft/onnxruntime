@@ -362,7 +362,7 @@ def parse_arguments():
         help="Enable custom operators in onnxruntime-extensions, use git submodule onnxruntime-extensions "
         "in path cmake/external/onnxruntime-extensions by default.")
     parser.add_argument(
-        "--extensions_overriden_path", type=str,
+        "--extensions_overridden_path", type=str,
         help="Path to pre-pulled onnxruntime-extensions, will override default onnxruntime-extensions path.")
 
     # Arguments needed by CI
@@ -1007,9 +1007,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         # default path of onnxruntime-extensions, using git submodule
         onnxruntime_extensions_path = os.path.join(cmake_dir, "external", "onnxruntime-extensions")
 
-        if args.extensions_overriden_path and os.path.exists(args.extensions_overriden_path):
+        if args.extensions_overridden_path and os.path.exists(args.extensions_overridden_path):
             # use absolute path here because onnxruntime-extensions is outside onnxruntime
-            onnxruntime_extensions_path = os.path.abspath(args.extensions_overriden_path)
+            onnxruntime_extensions_path = os.path.abspath(args.extensions_overridden_path)
 
         cmake_args += [
             "-Donnxruntime_EXTENSIONS_PATH=" + onnxruntime_extensions_path]
