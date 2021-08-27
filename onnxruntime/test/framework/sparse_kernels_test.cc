@@ -129,6 +129,7 @@ This operator constructs a sparse tensor from three tensors that provide a COO
 
       TensorShape shape(shape_tensor.Data<int64_t>(), shape_shape.Size());
 
+#if !defined(DISABLE_SPARSE_TENSORS)
       SparseTensor* output = ctx->OutputSparse(0, shape);
       ORT_ENFORCE(output != nullptr);
       const auto& dtm = Info().GetDataTransferManager();
@@ -138,6 +139,7 @@ This operator constructs a sparse tensor from three tensors that provide a COO
                                              static_cast<size_t>(val_shape.Size()),
                                              values.DataRaw(),
                                              indices.DataAsSpan<int64_t>()));
+#endif
       return Status::OK();
     }
   };
@@ -147,8 +149,12 @@ This operator constructs a sparse tensor from three tensors that provide a COO
     def.SetName(SparseFromCOO::OpName())
         .TypeConstraint("values", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("indices", DataTypeImpl::GetTensorType<int64_t>())
+#if !defined(DISABLE_SPARSE_TENSORS)
         .TypeConstraint("shape", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("sparse_rep", DataTypeImpl::GetSparseTensorType<int64_t>());
+#else
+        .TypeConstraint("shape", DataTypeImpl::GetTensorType<int64_t>());
+#endif
     return def;
   }
 };
@@ -190,6 +196,7 @@ This operator applies the Abs op element-wise to the input sparse-tensor.
     Status Compute(OpKernelContext* ctx) const override {
       ORT_ENFORCE(ctx->InputCount() == 1, "Expecting 1 input");
 
+#if !defined(DISABLE_SPARSE_TENSORS)
       const SparseTensor* input = ctx->Input<SparseTensor>(0);
       const auto* input_values = input->Values().Data<int64_t>();
       const auto nnz = input->NumValues();
@@ -211,6 +218,7 @@ This operator applies the Abs op element-wise to the input sparse-tensor.
       // TODO: Extend allocation-planner to enable such sharing.
       const auto& input_indices = input_coo_view.Indices();
       memcpy(output_mutator.Indices().MutableData<int64_t>(), input_indices.Data<int64_t>(), input_indices.SizeInBytes());
+#endif
       return Status::OK();
     }
   };
@@ -218,8 +226,10 @@ This operator applies the Abs op element-wise to the input sparse-tensor.
   // A KernelDefBuilder for SparseAbs:
   static KernelDefBuilder KernelDef() {
     KernelDefBuilder def;
+#if !defined(DISABLE_SPARSE_TENSORS)
     def.SetName(OpName())
         .TypeConstraint("T", DataTypeImpl::GetSparseTensorType<int64_t>());
+#endif
     return def;
   }
 };
@@ -261,6 +271,8 @@ struct SparseToValues {
 
     Status Compute(OpKernelContext* ctx) const override {
       ORT_ENFORCE(ctx->InputCount() == 1, "Expecting a single SparseTensorSample input");
+
+#if !defined(DISABLE_SPARSE_TENSORS)
       const SparseTensor* sparse_input = ctx->Input<SparseTensor>(0);
       const auto* values = sparse_input->Values().Data<int64_t>();
       auto nnz = sparse_input->Values().Shape().Size();
@@ -272,7 +284,7 @@ struct SparseToValues {
       ORT_ENFORCE(output_data != nullptr);
 
       memcpy(output_data, values, sparse_input->Values().SizeInBytes());
-
+#endif
       return Status::OK();
     }
   };
@@ -280,9 +292,11 @@ struct SparseToValues {
   // A KernelDefBuilder for SparseToValues
   static KernelDefBuilder KernelDef() {
     KernelDefBuilder def;
+#if !defined(DISABLE_SPARSE_TENSORS)
     def.SetName(OpName())
         .TypeConstraint("sparse_rep", DataTypeImpl::GetSparseTensorType<int64_t>())
         .TypeConstraint("values", DataTypeImpl::GetTensorType<int64_t>());
+#endif
     return def;
   }
 };
@@ -347,12 +361,14 @@ class SparseTensorTests : public testing::Test {
     EXPECT_TRUE(session_object.Initialize().IsOK());
   }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   NodeArg* Sparse(const std::string& name) {
     types.push_back(*DataTypeImpl::GetSparseTensorType<int64_t>()->GetTypeProto());
     Graph& graph = model->MainGraph();
     auto& arg = graph.GetOrCreateNodeArg(name, &types.back());
     return &arg;
   }
+#endif
 
   NodeArg* Dense(const std::string& name) {
     types.push_back(*DataTypeImpl::GetTensorType<int64_t>()->GetTypeProto());
@@ -431,6 +447,7 @@ class SparseTensorTests : public testing::Test {
   }
 };
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 // Test ops SparseFromCOO, SparseAbs, and SparseToValues.
 // Tests 1-dimensional int64 sparse tensor.
 TEST_F(SparseTensorTests, Test1) {
@@ -606,6 +623,7 @@ TEST(SparseCrcsFormatTests, Test1) {
                       csr_wrap.Outer().Data<int64_t>(),
                       outer_indices.size() * sizeof(int64_t)));
 }
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 // Code below depends on the values being size 4
 template <typename T>
@@ -928,6 +946,7 @@ TEST(SparseTensorConversionTests, TestConstantNodeConversion) {
 }
 
 /// Dense to Sparse conversion tests
+#if !defined(DISABLE_SPARSE_TENSORS)
 #if !defined(ORT_MINIMAL_BUILD)
 
 template <typename T>
@@ -1570,7 +1589,6 @@ TEST(SparseTensorConversionTests, CooConversion) {
     ASSERT_TRUE(std::equal(expected_linear_indices.cbegin(), expected_linear_indices.cend(), indices.cbegin(), indices.cend()));
   }
 
-
   {
     // test where both src and destination are on CPU. 2-D index
     SparseTensor dst;
@@ -1718,7 +1736,6 @@ TEST(SparseTensorConversionTests, BlockSparse) {
   const std::string expected_strings[] = {
       "1", "2", "3", "4", "5", "6", "7", "8"};
 
-
   const TensorShape indices_shape{2, 2};  // two blocks by two coordinates
   // (0, 0), (0,1)
   std::vector<int32_t> blocksparse_indices = {
@@ -1783,8 +1800,9 @@ TEST(SparseTensorConversionTests, BlockSparse) {
     auto indices_span = indices.DataAsSpan<int32_t>();
     ASSERT_TRUE(std::equal(blocksparse_indices.cbegin(), blocksparse_indices.cend(),
                            indices_span.cbegin(), indices_span.cend()));
-
   }
 }
+#endif  //  !defined(DISABLE_SPARSE_TENSORS)
+
 }  // namespace test
 }  // namespace onnxruntime

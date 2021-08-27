@@ -107,6 +107,7 @@ option(onnxruntime_USE_ROCM "Build with AMD GPU support" OFF)
 # Options related to reducing the binary size produced by the build
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
 option(onnxruntime_DISABLE_ML_OPS "Disable traditional ML ops" OFF)
+option(onnxruntime_DISABLE_SPARSE_TENSORS "Disable sparse tensors data types" OFF)
 cmake_dependent_option(onnxruntime_DISABLE_RTTI "Disable RTTI" ON "NOT onnxruntime_ENABLE_PYTHON" OFF)
 # For now onnxruntime_DISABLE_EXCEPTIONS will only work with onnxruntime_MINIMAL_BUILD, more changes (ONNX, non-CPU EP, ...) are required to run this standalone
 option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handling. Requires onnxruntime_MINIMAL_BUILD currently." OFF)
@@ -756,6 +757,10 @@ endif()
 
 if (onnxruntime_DISABLE_ML_OPS)
   add_definitions(-DDISABLE_ML_OPS)
+endif()
+
+if (onnxruntime_DISABLE_SPARSE_TENSORS)
+  add_compile_definitions(DISABLE_SPARSE_TENSORS)
 endif()
 
 if (onnxruntime_USE_CUDA AND "${onnxruntime_CUDNN_HOME}" STREQUAL "")

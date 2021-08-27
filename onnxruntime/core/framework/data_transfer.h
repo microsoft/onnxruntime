@@ -11,7 +11,9 @@ struct OrtDevice;
 namespace onnxruntime {
 #ifndef SHARED_PROVIDER
 class Tensor;
+#if !defined(DISABLE_SPARSE_TENSORS)
 class SparseTensor;
+#endif
 #endif
 namespace common {
 class Status;
@@ -36,6 +38,7 @@ class IDataTransfer {
   // batched copy. default implementation copies each entry sequentially, and returns on first failure.
   virtual common::Status CopyTensors(const std::vector<SrcDstPair>& src_dst_pairs) const;
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   struct SparseSrcDstPair {
     std::reference_wrapper<const SparseTensor> src;
     std::reference_wrapper<SparseTensor> dst;
@@ -43,6 +46,7 @@ class IDataTransfer {
   };
 
   virtual common::Status CopySparseTensors(const std::vector<SparseSrcDstPair>& src_dst_pairs) const;
+#endif
 };
 
 class CPUDataTransfer : public IDataTransfer {
