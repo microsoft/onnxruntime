@@ -4,6 +4,7 @@
 #--------------------------------------------------------------------------
 
 # This file is modified from https://github.com/microsoft/onnxconverter-common/blob/master/onnxconverter_common/float16.py
+# Modifications: keep_io_types can be list of names; convert initializers if needed to preserve precision; add force_fp16_initializers option.
 
 import itertools
 import numpy as np
@@ -48,7 +49,7 @@ def convert_tensor_float_to_float16(tensor, min_positive_val=1e-7, max_finite_va
     """Convert tensor float to float16.
 
     Args:
-        tensor (TensorProto): the tensor to converted.
+        tensor (TensorProto): the tensor to convert.
         min_positive_val (float, optional): minimal positive value. Defaults to 1e-7.
         max_finite_val (float, optional): maximal finite value. Defaults to 1e4.
 
@@ -116,7 +117,7 @@ def convert_float_to_float16(model,
                              op_block_list=None,
                              node_block_list=None,
                              force_fp16_initializers=False):
-    """Convert tensor float type in the ONNX ModelProto input to tensor float16.
+    """Convert model tensor float type in the ONNX ModelProto input to tensor float16.
 
     Args:
         model (ModelProto): The ONNX model to convert.
@@ -133,8 +134,8 @@ def convert_float_to_float16(model,
     Returns:
         ModelProto: converted model.
     """
-    assert min_positive_val >= 5.96e-08, "smallest positive float16 value: subnormal 5.96e-08, and normalized 6.104e-05"
-    assert max_finite_val <= float(np.finfo(np.float16).max), "largest float16 value: 65504"
+    assert min_positive_val >= 5.96e-08, "invalid min_positive_val. smallest positive float16 value: subnormal 5.96e-08, and normalized 6.104e-05"
+    assert max_finite_val <= float(np.finfo(np.float16).max), "invalid max_finite_val. largest float16 value: 65504"
 
     func_infer_shape = None
     if not disable_shape_infer and onnx.__version__ >= '1.2':
