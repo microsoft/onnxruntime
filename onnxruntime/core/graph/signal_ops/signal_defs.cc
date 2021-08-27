@@ -321,4 +321,4 @@ void RegisterSignalSchemas() {
 }  // namespace audio
 }  // namespace onnxruntime
 
-#endif 
+#endif

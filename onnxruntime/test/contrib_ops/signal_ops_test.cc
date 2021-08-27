@@ -204,4 +204,4 @@ TEST(MLSignalOpTest, MelWeightMatrixFloat) {
 }  // namespace test
 }  // namespace onnxruntime
 
-#endif 
+#endif

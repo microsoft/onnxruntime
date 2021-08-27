@@ -518,4 +518,4 @@ Status STFT::Compute(OpKernelContext* ctx) const {
 }  // namespace contrib
 }  // namespace onnxruntime
 
-#endif 
+#endif

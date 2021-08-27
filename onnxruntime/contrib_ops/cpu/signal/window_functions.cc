@@ -330,4 +330,4 @@ Status MelWeightMatrix::Compute(OpKernelContext* ctx) const {
 }  // namespace contrib
 }  // namespace onnxruntime
 
-#endif 
+#endif
