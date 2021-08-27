@@ -14,6 +14,7 @@
 #pragma GCC diagnostic ignored "-Wignored-attributes"
 #endif
 #pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wunused-result"
 #ifdef HAS_DEPRECATED_COPY
 #pragma GCC diagnostic ignored "-Wdeprecated-copy"
 #endif

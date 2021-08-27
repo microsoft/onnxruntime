@@ -33,7 +33,7 @@ const TEST_DATA_OP_ROOT = path.join(TEST_ROOT, 'data', 'ops');
 const TEST_DATA_BASE = args.env === 'node' ? TEST_ROOT : '/base/test/';
 
 let testlist: Test.TestList;
-const shouldLoadSuiteTestData = (args.mode === 'suite0');
+const shouldLoadSuiteTestData = (args.mode === 'suite0' || args.mode === 'suite1');
 if (shouldLoadSuiteTestData) {
   npmlog.verbose('TestRunnerCli.Init', 'Loading testlist...');
 
@@ -90,13 +90,16 @@ let unittest = false;
 npmlog.verbose('TestRunnerCli.Init', 'Preparing test config...');
 switch (args.mode) {
   case 'suite0':
+  case 'suite1':
     for (const backend of DEFAULT_BACKENDS) {
       if (args.backends.indexOf(backend) !== -1) {
         modelTestGroups.push(...nodeTests.get(backend)!);  // model test : node
         opTestGroups.push(...opTests.get(backend)!);       // operator test
       }
     }
-    unittest = true;
+    if (args.mode === 'suite0') {
+      unittest = true;
+    }
     break;
 
   case 'model':

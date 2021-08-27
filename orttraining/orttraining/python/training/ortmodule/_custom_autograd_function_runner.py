@@ -64,12 +64,13 @@ def call_python_forward_function(
         inplace: indicates if args can be modified inside the custom function.
         args: inputs to "backward_function".
     '''
-    def generate_non_leaf_or_not(grad_flag, tensor_flag, arg, is_training_mode):
-        if is_training_mode and tensor_flag and grad_flag:
+
+    def generate_non_leaf_or_not(grad_flag, tensor_flag, arg, is_training_mode, is_inplace):
+        if is_training_mode and tensor_flag and grad_flag and is_inplace:
             # "multiply one" helps change the torch tensor's is_leaf to be False.
             # This is required when the torch tensor is updated in-place during forward pass.
-            # We cannot use view here, because PyTorch handels grad_fn for view differently.
-            non_leaf_arg = arg * arg.new_ones((1,))
+            # We cannot use view here, because PyTorch handles grad_fn for view differently.
+            non_leaf_arg = arg * 1
             return non_leaf_arg
         else:
             return arg
@@ -114,7 +115,7 @@ def call_python_forward_function(
 
         with torch.set_grad_enabled(is_training_mode):
             # Another level of wrap to avoid requires_grad=True for leaf variables.
-            new_wrapped_args = list(generate_non_leaf_or_not(grad_flag, tensor_flag, arg, is_training_mode)
+            new_wrapped_args = list(generate_non_leaf_or_not(grad_flag, tensor_flag, arg, is_training_mode, inplace)
                                     for grad_flag, tensor_flag, arg in zip(requires_grad_flags, tensor_type_flags, wrapped_args))
 
             # Run autograd.Function.apply(...).

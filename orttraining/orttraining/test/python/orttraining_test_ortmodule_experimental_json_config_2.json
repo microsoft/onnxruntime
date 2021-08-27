@@ -22,5 +22,14 @@
         "SaveONNX": true,
         "ONNXPrefix": "my_other_model"
     },
-    "UseMemoryEfficientGradient" : true
+    "UseMemoryEfficientGradient" : true,
+    "FallbackPolicy":
+    [
+        "FALLBACK_FORCE_TORCH_FORWARD",
+        "FALLBACK_UNSUPPORTED_DEVICE",
+        "FALLBACK_UNSUPPORTED_DATA",
+        "FALLBACK_UNSUPPORTED_TORCH_MODEL",
+        "FALLBACK_UNSUPPORTED_ONNX_MODEL",
+        "FALLBACK_BAD_INITIALIZATION"
+    ]
 }

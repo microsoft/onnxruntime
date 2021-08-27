@@ -213,12 +213,11 @@ struct ProviderHostImpl : ProviderHost {
                                               const AllocatorPtr& dst_allocator, Tensor& dst) override {
     return sparse_utils::SparseCooToDenseTensor(data_manager, src, cpu_allocator, dst_allocator, dst);
   }
-#endif // ORT_MINIMAL_BUILD
+#endif  // ORT_MINIMAL_BUILD
   Status sparse_utils__DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
                                               const AllocatorPtr& dst_allocator, bool linear_indexs, SparseTensor& dst) override {
     return sparse_utils::DenseTensorToSparseCoo(data_manager, src, cpu_allocator, dst_allocator, linear_indexs, dst);
   }
-
 
   // IAllocator (direct)
   bool IAllocator__CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) override { return IAllocator::CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out); }
@@ -1117,7 +1116,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO, _In
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtSessionOptions* options, _In_ const char* device_type) {
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtSessionOptions* options,
+                    _In_ const char* device_type) {
   OrtOpenVINOProviderOptions provider_options{};
   provider_options.device_type = device_type;
   return OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO(options, &provider_options);
