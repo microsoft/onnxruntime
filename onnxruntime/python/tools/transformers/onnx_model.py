@@ -490,14 +490,13 @@ class OnnxModel:
         self.convert_float_to_float16(use_symbolic_shape_infer=True, keep_io_types=cast_input_output)
 
     def convert_float_to_float16(self, use_symbolic_shape_infer=True, **kwargs):
-        """Convert a model to mixed precision. User could specifiy which graph inputs, outputs, operator type or list of nodes shall keep in float32.
+        """Convert a model to half (default) or mixed precision.
+           To use mixed precision, user need specify which graph inputs, outputs, operator type or list of nodes shall keep in float32.
            By default, we use symbolic shape inference to get shape and type information. If not, ONNX shape inference will be used.
            Note that symbolic/ONNX shape inference might fail, and the conversion might not proceed without shape and type information.
 
         Args:
             use_symbolic_shape_infer (bool, optional): use symbolic shape inference instead of onnx shape inference. Defaults to True.
-            min_positive_val (float, optional): minimal positive value. Defaults to 1e-7.
-            max_finite_val (float, optional): maximal finite value. Defaults to 1e4.
             keep_io_types (Union[bool, List[str]], optional): It could be boolean or a list of float32 input/output names. 
                                                               If True, model inputs/outputs should be left as float32. Defaults to False.
             op_block_list (List[str], optional): List of operator types to leave as float32.
@@ -505,6 +504,8 @@ class OnnxModel:
             node_block_list (List[str], optional): List of node names to leave as float32. Defaults to None.
             force_fp16_initializers(bool): force converting all float initializers to float16.
                                            Default to false, which will convert only the one needed to avoid precision loss.
+            min_positive_val (float, optional): minimal positive value. Defaults to 1e-7.
+            max_finite_val (float, optional): maximal finite value. Defaults to 1e4.
         """
         if "keep_io_types" not in kwargs:
             kwargs["keep_io_types"] = True
