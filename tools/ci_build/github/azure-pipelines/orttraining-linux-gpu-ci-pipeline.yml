@@ -3,7 +3,7 @@ trigger: none
 jobs:
 - template: templates/linux-ci.yml
   parameters:
-    AgentPool : 'Linux-Single-GPU-V100'
+    AgentPool : 'Onnxruntime-Linux-GPU-NC6sv3'
     JobName: 'Onnxruntime_Linux_GPU_Training'
     SubmoduleCheckoutMode: 'recursive'
     RunDockerBuildArgs: >
@@ -12,11 +12,12 @@ jobs:
       -e
       -x "
       --enable_training
+      --enable_training_torch_interop
       --config $(buildConfig)
       --use_cuda --cuda_version=11.1 --cuda_home=/usr/local/cuda-11.1 --cudnn_home=/usr/local/cuda-11.1
       --build_wheel
       --enable_nvtx_profile
-      --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=70 onnxruntime_ENABLE_TRAINING_TORCH_INTEROP=ON
+      --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=70
       "
     DoNugetPack: 'false'
     RunInjectedPipeline: 'true'

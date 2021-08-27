@@ -34,7 +34,7 @@ jobs:
       workingFolder: '$(Build.BinariesDirectory)'
 
   - script: |
-     python -m pip install -q pyopenssl setuptools wheel numpy flatbuffers
+     python -m pip install -q setuptools wheel numpy flatbuffers
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
 

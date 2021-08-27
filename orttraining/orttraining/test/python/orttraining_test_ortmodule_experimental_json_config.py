@@ -69,6 +69,9 @@ def test_load_config_from_json_1():
         # test use memory aware gradient builder.
         assert ort_model_attributes._use_memory_efficient_gradient == False
 
+        # test fallback policy
+        assert ort_model_attributes._fallback_manager.policy.value == 1
+
 def test_load_config_from_json_2():
     device = 'cuda'
     model = ORTModule(Net().to(device))
@@ -117,3 +120,6 @@ def test_load_config_from_json_2():
 
         # test use memory aware gradient builder.
         assert ort_model_attributes._use_memory_efficient_gradient == True
+
+        # test fallback policy
+        assert ort_model_attributes._fallback_manager.policy.value == 250
