@@ -54,5 +54,8 @@ setup() {
 }
 
 setup
+pip install onnxruntime-extensions
+pip uninstall -y onnxruntime
+pip install --force-reinstall /code/onnxruntime/build/Linux/Release/dist/onnxruntime_gpu_tensorrt-1.8.2-cp37-cp37m-linux_x86_64.whl
 #python3 benchmark_wrapper.py -r validate -m $MODEL_PATH -o result/$OPTION -w $WORKSPACE $RUN_EPS
 python3 benchmark_wrapper.py -r benchmark -t 10 -m $MODEL_PATH -o result/$OPTION -w $WORKSPACE $RUN_EPS
