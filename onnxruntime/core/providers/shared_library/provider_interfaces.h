@@ -172,6 +172,7 @@ struct ProviderHost {
   virtual float math__halfToFloat(uint16_t h) = 0;
 
   // sparse_utils
+#if !defined(DISABLE_SPARSE_TENSORS)
 #if !defined(ORT_MINIMAL_BUILD)
   virtual Status sparse_utils__DenseTensorToSparseCsr(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
                                                       const AllocatorPtr& dst_allocator, SparseTensor& dst) = 0;
@@ -180,9 +181,10 @@ struct ProviderHost {
 
   virtual Status sparse_utils__SparseCooToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator,
                                                       const AllocatorPtr& dst_allocator, Tensor& dst) = 0;
-#endif // ORT_MINIMAL_BUILD
+#endif  // !ORT_MINIMAL_BUILD
   virtual Status sparse_utils__DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
                                                       const AllocatorPtr& dst_allocator, bool linear_indexs, SparseTensor& dst) = 0;
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
   // IAllocator
   virtual bool IAllocator__CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) = 0;
@@ -239,18 +241,22 @@ struct ProviderHost {
   virtual ONNX_NAMESPACE::TensorShapeProto* TypeProto_Tensor__mutable_shape(ONNX_NAMESPACE::TypeProto_Tensor* p) = 0;
   virtual int32_t TypeProto_Tensor__elem_type(const ONNX_NAMESPACE::TypeProto_Tensor* p) = 0;
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   // TypeProto_SparseTensor
   virtual bool TypeProto_SparseTensor__has_shape(const ONNX_NAMESPACE::TypeProto_SparseTensor* p) = 0;
   virtual const ONNX_NAMESPACE::TensorShapeProto& TypeProto_SparseTensor__shape(const ONNX_NAMESPACE::TypeProto_SparseTensor* p) = 0;
   virtual ONNX_NAMESPACE::TensorShapeProto* TypeProto_SparseTensor__mutable_shape(ONNX_NAMESPACE::TypeProto_SparseTensor* p) = 0;
   virtual int32_t TypeProto_SparseTensor__elem_type(const ONNX_NAMESPACE::TypeProto_SparseTensor* p) = 0;
+#endif
 
   // TypeProto
   virtual const ONNX_NAMESPACE::TypeProto_Tensor& TypeProto__tensor_type(const ONNX_NAMESPACE::TypeProto* p) = 0;
   virtual ONNX_NAMESPACE::TypeProto_Tensor* TypeProto__mutable_tensor_type(ONNX_NAMESPACE::TypeProto* p) = 0;
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   virtual const ONNX_NAMESPACE::TypeProto_SparseTensor& TypeProto__sparse_tensor_type(const ONNX_NAMESPACE::TypeProto* p) = 0;
   virtual ONNX_NAMESPACE::TypeProto_SparseTensor* TypeProto__mutable_sparse_tensor_type(ONNX_NAMESPACE::TypeProto* p) = 0;
+#endif
   virtual int TypeProto__value_case(const ONNX_NAMESPACE::TypeProto* p) = 0;
 
   // AttributeProto
@@ -362,15 +368,19 @@ struct ProviderHost {
   // DataTransferManager
   virtual Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst, int exec_queue_id) = 0;
   virtual Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst) = 0;
+#if !defined(DISABLE_SPARSE_TENSORS)
   virtual Status DataTransferManager__CopySparseTensor(const DataTransferManager* p, const SparseTensor& src, SparseTensor& dst) = 0;
   virtual Status DataTransferManager__CopySparseTensor(const DataTransferManager* p, const SparseTensor& src, SparseTensor& dst, int exec_queue_id) = 0;
   virtual Status DataTransferManager__CopySparseTensors(const DataTransferManager* p, const std::vector<IDataTransfer::SparseSrcDstPair>& src_dst_pairs) = 0;
+#endif
   virtual const IDataTransfer* DataTransferManager__GetDataTransfer(const DataTransferManager* p, const OrtDevice& src_device, const OrtDevice& dst_device) = 0;
 
   // IDataTransfer
   virtual Status IDataTransfer__CopyTensor(const IDataTransfer* p, const Tensor& src, Tensor& dst) = 0;
   virtual Status IDataTransfer__CopyTensors(const IDataTransfer* p, const std::vector<IDataTransfer::SrcDstPair>& src_dst_pairs) = 0;
+#if !defined(DISABLE_SPARSE_TENSORS)
   virtual Status IDataTransfer__CopySparseTensors(const IDataTransfer* p, const std::vector<IDataTransfer::SparseSrcDstPair>& src_dst_pairs) = 0;
+#endif
 
   // IndexedSubGraph_MetaDef
   virtual std::unique_ptr<IndexedSubGraph_MetaDef> IndexedSubGraph_MetaDef__construct() = 0;
@@ -436,7 +446,9 @@ struct ProviderHost {
 
   // DataTypeImpl
   virtual MLDataType DataTypeImpl__GetType_Tensor() = 0;
+#if !defined(DISABLE_SPARSE_TENSORS)
   virtual MLDataType DataTypeImpl__GetType_SparseTensor() = 0;
+#endif
   virtual MLDataType DataTypeImpl__GetType_TensorSeq() = 0;
   virtual MLDataType DataTypeImpl__GetTypeFromOnnxType(int) = 0;
   virtual MLDataType DataTypeImpl__GetType_bool() = 0;
@@ -467,6 +479,7 @@ struct ProviderHost {
   virtual MLDataType DataTypeImpl__GetTensorType_BFloat16() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_MLFloat16() = 0;
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   virtual MLDataType DataTypeImpl__GetSparseTensorType_bool() = 0;
   virtual MLDataType DataTypeImpl__GetSparseTensorType_int8() = 0;
   virtual MLDataType DataTypeImpl__GetSparseTensorType_uint8() = 0;
@@ -481,11 +494,14 @@ struct ProviderHost {
   virtual MLDataType DataTypeImpl__GetSparseTensorType_string() = 0;
   virtual MLDataType DataTypeImpl__GetSparseTensorType_BFloat16() = 0;
   virtual MLDataType DataTypeImpl__GetSparseTensorType_MLFloat16() = 0;
+#endif
 
   virtual const char* DataTypeImpl__ToString(MLDataType type) = 0;
   virtual bool DataTypeImpl__IsTensorType(const DataTypeImpl* p) = 0;
   virtual bool DataTypeImpl__IsTensorSequenceType(const DataTypeImpl* p) = 0;
+#if !defined(DISABLE_SPARSE_TENSORS)
   virtual bool DataTypeImpl__IsSparseTensorType(const DataTypeImpl* p) = 0;
+#endif
   virtual DeleteFunc DataTypeImpl__GetDeleteFunc(const DataTypeImpl* p) = 0;
   virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypes() = 0;
   virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorTypes() = 0;
@@ -612,13 +628,17 @@ struct ProviderHost {
 
   // OpKernelContext
   virtual const Tensor* OpKernelContext__Input_Tensor(const OpKernelContext* p, int index) = 0;
+#if !defined(DISABLE_SPARSE_TENSORS)
   virtual const SparseTensor* OpKernelContext__Input_SparseTensor(const OpKernelContext* p, int index) = 0;
+#endif
   virtual const TensorSeq* OpKernelContext__Input_TensorSeq(const OpKernelContext* p, int index) = 0;
   virtual const Tensor& OpKernelContext__RequiredInput_Tensor(const OpKernelContext* p, int index) = 0;
   virtual Tensor* OpKernelContext__Output_Tensor(OpKernelContext* p, int index) = 0;
   virtual TensorSeq* OpKernelContext__Output_TensorSeq(OpKernelContext* p, int index) = 0;
   virtual Tensor* OpKernelContext__Output(OpKernelContext* p, int index, const TensorShape& shape) = 0;
+#if !defined(DISABLE_SPARSE_TENSORS)
   virtual SparseTensor* OpKernelContext__OutputSparse(OpKernelContext* p, int index, const TensorShape& shape) = 0;
+#endif
   virtual Tensor& OpKernelContext__RequiredOutput(OpKernelContext* p, int index, const TensorShape& shape) = 0;
   virtual MLDataType OpKernelContext__InputType(const OpKernelContext* p, int index) = 0;
   virtual int OpKernelContext__InputCount(const OpKernelContext* p) = 0;
@@ -718,9 +738,11 @@ struct ProviderHost {
   virtual int32_t Tensor__GetElementType(const Tensor* p) = 0;
   virtual MLDataType Tensor__DataType(const Tensor* p) = 0;
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   // SparseTensor
   virtual const TensorShape& SparseTensor__DenseShape(const SparseTensor*) = 0;
   virtual Status SparseTensor__Copy(const SparseTensor*, const DataTransferManager&, int, SparseTensor&) = 0;
+#endif
 
   // TensorSeq
   virtual MLDataType TensorSeq__DataType(const TensorSeq* p) noexcept = 0;
@@ -756,7 +778,7 @@ struct ProviderHost {
 #endif
 #endif
 
-  virtual ProviderHostCPU& GetProviderHostCPU()=0;
+  virtual ProviderHostCPU& GetProviderHostCPU() = 0;
 };
 
 }  // namespace onnxruntime

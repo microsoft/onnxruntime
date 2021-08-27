@@ -69,11 +69,13 @@ class OpKernelContext {
     return *output_ptr;
   }
 
+  #if !defined(DISABLE_SPARSE_TENSORS)
   // Fetch a sparse-tensor output corresponding to the specified index.
   // shape must specify the shape of the underlying dense-tensor.
   // Memory allocation for the output may happen when this method is invoked,
   // unless static optimization pre-allocates it.
   SparseTensor* OutputSparse(int index, const TensorShape& shape);
+  #endif
 
   // Retrieve indexed shape obtained from memory planning before actual
   // computation. If the indexed shape cannot be inferred, this function returns
@@ -210,11 +212,13 @@ inline Tensor* OpKernelContext::Output<Tensor>(int index) {
   return p_ml_value->GetMutable<Tensor>();
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 template <>
 inline SparseTensor* OpKernelContext::Output<SparseTensor>(int index) {
   OrtValue* p_ml_value = GetOutputMLValue(index);
   ORT_ENFORCE(p_ml_value, "Please fetch output sparse tensor with specified shape.");
   return p_ml_value->GetMutable<SparseTensor>();
 }
+#endif
 
 }  // namespace onnxruntime
