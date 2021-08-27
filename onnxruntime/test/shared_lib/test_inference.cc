@@ -176,10 +176,12 @@ static constexpr PATH_TYPE VARIED_INPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/f
 static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_bar_1.onnx");
 static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/foo_bar_2.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_WITH_ATTRIBUTES_URI = TSTR("testdata/foo_bar_3.onnx");
+#if !defined(DISABLE_SPARSE_TENSORS)
 static constexpr PATH_TYPE SPARSE_OUTPUT_MODEL_URI = TSTR("testdata/sparse_initializer_as_output.onnx");
 #ifndef DISABLE_CONTRIB_OPS
 static constexpr PATH_TYPE SPARSE_INPUT_MATMUL_MODEL_URI = TSTR("testdata/sparse_to_dense_matmul.onnx");
 #endif
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 #ifdef ENABLE_EXTENSION_CUSTOM_OPS
 static constexpr PATH_TYPE ORT_CUSTOM_OPS_MODEL_URI = TSTR("testdata/custom_op_string_lower.onnx");
@@ -244,6 +246,7 @@ INSTANTIATE_TEST_SUITE_P(CApiTestWithProviders,
                          CApiTestWithProvider,
                          ::testing::Values(0, 1, 2, 3, 4));
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 TEST(CApiTest, SparseOutputModel) {
   std::vector<int64_t> dense_shape{3, 3};
   std::vector<float> values{1.764052391052246, 0.40015721321105957, 0.978738009929657};
@@ -358,6 +361,7 @@ TEST(CApiTest, SparseInputModel) {
    ASSERT_TRUE(std::equal(Y_result.cbegin(), Y_result.cend(), result_span.cbegin(), result_span.cend()));
 }
 #endif // DISABLE_CONTRIB_OPS
+#endif // !defined(DISABLE_SPARSE_TENSORS)
 
 TEST(CApiTest, custom_op_handler) {
   std::cout << "Running custom op inference" << std::endl;
