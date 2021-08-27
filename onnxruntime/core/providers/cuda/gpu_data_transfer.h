@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "cuda_pch.h"
 #include "core/framework/data_transfer.h"
+#include "core/providers/cuda/cuda_pch.h"
 
 namespace onnxruntime {
 

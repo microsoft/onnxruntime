@@ -513,25 +513,33 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #endif
     } else if (type == kRocmExecutionProvider) {
 #ifdef USE_ROCM
-      const auto it = provider_options_map.find(type);
-      const ROCMExecutionProviderInfo info =
-          it != provider_options_map.end()
-              ? ROCMExecutionProviderInfo::FromProviderOptions(it->second)
-              : [&]() {
-                  ROCMExecutionProviderInfo info{};
-                  info.device_id = cuda_device_id;
-                  info.gpu_mem_limit = gpu_mem_limit;
-                  info.arena_extend_strategy = arena_extend_strategy;
-                  info.external_allocator_info = external_allocator_info;
-                  return info;
-                }();
+      if(auto* rocm_provider_info = TryGetProviderInfo_ROCM())
+      {
+        const auto it = provider_options_map.find(type);
+        ROCMExecutionProviderInfo info{};
+        if (it != provider_options_map.end())
+          rocm_provider_info->ROCMExecutionProviderInfo__FromProviderOptions(it->second, info);
+        else {
+          info.device_id = cuda_device_id;
+          info.gpu_mem_limit = gpu_mem_limit;
+          info.arena_extend_strategy = arena_extend_strategy;
+          info.cudnn_conv_algo_search = cudnn_conv_algo_search;
+          info.do_copy_in_default_stream = do_copy_in_default_stream;
+          info.external_allocator_info = external_allocator_info;
+        }
 
-      // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
-      // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
-      // since FromProviderOptions might contain external CUDA allocator.
-      external_allocator_info = info.external_allocator_info;
-      RegisterExecutionProvider(
-          sess, *onnxruntime::CreateExecutionProviderFactory_ROCM(info));
+        // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
+        // exist are are in-use. Neverthless, it is used to return ROCMAllocator, hence we must try to initialize it here if we can
+        // since FromProviderOptions might contain external ROCM allocator.
+        external_allocator_info = info.external_allocator_info;
+        RegisterExecutionProvider(sess, *rocm_provider_info->CreateExecutionProviderFactory(info));
+      }
+      else
+      {
+        if(!Env::Default().GetEnvironmentVar("ROCM_PATH").empty()) {
+          ORT_THROW("ROCM_PATH is set but ROCM wasn't able to be loaded. Please install the correct version of ROCM and MIOpen as mentioned in the GPU requirements page, make sure they're in the PATH, and that your GPU is supported.");
+        }
+      }
 #endif
     } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL

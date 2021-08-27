@@ -14,6 +14,10 @@
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#include "orttraining/training_ops/cuda/communication/nccl_service.h"
+#endif
+
 using namespace onnxruntime;
 
 namespace onnxruntime {

@@ -5,7 +5,7 @@
 #include <memory>
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "cudnn_common.h"
+#include "core/providers/cuda/cudnn_common.h"
 
 namespace onnxruntime {
 namespace cuda {

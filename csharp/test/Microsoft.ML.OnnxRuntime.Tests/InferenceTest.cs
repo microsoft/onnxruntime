@@ -203,14 +203,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #else
                 try
                 {
-                    var gpuMemLimit = new UIntPtr(10*1024);
-                    opt.AppendExecutionProvider_ROCM(0, gpuMemLimit);
+                    opt.AppendExecutionProvider_ROCM(0);
                 }
                 catch (OnnxRuntimeException ortEx)
                 {
-                    Assert.Contains("is not enabled in this build", ortEx.Message);
+                    Assert.Contains("Failed to load shared library", ortEx.Message);
                 }
-
 #endif
 
 #if USE_TENSORRT

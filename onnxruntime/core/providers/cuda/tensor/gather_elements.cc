@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gather_elements.h"
-#include "gather_elements_impl.h"
+#include "core/providers/cuda/tensor/gather_elements.h"
+#include "core/providers/cuda/tensor/gather_elements_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {

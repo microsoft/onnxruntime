@@ -9,6 +9,7 @@
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
+#include "core/util/math.h"
 #include "gsl/gsl"
 
 namespace onnxruntime {
@@ -95,6 +96,7 @@ inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int6
   return true;
 }
 
+#ifndef USE_ROCM
 class CublasMathModeSetter {
  public:
   CublasMathModeSetter(const cudaDeviceProp& prop, cublasHandle_t handle, cublasMath_t mode) : handle_(handle) {
@@ -188,6 +190,7 @@ class HalfGemmOptions {
 
   static HalfGemmOptions instance;
 };
+#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime
