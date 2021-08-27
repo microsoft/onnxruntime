@@ -1636,9 +1636,9 @@ class SymbolicShapeInference:
         assert len(input_ids_shape) == 2 and len(word_embedding_shape) == 2
         output_shape = input_ids_shape + [word_embedding_shape[1]]
 
-        input_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+        word_embedding_dtype = self.known_vi_[node.input[2]].type.tensor_type.elem_type
         vi = self.known_vi_[node.output[0]]
-        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], input_dtype, output_shape))
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], word_embedding_dtype, output_shape))
 
         mask_index_shape = [input_ids_shape[0]]
         vi = self.known_vi_[node.output[1]]
