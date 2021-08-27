@@ -7,7 +7,7 @@
 #include "core/framework/ort_value.h"
 #include "core/framework/utils.h"
 
-#include <safeint/SafeInt.hpp>
+#include "core/common/safeint.h"
 
 using namespace onnxruntime::common;
 
