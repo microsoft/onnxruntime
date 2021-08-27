@@ -24,110 +24,124 @@ namespace Onnx {
     static OnnxMlReflection() {
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
-            "Cg5vbm54LW1sLnByb3RvMxIEb25ueCLoBAoOQXR0cmlidXRlUHJvdG8SDAoE",
+            "Cg5vbm54LW1sLnByb3RvMxIEb25ueCLMBQoOQXR0cmlidXRlUHJvdG8SDAoE",
             "bmFtZRgBIAEoCRIVCg1yZWZfYXR0cl9uYW1lGBUgASgJEhIKCmRvY19zdHJp",
             "bmcYDSABKAkSMAoEdHlwZRgUIAEoDjIiLm9ubnguQXR0cmlidXRlUHJvdG8u",
             "QXR0cmlidXRlVHlwZRIJCgFmGAIgASgCEgkKAWkYAyABKAMSCQoBcxgEIAEo",
             "DBIcCgF0GAUgASgLMhEub25ueC5UZW5zb3JQcm90bxIbCgFnGAYgASgLMhAu",
             "b25ueC5HcmFwaFByb3RvEi4KDXNwYXJzZV90ZW5zb3IYFiABKAsyFy5vbm54",
-            "LlNwYXJzZVRlbnNvclByb3RvEg4KBmZsb2F0cxgHIAMoAhIMCgRpbnRzGAgg",
-            "AygDEg8KB3N0cmluZ3MYCSADKAwSIgoHdGVuc29ycxgKIAMoCzIRLm9ubngu",
-            "VGVuc29yUHJvdG8SIAoGZ3JhcGhzGAsgAygLMhAub25ueC5HcmFwaFByb3Rv",
-            "Ei8KDnNwYXJzZV90ZW5zb3JzGBcgAygLMhcub25ueC5TcGFyc2VUZW5zb3JQ",
-            "cm90byK4AQoNQXR0cmlidXRlVHlwZRINCglVTkRFRklORUQQABIJCgVGTE9B",
-            "VBABEgcKA0lOVBACEgoKBlNUUklORxADEgoKBlRFTlNPUhAEEgkKBUdSQVBI",
-            "EAUSEQoNU1BBUlNFX1RFTlNPUhALEgoKBkZMT0FUUxAGEggKBElOVFMQBxIL",
-            "CgdTVFJJTkdTEAgSCwoHVEVOU09SUxAJEgoKBkdSQVBIUxAKEhIKDlNQQVJT",
-            "RV9URU5TT1JTEAwiUQoOVmFsdWVJbmZvUHJvdG8SDAoEbmFtZRgBIAEoCRId",
-            "CgR0eXBlGAIgASgLMg8ub25ueC5UeXBlUHJvdG8SEgoKZG9jX3N0cmluZxgD",
-            "IAEoCSKWAQoJTm9kZVByb3RvEg0KBWlucHV0GAEgAygJEg4KBm91dHB1dBgC",
-            "IAMoCRIMCgRuYW1lGAMgASgJEg8KB29wX3R5cGUYBCABKAkSDgoGZG9tYWlu",
-            "GAcgASgJEicKCWF0dHJpYnV0ZRgFIAMoCzIULm9ubnguQXR0cmlidXRlUHJv",
-            "dG8SEgoKZG9jX3N0cmluZxgGIAEoCSLWAQoRVHJhaW5pbmdJbmZvUHJvdG8S",
-            "KAoOaW5pdGlhbGl6YXRpb24YASABKAsyEC5vbm54LkdyYXBoUHJvdG8SIwoJ",
-            "YWxnb3JpdGhtGAIgASgLMhAub25ueC5HcmFwaFByb3RvEjwKFmluaXRpYWxp",
-            "emF0aW9uX2JpbmRpbmcYAyADKAsyHC5vbm54LlN0cmluZ1N0cmluZ0VudHJ5",
-            "UHJvdG8SNAoOdXBkYXRlX2JpbmRpbmcYBCADKAsyHC5vbm54LlN0cmluZ1N0",
-            "cmluZ0VudHJ5UHJvdG8iwwIKCk1vZGVsUHJvdG8SEgoKaXJfdmVyc2lvbhgB",
-            "IAEoAxIuCgxvcHNldF9pbXBvcnQYCCADKAsyGC5vbm54Lk9wZXJhdG9yU2V0",
-            "SWRQcm90bxIVCg1wcm9kdWNlcl9uYW1lGAIgASgJEhgKEHByb2R1Y2VyX3Zl",
-            "cnNpb24YAyABKAkSDgoGZG9tYWluGAQgASgJEhUKDW1vZGVsX3ZlcnNpb24Y",
-            "BSABKAMSEgoKZG9jX3N0cmluZxgGIAEoCRIfCgVncmFwaBgHIAEoCzIQLm9u",
-            "bnguR3JhcGhQcm90bxI0Cg5tZXRhZGF0YV9wcm9wcxgOIAMoCzIcLm9ubngu",
-            "U3RyaW5nU3RyaW5nRW50cnlQcm90bxIuCg10cmFpbmluZ19pbmZvGBQgAygL",
-            "Mhcub25ueC5UcmFpbmluZ0luZm9Qcm90byI0ChZTdHJpbmdTdHJpbmdFbnRy",
-            "eVByb3RvEgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCSJrChBUZW5zb3JB",
-            "bm5vdGF0aW9uEhMKC3RlbnNvcl9uYW1lGAEgASgJEkIKHHF1YW50X3BhcmFt",
-            "ZXRlcl90ZW5zb3JfbmFtZXMYAiADKAsyHC5vbm54LlN0cmluZ1N0cmluZ0Vu",
-            "dHJ5UHJvdG8i2AIKCkdyYXBoUHJvdG8SHQoEbm9kZRgBIAMoCzIPLm9ubngu",
-            "Tm9kZVByb3RvEgwKBG5hbWUYAiABKAkSJgoLaW5pdGlhbGl6ZXIYBSADKAsy",
-            "ES5vbm54LlRlbnNvclByb3RvEjMKEnNwYXJzZV9pbml0aWFsaXplchgPIAMo",
-            "CzIXLm9ubnguU3BhcnNlVGVuc29yUHJvdG8SEgoKZG9jX3N0cmluZxgKIAEo",
-            "CRIjCgVpbnB1dBgLIAMoCzIULm9ubnguVmFsdWVJbmZvUHJvdG8SJAoGb3V0",
-            "cHV0GAwgAygLMhQub25ueC5WYWx1ZUluZm9Qcm90bxIoCgp2YWx1ZV9pbmZv",
-            "GA0gAygLMhQub25ueC5WYWx1ZUluZm9Qcm90bxI3ChdxdWFudGl6YXRpb25f",
-            "YW5ub3RhdGlvbhgOIAMoCzIWLm9ubnguVGVuc29yQW5ub3RhdGlvbiK4BQoL",
-            "VGVuc29yUHJvdG8SDAoEZGltcxgBIAMoAxIRCglkYXRhX3R5cGUYAiABKAUS",
-            "KgoHc2VnbWVudBgDIAEoCzIZLm9ubnguVGVuc29yUHJvdG8uU2VnbWVudBIW",
-            "CgpmbG9hdF9kYXRhGAQgAygCQgIQARIWCgppbnQzMl9kYXRhGAUgAygFQgIQ",
-            "ARITCgtzdHJpbmdfZGF0YRgGIAMoDBIWCgppbnQ2NF9kYXRhGAcgAygDQgIQ",
-            "ARIMCgRuYW1lGAggASgJEhIKCmRvY19zdHJpbmcYDCABKAkSEAoIcmF3X2Rh",
-            "dGEYCSABKAwSMwoNZXh0ZXJuYWxfZGF0YRgNIAMoCzIcLm9ubnguU3RyaW5n",
-            "U3RyaW5nRW50cnlQcm90bxI1Cg1kYXRhX2xvY2F0aW9uGA4gASgOMh4ub25u",
-            "eC5UZW5zb3JQcm90by5EYXRhTG9jYXRpb24SFwoLZG91YmxlX2RhdGEYCiAD",
-            "KAFCAhABEhcKC3VpbnQ2NF9kYXRhGAsgAygEQgIQARolCgdTZWdtZW50Eg0K",
-            "BWJlZ2luGAEgASgDEgsKA2VuZBgCIAEoAyLaAQoIRGF0YVR5cGUSDQoJVU5E",
-            "RUZJTkVEEAASCQoFRkxPQVQQARIJCgVVSU5UOBACEggKBElOVDgQAxIKCgZV",
-            "SU5UMTYQBBIJCgVJTlQxNhAFEgkKBUlOVDMyEAYSCQoFSU5UNjQQBxIKCgZT",
-            "VFJJTkcQCBIICgRCT09MEAkSCwoHRkxPQVQxNhAKEgoKBkRPVUJMRRALEgoK",
-            "BlVJTlQzMhAMEgoKBlVJTlQ2NBANEg0KCUNPTVBMRVg2NBAOEg4KCkNPTVBM",
-            "RVgxMjgQDxIMCghCRkxPQVQxNhAQIikKDERhdGFMb2NhdGlvbhILCgdERUZB",
-            "VUxUEAASDAoIRVhURVJOQUwQASJoChFTcGFyc2VUZW5zb3JQcm90bxIhCgZ2",
-            "YWx1ZXMYASABKAsyES5vbm54LlRlbnNvclByb3RvEiIKB2luZGljZXMYAiAB",
-            "KAsyES5vbm54LlRlbnNvclByb3RvEgwKBGRpbXMYAyADKAMilQEKEFRlbnNv",
-            "clNoYXBlUHJvdG8SLQoDZGltGAEgAygLMiAub25ueC5UZW5zb3JTaGFwZVBy",
-            "b3RvLkRpbWVuc2lvbhpSCglEaW1lbnNpb24SEwoJZGltX3ZhbHVlGAEgASgD",
-            "SAASEwoJZGltX3BhcmFtGAIgASgJSAASEgoKZGVub3RhdGlvbhgDIAEoCUIH",
-            "CgV2YWx1ZSLCBAoJVHlwZVByb3RvEi0KC3RlbnNvcl90eXBlGAEgASgLMhYu",
-            "b25ueC5UeXBlUHJvdG8uVGVuc29ySAASMQoNc2VxdWVuY2VfdHlwZRgEIAEo",
-            "CzIYLm9ubnguVHlwZVByb3RvLlNlcXVlbmNlSAASJwoIbWFwX3R5cGUYBSAB",
-            "KAsyEy5vbm54LlR5cGVQcm90by5NYXBIABI6ChJzcGFyc2VfdGVuc29yX3R5",
-            "cGUYCCABKAsyHC5vbm54LlR5cGVQcm90by5TcGFyc2VUZW5zb3JIABItCgtv",
-            "cGFxdWVfdHlwZRgHIAEoCzIWLm9ubnguVHlwZVByb3RvLk9wYXF1ZUgAEhIK",
-            "CmRlbm90YXRpb24YBiABKAkaQgoGVGVuc29yEhEKCWVsZW1fdHlwZRgBIAEo",
-            "BRIlCgVzaGFwZRgCIAEoCzIWLm9ubnguVGVuc29yU2hhcGVQcm90bxouCghT",
-            "ZXF1ZW5jZRIiCgllbGVtX3R5cGUYASABKAsyDy5vbm54LlR5cGVQcm90bxo8",
-            "CgNNYXASEAoIa2V5X3R5cGUYASABKAUSIwoKdmFsdWVfdHlwZRgCIAEoCzIP",
-            "Lm9ubnguVHlwZVByb3RvGkgKDFNwYXJzZVRlbnNvchIRCgllbGVtX3R5cGUY",
-            "ASABKAUSJQoFc2hhcGUYAiABKAsyFi5vbm54LlRlbnNvclNoYXBlUHJvdG8a",
-            "JgoGT3BhcXVlEg4KBmRvbWFpbhgBIAEoCRIMCgRuYW1lGAIgASgJQgcKBXZh",
-            "bHVlIjUKEk9wZXJhdG9yU2V0SWRQcm90bxIOCgZkb21haW4YASABKAkSDwoH",
-            "dmVyc2lvbhgCIAEoAyrLAQoHVmVyc2lvbhISCg5fU1RBUlRfVkVSU0lPThAA",
-            "EhkKFUlSX1ZFUlNJT05fMjAxN18xMF8xMBABEhkKFUlSX1ZFUlNJT05fMjAx",
-            "N18xMF8zMBACEhgKFElSX1ZFUlNJT05fMjAxN18xMV8zEAMSGAoUSVJfVkVS",
-            "U0lPTl8yMDE5XzFfMjIQBBIYChRJUl9WRVJTSU9OXzIwMTlfM18xOBAFEhgK",
-            "FElSX1ZFUlNJT05fMjAxOV85XzE5EAYSDgoKSVJfVkVSU0lPThAHQgJIA2IG",
-            "cHJvdG8z"));
+            "LlNwYXJzZVRlbnNvclByb3RvEhsKAnRwGA4gASgLMg8ub25ueC5UeXBlUHJv",
+            "dG8SDgoGZmxvYXRzGAcgAygCEgwKBGludHMYCCADKAMSDwoHc3RyaW5ncxgJ",
+            "IAMoDBIiCgd0ZW5zb3JzGAogAygLMhEub25ueC5UZW5zb3JQcm90bxIgCgZn",
+            "cmFwaHMYCyADKAsyEC5vbm54LkdyYXBoUHJvdG8SLwoOc3BhcnNlX3RlbnNv",
+            "cnMYFyADKAsyFy5vbm54LlNwYXJzZVRlbnNvclByb3RvEiQKC3R5cGVfcHJv",
+            "dG9zGA8gAygLMg8ub25ueC5UeXBlUHJvdG8i2QEKDUF0dHJpYnV0ZVR5cGUS",
+            "DQoJVU5ERUZJTkVEEAASCQoFRkxPQVQQARIHCgNJTlQQAhIKCgZTVFJJTkcQ",
+            "AxIKCgZURU5TT1IQBBIJCgVHUkFQSBAFEhEKDVNQQVJTRV9URU5TT1IQCxIO",
+            "CgpUWVBFX1BST1RPEA0SCgoGRkxPQVRTEAYSCAoESU5UUxAHEgsKB1NUUklO",
+            "R1MQCBILCgdURU5TT1JTEAkSCgoGR1JBUEhTEAoSEgoOU1BBUlNFX1RFTlNP",
+            "UlMQDBIPCgtUWVBFX1BST1RPUxAOIlEKDlZhbHVlSW5mb1Byb3RvEgwKBG5h",
+            "bWUYASABKAkSHQoEdHlwZRgCIAEoCzIPLm9ubnguVHlwZVByb3RvEhIKCmRv",
+            "Y19zdHJpbmcYAyABKAkilgEKCU5vZGVQcm90bxINCgVpbnB1dBgBIAMoCRIO",
+            "CgZvdXRwdXQYAiADKAkSDAoEbmFtZRgDIAEoCRIPCgdvcF90eXBlGAQgASgJ",
+            "Eg4KBmRvbWFpbhgHIAEoCRInCglhdHRyaWJ1dGUYBSADKAsyFC5vbm54LkF0",
+            "dHJpYnV0ZVByb3RvEhIKCmRvY19zdHJpbmcYBiABKAki1gEKEVRyYWluaW5n",
+            "SW5mb1Byb3RvEigKDmluaXRpYWxpemF0aW9uGAEgASgLMhAub25ueC5HcmFw",
+            "aFByb3RvEiMKCWFsZ29yaXRobRgCIAEoCzIQLm9ubnguR3JhcGhQcm90bxI8",
+            "ChZpbml0aWFsaXphdGlvbl9iaW5kaW5nGAMgAygLMhwub25ueC5TdHJpbmdT",
+            "dHJpbmdFbnRyeVByb3RvEjQKDnVwZGF0ZV9iaW5kaW5nGAQgAygLMhwub25u",
+            "eC5TdHJpbmdTdHJpbmdFbnRyeVByb3RvIusCCgpNb2RlbFByb3RvEhIKCmly",
+            "X3ZlcnNpb24YASABKAMSLgoMb3BzZXRfaW1wb3J0GAggAygLMhgub25ueC5P",
+            "cGVyYXRvclNldElkUHJvdG8SFQoNcHJvZHVjZXJfbmFtZRgCIAEoCRIYChBw",
+            "cm9kdWNlcl92ZXJzaW9uGAMgASgJEg4KBmRvbWFpbhgEIAEoCRIVCg1tb2Rl",
+            "bF92ZXJzaW9uGAUgASgDEhIKCmRvY19zdHJpbmcYBiABKAkSHwoFZ3JhcGgY",
+            "ByABKAsyEC5vbm54LkdyYXBoUHJvdG8SNAoObWV0YWRhdGFfcHJvcHMYDiAD",
+            "KAsyHC5vbm54LlN0cmluZ1N0cmluZ0VudHJ5UHJvdG8SLgoNdHJhaW5pbmdf",
+            "aW5mbxgUIAMoCzIXLm9ubnguVHJhaW5pbmdJbmZvUHJvdG8SJgoJZnVuY3Rp",
+            "b25zGBkgAygLMhMub25ueC5GdW5jdGlvblByb3RvIjQKFlN0cmluZ1N0cmlu",
+            "Z0VudHJ5UHJvdG8SCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJImsKEFRl",
+            "bnNvckFubm90YXRpb24SEwoLdGVuc29yX25hbWUYASABKAkSQgoccXVhbnRf",
+            "cGFyYW1ldGVyX3RlbnNvcl9uYW1lcxgCIAMoCzIcLm9ubnguU3RyaW5nU3Ry",
+            "aW5nRW50cnlQcm90byLYAgoKR3JhcGhQcm90bxIdCgRub2RlGAEgAygLMg8u",
+            "b25ueC5Ob2RlUHJvdG8SDAoEbmFtZRgCIAEoCRImCgtpbml0aWFsaXplchgF",
+            "IAMoCzIRLm9ubnguVGVuc29yUHJvdG8SMwoSc3BhcnNlX2luaXRpYWxpemVy",
+            "GA8gAygLMhcub25ueC5TcGFyc2VUZW5zb3JQcm90bxISCgpkb2Nfc3RyaW5n",
+            "GAogASgJEiMKBWlucHV0GAsgAygLMhQub25ueC5WYWx1ZUluZm9Qcm90bxIk",
+            "CgZvdXRwdXQYDCADKAsyFC5vbm54LlZhbHVlSW5mb1Byb3RvEigKCnZhbHVl",
+            "X2luZm8YDSADKAsyFC5vbm54LlZhbHVlSW5mb1Byb3RvEjcKF3F1YW50aXph",
+            "dGlvbl9hbm5vdGF0aW9uGA4gAygLMhYub25ueC5UZW5zb3JBbm5vdGF0aW9u",
+            "IrgFCgtUZW5zb3JQcm90bxIMCgRkaW1zGAEgAygDEhEKCWRhdGFfdHlwZRgC",
+            "IAEoBRIqCgdzZWdtZW50GAMgASgLMhkub25ueC5UZW5zb3JQcm90by5TZWdt",
+            "ZW50EhYKCmZsb2F0X2RhdGEYBCADKAJCAhABEhYKCmludDMyX2RhdGEYBSAD",
+            "KAVCAhABEhMKC3N0cmluZ19kYXRhGAYgAygMEhYKCmludDY0X2RhdGEYByAD",
+            "KANCAhABEgwKBG5hbWUYCCABKAkSEgoKZG9jX3N0cmluZxgMIAEoCRIQCghy",
+            "YXdfZGF0YRgJIAEoDBIzCg1leHRlcm5hbF9kYXRhGA0gAygLMhwub25ueC5T",
+            "dHJpbmdTdHJpbmdFbnRyeVByb3RvEjUKDWRhdGFfbG9jYXRpb24YDiABKA4y",
+            "Hi5vbm54LlRlbnNvclByb3RvLkRhdGFMb2NhdGlvbhIXCgtkb3VibGVfZGF0",
+            "YRgKIAMoAUICEAESFwoLdWludDY0X2RhdGEYCyADKARCAhABGiUKB1NlZ21l",
+            "bnQSDQoFYmVnaW4YASABKAMSCwoDZW5kGAIgASgDItoBCghEYXRhVHlwZRIN",
+            "CglVTkRFRklORUQQABIJCgVGTE9BVBABEgkKBVVJTlQ4EAISCAoESU5UOBAD",
+            "EgoKBlVJTlQxNhAEEgkKBUlOVDE2EAUSCQoFSU5UMzIQBhIJCgVJTlQ2NBAH",
+            "EgoKBlNUUklORxAIEggKBEJPT0wQCRILCgdGTE9BVDE2EAoSCgoGRE9VQkxF",
+            "EAsSCgoGVUlOVDMyEAwSCgoGVUlOVDY0EA0SDQoJQ09NUExFWDY0EA4SDgoK",
+            "Q09NUExFWDEyOBAPEgwKCEJGTE9BVDE2EBAiKQoMRGF0YUxvY2F0aW9uEgsK",
+            "B0RFRkFVTFQQABIMCghFWFRFUk5BTBABImgKEVNwYXJzZVRlbnNvclByb3Rv",
+            "EiEKBnZhbHVlcxgBIAEoCzIRLm9ubnguVGVuc29yUHJvdG8SIgoHaW5kaWNl",
+            "cxgCIAEoCzIRLm9ubnguVGVuc29yUHJvdG8SDAoEZGltcxgDIAMoAyKVAQoQ",
+            "VGVuc29yU2hhcGVQcm90bxItCgNkaW0YASADKAsyIC5vbm54LlRlbnNvclNo",
+            "YXBlUHJvdG8uRGltZW5zaW9uGlIKCURpbWVuc2lvbhITCglkaW1fdmFsdWUY",
+            "ASABKANIABITCglkaW1fcGFyYW0YAiABKAlIABISCgpkZW5vdGF0aW9uGAMg",
+            "ASgJQgcKBXZhbHVlIqUFCglUeXBlUHJvdG8SLQoLdGVuc29yX3R5cGUYASAB",
+            "KAsyFi5vbm54LlR5cGVQcm90by5UZW5zb3JIABIxCg1zZXF1ZW5jZV90eXBl",
+            "GAQgASgLMhgub25ueC5UeXBlUHJvdG8uU2VxdWVuY2VIABInCghtYXBfdHlw",
+            "ZRgFIAEoCzITLm9ubnguVHlwZVByb3RvLk1hcEgAEjEKDW9wdGlvbmFsX3R5",
+            "cGUYCSABKAsyGC5vbm54LlR5cGVQcm90by5PcHRpb25hbEgAEjoKEnNwYXJz",
+            "ZV90ZW5zb3JfdHlwZRgIIAEoCzIcLm9ubnguVHlwZVByb3RvLlNwYXJzZVRl",
+            "bnNvckgAEi0KC29wYXF1ZV90eXBlGAcgASgLMhYub25ueC5UeXBlUHJvdG8u",
+            "T3BhcXVlSAASEgoKZGVub3RhdGlvbhgGIAEoCRpCCgZUZW5zb3ISEQoJZWxl",
+            "bV90eXBlGAEgASgFEiUKBXNoYXBlGAIgASgLMhYub25ueC5UZW5zb3JTaGFw",
+            "ZVByb3RvGi4KCFNlcXVlbmNlEiIKCWVsZW1fdHlwZRgBIAEoCzIPLm9ubngu",
+            "VHlwZVByb3RvGjwKA01hcBIQCghrZXlfdHlwZRgBIAEoBRIjCgp2YWx1ZV90",
+            "eXBlGAIgASgLMg8ub25ueC5UeXBlUHJvdG8aLgoIT3B0aW9uYWwSIgoJZWxl",
+            "bV90eXBlGAEgASgLMg8ub25ueC5UeXBlUHJvdG8aSAoMU3BhcnNlVGVuc29y",
+            "EhEKCWVsZW1fdHlwZRgBIAEoBRIlCgVzaGFwZRgCIAEoCzIWLm9ubnguVGVu",
+            "c29yU2hhcGVQcm90bxomCgZPcGFxdWUSDgoGZG9tYWluGAEgASgJEgwKBG5h",
+            "bWUYAiABKAlCBwoFdmFsdWUiNQoST3BlcmF0b3JTZXRJZFByb3RvEg4KBmRv",
+            "bWFpbhgBIAEoCRIPCgd2ZXJzaW9uGAIgASgDIuUBCg1GdW5jdGlvblByb3Rv",
+            "EgwKBG5hbWUYASABKAkSDQoFaW5wdXQYBCADKAkSDgoGb3V0cHV0GAUgAygJ",
+            "EhEKCWF0dHJpYnV0ZRgGIAMoCRIdCgRub2RlGAcgAygLMg8ub25ueC5Ob2Rl",
+            "UHJvdG8SEgoKZG9jX3N0cmluZxgIIAEoCRIuCgxvcHNldF9pbXBvcnQYCSAD",
+            "KAsyGC5vbm54Lk9wZXJhdG9yU2V0SWRQcm90bxIOCgZkb21haW4YCiABKAlK",
+            "BAgCEANKBAgDEARSDXNpbmNlX3ZlcnNpb25SBnN0YXR1cyrkAQoHVmVyc2lv",
+            "bhISCg5fU1RBUlRfVkVSU0lPThAAEhkKFUlSX1ZFUlNJT05fMjAxN18xMF8x",
+            "MBABEhkKFUlSX1ZFUlNJT05fMjAxN18xMF8zMBACEhgKFElSX1ZFUlNJT05f",
+            "MjAxN18xMV8zEAMSGAoUSVJfVkVSU0lPTl8yMDE5XzFfMjIQBBIYChRJUl9W",
+            "RVJTSU9OXzIwMTlfM18xOBAFEhgKFElSX1ZFUlNJT05fMjAxOV85XzE5EAYS",
+            "FwoTSVJfVkVSU0lPTl8yMDIwXzVfOBAHEg4KCklSX1ZFUlNJT04QCCouCg5P",
+            "cGVyYXRvclN0YXR1cxIQCgxFWFBFUklNRU5UQUwQABIKCgZTVEFCTEUQAUIC",
+            "SANiBnByb3RvMw=="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
-          new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Onnx.Version), }, null, new pbr::GeneratedClrTypeInfo[] {
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.AttributeProto), global::Onnx.AttributeProto.Parser, new[]{ "Name", "RefAttrName", "DocString", "Type", "F", "I", "S", "T", "G", "SparseTensor", "Floats", "Ints", "Strings", "Tensors", "Graphs", "SparseTensors" }, null, new[]{ typeof(global::Onnx.AttributeProto.Types.AttributeType) }, null, null),
+          new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Onnx.Version), typeof(global::Onnx.OperatorStatus), }, null, new pbr::GeneratedClrTypeInfo[] {
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.AttributeProto), global::Onnx.AttributeProto.Parser, new[]{ "Name", "RefAttrName", "DocString", "Type", "F", "I", "S", "T", "G", "SparseTensor", "Tp", "Floats", "Ints", "Strings", "Tensors", "Graphs", "SparseTensors", "TypeProtos" }, null, new[]{ typeof(global::Onnx.AttributeProto.Types.AttributeType) }, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.ValueInfoProto), global::Onnx.ValueInfoProto.Parser, new[]{ "Name", "Type", "DocString" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.NodeProto), global::Onnx.NodeProto.Parser, new[]{ "Input", "Output", "Name", "OpType", "Domain", "Attribute", "DocString" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TrainingInfoProto), global::Onnx.TrainingInfoProto.Parser, new[]{ "Initialization", "Algorithm", "InitializationBinding", "UpdateBinding" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.ModelProto), global::Onnx.ModelProto.Parser, new[]{ "IrVersion", "OpsetImport", "ProducerName", "ProducerVersion", "Domain", "ModelVersion", "DocString", "Graph", "MetadataProps", "TrainingInfo" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.ModelProto), global::Onnx.ModelProto.Parser, new[]{ "IrVersion", "OpsetImport", "ProducerName", "ProducerVersion", "Domain", "ModelVersion", "DocString", "Graph", "MetadataProps", "TrainingInfo", "Functions" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.StringStringEntryProto), global::Onnx.StringStringEntryProto.Parser, new[]{ "Key", "Value" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorAnnotation), global::Onnx.TensorAnnotation.Parser, new[]{ "TensorName", "QuantParameterTensorNames" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.GraphProto), global::Onnx.GraphProto.Parser, new[]{ "Node", "Name", "Initializer", "SparseInitializer", "DocString", "Input", "Output", "ValueInfo", "QuantizationAnnotation" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorProto), global::Onnx.TensorProto.Parser, new[]{ "Dims", "DataType", "Segment", "FloatData", "Int32Data", "StringData", "Int64Data", "Name", "DocString", "RawData", "ExternalData", "DataLocation", "DoubleData", "Uint64Data" }, null, new[]{ typeof(global::Onnx.TensorProto.Types.DataType), typeof(global::Onnx.TensorProto.Types.DataLocation) }, null, new pbr::GeneratedClrTypeInfo[] { new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorProto.Types.Segment), global::Onnx.TensorProto.Types.Segment.Parser, new[]{ "Begin", "End" }, null, null, null, null)}),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.SparseTensorProto), global::Onnx.SparseTensorProto.Parser, new[]{ "Values", "Indices", "Dims" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorShapeProto), global::Onnx.TensorShapeProto.Parser, new[]{ "Dim" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorShapeProto.Types.Dimension), global::Onnx.TensorShapeProto.Types.Dimension.Parser, new[]{ "DimValue", "DimParam", "Denotation" }, new[]{ "Value" }, null, null, null)}),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto), global::Onnx.TypeProto.Parser, new[]{ "TensorType", "SequenceType", "MapType", "SparseTensorType", "OpaqueType", "Denotation" }, new[]{ "Value" }, null, null, new pbr::GeneratedClrTypeInfo[] { new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.Tensor), global::Onnx.TypeProto.Types.Tensor.Parser, new[]{ "ElemType", "Shape" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto), global::Onnx.TypeProto.Parser, new[]{ "TensorType", "SequenceType", "MapType", "OptionalType", "SparseTensorType", "OpaqueType", "Denotation" }, new[]{ "Value" }, null, null, new pbr::GeneratedClrTypeInfo[] { new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.Tensor), global::Onnx.TypeProto.Types.Tensor.Parser, new[]{ "ElemType", "Shape" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.Sequence), global::Onnx.TypeProto.Types.Sequence.Parser, new[]{ "ElemType" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.Map), global::Onnx.TypeProto.Types.Map.Parser, new[]{ "KeyType", "ValueType" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.Optional), global::Onnx.TypeProto.Types.Optional.Parser, new[]{ "ElemType" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.SparseTensor), global::Onnx.TypeProto.Types.SparseTensor.Parser, new[]{ "ElemType", "Shape" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.Opaque), global::Onnx.TypeProto.Types.Opaque.Parser, new[]{ "Domain", "Name" }, null, null, null, null)}),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.OperatorSetIdProto), global::Onnx.OperatorSetIdProto.Parser, new[]{ "Domain", "Version" }, null, null, null, null)
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.OperatorSetIdProto), global::Onnx.OperatorSetIdProto.Parser, new[]{ "Domain", "Version" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.FunctionProto), global::Onnx.FunctionProto.Parser, new[]{ "Name", "Input", "Output", "Attribute", "Node", "DocString", "OpsetImport", "Domain" }, null, null, null, null)
           }));
     }
     #endregion
@@ -189,7 +203,7 @@ namespace Onnx {
     /// </summary>
     [pbr::OriginalName("IR_VERSION_2019_9_19")] IrVersion2019919 = 6,
     /// <summary>
-    /// IR VERSION 7 published on &lt;TBD>
+    /// IR VERSION 7 published on May 8, 2020
     /// - Add support to allow function body graph to rely on multiple external opreator sets.
     /// - Add a list to promote inference graph's initializers to global and
     ///   mutable variables. Global variables are visible in all graphs of the
@@ -199,7 +213,23 @@ namespace Onnx {
     ///   can modify the values of mutable variables.
     /// - Implicitly add inference graph into each TrainingInfoProto's algorithm.
     /// </summary>
-    [pbr::OriginalName("IR_VERSION")] IrVersion = 7,
+    [pbr::OriginalName("IR_VERSION_2020_5_8")] IrVersion202058 = 7,
+    /// <summary>
+    /// IR VERSION 8 published on &lt;TBD>
+    /// Introduce TypeProto.SparseTensor
+    /// Introduce TypeProto.Optional
+    /// Added a list of FunctionProtos local to the model
+    /// Deprecated since_version and operator status from FunctionProto
+    /// </summary>
+    [pbr::OriginalName("IR_VERSION")] IrVersion = 8,
+  }
+
+  /// <summary>
+  /// Operator/function status.
+  /// </summary>
+  public enum OperatorStatus {
+    [pbr::OriginalName("EXPERIMENTAL")] Experimental = 0,
+    [pbr::OriginalName("STABLE")] Stable = 1,
   }
 
   #endregion
@@ -252,12 +282,14 @@ namespace Onnx {
       t_ = other.t_ != null ? other.t_.Clone() : null;
       g_ = other.g_ != null ? other.g_.Clone() : null;
       sparseTensor_ = other.sparseTensor_ != null ? other.sparseTensor_.Clone() : null;
+      tp_ = other.tp_ != null ? other.tp_.Clone() : null;
       floats_ = other.floats_.Clone();
       ints_ = other.ints_.Clone();
       strings_ = other.strings_.Clone();
       tensors_ = other.tensors_.Clone();
       graphs_ = other.graphs_.Clone();
       sparseTensors_ = other.sparseTensors_.Clone();
+      typeProtos_ = other.typeProtos_.Clone();
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -414,6 +446,21 @@ namespace Onnx {
       }
     }
 
+    /// <summary>Field number for the "tp" field.</summary>
+    public const int TpFieldNumber = 14;
+    private global::Onnx.TypeProto tp_;
+    /// <summary>
+    /// Do not use field below, it's deprecated.
+    /// optional ValueProto v = 12;         // value - subsumes everything but graph
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public global::Onnx.TypeProto Tp {
+      get { return tp_; }
+      set {
+        tp_ = value;
+      }
+    }
+
     /// <summary>Field number for the "floats" field.</summary>
     public const int FloatsFieldNumber = 7;
     private static readonly pb::FieldCodec<float> _repeated_floats_codec
@@ -492,6 +539,19 @@ namespace Onnx {
       get { return sparseTensors_; }
     }
 
+    /// <summary>Field number for the "type_protos" field.</summary>
+    public const int TypeProtosFieldNumber = 15;
+    private static readonly pb::FieldCodec<global::Onnx.TypeProto> _repeated_typeProtos_codec
+        = pb::FieldCodec.ForMessage(122, global::Onnx.TypeProto.Parser);
+    private readonly pbc::RepeatedField<global::Onnx.TypeProto> typeProtos_ = new pbc::RepeatedField<global::Onnx.TypeProto>();
+    /// <summary>
+    /// list of type protos
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public pbc::RepeatedField<global::Onnx.TypeProto> TypeProtos {
+      get { return typeProtos_; }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public override bool Equals(object other) {
       return Equals(other as AttributeProto);
@@ -515,12 +575,14 @@ namespace Onnx {
       if (!object.Equals(T, other.T)) return false;
       if (!object.Equals(G, other.G)) return false;
       if (!object.Equals(SparseTensor, other.SparseTensor)) return false;
+      if (!object.Equals(Tp, other.Tp)) return false;
       if(!floats_.Equals(other.floats_)) return false;
       if(!ints_.Equals(other.ints_)) return false;
       if(!strings_.Equals(other.strings_)) return false;
       if(!tensors_.Equals(other.tensors_)) return false;
       if(!graphs_.Equals(other.graphs_)) return false;
       if(!sparseTensors_.Equals(other.sparseTensors_)) return false;
+      if(!typeProtos_.Equals(other.typeProtos_)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -537,12 +599,14 @@ namespace Onnx {
       if (t_ != null) hash ^= T.GetHashCode();
       if (g_ != null) hash ^= G.GetHashCode();
       if (sparseTensor_ != null) hash ^= SparseTensor.GetHashCode();
+      if (tp_ != null) hash ^= Tp.GetHashCode();
       hash ^= floats_.GetHashCode();
       hash ^= ints_.GetHashCode();
       hash ^= strings_.GetHashCode();
       hash ^= tensors_.GetHashCode();
       hash ^= graphs_.GetHashCode();
       hash ^= sparseTensors_.GetHashCode();
+      hash ^= typeProtos_.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -592,6 +656,11 @@ namespace Onnx {
         output.WriteRawTag(106);
         output.WriteString(DocString);
       }
+      if (tp_ != null) {
+        output.WriteRawTag(114);
+        output.WriteMessage(Tp);
+      }
+      typeProtos_.WriteTo(output, _repeated_typeProtos_codec);
       if (Type != global::Onnx.AttributeProto.Types.AttributeType.Undefined) {
         output.WriteRawTag(160, 1);
         output.WriteEnum((int) Type);
@@ -647,6 +716,11 @@ namespace Onnx {
         output.WriteRawTag(106);
         output.WriteString(DocString);
       }
+      if (tp_ != null) {
+        output.WriteRawTag(114);
+        output.WriteMessage(Tp);
+      }
+      typeProtos_.WriteTo(ref output, _repeated_typeProtos_codec);
       if (Type != global::Onnx.AttributeProto.Types.AttributeType.Undefined) {
         output.WriteRawTag(160, 1);
         output.WriteEnum((int) Type);
@@ -699,12 +773,16 @@ namespace Onnx {
       if (sparseTensor_ != null) {
         size += 2 + pb::CodedOutputStream.ComputeMessageSize(SparseTensor);
       }
+      if (tp_ != null) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(Tp);
+      }
       size += floats_.CalculateSize(_repeated_floats_codec);
       size += ints_.CalculateSize(_repeated_ints_codec);
       size += strings_.CalculateSize(_repeated_strings_codec);
       size += tensors_.CalculateSize(_repeated_tensors_codec);
       size += graphs_.CalculateSize(_repeated_graphs_codec);
       size += sparseTensors_.CalculateSize(_repeated_sparseTensors_codec);
+      size += typeProtos_.CalculateSize(_repeated_typeProtos_codec);
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
       }
@@ -755,12 +833,19 @@ namespace Onnx {
         }
         SparseTensor.MergeFrom(other.SparseTensor);
       }
+      if (other.tp_ != null) {
+        if (tp_ == null) {
+          Tp = new global::Onnx.TypeProto();
+        }
+        Tp.MergeFrom(other.Tp);
+      }
       floats_.Add(other.floats_);
       ints_.Add(other.ints_);
       strings_.Add(other.strings_);
       tensors_.Add(other.tensors_);
       graphs_.Add(other.graphs_);
       sparseTensors_.Add(other.sparseTensors_);
+      typeProtos_.Add(other.typeProtos_);
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
 
@@ -829,6 +914,17 @@ namespace Onnx {
           }
           case 106: {
             DocString = input.ReadString();
+            break;
+          }
+          case 114: {
+            if (tp_ == null) {
+              Tp = new global::Onnx.TypeProto();
+            }
+            input.ReadMessage(Tp);
+            break;
+          }
+          case 122: {
+            typeProtos_.AddEntriesFrom(input, _repeated_typeProtos_codec);
             break;
           }
           case 160: {
@@ -920,6 +1016,17 @@ namespace Onnx {
             DocString = input.ReadString();
             break;
           }
+          case 114: {
+            if (tp_ == null) {
+              Tp = new global::Onnx.TypeProto();
+            }
+            input.ReadMessage(Tp);
+            break;
+          }
+          case 122: {
+            typeProtos_.AddEntriesFrom(ref input, _repeated_typeProtos_codec);
+            break;
+          }
           case 160: {
             Type = (global::Onnx.AttributeProto.Types.AttributeType) input.ReadEnum();
             break;
@@ -960,12 +1067,14 @@ namespace Onnx {
         [pbr::OriginalName("TENSOR")] Tensor = 4,
         [pbr::OriginalName("GRAPH")] Graph = 5,
         [pbr::OriginalName("SPARSE_TENSOR")] SparseTensor = 11,
+        [pbr::OriginalName("TYPE_PROTO")] TypeProto = 13,
         [pbr::OriginalName("FLOATS")] Floats = 6,
         [pbr::OriginalName("INTS")] Ints = 7,
         [pbr::OriginalName("STRINGS")] Strings = 8,
         [pbr::OriginalName("TENSORS")] Tensors = 9,
         [pbr::OriginalName("GRAPHS")] Graphs = 10,
         [pbr::OriginalName("SPARSE_TENSORS")] SparseTensors = 12,
+        [pbr::OriginalName("TYPE_PROTOS")] TypeProtos = 14,
       }
 
     }
@@ -2067,6 +2176,7 @@ namespace Onnx {
       graph_ = other.graph_ != null ? other.graph_.Clone() : null;
       metadataProps_ = other.metadataProps_.Clone();
       trainingInfo_ = other.trainingInfo_.Clone();
+      functions_ = other.functions_.Clone();
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -2237,6 +2347,34 @@ namespace Onnx {
       get { return trainingInfo_; }
     }
 
+    /// <summary>Field number for the "functions" field.</summary>
+    public const int FunctionsFieldNumber = 25;
+    private static readonly pb::FieldCodec<global::Onnx.FunctionProto> _repeated_functions_codec
+        = pb::FieldCodec.ForMessage(202, global::Onnx.FunctionProto.Parser);
+    private readonly pbc::RepeatedField<global::Onnx.FunctionProto> functions_ = new pbc::RepeatedField<global::Onnx.FunctionProto>();
+    /// <summary>
+    /// A list of function protos local to the model.
+    ///
+    /// Name of the function "FunctionProto.name" should be unique within the domain "FunctionProto.domain".
+    /// In case of any conflicts the behavior (whether the model local functions are given higher priority,
+    /// or standard opserator sets are given higher priotity or this is treated as error) is defined by 
+    /// the runtimes.
+    /// 
+    /// The operator sets imported by FunctionProto should be compatible with the ones
+    /// imported by ModelProto and other model local FunctionProtos. 
+    /// Example, if same operator set say 'A' is imported by a FunctionProto and ModelProto 
+    /// or by 2 FunctionProtos then versions for the operator set may be different but, 
+    /// the operator schema returned for op_type, domain, version combination
+    /// for both the versions should be same for every node in the function body.
+    ///
+    /// One FunctionProto can reference other FunctionProto in the model, however, recursive reference
+    /// is not allowed.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public pbc::RepeatedField<global::Onnx.FunctionProto> Functions {
+      get { return functions_; }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public override bool Equals(object other) {
       return Equals(other as ModelProto);
@@ -2260,6 +2398,7 @@ namespace Onnx {
       if (!object.Equals(Graph, other.Graph)) return false;
       if(!metadataProps_.Equals(other.metadataProps_)) return false;
       if(!trainingInfo_.Equals(other.trainingInfo_)) return false;
+      if(!functions_.Equals(other.functions_)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -2276,6 +2415,7 @@ namespace Onnx {
       if (graph_ != null) hash ^= Graph.GetHashCode();
       hash ^= metadataProps_.GetHashCode();
       hash ^= trainingInfo_.GetHashCode();
+      hash ^= functions_.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -2323,6 +2463,7 @@ namespace Onnx {
       opsetImport_.WriteTo(output, _repeated_opsetImport_codec);
       metadataProps_.WriteTo(output, _repeated_metadataProps_codec);
       trainingInfo_.WriteTo(output, _repeated_trainingInfo_codec);
+      functions_.WriteTo(output, _repeated_functions_codec);
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -2363,6 +2504,7 @@ namespace Onnx {
       opsetImport_.WriteTo(ref output, _repeated_opsetImport_codec);
       metadataProps_.WriteTo(ref output, _repeated_metadataProps_codec);
       trainingInfo_.WriteTo(ref output, _repeated_trainingInfo_codec);
+      functions_.WriteTo(ref output, _repeated_functions_codec);
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -2396,6 +2538,7 @@ namespace Onnx {
       }
       size += metadataProps_.CalculateSize(_repeated_metadataProps_codec);
       size += trainingInfo_.CalculateSize(_repeated_trainingInfo_codec);
+      size += functions_.CalculateSize(_repeated_functions_codec);
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
       }
@@ -2434,6 +2577,7 @@ namespace Onnx {
       }
       metadataProps_.Add(other.metadataProps_);
       trainingInfo_.Add(other.trainingInfo_);
+      functions_.Add(other.functions_);
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
 
@@ -2491,6 +2635,10 @@ namespace Onnx {
             trainingInfo_.AddEntriesFrom(input, _repeated_trainingInfo_codec);
             break;
           }
+          case 202: {
+            functions_.AddEntriesFrom(input, _repeated_functions_codec);
+            break;
+          }
         }
       }
     #endif
@@ -2546,6 +2694,10 @@ namespace Onnx {
           }
           case 162: {
             trainingInfo_.AddEntriesFrom(ref input, _repeated_trainingInfo_codec);
+            break;
+          }
+          case 202: {
+            functions_.AddEntriesFrom(ref input, _repeated_functions_codec);
             break;
           }
         }
@@ -5127,6 +5279,9 @@ namespace Onnx {
         case ValueOneofCase.MapType:
           MapType = other.MapType.Clone();
           break;
+        case ValueOneofCase.OptionalType:
+          OptionalType = other.OptionalType.Clone();
+          break;
         case ValueOneofCase.SparseTensorType:
           SparseTensorType = other.SparseTensorType.Clone();
           break;
@@ -5185,8 +5340,25 @@ namespace Onnx {
       }
     }
 
+    /// <summary>Field number for the "optional_type" field.</summary>
+    public const int OptionalTypeFieldNumber = 9;
+    /// <summary>
+    /// The type of an optional.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public global::Onnx.TypeProto.Types.Optional OptionalType {
+      get { return valueCase_ == ValueOneofCase.OptionalType ? (global::Onnx.TypeProto.Types.Optional) value_ : null; }
+      set {
+        value_ = value;
+        valueCase_ = value == null ? ValueOneofCase.None : ValueOneofCase.OptionalType;
+      }
+    }
+
     /// <summary>Field number for the "sparse_tensor_type" field.</summary>
     public const int SparseTensorTypeFieldNumber = 8;
+    /// <summary>
+    /// Type of the sparse tensor
+    /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public global::Onnx.TypeProto.Types.SparseTensor SparseTensorType {
       get { return valueCase_ == ValueOneofCase.SparseTensorType ? (global::Onnx.TypeProto.Types.SparseTensor) value_ : null; }
@@ -5231,6 +5403,7 @@ namespace Onnx {
       TensorType = 1,
       SequenceType = 4,
       MapType = 5,
+      OptionalType = 9,
       SparseTensorType = 8,
       OpaqueType = 7,
     }
@@ -5262,6 +5435,7 @@ namespace Onnx {
       if (!object.Equals(TensorType, other.TensorType)) return false;
       if (!object.Equals(SequenceType, other.SequenceType)) return false;
       if (!object.Equals(MapType, other.MapType)) return false;
+      if (!object.Equals(OptionalType, other.OptionalType)) return false;
       if (!object.Equals(SparseTensorType, other.SparseTensorType)) return false;
       if (!object.Equals(OpaqueType, other.OpaqueType)) return false;
       if (Denotation != other.Denotation) return false;
@@ -5275,6 +5449,7 @@ namespace Onnx {
       if (valueCase_ == ValueOneofCase.TensorType) hash ^= TensorType.GetHashCode();
       if (valueCase_ == ValueOneofCase.SequenceType) hash ^= SequenceType.GetHashCode();
       if (valueCase_ == ValueOneofCase.MapType) hash ^= MapType.GetHashCode();
+      if (valueCase_ == ValueOneofCase.OptionalType) hash ^= OptionalType.GetHashCode();
       if (valueCase_ == ValueOneofCase.SparseTensorType) hash ^= SparseTensorType.GetHashCode();
       if (valueCase_ == ValueOneofCase.OpaqueType) hash ^= OpaqueType.GetHashCode();
       if (Denotation.Length != 0) hash ^= Denotation.GetHashCode();
@@ -5319,6 +5494,10 @@ namespace Onnx {
         output.WriteRawTag(66);
         output.WriteMessage(SparseTensorType);
       }
+      if (valueCase_ == ValueOneofCase.OptionalType) {
+        output.WriteRawTag(74);
+        output.WriteMessage(OptionalType);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -5352,6 +5531,10 @@ namespace Onnx {
         output.WriteRawTag(66);
         output.WriteMessage(SparseTensorType);
       }
+      if (valueCase_ == ValueOneofCase.OptionalType) {
+        output.WriteRawTag(74);
+        output.WriteMessage(OptionalType);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -5369,6 +5552,9 @@ namespace Onnx {
       }
       if (valueCase_ == ValueOneofCase.MapType) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(MapType);
+      }
+      if (valueCase_ == ValueOneofCase.OptionalType) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(OptionalType);
       }
       if (valueCase_ == ValueOneofCase.SparseTensorType) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(SparseTensorType);
@@ -5411,6 +5597,12 @@ namespace Onnx {
             MapType = new global::Onnx.TypeProto.Types.Map();
           }
           MapType.MergeFrom(other.MapType);
+          break;
+        case ValueOneofCase.OptionalType:
+          if (OptionalType == null) {
+            OptionalType = new global::Onnx.TypeProto.Types.Optional();
+          }
+          OptionalType.MergeFrom(other.OptionalType);
           break;
         case ValueOneofCase.SparseTensorType:
           if (SparseTensorType == null) {
@@ -5489,6 +5681,15 @@ namespace Onnx {
             SparseTensorType = subBuilder;
             break;
           }
+          case 74: {
+            global::Onnx.TypeProto.Types.Optional subBuilder = new global::Onnx.TypeProto.Types.Optional();
+            if (valueCase_ == ValueOneofCase.OptionalType) {
+              subBuilder.MergeFrom(OptionalType);
+            }
+            input.ReadMessage(subBuilder);
+            OptionalType = subBuilder;
+            break;
+          }
         }
       }
     #endif
@@ -5550,6 +5751,15 @@ namespace Onnx {
             }
             input.ReadMessage(subBuilder);
             SparseTensorType = subBuilder;
+            break;
+          }
+          case 74: {
+            global::Onnx.TypeProto.Types.Optional subBuilder = new global::Onnx.TypeProto.Types.Optional();
+            if (valueCase_ == ValueOneofCase.OptionalType) {
+              subBuilder.MergeFrom(OptionalType);
+            }
+            input.ReadMessage(subBuilder);
+            OptionalType = subBuilder;
             break;
           }
         }
@@ -6199,6 +6409,195 @@ namespace Onnx {
 
       }
 
+      /// <summary>
+      /// wrapper for Tensor, Sequence, or Map
+      /// </summary>
+      public sealed partial class Optional : pb::IMessage<Optional>
+      #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+          , pb::IBufferMessage
+      #endif
+      {
+        private static readonly pb::MessageParser<Optional> _parser = new pb::MessageParser<Optional>(() => new Optional());
+        private pb::UnknownFieldSet _unknownFields;
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public static pb::MessageParser<Optional> Parser { get { return _parser; } }
+
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public static pbr::MessageDescriptor Descriptor {
+          get { return global::Onnx.TypeProto.Descriptor.NestedTypes[3]; }
+        }
+
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        pbr::MessageDescriptor pb::IMessage.Descriptor {
+          get { return Descriptor; }
+        }
+
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public Optional() {
+          OnConstruction();
+        }
+
+        partial void OnConstruction();
+
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public Optional(Optional other) : this() {
+          elemType_ = other.elemType_ != null ? other.elemType_.Clone() : null;
+          _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+        }
+
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public Optional Clone() {
+          return new Optional(this);
+        }
+
+        /// <summary>Field number for the "elem_type" field.</summary>
+        public const int ElemTypeFieldNumber = 1;
+        private global::Onnx.TypeProto elemType_;
+        /// <summary>
+        /// The type and optional shape of the element wrapped.
+        /// This field MUST be present for this version of the IR.
+        /// Possible values correspond to OptionalProto.DataType enum
+        /// </summary>
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public global::Onnx.TypeProto ElemType {
+          get { return elemType_; }
+          set {
+            elemType_ = value;
+          }
+        }
+
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public override bool Equals(object other) {
+          return Equals(other as Optional);
+        }
+
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public bool Equals(Optional other) {
+          if (ReferenceEquals(other, null)) {
+            return false;
+          }
+          if (ReferenceEquals(other, this)) {
+            return true;
+          }
+          if (!object.Equals(ElemType, other.ElemType)) return false;
+          return Equals(_unknownFields, other._unknownFields);
+        }
+
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public override int GetHashCode() {
+          int hash = 1;
+          if (elemType_ != null) hash ^= ElemType.GetHashCode();
+          if (_unknownFields != null) {
+            hash ^= _unknownFields.GetHashCode();
+          }
+          return hash;
+        }
+
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public override string ToString() {
+          return pb::JsonFormatter.ToDiagnosticString(this);
+        }
+
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public void WriteTo(pb::CodedOutputStream output) {
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+          output.WriteRawMessage(this);
+        #else
+          if (elemType_ != null) {
+            output.WriteRawTag(10);
+            output.WriteMessage(ElemType);
+          }
+          if (_unknownFields != null) {
+            _unknownFields.WriteTo(output);
+          }
+        #endif
+        }
+
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+          if (elemType_ != null) {
+            output.WriteRawTag(10);
+            output.WriteMessage(ElemType);
+          }
+          if (_unknownFields != null) {
+            _unknownFields.WriteTo(ref output);
+          }
+        }
+        #endif
+
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public int CalculateSize() {
+          int size = 0;
+          if (elemType_ != null) {
+            size += 1 + pb::CodedOutputStream.ComputeMessageSize(ElemType);
+          }
+          if (_unknownFields != null) {
+            size += _unknownFields.CalculateSize();
+          }
+          return size;
+        }
+
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public void MergeFrom(Optional other) {
+          if (other == null) {
+            return;
+          }
+          if (other.elemType_ != null) {
+            if (elemType_ == null) {
+              ElemType = new global::Onnx.TypeProto();
+            }
+            ElemType.MergeFrom(other.ElemType);
+          }
+          _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+        }
+
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        public void MergeFrom(pb::CodedInputStream input) {
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+          input.ReadRawMessage(this);
+        #else
+          uint tag;
+          while ((tag = input.ReadTag()) != 0) {
+            switch(tag) {
+              default:
+                _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+                break;
+              case 10: {
+                if (elemType_ == null) {
+                  ElemType = new global::Onnx.TypeProto();
+                }
+                input.ReadMessage(ElemType);
+                break;
+              }
+            }
+          }
+        #endif
+        }
+
+        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+          uint tag;
+          while ((tag = input.ReadTag()) != 0) {
+            switch(tag) {
+              default:
+                _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+                break;
+              case 10: {
+                if (elemType_ == null) {
+                  ElemType = new global::Onnx.TypeProto();
+                }
+                input.ReadMessage(ElemType);
+                break;
+              }
+            }
+          }
+        }
+        #endif
+
+      }
+
       public sealed partial class SparseTensor : pb::IMessage<SparseTensor>
       #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
           , pb::IBufferMessage
@@ -6211,7 +6610,7 @@ namespace Onnx {
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
         public static pbr::MessageDescriptor Descriptor {
-          get { return global::Onnx.TypeProto.Descriptor.NestedTypes[3]; }
+          get { return global::Onnx.TypeProto.Descriptor.NestedTypes[4]; }
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -6433,7 +6832,7 @@ namespace Onnx {
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
         public static pbr::MessageDescriptor Descriptor {
-          get { return global::Onnx.TypeProto.Descriptor.NestedTypes[4]; }
+          get { return global::Onnx.TypeProto.Descriptor.NestedTypes[5]; }
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -6854,6 +7253,396 @@ namespace Onnx {
           }
           case 16: {
             Version = input.ReadInt64();
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  public sealed partial class FunctionProto : pb::IMessage<FunctionProto>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<FunctionProto> _parser = new pb::MessageParser<FunctionProto>(() => new FunctionProto());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public static pb::MessageParser<FunctionProto> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[13]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public FunctionProto() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public FunctionProto(FunctionProto other) : this() {
+      name_ = other.name_;
+      input_ = other.input_.Clone();
+      output_ = other.output_.Clone();
+      attribute_ = other.attribute_.Clone();
+      node_ = other.node_.Clone();
+      docString_ = other.docString_;
+      opsetImport_ = other.opsetImport_.Clone();
+      domain_ = other.domain_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public FunctionProto Clone() {
+      return new FunctionProto(this);
+    }
+
+    /// <summary>Field number for the "name" field.</summary>
+    public const int NameFieldNumber = 1;
+    private string name_ = "";
+    /// <summary>
+    /// The name of the function, similar usage of op_type in OperatorProto.
+    /// Combined with FunctionProto.domain, this forms the unique identity of
+    /// the FunctionProto.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public string Name {
+      get { return name_; }
+      set {
+        name_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "input" field.</summary>
+    public const int InputFieldNumber = 4;
+    private static readonly pb::FieldCodec<string> _repeated_input_codec
+        = pb::FieldCodec.ForString(34);
+    private readonly pbc::RepeatedField<string> input_ = new pbc::RepeatedField<string>();
+    /// <summary>
+    /// The inputs and outputs of the function.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public pbc::RepeatedField<string> Input {
+      get { return input_; }
+    }
+
+    /// <summary>Field number for the "output" field.</summary>
+    public const int OutputFieldNumber = 5;
+    private static readonly pb::FieldCodec<string> _repeated_output_codec
+        = pb::FieldCodec.ForString(42);
+    private readonly pbc::RepeatedField<string> output_ = new pbc::RepeatedField<string>();
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public pbc::RepeatedField<string> Output {
+      get { return output_; }
+    }
+
+    /// <summary>Field number for the "attribute" field.</summary>
+    public const int AttributeFieldNumber = 6;
+    private static readonly pb::FieldCodec<string> _repeated_attribute_codec
+        = pb::FieldCodec.ForString(50);
+    private readonly pbc::RepeatedField<string> attribute_ = new pbc::RepeatedField<string>();
+    /// <summary>
+    /// The attributes of the function.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public pbc::RepeatedField<string> Attribute {
+      get { return attribute_; }
+    }
+
+    /// <summary>Field number for the "node" field.</summary>
+    public const int NodeFieldNumber = 7;
+    private static readonly pb::FieldCodec<global::Onnx.NodeProto> _repeated_node_codec
+        = pb::FieldCodec.ForMessage(58, global::Onnx.NodeProto.Parser);
+    private readonly pbc::RepeatedField<global::Onnx.NodeProto> node_ = new pbc::RepeatedField<global::Onnx.NodeProto>();
+    /// <summary>
+    /// The nodes in the function.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public pbc::RepeatedField<global::Onnx.NodeProto> Node {
+      get { return node_; }
+    }
+
+    /// <summary>Field number for the "doc_string" field.</summary>
+    public const int DocStringFieldNumber = 8;
+    private string docString_ = "";
+    /// <summary>
+    /// A human-readable documentation for this function. Markdown is allowed.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public string DocString {
+      get { return docString_; }
+      set {
+        docString_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "opset_import" field.</summary>
+    public const int OpsetImportFieldNumber = 9;
+    private static readonly pb::FieldCodec<global::Onnx.OperatorSetIdProto> _repeated_opsetImport_codec
+        = pb::FieldCodec.ForMessage(74, global::Onnx.OperatorSetIdProto.Parser);
+    private readonly pbc::RepeatedField<global::Onnx.OperatorSetIdProto> opsetImport_ = new pbc::RepeatedField<global::Onnx.OperatorSetIdProto>();
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public pbc::RepeatedField<global::Onnx.OperatorSetIdProto> OpsetImport {
+      get { return opsetImport_; }
+    }
+
+    /// <summary>Field number for the "domain" field.</summary>
+    public const int DomainFieldNumber = 10;
+    private string domain_ = "";
+    /// <summary>
+    /// The domain which this function belongs to. Combined with FunctionProto.name, this forms the unique identity of
+    /// the FunctionProto.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public string Domain {
+      get { return domain_; }
+      set {
+        domain_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public override bool Equals(object other) {
+      return Equals(other as FunctionProto);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public bool Equals(FunctionProto other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (Name != other.Name) return false;
+      if(!input_.Equals(other.input_)) return false;
+      if(!output_.Equals(other.output_)) return false;
+      if(!attribute_.Equals(other.attribute_)) return false;
+      if(!node_.Equals(other.node_)) return false;
+      if (DocString != other.DocString) return false;
+      if(!opsetImport_.Equals(other.opsetImport_)) return false;
+      if (Domain != other.Domain) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (Name.Length != 0) hash ^= Name.GetHashCode();
+      hash ^= input_.GetHashCode();
+      hash ^= output_.GetHashCode();
+      hash ^= attribute_.GetHashCode();
+      hash ^= node_.GetHashCode();
+      if (DocString.Length != 0) hash ^= DocString.GetHashCode();
+      hash ^= opsetImport_.GetHashCode();
+      if (Domain.Length != 0) hash ^= Domain.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (Name.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(Name);
+      }
+      input_.WriteTo(output, _repeated_input_codec);
+      output_.WriteTo(output, _repeated_output_codec);
+      attribute_.WriteTo(output, _repeated_attribute_codec);
+      node_.WriteTo(output, _repeated_node_codec);
+      if (DocString.Length != 0) {
+        output.WriteRawTag(66);
+        output.WriteString(DocString);
+      }
+      opsetImport_.WriteTo(output, _repeated_opsetImport_codec);
+      if (Domain.Length != 0) {
+        output.WriteRawTag(82);
+        output.WriteString(Domain);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (Name.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(Name);
+      }
+      input_.WriteTo(ref output, _repeated_input_codec);
+      output_.WriteTo(ref output, _repeated_output_codec);
+      attribute_.WriteTo(ref output, _repeated_attribute_codec);
+      node_.WriteTo(ref output, _repeated_node_codec);
+      if (DocString.Length != 0) {
+        output.WriteRawTag(66);
+        output.WriteString(DocString);
+      }
+      opsetImport_.WriteTo(ref output, _repeated_opsetImport_codec);
+      if (Domain.Length != 0) {
+        output.WriteRawTag(82);
+        output.WriteString(Domain);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public int CalculateSize() {
+      int size = 0;
+      if (Name.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Name);
+      }
+      size += input_.CalculateSize(_repeated_input_codec);
+      size += output_.CalculateSize(_repeated_output_codec);
+      size += attribute_.CalculateSize(_repeated_attribute_codec);
+      size += node_.CalculateSize(_repeated_node_codec);
+      if (DocString.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(DocString);
+      }
+      size += opsetImport_.CalculateSize(_repeated_opsetImport_codec);
+      if (Domain.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Domain);
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public void MergeFrom(FunctionProto other) {
+      if (other == null) {
+        return;
+      }
+      if (other.Name.Length != 0) {
+        Name = other.Name;
+      }
+      input_.Add(other.input_);
+      output_.Add(other.output_);
+      attribute_.Add(other.attribute_);
+      node_.Add(other.node_);
+      if (other.DocString.Length != 0) {
+        DocString = other.DocString;
+      }
+      opsetImport_.Add(other.opsetImport_);
+      if (other.Domain.Length != 0) {
+        Domain = other.Domain;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+        switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 10: {
+            Name = input.ReadString();
+            break;
+          }
+          case 34: {
+            input_.AddEntriesFrom(input, _repeated_input_codec);
+            break;
+          }
+          case 42: {
+            output_.AddEntriesFrom(input, _repeated_output_codec);
+            break;
+          }
+          case 50: {
+            attribute_.AddEntriesFrom(input, _repeated_attribute_codec);
+            break;
+          }
+          case 58: {
+            node_.AddEntriesFrom(input, _repeated_node_codec);
+            break;
+          }
+          case 66: {
+            DocString = input.ReadString();
+            break;
+          }
+          case 74: {
+            opsetImport_.AddEntriesFrom(input, _repeated_opsetImport_codec);
+            break;
+          }
+          case 82: {
+            Domain = input.ReadString();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+        switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            Name = input.ReadString();
+            break;
+          }
+          case 34: {
+            input_.AddEntriesFrom(ref input, _repeated_input_codec);
+            break;
+          }
+          case 42: {
+            output_.AddEntriesFrom(ref input, _repeated_output_codec);
+            break;
+          }
+          case 50: {
+            attribute_.AddEntriesFrom(ref input, _repeated_attribute_codec);
+            break;
+          }
+          case 58: {
+            node_.AddEntriesFrom(ref input, _repeated_node_codec);
+            break;
+          }
+          case 66: {
+            DocString = input.ReadString();
+            break;
+          }
+          case 74: {
+            opsetImport_.AddEntriesFrom(ref input, _repeated_opsetImport_codec);
+            break;
+          }
+          case 82: {
+            Domain = input.ReadString();
             break;
           }
         }
