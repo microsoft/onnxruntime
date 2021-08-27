@@ -187,8 +187,8 @@ class SymbolicShapeInference:
         }
         self.aten_op_dispatcher_ = {
             'aten::embedding': self._infer_Gather,
-            'aten::diagonal': self._infer_aten_diagonal,
             'aten::max_pool2d_with_indices': self._infer_aten_pool2d,
+            'aten::diagonal': self._infer_aten_diagonal,
             'aten::unfold': self._infer_aten_unfold,
             'aten::argmax': self._infer_aten_argmax,
             'aten::avg_pool2d': self._infer_aten_pool2d,

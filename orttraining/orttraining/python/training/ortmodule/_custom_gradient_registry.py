@@ -86,6 +86,7 @@ def embedding_gradient():
          'GI(0)'], {'name': {'value': 'aten::embedding_backward', 'dtype': 'string'}}),
     ]
 
+
 @register_gradient('com.microsoft', 'ATenOp', 'aten::diagonal', '')
 def diagonal_gradient():
     return [
@@ -93,6 +94,7 @@ def diagonal_gradient():
         (('ATenOp', 'com.microsoft'), ['GO(0)', 'Shape_X', 'I(1)', 'I(2)', 'I(3)'], [
          'GI(0)'], {'name': {'value': 'aten::diagonal_backward', 'dtype': 'string'}}),
     ]
+
 
 @register_gradient('com.microsoft', 'ATenOp', 'aten::max_pool2d_with_indices', '')
 def max_pool2d_gradient():
