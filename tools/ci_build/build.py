@@ -359,11 +359,11 @@ def parse_arguments():
     # Enable onnxruntime-extensions
     parser.add_argument(
         "--use_extensions", action='store_true',
-        help="Enable custom operators in onnxruntime-extensions")
+        help="Enable custom operators in onnxruntime-extensions, use git submodule onnxruntime-extensions "
+        "in path cmake/external/onnxruntime-extensions by default.")
     parser.add_argument(
-        "--extensions_path", type=str,
-        help="Path to onnxruntime-extensions repo, please make sure the repo has already been pulled/synced. "
-        "Setting this argument also means that you want to enable custom operators in onnxruntime-extensions.")
+        "--extensions_path_override", type=str,
+        help="Path to pre-pulled onnxruntime-extensions, will override default onnxruntime-extensions path.")
 
     # Arguments needed by CI
     parser.add_argument(
@@ -1003,17 +1003,23 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     # Append onnxruntime-extensions cmake options
     if args.use_extensions:
         cmake_args += ["-Donnxruntime_USE_EXTENSIONS=ON"]
-        if args.extensions_path:
+
+        # default path of onnxruntime-extensions, using git submodule
+        onnxruntime_extensions_path = os.path.join(cmake_dir, "external", "onnxruntime-extensions")
+
+        if args.extensions_path_override and os.path.exists(args.extensions_path_override):
             # use absolute path here because onnxruntime-extensions is outside onnxruntime
-            onnxruntime_extensions_abs_path = os.path.abspath(args.extensions_path)
-            cmake_args += [
-                "-Donnxruntime_EXTENSIONS_PATH=" + onnxruntime_extensions_abs_path]
-        else:
-            onnxruntime_extensions_abs_path = os.path.join(cmake_dir, "external", "onnxruntime-extensions")
+            onnxruntime_extensions_path = os.path.abspath(args.extensions_path_override)
+
+        cmake_args += [
+            "-Donnxruntime_EXTENSIONS_PATH=" + onnxruntime_extensions_path]
+        print('[onnxruntime-extensions] onnxruntime_extensions_path: ', onnxruntime_extensions_path)
 
         if is_reduced_ops_build(args):
             operators_config_file = os.path.abspath(args.include_ops_by_config)
-            cmake_tool_dir = os.path.join(onnxruntime_extensions_abs_path, 'tools')
+            cmake_tool_dir = os.path.join(onnxruntime_extensions_path, 'tools')
+
+            # generate _selectedoplist.cmake by operators config file
             run_subprocess([sys.executable, 'gen_selectedops.py', operators_config_file], cwd=cmake_tool_dir)
 
     if path_to_protoc_exe:
@@ -1985,11 +1991,6 @@ def main():
             # Node.js when trying to load the .wasm file.
             # To debug ONNX Runtime WebAssembly, use ONNX Runtime Web to debug ort-wasm.wasm in browsers.
             raise BuildError("WebAssembly tests cannot be enabled with flag --enable_wasm_debug_info")
-
-    # Pre-check onnxruntime-extensions arguments
-    if args.extensions_path:
-        if not os.path.exists(args.extensions_path):
-            raise BuildError("[onnxruntime-extensions] extensions_path does not exist")
 
     if args.code_coverage and not args.android:
         raise BuildError("Using --code_coverage requires --android")

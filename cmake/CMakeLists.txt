@@ -93,7 +93,6 @@ option(onnxruntime_USE_ACL_1905 "Build with ACL version 1905 support" OFF)
 option(onnxruntime_USE_ACL_1908 "Build with ACL version 1908 support" OFF)
 option(onnxruntime_USE_ACL_2002 "Build with ACL version 2002 support" OFF)
 option(onnxruntime_USE_ARMNN "Build with ArmNN support" OFF)
-option(onnxruntime_USE_EXTENSIONS "Build with onnxruntime-extensions for more features" OFF)
 option(onnxruntime_ARMNN_RELU_USE_CPU "Use the CPU implementation for the Relu operator for the ArmNN EP" ON)
 option(onnxruntime_ARMNN_BN_USE_CPU "Use the CPU implementation for the Batch Normalization operator for the ArmNN EP" ON)
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
@@ -154,6 +153,9 @@ option(onnxruntime_ENABLE_EAGER_MODE "build ort eager mode")
 
 # build separate library of schemas of (custom) ops used by ORT (for ONNX to MLIR translation)
 option(onnxruntime_BUILD_OPSCHEMA_LIB "Build op schema library" ON)
+
+# option to enable custom operators in onnxruntime-extensions
+option(onnxruntime_USE_EXTENSIONS "Build with onnxruntime-extensions for more features" OFF)
 
 # pre-build python path
 option(onnxruntime_PREBUILT_PYTORCH_PATH "Path to pytorch installation dir")
