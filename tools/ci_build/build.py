@@ -1298,6 +1298,7 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
 
             if args.build_java:
                 gradle_executable = 'gradle'
+                # use the gradle wrapper if it exists, the gradlew should be setup under <repo root>/java
                 gradlew_path = os.path.join(source_dir, 'java',
                                             'gradlew.bat' if is_windows() else 'gradlew')
                 if os.path.exists(gradlew_path):

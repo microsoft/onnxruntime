@@ -130,9 +130,7 @@ final class OnnxRuntime {
       libraryDirPathProperty = System.getProperty(ONNXRUNTIME_NATIVE_PATH);
       // Extract and prepare the shared provider library but don't try to load it,
       // the ONNX Runtime native library will load it
-      if (!isAndroid()) {
-        extractProviderLibrary(ONNXRUNTIME_LIBRARY_SHARED_NAME);
-      }
+      extractProviderLibrary(ONNXRUNTIME_LIBRARY_SHARED_NAME);
 
       load(ONNXRUNTIME_LIBRARY_NAME);
       load(ONNXRUNTIME_JNI_LIBRARY_NAME);

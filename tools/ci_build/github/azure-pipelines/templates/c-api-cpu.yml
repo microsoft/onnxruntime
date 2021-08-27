@@ -757,7 +757,6 @@ jobs:
 
   - script: |
       set -e -x
-      pushd $(Build.BinariesDirectory)
       mkdir android_test
       cd android_test
       cp -av $(Build.SourcesDirectory)/java/src/test/android ./
@@ -765,8 +764,8 @@ jobs:
       mkdir -p app/libs
       cp $(Build.BinariesDirectory)/final-android-aar/onnxruntime-mobile-$(OnnxRuntimeVersion).aar app/libs/onnxruntime-mobile.aar
       $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest
-      popd
     displayName: Run E2E test for Android
+    workingDirectory: $(Build.BinariesDirectory)
 
   - script: |
       python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
