@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "pch.h"
+#include "adapter/pch.h"
 
 #include "winml_adapter_c_api.h"
 #include "core/session/ort_apis.h"
@@ -38,9 +38,14 @@ static std::string CurrentModulePath() {
 }
 
 Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
   // Dynamically load DML to avoid WinML taking a static dependency on DirectML.dll
   auto directml_dll = CurrentModulePath() + "\\DirectML.dll";
   wil::unique_hmodule dmlDll(LoadLibraryExA(directml_dll.c_str(), nullptr, 0));
+#elif WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_PC_APP)
+  wil::unique_hmodule dmlDll(LoadPackagedLibrary(L"DirectML.dll", 0));
+#endif
+
   THROW_LAST_ERROR_IF(!dmlDll);
 
   auto dmlCreateDevice1Fn = reinterpret_cast<decltype(&DMLCreateDevice1)>(
