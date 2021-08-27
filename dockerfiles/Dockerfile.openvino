@@ -27,10 +27,7 @@ RUN /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh
 RUN ln -s cmake-* cmake-dir
 RUN python3 -m pip install wheel
 ENV PATH=${WORKDIR_PATH}/cmake-dir/bin:$PATH
-RUN apt install autoconf automake libtool curl make g++ unzip -y
-RUN git clone https://github.com/google/protobuf.git 
-RUN cd protobuf && git submodule update --init --recursive && ./autogen.sh && ./configure && make -j $nproc && make check  -j $nproc && make install &&ldconfig
-RUN python3 -m pip install onnx
+RUN pip3 install onnx
 RUN cd onnxruntime && ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE} --build_shared_lib --build_wheel 
 
 #Steps to download sources
