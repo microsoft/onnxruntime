@@ -20,7 +20,7 @@ jobs:
         --build-arg PYTHON_VERSION=3.8 -f Dockerfile.ubuntu_eager_mode .
       workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
 
-- task: CmdLine@2
+  - task: CmdLine@2
     displayName: 'eager mode testing'
     inputs:
       script: |
