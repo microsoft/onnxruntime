@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-is_custom_autograd_function_enabled=False
+is_custom_autograd_function_enabled = False
 
 # Initialize static objects needed to run custom autograd.Function's.
 def enable_custom_autograd_support():
