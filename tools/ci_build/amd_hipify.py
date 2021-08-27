@@ -166,6 +166,7 @@ provider_excluded_files = [
                 'cuda_pch.cc',
                 'cuda_pch.h',
                 'cuda_provider_factory.cc',
+                'cuda_provider_factory.h',
                 'cuda_utils.cu',
                 'cudnn_common.cc',
                 'cudnn_common.h',
