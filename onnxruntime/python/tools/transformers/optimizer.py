@@ -319,7 +319,7 @@ def main():
                                only_onnxruntime=args.only_onnxruntime)
 
     if args.float16:
-        optimizer.convert_model_float32_to_float16()
+        optimizer.convert_float_to_float16(keep_io_types=True)
 
     if args.input_int32:
         optimizer.change_input_to_int32()
