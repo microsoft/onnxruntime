@@ -525,8 +525,10 @@ class OnnxModel:
         parameters = {'disable_shape_infer': use_symbolic_shape_infer}
         parameters.update({
             key: kwargs[key]
-            for key in ['keep_io_types', 'min_positive_val', 'max_finite_val', 'op_block_list', 'node_block_list']
-            if key in kwargs
+            for key in [
+                'keep_io_types', 'min_positive_val', 'max_finite_val', 'op_block_list', 'node_block_list',
+                'force_fp16_initializers'
+            ] if key in kwargs
         })
 
         fp16_model = convert_float_to_float16(model, **parameters)
