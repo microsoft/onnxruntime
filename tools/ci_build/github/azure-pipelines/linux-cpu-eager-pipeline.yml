@@ -21,7 +21,7 @@ jobs:
       workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
 
 - task: CmdLine@2
-    displayName: 'build eager mode and run tests'
+    displayName: 'eager mode tests'
     inputs:
       script: |
         mkdir -p $HOME/.onnx
