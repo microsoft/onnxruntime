@@ -163,7 +163,7 @@
           Pack="true"
           Visible="false"
     />
-    <None Include="$(PackageId).targets"
+    <None Include="targets\netstandard\$(PackageId).targets"
           PackagePath="build\netstandard1.1\$(PackageId).targets;buildTransitive\netstandard1.1\$(PackageId).targets;build\netstandard2.0\$(PackageId).targets;buildTransitive\netstandard2.0\$(PackageId).targets;"
           Pack="true"
           Visible="false" 
@@ -209,12 +209,12 @@
 
   <ItemGroup>
     <LicenseFile Include="$(OnnxRuntimeCsharpRoot)\..\LICENSE" Visible="false" />
-    <TargetsFile Include="$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime\targets.xml" Visible="false" />
+    <TargetsFile Include="$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime\targets\netstandard\targets.xml" Visible="false" />
   </ItemGroup>
 
   <Target Name="CopyMiscFiles" BeforeTargets="PreBuildEvent">
     <Copy SourceFiles="@(LicenseFile)" DestinationFiles="@(LicenseFile->'$(OnnxRuntimeCsharpRoot)\..\%(Filename).txt')" />
-    <Copy SourceFiles="@(TargetsFile)" DestinationFiles="@(TargetsFile->'$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime\$(PackageId).targets')" />
+    <Copy SourceFiles="@(TargetsFile)" DestinationFiles="@(TargetsFile->'$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime\targets\netstandard\$(PackageId).targets')" />
   </Target>
 
     <Target Name="CopyPackage" AfterTargets="Pack">

@@ -38,11 +38,8 @@ docs/python/inference/*.onnx
 *.onnx
 onnxprofile_profile_test_*.json
 /csharp/packages
-/csharp/src/Microsoft.ML.OnnxRuntime/Microsoft.ML.OnnxRuntime.targets
-/csharp/src/Microsoft.ML.OnnxRuntime/Microsoft.ML.OnnxRuntime.Managed.targets
-/csharp/src/Microsoft.ML.OnnxRuntime/Microsoft.ML.OnnxRuntime.props
-/csharp/test/Microsoft.ML.OnnxRuntime.Tests/OnnxMl.cs
-/csharp/tools/Microsoft.ML.OnnxRuntime.PerfTool/OnnxMl.cs
+/csharp/src/Microsoft.ML.OnnxRuntime/targets/**/*.targets
+/csharp/src/Microsoft.ML.OnnxRuntime/targets/**/*.props
 cmake/external/FeaturizersLibrary/
 # Java specific ignores
 java/gradlew
