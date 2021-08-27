@@ -20,6 +20,7 @@ class ROCMAllocator : public IAllocator {
 
  private:
   void CheckDevice(bool throw_when_fail) const;
+  void SetDevice(bool throw_when_fail) const;
 };
 
 class ROCMExternalAllocator : public ROCMAllocator {
@@ -27,10 +28,10 @@ class ROCMExternalAllocator : public ROCMAllocator {
   typedef void (*ExternalFree)(void* p);
 
  public:
-  ROCMExternalAllocator(OrtDevice::DeviceId device_id, const char* name, const void* alloc, const void* free)
+  ROCMExternalAllocator(OrtDevice::DeviceId device_id, const char* name, void* alloc, void* free)
       : ROCMAllocator(device_id, name) {
-    alloc_ = reinterpret_cast<ExternalAlloc>(const_cast<void*>(alloc));
-    free_ = reinterpret_cast<ExternalFree>(const_cast<void*>(free));
+    alloc_ = reinterpret_cast<ExternalAlloc>(alloc);
+    free_ = reinterpret_cast<ExternalFree>(free);
   }
 
   void* Alloc(size_t size) override;

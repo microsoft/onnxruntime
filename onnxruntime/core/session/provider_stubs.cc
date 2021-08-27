@@ -7,7 +7,7 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
 
-#if defined(__APPLE__) || defined(ORT_MINIMAL_BUILD) || !defined(USE_ROCM)
+#if defined(__APPLE__) || defined(ORT_MINIMAL_BUILD)
 static OrtStatus* CreateNotEnabledStatus(const std::string& ep) {
   return OrtApis::CreateStatus(ORT_FAIL, (ep + " execution provider is not enabled in this build. ").c_str());
 }
@@ -36,16 +36,6 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_MIGraphX,
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(device_id);
   return CreateNotEnabledStatus("MIGraphX");
-}
-#endif
-
-#ifndef USE_ROCM
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_ROCM,
-                    _In_ OrtSessionOptions* options, int device_id, size_t gpu_mem_limit) {
-  ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(device_id);
-  ORT_UNUSED_PARAMETER(gpu_mem_limit);
-  return CreateNotEnabledStatus("ROCM");
 }
 #endif
 
@@ -88,14 +78,6 @@ TODO: When the NNAPI or CoreML EPs are setup to use the provider bridge the sour
 */
 
 // EPs in the first case
-#ifndef USE_ROCM
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM,
-                    _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* rocm_options) {
-  ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(rocm_options);
-  return CreateNotEnabledStatus("ROCM");
-}
-#endif
 
 // EPs in the second case
 #if defined(ORT_MINIMAL_BUILD)
@@ -114,6 +96,13 @@ ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, _In_ int* device_id) {
 ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, _In_ int device_id) {
   ORT_UNUSED_PARAMETER(device_id);
   return CreateNotEnabledStatus("CUDA");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM,
+                    _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* provider_options) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(provider_options);
+  return CreateNotEnabledStatus("ROCM");
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO,

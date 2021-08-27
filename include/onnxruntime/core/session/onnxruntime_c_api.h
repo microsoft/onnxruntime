@@ -310,10 +310,19 @@ typedef struct OrtCUDAProviderOptions {
 /// Options for the ROCM provider that are passed to SessionOptionsAppendExecutionProvider_ROCM
 /// </summary>
 typedef struct OrtROCMProviderOptions {
-  int device_id;                      // hip device with id=0 as default device.
-  int miopen_conv_exhaustive_search;  // miopen conv algo exhaustive search option
-  size_t gpu_mem_limit;               // default hip memory limitation to maximum finite value of size_t.
-  int arena_extend_strategy;          // default area extend strategy to KNextPowerOfTwo.
+  int device_id;                                  // hip device with id=0 as default device.
+  OrtCudnnConvAlgoSearch cudnn_conv_algo_search;  // cudnn conv algo search option
+
+  size_t gpu_mem_limit;  // default hip memory limitation to maximum finite value of size_t.
+                         // (will be overridden by "max_mem" value used while creating `arena_cfg` if `arena_cfg` is provided)
+
+  int arena_extend_strategy;  // default area extend strategy to KNextPowerOfTwo.
+                              // (will be overridden by "arena_extend_strategy" value used while creating `arena_cfg` if `arena_cfg` is provided)
+
+  int do_copy_in_default_stream;
+  int has_user_compute_stream;
+  void* user_compute_stream;
+  OrtArenaCfg* default_memory_arena_cfg;
 } OrtROCMProviderOptions;
 
 /// <summary>

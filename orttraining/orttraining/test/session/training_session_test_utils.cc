@@ -183,8 +183,7 @@ std::unique_ptr<TrainingSession> BuildAndRunTrainingSessionWithChecks(
 #ifdef USE_CUDA
   ORT_THROW_IF_ERROR(training_session->RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #elif USE_ROCM
-  ROCMExecutionProviderInfo xp_info;
-  ORT_THROW_IF_ERROR(training_session->RegisterExecutionProvider(std::make_unique<ROCMExecutionProvider>(xp_info)));
+  ORT_THROW_IF_ERROR(training_session->RegisterExecutionProvider(DefaultRocmExecutionProvider()));
 #endif
   ORT_THROW_IF_ERROR(training_session->Initialize());
 

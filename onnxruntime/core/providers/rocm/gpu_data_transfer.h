@@ -3,9 +3,8 @@
 
 #pragma once
 
-#include "rocm_pch.h"
 #include "core/framework/data_transfer.h"
-#include "core/common/common.h"
+#include "core/providers/rocm/rocm_pch.h"
 
 namespace onnxruntime {
 
@@ -23,7 +22,7 @@ class GPUDataTransfer : public IDataTransfer {
 
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;
 
-  // Silence MSVC warning about not fully overriding
+  // Dumpen MSVC warning about not fully overriding
   using IDataTransfer::CopyTensor;
   common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
 

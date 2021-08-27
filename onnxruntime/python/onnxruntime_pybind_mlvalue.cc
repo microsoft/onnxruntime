@@ -167,10 +167,23 @@ std::unique_ptr<IDataTransfer> GetGPUDataTransfer() {
 #endif
 
 #ifdef USE_ROCM
+void CpuToRocmMemCpy(void* dst, const void* src, size_t num_bytes) {
+  GetProviderInfo_ROCM().rocmMemcpy_HostToDevice(dst, src, num_bytes);
+}
+
+void RocmToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
+  GetProviderInfo_ROCM().rocmMemcpy_DeviceToHost(dst, src, num_bytes);
+}
+
+const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetRocmToHostMemCpyFunction() {
+  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
+      {OrtDevice::GPU, RocmToCpuMemCpy}};
+
+  return &map;
+}
 
 bool IsRocmDeviceIdValid(const onnxruntime::logging::Logger& logger, int id) {
-  int num_devices = 0;
-  HIP_CALL_THROW(hipGetDeviceCount(&num_devices));
+  int num_devices = GetProviderInfo_ROCM().hipGetDeviceCount();
 
   if (0 == num_devices) {
     LOGS(logger, WARNING) << "your system does not have a ROCM capable device.";
@@ -188,28 +201,15 @@ bool IsRocmDeviceIdValid(const onnxruntime::logging::Logger& logger, int id) {
 AllocatorPtr GetRocmAllocator(OrtDevice::DeviceId id) {
   // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
   // multi-threaded ROCM allocation work we need to maintain a per-thread ROCM allocator
-  static std::unordered_map<OrtDevice::DeviceId, AllocatorPtr> id_to_allocator_map;
 
-  if (id_to_allocator_map.find(id) == id_to_allocator_map.end()) {
-    id_to_allocator_map.insert({id, ROCMExecutionProvider::CreateRocmAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info)});
+  static auto* id_to_allocator_map = new std::unordered_map<OrtDevice::DeviceId, AllocatorPtr>();
+
+  if (id_to_allocator_map->find(id) == id_to_allocator_map->end()) {
+    // TODO: Expose knobs so that users can set fields associated with OrtArenaCfg so that we can pass it to the following method
+    id_to_allocator_map->insert({id, GetProviderInfo_ROCM().CreateRocmAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, nullptr)});
   }
 
-  return id_to_allocator_map[id];
-}
-
-void CpuToRocmMemCpy(void* dst, const void* src, size_t num_bytes) {
-  HIP_CALL_THROW(hipMemcpy(dst, src, num_bytes, hipMemcpyHostToDevice));
-}
-
-void RocmToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
-  HIP_CALL_THROW(hipMemcpy(dst, src, num_bytes, hipMemcpyDeviceToHost));
-}
-
-const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetRocmToHostMemCpyFunction() {
-  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
-      {OrtDevice::GPU, RocmToCpuMemCpy}};
-
-  return &map;
+  return (*id_to_allocator_map)[id];
 }
 
 #endif

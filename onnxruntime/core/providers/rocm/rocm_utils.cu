@@ -5,7 +5,7 @@
 #include <memory>
 #include "core/providers/rocm/shared_inc/rocm_utils.h"
 #include "core/providers/rocm/cu_inc/common.cuh"
-#include "miopen_common.h"
+#include "core/providers/rocm/miopen_common.h"
 
 namespace onnxruntime {
 namespace rocm {

@@ -18,6 +18,7 @@ version = rootProject.file('../VERSION_NUMBER').text.trim()
 // cmake runs will inform us of the build directory of the current run
 def cmakeBuildDir = System.properties['cmakeBuildDir']
 def useCUDA = System.properties['USE_CUDA']
+def useROCM = System.properties['USE_ROCM']
 def cmakeJavaDir = "${cmakeBuildDir}/java"
 def cmakeNativeLibDir = "${cmakeJavaDir}/native-lib"
 def cmakeNativeJniDir = "${cmakeJavaDir}/native-jni"
@@ -27,7 +28,7 @@ def cmakeBuildOutputDir = "${cmakeJavaDir}/build"
 def mavenUser = System.properties['mavenUser']
 def mavenPwd = System.properties['mavenPwd']
 
-def mavenArtifactId = useCUDA != null ? project.name + "_gpu" : project.name
+def mavenArtifactId = (useCUDA != null || useROCM != null) ? project.name + "_gpu" : project.name
 
 java {
 	sourceCompatibility = JavaVersion.VERSION_1_8
@@ -170,7 +171,7 @@ test {
 	if (cmakeBuildDir != null) {
 		workingDir cmakeBuildDir
 	}
-	systemProperties System.getProperties().subMap(['USE_CUDA', 'USE_TENSORRT', 'USE_DNNL', 'USE_OPENVINO'])
+	systemProperties System.getProperties().subMap(['USE_CUDA', 'USE_ROCM', 'USE_TENSORRT', 'USE_DNNL', 'USE_OPENVINO'])
 	testLogging {
 		events "passed", "skipped", "failed"
 		showStandardStreams = true
