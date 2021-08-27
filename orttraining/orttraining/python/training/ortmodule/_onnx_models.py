@@ -20,13 +20,16 @@ class ONNXModels:
 
     exported_model: onnx.ModelProto = None
     optimized_model: onnx.ModelProto = None
+    optimized_no_grad_model: onnx.ModelProto = None
 
     def save_exported_model(self, path, name_prefix, export_mode):
         # save the ortmodule exported model
-        _save_model(self.exported_model, os.path.join(path,
-                                                      _get_onnx_file_name(name_prefix, 'torch_exported', export_mode)))
+        _save_model(self.exported_model,
+                    os.path.join(path, _get_onnx_file_name(name_prefix, 'torch_exported', export_mode)))
 
     def save_optimized_model(self, path, name_prefix, export_mode):
         # save the ortmodule optimized model
-        _save_model(self.optimized_model, os.path.join(path,
-                                                       _get_onnx_file_name(name_prefix, 'optimized', export_mode)))
+        _save_model(self.optimized_model,
+                    os.path.join(path, _get_onnx_file_name(name_prefix, 'optimized', export_mode)))
+        _save_model(self.optimized_no_grad_model,
+                    os.path.join(path, _get_onnx_file_name(name_prefix, 'optimized_no_grad', export_mode)))
