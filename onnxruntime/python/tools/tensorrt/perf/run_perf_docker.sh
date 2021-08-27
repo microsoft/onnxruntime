@@ -18,4 +18,4 @@ HOME_PERF_DIR='/home/hcsuser/perf/'
 WORKSPACE='/'
 MODEL_PATH=$WORKSPACE$MODEL_PATH
 
-docker run --gpus all -v $PERF_DIR:$DOCKER_PERF_DIR -v $HOME_PERF_DIR$OPTION:$DOCKER_PERF_DIR$OPTION $DOCKER_IMAGE /bin/bash $DOCKER_PERF_DIR'perf.sh' -d $DOCKER_PERF_DIR -o $OPTION -m $MODEL_PATH -w $WORKSPACE -e "$EP_LIST"
+docker run --gpus all -v /home/hcsuser/mount2/tf-models:/perf/tf-models -v $PERF_DIR:$DOCKER_PERF_DIR -v $HOME_PERF_DIR$OPTION:$DOCKER_PERF_DIR$OPTION-1 $DOCKER_IMAGE /bin/bash $DOCKER_PERF_DIR'perf.sh' -d $DOCKER_PERF_DIR -o $OPTION -m $MODEL_PATH -w $WORKSPACE -e "$EP_LIST"

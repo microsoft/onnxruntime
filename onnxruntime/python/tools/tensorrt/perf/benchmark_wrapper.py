@@ -100,7 +100,8 @@ def main():
                 write_map_to_file(model_to_fail_ep, FAIL_MODEL_FILE)
                 logger.info(model_to_fail_ep)
 
-        os.remove(model_list_file)
+        if os.path.exists(model_list_file):
+            os.remove(model_list_file)
 
     path = os.path.join(os.getcwd(), args.perf_result_path)
     if not os.path.exists(path):
@@ -163,8 +164,8 @@ def main():
     logger.info("\n===========================================")
     logger.info("=========== System information  ===========")
     logger.info("===========================================")
-    info = get_system_info(args.workspace)
-    pretty_print(pp, info)
+    #info = get_system_info(args.workspace)
+    #pretty_print(pp, info)
     logger.info("\n")
 
 if __name__ == "__main__":
