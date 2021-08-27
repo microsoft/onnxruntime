@@ -20,6 +20,27 @@ using namespace onnxruntime::common;
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 
+namespace NestedSubgraphInfoDetails {
+
+// Used to compose a unique key to identify a nested subgraph
+// relative to a current graph level (which in turn is identified using a "base")
+std::string ComposeNestedSubgraphInfoKeyHelper(const std::string& base,
+                                               size_t graph_depth,
+                                               NodeIndex node_index,
+                                               const std::string& attr_name) {
+  std::ostringstream ss;
+
+  // key = base + graph depth + current graph node index + attr name corresponding to the subgraph
+  ss << base;
+  ss << graph_depth;
+  ss << node_index;
+  ss << attr_name;
+
+  return ss.str();
+}
+
+}  // namespace NestedSubgraphInfoDetails
+
 std::ostream& operator<<(std::ostream& out, AllocKind alloc_kind) {
   switch (alloc_kind) {
     case AllocKind::kAllocate:
@@ -628,7 +649,6 @@ class PlannerImpl {
           if (graph_depth > 0) {
             // We are processing a subgraph if we enter this
             const auto* parent_node = graph_viewer.ParentNode();
-            ORT_ENFORCE(parent_node);
 
             bool is_implicit_input = false;
             for (const auto& implicit_input : parent_node->ImplicitInputDefs()) {
@@ -645,7 +665,8 @@ class PlannerImpl {
           }
 
           auto wt_index = Index(def_name);
-          locations[wt_index].emplace_back(GetLocationForNodeInput(node_input_index, node, kernel_create_info_map, execution_providers));
+          locations[wt_index].emplace_back(
+              GetLocationForNodeInput(node_input_index, node, kernel_create_info_map, execution_providers));
         }
         ORT_CATCH(const std::exception& ex) {
           ORT_HANDLE_EXCEPTION([&]() {
@@ -659,28 +680,23 @@ class PlannerImpl {
       // the location for the OrtValue corresponding to the weights
       // (i.e.) do a recursion
       if (node.ContainsSubgraph()) {
+        // A node may contain multiple subgraphs - so iterate through all of them
         for (auto& name_to_subgraph : node.GetAttributeNameToSubgraphMap()) {
           GraphViewer subgraph_viewer(*name_to_subgraph.second);
 
-          std::ostringstream ss;
+          const auto& local_subgraph_kernel_create_info_map_key =
+              NestedSubgraphInfoDetails::ComposeNestedSubgraphInfoKeyHelper(subgraph_kernel_create_info_map_key_base,
+                                                                            graph_depth, node.Index(), name_to_subgraph.first);
 
-          // key = base + depth + current graph node index + attr name corresponding to the subgraph
-          ss << subgraph_kernel_create_info_map_key_base;
-          ss << graph_depth;
-          ss << node.Index();
-          ss << name_to_subgraph.first;
-
-          const auto& local_subgraph_kernel_create_info_map_key = ss.str();
-
-          auto specific_subgraph_map_for_node = subgraphs_kernel_create_info_maps_.find(local_subgraph_kernel_create_info_map_key);
-          ORT_ENFORCE(specific_subgraph_map_for_node != subgraphs_kernel_create_info_maps_.end());
+          auto specific_subgraph_kernel_create_info_map = subgraphs_kernel_create_info_maps_.find(local_subgraph_kernel_create_info_map_key);
+          ORT_ENFORCE(specific_subgraph_kernel_create_info_map != subgraphs_kernel_create_info_maps_.end());
 
           auto specific_subgraph_execution_providers = subgraphs_execution_providers_.find(local_subgraph_kernel_create_info_map_key);
           ORT_ENFORCE(specific_subgraph_execution_providers != subgraphs_execution_providers_.end());
 
           ORT_RETURN_IF_ERROR(GeneratePlanForWeightsHelper(subgraph_viewer,
                                                            weights,
-                                                           specific_subgraph_map_for_node->second,
+                                                           specific_subgraph_kernel_create_info_map->second,
                                                            specific_subgraph_execution_providers->second,
                                                            local_subgraph_kernel_create_info_map_key,
                                                            graph_depth + 1,

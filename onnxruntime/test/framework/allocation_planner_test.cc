@@ -12,14 +12,22 @@
 #include "core/framework/op_kernel.h"
 #include "test/framework/model_builder_utils.h"
 #include "core/framework/allocation_planner.h"
+#include "core/session/inference_session.h"
 #include "core/graph/model.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/util/thread_utils.h"
 
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/default_providers.h"
 
 using namespace ONNX_NAMESPACE;
+
+// Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
+// GCC 4.x doesn't seem to define this and it breaks the pipelines based on CentOS as it uses
+// GCC 4.x.
+// (This static var is referenced in some tests below)
+const OrtDevice::DeviceType OrtDevice::GPU;
 
 namespace onnxruntime {
 namespace test {
@@ -505,5 +513,100 @@ TEST_F(PlannerTest, PlanOutputTest) {
   }
 }
 
+#ifdef USE_CUDA
+TEST_F(PlannerTest, LocationPlanningForInitializersOnlyUsedInANestedSubgraph) {
+  // Types
+  TypeProto float_tensor;
+  float_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("dim_param");
+
+  TypeProto bool_scalar;
+  bool_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+  bool_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto create_model = [&float_tensor, &bool_scalar]() -> Model {
+    auto create_if_subgraph = [&float_tensor](bool is_then) -> GraphProto {
+      Model model("if_branch_subgraph", true, DefaultLoggingManager().DefaultLogger());
+      auto& graph = model.MainGraph();
+
+      auto& outer_scope_0 = graph.GetOrCreateNodeArg("abs_data_out", &float_tensor);
+      graph.AddOuterScopeNodeArg("abs_data_out");
+
+      auto& outer_scope_1 = graph.GetOrCreateNodeArg("init_data", &float_tensor);
+      graph.AddOuterScopeNodeArg("init_data");
+
+      auto& if_out = graph.GetOrCreateNodeArg(is_then ? "if_then_out" : "if_else_out", &float_tensor);
+      graph.AddNode("if_out", "Add", "add", {&outer_scope_0, &outer_scope_1}, {&if_out});
+
+      auto status = graph.Resolve();
+      EXPECT_EQ(status, Status::OK());
+
+      return graph.ToGraphProto();
+    };
+
+    onnxruntime::Model model("main_graph", false, ModelMetaData(),
+                             PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                             {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
+    auto& main_graph = model.MainGraph();
+
+    // Abs-0
+    auto& abs_data_in = main_graph.GetOrCreateNodeArg("abs_data_in", &float_tensor);
+    auto& abs_data_out = main_graph.GetOrCreateNodeArg("abs_data_out", &float_tensor);
+    main_graph.AddNode("abs_0", "Abs", "node abs", {&abs_data_in}, {&abs_data_out});
+
+    // If
+    auto& if_in = main_graph.GetOrCreateNodeArg("if_in", &bool_scalar);
+    auto& if_out = main_graph.GetOrCreateNodeArg("if_out", &float_tensor);
+    auto& node = main_graph.AddNode("if_out", "If", "If", {&if_in}, {&if_out});
+    node.AddAttribute("then_branch", create_if_subgraph(true));
+    node.AddAttribute("else_branch", create_if_subgraph(false));
+
+    // Add initializer to the graph
+    ONNX_NAMESPACE::TensorProto tensor;
+    tensor.add_dims(1);
+    tensor.add_float_data(1.0f);
+    tensor.set_data_type(TensorProto_DataType_FLOAT);
+    tensor.set_name("init_data");
+    main_graph.AddInitializedTensor(tensor);
+
+    // Main graph's inputs/outputs
+    main_graph.SetInputs({&abs_data_in, &if_in});
+    main_graph.SetOutputs({&if_out});
+
+    auto status = main_graph.Resolve();
+    EXPECT_EQ(status, Status::OK());
+
+    return model;
+  };
+
+  // Create and load session
+  SessionOptions so;
+  InferenceSession sess{so, GetEnvironment()};
+
+  auto status = sess.RegisterExecutionProvider(DefaultCudaExecutionProvider());
+  ASSERT_TRUE(status.IsOK());
+
+  std::string s1;
+  const bool rc = create_model().ToProto().SerializeToString(&s1);
+  EXPECT_EQ(rc, true);
+  std::stringstream sstr(s1);
+
+  status = sess.Load(sstr);
+  ASSERT_TRUE(status.IsOK());
+
+  status = sess.Initialize();
+  ASSERT_TRUE(status.IsOK());
+
+  // Check planned locations for the initializer
+  const auto& main_graph_session_state = sess.GetSessionState();
+  const auto& main_graph_ort_value_index_map = main_graph_session_state.GetOrtValueNameIdxMap();
+  const auto* main_graph_plan = main_graph_session_state.GetExecutionPlan();
+
+  OrtValueIndex init_data_index;
+  main_graph_ort_value_index_map.GetIdx("init_data", init_data_index);
+
+  EXPECT_EQ(main_graph_plan->allocation_plan[init_data_index].location.device.Type(), OrtDevice::GPU);
+}
+#endif
 }  // namespace test
 }  // namespace onnxruntime

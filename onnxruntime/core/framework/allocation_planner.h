@@ -15,6 +15,15 @@ class TensorShapeProto;
 }
 namespace onnxruntime {
 
+namespace NestedSubgraphInfoDetails {
+
+// Used to compose a unique key to identify a nested subgraph
+// relative to a current graph level (which in turn is identified using a "base")
+std::string ComposeNestedSubgraphInfoKeyHelper(const std::string& base, size_t graph_depth,
+                                               NodeIndex node_index, const std::string& attr_name);
+
+}  // namespace NestedSubgraphInfoDetails
+
 class ExecutionProviders;
 struct KernelCreateInfo;
 class KernelRegistryManager;
