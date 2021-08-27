@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+
 project(orttraining_external_custom_ops)
 find_package(pybind11 REQUIRED)
 find_package(PythonInterp 3)

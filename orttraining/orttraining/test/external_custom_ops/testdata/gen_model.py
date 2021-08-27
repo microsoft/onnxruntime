@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+
 import onnx
 from onnx import helper
 graph = helper.make_graph(
