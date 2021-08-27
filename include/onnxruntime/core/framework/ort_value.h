@@ -13,11 +13,12 @@
 #include "core/framework/TensorSeq.h"
 
 namespace onnxruntime {
+#if !defined(DISABLE_SPARSE_TENSORS)
 class SparseTensor;
+#endif
 }  // namespace onnxruntime
 
 #endif
-
 
 /**
    Represents both tensors and non-tensors.
@@ -65,8 +66,12 @@ struct OrtValue {
     return (type_ != nullptr && type_->IsTensorSequenceType());
   }
 
-  bool IsSparseTensor() const noexcept {
+  bool IsSparseTensor() const {
+#if !defined(DISABLE_SPARSE_TENSORS)
     return (type_ != nullptr && type_->IsSparseTensorType());
+#else
+    ORT_THROW("Sparse tensor is not supported in this build.");
+#endif
   }
 
   onnxruntime::MLDataType Type() const {
@@ -115,6 +120,7 @@ inline onnxruntime::TensorSeq* OrtValue::GetMutable<onnxruntime::TensorSeq>() {
   return static_cast<onnxruntime::TensorSeq*>(data_.get());
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 template <>
 inline const onnxruntime::SparseTensor& OrtValue::Get<onnxruntime::SparseTensor>() const {
   ORT_ENFORCE(IsSparseTensor(), "Trying to get a SparseTensor, but got: ", onnxruntime::DataTypeImpl::ToString(type_));
@@ -126,4 +132,4 @@ inline onnxruntime::SparseTensor* OrtValue::GetMutable<onnxruntime::SparseTensor
   ORT_ENFORCE(IsSparseTensor(), "Trying to get a SparseTensor, but got: ", onnxruntime::DataTypeImpl::ToString(type_));
   return static_cast<onnxruntime::SparseTensor*>(data_.get());
 }
-
+#endif

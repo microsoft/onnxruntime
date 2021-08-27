@@ -56,16 +56,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// A helper method to construct a SessionOptions object for CUDA execution.
         /// Use only if CUDA is installed and you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
-        /// <returns>A SessionsOptions() object configured for execution on deviceId=0</returns>
-        public static SessionOptions MakeSessionOptionWithCudaProvider()
-        {
-            return MakeSessionOptionWithCudaProvider(0);
-        }
-
-        /// <summary>
-        /// A helper method to construct a SessionOptions object for CUDA execution.
-        /// Use only if CUDA is installed and you have the onnxruntime package specific to this Execution Provider.
-        /// </summary>
         /// <param name="deviceId"></param>
         /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
         public static SessionOptions MakeSessionOptionWithCudaProvider(int deviceId = 0)
@@ -151,20 +141,11 @@ namespace Microsoft.ML.OnnxRuntime
         /// A helper method to construct a SessionOptions object for ROCM execution.
         /// Use only if ROCM is installed and you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
-        /// <returns>A SessionsOptions() object configured for execution on deviceId=0</returns>
-        public static SessionOptions MakeSessionOptionWithRocmProvider()
-        {
-            return MakeSessionOptionWithRocmProvider(0);
-        }
-
-        /// <summary>
-        /// A helper method to construct a SessionOptions object for ROCM execution.
-        /// Use only if ROCM is installed and you have the onnxruntime package specific to this Execution Provider.
-        /// </summary>
         /// <param name="deviceId"></param>
         /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
         public static SessionOptions MakeSessionOptionWithRocmProvider(int deviceId = 0)
         {
+            //CheckRocmExecutionProviderDLLs();
             SessionOptions options = new SessionOptions();
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_ROCM(options.Handle, deviceId));
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options.Handle, 1));
@@ -178,7 +159,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Appends CPU EP to a list of available execution providers for the session.
         /// </summary>
         /// <param name="useArena">1 - use arena, 0 - do not use arena</param>
-        public void AppendExecutionProvider_CPU(int useArena)
+        public void AppendExecutionProvider_CPU(int useArena = 1)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(handle, useArena));
         }
@@ -187,7 +168,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
         /// <param name="useArena">1 - use allocation arena, 0 - otherwise</param>
-        public void AppendExecutionProvider_Dnnl(int useArena)
+        public void AppendExecutionProvider_Dnnl(int useArena = 1)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Dnnl(handle, useArena));
         }
@@ -196,7 +177,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
         /// <param name="deviceId">integer device ID</param>
-        public void AppendExecutionProvider_CUDA(int deviceId)
+        public void AppendExecutionProvider_CUDA(int deviceId = 0)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA(handle, deviceId));
         }
@@ -205,7 +186,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
         /// <param name="deviceId">device identification</param>
-        public void AppendExecutionProvider_DML(int deviceId)
+        public void AppendExecutionProvider_DML(int deviceId = 0)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_DML(handle, deviceId));
         }
@@ -228,7 +209,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
         /// <param name="deviceId">device identification</param>
-        public void AppendExecutionProvider_Tensorrt(int deviceId)
+        public void AppendExecutionProvider_Tensorrt(int deviceId = 0)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Tensorrt(handle, deviceId));
         }
@@ -247,16 +228,16 @@ namespace Microsoft.ML.OnnxRuntime
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
         /// <param name="deviceId">integer device ID</param>
-        public void AppendExecutionProvider_ROCM(int deviceId)
+        public void AppendExecutionProvider_ROCM(int deviceId = 0)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_ROCM(handle, deviceId));
         }
-       
+
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
         /// <param name="deviceId">device identification</param>
-        public void AppendExecutionProvider_MIGraphX(int deviceId)
+        public void AppendExecutionProvider_MIGraphX(int deviceId = 0)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_MIGraphX(handle, deviceId));
         }
@@ -265,7 +246,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
         /// <param name="nnapi_flags">nnapi specific flag mask</param>
-        public void AppendExecutionProvider_Nnapi(uint nnapi_flags)
+        public void AppendExecutionProvider_Nnapi(uint nnapi_flags = 0)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nnapi(handle, nnapi_flags));
         }
@@ -707,8 +688,6 @@ namespace Microsoft.ML.OnnxRuntime
             }
             return true;
         }
-
-
         #endregion
         #region SafeHandle
         /// <summary>

@@ -85,6 +85,7 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
                                               const Path& model_path,
                                               ONNX_NAMESPACE::TensorProto& tensor);
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 // Convert a SparseTensorProto to a dense TensorProto
 // If the SparseTensorProto contains external data then it loads the data and converts to dense tensor proto
 // The resulting TensorProto will contain the data as raw data.
@@ -102,6 +103,7 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
                                               const Path& model_path,
                                               ONNX_NAMESPACE::SparseTensorProto& sparse);
 #endif  // !ORT_MINIMAL_BUILD
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 #endif
 
 inline bool HasDimValue(const ONNX_NAMESPACE::TensorShapeProto_Dimension& dim) {
@@ -125,6 +127,7 @@ inline bool HasShape(const ONNX_NAMESPACE::TypeProto_Tensor& ten_proto) {
   return ten_proto.has_shape();
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 inline bool HasSparseTensorType(const ONNX_NAMESPACE::TypeProto& type_proto) {
   return type_proto.value_case() == ONNX_NAMESPACE::TypeProto::kSparseTensorType;
 }
@@ -137,28 +140,41 @@ inline bool HasShape(const ONNX_NAMESPACE::TypeProto_SparseTensor& ten_proto) {
 inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_SparseTensor& ten_proto) {
   return ten_proto.elem_type() != ONNX_NAMESPACE::TensorProto::UNDEFINED;
 }
-
-inline bool HasShape(const ONNX_NAMESPACE::TypeProto& type_proto) {
-  if (HasTensorType(type_proto) && HasShape(type_proto.tensor_type())) {
-    return true;
-  }
-  return HasSparseTensorType(type_proto) && HasShape(type_proto.sparse_tensor_type());
-}
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 inline bool HasElementType(const ONNX_NAMESPACE::TypeProto& type_proto) {
   if (HasTensorType(type_proto) && HasElemType(type_proto.tensor_type())) {
     return true;
   }
-  return HasSparseTensorType(type_proto) && HasElemType(type_proto.sparse_tensor_type());
+#if !defined(DISABLE_SPARSE_TENSORS)
+  if (HasSparseTensorType(type_proto) && HasElemType(type_proto.sparse_tensor_type())) {
+    return true;
+  }
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
+  return false;
+}
+
+inline bool HasShape(const ONNX_NAMESPACE::TypeProto& type_proto) {
+  if (HasTensorType(type_proto) && HasShape(type_proto.tensor_type())) {
+    return true;
+  }
+#if !defined(DISABLE_SPARSE_TENSORS)
+  if (HasSparseTensorType(type_proto) && HasShape(type_proto.sparse_tensor_type())) {
+    return true;
+  }
+#endif
+  return false;
 }
 
 inline const ONNX_NAMESPACE::TensorShapeProto& GetShape(const ONNX_NAMESPACE::TypeProto& type_proto) {
   if (HasTensorType(type_proto) && HasShape(type_proto.tensor_type())) {
     return type_proto.tensor_type().shape();
   }
+#if !defined(DISABLE_SPARSE_TENSORS)
   if (HasSparseTensorType(type_proto) && HasShape(type_proto.sparse_tensor_type())) {
     return type_proto.sparse_tensor_type().shape();
   }
+#endif
   ORT_THROW("TypeProto must have shape for this to run");
 }
 
