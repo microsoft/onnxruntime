@@ -12,6 +12,7 @@
 #include "dnnl_matmul.h"
 #include "dnnl_matmul_integer.h"
 #include "dnnl_pool.h"
+#include "dnnl_pow.h"
 #include "dnnl_reducemean.h"
 #include "dnnl_reshape.h"
 #include "dnnl_softmax.h"
@@ -63,6 +64,8 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlMatMulInteger().CreatePrimitive(*this, node);
     } else if (pool_ops.count(node.OpType())) {
       DnnlPool().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Pow") {
+      DnnlPow().CreatePrimitive(*this, node);
     } else if (node.OpType() == "ReduceMean") {
       DnnlReduceMean().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Reshape") {

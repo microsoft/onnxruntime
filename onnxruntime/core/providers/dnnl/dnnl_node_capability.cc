@@ -16,7 +16,8 @@ DnnlDefaultNodeCapability::DnnlDefaultNodeCapability(std::vector<std::string> in
     inputTypes_.push_back(s);
 }
 
-bool DnnlDefaultNodeCapability::Supported(const Node* node) const {
+bool DnnlDefaultNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
   if (!IsTypeSupported(node)) return false;
   return true;
 }
@@ -44,9 +45,64 @@ bool DnnlDefaultNodeCapability::IsTypeSupported(const Node* node) const {
   return false;
 }
 
+// DnnlDefaultMultiInputNodeCapability
+//-------------------------------------
+DnnlDefaultMultiInputNodeCapability::DnnlDefaultMultiInputNodeCapability(std::vector<std::vector<std::string>> inputTypes) {
+  for (auto outer : inputTypes) {
+    std::vector<std::string> per_tensor_types;
+    for (auto s : outer) {
+      per_tensor_types.push_back(s);
+    }
+    inputTypes_.push_back(per_tensor_types);
+  }
+}
+
+bool DnnlDefaultMultiInputNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
+  if (!IsTypeSupported(node)) return false;
+  return true;
+}
+
+bool DnnlDefaultMultiInputNodeCapability::IsTypeSupported(const Node* node) const {
+  auto node_inputs = node->InputDefs();
+  bool all_inputs_supported = false;
+  if (!node_inputs.empty() ) {
+  std::vector<bool> input_supported(node_inputs.size(), false);
+    for (size_t i = 0; i < node_inputs.size(); ++i) {
+      if (node_inputs[i]->Type() != nullptr) {
+        constexpr size_t TENSOR_PREFIX_LEN = 7;  //Precomputed value of std::string("tensor(").length()
+        for (auto inputType : inputTypes_[i]) {
+          // Check for string "tensor(data_type)"
+          // Exact length check done for 2 reasons to avoid the out_of_range exception from the compare call and
+          // to check that the string ends in ')'.  This will prevent false matching "float" data type for "float16" data type.
+          // The "+ 1" in the formula is to account for the ending ')' in the string length.
+          // check that the node_inputs[0]->Type() string after the prefix "tensor(" matches the inputType.
+          if ((TENSOR_PREFIX_LEN + inputType.length() + 1) == node_inputs[i]->Type()->length() &&
+              node_inputs[i]->Type()->compare(TENSOR_PREFIX_LEN, inputType.length(), inputType) == 0) {
+            input_supported[i] = true;
+            continue;
+          }
+          if (node_inputs[i]->Type()->compare(inputType) == 0) {
+            input_supported[i] = true;
+            continue;
+          }
+        }
+      }
+    }
+    // Walk the input_supported make sure they are all supported
+    all_inputs_supported = true;
+    for (bool input_support : input_supported) {
+      all_inputs_supported = all_inputs_supported && input_support;
+      if (!all_inputs_supported) break;
+    }
+  }
+  return all_inputs_supported;
+}
+
 // DnnlPoolNodeCapability class
 //-------------------------------------
-bool DnnlPoolNodeCapability::Supported(const Node* node) const {
+bool DnnlPoolNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
   if (!IsTypeSupported(node)) return false;
   if (!IsAttributeSupported(node)) return false;
   if (!IsDimensionSupported(node)) return false;
@@ -128,7 +184,8 @@ bool DnnlPoolNodeCapability::IsMaxPoolIndicesSupported(const Node* node) const {
 
 // DnnlBatchNormalizationNodeCapability class
 //-------------------------------------
-bool DnnlBatchNormalizationNodeCapability::Supported(const Node* node) const {
+bool DnnlBatchNormalizationNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
   if (!IsTypeSupported(node)) return false;
   if (!IsDimensionSupported(node)) return false;
   return true;
@@ -156,7 +213,8 @@ bool DnnlBatchNormalizationNodeCapability::IsDimensionSupported(const Node* node
 
 // DnnlReduceMeanNodeCapability class
 //-------------------------------------
-bool DnnlReduceMeanNodeCapability::Supported(const Node* node) const {
+bool DnnlReduceMeanNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
   if (!IsTypeSupported(node)) return false;
   if (!IsAttributeSupported(node)) return false;
   if (!IsDimensionSupported(node)) return false;
@@ -181,7 +239,8 @@ bool DnnlReduceMeanNodeCapability::IsDimensionSupported(const Node* node) const 
 }
 
 // DnnlSoftmaxNodeCapability class
-bool DnnlSoftmaxNodeCapability::Supported(const Node* node) const {
+bool DnnlSoftmaxNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
   if (!IsTypeSupported(node)) return false;
   if (!IsAttributeSupported(node)) return false;
   return true;
@@ -204,7 +263,8 @@ bool DnnlSoftmaxNodeCapability::IsAttributeSupported(const Node* node) const {
 
 // DnnlMatMulNodeCapability class
 //-------------------------------------
-bool DnnlMatMulNodeCapability::Supported(const Node* node) const {
+bool DnnlMatMulNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
   if (!IsTypeSupported(node)) return false;
   if (!IsDimensionSupported(node)) return false;
   return true;
@@ -239,7 +299,8 @@ bool DnnlMatMulNodeCapability::IsDimensionSupported(const Node* node) const {
 
 // DnnlMatMulIntegerNodeCapability class
 //-------------------------------------
-bool DnnlMatMulIntegerNodeCapability::Supported(const Node* node) const {
+bool DnnlMatMulIntegerNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
   if (!IsTypeSupported(node)) return false;
   if (!IsDimensionSupported(node)) return false;
 
@@ -300,7 +361,8 @@ bool DnnlMatMulIntegerNodeCapability::IsDimensionSupported(const Node* node) con
 
 // DnnlSumNodeCapability class
 //-------------------------------------
-bool DnnlSumNodeCapability::Supported(const Node* node) const {
+bool DnnlSumNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
   if (!IsTypeSupported(node)) return false;
   if (!IsDimensionSupported(node)) return false;
   return true;
@@ -342,7 +404,8 @@ bool DnnlSumNodeCapability::IsDimensionSupported(const Node* node) const {
 
 // DnnlBinaryNodeCapability class
 //-------------------------------------
-bool DnnlBinaryNodeCapability::Supported(const Node* node) const {
+bool DnnlBinaryNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
   if (!IsTypeSupported(node)) return false;
   if (!IsDimensionSupported(node)) return false;
   //gpu broadcast for source 0 not supported
@@ -373,9 +436,10 @@ bool DnnlBinaryNodeCapability::IsDimensionSupported(const Node* node) const {
   return true;
 }
 
-// DnnlBinaryNodeCapability class
+// DnnlElementwiseNodeCapability class
 //-------------------------------------
-bool DnnlElementwiseCapability::Supported(const Node* node) const {
+bool DnnlElementwiseCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
   if (!IsTypeSupported(node)) return false;
   if (!IsDimensionSupported(node)) return false;
   return true;
@@ -397,17 +461,57 @@ bool DnnlElementwiseCapability::IsDimensionSupported(const Node* node) const {
   return true;
 }
 
+// DnnlPowNodeCapability class
+//-------------------------------------
+bool DnnlPowNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  if (!IsTypeSupported(node)) return false;
+  if (!IsDimensionSupported(node, graph_viewer)) return false;
+  return true;
+}
+
+bool DnnlPowNodeCapability::IsDimensionSupported(const Node* node, const GraphViewer& graph_viewer) const {
+  auto node_inputs = node->InputDefs();
+  if (node_inputs[0]->Shape() == nullptr) {
+    return true;
+  }
+
+  // We are limited to only one dimension tensors if the shape of the Pow op is unknown don't claim support.
+  if (node_inputs[0]->Shape() == nullptr) {
+    return false;
+  }
+
+  if (node_inputs[1]->Shape() != nullptr) {
+    // At this time OneDNN can only set the exponent at primitive creation time. This means the exponent must be a
+    // ConstantInitializer or the Pow function will fail when running the graph.
+    if (!graph_viewer.IsConstantInitializer(node_inputs[1]->Name(), true)) {
+      return false;
+    }
+    if (node_inputs[1]->Shape()->dim_size() == 0) {
+      return true;
+    }
+    for (int j = 0; j < node_inputs[1]->Shape()->dim_size(); ++j) {
+      if (node_inputs[1]->Shape()->dim(j).dim_value() != 1) {
+        return false;
+      }
+    }
+  }
+
+
+  return true;
+}
+
 // DnnlGemmNodeCapability class
 //-------------------------------------
-bool DnnlGemmNodeCapability::Supported(const Node* node) const {
-  if (!_matmul.Supported(node)) return false;
-  if (!_binary.Supported(node)) return false;
+bool DnnlGemmNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  if (!_matmul.Supported(node, graph_viewer)) return false;
+  if (!_binary.Supported(node, graph_viewer)) return false;
   return true;
 }
 
 // DnnlReshapeNodeCapability class
 //-------------------------------------
-bool DnnlReshapeNodeCapability::Supported(const Node* node) const {
+bool DnnlReshapeNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
   if (!IsTypeSupported(node)) return false;
   if (!IsDimensionSupported(node)) return false;
   return true;

@@ -23,6 +23,7 @@ DnnlOpManager::DnnlOpManager() {
   dnnl_ops_map_.emplace(std::make_pair("MatMulInteger", std::unique_ptr<DnnlNodeCapability>(new DnnlMatMulIntegerNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("MaxPool", std::unique_ptr<DnnlNodeCapability>(new DnnlPoolNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("Mul", std::unique_ptr<DnnlNodeCapability>(new DnnlBinaryNodeCapability())));
+  dnnl_ops_map_.emplace(std::make_pair("Pow", std::unique_ptr<DnnlNodeCapability>(new DnnlPowNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("ReduceMean", std::unique_ptr<DnnlNodeCapability>(new DnnlReduceMeanNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("Relu", std::unique_ptr<DnnlNodeCapability>(new DnnlElementwiseCapability())));
   dnnl_ops_map_.emplace(std::make_pair("Reshape", std::unique_ptr<DnnlNodeCapability>(new DnnlReshapeNodeCapability())));
@@ -44,12 +45,12 @@ DnnlOpManager::DnnlOpManager() {
 #endif  // ENABLE_TRAINING
 }
 
-bool DnnlOpManager::IsNodeSupported(const Node* node) const {
+bool DnnlOpManager::IsNodeSupported(const Node* node, const GraphViewer& graph_viewer) const {
   auto it = dnnl_ops_map_.find(node->OpType());
   if (it == dnnl_ops_map_.end()) {
     return false;
   }
-  return it->second->Supported(node);
+  return it->second->Supported(node, graph_viewer);
 }
 
 bool DnnlOpManager::IsOpTypeAvalible(const std::string& opType) const {

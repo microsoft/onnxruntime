@@ -28,7 +28,7 @@ class DnnlNodeCapability {
    * @return true if the onnxRuntime::Node is supported in the
    * DnnlExecutionProvider return false otherwise.
    */
-  virtual bool Supported(const Node* node) const = 0;
+  virtual bool Supported(const Node* node, const GraphViewer& graph_viewer) const = 0;
 };
 
 /**
@@ -78,13 +78,35 @@ class DnnlDefaultNodeCapability : public DnnlNodeCapability {
   DnnlDefaultNodeCapability();
   DnnlDefaultNodeCapability(std::vector<std::string> inputTypes);
 
-  bool Supported(const Node* node) const override;
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  protected:
   bool IsTypeSupported(const Node* node) const;
 
  private:
   std::vector<std::string> inputTypes_;
+};
+
+/*
+* Works similar to the `DnnlDefaultNodeCapability` class except that this
+* will check the input of all input nodes.
+*
+* Example usage:
+* std::vector T1 = {"float"};
+* std::vector T2 = {"uint8", "int32", "float"};
+* DnnlDefaultMultiInputNodeCapability({T1, T2});
+*/
+class DnnlDefaultMultiInputNodeCapability : public DnnlNodeCapability {
+ public:
+  DnnlDefaultMultiInputNodeCapability(std::vector<std::vector<std::string>> inputTypes);
+
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+
+ protected:
+  bool IsTypeSupported(const Node* node) const;
+
+ private:
+  std::vector<std::vector<std::string>> inputTypes_;
 };
 
 /**
@@ -98,7 +120,7 @@ class DnnlPoolNodeCapability : public DnnlDefaultNodeCapability {
  public:
   DnnlPoolNodeCapability() : DnnlDefaultNodeCapability({"float"}) {}
 
-  bool Supported(const Node* node) const override;
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
   bool IsAttributeSupported(const Node* node) const;
@@ -113,7 +135,7 @@ class DnnlBatchNormalizationNodeCapability : public DnnlDefaultNodeCapability {
  public:
   DnnlBatchNormalizationNodeCapability() : DnnlDefaultNodeCapability({"float"}) {}
 
-  bool Supported(const Node* node) const override;
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
   bool IsDimensionSupported(const Node* node) const;
@@ -128,7 +150,7 @@ class DnnlReduceMeanNodeCapability : public DnnlDefaultNodeCapability {
  public:
   DnnlReduceMeanNodeCapability() : DnnlDefaultNodeCapability({"float"}) {}
 
-  bool Supported(const Node* node) const override;
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
   bool IsAttributeSupported(const Node* node) const;
@@ -144,7 +166,7 @@ class DnnlSoftmaxNodeCapability : public DnnlDefaultNodeCapability {
  public:
   DnnlSoftmaxNodeCapability() : DnnlDefaultNodeCapability({"float"}) {}
 
-  bool Supported(const Node* node) const override;
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
   bool IsAttributeSupported(const Node* node) const;
@@ -157,7 +179,7 @@ class DnnlMatMulNodeCapability : public DnnlDefaultNodeCapability {
  public:
   DnnlMatMulNodeCapability() : DnnlDefaultNodeCapability({"float"}) {}
 
-  bool Supported(const Node* node) const override;
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
   bool IsDimensionSupported(const Node* node) const;
@@ -170,7 +192,7 @@ class DnnlMatMulIntegerNodeCapability : public DnnlDefaultNodeCapability {
  public:
   DnnlMatMulIntegerNodeCapability() : DnnlDefaultNodeCapability({"int8", "uint8"}) {}
 
-  bool Supported(const Node* node) const override;
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
   bool IsDimensionSupported(const Node* node) const;
@@ -188,7 +210,7 @@ class DnnlSumNodeCapability : public DnnlDefaultNodeCapability {
   // To enable float16 and bfloat16 we will should add tests to verify those data types.
   DnnlSumNodeCapability() : DnnlDefaultNodeCapability({"float" /*, "float16", "bfloat16", "int8", "uint8"*/}) {}
 
-  bool Supported(const Node* node) const override;
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
   bool IsDimensionSupported(const Node* node) const;
@@ -201,20 +223,37 @@ class DnnlBinaryNodeCapability : public DnnlDefaultNodeCapability {
  public:
   DnnlBinaryNodeCapability() : DnnlDefaultNodeCapability({"int8", "uint8", "float"}) {}
 
-  bool Supported(const Node* node) const override;
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
   bool IsDimensionSupported(const Node* node) const;
 };
 
+/**
+* Decide if an Elementwise op is supported by DnnlExecutionProvider
+* Elementwise ops are:
+* Abs, Elu, Exp, Log, Relu, Round, Sigmoid, Softplus, Sqrt, Tanh
+*/
 class DnnlElementwiseCapability : public DnnlDefaultNodeCapability {
  public:
   DnnlElementwiseCapability() : DnnlDefaultNodeCapability({"float"}) {}
 
-  bool Supported(const Node* node) const override;
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
   bool IsDimensionSupported(const Node* node) const;
+};
+
+class DnnlPowNodeCapability : public DnnlDefaultMultiInputNodeCapability {
+ public:
+  DnnlPowNodeCapability()
+    : DnnlDefaultMultiInputNodeCapability({/*T */{"float"},
+                                           /*T1*/{"uint8", "int8", "int32", "float"}}) {}
+
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+
+ private:
+  bool IsDimensionSupported(const Node* node, const GraphViewer& graph_viewe) const;
 };
 
 /**
@@ -224,7 +263,7 @@ class DnnlGemmNodeCapability : public DnnlDefaultNodeCapability {
  public:
   DnnlGemmNodeCapability() : DnnlDefaultNodeCapability({"float"}) {}
 
-  bool Supported(const Node* node) const override;
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
   DnnlMatMulNodeCapability _matmul;
@@ -240,7 +279,7 @@ class DnnlReshapeNodeCapability : public DnnlDefaultNodeCapability {
                                                            "int8",
                                                            "uint8"}) {}
 
-  bool Supported(const Node* node) const override;
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
   bool IsDimensionSupported(const Node* node) const;
