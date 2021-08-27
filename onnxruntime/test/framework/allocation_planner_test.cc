@@ -515,6 +515,12 @@ TEST_F(PlannerTest, PlanOutputTest) {
 
 #ifdef USE_CUDA
 TEST_F(PlannerTest, LocationPlanningForInitializersOnlyUsedInANestedSubgraph) {
+  // This a simple model that has one outer scope initializer and an `If` node
+  // and that initializer is ONLY used in nested subgraphs (both the `If` subgraphs).
+  // We want to test that the location planned for this initializer accounts for
+  // its usage in the nested subgraphs and statically determines the right location
+  // for it (without defaulting to CPU).
+
   // Types
   TypeProto float_tensor;
   float_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
