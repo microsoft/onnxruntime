@@ -45,6 +45,9 @@ if (options.globalEnvFlags) {
   if (flags.wasm?.simd !== undefined) {
     ort.env.wasm.simd = flags.wasm.simd;
   }
+  if (flags.wasm?.proxy !== undefined) {
+    ort.env.wasm.proxy = flags.wasm.proxy;
+  }
   if (flags.wasm?.initTimeout !== undefined) {
     ort.env.wasm.initTimeout = flags.wasm.initTimeout;
   }
