@@ -92,10 +92,10 @@ struct TrainingConfigurationResult {
 };
 
 struct PyGradientGraphBuilder {
-  GradientGraphBuilder& builder;
-  Model& model;
-  PyGradientGraphBuilder(GradientGraphBuilder& builder, Model& model)
-      : builder(builder), model(model) {}
+  std::unique_ptr<GradientGraphBuilder> builder;
+  std::shared_ptr<Model> model;
+  PyGradientGraphBuilder(std::unique_ptr<GradientGraphBuilder> builder, std::shared_ptr<Model> model)
+      : builder(std::move(builder)), model(std::move(model)) {}
 };
 
 // TODO: this method does not handle parallel optimization.
@@ -709,23 +709,21 @@ void addObjectMethodsForTraining(py::module& m) {
                           GradientGraphConfiguration gradient_graph_config{};
                           gradient_graph_config.set_gradients_as_graph_outputs = true;
 
-                          GradientGraphBuilder builder{
+                          auto builder = std::make_unique<GradientGraphBuilder>(
                               &model->MainGraph(),
                               y_node_arg_names,
                               x_node_arg_names,
                               loss_node_arg_name,
                               gradient_graph_config,
-                              logger};
-                          return std::make_unique<PyGradientGraphBuilder>(builder, *model);
+                              logger);
+                          return std::make_unique<PyGradientGraphBuilder>(std::move(builder), std::move(model));
                         }))
       .def("build", [](PyGradientGraphBuilder* gradient_graph_builder) {
-        // FIXME Something is wrong with the memory when calling from Python.
-        // Calling Build in init works, but not here.
-        ORT_THROW_IF_ERROR(gradient_graph_builder->builder.Build());
+        ORT_THROW_IF_ERROR(gradient_graph_builder->builder->Build());
       })
       .def("save", [](PyGradientGraphBuilder* gradient_graph_builder, const std::string& path) {
         // TODO Maybe just call build here?
-        ORT_THROW_IF_ERROR(Model::Save(gradient_graph_builder->model, path));
+        ORT_THROW_IF_ERROR(Model::Save(*(gradient_graph_builder->model), path));
       });
 
   py::class_<GradientNodeAttributeDefinition> gradient_node_attribute_definition(
