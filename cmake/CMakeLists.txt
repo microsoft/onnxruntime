@@ -162,7 +162,7 @@ option(onnxruntime_USE_EXTENSIONS "Build with onnxruntime-extensions for more fe
 option(onnxruntime_ENABLE_EXTENSION_CUSTOM_OPS "Enable custom operators in onnxruntime-extensions" OFF)
 
 # Enable registering custom op schemas from shared libraries in python environment.
-option(onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS "Enable external custom operators" OFF)
+option(onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS "Enable registering user defined custom op schemas dynamically" OFF)
 
 set(ONNX_CUSTOM_PROTOC_EXECUTABLE "" CACHE STRING "Specify custom protoc executable to build ONNX")
 
