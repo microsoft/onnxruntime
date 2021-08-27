@@ -117,6 +117,7 @@ void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path, const char* log_id,
   VerifyOutputs(output_names, expected_fetches, fetches);
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 void SparseIndicesChecker(const ONNX_NAMESPACE::TensorProto& indices_proto, gsl::span<const int64_t> expected_indicies) {
   using namespace ONNX_NAMESPACE;
   Path model_path;
@@ -176,6 +177,8 @@ void SparseIndicesChecker(const ONNX_NAMESPACE::TensorProto& indices_proto, gsl:
   }
   ASSERT_THAT(ind_span, testing::ContainerEq(expected_indicies));
 }
+
+#endif // DISABLE_SPARSE_TENSORS
 
 }  // namespace test
 }  // namespace onnxruntime
