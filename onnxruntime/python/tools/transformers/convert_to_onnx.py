@@ -144,15 +144,18 @@ def parse_arguments(argv=None):
 
     fp16_option_group = parser.add_argument_group(
         "float to float16 conversion parameters that works when \"--precision fp16\" is specified")
+
     fp16_option_group.add_argument('--keep_io_types',
                                    required=False,
                                    action='store_true',
                                    help='Use float32 for past inputs, present and logits outputs.')
     fp16_option_group.set_defaults(keep_io_types=False)
+
     fp16_option_group.add_argument('--io_block_list',
                                    nargs='+',
                                    default=[],
                                    help='List of inputs or outputs in float32 instead of float16')
+
     fp16_option_group.add_argument(
         '--op_block_list',
         nargs='+',
@@ -160,10 +163,17 @@ def parse_arguments(argv=None):
         help=
         'List of operators (like Attention Gather Add LayerNormalization FastGelu MatMul) to compute in float32 instead of float16.'
     )
+
     fp16_option_group.add_argument('--node_block_list',
                                    nargs='+',
                                    default=[],
                                    help='List of node names to compute in float32 instead of float16.')
+
+    fp16_option_group.add_argument('--force_fp16_initializers',
+                                   required=False,
+                                   action='store_true',
+                                   help='Convert all float initializers to float16.')
+    fp16_option_group.set_defaults(force_fp16_initializers=False)
 
     args = parser.parse_args(argv)
 
@@ -270,6 +280,8 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
         fp16_params["node_block_list"] = args.node_block_list
     if args.op_block_list:
         fp16_params["op_block_list"] = args.op_block_list
+    if args.force_fp16_initializers:
+        fp16_params["force_fp16_initializers"] = args.force_fp16_initializers
 
     is_io_float16 = (args.precision == Precision.FLOAT16 and not args.keep_io_types)
 
@@ -335,10 +347,10 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
         with open(csv_filename, mode="a", newline='') as csv_file:
             column_names = [
                 "experiment", "run_id", "model_name", "model_class", "gpu", "precision", "optimizer", "test_cases",
-                "keep_io_types", "io_block_list", "op_block_list", "node_block_list", "ORT_TRANSFORMER_OPTIONS",
-                "ORT_CUDA_GEMM_OPTIONS", "onnxruntime", latency_name, "diff_50_percentile", "diff_90_percentile",
-                "diff_95_percentile", "diff_99_percentile", "diff_pass_rate", "nan_rate", "top1_match_rate",
-                "onnx_size_in_MB"
+                "keep_io_types", "io_block_list", "op_block_list", "node_block_list", "force_fp16_initializers",
+                "ORT_TRANSFORMER_OPTIONS", "ORT_CUDA_GEMM_OPTIONS", "onnxruntime", latency_name, "diff_50_percentile",
+                "diff_90_percentile", "diff_95_percentile", "diff_99_percentile", "diff_pass_rate", "nan_rate",
+                "top1_match_rate", "onnx_size_in_MB"
             ]
             csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
             if not csv_file_existed:
@@ -356,6 +368,7 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                 "io_block_list": args.io_block_list,
                 "op_block_list": args.op_block_list,
                 "node_block_list": args.node_block_list,
+                "force_fp16_initializers": args.force_fp16_initializers,
                 "ORT_TRANSFORMER_OPTIONS": os.getenv('ORT_TRANSFORMER_OPTIONS'),
                 "ORT_CUDA_GEMM_OPTIONS": os.getenv('ORT_CUDA_GEMM_OPTIONS'),
                 "onnxruntime": ort_version,
