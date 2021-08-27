@@ -18,6 +18,9 @@ logger = logging.getLogger(__name__)
 
 class OnnxModel:
     def __init__(self, model):
+        self.initialize(model)
+
+    def initialize(self, model):
         self.model = model
         self._node_name_suffix: Dict[str, int] = {}  # key is node name prefix, value is the last suffix generated
         self.shape_infer_helper = None
@@ -495,31 +498,18 @@ class OnnxModel:
                                       initializer=graph.initializer,
                                       value_info=graph.value_info)
 
-        self.model = helper.make_model(graph_def, producer_name='onnxruntime-tools')
+        self.model = helper.make_model(graph_def, producer_name='onnxruntime')
 
         # restore opset version
         self.model.opset_import[0].version = original_opset_version
 
-    def convert_model_float32_to_float16(self, cast_input_output=True, use_symbolic_shape_infer=True):
-        """Convert a graph to FLOAT16. By default, we will keep data types of inputs and outputs.
-           For decoder model with past_key_values, it is recommended to set cast_input_output=False for better performance.
-        Args:
-            cast_input_output (bool, optional): keep data type of inputs and outputs, and add Cast nodes to convert float32 inputs to float16, and float16 to float32 for outputs. Defaults to True.
-            use_symbolic_shape_infer (bool, optional): use symbolic shape inference instead of onnx shape inference.
-        """
-        from packaging.version import Version
-        import onnxconverter_common as oc
-        if Version(oc.__version__) > Version("1.7.0"):
-            model = self.model
-            if use_symbolic_shape_infer:
-                # Use symbolic shape inference since custom operators (like Gelu, SkipLayerNormalization etc) are not recognized by onnx shape inference.
-                shape_infer_helper = SymbolicShapeInferenceHelper(model)
-                model = shape_infer_helper.infer_shapes(model, auto_merge=True, guess_output_rank=False)
-            self.model = oc.float16.convert_float_to_float16(model,
-                                                             keep_io_types=cast_input_output,
-                                                             disable_shape_infer=use_symbolic_shape_infer)
-            return
+    def _naive_float_to_float16(self, keep_io_types=True):
+        """Convert model from single precision to half precision naively.
+           It might generate invalid model or cause precision loss.
 
+        Args:
+            cast_input_output (bool, optional): [description]. Defaults to True.
+        """
         graph = self.model.graph
         initializers = graph.initializer
 
@@ -540,7 +530,7 @@ class OnnxModel:
                     if att.name == 'to' and att.i == 1:
                         att.CopyFrom(helper.make_attribute("to", int(TensorProto.FLOAT16)))
 
-        if not cast_input_output:
+        if not keep_io_types:
             self.change_input_output_float32_to_float16()
             return
 
@@ -569,6 +559,107 @@ class OnnxModel:
                 cast_node = helper.make_node('Cast', inputs=[cast_input], outputs=[cast_output])
                 cast_node.attribute.extend([helper.make_attribute("to", int(TensorProto.FLOAT))])
                 self.add_node(cast_node)
+
+    def get_dtype(self, input_or_output: str):
+        """Try get data type given a name (could be initializer, graph input or output)."""
+        tensor_type_map = {obj.name: obj.type for obj in self.model.graph.value_info}
+
+        if input_or_output in tensor_type_map:
+            return tensor_type_map[input_or_output].tensor_type.elem_type
+
+        graph_input = self.find_graph_input(input_or_output)
+        if graph_input:
+            return graph_input.type.tensor_type.elem_type
+
+        graph_output = self.find_graph_output(input_or_output)
+        if graph_output:
+            return graph_output.type.tensor_type.elem_type
+
+        return None
+
+    def convert_model_float32_to_float16(self, cast_input_output=True, **kwargs):
+        logger.warn(
+            'The function convert_model_float32_to_float16 is deprecated. Use convert_float_to_float16 instead!')
+        self._naive_float_to_float16(keep_io_types=cast_input_output)
+
+    def convert_float_to_float16(self, use_symbolic_shape_infer=True, **kwargs):
+        """Convert a graph to FLOAT16. By default, we will keep data types of inputs and outputs.
+           For decoder model with past_key_values, it is recommended to set cast_input_output=False for better performance.
+        Args:
+            keep_io_types (bool, optional): keep data type of inputs and outputs. Defaults to True.
+            use_symbolic_shape_infer (bool, optional): use symbolic shape inference instead of onnx shape inference.
+            kwargs: parameters for float16 conversion.
+        """
+        if "keep_io_types" not in kwargs:
+            kwargs["keep_io_types"] = True
+
+        def float_to_float16_func():
+            # TODO: import from onnxconverter_common when it is stable
+            #try:
+            #    import onnxconverter_common as oc
+            #    from packaging.version import Version
+            #    if Version(oc.__version__) > Version("1.9.0"):
+            #        from onnxconverter_common.float16 import convert_float_to_float16
+            #        return convert_float_to_float16
+            #except ImportError:
+            #    pass
+
+            from float16 import convert_float_to_float16
+            return convert_float_to_float16
+
+        convert_float_to_float16 = float_to_float16_func()
+
+        model = self.model
+        if use_symbolic_shape_infer:
+            # Use symbolic shape inference since custom operators (like Gelu, SkipLayerNormalization etc) are not recognized by onnx shape inference.
+            shape_infer_helper = SymbolicShapeInferenceHelper(model)
+            model = shape_infer_helper.infer_shapes(model, auto_merge=True, guess_output_rank=False)
+
+        parameters = {'disable_shape_infer': use_symbolic_shape_infer}
+        parameters.update({
+            key: kwargs[key]
+            for key in ['keep_io_types', 'min_positive_val', 'max_finite_val', 'op_block_list', 'node_block_list']
+            if key in kwargs
+        })
+
+        fp16_model = convert_float_to_float16(model, **parameters)
+        self.initialize(fp16_model)
+
+        def get_node_attribute(node, attribute_name: str):
+            for attr in node.attribute:
+                if attr.name == attribute_name:
+                    value = helper.get_attribute_value(attr)
+                    return value
+            return None
+
+        # Convert_float_to_float16 might add Cast(to=10) --> Cast(to=1) when two consequent nodes are computed in FP32.
+        # Below are post-processing that removes those Cast nodes.
+        # Remove first Cast nodes in path like  --> Cast --> Cast -->
+        nodes_to_remove = []
+        for node in self.nodes():
+            if node.op_type == "Cast":
+                parent = self.get_parent(node, 0)
+                if parent and parent.op_type == "Cast":
+                    if self.get_children(parent) == 1:  # cannot be removed if its output is used by multiple nodes
+                        self.replace_input_of_all_nodes(parent.output[0], parent.input[0])
+                        nodes_to_remove.append(parent)
+
+        # Remove the second cast node.
+        for node in self.nodes():
+            if node.op_type == "Cast" and get_node_attribute(node, "to") == int(TensorProto.FLOAT) and \
+                self.get_dtype(node.input[0])  == int(TensorProto.FLOAT):
+
+                if self.find_graph_output(node.output[0]):
+                    self.replace_output_of_all_nodes(node.input[0], node.output[0])
+                else:
+                    self.replace_input_of_all_nodes(node.output[0], node.input[0])
+                nodes_to_remove.append(node)
+
+        self.remove_nodes(nodes_to_remove)
+
+        if nodes_to_remove:
+            self.prune_graph()
+            print(f"removed {len(nodes_to_remove)} Cast nodes from float16 model")
 
     def create_node_name(self, op_type, name_prefix=None):
         """Create a unique node name that starts with a prefix (default is operator type).

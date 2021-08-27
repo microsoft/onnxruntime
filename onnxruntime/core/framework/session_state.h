@@ -164,7 +164,9 @@ class SessionState {
      */
   const std::unordered_map<int, OrtValue>& GetConstantInitializedTensors() const;
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   bool IsSparseInitializer(int ort_value_index) const;
+#endif
 
 #ifdef ENABLE_TRAINING
   /**
@@ -436,11 +438,13 @@ class SessionState {
   // subset of initialized_tensors_ that are constant and cannot be overridden at runtime
   std::unordered_map<int, OrtValue> constant_initialized_tensors_;
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   // This is an auxiliary lookup to check if the OrtValue was actually a sparse tensor
   // this is needed because we currently convert all sparse initializer into dense Tensors
   // if and when we actually place SparseTensor instances (we should) into OrtValues, we
   // will not need this structure.
   std::unordered_set<int> sparse_initialized_tensors_;
+#endif
 
   // This data structure is for uninitializing string tensors and
   // munmap memory region and close file descriptor

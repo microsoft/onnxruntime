@@ -823,11 +823,13 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
       *tensor.mutable_string_data() = constant_attribute.strings();
       break;
     }
+#if !defined(DISABLE_SPARSE_TENSORS)
     case AttributeProto_AttributeType_SPARSE_TENSOR: {
       auto& s = constant_attribute.sparse_tensor();
       ORT_RETURN_IF_ERROR(SparseTensorProtoToDenseTensorProto(s, model_path, tensor));
       break;
     }
+#endif
     default:
       ORT_THROW("Unsupported attribute value type of ", constant_attribute.type(),
                 " in 'Constant' node '", node.name(), "'");
@@ -839,6 +841,7 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
   return Status::OK();
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 static Status CopySparseData(size_t n_sparse_elements,
                              const ONNX_NAMESPACE::TensorProto& indices,
                              const Path& model_path,
@@ -1226,6 +1229,7 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
 }
 
 #endif  // !ORT_MINIMAL_BUILD
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 template common::Status GetSizeInBytesFromTensorProto<kAllocAlignment>(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                                                        size_t* out);
