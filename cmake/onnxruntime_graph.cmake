@@ -26,10 +26,13 @@ if (onnxruntime_MINIMAL_BUILD)
     "${ONNXRUNTIME_ROOT}/core/graph/function*"
   )
 
-  # no optimizer support initially
-  list(APPEND onnxruntime_graph_src_exclude_patterns
-    "${ONNXRUNTIME_ROOT}/core/graph/graph_utils.*"
-  )
+  # no optimizer support in base minimal build
+  # some optimizer support in extended minimal build
+  if (NOT onnxruntime_EXTENDED_MINIMAL_BUILD)
+    list(APPEND onnxruntime_graph_src_exclude_patterns
+      "${ONNXRUNTIME_ROOT}/core/graph/graph_utils.*"
+    )
+  endif()
 endif()
 
 if (onnxruntime_DISABLE_CONTRIB_OPS)
