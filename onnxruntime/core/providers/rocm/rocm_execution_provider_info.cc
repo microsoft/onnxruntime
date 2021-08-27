@@ -1,11 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/rocm/rocm_execution_provider_info.h"
-#include "core/providers/rocm/rocm_common.h"
 
 #include "core/common/make_string.h"
+#include "core/common/parse_string.h"
 #include "core/framework/provider_options_utils.h"
+#include "core/providers/rocm/rocm_common.h"
 
 namespace onnxruntime {
 namespace rocm {
@@ -13,14 +15,21 @@ namespace provider_option_names {
 constexpr const char* kDeviceId = "device_id";
 constexpr const char* kMemLimit = "gpu_mem_limit";
 constexpr const char* kArenaExtendStrategy = "arena_extend_strategy";
-constexpr const char* kConvExhaustiveSearch = "conv_exhaustive_search";
+constexpr const char* kCudnnConvAlgoSearch = "cudnn_conv_algo_search";
+constexpr const char* kDoCopyInDefaultStream = "do_copy_in_default_stream";
 constexpr const char* kGpuExternalAlloc = "gpu_external_alloc";
 constexpr const char* kGpuExternalFree = "gpu_external_free";
 }  // namespace provider_option_names
 }  // namespace rocm
 
 namespace {
-const EnumNameMapping<ArenaExtendStrategy> arena_extend_strategy_mapping{
+const DeleteOnUnloadPtr<EnumNameMapping<OrtCudnnConvAlgoSearch>> ort_cudnn_conv_algo_search_mapping = new EnumNameMapping<OrtCudnnConvAlgoSearch>{
+    {OrtCudnnConvAlgoSearch::EXHAUSTIVE, "EXHAUSTIVE"},
+    {OrtCudnnConvAlgoSearch::HEURISTIC, "HEURISTIC"},
+    {OrtCudnnConvAlgoSearch::DEFAULT, "DEFAULT"},
+};
+
+const DeleteOnUnloadPtr<EnumNameMapping<ArenaExtendStrategy>> arena_extend_strategy_mapping = new EnumNameMapping<ArenaExtendStrategy>{
     {ArenaExtendStrategy::kNextPowerOfTwo, "kNextPowerOfTwo"},
     {ArenaExtendStrategy::kSameAsRequested, "kSameAsRequested"},
 };
@@ -30,26 +39,9 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
   ROCMExecutionProviderInfo info{};
   void* alloc = nullptr;
   void* free = nullptr;
-
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
           .AddValueParser(
-              rocm::provider_option_names::kGpuExternalAlloc,
-              [&alloc](const std::string& value_str) -> Status {
-                size_t address;
-                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
-                alloc  = reinterpret_cast<void*>(address);
-                return Status::OK();
-              })
-          .AddValueParser(
-              rocm::provider_option_names::kGpuExternalFree,
-              [&free](const std::string& value_str) -> Status {
-                size_t address;
-                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
-                free  = reinterpret_cast<void*>(address);
-                return Status::OK();
-              })
-	  .AddValueParser(
               rocm::provider_option_names::kDeviceId,
               [&info](const std::string& value_str) -> Status {
                 ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.device_id));
@@ -62,17 +54,35 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
                     "Invalid device ID: ", info.device_id,
                     ", must be between 0 (inclusive) and ", num_devices, " (exclusive).");
                 return Status::OK();
-              }) 
+              })
+          .AddValueParser(
+              rocm::provider_option_names::kGpuExternalAlloc,
+              [&alloc](const std::string& value_str) -> Status {
+                size_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                alloc = reinterpret_cast<void*>(address);
+                return Status::OK();
+              })
+          .AddValueParser(
+              rocm::provider_option_names::kGpuExternalFree,
+              [&free](const std::string& value_str) -> Status {
+                size_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                free = reinterpret_cast<void*>(address);
+                return Status::OK();
+              })
           .AddAssignmentToReference(rocm::provider_option_names::kMemLimit, info.gpu_mem_limit)
-          .AddAssignmentToReference(rocm::provider_option_names::kConvExhaustiveSearch, info.miopen_conv_exhaustive_search)
           .AddAssignmentToEnumReference(
               rocm::provider_option_names::kArenaExtendStrategy,
-              arena_extend_strategy_mapping, info.arena_extend_strategy)
+              *arena_extend_strategy_mapping, info.arena_extend_strategy)
+          .AddAssignmentToEnumReference(
+              rocm::provider_option_names::kCudnnConvAlgoSearch,
+              *ort_cudnn_conv_algo_search_mapping, info.cudnn_conv_algo_search)
+          .AddAssignmentToReference(rocm::provider_option_names::kDoCopyInDefaultStream, info.do_copy_in_default_stream)
           .Parse(options));
 
   ROCMExecutionProviderExternalAllocatorInfo alloc_info{alloc, free};
   info.external_allocator_info = alloc_info;
-
   return info;
 }
 
@@ -82,9 +92,11 @@ ProviderOptions ROCMExecutionProviderInfo::ToProviderOptions(const ROCMExecution
       {rocm::provider_option_names::kMemLimit, MakeStringWithClassicLocale(info.gpu_mem_limit)},
       {rocm::provider_option_names::kGpuExternalAlloc, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.alloc))},
       {rocm::provider_option_names::kGpuExternalFree, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.free))},
-      {rocm::provider_option_names::kConvExhaustiveSearch, MakeStringWithClassicLocale(info.miopen_conv_exhaustive_search)},
       {rocm::provider_option_names::kArenaExtendStrategy,
-       EnumToName(arena_extend_strategy_mapping, info.arena_extend_strategy)},
+       EnumToName(*arena_extend_strategy_mapping, info.arena_extend_strategy)},
+      {rocm::provider_option_names::kCudnnConvAlgoSearch,
+       EnumToName(*ort_cudnn_conv_algo_search_mapping, info.cudnn_conv_algo_search)},
+      {rocm::provider_option_names::kDoCopyInDefaultStream, MakeStringWithClassicLocale(info.do_copy_in_default_stream)},
   };
 
   return options;

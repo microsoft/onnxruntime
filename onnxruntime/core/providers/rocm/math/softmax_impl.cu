@@ -18,6 +18,7 @@
 
 // The code below is mostly copied from Pytorch PersistentSoftmax.cuh
 #include "hip/hip_runtime.h"
+
 #include "core/providers/rocm/cu_inc/common.cuh"
 #include "core/providers/rocm/math/softmax_impl.cuh"
 #include "core/providers/rocm/math/softmax.h"
@@ -35,7 +36,7 @@ namespace rocm {
 // A "WARP" contains "GPU_WARP_SIZE" threads, these treads are guaranteed to belong to the same warp.
 // This is important because it means only __shfl_ instructions are required for reductions.
 // Note that this means WARP_SIZE must be a power of two and <= architecture warp size.
-// ROCM warp size is 32 for all existing GPU architecures, but there is no guarantee this will not change for future arch.
+// ROCM warp size is 64 for all existing GPU architecures, but there is no guarantee this will not change for future arch.
 // is_log_softmax is a flag indicating whether SoftMax or LogSoftMax should be computed.
 // The template can be instantiated with any floating point type for the type arguments input_t, output_t and acc_t.
 // This allows SoftMax to be fused with a cast immediately following the SoftMax.
@@ -50,7 +51,6 @@ __global__ void softmax_warp_forward(output_t* dst, const input_t* src, int batc
   constexpr int next_power_of_two = 1 << log2_elements;
   constexpr int WARP_SIZE = (next_power_of_two < GPU_WARP_SIZE) ? next_power_of_two : GPU_WARP_SIZE;
   constexpr int WARP_ITERATIONS = next_power_of_two / WARP_SIZE;
-  // constexpr int WARP_BATCH = (next_power_of_two <= 128) ? 2 : 1;
   constexpr int WARP_BATCH = 1;
 
   int first_batch = (blockDim.y * blockIdx.x + threadIdx.y) * WARP_BATCH;
@@ -147,10 +147,8 @@ void dispatch_softmax_forward(hipStream_t stream, output_t* dst, const input_t* 
     int warp_size = (next_power_of_two < GPU_WARP_SIZE) ? next_power_of_two : GPU_WARP_SIZE;
 
     // This value must match the WARP_BATCH constexpr value computed inside softmax_warp_forward.
-    // int batches_per_warp = (next_power_of_two <= 128) ? 2 : 1;
     int batches_per_warp = 1;
-
-    // use 128 threads per block to maximimize gpu utilization
+    // use 256 threads per block to maximimize gpu utilization
     constexpr int threads_per_block = 256;
 
     int warps_per_block = (threads_per_block / warp_size);
