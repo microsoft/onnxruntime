@@ -121,8 +121,8 @@ void CustomOpLibrary::UnloadLibrary() {
 
 template <typename T>
 static py::object AddNonTensor(const OrtValue& val,
-                         const DataTransferManager* /*data_transfer_manager*/,
-                         const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* /*mem_cpy_to_host_functions*/) {
+                               const DataTransferManager* /*data_transfer_manager*/,
+                               const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* /*mem_cpy_to_host_functions*/) {
   return py::cast(val.Get<T>());
 }
 
@@ -229,8 +229,8 @@ py::object GetPyObjectFromSparseTensor(size_t pos, const OrtValue& ort_value, co
 
 template <>
 py::object AddNonTensor<TensorSeq>(const OrtValue& val,
-                             const DataTransferManager* data_transfer_manager,
-                             const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
+                                   const DataTransferManager* data_transfer_manager,
+                                   const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
   const auto& seq_tensors = val.Get<TensorSeq>();
   py::list py_list;
   for (const auto& rtensor : seq_tensors) {
@@ -246,12 +246,12 @@ py::object AddNonTensor<TensorSeq>(const OrtValue& val,
 }
 
 py::object AddNonTensorAsPyObj(const OrtValue& val,
-                         const DataTransferManager* data_transfer_manager,
-                         const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
+                               const DataTransferManager* data_transfer_manager,
+                               const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
   // Should be in sync with core/framework/datatypes.h
   auto val_type = val.Type();
   if (val_type->IsTensorSequenceType()) {
-   return AddNonTensor<TensorSeq>(val, data_transfer_manager, mem_cpy_to_host_functions);
+    return AddNonTensor<TensorSeq>(val, data_transfer_manager, mem_cpy_to_host_functions);
   } else {
 #if !defined(DISABLE_ML_OPS)
     utils::ContainerChecker c_checker(val_type);
@@ -287,7 +287,7 @@ py::object AddNonTensorAsPyObj(const OrtValue& val,
 }
 
 py::object AddTensorAsPyObj(const OrtValue& val, const DataTransferManager* data_transfer_manager,
-                      const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
+                            const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
   const Tensor& rtensor = val.Get<Tensor>();
   py::object obj;
   GetPyObjFromTensor(rtensor, obj, data_transfer_manager, mem_cpy_to_host_functions);
@@ -483,31 +483,32 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #endif
     } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
-      if(auto* cuda_provider_info = TryGetProviderInfo_CUDA())
-      {
-        const auto it = provider_options_map.find(type);
-        CUDAExecutionProviderInfo info{};
-        if (it != provider_options_map.end())
-          cuda_provider_info->CUDAExecutionProviderInfo__FromProviderOptions(it->second, info);
-        else {
-          info.device_id = cuda_device_id;
-          info.gpu_mem_limit = gpu_mem_limit;
-          info.arena_extend_strategy = arena_extend_strategy;
-          info.cudnn_conv_algo_search = cudnn_conv_algo_search;
-          info.do_copy_in_default_stream = do_copy_in_default_stream;
-          info.external_allocator_info = external_allocator_info;
-        }
+      // If the environment variable 'CUDA_UNAVAILABLE' exists, then we do not load cuda. This is set by _ld_preload for the manylinux case
+      // as in that case, trying to load the library itself will result in a crash due to the way that auditwheel strips dependencies.
+      if (Env::Default().GetEnvironmentVar("CUDA_UNAVAILABLE").empty()) {
+        if (auto* cuda_provider_info = TryGetProviderInfo_CUDA()) {
+          const auto it = provider_options_map.find(type);
+          CUDAExecutionProviderInfo info{};
+          if (it != provider_options_map.end())
+            cuda_provider_info->CUDAExecutionProviderInfo__FromProviderOptions(it->second, info);
+          else {
+            info.device_id = cuda_device_id;
+            info.gpu_mem_limit = gpu_mem_limit;
+            info.arena_extend_strategy = arena_extend_strategy;
+            info.cudnn_conv_algo_search = cudnn_conv_algo_search;
+            info.do_copy_in_default_stream = do_copy_in_default_stream;
+            info.external_allocator_info = external_allocator_info;
+          }
 
-        // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
-        // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
-        // since FromProviderOptions might contain external CUDA allocator.
-        external_allocator_info = info.external_allocator_info;
-        RegisterExecutionProvider(sess, *cuda_provider_info->CreateExecutionProviderFactory(info));
-      }
-      else
-      {
-        if(!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
-          ORT_THROW("CUDA_PATH is set but CUDA wasn't able to be loaded. Please install the correct version of CUDA and cuDNN as mentioned in the GPU requirements page, make sure they're in the PATH, and that your GPU is supported.");
+          // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
+          // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
+          // since FromProviderOptions might contain external CUDA allocator.
+          external_allocator_info = info.external_allocator_info;
+          RegisterExecutionProvider(sess, *cuda_provider_info->CreateExecutionProviderFactory(info));
+        } else {
+          if (!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
+            ORT_THROW("CUDA_PATH is set but CUDA wasn't able to be loaded. Please install the correct version of CUDA and cuDNN as mentioned in the GPU requirements page, make sure they're in the PATH, and that your GPU is supported.");
+          }
         }
       }
 #endif
@@ -689,10 +690,9 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
           ProviderOptions provider_options;
           std::string entry_symbol = kDefaultExecutionProviderEntry;
           for (auto option : it->second) {
-            if (option.first == kExecutionProviderSharedLibraryEntry){
+            if (option.first == kExecutionProviderSharedLibraryEntry) {
               entry_symbol = option.second;
-            }
-            else if (option.first != kExecutionProviderSharedLibraryPath){
+            } else if (option.first != kExecutionProviderSharedLibraryPath) {
               provider_options.insert(option);
             }
           }
@@ -1375,23 +1375,20 @@ including arg name, arg type (contains both type and shape).)pbdoc")
              size_t pos = 0;
              for (auto fet : fetches) {
                if (fet.IsTensor()) {
-                 rfetch.push_back(AddTensorAsPyObj(fet,nullptr, nullptr));
+                 rfetch.push_back(AddTensorAsPyObj(fet, nullptr, nullptr));
                } else if (fet.IsSparseTensor()) {
                  rfetch.push_back(GetPyObjectFromSparseTensor(pos, fet, nullptr));
-               }  else {
+               } else {
                  rfetch.push_back(AddNonTensorAsPyObj(fet, nullptr, nullptr));
                }
                ++pos;
              }
              return rfetch;
            })
-       /// This method accepts a dictionary of feeds (name -> OrtValue) and the list of output_names
-       /// and returns a list of python objects representing OrtValues. Each name may represent either
-       /// a Tensor, SparseTensor or a TensorSequence.
-      .def("run_with_ort_values", [](PyInferenceSession* sess, 
-                                     const py::dict& feeds,
-                                     const std::vector<std::string>& output_names,
-                                     RunOptions* run_options = nullptr) ->  std::vector<OrtValue>{
+      /// This method accepts a dictionary of feeds (name -> OrtValue) and the list of output_names
+      /// and returns a list of python objects representing OrtValues. Each name may represent either
+      /// a Tensor, SparseTensor or a TensorSequence.
+      .def("run_with_ort_values", [](PyInferenceSession* sess, const py::dict& feeds, const std::vector<std::string>& output_names, RunOptions* run_options = nullptr) -> std::vector<OrtValue> {
         NameMLValMap ort_feeds;
         // item is always a copy since dict returns a value and not a ref
         // and Apple XToolChain barks
@@ -1579,7 +1576,6 @@ void CreatePybindStateModule(py::module& m) {
 #ifdef ENABLE_EAGER_MODE
   addObjectMethodsForEager(m);
 #endif
-
 }
 
 // static variable used to create inference session and training session.
