@@ -587,9 +587,11 @@ def is_ubuntu_1604():
     dist, ver = get_linux_distro()
     return dist == 'Ubuntu' and ver.startswith('16.04')
 
+
 def is_ubuntu():
     dist, _ = get_linux_distro()
     return dist == 'Ubuntu'
+
 
 def get_config_build_dir(build_dir, config):
     # build directory per configuration
