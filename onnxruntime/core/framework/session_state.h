@@ -101,7 +101,6 @@ class SessionState {
         use_deterministic_compute_(use_deterministic_compute),
         enable_mem_reuse_(enable_mem_reuse),
         prepacked_weights_container_(prepacked_weights_container) {
-
     SetupAllocators();
   }
 
@@ -268,7 +267,7 @@ class SessionState {
   const KernelCreateInfo& GetNodeKernelCreateInfo(NodeIndex node_index) const;
 
   /// Return SessionState for the given Node index and attribute name if found.
-  const SessionState* GetSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name) const;
+  const SessionState* GetSubgraphSessionState(NodeIndex index, const std::string& attribute_name) const;
 
   concurrency::ThreadPool* GetThreadPool() const noexcept { return thread_pool_; }
   concurrency::ThreadPool* GetInterOpThreadPool() const noexcept { return inter_op_thread_pool_; }
@@ -368,7 +367,9 @@ class SessionState {
                                   _In_opt_ const Node* parent_node,
                                   const SessionOptions& session_options,
                                   bool remove_initializers,
-                                  std::unordered_map<std::string, size_t>& constant_initializers_use_count);
+                                  std::unordered_map<std::string, size_t>& constant_initializers_use_count,
+                                  const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map = {},
+                                  bool graph_info_already_created = false);
 
 #ifdef ENABLE_TRAINING
   Status GeneratePatternGroupCache(

@@ -321,13 +321,11 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer&
     // implicit inputs to a node could come directly from a feed, so we need to make sure they have an entry too
     const auto& node_implicit_inputs = node.ImplicitInputDefs();
     if (!node_implicit_inputs.empty()) {
-      // nested subgraph. for now map them to this node (which will be CPU based as all the control flow nodes
-      // are currently CPU based and they're the only ones that have implicit inputs) as the inputs will be passed as a
-      // feed when executing the subgraph and need to be in the mapping.
-      // in the future we want to recurse and find where the implicit input is actually used to try and avoid a
-      // copy to/from CPU to go through the control flow nodes where possible/applicable.
-      // the processing for the subgraph where the implicit input is consumed will do the real check on whether any
-      // copy to a different device is required
+      // In nested subgraphs, the location of the implicit input(s) is the location it
+      // is consumed in the subgraph if there is an explicit consumer.
+      // If the only consumer(s) are implicit consumers (i.e.) other control flow nodes, its
+      // location is the location of the value in the enclosing outer scope.
+      // All this is setup in the planner, we just use the location from the plan here.
       for (const auto& input_def : node_implicit_inputs) {
         int arg_index;
         ORT_RETURN_IF_ERROR(name_to_id.GetIdx(input_def->Name(), arg_index));

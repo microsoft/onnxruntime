@@ -66,6 +66,7 @@ class SequentialPlanner {
       const std::vector<const NodeArg*>& outer_scope_node_args,
       const ExecutionProviders& providers,
       const std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map,
+      const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_arg_to_location_map,
       const OrtValueNameIdxMap& ort_value_name_idx_map,
       const ISequentialPlannerContext& context,
       std::unique_ptr<SequentialExecutionPlan>& plan);
