@@ -159,6 +159,10 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Memory aware gradient builder.
         self._use_memory_efficient_gradient = False
 
+        # Flag to re-export the model due to attribute change on original module.
+        # Re-export will be avoided if _skip_check is enabled.
+        self._original_model_has_changed = False
+
     def _get_torch_gpu_allocator_function_addresses(self):
         if self._use_external_gpu_allocator and torch.cuda.is_available():
             # CPP extension to get torch GPU allocator's alloc and free function addresses
@@ -274,7 +278,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         schema = _io._extract_schema(
             {'args': copy.copy(inputs), 'kwargs': copy.copy(kwargs)})
-        if self._onnx_models.exported_model and schema == self._input_info.schema:
+        if self._onnx_models.exported_model and schema == self._input_info.schema and not self._original_model_has_changed:
             # All required models have already been exported previously
             return False
 
@@ -417,3 +421,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # between forward calls.
         self._graph_initializers = [param for name, param in self._flattened_module.named_parameters()
                                     if name in self._graph_initializer_names]
+
+    def signal_model_changed(self):
+        """Signals the execution manager to re-export the model on the next forward call"""
+        self._original_model_has_changed = True

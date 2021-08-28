@@ -7,8 +7,11 @@ from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi import _pybind_state as C
 from ._fallback import _FallbackManager, ORTModuleFallbackException, ORTModuleDeviceException, wrap_exception
 
+import inspect
 import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
+from typing import List
+import warnings
 
 
 def _ortvalue_to_torch_tensor(ortvalue):
@@ -112,3 +115,43 @@ def _create_iobinding(io_binding, inputs, model, device):
 
     for value_info in model.graph.output:
         io_binding.bind_output(value_info.name, device.type, device_id=get_device_index(device))
+
+def check_for_name_collisions(ortmodule: torch.nn.Module, user_module: torch.nn.Module):
+    """Raises if there are any common attributes between the user's model and ORTModule.
+
+    Args:
+        ortmodule: the ORTModule instance
+        user_module: the user's torch.nn.Module
+
+    Raises:
+        UserWarning: If there are any overlapping attributes between the ortmodule and user_module (except forward)
+    """
+
+    ortmodule_attributes = dict(inspect.getmembers(ortmodule))
+    torch_module_attributes = dict(inspect.getmembers(torch.nn.Module()))
+    user_module_attributes = inspect.getmembers(user_module)
+
+    # Check if any user defined attribute collides with ORTModule's attributes
+    for attribute_name, attribute in user_module_attributes:
+        if inspect.ismethod(attribute):
+            # Skip the dunder methods
+            if attribute_name.startswith('__'):
+                continue
+
+            if attribute_name not in torch_module_attributes or \
+                not inspect.ismethod(torch_module_attributes[attribute_name]) or \
+                attribute.__func__ != torch_module_attributes[attribute_name].__func__:
+
+                if attribute_name == 'forward':
+                    continue
+
+                # This is a user defined/overriden method. Check for collisions.
+                if attribute_name in ortmodule_attributes:
+                    warnings.warn(f"User Module's attribute name {attribute_name} collides with ORTModule's attribute name. "
+                        "User Module's method may not be called upon invocation through ORTModule.")
+        else:
+            if attribute_name not in torch_module_attributes and attribute_name in ortmodule_attributes:
+                # This is a user defined attribute that collides with ORTModule
+                if attribute_name in ortmodule_attributes:
+                    warnings.warn(f"User Module's attribute name {attribute_name} collides with ORTModule's attribute name. "
+                    "User Module's attribute may not be returned when trying to retrieve the attribute through ORTModule.")
