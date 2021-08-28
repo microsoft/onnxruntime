@@ -160,6 +160,11 @@ option(onnxruntime_BUILD_OPSCHEMA_LIB "Build op schema library" ON)
 # option to enable custom operators in onnxruntime-extensions
 option(onnxruntime_USE_EXTENSIONS "Build with onnxruntime-extensions for more features" OFF)
 
+# Enable registering custom op schemas from shared libraries in python environment.
+option(onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS "Enable registering user defined custom op schemas dynamically" OFF)
+
+set(ONNX_CUSTOM_PROTOC_EXECUTABLE "" CACHE STRING "Specify custom protoc executable to build ONNX")
+
 # pre-build python path
 option(onnxruntime_PREBUILT_PYTORCH_PATH "Path to pytorch installation dir")
 
@@ -1842,5 +1847,27 @@ endif()
 
 if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
   add_compile_definitions(DEBUG_NODE_INPUTS_OUTPUTS)
+endif()
+
+if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
+  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    message(FATAL_ERROR "External custom operator schemas feature is only supported on Linux")
+  endif()
+
+  if (NOT ${ONNX_CUSTOM_PROTOC_EXECUTABLE} STREQUAL "")
+    message(FATAL_ERROR "External custom operator schemas is not supported with the user specified protc executable")
+  endif()
+
+  if (NOT onnxruntime_ENABLE_TRAINING)
+    message(FATAL_ERROR "External custom operator schemas is supported only with --enable-training option")
+  endif()
+
+  add_custom_target(install_protobuf ALL DEPENDS protobuf::libprotobuf  protobuf::protoc)
+  add_custom_command(
+    TARGET install_protobuf
+    COMMAND ${CMAKE_COMMAND} -DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR} -P cmake_install.cmake
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/external/protobuf/cmake
+    COMMENT "Installing protobuf"
+  )
 endif()
 
