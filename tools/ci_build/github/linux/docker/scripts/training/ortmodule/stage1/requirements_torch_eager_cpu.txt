@@ -1,0 +1,4 @@
+--pre
+-f https://download.pytorch.org/whl/nightly/cpu/torch_nightly.html
+torch>=1.9.0
+setuptools>=41.4.0
