@@ -758,28 +758,28 @@ jobs:
     displayName: Setup Android E2E test project
     workingDirectory: $(Build.BinariesDirectory)
 
-  - script: |
-      python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
-        --android-sdk-root ${ANDROID_SDK_ROOT} \
-        --create-avd --system-image "system-images;android-30;google_apis;x86" \
-        --start --emulator-extra-args="-partition-size 4096" \
-        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-    displayName: Start Android emulator (x86)
+  # - script: |
+  #     python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
+  #       --android-sdk-root ${ANDROID_SDK_ROOT} \
+  #       --create-avd --system-image "system-images;android-30;google_apis;x86" \
+  #       --start --emulator-extra-args="-partition-size 4096" \
+  #       --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+  #   displayName: Start Android emulator (x86)
 
-  - script: |
-      set -e -x
-      cd android_test/android
-      $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest
-    displayName: Run E2E test for Android  (x86)
-    workingDirectory: $(Build.BinariesDirectory)
+  # - script: |
+  #     set -e -x
+  #     cd android_test/android
+  #     $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest
+  #   displayName: Run E2E test for Android  (x86)
+  #   workingDirectory: $(Build.BinariesDirectory)
 
-  - script: |
-      python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
-        --android-sdk-root ${ANDROID_SDK_ROOT} \
-        --stop \
-        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-    displayName: Stop Android emulator  (x86)
-    condition: always()
+  # - script: |
+  #     python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
+  #       --android-sdk-root ${ANDROID_SDK_ROOT} \
+  #       --stop \
+  #       --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+  #   displayName: Stop Android emulator  (x86)
+  #   condition: always()
 
   - script: |
       python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
