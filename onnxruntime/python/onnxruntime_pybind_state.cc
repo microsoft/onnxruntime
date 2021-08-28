@@ -36,7 +36,6 @@ const OrtDevice::DeviceType OrtDevice::GPU;
 
 namespace onnxruntime {
 
-
 }  // namespace onnxruntime
 
 #if defined(_MSC_VER)
@@ -303,13 +302,13 @@ static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExecutionProvider(
 
 #ifdef USE_CUDA
 const CUDAExecutionProviderInfo GetCudaExecutionProviderInfo(ProviderInfo_CUDA* cuda_provider_info,
-                                                             const ProviderOptionsMap& provider_options_map){
+                                                             const ProviderOptionsMap& provider_options_map) {
   ORT_ENFORCE(cuda_provider_info);
   const auto it = provider_options_map.find(kCudaExecutionProvider);
   CUDAExecutionProviderInfo info;
   if (it != provider_options_map.end())
     cuda_provider_info->CUDAExecutionProviderInfo__FromProviderOptions(it->second, info);
-  else{
+  else {
     info.device_id = cuda_device_id;
     info.gpu_mem_limit = gpu_mem_limit;
     info.arena_extend_strategy = arena_extend_strategy;
@@ -322,28 +321,29 @@ const CUDAExecutionProviderInfo GetCudaExecutionProviderInfo(ProviderInfo_CUDA* 
 #endif
 
 #ifdef USE_ROCM
-const ROCMExecutionProviderInfo GetROCMExecutionProviderInfo(const ProviderOptionsMap& provider_options_map){
+const ROCMExecutionProviderInfo GetROCMExecutionProviderInfo(const ProviderOptionsMap& provider_options_map) {
   const auto it = provider_options_map.find(kRocmExecutionProvider);
   return it != provider_options_map.end()
-            ? ROCMExecutionProviderInfo::FromProviderOptions(it->second)
-            : [&]() {
-                ROCMExecutionProviderInfo info{};
-                info.device_id = cuda_device_id;
-                info.gpu_mem_limit = gpu_mem_limit;
-                info.arena_extend_strategy = arena_extend_strategy;
-                info.external_allocator_info = external_allocator_info;
-                return info;
-              }();
+             ? ROCMExecutionProviderInfo::FromProviderOptions(it->second)
+             : [&]() {
+                 ROCMExecutionProviderInfo info{};
+                 info.device_id = cuda_device_id;
+                 info.gpu_mem_limit = gpu_mem_limit;
+                 info.arena_extend_strategy = arena_extend_strategy;
+                 info.external_allocator_info = external_allocator_info;
+                 return info;
+               }();
 }
 #endif
 
 std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
-  InferenceSession* sess,
-  const std::string& type,
-  const ProviderOptionsMap& provider_options_map){
+    InferenceSession* sess,
+    const std::string& type,
+    const ProviderOptionsMap& provider_options_map) {
   if (type == kCpuExecutionProvider) {
     return onnxruntime::CreateExecutionProviderFactory_CPU(
-                                        sess->GetSessionOptions().enable_cpu_mem_arena)->CreateProvider();
+               sess->GetSessionOptions().enable_cpu_mem_arena)
+        ->CreateProvider();
   } else if (type == kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
     std::string calibration_table, cache_path, lib_path;
@@ -499,21 +499,22 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
-    if(auto* cuda_provider_info = TryGetProviderInfo_CUDA())
-    {
-      const CUDAExecutionProviderInfo info = GetCudaExecutionProviderInfo(cuda_provider_info,
-                                                                    provider_options_map);
-      
-      // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
-      // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
-      // since FromProviderOptions might contain external CUDA allocator.
-      external_allocator_info = info.external_allocator_info;
-      return cuda_provider_info->CreateExecutionProviderFactory(info)->CreateProvider();
-    }
-    else
-    {
-      if(!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
-        ORT_THROW("CUDA_PATH is set but CUDA wasn't able to be loaded. Please install the correct version of CUDA and cuDNN as mentioned in the GPU requirements page, make sure they're in the PATH, and that your GPU is supported.");
+    // If the environment variable 'CUDA_UNAVAILABLE' exists, then we do not load cuda. This is set by _ld_preload for the manylinux case
+    // as in that case, trying to load the library itself will result in a crash due to the way that auditwheel strips dependencies.
+    if (Env::Default().GetEnvironmentVar("CUDA_UNAVAILABLE").empty()) {
+      if (auto* cuda_provider_info = TryGetProviderInfo_CUDA()) {
+        const CUDAExecutionProviderInfo info = GetCudaExecutionProviderInfo(cuda_provider_info,
+                                                                            provider_options_map);
+
+        // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
+        // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
+        // since FromProviderOptions might contain external CUDA allocator.
+        external_allocator_info = info.external_allocator_info;
+        return cuda_provider_info->CreateExecutionProviderFactory(info)->CreateProvider();
+      } else {
+        if (!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
+          ORT_THROW("CUDA_PATH is set but CUDA wasn't able to be loaded. Please install the correct version of CUDA and cuDNN as mentioned in the GPU requirements page, make sure they're in the PATH, and that your GPU is supported.");
+        }
       }
     }
 #endif
@@ -530,7 +531,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
   } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL
     return onnxruntime::CreateExecutionProviderFactory_Dnnl(
-      sess->GetSessionOptions().enable_cpu_mem_arena)->CreateProvider();
+               sess->GetSessionOptions().enable_cpu_mem_arena)
+        ->CreateProvider();
 #endif
   } else if (type == kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
@@ -622,18 +624,21 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       }
     }
     return onnxruntime::CreateExecutionProviderFactory_VITISAI(target.c_str(), 0,
-                                                                    export_runtime_module.c_str(),
-                                                                    load_runtime_module.c_str())->CreateProvider();
+                                                               export_runtime_module.c_str(),
+                                                               load_runtime_module.c_str())
+        ->CreateProvider();
 #endif
   } else if (type == kAclExecutionProvider) {
 #ifdef USE_ACL
     return onnxruntime::CreateExecutionProviderFactory_ACL(
-      sess->GetSessionOptions().enable_cpu_mem_arena)->CreateProvider();
+               sess->GetSessionOptions().enable_cpu_mem_arena)
+        ->CreateProvider();
 #endif
   } else if (type == kArmNNExecutionProvider) {
 #ifdef USE_ARMNN
     return onnxruntime::CreateExecutionProviderFactory_ArmNN(
-      sess->GetSessionOptions().enable_cpu_mem_arena)->CreateProvider();
+               sess->GetSessionOptions().enable_cpu_mem_arena)
+        ->CreateProvider();
 #endif
   } else if (type == kDmlExecutionProvider) {
 #ifdef USE_DML
@@ -666,9 +671,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
   } else if (type == kCoreMLExecutionProvider) {
 #if defined(USE_COREML)
 #if !defined(__APPLE__)
-      LOGS_DEFAULT(WARNING) << "CoreML execution provider can only be used to generate ORT format model in this build.";
+    LOGS_DEFAULT(WARNING) << "CoreML execution provider can only be used to generate ORT format model in this build.";
 #endif
-      return onnxruntime::CreateExecutionProviderFactory_CoreML(0)->CreateProvider();
+    return onnxruntime::CreateExecutionProviderFactory_CoreML(0)->CreateProvider();
 #endif
   } else {
     // check whether it is a dynamic load EP:
@@ -681,10 +686,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         ProviderOptions provider_options;
         std::string entry_symbol = kDefaultExecutionProviderEntry;
         for (auto option : it->second) {
-          if (option.first == kExecutionProviderSharedLibraryEntry){
+          if (option.first == kExecutionProviderSharedLibraryEntry) {
             entry_symbol = option.second;
-          }
-          else if (option.first != kExecutionProviderSharedLibraryPath){
+          } else if (option.first != kExecutionProviderSharedLibraryPath) {
             provider_options.insert(option);
           }
         }
@@ -755,7 +759,7 @@ static void RegisterCustomOpDomainsAndLibraries(PyInferenceSession* sess, const 
 }
 #endif
 
-void InitializeSession(InferenceSession* sess, 
+void InitializeSession(InferenceSession* sess,
                        ExecutionProviderRegistrationFn ep_registration_fn,
                        const std::vector<std::string>& provider_types,
                        const ProviderOptionsVector& provider_options,
@@ -1295,13 +1299,13 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .def(
           "initialize_session",
           [ep_registration_fn](PyInferenceSession* sess,
-             const std::vector<std::string>& provider_types = {},
-             const ProviderOptionsVector& provider_options = {},
-             const std::unordered_set<std::string>& disabled_optimizer_names = {}) {
+                               const std::vector<std::string>& provider_types = {},
+                               const ProviderOptionsVector& provider_options = {},
+                               const std::unordered_set<std::string>& disabled_optimizer_names = {}) {
             InitializeSession(sess->GetSessionHandle(),
                               ep_registration_fn,
-                              provider_types, 
-                              provider_options, 
+                              provider_types,
+                              provider_options,
                               disabled_optimizer_names);
           },
           R"pbdoc(Load a model saved in ONNX or ORT format.)pbdoc")
@@ -1524,14 +1528,13 @@ void CreateInferencePybindStateModule(py::module& m) {
   addOpSchemaSubmodule(m);
   addOpKernelSubmodule(m);
 #endif
-
 }
 
-void InitArray(){
+void InitArray() {
   ([]() -> void {
-      // import_array1() forces a void return value.
-      import_array1();
-    })();
+    // import_array1() forces a void return value.
+    import_array1();
+  })();
 }
 
 // static variable used to create inference session and training session.
