@@ -354,7 +354,7 @@ def parse_arguments():
     parser.add_argument(
         "--wasm_malloc", default="dlmalloc", help="Specify memory allocator for WebAssembly")
     parser.add_argument(
-        "--emsdk_version", default="2.0.23", help="Specify version of emsdk")
+        "--emsdk_version", default="2.0.26", help="Specify version of emsdk")
 
     # Enable onnxruntime-extensions
     parser.add_argument(
@@ -1295,20 +1295,20 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
             adb_push('onnx_test_runner', device_dir, cwd=cwd)
             adb_shell('chmod +x {}/onnx_test_runner'.format(device_dir))
             run_adb_shell('{0}/onnxruntime_test_all'.format(device_dir))
+
             if args.build_java:
-                adb_install(
-                    os.path.join(
-                        get_config_build_dir(build_dir, config),
-                        "java", "androidtest", "android", "app", "build", "outputs", "apk",
-                        "debug", "app-debug.apk"))
-                adb_install(
-                    os.path.join(
-                        get_config_build_dir(build_dir, config),
-                        "java", "androidtest", "android", "app", "build", "outputs", "apk",
-                        "androidTest", "debug", "app-debug-androidTest.apk"))
-                adb_shell(
-                    'am instrument -w ai.onnxruntime.example.javavalidator.test/androidx.test.runner.AndroidJUnitRunner'
-                    )
+                gradle_executable = 'gradle'
+                # use the gradle wrapper if it exists, the gradlew should be setup under <repo root>/java
+                gradlew_path = os.path.join(source_dir, 'java',
+                                            'gradlew.bat' if is_windows() else 'gradlew')
+                if os.path.exists(gradlew_path):
+                    gradle_executable = gradlew_path
+                android_test_path = os.path.join(cwd, "java", "androidtest", "android")
+                run_subprocess([gradle_executable, '--no-daemon',
+                                '-DminSdkVer={}'.format(args.android_api),
+                                'clean', 'connectedDebugAndroidTest'],
+                               cwd=android_test_path)
+
             if args.use_nnapi:
                 adb_shell('cd {0} && {0}/onnx_test_runner -e nnapi {0}/test'.format(device_dir))
             else:
@@ -2094,32 +2094,10 @@ def main():
             emsdk_dir = os.path.join(source_dir, "cmake", "external", "emsdk")
             emsdk_file = os.path.join(emsdk_dir, "emsdk.bat") if is_windows() else os.path.join(emsdk_dir, "emsdk")
 
-            # apply patch to emsdk/emsdk.py
-            #
-            # Note: this patch fixes bug in emsdk to install a single emscripten tool.
-            #
-            #       should remove patch file and remove "ignore = dirty" in .gitmodules once the following PR get
-            #       merged and included in a new release:
-            #         https://github.com/emscripten-core/emsdk/pull/834
-            shutil.copy(
-                os.path.join(SCRIPT_DIR, "wasm", "emsdk.py.patch"),
-                os.path.join(emsdk_dir, "emsdk.py"))
-
             log.info("Installing emsdk...")
             run_subprocess([emsdk_file, "install", emsdk_version], cwd=emsdk_dir)
             log.info("Activating emsdk...")
             run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
-
-            # apply patch to file_packager.py
-            #
-            # Note: this patch enables file_packager.py to generate JavaScript code to support preload files in Node.js
-            #
-            #       should remove patch file once the following PR get merged and included in a new release:
-            #         https://github.com/emscripten-core/emscripten/pull/11785   (merged, not release yet)
-            #         https://github.com/emscripten-core/emscripten/pull/14372   (merged, not release yet)
-            shutil.copy(
-                os.path.join(SCRIPT_DIR, "wasm", "file_packager.py.patch"),
-                os.path.join(emsdk_dir, "upstream", "emscripten", "tools", "file_packager.py"))
 
         if (args.android or args.ios or args.enable_windows_store or args.build_wasm
                 or is_cross_compiling_on_apple(args)) and args.path_to_protoc_exe is None:

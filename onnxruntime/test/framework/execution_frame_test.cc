@@ -106,8 +106,8 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
 }
 
 TEST_F(ExecutionFrameTest, OutputShapeValidationTest) {
-  onnxruntime::Model model("test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), 
-      {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Model model("test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                           {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model.MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -145,7 +145,7 @@ TEST_F(ExecutionFrameTest, OutputShapeValidationTest) {
   ASSERT_EQ(start_index, 0);
   TensorShape actual_shape_same_as_input(std::vector<int64_t>{2, 3});
   TensorShape actual_shape_diff_from_input(std::vector<int64_t>{2, 9});
-  
+
   OrtValue* p_ml_value = frame.GetMutableNodeInputOrOutputMLValue(0);
   ASSERT_TRUE(p_ml_value != nullptr);
 
@@ -467,6 +467,7 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
   }
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 TEST(ExecutionFrameTestInit, SparseInitializerAsOutput) {
 
   const std::vector<int64_t> dense_shape{3, 3};
@@ -508,6 +509,7 @@ TEST(ExecutionFrameTestInit, SparseInitializerAsOutput) {
     EXPECT_THAT(coo_view.Indices().DataAsSpan<int64_t>(), ::testing::ContainerEq(gsl::make_span(expected_linear_indices)));
   }
 }
+#endif // !defined(DISABLE_SPARSE_TENSORS)
 
 }  // namespace test
 }  // namespace onnxruntime

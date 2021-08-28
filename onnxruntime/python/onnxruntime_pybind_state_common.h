@@ -204,6 +204,10 @@ class SparseTensor;
 #endif
 namespace python {
 
+using ExecutionProviderRegistrationFn = std::function<void(InferenceSession*, 
+                                                           const std::vector<std::string>&,
+                                                           const ProviderOptionsMap&)>;
+
 // TODO remove deprecated global config
 extern OrtDevice::DeviceId cuda_device_id;
 // TODO remove deprecated global config
@@ -390,6 +394,7 @@ Environment& GetEnv();
 // Initialize an InferenceSession.
 // Any provider_options should have entries in matching order to provider_types.
 void InitializeSession(InferenceSession* sess,
+                       ExecutionProviderRegistrationFn ep_registration_fn,
                        const std::vector<std::string>& provider_types = {},
                        const ProviderOptionsVector& provider_options = {},
                        const std::unordered_set<std::string>& disabled_optimizer_names = {});
