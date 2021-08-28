@@ -1,2 +1,1 @@
-codechecker==6.16.0
 ninja==1.10.2
