@@ -76,7 +76,21 @@ void* CUDAExternalAllocator::Alloc(size_t size) {
 }
 
 void CUDAExternalAllocator::Free(void* p) {
+  std::lock_guard<OrtMutex> lock(lock_);
   free_(p);
+  auto it = reserved_.find(p);
+  if (it != reserved_.end()) {
+    reserved_.erase(it);
+    if (empty_cache_) empty_cache_();
+  }
+}
+
+void* CUDAExternalAllocator::Reserve(size_t size) {
+  std::lock_guard<OrtMutex> lock(lock_);
+  void* p = Alloc(size);
+  ORT_ENFORCE(reserved_.find(p) == reserved_.end());
+  reserved_.insert(p);
+  return p;
 }
 
 FencePtr CUDAAllocator::CreateFence(const SessionState* session_state) {

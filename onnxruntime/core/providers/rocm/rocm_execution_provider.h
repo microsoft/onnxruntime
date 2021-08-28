@@ -68,11 +68,11 @@ class ROCMExecutionProvider : public IExecutionProvider {
   void AddDeferredReleaseCPUPtr(void* p);
 
   template <typename T>
-  IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
+  IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, bool is_reserve = false) const {
     if (count_or_bytes == 0)
       return nullptr;
 
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes);
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes, is_reserve);
   }
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;

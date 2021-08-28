@@ -89,7 +89,8 @@ class SessionState {
                profiling::Profiler& profiler,
                bool use_deterministic_compute = false,
                bool enable_mem_reuse = true,
-               PrepackedWeightsContainer* prepacked_weights_container = nullptr)
+               PrepackedWeightsContainer* prepacked_weights_container = nullptr,
+               bool use_more_mem_for_conv = false)
       : graph_(graph),
         execution_providers_(execution_providers),
         logger_(logger),
@@ -100,7 +101,8 @@ class SessionState {
         data_transfer_mgr_(data_transfer_mgr),
         use_deterministic_compute_(use_deterministic_compute),
         enable_mem_reuse_(enable_mem_reuse),
-        prepacked_weights_container_(prepacked_weights_container) {
+        prepacked_weights_container_(prepacked_weights_container),
+        use_more_mem_for_conv_(use_more_mem_for_conv) {
 
     SetupAllocators();
   }
@@ -218,6 +220,8 @@ class SessionState {
                                        std::unique_ptr<MemoryPatternGroup> mem_patterns) const;
 
   bool GetUseDeterministicCompute() const { return use_deterministic_compute_; }
+
+  bool GetUseMoreMemForConv() const { return use_more_mem_for_conv_; }
 
   /**
   Get enable memory pattern flag
@@ -492,6 +496,8 @@ class SessionState {
   // the cache is valid until any session reliant on it is still in scope.
   // prepacked_weights_container_ can be nullptr if no caching is required for prepacked weights
   PrepackedWeightsContainer* const prepacked_weights_container_{};
+
+  bool use_more_mem_for_conv_;
 
 #if !defined(ORT_MINIMAL_BUILD)
   std::map<std::vector<int>, std::unordered_set<NodeIndex>> to_be_executed_nodes_;

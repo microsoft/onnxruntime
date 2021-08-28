@@ -3,7 +3,9 @@
 
 #pragma once
 
+#include <unordered_set>
 #include "core/framework/allocator.h"
+#include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {
 
@@ -25,20 +27,26 @@ class ROCMAllocator : public IAllocator {
 class ROCMExternalAllocator : public ROCMAllocator {
   typedef void* (*ExternalAlloc)(size_t size);
   typedef void (*ExternalFree)(void* p);
+  typedef void (*ExternalEmptyCache)();
 
  public:
-  ROCMExternalAllocator(OrtDevice::DeviceId device_id, const char* name, const void* alloc, const void* free)
+  ROCMExternalAllocator(OrtDevice::DeviceId device_id, const char* name, const void* alloc, const void* free, void* empty_cache)
       : ROCMAllocator(device_id, name) {
     alloc_ = reinterpret_cast<ExternalAlloc>(const_cast<void*>(alloc));
     free_ = reinterpret_cast<ExternalFree>(const_cast<void*>(free));
+    empty_cache_ = reinterpret_cast<ExternalEmptyCache>(empty_cache);
   }
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;
+  void* Reserve(size_t size) override;
 
  private:
+  mutable OrtMutex lock_;
   ExternalAlloc alloc_;
   ExternalFree free_;
+  ExternalEmptyCache empty_cache_;
+  std::unordered_set<void*> reserved_;
 };
 
 //TODO: add a default constructor

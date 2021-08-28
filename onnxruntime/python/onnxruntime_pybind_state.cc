@@ -1096,6 +1096,8 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           R"pbdoc(Graph optimization level for this session.)pbdoc")
       .def_readwrite("use_deterministic_compute", &PySessionOptions::use_deterministic_compute,
                      R"pbdoc(Whether to use deterministic compute. Default is false.)pbdoc")
+      .def_readwrite("use_more_mem_for_conv", &PySessionOptions::use_more_mem_for_conv,
+                     R"pbdoc(Whether to use more memory for Conv algo search. Default is false.)pbdoc")
       .def(
           "add_free_dimension_override_by_denotation",
           [](PySessionOptions* options, const char* dim_name, int64_t dim_value)

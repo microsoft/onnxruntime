@@ -888,6 +888,7 @@ void OpTester::Run(
   so.session_log_verbosity_level = 1;
   so.execution_mode = execution_mode;
   so.use_deterministic_compute = use_determinism_;
+  so.use_more_mem_for_conv = use_more_mem_for_conv_;
   so.graph_optimization_level = TransformerLevel::Default;  // 'Default' == off
   Run(so, expect_result, expected_failure_string, excluded_provider_types,
       run_options, execution_providers, options);

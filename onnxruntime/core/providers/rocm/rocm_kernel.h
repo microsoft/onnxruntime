@@ -48,8 +48,8 @@ class RocmKernel : public OpKernel {
   }
 
   template <typename T>
-  inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
-    return provider_->GetScratchBuffer<T>(count_or_bytes);
+  inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, bool is_reserve = false) const {
+    return provider_->GetScratchBuffer<T>(count_or_bytes, is_reserve);
   }
 
   inline void AddDeferredReleaseCPUPtr(void* p) const {

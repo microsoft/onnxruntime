@@ -14,15 +14,18 @@ namespace onnxruntime {
 struct ROCMExecutionProviderExternalAllocatorInfo {
   const void* alloc{nullptr};
   const void* free{nullptr};
+  void* empty_cache{nullptr};
 
   ROCMExecutionProviderExternalAllocatorInfo() {
     alloc = nullptr;
     free = nullptr;
+    empty_cache = nullptr;
   }
 
-  ROCMExecutionProviderExternalAllocatorInfo(void* a, void* f) {
+  ROCMExecutionProviderExternalAllocatorInfo(void* a, void* f, void* e) {
     alloc = a;
     free = f;
+    empty_cache = e;
   }
 
   bool UseExternalAllocator() const {

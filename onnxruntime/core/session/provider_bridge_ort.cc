@@ -729,6 +729,7 @@ struct ProviderHostImpl : ProviderHost {
   int OpKernelContext__OutputCount(const OpKernelContext* p) override { return p->OutputCount(); }
   Status OpKernelContext__GetTempSpaceAllocator(const OpKernelContext* p, AllocatorPtr* output) override { return p->GetTempSpaceAllocator(output); }
   bool OpKernelContext__GetUseDeterministicCompute(const OpKernelContext* p) override { return p->GetUseDeterministicCompute(); }
+  bool OpKernelContext__GetUseMoreMemForConv(const OpKernelContext* p) override { return p->GetUseMoreMemForConv(); }
   bool OpKernelContext__TryGetInferredOutputShape(const OpKernelContext* p, int index, TensorShape& shape) override { return p->TryGetInferredOutputShape(index, shape); }
   bool OpKernelContext__TryGetInferredInputShape(const OpKernelContext* p, int index, TensorShape& shape) override { return p->TryGetInferredInputShape(index, shape); }
 

@@ -110,6 +110,10 @@ struct SessionOptions {
   // Deterministic compute is likely not as performant. This option is default to false.
   bool use_deterministic_compute = false;
 
+  // By default the session uses fix memory size (32M) for Conv algo search, the final algo might not be the best.
+  // If this is set to true, try to use as much as possible memory for algo search.
+  bool use_more_mem_for_conv = false;
+
   // Stores the configurations for this session
   // To add an configuration to this session, call OrtApis::AddSessionConfigEntry
   // The configuration keys and value formats are defined in

@@ -41,6 +41,10 @@ class OpKernelContextInternal : public OpKernelContext {
     return session_state_.GetUseDeterministicCompute();
   }
 
+  bool GetUseMoreMemForConv() const override {
+    return session_state_.GetUseMoreMemForConv();
+  }
+
   const SessionState* SubgraphSessionState(const std::string& attribute_name) {
     return session_state_.GetSubgraphSessionState(GetNodeIndex(), attribute_name);
   }

@@ -107,6 +107,7 @@ int main(int argc, char* argv[]) {
       true,                              //use_per_session_threads
       true,                              //thread_pool_allow_spinning
       false,                             //use_deterministic_compute
+      false,                             //use_more_mem_for_conv
       {},                                //session_configurations
       {}                                 //initializers_to_share_map
   };

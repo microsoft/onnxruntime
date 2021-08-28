@@ -15,15 +15,18 @@ namespace onnxruntime {
 struct CUDAExecutionProviderExternalAllocatorInfo {
   void* alloc{nullptr};
   void* free{nullptr};
+  void* empty_cache{nullptr};
 
   CUDAExecutionProviderExternalAllocatorInfo() {
     alloc = nullptr;
     free = nullptr;
+    empty_cache = nullptr;
   }
 
-  CUDAExecutionProviderExternalAllocatorInfo(void* a, void* f) {
+  CUDAExecutionProviderExternalAllocatorInfo(void* a, void* f, void* e) {
     alloc = a;
     free = f;
+    empty_cache = e;
   }
 
   bool UseExternalAllocator() const {

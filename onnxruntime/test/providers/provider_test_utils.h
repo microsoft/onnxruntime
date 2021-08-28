@@ -731,6 +731,10 @@ class OpTester {
     use_determinism_ = use_determinism;
   }
 
+  void SetUseMoreMemForConv(bool more_mem_for_conv) {
+    use_more_mem_for_conv_ = more_mem_for_conv;
+  }
+
   void EnableSharingOfPrePackedWeightsAcrossSessions() {
     add_prepacked_shared_container_to_sessions_ = true;
   }
@@ -922,6 +926,8 @@ class OpTester {
   bool verify_output_;
 
   bool use_determinism_ = false;
+
+  bool use_more_mem_for_conv_ = false;
 
   CustomOutputVerifierFn custom_output_verifier_;
 

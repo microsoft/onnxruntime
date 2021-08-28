@@ -1332,7 +1332,8 @@ common::Status InferenceSession::Initialize() {
         session_profiler_,
         session_options_.use_deterministic_compute,
         session_options_.enable_mem_reuse,
-        prepacked_weights_container_);
+        prepacked_weights_container_,
+        session_options_.use_more_mem_for_conv);
 
     // Collect the kernel registries from execution provider instances;
     // There are 2 kinds of kernel registries with priority from high to low as below,
