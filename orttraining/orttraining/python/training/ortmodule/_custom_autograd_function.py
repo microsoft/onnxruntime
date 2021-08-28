@@ -3,7 +3,19 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-is_custom_autograd_function_enabled = False
+class Enabler(object):
+    def __init__(self):
+        self._state = False
+
+    @property
+    def state(self):
+        return self._state
+
+    @state.setter
+    def state(self, val):
+        self._state = val
+
+custom_autograd_function_enabler = Enabler()
 
 # Initialize static objects needed to run custom autograd.Function's.
 def enable_custom_autograd_support():
@@ -21,4 +33,4 @@ def enable_custom_autograd_support():
 
     register_custom_op_symbolic('::prim_PythonOp', _export, 1)
 
-    is_custom_autograd_function_enabled = True
+    custom_autograd_function_enabler.state = True

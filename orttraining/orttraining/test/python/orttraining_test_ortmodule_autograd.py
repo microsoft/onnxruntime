@@ -648,8 +648,8 @@ def test_InnerModuleCall():
             ctx.device = device
             ctx.inner = InnerModel(dim, device).to(device)
             if use_ort:
-                ctx.inner = ORTModule(ctx.inner)
                 enable_custom_autograd_function(ctx.inner)
+                ctx.inner = ORTModule(ctx.inner)
             z = ctx.inner(x)
             return z
 

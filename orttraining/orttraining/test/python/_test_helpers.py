@@ -229,8 +229,8 @@ def run_with_ort_on_device(device, model, input_list, label_input, is_eval_mode=
     with torch.no_grad():
         model = copy.deepcopy(model)
         model.to(device)
-    model = ORTModule(model)
     enable_custom_autograd_function(model)
+    model = ORTModule(model)
     if is_eval_mode:
         model.eval()
     else:
