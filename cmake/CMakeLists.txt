@@ -158,7 +158,7 @@ option(onnxruntime_ENABLE_EAGER_MODE "build ort eager mode")
 option(onnxruntime_BUILD_OPSCHEMA_LIB "Build op schema library" ON)
 
 # option to enable custom operators in onnxruntime-extensions
-option(onnxruntime_ENABLE_EXTENSION_CUSTOM_OPS "Enable custom operators in onnxruntime-extensions" OFF)
+option(onnxruntime_USE_EXTENSIONS "Build with onnxruntime-extensions for more features" OFF)
 
 # pre-build python path
 option(onnxruntime_PREBUILT_PYTORCH_PATH "Path to pytorch installation dir")
@@ -1293,18 +1293,9 @@ if (onnxruntime_USE_TVM)
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm)
 endif()
 
-if (onnxruntime_ENABLE_EXTENSION_CUSTOM_OPS)
-  # add compile definition to enable custom operators in onnxruntime-extensions
-  add_compile_definitions(ENABLE_EXTENSION_CUSTOM_OPS)
-
-  # set options for onnxruntime-extensions
-  set(OCOS_ENABLE_CTEST OFF CACHE INTERNAL "")
-  set(OCOS_ENABLE_STATIC_LIB ON CACHE INTERNAL "")
-  set(OCOS_ENABLE_SPM_TOKENIZER OFF CACHE INTERNAL "")
-  add_subdirectory(external/onnxruntime-extensions EXCLUDE_FROM_ALL)
-  # target library or executable are defined in CMakeLists.txt of onnxruntime-extensions
-  target_include_directories(ocos_operators PRIVATE ${RE2_INCLUDE_DIR} external/json/include)
-  target_include_directories(ortcustomops PUBLIC external/onnxruntime-extensions/shared)
+# onnxruntime-extensions
+if (onnxruntime_USE_EXTENSIONS)
+  include(extensions)
 endif()
 
 if (APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Android")
