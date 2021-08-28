@@ -1297,7 +1297,7 @@ Return Value:
     //
     // Use an external thread pool if one is provided.
     // TODO: change to use MlasExecuteThreaded
-    onnxruntime::concurrency::ThreadPool::TryBatchParallelFor(ThreadPool, static_cast<ptrdiff_t>(TotalChannelCount), [&](ptrdiff_t c) {
+    MLAS_THREADPOOL::TryBatchParallelFor(ThreadPool, static_cast<ptrdiff_t>(TotalChannelCount), [&](ptrdiff_t c) {
       PoolKernelRoutine(&WorkBlock, 1, Input + c * InputSize, Output + c * OutputSize);
     }, 0);
     return;

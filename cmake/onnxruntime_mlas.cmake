@@ -368,7 +368,24 @@ else()
   endif()
 endif()
 
-onnxruntime_add_static_library(onnxruntime_mlas ${mlas_common_srcs} ${mlas_platform_srcs})
+if (onnxruntime_BUILD_STANDALONE_MLAS_LIB)
+  # doesn't support build mlas as a shared lib in Win32 or Apple
+  if (onnxruntime_BUILD_SHARED_LIB AND NOT (WIN32 OR APPLE))
+    onnxruntime_add_shared_library(onnxruntime_mlas ${mlas_common_srcs} ${mlas_platform_srcs})
+  else()
+    onnxruntime_add_static_library(onnxruntime_mlas ${mlas_common_srcs} ${mlas_platform_srcs})
+  endif()
+
+  install(DIRECTORY ${ONNXRUNTIME_ROOT}/core/mlas/inc/  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/mlas)
+
+  install(TARGETS onnxruntime_mlas
+        ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
+else()
+  onnxruntime_add_static_library(onnxruntime_mlas ${mlas_common_srcs} ${mlas_platform_srcs})
+endif()
+
 target_include_directories(onnxruntime_mlas PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}/core/mlas/lib)
 set_target_properties(onnxruntime_mlas PROPERTIES FOLDER "ONNXRuntime")
 if (WIN32)
