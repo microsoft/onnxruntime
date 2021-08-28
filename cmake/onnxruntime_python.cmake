@@ -174,6 +174,8 @@ if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
     # Expect protobuf to follow onnx due to dependence
     list(INSERT  onnxruntime_CUSTOM_EXTERNAL_LIBRARIES ${ONNX_INDEX} "-Wl,--no-as-needed")
     list(INSERT onnxruntime_CUSTOM_EXTERNAL_LIBRARIES ${PROTOBUF_INDEX_NEXT} "-Wl,--as-needed")
+  else()
+    message(FATAL_ERROR "Required external libraries onnx and protobuf are not found in onnxruntime_EXTERNAL_LIBRARIES")
   endif()
   target_link_libraries(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CUSTOM_EXTERNAL_LIBRARIES})
 else()
