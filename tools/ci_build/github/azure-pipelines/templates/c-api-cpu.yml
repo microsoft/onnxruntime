@@ -742,7 +742,7 @@ jobs:
     inputs:
       buildType: 'current'
       artifactName: 'onnxruntime-android-aar'
-      patterns: 'onnxruntime-mobile-$(OnnxRuntimeVersion).aar'
+      patterns: '*.aar'
       targetPath: '$(Build.BinariesDirectory)/final-android-aar'
 
   - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(Build.SourcesDirectory)
