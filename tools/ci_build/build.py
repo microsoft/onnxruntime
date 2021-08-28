@@ -548,6 +548,11 @@ def parse_arguments():
     parser.add_argument('--eager_customop_header', default=None,
                         help='Header containing custom op definitions for eager mode.')
 
+    parser.add_argument(
+        "--enable_external_custom_op_schemas", action='store_true',
+        help="Enable registering user defined custom operation schemas at shared library load time.\
+              This feature is only supported/available on Ubuntu.")
+
     return parser.parse_args()
 
 
@@ -581,6 +586,11 @@ def get_linux_distro():
 def is_ubuntu_1604():
     dist, ver = get_linux_distro()
     return dist == 'Ubuntu' and ver.startswith('16.04')
+
+
+def is_ubuntu():
+    dist, _ = get_linux_distro()
+    return dist == 'Ubuntu'
 
 
 def get_config_build_dir(build_dir, config):
@@ -793,6 +803,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_WEBASSEMBLY_MALLOC=" + args.wasm_malloc,
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
+        "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS=" + ("ON" if args.enable_external_custom_op_schemas
+                                                              else "OFF"),
     ]
     # It should be default ON in CI build pipelines, and OFF in packaging pipelines.
     # And OFF for the people who are not actively developing onnx runtime.
@@ -2203,6 +2215,8 @@ def main():
                         args.eager_customop_header, args.eager_customop_module, True)
 
             gen_ort_ops()
+        if args.enable_external_custom_op_schemas and not is_ubuntu():
+            raise BuildError("Registering external custom op schemas is only supported on Ubuntu.")
 
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home, mpi_home, nccl_home,

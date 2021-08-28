@@ -1,0 +1,91 @@
+jobs:
+- job: Linux_Build
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool: Linux-CPU-2019
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - task: CmdLine@2
+    displayName: 'Docker build'
+    inputs:
+      script: |
+        docker build --pull -t onnxruntime-ubuntu \
+        --build-arg BUILD_USER=onnxruntimedev \
+        --build-arg BUILD_UID=$(id -u) \
+        --build-arg OS_VERSION=20.04 \
+        --build-arg PYTHON_VERSION=3.8 -f Dockerfile.ubuntu .
+      workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
+
+  - task: CmdLine@2
+    displayName: 'ONNXRuntime build'
+    inputs:
+      script: |
+        mkdir -p $HOME/.onnx
+        docker run --rm \
+          --volume /data/onnx:/data/onnx:ro \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntime-ubuntu \
+            /usr/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build \
+              --config Debug Release \
+              --parallel \
+              --build_wheel \
+              --skip_tests \
+              --enable_training \
+              --enable_external_custom_op_schemas
+      workingDirectory: $(Build.SourcesDirectory)
+
+  - task: CmdLine@2
+    displayName: 'Install Release python package'
+    inputs:
+      script: |
+         rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
+         python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
+
+  - task: CmdLine@2
+    displayName: 'Build and Install custom ops python package'
+    inputs:
+      script: |
+         python3 -m pip install pybind11
+         python3 -m pip install .
+      workingDirectory: $(Build.BinariesDirectory)/Release/external_custom_ops
+
+  - task: CmdLine@2
+    displayName: 'Test using external custom op module'
+    inputs:
+      script: |
+         python3 test.py
+      workingDirectory: $(Build.BinariesDirectory)/Release/external_custom_ops
+
+  - task: CmdLine@2
+    displayName: 'Install Debug python package'
+    inputs:
+      script: |
+         rm -rf $(Build.BinariesDirectory)/Debug/onnxruntime $(Build.BinariesDirectory)/Debug/pybind11
+         python3 -m pip uninstall -y onnxruntime-traning
+         python3 -m pip install $(Build.BinariesDirectory)/Debug/dist/*.whl
+
+  - task: CmdLine@2
+    displayName: 'Build and Install custom ops python package'
+    inputs:
+      script: |
+         python3 -m pip uninstall -y orttraining_external_custom_ops
+         python3 -m pip install .
+      workingDirectory: $(Build.BinariesDirectory)/Debug/external_custom_ops
+
+  - task: CmdLine@2
+    displayName: 'Test using external custom op module'
+    inputs:
+      script: |
+         python3 test.py
+      workingDirectory: $(Build.BinariesDirectory)/Debug/external_custom_ops
+
