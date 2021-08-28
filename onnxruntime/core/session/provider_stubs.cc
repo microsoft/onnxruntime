@@ -7,9 +7,11 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
 
+#if defined(__APPLE__) || defined(ORT_MINIMAL_BUILD) || !defined(USE_ROCM)
 static OrtStatus* CreateNotEnabledStatus(const std::string& ep) {
   return OrtApis::CreateStatus(ORT_FAIL, (ep + " execution provider is not enabled in this build. ").c_str());
 }
+#endif
 
 // we need stubs for functions called from C# when building an iOS app using Xamarin.
 // in that case a static ORT library is used and the symbol needs to exist but doesn't need to be publicly exported.

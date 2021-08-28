@@ -8,6 +8,7 @@
 #include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
 
+#include "core/common/parse_string.h"
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/agent/training_agent.h"
@@ -16,6 +17,12 @@
 #include "orttraining/core/framework/ortmodule_graph_builder.h"
 #include "orttraining/core/graph/gradient_definition_registry.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
+
+#include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
+
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+#include "orttraining/core/framework/torch/custom_function_register.h"
+#endif
 
 PYBIND11_MAKE_OPAQUE(std::vector<OrtValue>);
 PYBIND11_MAKE_OPAQUE(onnxruntime::OrtValueCache);
@@ -26,6 +33,8 @@ namespace py = pybind11;
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
 using namespace onnxruntime::training;
+
+Environment& GetTrainingORTEnv();
 
 struct TrainingParameters {
   std::string loss_output_name;
@@ -307,7 +316,7 @@ std::unordered_map<std::string, std::unordered_map<std::string, py::object>> Con
   return py_tensor_state;
 }
 
-void addObjectMethodsForTraining(py::module& m) {
+void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn) {
   py::class_<std::vector<OrtValue>>(m, "OrtValueVector")
       .def(py::init<>())
       .def("push_back", [](std::vector<OrtValue>* v, const OrtValue& ortvalue) {
@@ -423,6 +432,49 @@ void addObjectMethodsForTraining(py::module& m) {
   m.def("get_mpi_context_world_size", []() -> int { return MPIContext::GetInstance().GetWorldSize(); });
 #endif
 
+  m.def("register_aten_op_executor",
+        [](const std::string& is_tensor_argument_address_str, const std::string& aten_op_executor_address_str) -> void {
+          size_t is_tensor_argument_address_int, aten_op_executor_address_int;
+          ORT_THROW_IF_ERROR(
+              ParseStringWithClassicLocale(is_tensor_argument_address_str, is_tensor_argument_address_int));
+          ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(aten_op_executor_address_str, aten_op_executor_address_int));
+          void* p_is_tensor_argument = reinterpret_cast<void*>(is_tensor_argument_address_int);
+          void* p_aten_op_executor = reinterpret_cast<void*>(aten_op_executor_address_int);
+          contrib::aten_ops::ATenOperatorExecutor::Initialize(p_is_tensor_argument, p_aten_op_executor);
+        });
+  m.def("register_forward_runner", [](py::object obj) -> void {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.RegisterForwardRunner(obj.ptr());
+#else
+        ORT_UNUSED_PARAMETER(obj);
+#endif
+  });
+  m.def("register_backward_runner", [](py::object obj) -> void {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.RegisterBackwardRunner(obj.ptr());
+#else
+        ORT_UNUSED_PARAMETER(obj);
+#endif
+  });
+  m.def("register_torch_autograd_function", [](std::string key, py::object obj) -> void {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.RegisterTorchAutogradFunction(key, obj.ptr());
+#else
+        ORT_UNUSED_PARAMETER(key);
+        ORT_UNUSED_PARAMETER(obj);
+#endif
+  });
+  m.def("unregister_python_functions", []() -> void {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    // Release all custom python functions registered.
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.UnRegisterFunctions();
+#endif
+  });
+
   py::class_<TrainingConfigurationResult> config_result(m, "TrainingConfigurationResult", "pbdoc(Configuration result for training.)pbdoc");
   config_result.def(py::init())
       .def_property_readonly("loss_scale_input_name", [](const TrainingConfigurationResult& result) -> py::object {
@@ -442,11 +494,11 @@ void addObjectMethodsForTraining(py::module& m) {
   py::class_<PyTrainingSession, PyInferenceSession> training_session(m, "TrainingSession");
   training_session
       .def(py::init([](const PySessionOptions& so) {
-        Environment& env = GetEnv();
+        Environment& env = GetTrainingORTEnv();
         return std::make_unique<PyTrainingSession>(env, so);
       }))
       .def(py::init([]() {
-        Environment& env = GetEnv();
+        Environment& env = GetTrainingORTEnv();
         return std::make_unique<PyTrainingSession>(env, GetDefaultCPUSessionOptions());
       }))
       .def("finalize", [](py::object) {
@@ -459,7 +511,7 @@ void addObjectMethodsForTraining(py::module& m) {
 #endif
 #endif
       })
-      .def("load_model", [](PyTrainingSession* sess, const std::string& path, TrainingParameters& parameters, const std::vector<std::string>& provider_types, const ProviderOptionsVector& provider_options) {
+      .def("load_model", [ep_registration_fn](PyTrainingSession* sess, const std::string& path, TrainingParameters& parameters, const std::vector<std::string>& provider_types, const ProviderOptionsVector& provider_options) {
         OrtPybindThrowIfError(sess->GetSessionHandle()->Load(path));
 
 #if defined(USE_MPI)
@@ -469,11 +521,11 @@ void addObjectMethodsForTraining(py::module& m) {
 #endif
         const auto config_result = ConfigureSessionForTraining(static_cast<PipelineTrainingSession*>(sess->GetSessionHandle()), parameters);
 
-        InitializeSession(sess->GetSessionHandle(), provider_types, provider_options);
+        InitializeSession(sess->GetSessionHandle(), ep_registration_fn, provider_types, provider_options);
 
         return config_result;
       })
-      .def("read_bytes", [](PyTrainingSession* sess, const py::bytes& serialized_model, TrainingParameters& parameters, const std::vector<std::string>& provider_types, const ProviderOptionsVector& provider_options) {
+      .def("read_bytes", [ep_registration_fn](PyTrainingSession* sess, const py::bytes& serialized_model, TrainingParameters& parameters, const std::vector<std::string>& provider_types, const ProviderOptionsVector& provider_options) {
         std::istringstream buffer(serialized_model);
         OrtPybindThrowIfError(sess->GetSessionHandle()->Load(buffer));
 
@@ -484,7 +536,7 @@ void addObjectMethodsForTraining(py::module& m) {
 #endif
         const auto config_result = ConfigureSessionForTraining(static_cast<PipelineTrainingSession*>(sess->GetSessionHandle()), parameters);
 
-        InitializeSession(sess->GetSessionHandle(), provider_types, provider_options);
+        InitializeSession(sess->GetSessionHandle(), ep_registration_fn, provider_types, provider_options);
 
         return config_result;
       })
