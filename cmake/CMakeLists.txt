@@ -159,7 +159,6 @@ option(onnxruntime_BUILD_OPSCHEMA_LIB "Build op schema library" ON)
 
 # option to enable custom operators in onnxruntime-extensions
 option(onnxruntime_USE_EXTENSIONS "Build with onnxruntime-extensions for more features" OFF)
-option(onnxruntime_ENABLE_EXTENSION_CUSTOM_OPS "Enable custom operators in onnxruntime-extensions" OFF)
 
 # Enable registering custom op schemas from shared libraries in python environment.
 option(onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS "Enable registering user defined custom op schemas dynamically" OFF)

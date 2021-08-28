@@ -803,8 +803,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_WEBASSEMBLY_MALLOC=" + args.wasm_malloc,
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
-        # enable custom operators in onnxruntime-extensions
-        "-Donnxruntime_ENABLE_EXTENSION_CUSTOM_OPS=" + ("ON" if args.enable_onnxruntime_extensions else "OFF"),
         "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS=" + ("ON" if args.enable_external_custom_op_schemas
                                                               else "OFF"),
     ]
