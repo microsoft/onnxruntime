@@ -1,14 +1,15 @@
 #!/bin/bash 
 
-while getopts t: parameter
+while getopts t:i: parameter
 do case "${parameter}"
 in 
 t) TRT_CONTAINER=${OPTARG};;
+i) ANUBIS_IMAGE=${OPTARG};;
 esac
 done 
 
 # copying wheel over
-id=$(docker create ort-master)
+id=$(docker create $ANUBIS_IMAGE)
 docker cp $id:/code/onnxruntime/build/Linux/Release/dist/ ../
 docker rm -v $id
 
