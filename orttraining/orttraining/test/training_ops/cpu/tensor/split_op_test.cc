@@ -59,6 +59,40 @@ TEST(SplitTrainingOpTest, Axis0EqualSplitFloat) {
   SplitTrainingOpTester<float>(axis, {}, input, outputs);  
 }
 
+std::tuple<ShapeAndFloatData, std::vector<ShapeAndFloatData>> 
+Setup_Axis0EqualSplitFloat_N_inputs(const int num_outputs) {
+
+  float counter = 1.0f;
+  std::vector<float> data(4*num_outputs);
+  std::iota(data.begin(), data.end(), counter);
+  ShapeAndFloatData input = {{2*num_outputs, 2}, data};
+
+  data.resize(4);
+  std::vector<ShapeAndFloatData> outputs;
+  for (int i = 0; i < num_outputs; i++) { 
+    std::iota(data.begin(), data.end(), counter);
+    outputs.push_back({{2, 2}, data});
+    counter += (float)data.size();
+  }
+
+  // due to const on ShapeAndFloatData
+  return std::make_tuple(input, outputs);
+}
+
+// <=32 with same sizes passes output addresses as kernel args
+TEST(SplitTrainingOpTest, Axis0EqualSplitFloat_16_outputs) {
+  const int64_t axis = 0;
+  auto io = Setup_Axis0EqualSplitFloat_N_inputs(16);
+  SplitTrainingOpTester<float>(axis, {}, std::get<0>(io), std::get<1>(io));
+}
+ 
+// > 32 with same sizes passes output addresses as device buffer
+TEST(SplitTrainingOpTest, Axis0EqualSplitFloat_64_outputs) {
+  const int64_t axis = 0;
+  auto io = Setup_Axis0EqualSplitFloat_N_inputs(64);
+  SplitTrainingOpTester<float>(axis, {}, std::get<0>(io), std::get<1>(io));
+}
+
 TEST(SplitTrainingOpTest, Axis0UnequalSplitFloat) {
   const int64_t axis = 0;
   std::vector<ShapeAndFloatData> outputs;
