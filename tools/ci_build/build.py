@@ -550,7 +550,8 @@ def parse_arguments():
 
     parser.add_argument(
         "--enable_external_custom_op_schemas", action='store_true',
-        help="Enable registering user defined custom operation schemas at shared library load time")
+        help="Enable registering user defined custom operation schemas at shared library load time.\
+              This feature is only supported/available on Ubuntu.")
 
     return parser.parse_args()
 
@@ -586,6 +587,9 @@ def is_ubuntu_1604():
     dist, ver = get_linux_distro()
     return dist == 'Ubuntu' and ver.startswith('16.04')
 
+def is_ubuntu():
+    dist, _ = get_linux_distro()
+    return dist == 'Ubuntu'
 
 def get_config_build_dir(build_dir, config):
     # build directory per configuration
@@ -2211,6 +2215,8 @@ def main():
                         args.eager_customop_header, args.eager_customop_module, True)
 
             gen_ort_ops()
+        if args.enable_external_custom_op_schemas and not is_ubuntu():
+            raise BuildError("Registering external custom op schemas is only supported on Ubuntu.")
 
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home, mpi_home, nccl_home,
