@@ -60,13 +60,23 @@ jobs:
       workingDirectory: $(Build.BinariesDirectory)
 
   - task: CmdLine@2
+    displayName: 'Install Pybind11'
+    inputs:
+      script: |
+         docker exec -t \
+          -w  /build/Debug/external_custom_ops \
+          external_custom_ops_container \
+          /opt/python/cp38-cp38/bin/python3 -m pip install pybind11
+      workingDirectory: $(Build.BinariesDirectory)
+
+  - task: CmdLine@2
     displayName: 'Build and Install custom ops python package'
     inputs:
       script: |
          docker exec -t \
           -w  /build/Debug/external_custom_ops \
           external_custom_ops_container \
-          /bin/bash -c "/opt/python/cp38-cp38/bin/python3 -m pip install pybind11 && python3 -m pip install ."
+          /opt/python/cp38-cp38/bin/python3 -m pip install .
       workingDirectory: $(Build.BinariesDirectory)
 
   - task: CmdLine@2
@@ -96,7 +106,7 @@ jobs:
          docker exec -t \
           -w  /build/Debug/external_custom_ops \
           external_custom_ops_container \
-          /bin/bash -c "/opt/python/cp38-cp38/bin/python3 -m pip install pybind11 && python3 -m pip install ."
+          /opt/python/cp38-cp38/bin/python3 -m pip install .
       workingDirectory: $(Build.BinariesDirectory)
 
   - task: CmdLine@2
