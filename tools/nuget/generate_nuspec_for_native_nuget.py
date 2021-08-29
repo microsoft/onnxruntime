@@ -472,8 +472,8 @@ def generate_files(list, args):
         files_list.append('<file src=' + '"' + target_targets + '" target="build\\netstandard2.0" />')
 
         # Process xamarin targets files
-        monoandroid_source_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'targets', 'monoandroid10.0', 'targets.xml')
-        monoandroid_target_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'targets', 'monoandroid10.0',
+        monoandroid_source_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'targets', 'monoandroid11.0', 'targets.xml')
+        monoandroid_target_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'targets', 'monoandroid11.0',
                                                   args.package_name + '.targets')
         os.system(copy_command + ' ' + monoandroid_source_targets + ' ' + monoandroid_target_targets)
 
@@ -482,8 +482,8 @@ def generate_files(list, args):
                                                  args.package_name + '.targets')
         os.system(copy_command + ' ' + xamarinios_source_targets + ' ' + xamarinios_target_targets)
 
-        files_list.append('<file src=' + '"' + monoandroid_target_targets + '" target="build\\monoandroid10.0" />')
-        files_list.append('<file src=' + '"' + monoandroid_target_targets + '" target="buildTransitive\\monoandroid10.0" />')
+        files_list.append('<file src=' + '"' + monoandroid_target_targets + '" target="build\\monoandroid11.0" />')
+        files_list.append('<file src=' + '"' + monoandroid_target_targets + '" target="buildTransitive\\monoandroid11.0" />')
         files_list.append('<file src=' + '"' + xamarinios_target_targets + '" target="build\\xamarinios10" />')
         files_list.append('<file src=' + '"' + xamarinios_target_targets + '" target="buildTransitive\\xamarinios10" />')
 
