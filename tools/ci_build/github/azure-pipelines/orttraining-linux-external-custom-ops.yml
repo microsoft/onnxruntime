@@ -35,7 +35,7 @@ jobs:
     inputs:
       script: |
         mkdir -p $HOME/.onnx
-        docker exec -it \
+        docker exec -t \
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
@@ -55,7 +55,7 @@ jobs:
     inputs:
       script: |
          rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
-         docker exec -it external_custom_ops_container \
+         docker exec -t external_custom_ops_container \
             /bin/bash -c "/opt/python/cp38-cp38/bin/python3 -m pip install /build/Debug/dist/*.whl" 
       workingDirectory: $(Build.BinariesDirectory)
 
@@ -63,7 +63,7 @@ jobs:
     displayName: 'Build and Install custom ops python package'
     inputs:
       script: |
-         docker exec -it \
+         docker exec -t \
           -w  /build/Debug/external_custom_ops \
           external_custom_ops_container \
           /bin/bash -c "/opt/python/cp38-cp38/bin/python3 -m pip install pybind11 && python3 -m pip install .""
@@ -73,7 +73,7 @@ jobs:
     displayName: 'Test using external custom op module'
     inputs:
       script: |
-         docker exec -it \
+         docker exec -t \
           -w  /build/Debug/external_custom_ops \
           external_custom_ops_container \
           /opt/python/cp38-cp38/bin/python3 test.py
@@ -85,7 +85,7 @@ jobs:
     inputs:
       script: |
          rm -rf $(Build.BinariesDirectory)/Debug/onnxruntime $(Build.BinariesDirectory)/Debug/pybind11
-         docker exec -it external_custom_ops_container \
+         docker exec -t external_custom_ops_container \
             /bin/bash -c "/opt/python/cp38-cp38/bin/python3 -m pip install /build/Debug/dist/*.whl" 
       workingDirectory: $(Build.BinariesDirectory)
 
@@ -93,7 +93,7 @@ jobs:
     displayName: 'Build and Install custom ops python package'
     inputs:
       script: |
-         docker exec -it \
+         docker exec -t \
           -w  /build/Debug/external_custom_ops \
           external_custom_ops_container \
           /bin/bash -c "/opt/python/cp38-cp38/bin/python3 -m pip install pybind11 && python3 -m pip install .""
@@ -103,7 +103,7 @@ jobs:
     displayName: 'Test using external custom op module'
     inputs:
       script: |
-         docker exec -it \
+         docker exec -t \
           -w  /build/Debug/external_custom_ops \
           external_custom_ops_container \
           /opt/python/cp38-cp38/bin/python3 test.py
