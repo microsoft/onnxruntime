@@ -21,7 +21,7 @@ jobs:
     inputs:
       script: |
         docker run -it -d \
-          --name external_custom_ops_test_container \
+          --name external_custom_ops_container \
           --volume /data/onnx:/data/onnx:ro \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
@@ -39,7 +39,7 @@ jobs:
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          external_custom_ops_test_container \
+          external_custom_ops_container \
             /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build \
               --config Debug Release \
