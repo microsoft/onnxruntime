@@ -20,7 +20,7 @@ jobs:
     displayName: 'Create and start docker container'
     inputs:
       script: |
-        docker run --it -d \
+        docker run -it -d \
           --name external_custom_ops_test_container \
           --volume /data/onnx:/data/onnx:ro \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
@@ -108,3 +108,10 @@ jobs:
           external_custom_ops_container \
           /opt/python/cp38-cp38/bin/python3 test.py
       workingDirectory: $(Build.BinariesDirectory)
+
+  - task: CmdLine@2
+    displayName: 'Stop and remove docker container'
+    inputs:
+      script: |
+         docker stop external_custom_ops_container
+         docker rm external_custom_ops_container
