@@ -125,8 +125,8 @@ def generate_dependencies(list, package_name, version):
         if include_dml:
             list.append(dml_dependency)
         list.append('</group>')
-        # Support monoandroid10.0
-        list.append('<group targetFramework="monoandroid10.0">')
+        # Support monoandroid11.0
+        list.append('<group targetFramework="monoandroid11.0">')
         list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
         list.append('</group>')
         # Support xamarinios10
