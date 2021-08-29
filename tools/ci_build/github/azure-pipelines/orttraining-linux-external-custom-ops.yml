@@ -64,17 +64,17 @@ jobs:
     inputs:
       script: |
          docker exec -t -d \
-          -w  /build/Debug/external_custom_ops \
+          -w  /build/Release/external_custom_ops \
           external_custom_ops_container \
           /bin/bash -c "/opt/python/cp38-cp38/bin/python3 -m pip install pybind11 && python3 -m pip install .""
-      workingDirectory: $(Build.BinariesDirectory)/Release/external_custom_ops
+      workingDirectory: $(Build.BinariesDirectory)
 
   - task: CmdLine@2
     displayName: 'Test using external custom op module'
     inputs:
       script: |
          docker exec -t -d \
-          -w  /build/Debug/external_custom_ops \
+          -w  /build/Release/external_custom_ops \
           external_custom_ops_container \
           /opt/python/cp38-cp38/bin/python3 test.py
       workingDirectory: $(Build.BinariesDirectory)
