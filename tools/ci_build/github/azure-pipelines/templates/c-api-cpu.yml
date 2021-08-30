@@ -453,14 +453,13 @@ jobs:
     workingDirectory: '$(Build.ArtifactStagingDirectory)'
     displayName: 'Unzip files to sanitize the PE files'
 
-  - task: DotNetCoreCLI@2
-    displayName: 'Build C#'
+  - task: MSBuild@1
+    displayName: 'Clean C#'
     inputs:
-      command: custom
-      custom: clean
-      projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      platform: 'Any CPU'
       configuration: RelWithDebInfo
-      arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
+      arguments: '-t:Clean -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - task: BinSkim@4
