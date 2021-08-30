@@ -109,7 +109,7 @@ jobs:
   workspace:
     clean: all
   variables:
-    MACOSX_DEPLOYMENT_TARGET: '10.13'
+    MACOSX_DEPLOYMENT_TARGET: '10.14'
   pool:
     vmImage: 'macOS-10.15'
   timeoutInMinutes:  120
