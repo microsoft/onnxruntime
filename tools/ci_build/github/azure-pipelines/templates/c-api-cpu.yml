@@ -453,7 +453,11 @@ jobs:
     workingDirectory: '$(Build.ArtifactStagingDirectory)'
     displayName: 'Unzip files to sanitize the PE files'
 
-  - task: MSBuild@1
+  - powershell: |
+     Get-ChildItem env:
+    displayName: 'Dump ENV'
+
+    - task: MSBuild@1
     displayName: 'Clean C#'
     inputs:
       solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
@@ -470,7 +474,8 @@ jobs:
     inputs:
       userProvideBuildInfo: msBuildInfo
       msBuildArchitecture: DotNetCore
-      msBuildCommandline: 'env && msbuild.exe $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln --configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
+      # TODO: Find a build variable for the VS install path
+      msBuildCommandline: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\msbuild.exe $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln --configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
     condition: and(succeeded(), eq('${{ parameters.DoCompliance }}', true))
 
   - template: component-governance-component-detection-steps.yml
