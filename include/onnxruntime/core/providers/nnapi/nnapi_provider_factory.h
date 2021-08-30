@@ -44,10 +44,8 @@ enum NNAPIFlags {
 extern "C" {
 #endif
 
-// declared in include/onnxruntime/core/session/onnxruntime_c_api.h for convenience and so we can provide a graceful
-// error message if not enabled.
-// ORT_EXPORT ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Nnapi,
-//                           _In_ OrtSessionOptions* options, uint32_t nnapi_flags);
+ORT_EXPORT ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Nnapi,
+                          _In_ OrtSessionOptions* options, uint32_t nnapi_flags);
 
 #ifdef __cplusplus
 }

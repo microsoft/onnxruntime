@@ -5,6 +5,7 @@
 
 from .debug_options import DebugOptions, LogLevel
 from . import _utils, _io, _logger, torch_cpp_extensions as _cpp_ext, _onnx_models
+from ._custom_autograd_function import custom_autograd_function_enabler
 from ._custom_autograd_function_exporter import _post_process_after_export
 from ._graph_execution_interface import GraphExecutionInterface
 from ._fallback import (_FallbackManager,
@@ -23,6 +24,7 @@ from abc import ABC, abstractmethod
 import copy
 import io
 import inspect
+import os
 import onnx
 import onnxruntime
 import torch
@@ -125,10 +127,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._run_symbolic_shape_infer = True
 
         # PyTorch custom Autograd function support
-        self._enable_custom_autograd_function = False
-        if self._enable_custom_autograd_function:
-            from ._custom_autograd_function import enable_custom_autograd_support
-            enable_custom_autograd_support()
+        self._enable_custom_autograd_function = custom_autograd_function_enabler.state
 
         self._input_info = None
         self._module_output_schema = None
@@ -216,6 +215,10 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         self._onnx_models.optimized_model = onnx.load_model_from_string(
             self._graph_builder.get_model())
+
+        self._onnx_models.optimized_pre_grad_model = onnx.load_model_from_string(
+            self._graph_builder.get_inference_optimized_model())
+
         self._graph_info = self._graph_builder.get_graph_info()
 
     def _get_session_config(self):
@@ -250,6 +253,13 @@ class GraphExecutionManager(GraphExecutionInterface):
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
         session_options.log_severity_level = int(
             self._debug_options.logging.log_level)
+
+        if self._debug_options.save_onnx_models.save:
+            session_options.optimized_model_filepath = \
+                os.path.join(self._debug_options.save_onnx_models.path,
+                             _onnx_models._get_onnx_file_name(
+                                 self._debug_options.save_onnx_models.name_prefix,
+                                 'execution_model', self._export_mode))
 
         return session_options, providers, provider_options
 

@@ -53,5 +53,3 @@ onnxruntime/python/version_info.py
 /tools/perf_util/src/main/resources
 /orttraining/orttraining/eager/ort_aten.g.cpp
 /orttraining/orttraining/eager/ort_customops.g.cpp
-/csharp/tools/Microsoft.ML.OnnxRuntime.PerfTool/OnnxMl.cs
-/csharp/test/Microsoft.ML.OnnxRuntime.Tests/OnnxMl.cs

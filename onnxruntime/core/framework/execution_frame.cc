@@ -153,10 +153,12 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
                     "OrtValue shape verification failed. Current shape:", tensor.Shape(),
                     " Requested shape:", shape ? shape->ToString() : "null");
       } else if (p_ort_value->IsSparseTensor()) {
+#if !defined(DISABLE_SPARSE_TENSORS)
         const SparseTensor& sp_tensor = p_ort_value->Get<SparseTensor>();
         ORT_ENFORCE(shape && sp_tensor.DenseShape() == *shape,
                     "OrtValue shape verification failed. Current shape:", sp_tensor.DenseShape(),
                     " Requested shape:", shape ? shape->ToString() : "null");
+#endif
       }
     } else {
       // shape is nullptr for traditional ML output values
@@ -252,10 +254,11 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
     if (IsOutput(ort_value_index)) {
       std::string name;
       ORT_THROW_IF_ERROR(ort_value_idx_map_.GetName(ort_value_index, name));
-      const bool is_sparse_initializer = is_initializer_sparse_func(name);
       const Tensor& src = entry.second.Get<Tensor>();  // all initializers in ONNX are tensors
       OrtValue& dest = all_values_[ort_value_index];
 
+#if !defined(DISABLE_SPARSE_TENSORS)
+      const bool is_sparse_initializer = is_initializer_sparse_func(name);
       if (is_sparse_initializer) {
         if (!dest.IsAllocated()) {
           auto p_tensor = std::make_unique<SparseTensor>();
@@ -270,6 +273,7 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
                                                                 cpu_allocator, allocator, has_linear_coo_index,
                                                                 *dest.GetMutable<SparseTensor>()));
       } else {
+#endif  //  !defined(DISABLE_SPARSE_TENSORS)
         if (!dest.IsAllocated()) {
           // NOTE: This doesn't need to support ExecutionFrame custom allocators as they only come into play
           // for a subgraph with an output of unknown shape that needs to be accumulated by the control flow node.
@@ -278,7 +282,9 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
           Tensor::InitOrtValue(src.DataType(), src.Shape(), std::move(allocator), dest);
         }
         ORT_THROW_IF_ERROR(CopyTensor(src, *dest.GetMutable<Tensor>()));
+#if !defined(DISABLE_SPARSE_TENSORS)
       }
+#endif
     } else {
       all_values_[ort_value_index] = entry.second;
     }
@@ -327,6 +333,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
       planner_(nullptr) {
   Init(
       feed_mlvalue_idxs, feeds, session_state.GetInitializedTensors(),
+#if !defined(DISABLE_SPARSE_TENSORS)
       [&session_state](const std::string& name) -> bool {
         int idx = -1;
         if (session_state.GetOrtValueNameIdxMap().GetIdx(name, idx).IsOK()) {
@@ -334,7 +341,13 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
         }
         return false;
       },
+#else
+      [&](const std::string& /*name*/) -> bool {
+        return false;
+      },
+#endif
       fetches);
+
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   MemoryInfo::IncreaseIteration();
 #endif
@@ -355,7 +368,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
   // and we have execution plan generated, try to setup
   // memory pattern optimization.
   if (session_state.GetEnableMemoryPattern() && session_state.GetExecutionPlan()) {
-    std::vector<std::reference_wrapper<const TensorShape>> input_shapes;
+    std::vector<std::reference_wrapper<const TensorShape> > input_shapes;
     bool all_tensors = true;
     // Reserve mem to avoid re-allocation.
     input_shapes.reserve(feeds.size());
@@ -614,6 +627,7 @@ static Status AllocateTensorSequence(OrtValue& ort_value) {
   return Status::OK();
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 static Status AllocateSparseTensor(OrtValue& mlvalue, const DataTypeImpl& ml_type, AllocatorPtr allocator,
                                    const TensorShape& shape, bool create_fence,
                                    const SessionState& session_state) {
@@ -629,6 +643,7 @@ static Status AllocateSparseTensor(OrtValue& mlvalue, const DataTypeImpl& ml_typ
 
   return Status::OK();
 }
+#endif
 
 // This method is not thread safe!
 Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_value_index, const TensorShape* shape) {
@@ -705,8 +720,13 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
 
     return Status::OK();
   } else if (ml_type->IsSparseTensorType()) {
+#if !defined(DISABLE_SPARSE_TENSORS)
     return AllocateSparseTensor(ort_value, *ml_type, GetAllocator(alloc_info),
                                 *shape, per_alloc_plan.create_fence_if_async, session_state_);
+#else
+    // Model load should have failed so this should be unreachable
+    ORT_THROW("SparseTensor is not supported in this build.");
+#endif
   } else if (ml_type->IsTensorSequenceType()) {
     return AllocateTensorSequence(ort_value);
   } else {

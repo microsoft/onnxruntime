@@ -104,8 +104,10 @@ AllocatorPtr AllocatorManager::GetAllocator(int id, OrtMemType mem_type) const {
 
 template <>
 MLDataType DataTypeImpl::GetType<Tensor>() { return Provider_GetHost()->DataTypeImpl__GetType_Tensor(); }
+#if !defined(DISABLE_SPARSE_TENSORS)
 template <>
 MLDataType DataTypeImpl::GetType<SparseTensor>() { return Provider_GetHost()->DataTypeImpl__GetType_SparseTensor(); }
+#endif
 template <>
 MLDataType DataTypeImpl::GetType<TensorSeq>() { return Provider_GetHost()->DataTypeImpl__GetType_TensorSeq(); }
 MLDataType DataTypeImpl::GetTypeFromOnnxType(int onnx_type) { return Provider_GetHost()->DataTypeImpl__GetTypeFromOnnxType(onnx_type); }
@@ -164,6 +166,7 @@ MLDataType DataTypeImpl::GetTensorType<BFloat16>() { return Provider_GetHost()->
 template <>
 MLDataType DataTypeImpl::GetTensorType<MLFloat16>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_MLFloat16(); }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 template <>
 MLDataType DataTypeImpl::GetSparseTensorType<bool>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_bool(); }
 template <>
@@ -192,6 +195,7 @@ template <>
 MLDataType DataTypeImpl::GetSparseTensorType<BFloat16>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_BFloat16(); }
 template <>
 MLDataType DataTypeImpl::GetSparseTensorType<MLFloat16>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_MLFloat16(); }
+#endif
 
 Status IDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
   return g_host->IDataTransfer__CopyTensor(this, src, dst);
@@ -200,10 +204,11 @@ Status IDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
 Status IDataTransfer::CopyTensors(const std::vector<SrcDstPair>& src_dst_pairs) const {
   return g_host->IDataTransfer__CopyTensors(this, src_dst_pairs);
 }
-
+#if !defined(DISABLE_SPARSE_TENSORS)
 Status IDataTransfer::CopySparseTensors(const std::vector<SparseSrcDstPair>& src_dst_pairs) const {
   return g_host->IDataTransfer__CopySparseTensors(this, src_dst_pairs);
 }
+#endif
 
 const Node& OpKernel::Node() const { return g_host->OpKernel__Node(this); }
 
@@ -373,6 +378,7 @@ float halfToFloat(uint16_t h) { return g_host->math__halfToFloat(h); }
 }  // namespace math
 
 namespace sparse_utils {
+#if !defined(DISABLE_SPARSE_TENSORS)
 #if !defined(ORT_MINIMAL_BUILD)
 Status DenseTensorToSparseCsr(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
                               const AllocatorPtr& dst_allocator, SparseTensor& dst) {
@@ -388,11 +394,14 @@ Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const Spa
                               const AllocatorPtr& dst_allocator, Tensor& dst) {
   return g_host->sparse_utils__SparseCooToDenseTensor(data_manager, src, cpu_allocator, dst_allocator, dst);
 }
-#endif // ORT_MINIMAL_BUILD
+#endif  // !ORT_MINIMAL_BUILD
+
 Status DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
                               const AllocatorPtr& dst_allocator, bool linear_indexs, SparseTensor& dst) {
   return g_host->sparse_utils__DenseTensorToSparseCoo(data_manager, src, cpu_allocator, dst_allocator, linear_indexs, dst);
 }
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
+
 }  // namespace sparse_utils
 
 float MLFloat16::ToFloat() const {

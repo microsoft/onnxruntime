@@ -69,9 +69,9 @@ jobs:
         workingDirectory: $(Build.SourcesDirectory)
 
     - script: |
-       set -e -x       
+       set -e -x
        mkdir $(Build.ArtifactStagingDirectory)/testdata
-       cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata 
+       cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata
        ls -al $(Build.ArtifactStagingDirectory)
       displayName: 'Create Artifacts'
 
@@ -110,7 +110,7 @@ jobs:
     clean: all
   variables:
     MACOSX_DEPLOYMENT_TARGET: '10.13'
-  pool: 
+  pool:
     vmImage: 'macOS-10.15'
   timeoutInMinutes:  120
   steps:
@@ -141,7 +141,7 @@ jobs:
           commitId: $(OnnxRuntimeGitCommitHash)
 
     - script: |
-       set -e -x       
+       set -e -x
        mkdir $(Build.ArtifactStagingDirectory)/testdata
        cp $(Build.BinariesDirectory)/Release/libcustom_op_library.dylib $(Build.ArtifactStagingDirectory)/testdata
       displayName: 'Create Artifacts'
@@ -168,6 +168,9 @@ jobs:
       displayName: 'Clean Agent Directories'
       condition: always()
 
+- template: android-java-api-aar.yml
+  parameters:
+    buildConfig: 'Release'
 
 - template: win-ci.yml
   parameters:
@@ -259,7 +262,7 @@ jobs:
       buildType: 'current'
       artifactName: 'drop-onnxruntime-java-osx-x64'
       targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-x64'
- 
+
   - task: PowerShell@2
     displayName: 'PowerShell Script'
     inputs:
@@ -319,7 +322,7 @@ jobs:
     inputs:
       artifactName: 'onnxruntime-win-x86'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-      
+
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - NuGet'
     inputs:
@@ -619,7 +622,7 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |
-        mkdir test 
+        mkdir test
         pushd test
         jar xf $(Build.BinariesDirectory)\final-jar\testing.jar
         popd
@@ -679,7 +682,7 @@ jobs:
 - job: Final_Jar_Testing_MacOs
   workspace:
     clean: all
-  pool: 
+  pool:
     vmImage: 'macOS-10.15'
   variables:
   - name: runCodesignValidationInjection
@@ -712,6 +715,65 @@ jobs:
           DYLD_LIBRARY_PATH=./test:${DYLD_LIBRARY_PATH}
           java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.9.2.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
         workingDirectory: '$(Build.BinariesDirectory)/final-jar'
+
+  - template: component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
+- job: Final_AAR_Testing_Android
+  workspace:
+    clean: all
+  pool:
+    vmImage: 'macOS-10.15'
+  variables:
+  - name: runCodesignValidationInjection
+    value: false
+  timeoutInMinutes: 60
+  dependsOn:
+    - Android_Java_API_AAR_Packaging_Pipeline
+  steps:
+  - template: set-version-number-variables-step.yml
+
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Final Android AAR'
+    inputs:
+      buildType: 'current'
+      artifactName: 'onnxruntime-android-aar'
+      targetPath: '$(Build.BinariesDirectory)/final-android-aar'
+
+  - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(Build.SourcesDirectory)
+    displayName: Setup gradle wrapper to use gradle 6.8.3
+
+  - script: |
+      python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
+        --android-sdk-root ${ANDROID_SDK_ROOT} \
+        --create-avd --system-image "system-images;android-30;google_apis;x86_64" \
+        --start --emulator-extra-args="-partition-size 4096" \
+        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+    displayName: Start Android emulator
+
+  - script: |
+      set -e -x
+      mkdir android_test
+      cd android_test
+      cp -av $(Build.SourcesDirectory)/java/src/test/android ./
+      cd ./android
+      mkdir -p app/libs
+      cp $(Build.BinariesDirectory)/final-android-aar/onnxruntime-mobile-$(OnnxRuntimeVersion).aar app/libs/onnxruntime-mobile.aar
+      $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest
+    displayName: Run E2E test for Android
+    workingDirectory: $(Build.BinariesDirectory)
+
+  - script: |
+      python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
+        --android-sdk-root ${ANDROID_SDK_ROOT} \
+        --stop \
+        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+    displayName: Stop Android emulator
+    condition: always()
 
   - template: component-governance-component-detection-steps.yml
     parameters :
