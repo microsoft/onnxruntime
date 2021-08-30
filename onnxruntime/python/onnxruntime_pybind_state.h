@@ -5,12 +5,11 @@
 
 namespace onnxruntime {
 namespace python {
-namespace py = pybind11;
 
-void CreateInferencePybindStateModule(py::module& m);
+void addGlobalMethods(py::module& m, Environment& env);
+void addObjectMethods(py::module& m, Environment& env);
+void addOrtValueMethods(pybind11::module& m);
 
-PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
-  CreateInferencePybindStateModule(m);
-}
+
 }
 }

@@ -6,7 +6,7 @@
 from setuptools import setup, Extension
 from distutils import log as logger
 from distutils.command.build_ext import build_ext as _build_ext
-from glob import glob
+from glob import glob, iglob
 from os import path, getcwd, environ, remove, listdir
 from shutil import copyfile, copytree, rmtree
 import platform
@@ -14,6 +14,7 @@ import subprocess
 import sys
 import datetime
 
+from pathlib import Path
 nightly_build = False
 featurizers_build = False
 package_name = 'onnxruntime'
@@ -253,6 +254,15 @@ if not path.exists(README):
     raise FileNotFoundError("Unable to find 'README.rst'")
 with open(README) as f:
     long_description = f.read()
+
+# Include files in onnxruntime/external if --enable_external_custom_op_schemas build.sh command
+# line option is specified.
+# If the options is not specified this following condition fails as onnxruntime/external folder is not created in the
+# build flow under the build binary directory.
+if (path.isdir(path.join("onnxruntime", "external"))):
+    # Gather all files under onnxruntime/external directory.
+    extra.extend(list(str(Path(*Path(x).parts[1:])) for x in list(iglob(
+        path.join(path.join("onnxruntime", "external"), '**/*.*'), recursive=True))))
 
 packages = [
     'onnxruntime',

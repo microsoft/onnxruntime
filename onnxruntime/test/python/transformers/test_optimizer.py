@@ -164,7 +164,7 @@ class TestBertOptimization(unittest.TestCase):
     def test_gpt2_past_fp16(self):
         input_model_path = _get_test_model_path('gpt2_past')
         model = OnnxModel(load_model(input_model_path, format=None, load_external_data=True))
-        model.convert_model_float32_to_float16(cast_input_output=False, use_symbolic_shape_infer=False)
+        model.convert_float_to_float16(keep_io_types=False, use_symbolic_shape_infer=False)
         for input in model.graph().input[1:]:
             self.assertEqual(input.type.tensor_type.elem_type, TensorProto.FLOAT16)
         for output in model.graph().output:

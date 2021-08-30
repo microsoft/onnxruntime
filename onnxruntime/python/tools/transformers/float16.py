@@ -4,12 +4,18 @@
 #--------------------------------------------------------------------------
 
 # This file is modified from https://github.com/microsoft/onnxconverter-common/blob/master/onnxconverter_common/float16.py
+# Modifications: keep_io_types can be list of names; convert initializers if needed to preserve precision; add force_fp16_initializers option.
 
 import itertools
 import numpy as np
 import onnx
 from onnx import helper, numpy_helper
 from onnx import onnx_pb as onnx_proto
+from typing import List, Dict
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _npfloat16_to_int(np_list):
@@ -40,20 +46,20 @@ def convert_np_to_float16(np_array, min_positive_val=1e-7, max_finite_val=1e4):
 
 
 def convert_tensor_float_to_float16(tensor, min_positive_val=1e-7, max_finite_val=1e4):
-    '''
-    Convert tensor float to float16.
+    """Convert tensor float to float16.
 
-    :param tensor: TensorProto object
-    :return tensor_float16: converted TensorProto object
+    Args:
+        tensor (TensorProto): the tensor to convert.
+        min_positive_val (float, optional): minimal positive value. Defaults to 1e-7.
+        max_finite_val (float, optional): maximal finite value. Defaults to 1e4.
 
-    Example:
+    Raises:
+        ValueError: input type is not TensorProto.
 
-    ::
+    Returns:
+        TensorProto: the converted tensor.
+    """
 
-        from onnxmltools.utils.float16_converter import convert_tensor_float_to_float16
-        new_tensor = convert_tensor_float_to_float16(tensor)
-
-    '''
     if not isinstance(tensor, onnx_proto.TensorProto):
         raise ValueError('Expected input type is an ONNX TensorProto but got %s' % type(tensor))
 
@@ -89,37 +95,51 @@ DEFAULT_OP_BLOCK_LIST = [
 ]
 
 
+class InitializerTracker:
+    """Class for keeping track of initializer."""
+    def __init__(self, initializer: onnx_proto.TensorProto):
+        self.initializer = initializer
+        self.fp32_nodes = []
+        self.fp16_nodes = []
+
+    def add_node(self, node: onnx_proto.NodeProto, is_node_blocked):
+        if is_node_blocked:
+            self.fp32_nodes.append(node)
+        else:
+            self.fp16_nodes.append(node)
+
+
 def convert_float_to_float16(model,
                              min_positive_val=1e-7,
                              max_finite_val=1e4,
                              keep_io_types=False,
                              disable_shape_infer=False,
                              op_block_list=None,
-                             node_block_list=None):
-    '''
-    Convert tensor float type in the ONNX ModelProto input to tensor float16.
+                             node_block_list=None,
+                             force_fp16_initializers=False):
+    """Convert model tensor float type in the ONNX ModelProto input to tensor float16.
 
-    :param model: ONNX ModelProto object
-    :param disable_shape_infer: Type/shape information is needed for conversion to work.
-                                Set to True only if the model already has type/shape information for all tensors.
-    :return: converted ONNX ModelProto object
+    Args:
+        model (ModelProto): The ONNX model to convert.
+        min_positive_val (float, optional): minimal positive value. Defaults to 1e-7.
+        max_finite_val (float, optional): maximal finite value. Defaults to 1e4.
+        keep_io_types (Union[bool, List[str]], optional): It could be boolean or a list of float32 input/output names.
+                                                          If True, model inputs/outputs should be left as float32. Defaults to False.
+        disable_shape_infer (bool, optional): Skips running onnx shape/type inference. Useful if shape inference has been done. Defaults to False.
+        op_block_list (List[str], optional): List of op types to leave as float32.
+                                             Defaults to None, which will use `float16.DEFAULT_OP_BLOCK_LIST` as default.
+        node_block_list (List[str], optional): List of node names to leave as float32. Defaults to None.
+        force_fp16_initializers(bool): force converting all float initializers to float16.
+                                       Default to false, which will convert only the one needed to avoid precision loss.
+    Raises:
+        ValueError: input type is not ModelProto.
 
-    Examples:
+    Returns:
+        ModelProto: converted model.
+    """
+    assert min_positive_val >= 5.96e-08, "invalid min_positive_val. smallest positive float16 value: subnormal 5.96e-08, and normalized 6.104e-05"
+    assert max_finite_val <= float(np.finfo(np.float16).max), "invalid max_finite_val. largest float16 value: 65504"
 
-    ::
-
-        Example 1: Convert ONNX ModelProto object:
-        from onnxmltools.utils.float16_converter import convert_float_to_float16
-        new_onnx_model = convert_float_to_float16(onnx_model)
-
-        Example 2: Convert ONNX model binary file:
-        from onnxmltools.utils.float16_converter import convert_float_to_float16
-        from onnxmltools.utils import load_model, save_model
-        onnx_model = load_model('model.onnx')
-        new_onnx_model = convert_float_to_float16(onnx_model)
-        save_model(new_onnx_model, 'new_model.onnx')
-
-    '''
     func_infer_shape = None
     if not disable_shape_infer and onnx.__version__ >= '1.2':
         try:
@@ -156,7 +176,6 @@ def convert_float_to_float16(model,
     if isinstance(keep_io_types, list):
         fp32_inputs = [n for n in fp32_inputs if n in keep_io_types]
         fp32_outputs = [n for n in fp32_outputs if n in keep_io_types]
-        print("keep_io_types", keep_io_types, "fp32_inputs", fp32_inputs, "fp32_outputs", fp32_outputs)
     elif not keep_io_types:
         fp32_inputs = []
         fp32_outputs = []
@@ -195,7 +214,7 @@ def convert_float_to_float16(model,
             value_info_list.append(new_value_info)
             io_casts.add(node_name)
 
-    fp32_initializer_counters = {}
+    fp32_initializers: Dict[str, InitializerTracker] = {}
     while queue:
         next_level = []
         for q in queue:
@@ -206,8 +225,8 @@ def convert_float_to_float16(model,
             if isinstance(q, onnx_proto.GraphProto):
                 for n in q.initializer:  # TensorProto type
                     if n.data_type == onnx_proto.TensorProto.FLOAT:
-                        fp32_initializer_counters[n.name] = [0,
-                                                             0]  # two counters: used by fp16 nodes, used by fp32 nodes
+                        assert n.name not in fp32_initializers
+                        fp32_initializers[n.name] = InitializerTracker(n)
 
                 for n in q.node:
                     # if n is in the block list (doesn't support float16), no conversion for the node,
@@ -223,8 +242,8 @@ def convert_float_to_float16(model,
 
                     is_node_blocked = n.op_type in op_block_list or n.name in node_block_list
                     for input in n.input:
-                        if input in fp32_initializer_counters:
-                            fp32_initializer_counters[input][int(is_node_blocked)] += 1
+                        if input in fp32_initializers:
+                            fp32_initializers[input].add_node(n, is_node_blocked)
 
                     if is_node_blocked:
                         node_list.append(n)
@@ -245,17 +264,9 @@ def convert_float_to_float16(model,
                 q.t.CopyFrom(convert_tensor_float_to_float16(q.t, min_positive_val, max_finite_val))
                 for n in q.tensors:
                     n = convert_tensor_float_to_float16(n, min_positive_val, max_finite_val)
-            # if q is graph, process graph.initializer(TensorProto), input, output and value_info (ValueInfoProto)
+            # if q is graph, process input, output and value_info (ValueInfoProto)
             if isinstance(q, onnx_proto.GraphProto):
-                for n in q.initializer:  # TensorProto type
-                    if n.data_type == onnx_proto.TensorProto.FLOAT:
-                        # TODO: handle initializer that used by subgraph
-                        if fp32_initializer_counters[n.name][1] == 0:  # not used by fp32 node
-                            n = convert_tensor_float_to_float16(n, min_positive_val, max_finite_val)
-                            value_info_list.append(make_value_info_from_tensor(n))
-                        else:
-                            # TODO: add a cast node to handle the case that an intiailizer is used by both fp32 and fp16 nodes
-                            assert fp32_initializer_counters[n.name][0] == 0
+                # Note that float initializers tracked by fp32_initializers will be processed later.
                 # for all ValueInfoProto with tensor(float) type in input, output and value_info, convert them to
                 # tensor(float16) except map and seq(map). And save them in value_info_list for further processing
                 for n in itertools.chain(q.input, q.output, q.value_info):
@@ -264,6 +275,16 @@ def convert_float_to_float16(model,
                             n.type.tensor_type.elem_type = onnx_proto.TensorProto.FLOAT16
                             value_info_list.append(n)
         queue = next_level
+
+    for key, value in fp32_initializers.items():
+        # By default, to avoid precision loss, do not convert an initializer to fp16 when it is used only by fp32 nodes.
+        if force_fp16_initializers or value.fp16_nodes:
+            value.initializer = convert_tensor_float_to_float16(value.initializer, min_positive_val, max_finite_val)
+            value_info_list.append(make_value_info_from_tensor(value.initializer))
+            if value.fp32_nodes and not force_fp16_initializers:
+                logger.info(
+                    "initializer is used by both fp32 and fp16 nodes. Consider add these nodes to block list:{}".format(
+                        value.fp16_nodes))
 
     # process the nodes in block list that doesn't support tensor(float16)
     for node in node_list:
@@ -307,38 +328,3 @@ def convert_float_to_float16(model,
                     node.output[i] = input_name
                     break
     return model
-
-
-def convert_float_to_float16_model_path(model_path, min_positive_val=1e-7, max_finite_val=1e4, keep_io_types=False):
-    '''
-    Convert tensor float type in the ONNX Model to tensor float16.
-    *It is to fix an issue that infer_shapes func cannot be used to infer >2GB models.
-    *But this function can be applied to all model sizes.
-    :param model_path: ONNX Model path
-    :return: converted ONNX ModelProto object
-    Examples
-    ::
-        #Convert to ONNX ModelProto object and save model binary file:
-        from onnxmltools.utils.float16_converter import convert_float_to_float16_model_path
-        new_onnx_model = convert_float_to_float16_model_path('model.onnx')
-        onnx.save(new_onnx_model, 'new_model.onnx')
-    '''
-
-    disable_shape_infer = False
-    if onnx.__version__ >= '1.8':
-        try:
-            # infer_shapes_path can be applied to all model sizes
-            from onnx.shape_inference import infer_shapes_path
-            import tempfile
-            import os
-            # shape_infer_model_path should be in the same folder of model_path
-            with tempfile.NamedTemporaryFile(dir=os.path.dirname(model_path)) as tmpfile:
-                shape_infer_model_path = tmpfile.name
-                infer_shapes_path(model_path, shape_infer_model_path)
-                model = onnx.load(shape_infer_model_path)
-                disable_shape_infer = True
-        finally:
-            pass
-    if not disable_shape_infer:
-        model = onnx.load(model_path)
-    return convert_float_to_float16(model, min_positive_val, max_finite_val, keep_io_types, disable_shape_infer)
