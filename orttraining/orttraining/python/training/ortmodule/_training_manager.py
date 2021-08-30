@@ -67,7 +67,8 @@ class TrainingManager(GraphExecutionManager):
         try:
             # Exporting module to ONNX for the first time
             build_gradient_graph = False
-            if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) == False:
+            if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) == False or \
+                not self._onnx_models.exported_model:
                 build_gradient_graph = self._export_model(*inputs, **kwargs)
                 if build_gradient_graph:
                     # If model was exported, then initialize the graph builder
@@ -93,7 +94,8 @@ class TrainingManager(GraphExecutionManager):
                     self._build_graph()
 
             create_execution_session = False
-            if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT) == False:
+            if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT) == False or \
+                not self._execution_agent:
                 device = _utils.get_device_from_module(self._original_module) or \
                     _utils.get_device_from_inputs(inputs, kwargs)
                 # The _training_session/_inference_session should be created every time
@@ -106,14 +108,6 @@ class TrainingManager(GraphExecutionManager):
                 # Create execution session creates the training_session
                 self._create_execution_agent()
 
-                # disable some checks after execution session is created the first time
-                if self._skip_check.is_disabled() == False:
-                    self._skip_check = _SkipCheck.SKIP_CHECK_BUILD_GRADIENT | _SkipCheck.SKIP_CHECK_EXECUTION_AGENT | _SkipCheck.SKIP_CHECK_DEVICE
-
-                    if self._debug_options.logging.log_level <= _logger.LogLevel.WARNING:
-                        warnings.warn("Fast path enabled - skipping checks for rebuilding gradient graph, execution agent creation, and device during training.",
-                                      UserWarning)
-                
                 self._gradient_accumulation_manager.initialize(self._enable_grad_acc_optimization, self._flattened_module, self._graph_info)
         
             self._gradient_accumulation_manager.maybe_update_cache_before_run()
