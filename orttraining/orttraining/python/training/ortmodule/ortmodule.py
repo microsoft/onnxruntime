@@ -294,7 +294,7 @@ class ORTModule(torch.nn.Module):
             assert '_torch_module' in self.__dict__, "ORTModule does not have a reference to the user's model"
             return getattr(self.module, name)
         else:
-            super(ORTModule, self).__getattr__(name)
+            return super(ORTModule, self).__getattr__(name)
 
     def __setattr__(self, name: str, value) -> None:
 
