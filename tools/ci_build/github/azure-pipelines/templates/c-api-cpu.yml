@@ -455,9 +455,9 @@ jobs:
 
   - powershell: |
      Get-ChildItem env:
-    displayName: 'Dump ENV'
+    displayName: 'Dump env'
 
-    - task: MSBuild@1
+  - task: MSBuild@1
     displayName: 'Clean C#'
     inputs:
       solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
