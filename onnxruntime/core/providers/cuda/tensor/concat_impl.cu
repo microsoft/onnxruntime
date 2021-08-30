@@ -19,18 +19,18 @@ __global__ void _ConcatKernelSameConcatDim(const fast_divmod block_size_includin
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   CUDA_LONG input_pos = 0;
 
-  int outter_block_index = 0;
+  int outer_block_index = 0;
   int block_index = 0;
   int offset = 0;
 
-  block_size_including_axis_dim_div.divmod(id, outter_block_index, offset);
+  block_size_including_axis_dim_div.divmod(id, outer_block_index, offset);
   block_size_inside_axis_dim_div.divmod(offset, block_index, offset);
 
   int input_index = 0;
   int block_offset = 0;
   concat_dim_size.divmod(block_index, input_index, block_offset);
 
-  input_pos = (outter_block_index * concat_dim_size.d_ + block_offset) *
+  input_pos = (outer_block_index * concat_dim_size.d_ + block_offset) *
                 block_size_inside_axis_dim_div.d_ +
                 offset;
 
@@ -123,18 +123,18 @@ __global__ void _ConcatKernel(const fast_divmod block_size_including_axis_dim_di
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   CUDA_LONG input_pos = 0;
 
-  int outter_block_index = 0;
+  int outer_block_index = 0;
   int block_index = 0;
   int offset = 0;
 
-  block_size_including_axis_dim_div.divmod(id, outter_block_index, offset);
+  block_size_including_axis_dim_div.divmod(id, outer_block_index, offset);
   block_size_inside_axis_dim_div.divmod(offset, block_index, offset);
 
   int input_index = axis_dimension_input_output_mapping[block_index];
   int64_t range_left = (input_index == 0) ? 0 : concat_sizes_range[input_index - 1];
   int block_offset = block_index - range_left;
 
-  input_pos = (outter_block_index * concat_sizes[input_index] + block_offset) *
+  input_pos = (outer_block_index * concat_sizes[input_index] + block_offset) *
                block_size_inside_axis_dim_div.d_ +
                offset;
 

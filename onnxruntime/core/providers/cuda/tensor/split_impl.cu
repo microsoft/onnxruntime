@@ -19,18 +19,18 @@ __global__ void _SplitKernelSameSplitDim(const fast_divmod block_size_including_
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   CUDA_LONG output_pos = 0;
 
-  int outter_block_index = 0;
+  int outer_block_index = 0;
   int block_index = 0;
   int offset = 0;
 
-  block_size_including_axis_dim_div.divmod(id, outter_block_index, offset);
+  block_size_including_axis_dim_div.divmod(id, outer_block_index, offset);
   block_size_inside_axis_dim_div.divmod(offset, block_index, offset);
 
   int output_index = 0;
   int block_offset = 0;
   split_dim_size.divmod(block_index, output_index, block_offset);
 
-  output_pos = (outter_block_index * split_dim_size.d_ + block_offset) * 
+  output_pos = (outer_block_index * split_dim_size.d_ + block_offset) * 
                block_size_inside_axis_dim_div.d_ +
                offset;
 
@@ -126,18 +126,18 @@ __global__ void _SplitKernel(const fast_divmod block_size_including_axis_dim_div
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   CUDA_LONG output_pos = 0;
 
-  int outter_block_index = 0;
+  int outer_block_index = 0;
   int block_index = 0;
   int offset = 0;
 
-  block_size_including_axis_dim_div.divmod(id, outter_block_index, offset);
+  block_size_including_axis_dim_div.divmod(id, outer_block_index, offset);
   block_size_inside_axis_dim_div.divmod(offset, block_index, offset);
 
   int output_index = axis_dimension_input_output_mapping[block_index];
   int64_t range_left = (output_index == 0) ? 0 : split_sizes_range[output_index - 1];
   int block_offset = block_index - range_left;
 
-  output_pos = (outter_block_index * split_sizes[output_index] + block_offset) * 
+  output_pos = (outer_block_index * split_sizes[output_index] + block_offset) * 
                block_size_inside_axis_dim_div.d_ +
                offset;
 
