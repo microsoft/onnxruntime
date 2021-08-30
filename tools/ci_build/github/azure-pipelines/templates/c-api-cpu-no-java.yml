@@ -373,7 +373,7 @@ jobs:
     displayName: 'Run Roslyn Analyzers'
     inputs:
       userProvideBuildInfo: msBuildInfo
-      msBuildArchitecture: DotNetCore
+      # msBuildArchitecture: DotNetCore
       msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\msbuild.exe" $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln --configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
     condition: and(succeeded(), eq('${{ parameters.DoCompliance }}', true))
 
