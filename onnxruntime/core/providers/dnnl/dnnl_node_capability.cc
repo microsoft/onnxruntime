@@ -8,12 +8,12 @@ namespace onnxruntime {
 // DnnlDefaultNodeCapability class
 //-------------------------------------
 DnnlDefaultNodeCapability::DnnlDefaultNodeCapability() {
-  inputTypes_.push_back("float");
+  inputTypes_.push_back(type_float32);
 }
 
-DnnlDefaultNodeCapability::DnnlDefaultNodeCapability(std::vector<std::string> inputTypes) {
-  for (std::string s : inputTypes)
-    inputTypes_.push_back(s);
+DnnlDefaultNodeCapability::DnnlDefaultNodeCapability(std::vector<ORT_DataType> inputTypes) {
+  for (ORT_DataType datatype : inputTypes)
+    inputTypes_.push_back(datatype);
 }
 
 bool DnnlDefaultNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
@@ -24,22 +24,12 @@ bool DnnlDefaultNodeCapability::Supported(const Node* node, const GraphViewer& g
 
 bool DnnlDefaultNodeCapability::IsTypeSupported(const Node* node) const {
   auto node_inputs = node->InputDefs();
-  if (!node_inputs.empty() && node_inputs[0]->Type() != nullptr) {
-    constexpr size_t TENSOR_PREFIX_LEN = 7; //Precomputed value of std::string("tensor(").length()
+  if (!node_inputs.empty() && node_inputs[0]->TypeAsProto() != nullptr) {
+    auto node_datatype = node_inputs[0]->TypeAsProto()->tensor_type().elem_type();
     for (auto inputType : inputTypes_) {
-      // Check for string "tensor(data_type)"
-      // Exact length check done for 2 reasons to avoid the out_of_range exception from the compare call and
-      // to check that the string ends in ')'.  This will prevent false matching "float" data type for "float16" data type.
-      // The "+ 1" in the formula is to account for the ending ')' in the string length.
-      // check that the node_inputs[0]->Type() string after the prefix "tensor(" matches the inputType.
-      if ((TENSOR_PREFIX_LEN + inputType.length() + 1 ) == node_inputs[0]->Type()->length() &&
-          node_inputs[0]->Type()->compare(TENSOR_PREFIX_LEN, inputType.length(), inputType) == 0) {
+      if (inputType == node_datatype) {
         return true;
       }
-      if (node_inputs[0]->Type()->compare(inputType) == 0) {
-        return true;
-      }
-
     }
   }
   return false;
@@ -47,11 +37,11 @@ bool DnnlDefaultNodeCapability::IsTypeSupported(const Node* node) const {
 
 // DnnlDefaultMultiInputNodeCapability
 //-------------------------------------
-DnnlDefaultMultiInputNodeCapability::DnnlDefaultMultiInputNodeCapability(std::vector<std::vector<std::string>> inputTypes) {
+DnnlDefaultMultiInputNodeCapability::DnnlDefaultMultiInputNodeCapability(std::vector<std::unordered_set<ORT_DataType>> inputTypes) {
   for (auto outer : inputTypes) {
-    std::vector<std::string> per_tensor_types;
-    for (auto s : outer) {
-      per_tensor_types.push_back(s);
+    std::unordered_set<ORT_DataType> per_tensor_types;
+    for (auto inputType : outer) {
+      per_tensor_types.insert(inputType);
     }
     inputTypes_.push_back(per_tensor_types);
   }
@@ -65,28 +55,13 @@ bool DnnlDefaultMultiInputNodeCapability::Supported(const Node* node, const Grap
 
 bool DnnlDefaultMultiInputNodeCapability::IsTypeSupported(const Node* node) const {
   auto node_inputs = node->InputDefs();
-  bool all_inputs_supported = false;
+  bool all_inputs_supported = true;
   if (!node_inputs.empty() ) {
-  std::vector<bool> input_supported(node_inputs.size(), false);
+    std::vector<bool> input_supported(node_inputs.size(), false);
     for (size_t i = 0; i < node_inputs.size(); ++i) {
-      if (node_inputs[i]->Type() != nullptr) {
-        constexpr size_t TENSOR_PREFIX_LEN = 7;  //Precomputed value of std::string("tensor(").length()
-        for (auto inputType : inputTypes_[i]) {
-          // Check for string "tensor(data_type)"
-          // Exact length check done for 2 reasons to avoid the out_of_range exception from the compare call and
-          // to check that the string ends in ')'.  This will prevent false matching "float" data type for "float16" data type.
-          // The "+ 1" in the formula is to account for the ending ')' in the string length.
-          // check that the node_inputs[0]->Type() string after the prefix "tensor(" matches the inputType.
-          if ((TENSOR_PREFIX_LEN + inputType.length() + 1) == node_inputs[i]->Type()->length() &&
-              node_inputs[i]->Type()->compare(TENSOR_PREFIX_LEN, inputType.length(), inputType) == 0) {
-            input_supported[i] = true;
-            continue;
-          }
-          if (node_inputs[i]->Type()->compare(inputType) == 0) {
-            input_supported[i] = true;
-            continue;
-          }
-        }
+      if (node_inputs[i]->TypeAsProto() != nullptr) {
+        ORT_DataType node_datatype = static_cast<ORT_DataType>(node_inputs[i]->TypeAsProto()->tensor_type().elem_type());
+        input_supported[i] = (inputTypes_[i].find(node_datatype) != inputTypes_[i].end()); 
       }
     }
     // Walk the input_supported make sure they are all supported
