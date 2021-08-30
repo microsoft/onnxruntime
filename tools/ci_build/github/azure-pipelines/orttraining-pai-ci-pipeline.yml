@@ -74,6 +74,7 @@ steps:
 
 - script: |-
     cd build/RelWithDebInfo
+    export PYTHONPATH=$PWD
     python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install
     python -m torch.distributed.launch --nproc_per_node 1 \
        /home/ciagent/huggingface-transformers/examples/pytorch/language-modeling/run_mlm.py \
