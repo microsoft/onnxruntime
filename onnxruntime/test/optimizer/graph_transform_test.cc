@@ -53,7 +53,6 @@
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
-#include "core/optimizer/shape_to_initializer.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
@@ -480,7 +479,7 @@ TEST_F(GraphTransformationTests, ConstantFolding_RemoveDanglingInputNodesToConst
   ASSERT_TRUE(op_to_count["RandomUniform"] == 0);
 }
 
-TEST_F(GraphTransformationTests, ShapeToInitializer) {
+TEST_F(GraphTransformationTests, ConstantFoldingAShapeNodeDeepInTheGraph) {
   auto model_uri = MODEL_FOLDER "shape-add.onnx";
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
@@ -489,17 +488,21 @@ TEST_F(GraphTransformationTests, ShapeToInitializer) {
   ASSERT_TRUE(op_to_count["Shape"] == 4);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
-  rule_transformer_L1->Register(std::make_unique<ShapeToInitializer>());
-  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
-
+  std::unique_ptr<CPUExecutionProvider> e =
+      std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  graph_transformation_mgr.Register(std::make_unique<ConstantFolding>(*e.get(),
+                                                                      false /*skip_dequantize_linear*/),
+                                    TransformerLevel::Level1);
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   op_to_count = CountOpsInGraph(graph);
-  // Two of the Shapes are not eliminated because:
-  // One includes a symbolic dimension.
-  // Another one includes a negative dimension
-  ASSERT_TRUE(op_to_count["Shape"] == 2);
+
+  // A Shape node very deep in the graph (feeding into an Identity
+  // node that produces the graph output) gets constant folded which
+  // removes all its ancestors and the Identity node consuming this Shape's
+  // output is subsequently constant folded to leave the graph with no
+  // nodes.
+  ASSERT_TRUE(op_to_count.size() == 0);
 }
 
 // Check transformations in the case of a subgraph with constant inputs.
@@ -674,8 +677,8 @@ TEST_F(GraphTransformationTests, FuseCudaConvAddRelu) {
   graph_transformation_mgr.Register(std::make_unique<ConvActivationFusion>(), TransformerLevel::Level2);
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
   op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Add"] == 0); //Add removed from graph
-  ASSERT_TRUE(op_to_count["Relu"] == 0); //Relu removed from graph
+  ASSERT_TRUE(op_to_count["Add"] == 0);   //Add removed from graph
+  ASSERT_TRUE(op_to_count["Relu"] == 0);  //Relu removed from graph
 }
 
 //Conv->Add->Relu will be left intact since there is Identity depend on Add
@@ -695,9 +698,9 @@ TEST_F(GraphTransformationTests, FuseCudaConvAddReluIdentity) {
   graph_transformation_mgr.Register(std::make_unique<ConvActivationFusion>(), TransformerLevel::Level2);
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
   op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Add"] == 1); //Add remains
-  ASSERT_TRUE(op_to_count["Relu"] == 1); //Relu remains
-  ASSERT_TRUE(op_to_count["Identity"] == 1); //Identity remains
+  ASSERT_TRUE(op_to_count["Add"] == 1);       //Add remains
+  ASSERT_TRUE(op_to_count["Relu"] == 1);      //Relu remains
+  ASSERT_TRUE(op_to_count["Identity"] == 1);  //Identity remains
 }
 
 //Conv->Add will be left intact since there is no Relu follows
@@ -715,7 +718,7 @@ TEST_F(GraphTransformationTests, FuseCudaConvAdd) {
   graph_transformation_mgr.Register(std::make_unique<ConvActivationFusion>(), TransformerLevel::Level2);
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
   op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Add"] == 1); //Add remains, no transform applied to the graph
+  ASSERT_TRUE(op_to_count["Add"] == 1);  //Add remains, no transform applied to the graph
 }
 
 #endif
@@ -4131,13 +4134,13 @@ TEST_F(GraphTransformationTests, FilterEnabledOptimizers) {
 
   const auto& graph = session_object.GetGraph();
 
-  // check the ops that should go away if the constant folding transformer or ShapeToInitializer rewrite rule run
+  // check the ops that should go away if the constant folding transformer runs
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Shape"] == 1);
   ASSERT_TRUE(op_to_count["ConstantOfShape"] == 1);
   ASSERT_TRUE(op_to_count["Add"] == 1);
 
-  ASSERT_STATUS_OK(session_object.FilterEnabledOptimizers({"ConstantFolding", "ShapeToInitializer"}));
+  ASSERT_STATUS_OK(session_object.FilterEnabledOptimizers({"ConstantFolding"}));
   ASSERT_STATUS_OK(session_object.Initialize());  // Initialize runs the transformers
 
   op_to_count = CountOpsInGraph(graph);

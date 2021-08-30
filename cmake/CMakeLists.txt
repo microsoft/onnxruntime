@@ -107,6 +107,7 @@ option(onnxruntime_USE_ROCM "Build with AMD GPU support" OFF)
 # Options related to reducing the binary size produced by the build
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
 option(onnxruntime_DISABLE_ML_OPS "Disable traditional ML ops" OFF)
+option(onnxruntime_DISABLE_SPARSE_TENSORS "Disable sparse tensors data types" OFF)
 cmake_dependent_option(onnxruntime_DISABLE_RTTI "Disable RTTI" ON "NOT onnxruntime_ENABLE_PYTHON" OFF)
 # For now onnxruntime_DISABLE_EXCEPTIONS will only work with onnxruntime_MINIMAL_BUILD, more changes (ONNX, non-CPU EP, ...) are required to run this standalone
 option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handling. Requires onnxruntime_MINIMAL_BUILD currently." OFF)
@@ -116,6 +117,8 @@ option(onnxruntime_MINIMAL_BUILD_CUSTOM_OPS "Add custom operator kernels support
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
 option(onnxruntime_DISABLE_ORT_FORMAT_LOAD "Disable loading an ORT format model when onnxruntime_MINIMAL_BUILD=OFF (i.e. in a full build)." OFF)
 option(onnxruntime_DISABLE_EXTERNAL_INITIALIZERS "Don't allow models to load external data" OFF)
+cmake_dependent_option(onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION "Enable runtime graph optimization of ORT format models." ON
+                       "NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_EXTENDED_MINIMAL_BUILD" OFF)
 
 #A special option just for debugging and sanitize check. Please do not enable in option in retail builds.
 #The option has no effect on Windows.
@@ -155,7 +158,12 @@ option(onnxruntime_ENABLE_EAGER_MODE "build ort eager mode")
 option(onnxruntime_BUILD_OPSCHEMA_LIB "Build op schema library" ON)
 
 # option to enable custom operators in onnxruntime-extensions
-option(onnxruntime_ENABLE_EXTENSION_CUSTOM_OPS "Enable custom operators in onnxruntime-extensions" OFF)
+option(onnxruntime_USE_EXTENSIONS "Build with onnxruntime-extensions for more features" OFF)
+
+# Enable registering custom op schemas from shared libraries in python environment.
+option(onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS "Enable registering user defined custom op schemas dynamically" OFF)
+
+set(ONNX_CUSTOM_PROTOC_EXECUTABLE "" CACHE STRING "Specify custom protoc executable to build ONNX")
 
 # pre-build python path
 option(onnxruntime_PREBUILT_PYTORCH_PATH "Path to pytorch installation dir")
@@ -261,12 +269,6 @@ if(NOT WIN32)
     message(WARNING "Instrument is only supported on Windows now")
     set(onnxruntime_ENABLE_INSTRUMENT OFF)
   endif()
-else()
-  if(WINDOWS_STORE)
-    # cmake/external/protobuf/src/google/protobuf/compiler/subprocess.cc and onnxruntime/core/platform/windows/env.cc call a bunch of Win32 APIs.
-    # For now, we'll set the API family to desktop globally to expose Win32 symbols in headers; this must be fixed!
-    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/FI${CMAKE_CURRENT_SOURCE_DIR}/set_winapi_family_desktop.h>")
-  endif()
 endif()
 
 if(onnxruntime_USE_OPENMP)
@@ -369,6 +371,10 @@ else()
   if (NOT onnxruntime_DISABLE_ORT_FORMAT_LOAD)
     add_compile_definitions(ENABLE_ORT_FORMAT_LOAD)
   endif()
+endif()
+
+if (onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+  add_compile_definitions(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 endif()
 
 if(onnxruntime_ENABLE_LTO)
@@ -764,6 +770,10 @@ if (onnxruntime_DISABLE_ML_OPS)
   add_definitions(-DDISABLE_ML_OPS)
 endif()
 
+if (onnxruntime_DISABLE_SPARSE_TENSORS)
+  add_compile_definitions(DISABLE_SPARSE_TENSORS)
+endif()
+
 if (onnxruntime_USE_CUDA AND "${onnxruntime_CUDNN_HOME}" STREQUAL "")
   message(FATAL_ERROR "onnxruntime_CUDNN_HOME required for onnxruntime_USE_CUDA")
 endif()
@@ -820,6 +830,10 @@ elseif(NOT TARGET_ARCH MATCHES "^(i[3-6]86|AMD64|x86(_64)?|armv[5-8].*|aarch64|a
 elseif(MSVC AND (( CMAKE_SYSTEM_PROCESSOR  MATCHES "^(ARM.*|arm.*)$" ) OR (CMAKE_GENERATOR_PLATFORM  MATCHES "^(ARM.*|arm.*)$" ) ))
   message(WARNING
     "Cpuinfo not included for compilation problems with Windows ARM.")
+  set(CPUINFO_SUPPORTED FALSE)
+elseif(WINDOWS_STORE)
+  message(WARNING
+    "Cpuinfo not included in Windows Store builds")
   set(CPUINFO_SUPPORTED FALSE)
 endif()
 
@@ -933,6 +947,7 @@ if (WIN32)
 
 else()
   add_definitions(-DPLATFORM_POSIX)
+  check_cxx_compiler_flag(-Wunused-but-set-parameter HAS_UNUSED_BUT_SET_PARAMETER)
   check_cxx_compiler_flag(-Wunused-but-set-variable HAS_UNUSED_BUT_SET_VARIABLE)
   check_cxx_compiler_flag(-Wunused-variable HAS_UNUSED_VARIABLE)
   check_cxx_compiler_flag(-Wcast-function-type HAS_CAST_FUNCTION_TYPE)
@@ -1283,18 +1298,9 @@ if (onnxruntime_USE_TVM)
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm)
 endif()
 
-if (onnxruntime_ENABLE_EXTENSION_CUSTOM_OPS)
-  # add compile definition to enable custom operators in onnxruntime-extensions
-  add_compile_definitions(ENABLE_EXTENSION_CUSTOM_OPS)
-
-  # set options for onnxruntime-extensions
-  set(OCOS_ENABLE_CTEST OFF CACHE INTERNAL "")
-  set(OCOS_ENABLE_STATIC_LIB ON CACHE INTERNAL "")
-  set(OCOS_ENABLE_SPM_TOKENIZER OFF CACHE INTERNAL "")
-  add_subdirectory(external/onnxruntime-extensions EXCLUDE_FROM_ALL)
-  # target library or executable are defined in CMakeLists.txt of onnxruntime-extensions
-  target_include_directories(ocos_operators PRIVATE ${RE2_INCLUDE_DIR} external/json/include)
-  target_include_directories(ortcustomops PUBLIC external/onnxruntime-extensions/shared)
+# onnxruntime-extensions
+if (onnxruntime_USE_EXTENSIONS)
+  include(extensions)
 endif()
 
 if (APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Android")
@@ -1705,8 +1711,8 @@ if (WIN32)
   if (WINDOWS_STORE)
     # Setting WINAPI_FAMILY, WINVER and _WIN32_WINNT restrict the APIs exposed in Windows headers to those available
     # in store or desktop, and that support at least the version of Windows specified
-    # add_compile_definitions(WINAPI_FAMILY=2)
-    add_compile_definitions(WINVER=0x0A00 _WIN32_WINNT=0x0A00)  # Support Windows 10
+    add_compile_definitions(WINAPI_FAMILY=2)  # Windows Store app
+    add_compile_definitions(WINVER=0x0A00 _WIN32_WINNT=0x0A00 NTDDI_VERSION=0x0A000000)  # Support Windows 10 or newer
     # /ZW adds /FUplatform.winmd and /FUwindows.winmd. windows.winmd, in turn, overrides the include path for
     # the cppwinrt headers, which we set to use the WinML built ones.
     # Instead, we use /ZW:nostdlib and force include platform.winml only.
@@ -1715,10 +1721,12 @@ if (WIN32)
     link_directories("${msvc_path}/lib/${onnxruntime_target_platform}/store")
     add_link_options(/APPCONTAINER)
   else()
-    add_compile_definitions(WINVER=0x0601)  # Support Windows 7 and newer
-    # add_compile_definitions(WINAPI_FAMILY=3)
-    # FIXME adding _WIN32_WINNT=0x0601 and WINAPI_FAMILY is desirable. However, it hides some symbols that are used in WRL
-    # headers and breaks the build of WinML. We should have separate WINVER/_WIN32_WINNT definitions for WinML
+    add_compile_definitions(WINAPI_FAMILY=100) # Desktop app
+    if (onnxruntime_USE_WINML)
+      add_compile_definitions(WINVER=0x0602 _WIN32_WINNT=0x0602 NTDDI_VERSION=0x06020000)  # Support Windows 7 and newer
+    else()
+      add_compile_definitions(WINVER=0x0601 _WIN32_WINNT=0x0601 NTDDI_VERSION=0x06010000)  # Support Windows 7 and newer
+    endif()
   endif()
 endif()
 
@@ -1833,5 +1841,27 @@ endif()
 
 if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
   add_compile_definitions(DEBUG_NODE_INPUTS_OUTPUTS)
+endif()
+
+if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
+  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    message(FATAL_ERROR "External custom operator schemas feature is only supported on Linux")
+  endif()
+
+  if (NOT ${ONNX_CUSTOM_PROTOC_EXECUTABLE} STREQUAL "")
+    message(FATAL_ERROR "External custom operator schemas is not supported with the user specified protc executable")
+  endif()
+
+  if (NOT onnxruntime_ENABLE_TRAINING)
+    message(FATAL_ERROR "External custom operator schemas is supported only with --enable-training option")
+  endif()
+
+  add_custom_target(install_protobuf ALL DEPENDS protobuf::libprotobuf  protobuf::protoc)
+  add_custom_command(
+    TARGET install_protobuf
+    COMMAND ${CMAKE_COMMAND} -DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR} -P cmake_install.cmake
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/external/protobuf/cmake
+    COMMENT "Installing protobuf"
+  )
 endif()
 

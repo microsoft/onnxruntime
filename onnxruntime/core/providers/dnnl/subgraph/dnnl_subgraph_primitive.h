@@ -46,7 +46,7 @@ class DnnlSubgraphPrimitive {
   dnnl::stream GetStream();
 
   //obtain a dnnl::memory with specified name, memory descriptor and engine, will perform extra reorder/reshape if necessary before returning
-  dnnl::memory GetMemoryAndReshape(ort_dnnl::DnnlTensor tensor, dnnl::memory::desc mem_desc, dnnl::engine eng);
+  dnnl::memory GetMemoryAndReshape(ort_dnnl::DnnlTensor tensor, dnnl::memory::desc mem_desc, dnnl::engine eng, bool transpose = false);
   //add dnnl primitive and memory map to subgraph primitive
   void AddPrimitive(dnnl::primitive prim, std::unordered_map<int, dnnl::memory> mem_map);
   //add a reshape (e.g. squeeze, unsqueeze) to subgraph primitive

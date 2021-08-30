@@ -81,6 +81,7 @@ static void ExecuteMnist(InferenceSessionWrapper& session, bool custom_ep_enable
   }
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 #if !defined(ORT_MINIMAL_BUILD)
 TEST(InternalTestingEP, TestSaveAndLoadOrtModel) {
   const ORTCHAR_T* ort_model_path = ORT_TSTR("testdata/mnist.internal_testing_ep.test_output.ort");
@@ -145,6 +146,7 @@ TEST(InternalTestingEP, PreventSaveOfModelWithCompiledOps) {
   ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Unable to serialize model as it contains compiled nodes"));
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 // test to validate a minimal build
 TEST(InternalTestingEP, TestLoadOrtModel) {
