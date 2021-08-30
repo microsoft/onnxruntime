@@ -6,7 +6,7 @@
 from setuptools import setup, Extension
 from distutils import log as logger
 from distutils.command.build_ext import build_ext as _build_ext
-from glob import glob
+from glob import glob, iglob
 from os import path, getcwd, environ, remove, listdir
 from shutil import copyfile, copytree, rmtree
 import platform
@@ -14,6 +14,7 @@ import subprocess
 import sys
 import datetime
 
+from pathlib import Path
 nightly_build = False
 featurizers_build = False
 package_name = 'onnxruntime'
@@ -254,6 +255,15 @@ if not path.exists(README):
 with open(README) as f:
     long_description = f.read()
 
+# Include files in onnxruntime/external if --enable_external_custom_op_schemas build.sh command
+# line option is specified.
+# If the options is not specified this following condition fails as onnxruntime/external folder is not created in the
+# build flow under the build binary directory.
+if (path.isdir(path.join("onnxruntime", "external"))):
+    # Gather all files under onnxruntime/external directory.
+    extra.extend(list(str(Path(*Path(x).parts[1:])) for x in list(iglob(
+        path.join(path.join("onnxruntime", "external"), '**/*.*'), recursive=True))))
+
 packages = [
     'onnxruntime',
     'onnxruntime.backend',
@@ -280,6 +290,29 @@ default_training_package_device = parse_arg_remove_boolean(sys.argv, '--default_
 
 package_data = {}
 data_files = []
+
+classifiers = [
+    'Development Status :: 5 - Production/Stable',
+    'Intended Audience :: Developers',
+    'License :: OSI Approved :: MIT License',
+    'Operating System :: POSIX :: Linux',
+    'Topic :: Scientific/Engineering',
+    'Topic :: Scientific/Engineering :: Mathematics',
+    'Topic :: Scientific/Engineering :: Artificial Intelligence',
+    'Topic :: Software Development',
+    'Topic :: Software Development :: Libraries',
+    'Topic :: Software Development :: Libraries :: Python Modules',
+    'Programming Language :: Python',
+    'Programming Language :: Python :: 3 :: Only',
+    'Programming Language :: Python :: 3.6',
+    'Programming Language :: Python :: 3.7',
+    'Programming Language :: Python :: 3.8',
+    'Programming Language :: Python :: 3.9']
+
+if not enable_training:
+    classifiers.extend([
+        'Operating System :: Microsoft :: Windows',
+        'Operating System :: MacOS'])
 
 if enable_training:
     packages.extend(['onnxruntime.training',
@@ -529,23 +562,5 @@ setup(
             'onnxruntime_test = onnxruntime.tools.onnxruntime_test:main',
         ]
     },
-    classifiers=[
-        'Development Status :: 5 - Production/Stable',
-        'Intended Audience :: Developers',
-        'License :: OSI Approved :: MIT License',
-        'Operating System :: POSIX :: Linux',
-        'Operating System :: Microsoft :: Windows',
-        'Operating System :: MacOS',
-        'Topic :: Scientific/Engineering',
-        'Topic :: Scientific/Engineering :: Mathematics',
-        'Topic :: Scientific/Engineering :: Artificial Intelligence',
-        'Topic :: Software Development',
-        'Topic :: Software Development :: Libraries',
-        'Topic :: Software Development :: Libraries :: Python Modules',
-        'Programming Language :: Python',
-        'Programming Language :: Python :: 3 :: Only',
-        'Programming Language :: Python :: 3.6',
-        'Programming Language :: Python :: 3.7',
-        'Programming Language :: Python :: 3.8',
-        'Programming Language :: Python :: 3.9'],
+    classifiers=classifiers,
     )

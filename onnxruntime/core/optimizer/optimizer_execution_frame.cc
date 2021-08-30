@@ -145,11 +145,13 @@ Status OptimizerExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value,
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "Tried to allocate without valid type information, ort_value index=" + std::to_string(ort_value_idx));
   if (ml_type->IsSparseTensorType()) {
+#if !defined(DISABLE_SPARSE_TENSORS)
     auto element_type = ml_type->AsSparseTensorType()->GetElementType();
-    auto container_type = DataTypeImpl::GetType<SparseTensor>();
-    auto sparse = std::make_unique<SparseTensor>(element_type, *shape, info_.GetAllocator());
-    ort_value.Init(sparse.release(), container_type, container_type->GetDeleteFunc());
+    SparseTensor::InitOrtValue(element_type, *shape, info_.GetAllocator(), ort_value);
     return Status::OK();
+#else
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Sparse tensor is not supported in this build");
+#endif
   }
 
   if (ml_type->IsTensorSequenceType()) {

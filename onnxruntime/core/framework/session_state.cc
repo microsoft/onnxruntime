@@ -201,9 +201,11 @@ Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& o
     constant_initialized_tensors_.insert({ort_value_index, ort_value});
   }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   if (sparse) {
     sparse_initialized_tensors_.insert(ort_value_index);
   }
+#endif
 
   return Status::OK();
 }
@@ -214,9 +216,11 @@ const std::unordered_map<int, OrtValue>& SessionState::GetConstantInitializedTen
   return constant_initialized_tensors_;
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 bool SessionState::IsSparseInitializer(int ort_value_index) const {
   return sparse_initialized_tensors_.count(ort_value_index) > 0;
 }
+#endif
 
 #ifdef ENABLE_TRAINING
 Status SessionState::GetInitializedTensors(
@@ -962,7 +966,8 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
       [&kernel_registry_manager, this](const Node& node, uint64_t hash) {
         const KernelCreateInfo* kci = nullptr;
         ORT_RETURN_IF_NOT(kernel_registry_manager.SearchKernelRegistriesByHash(hash, &kci),
-                          "Failed to find kernel def hash in kernel registries: ", hash);
+                          "Failed to find kernel def hash (", hash, ") in kernel registries for ",
+                          node.OpType(), "(", node.SinceVersion(), ") node with name '", node.Name(), "'.");
         kernel_create_info_map_.emplace(node.Index(), gsl::not_null<const KernelCreateInfo*>(kci));
         return Status::OK();
       };

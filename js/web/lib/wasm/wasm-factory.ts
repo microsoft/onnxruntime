@@ -16,6 +16,11 @@ let aborted = false;
 
 const isMultiThreadSupported = (): boolean => {
   try {
+    // If 'SharedArrayBuffer' is not available, WebAssembly threads will not work.
+    if (typeof SharedArrayBuffer === 'undefined') {
+      return false;
+    }
+
     // Test for transferability of SABs (for browsers. needed for Firefox)
     // https://groups.google.com/forum/#!msg/mozilla.dev.platform/IHkBZlHETpA/dwsMNchWEQAJ
     if (typeof MessageChannel !== 'undefined') {
