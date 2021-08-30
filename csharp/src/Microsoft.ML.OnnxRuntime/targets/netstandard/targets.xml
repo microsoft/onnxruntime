@@ -9,8 +9,8 @@
     <Error Condition="('$(PlatformTarget)' != 'x64' AND '$(PlatformTarget)' != 'x86' AND '$(PlatformTarget)' != 'AnyCPU') AND
                       ('$(OutputType)' == 'Exe' OR '$(OutputType)'=='WinExe') AND
                       !('$(TargetFrameworkIdentifier)' == '.NETCoreApp' AND '$(PlatformTarget)' == '') AND
+                      !('$(TargetFrameworkIdentifier)' == 'xamarinios10' AND '$(PlatformTarget)' == '') AND
                       '$(SuppressOnnxRuntimePlatformCompatibilityError)' != 'true'"
            Text="Microsoft.ML.OnnxRuntime only supports the AnyCPU, x64, and x86 platforms at this time."/>
   </Target>
-
 </Project>
