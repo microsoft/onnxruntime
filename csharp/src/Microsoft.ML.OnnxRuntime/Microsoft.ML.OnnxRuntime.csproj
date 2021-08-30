@@ -164,7 +164,7 @@
           Visible="false"
     />
     <None Include="targets\netstandard\$(PackageId).targets"
-          PackagePath="build\netstandard1.1\$(PackageId).targets;buildTransitive\netstandard1.1\$(PackageId).targets;build\netstandard2.0\$(PackageId).targets;buildTransitive\netstandard2.0\$(PackageId).targets;"
+          PackagePath="build\netstandard1.1\$(PackageId).targets;build\netstandard2.0\$(PackageId).targets"
           Pack="true"
           Visible="false" 
     />
