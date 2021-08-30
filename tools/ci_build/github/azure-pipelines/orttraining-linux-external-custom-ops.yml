@@ -56,7 +56,7 @@ jobs:
       script: |
          rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
          docker exec -t external_custom_ops_container \
-            /bin/bash -c "/opt/python/cp38-cp38/bin/python3 -m pip install /build/Debug/dist/*.whl" 
+            /bin/bash -c "/opt/python/cp38-cp38/bin/python3 -m pip install /build/Release/dist/*.whl" 
       workingDirectory: $(Build.BinariesDirectory)
 
   - task: CmdLine@2
