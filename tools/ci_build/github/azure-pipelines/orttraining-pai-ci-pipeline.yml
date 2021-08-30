@@ -113,7 +113,7 @@ steps:
       --dataloader_num_workers 1 \
       --ort \
       --skip_memory_metrics 
-    displayName: 'Run Python Hugging-Face BART-L test'
+  displayName: 'Run Python Hugging-Face BART-L test'
   condition: succeededOrFailed() # ensure all tests are run
 
 - script: |-
@@ -136,7 +136,7 @@ steps:
       --dataloader_num_workers 1 \
       --ort \
       --skip_memory_metrics 
-    displayName: 'Run Python Hugging-Face RoBERTa-L test'
+  displayName: 'Run Python Hugging-Face RoBERTa-L test'
   condition: succeededOrFailed() # ensure all tests are run
 
 - script: |-
@@ -157,7 +157,7 @@ steps:
       --dataloader_num_workers 1 \
       --ort \
       --skip_memory_metrics
-    displayName: 'Run Python Hugging-Face DistilBERT test'
+  displayName: 'Run Python Hugging-Face DistilBERT test'
   condition: succeededOrFailed() # ensure all tests are run
 
 - script: |-
@@ -179,7 +179,7 @@ steps:
       --dataloader_num_workers 1 \
       --ort \
       --skip_memory_metrics 
-    displayName: 'Run Python Hugging-Face DeBERTa-XXL v2 test'
+  displayName: 'Run Python Hugging-Face DeBERTa-XXL v2 test'
   condition: succeededOrFailed() # ensure all tests are run
 
 - script: |-
@@ -206,7 +206,7 @@ steps:
       --dataloader_num_workers 1 \
       --ort \
       --skip_memory_metrics
-    displayName: 'Run Python Hugging-Face T5-L test'
+  displayName: 'Run Python Hugging-Face T5-L test'
   condition: succeededOrFailed() # ensure all tests are run
 
 - script: |-
