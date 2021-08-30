@@ -65,7 +65,8 @@ class TrainingManager(GraphExecutionManager):
             return self._fallback_manager.fallback(self._original_module, self._debug_options.logging.log_level, *inputs, **kwargs)
 
         try:
-            # Exporting module to ONNX for the first time
+            # If exporting module to ONNX for the first time, this skip check will not take effect.
+            # It will only take effect on subsequent forward calls.
             build_gradient_graph = False
             if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) == False or \
                 not self._onnx_models.exported_model:
@@ -93,6 +94,8 @@ class TrainingManager(GraphExecutionManager):
                 if build_gradient_graph:
                     self._build_graph()
 
+            # If creating the execution agent for the first time, this skip check will not take effect.
+            # It will only take effect on subsequent forward calls.
             create_execution_session = False
             if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT) == False or \
                 not self._execution_agent:
