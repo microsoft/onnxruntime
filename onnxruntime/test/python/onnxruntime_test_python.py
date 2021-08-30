@@ -182,6 +182,9 @@ class TestInferenceSession(unittest.TestCase):
                 test_get_and_set_option_with_values(
                     'do_copy_in_default_stream', [0, 1])
 
+                test_get_and_set_option_with_values(
+                    'cudnn_conv_use_max_workspace', [0, 1])
+
                 option['gpu_external_alloc'] = '0'
                 option['gpu_external_free'] = '0'
                 option['gpu_external_empty_cache'] = '0'

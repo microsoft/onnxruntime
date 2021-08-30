@@ -7,6 +7,9 @@
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/platform/ort_mutex.h"
 
+// The AlgoPerfCache and AlgoSearch here for Conv/ConvGrad is referenced on PyTorch's implementation
+// from aten/src/ATen/native/cudnn/Conv_v7.cpp.
+
 namespace onnxruntime {
 namespace cuda {
 
@@ -56,7 +59,7 @@ size_t GetMaxWorkspaceSize(const ConvArgs& args, const T_Algo* algo, int n_algo)
 }
 
 template <typename T_Perf>
-std::vector<T_Perf> GetValidAlgorithms(T_Perf* perf_results, int n_algo) {
+std::vector<T_Perf> GetValidAlgorithms(const T_Perf* perf_results, int n_algo) {
   std::vector<T_Perf> result;
   result.reserve(n_algo);
   for (int i = 0; i < n_algo; i++) {
@@ -66,10 +69,14 @@ std::vector<T_Perf> GetValidAlgorithms(T_Perf* perf_results, int n_algo) {
     }
   }
   ORT_ENFORCE(result.size() > 0, "No valid convolution algorithms available in CuDNN");
+  // TODO: This is a cuDNN bug that gave wrong results in certain strided convolution gradient setups
+  // when cuDNN version < 7.5. Need to add handling for such special case.
   return result;
 }
 
 struct ConvParamsHash {
+  // ConvParams must be a POD because we read out its memory constant as char* when hashing.
+  static_assert(std::is_pod<ConvParams>::value, "ConvParams is not POD");
   size_t operator()(const ConvParams& conv_params) const {
     auto ptr = reinterpret_cast<const uint8_t*>(&conv_params);
     uint32_t value = 0x811C9DC5;
@@ -82,6 +89,8 @@ struct ConvParamsHash {
 };
 
 struct ConvParamsEqual {
+  // ConvParams must be a POD because we read out its memory constant as char* when hashing.
+  static_assert(std::is_pod<ConvParams>::value, "ConvParams is not POD");
   bool operator()(const ConvParams& a, const ConvParams& b) const {
     auto ptr1 = reinterpret_cast<const uint8_t*>(&a);
     auto ptr2 = reinterpret_cast<const uint8_t*>(&b);
@@ -110,6 +119,8 @@ struct AlgoPerfCache {
   }
 };
 
+// TODO: Currently we use global AlgoPerfCache for ConvGrad only. Conv's perf cache is till per node.
+// Need to apply such global cache for Conv, and move some shared code from here to conv.h/cc.
 AlgoPerfCache<T_BwdDataPerf> bwd_data_algos;
 AlgoPerfCache<T_BwdFilterPerf> bwd_filter_algos;
 
@@ -135,15 +146,16 @@ struct AlgoSearch<T_BwdDataPerf> {
                                                                         args.conv_desc, args.x_tensor, num_algos,
                                                                         &perf_count, candidates.get()));
     } else if (args.params.algo_mode == OrtCudnnConvAlgoSearch::EXHAUSTIVE) {
-      size_t max_workspace_size = GetMaxWorkspaceSize(args, algos, num_algos);
-      // Use IAllocator's Reserve so the workspace can be freed instead of cached. Because the benchmarking uses a huge
-      // amount of memory, e.g. a few GBs.
-      IAllocatorUniquePtr<void> workspace = provider->GetScratchBuffer<void>(max_workspace_size, true);
+      size_t max_workspace_size = provider->GetCudnnConvUseMaxWorkspace() ? GetMaxWorkspaceSize(args, algos, num_algos)
+                                                                          : AlgoSearchWorkspaceSize;
+      // Use GetTransientScratchBuffer() so the workspace can be freed instead of cached.
+      // Because the benchmarking uses a huge amount of memory, e.g. a few GBs.
+      IAllocatorUniquePtr<void> workspace = provider->GetTransientScratchBuffer<void>(max_workspace_size);
       CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionBackwardDataAlgorithmEx(
           args.handle, args.w_desc, args.w_data, args.y_tensor, args.dy_data, args.conv_desc, args.x_tensor,
           args.dx_data, num_algos, &perf_count, candidates.get(), workspace.get(), max_workspace_size));
     } else {
-      ORT_ENFORCE(false, "Algo mode should be 0, 1 or 2, but got ", args.params.algo_mode);
+      ORT_ENFORCE(false, "Algo mode should be EXHAUSTIVE (0) or HEURISTIC (1), but got ", args.params.algo_mode);
     }
     perf_results = GetValidAlgorithms<T_BwdDataPerf>(candidates.get(), perf_count);
     return Status::OK();
@@ -175,15 +187,16 @@ struct AlgoSearch<T_BwdFilterPerf> {
                                                                           args.conv_desc, args.w_desc, num_algos,
                                                                           &perf_count, candidates.get()));
     } else if (args.params.algo_mode == OrtCudnnConvAlgoSearch::EXHAUSTIVE) {
-      size_t max_workspace_size = GetMaxWorkspaceSize(args, algos, num_algos);
-      // Use IAllocator's Reserve so the workspace can be freed instead of cached. Because the benchmarking uses a huge
-      // amount of memory, e.g. a few GBs.
-      IAllocatorUniquePtr<void> workspace = provider->GetScratchBuffer<void>(max_workspace_size, true);
+      size_t max_workspace_size = provider->GetCudnnConvUseMaxWorkspace() ? GetMaxWorkspaceSize(args, algos, num_algos)
+                                                                          : AlgoSearchWorkspaceSize;
+      // Use GetTransientScratchBuffer() so the workspace can be freed instead of cached.
+      // Because the benchmarking uses a huge amount of memory, e.g. a few GBs.
+      IAllocatorUniquePtr<void> workspace = provider->GetTransientScratchBuffer<void>(max_workspace_size);
       CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionBackwardFilterAlgorithmEx(
           args.handle, args.x_tensor, args.x_data, args.y_tensor, args.dy_data, args.conv_desc, args.w_desc,
           args.dw_data, num_algos, &perf_count, candidates.get(), workspace.get(), max_workspace_size));
     } else {
-      ORT_ENFORCE(false, "Algo mode should be 0, 1 or 2, but got ", args.params.algo_mode);
+      ORT_ENFORCE(false, "Algo mode should be EXHAUSTIVE (0) or HEURISTIC (1), but got ", args.params.algo_mode);
     }
     perf_results = GetValidAlgorithms<T_BwdFilterPerf>(candidates.get(), perf_count);
     return Status::OK();
@@ -309,7 +322,8 @@ Status ConvGrad<T>::PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor&
     }
     args_.params.groups = conv_attrs_.group;
     int algo_mode = cuda_ep->GetCudnnConvAlgo();
-    ORT_ENFORCE(algo_mode > -1 && algo_mode < 3, "Algo mode should be 0, 1 or 2, but got ", algo_mode);
+    ORT_ENFORCE(algo_mode > -1 && algo_mode < 3,
+                "Algo mode should be EXHAUSTIVE (0), HEURISTIC (1) or DEFAULT (2), but got ", algo_mode);
     args_.params.algo_mode = algo_mode;
 
     args_.handle = CudnnHandle();

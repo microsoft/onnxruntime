@@ -20,6 +20,7 @@ constexpr const char* kDoCopyInDefaultStream = "do_copy_in_default_stream";
 constexpr const char* kGpuExternalAlloc = "gpu_external_alloc";
 constexpr const char* kGpuExternalFree = "gpu_external_free";
 constexpr const char* kGpuExternalEmptyCache = "gpu_external_empty_cache";
+constexpr const char* kCudnnConvUseMaxWorkspace = "cudnn_conv_use_max_workspace";
 }  // namespace provider_option_names
 }  // namespace cuda
 
@@ -89,6 +90,7 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
               cuda::provider_option_names::kCudnnConvAlgoSearch,
               *ort_cudnn_conv_algo_search_mapping, info.cudnn_conv_algo_search)
           .AddAssignmentToReference(cuda::provider_option_names::kDoCopyInDefaultStream, info.do_copy_in_default_stream)
+          .AddAssignmentToReference(cuda::provider_option_names::kCudnnConvUseMaxWorkspace, info.cudnn_conv_use_max_workspace)
           .Parse(options));
 
   CUDAExecutionProviderExternalAllocatorInfo alloc_info{alloc, free, empty_cache};
@@ -108,6 +110,7 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const CUDAExecution
       {cuda::provider_option_names::kCudnnConvAlgoSearch,
        EnumToName(*ort_cudnn_conv_algo_search_mapping, info.cudnn_conv_algo_search)},
       {cuda::provider_option_names::kDoCopyInDefaultStream, MakeStringWithClassicLocale(info.do_copy_in_default_stream)},
+      {cuda::provider_option_names::kCudnnConvUseMaxWorkspace, MakeStringWithClassicLocale(info.cudnn_conv_use_max_workspace)},
   };
 
   return options;

@@ -39,7 +39,6 @@ struct ConvArgs {
   const void* x_data;
   const void* w_data;
   const void* dy_data;
-  void* y_data;
   void* dx_data;
   void* dw_data;
   void* db_data;
