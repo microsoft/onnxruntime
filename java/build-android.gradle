@@ -29,7 +29,7 @@ def mavenArtifactId = project.name + '-mobile'
 buildscript {
 	repositories {
 		google()
-		jcenter()
+		mavenCentral()
 	}
 	dependencies {
 		classpath 'com.android.tools.build:gradle:3.5.3'
@@ -42,7 +42,7 @@ buildscript {
 allprojects {
 	repositories {
 		google()
-		jcenter()
+		mavenCentral()
 	}
 }
 
