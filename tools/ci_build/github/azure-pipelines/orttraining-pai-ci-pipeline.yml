@@ -30,6 +30,7 @@ steps:
     --enable_training \
     --mpi_home /home/ciagent/pkg/openmpi-4.0.5 \
     --use_rocm \
+    --rocm_version=4.2 \
     --rocm_home /opt/rocm \
     --nccl_home /opt/rocm \
     --update \
@@ -69,4 +70,25 @@ steps:
       --training_data_root training_e2e_test_data/data \
       --gpu_sku MI100_32G
   displayName: 'Run C++ BERT-L convergence test'
+  condition: succeededOrFailed() # ensure all tests are run
+
+- script: |-
+    export PYTHONPATH=build/RelWithDebInfo
+    python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install
+    python -m torch.distributed.launch --nproc_per_node 1 \
+       /home/ciagent/huggingface-transformers/examples/pytorch/language-modeling/run_mlm.py \
+       --model_name_or_path bert-large-uncased \
+       --dataset_name wikitext \
+       --dataset_config_name wikitext-2-raw-v1 \
+       --do_train \
+       --max_steps 260 \
+       --logging_steps 20 \
+       --output_dir /tmp/test-mlm-bbu \
+       --overwrite_output_dir \
+       --per_device_train_batch_size 8 \
+       --fp16 \
+       --dataloader_num_workers 1 \
+       --ort \
+       --skip_memory_metrics
+  displayName: 'Run HF BERT-L test'
   condition: succeededOrFailed() # ensure all tests are run
