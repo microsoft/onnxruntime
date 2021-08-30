@@ -35,6 +35,10 @@ class ORTModule(torch.nn.Module):
     """
 
     def __init__(self, module, debug_options=None):
+        # Set _is_initialized attribute first which starts off as False.
+        # This variable will be used for comparing strings in __setattr__ and __getattr__
+        # NOTE: Do not rename/move.
+        self._is_initialized = False
         # Python default arguments are evaluated on function definition
         # and not on function invocation. So, if debug_options is not provided,
         # instantiate it inside the function.
@@ -45,7 +49,6 @@ class ORTModule(torch.nn.Module):
         self._fallback_manager = _FallbackManager(policy=ORTMODULE_FALLBACK_POLICY,
                                                   retry=ORTMODULE_FALLBACK_RETRY)
 
-        torch_module = None
         try:
             # Read ORTModule module initialization status
             global _FALLBACK_INIT_EXCEPTION
@@ -54,7 +57,7 @@ class ORTModule(torch.nn.Module):
 
             super(ORTModule, self).__init__()
 
-            torch_module = TorchModuleFactory()(module, debug_options, self._fallback_manager)
+            self._torch_module = TorchModuleFactory()(module, debug_options, self._fallback_manager)
 
             # Create forward dynamically, so each ORTModule instance will have its own copy.
             # This is needed to be able to copy the forward signatures from the original PyTorch models
@@ -73,15 +76,19 @@ class ORTModule(torch.nn.Module):
             self.forward = _forward.__get__(self)
             # Copy the forward signature from the _torch_module's forward signature.
             functools.update_wrapper(
-                self.forward.__func__, torch_module.forward.__func__)
+                self.forward.__func__, self._torch_module.forward.__func__)
 
             # Support contrib OPs
             register_custom_ops_pytorch_exporter.register_custom_op()
             CustomOpSymbolicRegistry.register_all()
             CustomGradientRegistry.register_all()
 
+            # Make sure that the user defined model does not have any name collisions
+            # with the ORTModule attribute names.
+            _utils.check_for_name_collisions(self, module)
+
         except ORTModuleFallbackException as e:
-            torch_module = TorchModulePytorch(module)
+            self._torch_module = TorchModulePytorch(module)
             # TODO: Rework by implementing the "__getattribute__" method.
             #       Assigning all default attributes from user's original torch.nn.Module into ORTModule
             self._backward_hooks = module._backward_hooks
@@ -100,20 +107,16 @@ class ORTModule(torch.nn.Module):
             self._fallback_manager.handle_exception(exception=e,
                                                     log_level=debug_options.logging.log_level)
         except Exception as e:
-            torch_module = TorchModulePytorch(module)
+            self._torch_module = TorchModulePytorch(module)
             # Catch-all FALLBACK_FORCE_TORCH_FORWARD fallback is handled here
             self._fallback_manager.handle_exception(exception=e,
                                                     log_level=debug_options.logging.log_level,
                                                     override_policy=_FallbackPolicy.FALLBACK_FORCE_TORCH_FORWARD)
 
-        # Assign self._torch_module after all the ORTModule class attributes have been assigned
-        # else, they will be assigned to self._torch_module.original_module instead
-        self._torch_module = torch_module
-
-        # Make sure that the user defined model does not have any name collisions
-        # with the ORTModule attribute names.
-        if isinstance(self._torch_module, TorchModuleORT):
-            _utils.check_for_name_collisions(self, module)
+        # Finally, ORTModule initialization is complete.
+        # Assign self._is_initialized to True after all the ORTModule class attributes have been assigned
+        # else, they will be assigned to self._torch_module.original_module instead.
+        self._is_initialized = True
 
     # IMPORTANT: DO NOT add code here
     # This declaration is for automatic document generation purposes only
@@ -284,9 +287,11 @@ class ORTModule(torch.nn.Module):
         yield from self._torch_module.named_modules(*args, **kwargs)
 
     def __getattr__(self, name: str):
-        if '_torch_module' in self.__dict__:
-            # If attribute is not found in ORTModule, it must be present in the
-            # user's torch.nn.Module. Forward the call to the user's model.
+        if '_is_initialized' in self.__dict__ and self.__dict__['_is_initialized'] == True:
+            # If ORTModule is intitialized and attribute is not found in ORTModule,
+            # it must be present in the user's torch.nn.Module. Forward the call to
+            # the user's model.
+            assert '_torch_module' in self.__dict__, "ORTModule does not have a reference to the user's model"
             return getattr(self.module, name)
         else:
             super(ORTModule, self).__getattr__(name)
@@ -296,7 +301,11 @@ class ORTModule(torch.nn.Module):
         if name in self.__dict__:
             # If the name is an attribute of ORTModule, update only ORTModule
             self.__dict__[name] = value
-        elif '_torch_module' in self.__dict__:
+
+        elif '_is_initialized' in self.__dict__ and self.__dict__['_is_initialized'] == True:
+
+            assert '_torch_module' in self.__dict__, "ORTModule does not have a reference to the user's model"
+
             # If the name is an attribute of user model, or is a new attribute, update there.
             # Set the attribute on the user's original module
             setattr(self.module, name, value)
@@ -305,6 +314,7 @@ class ORTModule(torch.nn.Module):
             if isinstance(self._torch_module, TorchModuleORT):
                 for training_mode in [False, True]:
                     self._torch_module._execution_manager(training_mode).signal_model_changed()
+
         else:
             # Setting any new attributes should be done on ORTModule only when 'torch_module' is not defined
             self.__dict__[name] = value
