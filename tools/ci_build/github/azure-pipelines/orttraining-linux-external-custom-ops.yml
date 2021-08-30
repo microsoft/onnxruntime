@@ -48,6 +48,7 @@ jobs:
               --skip_tests \
               --enable_training \
               --build_eager_mode \
+              --enable_pybind \
               --enable_external_custom_op_schemas
       workingDirectory: $(Build.SourcesDirectory)
 
@@ -68,16 +69,6 @@ jobs:
           -w  /build/Debug/external_custom_ops \
           external_custom_ops_container \
           /opt/python/cp38-cp38/bin/python3 -m pip install pybind11
-      workingDirectory: $(Build.BinariesDirectory)
-
-  - task: CmdLine@2
-    displayName: 'Build and Install custom ops python package'
-    inputs:
-      script: |
-         docker exec -t \
-          -w  /build/Debug/external_custom_ops \
-          external_custom_ops_container \
-          /opt/python/cp38-cp38/bin/python3 -m pip install .
       workingDirectory: $(Build.BinariesDirectory)
 
   - task: CmdLine@2
