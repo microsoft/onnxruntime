@@ -1,6 +1,5 @@
 import sys
 import json
-import pytest
 
 actual = sys.argv[1]
 expect = sys.argv[2]
