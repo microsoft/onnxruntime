@@ -68,10 +68,6 @@ jobs:
      npm ci
     workingDirectory: '$(Build.SourcesDirectory)/js/web'
     displayName: 'npm ci /js/web/'
-  - script: |
-     npm run build
-    workingDirectory: '$(Build.SourcesDirectory)/js/web'
-    displayName: 'Build ort-web'
   - task: BrowserStackConfig@0
     inputs:
       BrowserStackServiceEndPoint: 'BrowserStack Connection'
@@ -172,10 +168,6 @@ jobs:
      npm ci
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'npm ci /js/web/'
-  - script: |
-     npm run build
-    workingDirectory: '$(Build.SourcesDirectory)\js\web'
-    displayName: 'Build ort-web'
   - script: |
       npm test -- suite0 --wasm-init-timeout=30000 --file-cache
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
