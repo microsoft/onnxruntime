@@ -47,7 +47,9 @@
     <!-- Optional: Embed source files that are not tracked by the source control manager in the PDB -->
     <!--EmbedUntrackedSources>true</EmbedUntrackedSources-->
 
+    <!-- TEMP
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    -->
     <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <AllowedOutputExtensionsInPackageBuildOutputFolder>$(AllowedOutputExtensionsInPackageBuildOutputFolder);.pdb</AllowedOutputExtensionsInPackageBuildOutputFolder>
@@ -58,14 +60,14 @@
     <IsMacOSBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))' == 'true'">true</IsMacOSBuild>
   </PropertyGroup>
 
-    <!--
+    <!-- TEMP 
     <PropertyGroup Condition=" '$(Version)' == '' ">
         <VersionPrefix Condition=" '$(VersionPrefix)' == '' ">1.0.0</VersionPrefix>
         <Version Condition=" '$(VersionSuffix)' != '' ">$(VersionPrefix)-$(VersionSuffix)</Version>
         <Version Condition=" '$(Version)' == '' ">$(VersionPrefix)</Version>
     </PropertyGroup>
     -->
-    
+
     <PropertyGroup Condition="'$(IsLinuxBuild)'=='true'">
         <!--internal build related properties for Linux -->
         <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Linux</OnnxRuntimeBuildDirectory>
