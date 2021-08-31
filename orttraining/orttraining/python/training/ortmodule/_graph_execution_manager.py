@@ -230,16 +230,16 @@ class GraphExecutionManager(GraphExecutionInterface):
             providers = (["ROCMExecutionProvider"] if self.is_rocm_pytorch else [
                          "CUDAExecutionProvider"])
             providers.append("CPUExecutionProvider")
-            cuda_provider_option = {"device_id": str(self._device.index)}
+            provider_option_map = {"device_id": str(self._device.index)}
             if not self.is_rocm_pytorch:
                 # Set Conv algo search mode to HEURISTIC, which is same as PyTorch's default setting.
-                cuda_provider_option["cudnn_conv_algo_search"] = "HEURISTIC"
-                cuda_provider_option["cudnn_conv_use_max_workspace"] = "1"
+                provider_option_map["cudnn_conv_algo_search"] = "HEURISTIC"
+                provider_option_map["cudnn_conv_use_max_workspace"] = "1"
             if self._use_external_gpu_allocator:
-                cuda_provider_option["gpu_external_alloc"] = str(self._torch_alloc)
-                cuda_provider_option["gpu_external_free"] = str(self._torch_free)
-                cuda_provider_option["gpu_external_empty_cache"] = str(self._torch_empty_cache)
-            provider_options = [cuda_provider_option, {}]
+                provider_option_map["gpu_external_alloc"] = str(self._torch_alloc)
+                provider_option_map["gpu_external_free"] = str(self._torch_free)
+                provider_option_map["gpu_external_empty_cache"] = str(self._torch_empty_cache)
+            provider_options = [provider_option_map, {}]
         elif self._device.type == 'cpu':
             providers = ["CPUExecutionProvider"]
             provider_options = [{}]
