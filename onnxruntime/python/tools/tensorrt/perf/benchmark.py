@@ -836,8 +836,14 @@ def get_test_data(fp16, test_data_dir, all_inputs_shape):
 
 def run_symbolic_shape_inference(model_path, new_model_path): 
     import onnxruntime.tools.symbolic_shape_infer as symbolic_shape_infer
-    out = symbolic_shape_infer.SymbolicShapeInference.infer_shapes(onnx.load(model_path), auto_merge=True)
-    onnx.save(out, new_model_path)
+    logger.info("run symbolic shape inference")
+    try:
+        out = symbolic_shape_infer.SymbolicShapeInference.infer_shapes(onnx.load(model_path), auto_merge=True)
+        onnx.save(out, new_model_path)
+        return True, None
+    except Exception as e:
+        logger.error(e)
+        return False, e
 
 def create_session(model_path, providers, session_options):
     logger.info(model_path)
@@ -847,10 +853,12 @@ def create_session(model_path, providers, session_options):
     except Exception as e:
         if "shape inference" in str(e):
             logger.info("Using model from symbolic_shape_infer.py")
-
             new_model_path = model_path[:].replace(".onnx", "_new_by_trt_perf.onnx")
             if not os.path.exists(new_model_path):
-                run_symbolic_shape_inference(model_path, new_model_path)
+                status = run_symbolic_shape_inference(model_path, new_model_path)
+                if not status[0]: 
+                    e = status[1]
+                    raise Exception(e)
             session = onnxruntime.InferenceSession(new_model_path, providers=providers, sess_options=session_options)
             return session
         else:
