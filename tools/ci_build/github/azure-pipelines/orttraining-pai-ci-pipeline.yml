@@ -51,7 +51,7 @@ steps:
 - script: |-
     cd ./build/RelWithDebInfo
     export PYTHONPATH=$PWD
-    python -m torch.distributed.launch --nproc_per_node 1 \
+    python \
       /home/ciagent/huggingface-transformers/examples/pytorch/language-modeling/run_mlm.py \
       --model_name_or_path bert-large-uncased \
       --dataset_name wikitext \
@@ -72,7 +72,7 @@ steps:
 - script: |-
     cd ./build/RelWithDebInfo
     export PYTHONPATH=$PWD
-    python -m torch.distributed.launch --nproc_per_node 1 \
+    python \
       /home/ciagent/huggingface-transformers/examples/pytorch/language-modeling/run_clm.py \
       --model_name_or_path gpt2 \
       --dataset_name wikitext \
@@ -94,8 +94,8 @@ steps:
 - script: |-
     cd ./build/RelWithDebInfo
     export PYTHONPATH=$PWD
-    python -m torch.distributed.launch --nproc_per_node 1 \
-    /home/ciagent/huggingface-transformers/examples/pytorch/translation/run_translation.py \
+    python \
+      /home/ciagent/huggingface-transformers/examples/pytorch/translation/run_translation.py \
       --dataset_name wmt16 \
       --dataset_config ro-en \
       --model_name_or_path facebook/bart-large \
@@ -119,7 +119,7 @@ steps:
 - script: |-
     cd ./build/RelWithDebInfo
     export PYTHONPATH=$PWD
-    python -m torch.distributed.launch --nproc_per_node 1 \
+    python \
       /home/ciagent/huggingface-transformers/examples/pytorch/question-answering/run_qa.py \
       --model_name_or_path roberta-large \
       --dataset_name squad \
@@ -142,7 +142,7 @@ steps:
 - script: |-
     cd ./build/RelWithDebInfo
     export PYTHONPATH=$PWD
-    python -m torch.distributed.launch --nproc_per_node 1 \
+    python \
       /home/ciagent/huggingface-transformers/examples/pytorch/language-modeling/run_mlm.py \
       --model_name_or_path distilbert-base-uncased \
       --dataset_name wikitext \
@@ -163,7 +163,7 @@ steps:
 #- script: |-
 #    cd ./build/RelWithDebInfo
 #    export PYTHONPATH=$PWD
-#    python -m torch.distributed.launch --nproc_per_node 1 \
+#    python \
 #      /home/ciagent/huggingface-transformers/examples/pytorch/text-classification/run_glue.py \
 #      --model_name_or_path microsoft/deberta-v2-xxlarge \
 #      --task_name MRPC \
@@ -185,7 +185,7 @@ steps:
 - script: |-
     cd ./build/RelWithDebInfo
     export PYTHONPATH=$PWD
-    python -m torch.distributed.launch --nproc_per_node 1 \
+    python \
       /home/ciagent/huggingface-transformers/examples/pytorch/translation/run_translation.py \
       --source_prefix '"translate English to Romanian:"' \
       --dataset_name wmt16 \
