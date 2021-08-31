@@ -160,27 +160,27 @@ steps:
   displayName: 'Run Python Hugging-Face DistilBERT test'
   condition: succeededOrFailed() # ensure all tests are run
 
-- script: |-
-    cd ./build/RelWithDebInfo
-    export PYTHONPATH=$PWD
-    python -m torch.distributed.launch --nproc_per_node 1 \
-      /home/ciagent/huggingface-transformers/examples/pytorch/text-classification/run_glue.py \
-      --model_name_or_path microsoft/deberta-v2-xxlarge \
-      --task_name MRPC \
-      --do_train \
-      --max_seq_length 128 \
-      --per_device_train_batch_size 4 \
-      --learning_rate 3e-6 \
-      --max_steps 260 \
-      --output_dir ./deberta_res \
-      --overwrite_output_dir \
-      --logging_steps 20 \
-      --fp16 \
-      --dataloader_num_workers 1 \
-      --ort \
-      --skip_memory_metrics 
-  displayName: 'Run Python Hugging-Face DeBERTa-XXL v2 test'
-  condition: succeededOrFailed() # ensure all tests are run
+#- script: |-
+#    cd ./build/RelWithDebInfo
+#    export PYTHONPATH=$PWD
+#    python -m torch.distributed.launch --nproc_per_node 1 \
+#      /home/ciagent/huggingface-transformers/examples/pytorch/text-classification/run_glue.py \
+#      --model_name_or_path microsoft/deberta-v2-xxlarge \
+#      --task_name MRPC \
+#      --do_train \
+#      --max_seq_length 128 \
+#      --per_device_train_batch_size 4 \
+#      --learning_rate 3e-6 \
+#      --max_steps 260 \
+#      --output_dir ./deberta_res \
+#      --overwrite_output_dir \
+#      --logging_steps 20 \
+#      --fp16 \
+#      --dataloader_num_workers 1 \
+#      --ort \
+#      --skip_memory_metrics 
+#  displayName: 'Run Python Hugging-Face DeBERTa-XXL v2 test'
+#  condition: succeededOrFailed() # ensure all tests are run
 
 - script: |-
     cd ./build/RelWithDebInfo
