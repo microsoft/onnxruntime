@@ -4,9 +4,18 @@
 
 
 import argparse
-import mysql.connector
 import sys
 import os
+import datetime
+# ingest from dataframe
+import pandas
+from azure.kusto.data import KustoConnectionStringBuilder
+from azure.kusto.ingest import (
+    IngestionProperties,
+    DataFormat,
+    ReportLevel,
+    QueuedIngestClient,
+)
 
 
 def parse_arguments():
@@ -49,50 +58,32 @@ def get_binary_sizes(size_data_file):
 
 def write_to_db(binary_size_data, args):
     # connect to database
-
-    cnx = mysql.connector.connect(
-        user='ort@onnxruntimedashboard',
-        password=os.environ.get('DASHBOARD_MYSQL_ORT_PASSWORD'),
-        host='onnxruntimedashboard.mysql.database.azure.com',
-        database='onnxruntime')
-
-    try:
-        cursor = cnx.cursor()
-
-        # insert current records
-        for row in binary_size_data:
-            insert_query = ('INSERT INTO onnxruntime.binary_size '
-                            '(build_time, build_project, build_id, commit_id, os, arch, build_config, size) '
-                            'VALUES (Now(), "%s", "%s", "%s", "%s", "%s", "%s", %d) '
-                            'ON DUPLICATE KEY UPDATE '
-                            'build_time=Now(), build_project="%s", build_id="%s", size=%d;'
-                            ) % (
-                args.build_project,
-                args.build_id,
-                args.commit_hash,
-                row['os'],
-                row['arch'],
-                row['build_config'],
-                row['size'],
-
-                args.build_project,
-                args.build_id,
-                row['size']
-            )
-            cursor.execute(insert_query)
-
-        cnx.commit()
-
-        # # Use below for debugging:
-        # cursor.execute('select * from onnxruntime.binary_size')
-        # for r in cursor:
-        #     print(r)
-
-        cursor.close()
-        cnx.close()
-    except BaseException as e:
-        cnx.close()
-        raise e
+    cluster = "https://ingest-onnxruntimedashboarddb.southcentralus.kusto.windows.net"
+    kcsb = KustoConnectionStringBuilder.with_az_cli_authentication(cluster)
+    # The authentication method will be taken from the chosen KustoConnectionStringBuilder.
+    client = QueuedIngestClient(kcsb)
+    fields = ["build_time", "build_id", "build_project", "commit_id", "os", "arch", "build_config", "size", "Branch"]
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    branch_name = os.environ.get('BUILD_SOURCEBRANCHNAME', 'master')
+    rows = []
+    for row in binary_size_data:
+        rows.append([now_str,
+                     args.build_id,
+                     args.build_project,
+                     args.commit_hash,
+                     row['os'],
+                     row['arch'],
+                     row['build_config'],
+                     row['size'],
+                     branch_name.lower()])
+    ingestion_props = IngestionProperties(
+      database="powerbi",
+      table="binary_size",
+      data_format=DataFormat.CSV,
+      report_level=ReportLevel.FailuresAndSuccesses
+    )
+    df = pandas.DataFrame(data=rows, columns=fields)
+    client.ingest_from_dataframe(df, ingestion_properties=ingestion_props)
 
 
 if __name__ == "__main__":

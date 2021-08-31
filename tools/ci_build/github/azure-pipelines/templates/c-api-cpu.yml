@@ -536,6 +536,41 @@ jobs:
           $date = $(Get-Date -Format "yyyy-MM-dd")
           Write-Host "##vso[task.setvariable variable=CurrentDate]$date"
 
+  - task: CmdLine@2
+    displayName: 'Post binary sizes to the dashboard database using command line'
+    inputs:
+      script: |
+          python.exe -m pip install azure-kusto-data[pandas] azure-kusto-ingest[pandas]
+          echo changing directory to artifact download path
+          cd $(Build.BinariesDirectory)/nuget-artifact/final-package
+          echo processing nupkg
+          SETLOCAL EnableDelayedExpansion   
+          FOR /R %%i IN (*.nupkg) do (
+           set filename=%%~ni
+           IF NOT "!filename:~25,7!"=="Managed" (
+            echo processing %%~ni.nupkg
+            copy %%~ni.nupkg %%~ni.zip
+            echo copied to zip
+            echo listing lib files in the zip 
+            REM use a single .csv file to put the data 
+            echo os,arch,build_config,size > $(Build.BinariesDirectory)\binary_size_data.txt
+            7z.exe l -slt %%~ni.zip runtimes\linux-x64\native\libonnxruntime.so | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo linux,x64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
+            7z.exe l -slt %%~ni.zip runtimes\linux-aarch64\native\libonnxruntime.so | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo linux,aarch64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
+            7z.exe l -slt %%~ni.zip runtimes\osx.10.14-x64\native\libonnxruntime.dylib | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo osx,x64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
+            7z.exe l -slt %%~ni.zip runtimes\win-x64\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
+            7z.exe l -slt %%~ni.zip runtimes\win-x86\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x86,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt            
+             )
+           ) 
+  - task: AzureCLI@2
+    displayName: 'Azure CLI'
+    inputs:
+      azureSubscription: AIInfraBuildOnnxRuntimeOSS
+      scriptLocation: inlineScript
+      scriptType: batch
+      inlineScript: |
+        python.exe $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=$(Build.SourceVersion) --size_data_file=binary_size_data.txt --build_project=Lotus --build_id=$(Build.BuildId)
+      workingDirectory: '$(Build.BinariesDirectory)'
+
   - task: AzureFileCopy@3
     displayName: 'Copy Signed Native NuGet Package to Blob Store'
     condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
