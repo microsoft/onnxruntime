@@ -1,6 +1,6 @@
 ---
 title: Build with reduced size
-parent: Build ORT packages
+parent: Build ORT
 nav_order: 6
 ---
 

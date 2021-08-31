@@ -1,6 +1,6 @@
 ---
 title: Build for web
-parent: Build ORT packages
+parent: Build ORT
 nav_order: 4
 ---
 

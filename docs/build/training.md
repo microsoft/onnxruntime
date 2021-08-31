@@ -1,6 +1,6 @@
 ---
 title: Build for training
-parent: Build ORT packages
+parent: Build ORT
 nav_order: 2
 ---
 

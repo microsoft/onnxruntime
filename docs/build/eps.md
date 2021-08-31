@@ -1,6 +1,6 @@
 ---
 title: Build with different EPs
-parent: Build ORT packages
+parent: Build ORT
 nav_order: 3
 ---
 

@@ -1,7 +1,7 @@
 ---
 title: Setup
 has_children: true
-nav_order: 2
+nav_order: 1
 ---
 
 # ONNX Runtime how-to guides

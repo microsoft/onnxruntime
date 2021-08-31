@@ -1,6 +1,6 @@
 ---
 title: Other Inference APIs
-parent: API docs
+parent: API's
 nav_order: 9
 ---
 

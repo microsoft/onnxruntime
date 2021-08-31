@@ -1,6 +1,6 @@
 ---
 title: WinRT API
-parent: API docs
+parent: API's
 nav_order: 8
 ---
 

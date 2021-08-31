@@ -1,6 +1,6 @@
 ---
 title: Training API
-parent: API docs
+parent: API's
 nav_order: 10
 ---
 
@@ -15,4 +15,4 @@ The ORT Training API is a PyTorch frontend that implements the torch.nn.Module i
 {:toc}
 
 ## Samples
-[ONNX Runtime Training Examples](../../tutorials/training)
+[ONNX Runtime Training Examples](../tutorials/training)
