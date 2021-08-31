@@ -26,6 +26,9 @@ common::Status GetFusedActivationAttr(const OpKernelInfo& info, MLAS_ACTIVATION&
       } else if (activation_type == "Clip") {
         activation.ActivationKind = MlasClipActivation;
         activation_params_count = 2;
+      } else if (activation_type == "HardSigmoid") {
+        activation.ActivationKind = MlasHardSigmoidActivation;
+        activation_params_count = 2;
       } else {
         return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "unimplemented activation: " + activation_type);
       }
