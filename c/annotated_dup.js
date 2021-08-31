@@ -1,0 +1,38 @@
+var annotated_dup =
+[
+    [ "Ort", "namespace_ort.html", [
+      [ "Exception", "struct_ort_1_1_exception.html", "struct_ort_1_1_exception" ],
+      [ "Global", "struct_ort_1_1_global.html", null ],
+      [ "Float16_t", "struct_ort_1_1_float16__t.html", "struct_ort_1_1_float16__t" ],
+      [ "BFloat16_t", "struct_ort_1_1_b_float16__t.html", "struct_ort_1_1_b_float16__t" ],
+      [ "Base", "struct_ort_1_1_base.html", "struct_ort_1_1_base" ],
+      [ "Unowned", "struct_ort_1_1_unowned.html", "struct_ort_1_1_unowned" ],
+      [ "Env", "struct_ort_1_1_env.html", "struct_ort_1_1_env" ],
+      [ "CustomOpDomain", "struct_ort_1_1_custom_op_domain.html", "struct_ort_1_1_custom_op_domain" ],
+      [ "RunOptions", "struct_ort_1_1_run_options.html", "struct_ort_1_1_run_options" ],
+      [ "SessionOptions", "struct_ort_1_1_session_options.html", "struct_ort_1_1_session_options" ],
+      [ "ModelMetadata", "struct_ort_1_1_model_metadata.html", "struct_ort_1_1_model_metadata" ],
+      [ "Session", "struct_ort_1_1_session.html", "struct_ort_1_1_session" ],
+      [ "TensorTypeAndShapeInfo", "struct_ort_1_1_tensor_type_and_shape_info.html", "struct_ort_1_1_tensor_type_and_shape_info" ],
+      [ "SequenceTypeInfo", "struct_ort_1_1_sequence_type_info.html", "struct_ort_1_1_sequence_type_info" ],
+      [ "MapTypeInfo", "struct_ort_1_1_map_type_info.html", "struct_ort_1_1_map_type_info" ],
+      [ "TypeInfo", "struct_ort_1_1_type_info.html", "struct_ort_1_1_type_info" ],
+      [ "Value", "struct_ort_1_1_value.html", "struct_ort_1_1_value" ],
+      [ "MemoryAllocation", "struct_ort_1_1_memory_allocation.html", "struct_ort_1_1_memory_allocation" ],
+      [ "AllocatorWithDefaultOptions", "struct_ort_1_1_allocator_with_default_options.html", "struct_ort_1_1_allocator_with_default_options" ],
+      [ "MemoryInfo", "struct_ort_1_1_memory_info.html", "struct_ort_1_1_memory_info" ],
+      [ "Allocator", "struct_ort_1_1_allocator.html", "struct_ort_1_1_allocator" ],
+      [ "IoBinding", "struct_ort_1_1_io_binding.html", "struct_ort_1_1_io_binding" ],
+      [ "ArenaCfg", "struct_ort_1_1_arena_cfg.html", "struct_ort_1_1_arena_cfg" ],
+      [ "CustomOpApi", "struct_ort_1_1_custom_op_api.html", "struct_ort_1_1_custom_op_api" ],
+      [ "CustomOpBase", "struct_ort_1_1_custom_op_base.html", "struct_ort_1_1_custom_op_base" ]
+    ] ],
+    [ "OrtAllocator", "struct_ort_allocator.html", "struct_ort_allocator" ],
+    [ "OrtApi", "struct_ort_api.html", "struct_ort_api" ],
+    [ "OrtApiBase", "struct_ort_api_base.html", "struct_ort_api_base" ],
+    [ "OrtCUDAProviderOptions", "struct_ort_c_u_d_a_provider_options.html", "struct_ort_c_u_d_a_provider_options" ],
+    [ "OrtCustomOp", "struct_ort_custom_op.html", "struct_ort_custom_op" ],
+    [ "OrtOpenVINOProviderOptions", "struct_ort_open_v_i_n_o_provider_options.html", "struct_ort_open_v_i_n_o_provider_options" ],
+    [ "OrtROCMProviderOptions", "struct_ort_r_o_c_m_provider_options.html", "struct_ort_r_o_c_m_provider_options" ],
+    [ "OrtTensorRTProviderOptions", "struct_ort_tensor_r_t_provider_options.html", "struct_ort_tensor_r_t_provider_options" ]
+];
