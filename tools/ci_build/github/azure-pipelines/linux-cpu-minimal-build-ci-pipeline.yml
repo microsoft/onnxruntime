@@ -182,7 +182,7 @@ jobs:
     displayName: 'Azure CLI'
     condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
     inputs:
-      azureSubscription: AIInfraBuildOnnxRuntimeOSS
+      azureSubscription: AIInfraBuild
       scriptLocation: inlineScript
       scriptType: batch
       inlineScript: |
