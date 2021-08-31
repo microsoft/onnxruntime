@@ -49,7 +49,7 @@ class SimpleTest {
                     opts.addNnapi()
                 } else {
                     Log.println(Log.INFO, TAG, "NO NNAPI EP available, skip the test")
-                    return;
+                    return
                 }
             }
             opts.use {
