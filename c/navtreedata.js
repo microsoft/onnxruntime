@@ -25,6 +25,10 @@
 var NAVTREE =
 [
   [ "OnnxRuntime", "index.html", [
+    [ "C & C++ API overviews", "index.html", [
+      [ "C API", "index.html#C", null ],
+      [ "C++ API", "index.html#Cpp", null ]
+    ] ],
     [ "Deprecated List", "deprecated.html", null ],
     [ "Modules", "modules.html", "modules" ],
     [ "Namespaces", "namespaces.html", [
@@ -52,8 +56,8 @@ var NAVTREE =
 var NAVTREEINDEX =
 [
 "annotated.html",
-"struct_ort_1_1_env.html#a25b49a5a089206ead63150b4e246bdbe",
-"struct_ort_api.html#a67cb0264307e861b26a7dbcc04ef91b9"
+"struct_ort_1_1_custom_op_domain.html#a71fe5d662c516259a8e9816abc48eecb",
+"struct_ort_api.html#a6410369e642c734194ed93d29757bd1e"
 ];
 
 var SYNCONMSG = 'click to disable panel synchronisation';

@@ -5,7 +5,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=9"/>
 <meta name="generator" content="Doxygen 1.9.1"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>OnnxRuntime: Main Page</title>
+<title>OnnxRuntime: C &amp; C++ API overviews</title>
 <link href="tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="jquery.js"></script>
 <script type="text/javascript" src="dynsections.js"></script>
@@ -81,11 +81,24 @@ $(document).ready(function(){initNavTree('index.html',''); initResizable(); });
 </iframe>
 </div>
 
-<div class="header">
+<div class="PageDoc"><div class="header">
   <div class="headertitle">
-<div class="title">OnnxRuntime Documentation</div>  </div>
+<div class="title">C &amp; C++ API overviews </div>  </div>
 </div><!--header-->
 <div class="contents">
+<div class="textblock"><p>These pages document the C interface and the C++ wrapper around it. For other language APIs see the main documentation page.</p>
+<h1><a class="anchor" id="C"></a>
+C API</h1>
+<p>Include <a class="el" href="onnxruntime__c__api_8h_source.html">onnxruntime_c_api.h</a> to get this API.</p>
+<p><a class="el" href="struct_ort_api.html" title="The C API.">OrtApi</a></p>
+<p>The C API is implemented as a pointer to a structure of function pointers, <a class="el" href="struct_ort_api.html" title="The C API.">OrtApi</a>. The exported function <a class="el" href="group___global.html#gaf28e9b0b6b8126cd0cace0f003a93cbd" title="The Onnxruntime library&#39;s entry point to access the C API.">OrtGetApiBase</a> is used to get this structure.</p>
+<p>Most C APIs return a pointer to an <a class="el" href="group___global.html#gabbdf49d59489efef1b125d8e0d59adc6">OrtStatus</a>. If no error occurs this return value will be nullptr. If an error occurs use this return value to get more information about the error, <a class="el" href="struct_ort_api.html#a9b21334e290855a585f53d53dda44551">OrtApi::ReleaseStatus</a> must be called to free the value.</p>
+<h1><a class="anchor" id="Cpp"></a>
+C++ API</h1>
+<p>Include <a class="el" href="onnxruntime__cxx__api_8h_source.html">onnxruntime_cxx_api.h</a> to get this API (it includes the C API headers as it depends on them).</p>
+<p><a class="el" href="namespace_ort.html" title="All C++ Onnxruntime APIs are defined inside this namespace.">Ort</a></p>
+<p>It is a set of header only wrapper classes around the C API. The goal is to turn the C style return value error codes into C++ exceptions, and to automate memory management through standard C++ RAII principles. </p>
+</div></div><!-- PageDoc -->
 </div><!-- contents -->
 </div><!-- doc-content -->
 <!-- start footer part -->

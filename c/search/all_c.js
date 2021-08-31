@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['num_5fof_5fthreads_238',['num_of_threads',['../struct_ort_open_v_i_n_o_provider_options.html#a37959be14f6db5727f864d730808d354',1,'OrtOpenVINOProviderOptions']]]
+  ['num_5fof_5fthreads_239',['num_of_threads',['../struct_ort_open_v_i_n_o_provider_options.html#a37959be14f6db5727f864d730808d354',1,'OrtOpenVINOProviderOptions']]]
 ];
