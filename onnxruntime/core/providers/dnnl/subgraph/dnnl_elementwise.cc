@@ -13,7 +13,7 @@ DnnlElementwise::DnnlElementwise() {}
 void DnnlElementwise::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto dnnl_engine = sp.GetEngine();
 
-  auto elementwise_src_mem = sp.GetMemory(node.Input(IN_X).Name());
+  auto elementwise_src_mem = sp.GetMemory(node.Input(IN_X));
   auto src_md = elementwise_src_mem.get_desc();
   dnnl::algorithm algo;
   bool requires_alpha = false;

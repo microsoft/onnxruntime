@@ -13,7 +13,7 @@ DnnlReshape::DnnlReshape() { }
 void DnnlReshape::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto dnnl_engine = sp.GetEngine();
 
-  auto data_mem = sp.GetMemory(node.Input(IN_DATA).Name());
+  auto data_mem = sp.GetMemory(node.Input(IN_DATA));
   dnnl::memory::dims data_dims = data_mem.get_desc().dims();
   auto data_md = data_mem.get_desc();
 
@@ -29,7 +29,7 @@ void DnnlReshape::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     data_mem = sp.GetMemoryAndReshape(node.Input(IN_DATA), data_md, dnnl_engine);
   }
 
-  auto shape_mem = sp.GetMemory(node.Input(IN_SHAPE).Name());
+  auto shape_mem = sp.GetMemory(node.Input(IN_SHAPE));
   dnnl::memory::dims shape_dims = shape_mem.get_desc().dims();
   int64_t* shape_data = (int64_t*)shape_mem.get_data_handle();
 

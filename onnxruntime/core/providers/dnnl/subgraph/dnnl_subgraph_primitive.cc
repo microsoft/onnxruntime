@@ -304,7 +304,8 @@ void DnnlSubgraphPrimitive::SetMemory(DnnlTensor tensor, dnnl::memory mem, bool 
   SetMemory(tensor.Name(), mem);
 }
 
-dnnl::memory DnnlSubgraphPrimitive::GetMemory(std::string memory_name) {
+dnnl::memory DnnlSubgraphPrimitive::GetMemory(const DnnlTensor& tensor) {
+  std::string memory_name = tensor.Name();
   if (Contains(initializers_, memory_name)) {
     if (!initializers_.at(memory_name).empty()) {
       return initializers_.at(memory_name)[0];
@@ -322,7 +323,8 @@ dnnl::memory DnnlSubgraphPrimitive::GetMemory(std::string memory_name) {
   throw std::invalid_argument("cannot find memory");
 }
 
-dnnl::memory DnnlSubgraphPrimitive::GetMemory(std::string memory_name, dnnl::memory::desc mem_desc, dnnl::engine eng) {
+dnnl::memory DnnlSubgraphPrimitive::GetMemory(const DnnlTensor& tensor, dnnl::memory::desc mem_desc, dnnl::engine eng) {
+  std::string memory_name = tensor.Name();
   if (Contains(initializers_, memory_name)) {
     for (auto& mem : initializers_.at(memory_name)) {
       if (mem.get_engine() == eng && mem.get_desc() == mem_desc) {
@@ -377,10 +379,10 @@ void DnnlSubgraphPrimitive::SetInitializer(std::string memory_name, dnnl::memory
   }
 }
 
-dnnl::memory DnnlSubgraphPrimitive::GetMemoryAndReshape(ort_dnnl::DnnlTensor tensor, dnnl::memory::desc mem_desc, dnnl::engine eng, bool transpose) {
+dnnl::memory DnnlSubgraphPrimitive::GetMemoryAndReshape(const DnnlTensor& tensor, dnnl::memory::desc mem_desc, dnnl::engine eng, bool transpose) {
   // if found just return
   if (HasMemory(tensor.Name(), mem_desc, eng)) {
-    return GetMemory(tensor.Name(), mem_desc, eng);
+    return GetMemory(tensor, mem_desc, eng);
   }
 
   // is non overridable constant initializer (assume already in memory (runtime))
@@ -389,7 +391,7 @@ dnnl::memory DnnlSubgraphPrimitive::GetMemoryAndReshape(ort_dnnl::DnnlTensor ten
     LOGS_DEFAULT(INFO) << "initializer cache started";
   }
   // will get the first memory with matching name
-  auto mem_from = GetMemory(tensor.Name());
+  auto mem_from = GetMemory(tensor);
   auto mem_to = dnnl::memory(mem_desc, eng);
 
   // if it is a reshape, ensure reorder is possible by making the same dims

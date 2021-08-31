@@ -15,7 +15,7 @@ DnnlTensor::DnnlTensor(std::string name) {
   tensor_name_ = name;
 }
 
-std::string DnnlTensor::Name() {
+std::string DnnlTensor::Name() const {
   return tensor_name_;
 }
 

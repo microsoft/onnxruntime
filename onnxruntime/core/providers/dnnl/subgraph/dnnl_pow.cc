@@ -13,10 +13,10 @@ DnnlPow::DnnlPow() {}
 void DnnlPow::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto dnnl_engine = sp.GetEngine();
 
-  auto elementwise_src_mem = sp.GetMemory(node.Input(IN_X).Name());
+  auto elementwise_src_mem = sp.GetMemory(node.Input(IN_X));
   auto src_md = elementwise_src_mem.get_desc();
 
-  auto exponent_src_mem = sp.GetMemory(node.Input(IN_Y).Name());
+  auto exponent_src_mem = sp.GetMemory(node.Input(IN_Y));
 
   float beta = 1.0;
   switch (node.Input(IN_Y).Type()) {
