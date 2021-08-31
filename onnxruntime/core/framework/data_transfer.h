@@ -47,6 +47,10 @@ class IDataTransfer {
 
   virtual common::Status CopySparseTensors(const std::vector<SparseSrcDstPair>& src_dst_pairs) const;
 #endif
+
+  virtual bool CanCopyStrided() const {
+    return false;
+  };
 };
 
 class CPUDataTransfer : public IDataTransfer {
@@ -56,5 +60,7 @@ class CPUDataTransfer : public IDataTransfer {
   using IDataTransfer::CopyTensor;
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;
   common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
+
+  bool CanCopyStrided() const override { return true; };
 };
 }  // namespace onnxruntime

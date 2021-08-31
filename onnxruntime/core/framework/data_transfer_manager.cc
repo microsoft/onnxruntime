@@ -38,21 +38,37 @@ common::Status DataTransferManager::CopySparseTensor(const SparseTensor& src, Sp
 #endif
 
 Status DataTransferManager::CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const {
-  if (src.Shape().Size() != dst.Shape().Size()) {
+  if (src.IsContiguous() && dst.IsContiguous() && src.Shape().Size() != dst.Shape().Size()) {
     return Status(ONNXRUNTIME, FAIL, "Tensor size mismatch");
   }
+
+  bool strided = !src.IsContiguous() || !dst.IsContiguous();
 
   for (auto& data_transfer : datatransfers_) {
     if (!data_transfer->CanCopy(src.Location().device, dst.Location().device)) {
       continue;
     }
 
+    // check if this manager can copy non-contiguous tensors
+    if (strided && !data_transfer->CanCopyStrided()) {
+      continue;
+    }
+
     return data_transfer->CopyTensor(src, dst, exec_queue_id);
   }
 
+  if (!strided) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME,
+                           FAIL,
+                           "There's no data transfer registered for copying tensors from ",
+                           src.Location().device.ToString(),
+                           " to ",
+                           dst.Location().device.ToString());
+  }
+  // more specific error message when tensors are non-contiguous
   return ORT_MAKE_STATUS(ONNXRUNTIME,
                          FAIL,
-                         "There's no data transfer registered for copying tensors from ",
+                         "There's no data transfer registered for copying non-contiguous tensors from ",
                          src.Location().device.ToString(),
                          " to ",
                          dst.Location().device.ToString());

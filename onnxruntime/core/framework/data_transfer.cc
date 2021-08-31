@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/data_transfer.h"
+#include "core/providers/cpu/tensor/copy.h"
 #ifndef SHARED_PROVIDER
 #include "core/framework/tensor.h"
 #include "core/framework/sparse_tensor.h"
@@ -43,9 +44,15 @@ common::Status CPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int /
     // no need copying as both pointers are referring to same piece of memory.
     return Status::OK();
   }
-  // Copying only happens between two same size tensors.
   ORT_ENFORCE(src.SizeInBytes() == dst.SizeInBytes());
-  memcpy(dst_data, src_data, src.SizeInBytes());
+
+  if (src.IsContiguous() && dst.IsContiguous()) {
+    // Copying only happens between two same size tensors.
+    memcpy(dst_data, src_data, src.SizeInBytes());
+  } else {
+    DispatchStridedCopy(nullptr, dst, 0, dst.Strides(), dst.Shape(), src, src.Strides());
+  }
+
   return Status::OK();
 }
 
