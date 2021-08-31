@@ -172,7 +172,6 @@ extern OrtCudnnConvAlgoSearch cudnn_conv_algo_search;
 // TODO remove deprecated global config
 extern bool do_copy_in_default_stream;
 extern onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocator_info;
-extern bool cudnn_conv_use_max_workspace;
 }  // namespace python
 }  // namespace onnxruntime
 #endif

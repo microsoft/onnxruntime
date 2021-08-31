@@ -316,7 +316,6 @@ const CUDAExecutionProviderInfo GetCudaExecutionProviderInfo(ProviderInfo_CUDA* 
     info.cudnn_conv_algo_search = cudnn_conv_algo_search;
     info.do_copy_in_default_stream = do_copy_in_default_stream;
     info.external_allocator_info = external_allocator_info;
-    info.cudnn_conv_use_max_workspace = cudnn_conv_use_max_workspace;
   }
   return info;
 }
@@ -926,16 +925,6 @@ void addGlobalMethods(py::module& m, Environment& env) {
     ORT_THROW("set_do_copy_in_default_stream is not supported in ROCM");
 #else
         do_copy_in_default_stream = use_single_stream;
-#endif
-  });
-  m.def("set_cudnn_conv_use_max_workspace", [](const bool use_max_workspace) {
-    LogDeprecationWarning("set_cudnn_conv_use_max_workspace",
-                          "CUDA execution provider option \"cudnn_conv_use_max_workspace\"");
-#ifdef USE_ROCM
-    ORT_UNUSED_PARAMETER(use_max_workspace);
-    ORT_THROW("set_cudnn_conv_use_max_workspace is not supported in ROCM");
-#else
-        cudnn_conv_use_max_workspace = use_max_workspace;
 #endif
   });
   // TODO remove deprecated global config

@@ -31,7 +31,6 @@ OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTI
 // TODO remove deprecated global config
 bool do_copy_in_default_stream = true;
 onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocator_info{};
-bool cudnn_conv_use_max_workspace = false;
 #endif
 
 #ifdef USE_ROCM
