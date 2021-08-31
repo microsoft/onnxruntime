@@ -2015,6 +2015,10 @@ def main():
     if args.use_openvino == "VAD-F_FP32":
         args.test = False
 
+    # Disabling unit tests for GPU and MYRIAD on nuget creation
+    if args.use_openvino != "CPU_FP32" and args.build_nuget:
+        args.test = False
+
     configs = set(args.config)
 
     # setup paths and directories
