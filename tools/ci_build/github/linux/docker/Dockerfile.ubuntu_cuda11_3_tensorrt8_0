@@ -8,8 +8,6 @@ ARG OS_VERSION=18.04
 FROM nvidia/cuda:11.4.0-cudnn8-devel-ubuntu${OS_VERSION}
 
 ENV CUDA_VERSION=11.3.1
-ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
-ARG ONNXRUNTIME_BRANCH=master
 ARG TRT=8.0.1.6 
 
 RUN apt-get update &&\

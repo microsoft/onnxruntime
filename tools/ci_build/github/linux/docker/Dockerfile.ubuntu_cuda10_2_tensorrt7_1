@@ -8,8 +8,6 @@ ARG CUDA_VERSION=10.2
 ARG OS_VERSION=18.04
 FROM nvidia/cuda:${CUDA_VERSION}-cudnn8-devel-ubuntu${OS_VERSION}
 
-ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
-ARG ONNXRUNTIME_BRANCH=master
 ARG TRT=7.1.3.4
 
 RUN apt-get update &&\
@@ -42,4 +40,3 @@ RUN cd /tmp &&\
 RUN v="${TRT%.*}-1+cuda${CUDA_VERSION%.*}" &&\
     apt-get install -y libnvinfer7=${v} libnvinfer-plugin7=${v} libnvparsers7=${v} libnvonnxparsers7=${v} libnvinfer-dev=${v} libnvinfer-plugin-dev=${v} libnvparsers-dev=${v} python3-libnvinfer=${v} &&\
     apt-mark hold libnvinfer7 libnvinfer-plugin7 libnvparsers7 libnvonnxparsers7 libnvinfer-dev libnvinfer-plugin-dev libnvparsers-dev python3-libnvinfer
-
