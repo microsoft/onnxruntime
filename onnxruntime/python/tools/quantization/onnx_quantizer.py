@@ -463,6 +463,7 @@ class ONNXQuantizer:
         '''
         if use_scale is None or use_zeropoint is None:
             if self.quantization_params is None or param_name not in self.quantization_params:
+                logging.info("Quantization parameters for tensor:\"{}\" not specified".format(param_name))
                 return False, "", "", "", ""
 
             params = self.quantization_params[param_name]
@@ -517,10 +518,7 @@ class ONNXQuantizer:
                                                  [output_name], ql_node_name)
         else:
             if self.static:
-                raise ValueError(
-                    "Quantization parameters are not specified for param {}."
-                    "In static mode quantization params for inputs and outputs of nodes to be quantized are required.".
-                    format(input_name))
+                return None
             # dynamic mode
             # Scale and Zero Points not available for this input. Add nodes to dynamically compute it
             if self.fuse_dynamic_quant and qType == onnx_proto.TensorProto.UINT8:
@@ -655,6 +653,8 @@ class ONNXQuantizer:
                                                             self.model.graph())
                 if qlinear_node is None:
                     quantize_input_nodes = self._get_quantize_input_nodes(node, input_index, self.input_qType)
+                    if quantize_input_nodes is None:
+                        return (None, None, None, None)
                     if from_subgraph:
                         self.add_new_nodes(quantize_input_nodes)
                     else:

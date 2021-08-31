@@ -255,7 +255,8 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_1) {
                         18.0f, 27.0f, 27.0f, 18.0f,
                         18.0f, 27.0f, 27.0f, 18.0f,
                         12.0f, 18.0f, 18.0f, 12.0f};
-  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
+                      OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_1_group_2_for_tranpose_path) {
@@ -382,7 +383,8 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_1_group_2_for_tranpose_path
       18.0f,
       12.0f,
   };
-  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
+                      OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_2) {
@@ -404,7 +406,8 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_2) {
   vector<int64_t> B_shape = {1};
   vector<int64_t> Y_shape = {1, 1, 1, 14};
   auto expected_vals = {1.0f, 2.0f, 5.0f, 11.0f, 19.0f, 28.0f, 37.0f, 46.0f, 55.0f, 64.0f, 63.0f, 51.0f, 27.0f, 10.0f};
-  TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+  TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape,
+                      OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_OutputShapeWithBatchSize) {
@@ -428,7 +431,8 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShapeWithBatchSize) {
   vector<int64_t> Y_shape = {2, 1, 1, 14};
   auto expected_vals = {1.0f, 2.0f, 5.0f, 11.0f, 19.0f, 28.0f, 37.0f, 46.0f, 55.0f, 64.0f, 63.0f, 51.0f, 27.0f, 10.0f,
                         11.0f, 32.0f, 65.0f, 91.0f, 109.0f, 118.0f, 127.0f, 136.0f, 145.0f, 154.0f, 143.0f, 111.0f, 57.0f, 20.0f};
-  TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+  TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape,
+                      OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
 
 TEST(ConvTransposeTest, ConvTranspose_InvalidKernelShape) {
@@ -1237,12 +1241,9 @@ TEST(ConvTransposeTest, SharedPrepackedWeights) {
   };
   test.AddOutput<float>("Y", {1, 6, 4, 4}, expected_vals);
 
-  auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape({6, 3, 3, 3}),
-                                           W.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
   OrtValue w;
-
-  w.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-         DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({6, 3, 3, 3}),
+                       W.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), w);
 
   SessionOptions so;
   // Set up W as a shared initializer to be shared between sessions

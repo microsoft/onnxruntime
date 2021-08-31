@@ -75,9 +75,15 @@ if (UNIX AND NOT APPLE AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_BUI
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-rpath='$ORIGIN'")
 endif()
 
-if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
-  target_compile_definitions(onnxruntime_framework PRIVATE DEBUG_NODE_INPUTS_OUTPUTS)
+if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB)
+  find_package (SQLite3)
+  if (SQLITE3_FOUND)
+    include_directories(${SQLite3_INCLUDE_DIR})
+    target_link_libraries (onnxruntime_framework ${SQLite3_LIBRARY})
+  else()
+    message( FATAL_ERROR "Could not locate SQLite3 package." )
+  endif (SQLITE3_FOUND)
+  target_compile_definitions(onnxruntime_framework PRIVATE DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB)
 endif()
-
 
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/framework  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)

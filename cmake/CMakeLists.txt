@@ -83,6 +83,7 @@ cmake_dependent_option(onnxruntime_USE_FULL_PROTOBUF "Link to libprotobuf instea
 option(tensorflow_C_PACKAGE_PATH "Path to tensorflow C package installation dir")
 option(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS "Enable operator implemented in language other than cpp" OFF)
 option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump debug information about node inputs and outputs when executing the model." OFF)
+cmake_dependent_option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB "Build dump debug information about node inputs and outputs with support for sql database." OFF "onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS" OFF)
 option(onnxruntime_USE_DML "Build with DirectML support" OFF)
 option(onnxruntime_USE_MIGRAPHX "Build with AMDMIGraphX support" OFF)
 option(onnxruntime_USE_WINML "Build with WinML support" OFF)
@@ -106,6 +107,7 @@ option(onnxruntime_USE_ROCM "Build with AMD GPU support" OFF)
 # Options related to reducing the binary size produced by the build
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
 option(onnxruntime_DISABLE_ML_OPS "Disable traditional ML ops" OFF)
+option(onnxruntime_DISABLE_SPARSE_TENSORS "Disable sparse tensors data types" OFF)
 cmake_dependent_option(onnxruntime_DISABLE_RTTI "Disable RTTI" ON "NOT onnxruntime_ENABLE_PYTHON" OFF)
 # For now onnxruntime_DISABLE_EXCEPTIONS will only work with onnxruntime_MINIMAL_BUILD, more changes (ONNX, non-CPU EP, ...) are required to run this standalone
 option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handling. Requires onnxruntime_MINIMAL_BUILD currently." OFF)
@@ -115,6 +117,8 @@ option(onnxruntime_MINIMAL_BUILD_CUSTOM_OPS "Add custom operator kernels support
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
 option(onnxruntime_DISABLE_ORT_FORMAT_LOAD "Disable loading an ORT format model when onnxruntime_MINIMAL_BUILD=OFF (i.e. in a full build)." OFF)
 option(onnxruntime_DISABLE_EXTERNAL_INITIALIZERS "Don't allow models to load external data" OFF)
+cmake_dependent_option(onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION "Enable runtime graph optimization of ORT format models." ON
+                       "NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_EXTENDED_MINIMAL_BUILD" OFF)
 
 #A special option just for debugging and sanitize check. Please do not enable in option in retail builds.
 #The option has no effect on Windows.
@@ -154,7 +158,12 @@ option(onnxruntime_ENABLE_EAGER_MODE "build ort eager mode")
 option(onnxruntime_BUILD_OPSCHEMA_LIB "Build op schema library" ON)
 
 # option to enable custom operators in onnxruntime-extensions
-option(onnxruntime_ENABLE_EXTENSION_CUSTOM_OPS "Enable custom operators in onnxruntime-extensions" OFF)
+option(onnxruntime_USE_EXTENSIONS "Build with onnxruntime-extensions for more features" OFF)
+
+# Enable registering custom op schemas from shared libraries in python environment.
+option(onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS "Enable registering user defined custom op schemas dynamically" OFF)
+
+set(ONNX_CUSTOM_PROTOC_EXECUTABLE "" CACHE STRING "Specify custom protoc executable to build ONNX")
 
 # pre-build python path
 option(onnxruntime_PREBUILT_PYTORCH_PATH "Path to pytorch installation dir")
@@ -236,7 +245,7 @@ set(onnxruntime_REQUIRE_PYTHON_EMBED_LIB OFF)
 if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   add_compile_definitions(ENABLE_TRAINING_TORCH_INTEROP)
 
-  # Python::Python is required for building unit test executables. 
+  # Python::Python is required for building unit test executables.
   if (onnxruntime_BUILD_UNIT_TESTS)
     set(onnxruntime_REQUIRE_PYTHON_EMBED_LIB ON)
   endif()
@@ -259,12 +268,6 @@ if(NOT WIN32)
   if(onnxruntime_ENABLE_INSTRUMENT)
     message(WARNING "Instrument is only supported on Windows now")
     set(onnxruntime_ENABLE_INSTRUMENT OFF)
-  endif()
-else()
-  if(WINDOWS_STORE)
-    # cmake/external/protobuf/src/google/protobuf/compiler/subprocess.cc and onnxruntime/core/platform/windows/env.cc call a bunch of Win32 APIs.
-    # For now, we'll set the API family to desktop globally to expose Win32 symbols in headers; this must be fixed!
-    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/FI${CMAKE_CURRENT_SOURCE_DIR}/set_winapi_family_desktop.h>")
   endif()
 endif()
 
@@ -368,6 +371,10 @@ else()
   if (NOT onnxruntime_DISABLE_ORT_FORMAT_LOAD)
     add_compile_definitions(ENABLE_ORT_FORMAT_LOAD)
   endif()
+endif()
+
+if (onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+  add_compile_definitions(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 endif()
 
 if(onnxruntime_ENABLE_LTO)
@@ -722,7 +729,7 @@ else()
     set(protobuf_DISABLE_RTTI OFF CACHE BOOL "Remove runtime type information in the binaries" FORCE)
   endif()
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
-  
+
   if(TARGET libprotoc)
     set_target_properties(libprotoc PROPERTIES FOLDER "External/Protobuf")
     add_executable(protobuf::protoc ALIAS protoc)
@@ -742,7 +749,7 @@ if(UNIX AND onnxruntime_ENABLE_LTO AND NOT onnxruntime_PREFER_SYSTEM_LIB)
   target_link_options(protoc PRIVATE "-Wl,--no-as-needed")
 endif()
 
-if(MSVC AND onnxruntime_DEV_MODE)
+if(MSVC AND onnxruntime_DEV_MODE AND NOT onnxruntime_PREFER_SYSTEM_LIB)
   target_compile_options(${PROTOBUF_LIB} PRIVATE "/wd5054")
 endif()
 
@@ -761,6 +768,10 @@ endif()
 
 if (onnxruntime_DISABLE_ML_OPS)
   add_definitions(-DDISABLE_ML_OPS)
+endif()
+
+if (onnxruntime_DISABLE_SPARSE_TENSORS)
+  add_compile_definitions(DISABLE_SPARSE_TENSORS)
 endif()
 
 if (onnxruntime_USE_CUDA AND "${onnxruntime_CUDNN_HOME}" STREQUAL "")
@@ -799,32 +810,54 @@ if(NOT TARGET re2::re2)
   set(RE2_INCLUDE_DIR ${REPO_ROOT}/cmake/external/re2)
 endif()
 
-
 # Adding pytorch CPU info library
+# TODO!! need a better way to find out the supported architectures
+set(TARGET_ARCH "${CMAKE_SYSTEM_PROCESSOR}")
+if (NOT DEFINED TARGET_ARCH OR  "${TARGET_ARCH}" STREQUAL "")
+    set(TARGET_ARCH "${CMAKE_OSX_ARCHITECTURES}")
+endif()
+
+set(CPUINFO_SUPPORTED TRUE)
+if (NOT DEFINED TARGET_ARCH OR  "${TARGET_ARCH}" STREQUAL "")
+    message(WARNING
+      "Target processor architecture is not specified. cpuinfo not included")
+    set(CPUINFO_SUPPORTED FALSE)
+elseif(NOT TARGET_ARCH MATCHES "^(i[3-6]86|AMD64|x86(_64)?|armv[5-8].*|aarch64|arm64)$")
+  message(WARNING
+    "Target processor architecture \"${CPUINFO_TARGET_PROCESSOR}\" is not supported in cpuinfo. "
+    "cpuinfo not included.")
+  set(CPUINFO_SUPPORTED FALSE)
+elseif(MSVC AND (( CMAKE_SYSTEM_PROCESSOR  MATCHES "^(ARM.*|arm.*)$" ) OR (CMAKE_GENERATOR_PLATFORM  MATCHES "^(ARM.*|arm.*)$" ) ))
+  message(WARNING
+    "Cpuinfo not included for compilation problems with Windows ARM.")
+  set(CPUINFO_SUPPORTED FALSE)
+elseif(WINDOWS_STORE)
+  message(WARNING
+    "Cpuinfo not included in Windows Store builds")
+  set(CPUINFO_SUPPORTED FALSE)
+endif()
+
 # TODO  do we have to add target_include_directories to each project that uses this?
-if(MSVC AND (( CMAKE_SYSTEM_PROCESSOR  MATCHES "^(ARM.*|arm.*)$" ) OR (CMAKE_GENERATOR_PLATFORM  MATCHES "^(ARM.*|arm.*)$" ) ))
-  # cpuinfo fail to compile with windows arm.
-else()
-set(PYTORCH_CPUINFO_DIR external/pytorch_cpuinfo)
-set(PYTORCH_CPUINFO_INCLUDE_DIR ${PYTORCH_CPUINFO_DIR}/include)
-set(CPUINFO_BUILD_TOOLS OFF CACHE INTERNAL "")
-set(CPUINFO_BUILD_UNIT_TESTS OFF CACHE INTERNAL "")
-set(CPUINFO_BUILD_MOCK_TESTS OFF CACHE INTERNAL "")
-set(CPUINFO_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
+if(CPUINFO_SUPPORTED)
+  set(PYTORCH_CPUINFO_DIR external/pytorch_cpuinfo)
+  set(PYTORCH_CPUINFO_INCLUDE_DIR ${PYTORCH_CPUINFO_DIR}/include)
+  set(CPUINFO_BUILD_TOOLS OFF CACHE INTERNAL "")
+  set(CPUINFO_BUILD_UNIT_TESTS OFF CACHE INTERNAL "")
+  set(CPUINFO_BUILD_MOCK_TESTS OFF CACHE INTERNAL "")
+  set(CPUINFO_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
 
-if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
- set(IOS ON CACHE INTERNAL "")
- set(IOS_ARCH "${CMAKE_OSX_ARCHITECTURES}" CACHE INTERNAL "")
+  if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+      set(IOS ON CACHE INTERNAL "")
+      set(IOS_ARCH "${CMAKE_OSX_ARCHITECTURES}" CACHE INTERNAL "")
+  endif()
+  
+  string(APPEND CMAKE_CXX_FLAGS " -DCPUINFO_SUPPORTED")
+  add_subdirectory(external/pytorch_cpuinfo EXCLUDE_FROM_ALL)
+  if(MSVC)
+    target_compile_options(cpuinfo PRIVATE "-D_CRT_SECURE_NO_WARNINGS")
+  endif()
 endif()
 
-message(STATUS "CMAKE_SYSTEM_PROCESSOR = ${CMAKE_SYSTEM_PROCESSOR}")
-message(STATUS "CMAKE_SYSTEM_NAME = ${CMAKE_SYSTEM_NAME}")
-message(STATUS "CMAKE_OSX_ARCHITECTURES = ${CMAKE_OSX_ARCHITECTURES}")
-message(STATUS "IOS_ARCH = ${IOS_ARCH}")
-
-add_subdirectory(external/pytorch_cpuinfo EXCLUDE_FROM_ALL)
-
-endif()
 # bounds checking behavior.
 # throw instead of calling terminate if there's a bounds checking violation.
 # we make it through via a handler so CUDA does not complain
@@ -843,7 +876,7 @@ set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} -DGSL_UNENFORCED_O
 include(eigen)
 
 #onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn,
-# dnnl/mklml, onnxruntime_codegen_tvm, tvm, nnvm_compiler and pthread
+# dnnl/mklml, onnxruntime_codegen_tvm, tvm and pthread
 # pthread is always at the last
 set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto ${PROTOBUF_LIB} re2::re2)
 
@@ -914,6 +947,7 @@ if (WIN32)
 
 else()
   add_definitions(-DPLATFORM_POSIX)
+  check_cxx_compiler_flag(-Wunused-but-set-parameter HAS_UNUSED_BUT_SET_PARAMETER)
   check_cxx_compiler_flag(-Wunused-but-set-variable HAS_UNUSED_BUT_SET_VARIABLE)
   check_cxx_compiler_flag(-Wunused-variable HAS_UNUSED_VARIABLE)
   check_cxx_compiler_flag(-Wcast-function-type HAS_CAST_FUNCTION_TYPE)
@@ -933,6 +967,7 @@ else()
   check_cxx_compiler_flag(-Wambiguous-reversed-operator HAS_AMBIGUOUS_REVERSED_OPERATOR)
   check_cxx_compiler_flag(-Wdeprecated-anon-enum-enum-conversion HAS_DEPRECATED_ANON_ENUM_ENUM_CONVERSION)
   check_cxx_compiler_flag(-Wundefined-var-template HAS_UNDEFINED_VAR_TEMPLATE)
+  check_cxx_compiler_flag(-Wformat-truncation HAS_FORMAT_TRUNCATION)
 
   if(HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
@@ -955,7 +990,7 @@ else()
 endif()
 
 #names in this var must match the directory names under onnxruntime/core/providers
-#ONNXRUNTIME_PROVIDER_NAMES is the list of providers that needs to export additional symbols in the global namespace. 
+#ONNXRUNTIME_PROVIDER_NAMES is the list of providers that needs to export additional symbols in the global namespace.
 #For example CUDA EP exports "OrtSessionOptionsAppendExecutionProvider_CUDA", which is a global function.
 #However, all these things are legacy and deprecated and should be replaced with functions in onnxruntime_c_api.h.
 set(ONNXRUNTIME_PROVIDER_NAMES cpu)
@@ -1244,14 +1279,12 @@ if (onnxruntime_USE_TVM)
   set_target_properties(tvm PROPERTIES FOLDER "External/tvm")
   set_target_properties(tvm_topi PROPERTIES FOLDER "External/tvm")
   set_target_properties(tvm_runtime PROPERTIES FOLDER "External/tvm")
-  set_target_properties(nnvm_compiler PROPERTIES FOLDER "External/tvm")
 
   set(TVM_INCLUDES ${PROJECT_SOURCE_DIR}/external/tvm/include
     ${PROJECT_SOURCE_DIR}/external/tvm/3rdparty/dmlc-core/include
     ${PROJECT_SOURCE_DIR}/external/tvm/3rdparty/dlpack/include
     $<TARGET_PROPERTY:tvm,INTERFACE_INCLUDE_DIRECTORIES>
-    $<TARGET_PROPERTY:tvm_topi,INTERFACE_INCLUDE_DIRECTORIES>
-    $<TARGET_PROPERTY:nnvm_compiler,INTERFACE_INCLUDE_DIRECTORIES>)
+    $<TARGET_PROPERTY:tvm_topi,INTERFACE_INCLUDE_DIRECTORIES>)
   add_definitions(-DUSE_TVM)
 
   set(onnxruntime_tvm_libs onnxruntime_codegen_tvm)
@@ -1261,22 +1294,13 @@ if (onnxruntime_USE_TVM)
       set(FS_STDLIB stdc++fs)
     endif()
   endif()
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm nnvm_compiler ${FS_STDLIB})
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm nnvm_compiler)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm ${FS_STDLIB})
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm)
 endif()
 
-if (onnxruntime_ENABLE_EXTENSION_CUSTOM_OPS)
-  # add compile definition to enable custom operators in onnxruntime-extensions
-  add_compile_definitions(ENABLE_EXTENSION_CUSTOM_OPS)
-
-  # set options for onnxruntime-extensions
-  set(OCOS_ENABLE_CTEST OFF CACHE INTERNAL "")
-  set(OCOS_ENABLE_STATIC_LIB ON CACHE INTERNAL "")
-  set(OCOS_ENABLE_SPM_TOKENIZER OFF CACHE INTERNAL "")
-  add_subdirectory(external/onnxruntime-extensions EXCLUDE_FROM_ALL)
-  # target library or executable are defined in CMakeLists.txt of onnxruntime-extensions
-  target_include_directories(ocos_operators PRIVATE ${RE2_INCLUDE_DIR} external/json/include)
-  target_include_directories(ortcustomops PUBLIC external/onnxruntime-extensions/shared)
+# onnxruntime-extensions
+if (onnxruntime_USE_EXTENSIONS)
+  include(extensions)
 endif()
 
 if (APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Android")
@@ -1367,13 +1391,7 @@ if(onnxruntime_USE_OPENVINO)
   endif()
 
   # Check OpenVINO version for support
-  if (${VER} MATCHES "2020.3" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2020.3")
-    set(OPENVINO_VERSION "2020.3")
-    add_definitions(-DOPENVINO_2020_3=1)
-  elseif (${VER} MATCHES "2021.1" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.1")
-    set(OPENVINO_VERSION "2021.1")
-    add_definitions(-DOPENVINO_2021_1=1)
-  elseif (${VER} MATCHES "2021.2" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.2")
+  if (${VER} MATCHES "2021.2" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.2")
     set(OPENVINO_VERSION "2021.2")
     add_definitions(-DOPENVINO_2021_2=1)
   elseif (${VER} MATCHES "2021.3" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.3")
@@ -1693,8 +1711,8 @@ if (WIN32)
   if (WINDOWS_STORE)
     # Setting WINAPI_FAMILY, WINVER and _WIN32_WINNT restrict the APIs exposed in Windows headers to those available
     # in store or desktop, and that support at least the version of Windows specified
-    # add_compile_definitions(WINAPI_FAMILY=2)
-    add_compile_definitions(WINVER=0x0A00 _WIN32_WINNT=0x0A00)  # Support Windows 10
+    add_compile_definitions(WINAPI_FAMILY=2)  # Windows Store app
+    add_compile_definitions(WINVER=0x0A00 _WIN32_WINNT=0x0A00 NTDDI_VERSION=0x0A000000)  # Support Windows 10 or newer
     # /ZW adds /FUplatform.winmd and /FUwindows.winmd. windows.winmd, in turn, overrides the include path for
     # the cppwinrt headers, which we set to use the WinML built ones.
     # Instead, we use /ZW:nostdlib and force include platform.winml only.
@@ -1703,10 +1721,12 @@ if (WIN32)
     link_directories("${msvc_path}/lib/${onnxruntime_target_platform}/store")
     add_link_options(/APPCONTAINER)
   else()
-    add_compile_definitions(WINVER=0x0601)  # Support Windows 7 and newer
-    # add_compile_definitions(WINAPI_FAMILY=3)
-    # FIXME adding _WIN32_WINNT=0x0601 and WINAPI_FAMILY is desirable. However, it hides some symbols that are used in WRL
-    # headers and breaks the build of WinML. We should have separate WINVER/_WIN32_WINNT definitions for WinML
+    add_compile_definitions(WINAPI_FAMILY=100) # Desktop app
+    if (onnxruntime_USE_WINML)
+      add_compile_definitions(WINVER=0x0602 _WIN32_WINNT=0x0602 NTDDI_VERSION=0x06020000)  # Support Windows 7 and newer
+    else()
+      add_compile_definitions(WINVER=0x0601 _WIN32_WINNT=0x0601 NTDDI_VERSION=0x06010000)  # Support Windows 7 and newer
+    endif()
   endif()
 endif()
 
@@ -1818,3 +1838,30 @@ if (onnxruntime_BUILD_OPSCHEMA_LIB AND onnxruntime_ENABLE_TRAINING)
   # opschema library requires training ops as well
   include(onnxruntime_opschema_lib.cmake)
 endif()
+
+if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
+  add_compile_definitions(DEBUG_NODE_INPUTS_OUTPUTS)
+endif()
+
+if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
+  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    message(FATAL_ERROR "External custom operator schemas feature is only supported on Linux")
+  endif()
+
+  if (NOT ${ONNX_CUSTOM_PROTOC_EXECUTABLE} STREQUAL "")
+    message(FATAL_ERROR "External custom operator schemas is not supported with the user specified protc executable")
+  endif()
+
+  if (NOT onnxruntime_ENABLE_TRAINING)
+    message(FATAL_ERROR "External custom operator schemas is supported only with --enable-training option")
+  endif()
+
+  add_custom_target(install_protobuf ALL DEPENDS protobuf::libprotobuf  protobuf::protoc)
+  add_custom_command(
+    TARGET install_protobuf
+    COMMAND ${CMAKE_COMMAND} -DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR} -P cmake_install.cmake
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/external/protobuf/cmake
+    COMMENT "Installing protobuf"
+  )
+endif()
+

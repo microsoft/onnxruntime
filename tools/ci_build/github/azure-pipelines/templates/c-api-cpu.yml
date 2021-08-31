@@ -69,9 +69,9 @@ jobs:
         workingDirectory: $(Build.SourcesDirectory)
 
     - script: |
-       set -e -x       
+       set -e -x
        mkdir $(Build.ArtifactStagingDirectory)/testdata
-       cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata 
+       cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata
        ls -al $(Build.ArtifactStagingDirectory)
       displayName: 'Create Artifacts'
 
@@ -110,7 +110,7 @@ jobs:
     clean: all
   variables:
     MACOSX_DEPLOYMENT_TARGET: '10.13'
-  pool: 
+  pool:
     vmImage: 'macOS-10.15'
   timeoutInMinutes:  120
   steps:
@@ -141,7 +141,7 @@ jobs:
           commitId: $(OnnxRuntimeGitCommitHash)
 
     - script: |
-       set -e -x       
+       set -e -x
        mkdir $(Build.ArtifactStagingDirectory)/testdata
        cp $(Build.BinariesDirectory)/Release/libcustom_op_library.dylib $(Build.ArtifactStagingDirectory)/testdata
       displayName: 'Create Artifacts'
@@ -168,14 +168,15 @@ jobs:
       displayName: 'Clean Agent Directories'
       condition: always()
 
+- template: android-java-api-aar.yml
+  parameters:
+    buildConfig: 'Release'
 
 - template: win-ci.yml
   parameters:
-    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
-    OrtNugetPackageId: ${{ parameters.OrtNugetPackageId }}
-    job_name_suffix: x86_${{ parameters.BuildVariant }}
+    job_name_suffix: CPU_x86_${{ parameters.BuildVariant }}
     EnvSetupScript: setup_env_x86.bat
     buildArch: x86
     msbuildPlatform: Win32
@@ -186,11 +187,9 @@ jobs:
 
 - template: win-ci.yml
   parameters:
-    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
-    OrtNugetPackageId: ${{ parameters.OrtNugetPackageId }}
-    job_name_suffix: arm_${{ parameters.BuildVariant }}
+    job_name_suffix: CPU_arm_${{ parameters.BuildVariant }}
     EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: arm
@@ -201,11 +200,9 @@ jobs:
 
 - template: win-ci.yml
   parameters:
-    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
-    OrtNugetPackageId: ${{ parameters.OrtNugetPackageId }}
-    job_name_suffix: arm64_${{ parameters.BuildVariant }}
+    job_name_suffix: CPU_arm64_${{ parameters.BuildVariant }}
     EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: arm64
@@ -216,11 +213,9 @@ jobs:
 
 - template: win-ci.yml
   parameters:
-    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
-    OrtNugetPackageId: ${{ parameters.OrtNugetPackageId }}
-    job_name_suffix: x64_${{ parameters.BuildVariant }}
+    job_name_suffix: CPU_x64_${{ parameters.BuildVariant }}
     EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: x64
@@ -267,7 +262,7 @@ jobs:
       buildType: 'current'
       artifactName: 'drop-onnxruntime-java-osx-x64'
       targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-x64'
- 
+
   - task: PowerShell@2
     displayName: 'PowerShell Script'
     inputs:
@@ -298,7 +293,7 @@ jobs:
     displayName: 'Clean Agent Directories'
     condition: always()
 
-- job: NuGet_Packaging
+- job: NuGet_Packaging_CPU
   workspace:
     clean: all
   pool: 'Win-CPU-2021'
@@ -327,7 +322,7 @@ jobs:
     inputs:
       artifactName: 'onnxruntime-win-x86'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-      
+
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - NuGet'
     inputs:
@@ -449,7 +444,7 @@ jobs:
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline NuGet Artifact'
     inputs:
-      artifactName: 'drop-signed-nuget'
+      artifactName: 'drop-signed-nuget-CPU'
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
   - powershell: |
@@ -468,7 +463,7 @@ jobs:
       arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-  - task: BinSkim@3
+  - task: BinSkim@4
     displayName: 'Run BinSkim'
 
   - task: RoslynAnalyzers@2
@@ -487,7 +482,24 @@ jobs:
     displayName: 'Clean Agent Directories'
     condition: always()
 
-- template: ../nuget/templates/test_all_os.yml
+
+- template: ../nuget/templates/test_win.yml
+  parameters:
+    AgentPool : 'Win-CPU-2021'
+    Skipx86Tests : false
+    NugetPackageName : 'Microsoft.ML.OnnxRuntime'
+    ArtifactSuffix: 'CPU'
+
+- template: ../nuget/templates/test_linux.yml
+  parameters:
+    AgentPool : Linux-CPU
+    NugetPackageName : 'Microsoft.ML.OnnxRuntime'
+    ArtifactSuffix: 'CPU'
+
+- template: ../nuget/templates/test_macos.yml
+  parameters:
+    AgentPool : macOS-10.15
+    ArtifactSuffix: 'CPU'
 
 - job: Publish_NuGet_Package_And_Report
   workspace:
@@ -497,20 +509,20 @@ jobs:
   - name: GDN_CODESIGN_TARGETDIRECTORY
     value: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
   pool: 'Win-CPU-2021'
-  condition: and (succeeded(), and (${{ parameters.PublishingNuget }}, and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master'))))
+  condition: and (succeeded(), and (${{ parameters.PublishingNuget }}, eq(variables['Build.SourceBranch'], 'refs/heads/master')))
   dependsOn:
-  - NuGet_Test_Win
-  - NuGet_Test_Linux
+  - NuGet_Test_Win_CPU
+  - NuGet_Test_Linux_CPU
   - NuGet_Test_MacOS
   steps:
 
   - template: set-version-number-variables-step.yml
 
-  - template: ../nuget/templates/upload-binary-sizes-from-nuget-package.yml
-    parameters:
-      downloadPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
-      gitCommitHash: $(OnnxRuntimeGitCommitHashShort)
-      buildVariant: ${{ parameters.BuildVariant }}
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Signed NuGet Package'
+    inputs:
+      artifactName: 'drop-signed-nuget-CPU'
+      targetPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
 
   - template: ../nuget/templates/get-nuget-package-version-as-variable.yml
     parameters:
@@ -523,6 +535,41 @@ jobs:
       script: |
           $date = $(Get-Date -Format "yyyy-MM-dd")
           Write-Host "##vso[task.setvariable variable=CurrentDate]$date"
+
+  - task: CmdLine@2
+    displayName: 'Post binary sizes to the dashboard database using command line'
+    inputs:
+      script: |
+          python.exe -m pip install azure-kusto-data[pandas] azure-kusto-ingest[pandas]
+          echo changing directory to artifact download path
+          cd $(Build.BinariesDirectory)/nuget-artifact/final-package
+          echo processing nupkg
+          SETLOCAL EnableDelayedExpansion   
+          FOR /R %%i IN (*.nupkg) do (
+           set filename=%%~ni
+           IF NOT "!filename:~25,7!"=="Managed" (
+            echo processing %%~ni.nupkg
+            copy %%~ni.nupkg %%~ni.zip
+            echo copied to zip
+            echo listing lib files in the zip 
+            REM use a single .csv file to put the data 
+            echo os,arch,build_config,size > $(Build.BinariesDirectory)\binary_size_data.txt
+            7z.exe l -slt %%~ni.zip runtimes\linux-x64\native\libonnxruntime.so | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo linux,x64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
+            7z.exe l -slt %%~ni.zip runtimes\linux-aarch64\native\libonnxruntime.so | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo linux,aarch64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
+            7z.exe l -slt %%~ni.zip runtimes\osx.10.14-x64\native\libonnxruntime.dylib | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo osx,x64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
+            7z.exe l -slt %%~ni.zip runtimes\win-x64\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
+            7z.exe l -slt %%~ni.zip runtimes\win-x86\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x86,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt            
+             )
+           ) 
+  - task: AzureCLI@2
+    displayName: 'Azure CLI'
+    inputs:
+      azureSubscription: AIInfraBuildOnnxRuntimeOSS
+      scriptLocation: inlineScript
+      scriptType: batch
+      inlineScript: |
+        python.exe $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=$(Build.SourceVersion) --size_data_file=binary_size_data.txt --build_project=Lotus --build_id=$(Build.BuildId)
+      workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: AzureFileCopy@3
     displayName: 'Copy Signed Native NuGet Package to Blob Store'
@@ -610,7 +657,7 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |
-        mkdir test 
+        mkdir test
         pushd test
         jar xf $(Build.BinariesDirectory)\final-jar\testing.jar
         popd
@@ -670,7 +717,7 @@ jobs:
 - job: Final_Jar_Testing_MacOs
   workspace:
     clean: all
-  pool: 
+  pool:
     vmImage: 'macOS-10.15'
   variables:
   - name: runCodesignValidationInjection
@@ -703,6 +750,65 @@ jobs:
           DYLD_LIBRARY_PATH=./test:${DYLD_LIBRARY_PATH}
           java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.9.2.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
         workingDirectory: '$(Build.BinariesDirectory)/final-jar'
+
+  - template: component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
+- job: Final_AAR_Testing_Android
+  workspace:
+    clean: all
+  pool:
+    vmImage: 'macOS-10.15'
+  variables:
+  - name: runCodesignValidationInjection
+    value: false
+  timeoutInMinutes: 60
+  dependsOn:
+    - Android_Java_API_AAR_Packaging_Pipeline
+  steps:
+  - template: set-version-number-variables-step.yml
+
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Final Android AAR'
+    inputs:
+      buildType: 'current'
+      artifactName: 'onnxruntime-android-aar'
+      targetPath: '$(Build.BinariesDirectory)/final-android-aar'
+
+  - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(Build.SourcesDirectory)
+    displayName: Setup gradle wrapper to use gradle 6.8.3
+
+  - script: |
+      python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
+        --android-sdk-root ${ANDROID_SDK_ROOT} \
+        --create-avd --system-image "system-images;android-30;google_apis;x86_64" \
+        --start --emulator-extra-args="-partition-size 4096" \
+        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+    displayName: Start Android emulator
+
+  - script: |
+      set -e -x
+      mkdir android_test
+      cd android_test
+      cp -av $(Build.SourcesDirectory)/java/src/test/android ./
+      cd ./android
+      mkdir -p app/libs
+      cp $(Build.BinariesDirectory)/final-android-aar/onnxruntime-mobile-$(OnnxRuntimeVersion).aar app/libs/onnxruntime-mobile.aar
+      $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest
+    displayName: Run E2E test for Android
+    workingDirectory: $(Build.BinariesDirectory)
+
+  - script: |
+      python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
+        --android-sdk-root ${ANDROID_SDK_ROOT} \
+        --stop \
+        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+    displayName: Stop Android emulator
+    condition: always()
 
   - template: component-governance-component-detection-steps.yml
     parameters :
