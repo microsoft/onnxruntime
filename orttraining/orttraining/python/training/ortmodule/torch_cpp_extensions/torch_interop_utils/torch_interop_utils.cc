@@ -4,23 +4,22 @@
 #include <torch/csrc/autograd/function.h>
 #include <torch/csrc/autograd/variable.h>
 
-// In Torch forward run (e.g. THPVariable_apply), ctx of type THPFunction* (which is also a PyObject*) is created.
-// The ctx is used to run user-defined forward function and backward function as the first parameter.
-// The same time, a cdata of type std::shared_ptr<PyNode> is created, cdata is owned by:
-//    a). forward run output tensors as grad_fn_ property. 
-//        (The full hierarchy is: Tensor own shared_pointer<TensorImpl>; 
-//        TensorImpl owns std::unique_ptr<AutogradMeta>; 
-//        AutogradMeta manages grad_/grad_fn_/grad_accumulator_.
-//        Among them, grad_fn_ is std::shared_ptr<PyNode>, the so called gradient function.)
-//    b). the consumer operator of forward run outputs, will let its own PyNode/Node
-//        own the grad_fn_ (of type std::shared_ptr<PyNode>) of all inputs that require grad.
+// In Torch forward run (e.g. THPVariable_apply), ctx of type THPFunction* (which is also a PyObject*)
+// is created. The ctx is used to run user-defined forward function and backward function as the first
+// parameter. The same time, a cdata of type std::shared_ptr<PyNode> is created, cdata is owned by:
+//    a). forward run output tensors as grad_fn_ property. (The full hierarchy is: Tensor own 
+//        shared_pointer<TensorImpl>; TensorImpl owns std::unique_ptr<AutogradMeta>; AutogradMeta
+//        manages grad_/grad_fn_/grad_accumulator_. Among them, grad_fn_ is std::shared_ptr<PyNode>,
+// the so called gradient function.)
+//    b). the consumer operator of forward run outputs, will let its own PyNode/Node own the grad_fn_
+//        (of type std::shared_ptr<PyNode>) of all inputs that require grad.
 // BUT, if we run torch computation within PythonOp, b) is lost. SO, for some cases, where forward outputs
-// are not used and freed before backward function runs, the grad_fn_ (std::shared_ptr<PyNode>) references in a) will be released.
-// Without b)'s reference, grad_fn_ release PyNode as reference count reach 0; Then when PythonOpGrad runs, segment fault.
+// are not used and freed before backward function runs, the grad_fn_ (std::shared_ptr<PyNode>) references
+// in a) will be released. Without b)'s reference, grad_fn_ release PyNode as reference count reach 0;
+// Then when PythonOpGrad runs, segment fault.
 //
-// So we add b)'s reference in this Pool when forward run returns; 
-// dereference from this Pool when backward completes, then ~PyNode() is called, 
-// which subsquently calls ~THPFunction() destorying ctx.
+// So we add b)'s reference in this Pool when forward run returns; dereference from this Pool when backward
+// completes, then ~PyNode() is called, which subsquently calls ~THPFunction() destorying ctx.
 class PyNodeSharedPointerPool {
  public:
   static PyNodeSharedPointerPool& GetInstance() {
