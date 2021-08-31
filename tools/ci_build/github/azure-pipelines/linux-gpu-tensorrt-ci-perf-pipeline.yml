@@ -27,7 +27,6 @@ parameters:
   values:
   - 8.0.1.6
   - 7.2.3.4
-  - 7.1.3.4
 
 - name: ConfigureEPs
   displayName: Configure EPs (set epList variable - separate by spaces)
@@ -60,11 +59,9 @@ jobs:
   variables:
     - name: trt_dockerfile
       ${{ if eq(parameters.TrtVersion, '8.0.1.6') }}:
-        value: Dockerfile.ubuntu_cuda11_3_tensorrt8_0
+        value: Dockerfile.ubuntu_cuda11_4_tensorrt8_0
       ${{ if eq(parameters.TrtVersion, '7.2.3.4') }}:
         value: Dockerfile.ubuntu_cuda11_4_tensorrt7_2
-      ${{ if eq(parameters.TrtVersion, '7.1.3.4') }}:
-        value: Dockerfile.ubuntu_cuda10_2_tensorrt7_1
         
     - name: build_args
       ${{ if eq(parameters.RunNvidiaContainer, true) }}:
