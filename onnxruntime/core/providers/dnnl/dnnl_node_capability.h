@@ -207,6 +207,16 @@ class DnnlBinaryNodeCapability : public DnnlDefaultNodeCapability {
   bool IsDimensionSupported(const Node* node) const;
 };
 
+class DnnlElementwiseCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlElementwiseCapability() : DnnlDefaultNodeCapability({"float"}) {}
+
+  bool Supported(const Node* node) const override;
+
+ private:
+  bool IsDimensionSupported(const Node* node) const;
+};
+
 /**
  * Decide if a Gemm op is supported by DnnlExecutionProvider
  */
