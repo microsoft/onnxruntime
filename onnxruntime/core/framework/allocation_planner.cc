@@ -488,7 +488,7 @@ class PlannerImpl {
       UseCount(initializer_name)++;
     }
 
-    std::unordered_set<OrtValueIndex> node_arg_has_explicit_consumer;
+    std::unordered_set<OrtValueIndex> set_node_arg_has_explicit_consumer;
 
     for (SequentialExecutionPlan::NodeExecutionPlan& step : plan_.execution_plan) {
       auto pnode = graph_viewer_.GetNode(step.node_index);
@@ -514,7 +514,7 @@ class PlannerImpl {
 
       // increment UseCount and add location information if applicable for the provided input def
       auto process_input = [&graph_inputs, &exec_provider, &p_kernel_def, &is_implicit_input,
-                            &node_arg_has_explicit_consumer,
+                            &set_node_arg_has_explicit_consumer,
                             this](const NodeArg& input, size_t arg_idx) {
         const auto& name = input.Name();
         UseCount(name)++;
@@ -536,7 +536,7 @@ class PlannerImpl {
           if (!is_implicit_input) {
             OrtMemType mem_type = p_kernel_def->InputMemoryType(arg_idx);
             plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, mem_type)->Info());
-            node_arg_has_explicit_consumer.insert(index);
+            set_node_arg_has_explicit_consumer.insert(index);
           } else {  // implicit input
             // Only process an implicit input:
             // 1) Within a subgraph
@@ -547,7 +547,7 @@ class PlannerImpl {
             // ahead of a node that is an explicit consumer, because we will just reset
             // this location in the 'if' branch above.
 
-            if (is_subgraph && node_arg_has_explicit_consumer.count(index) == 0) {
+            if (is_subgraph && set_node_arg_has_explicit_consumer.count(index) == 0) {
               auto iter = outer_scope_node_arg_to_location_map_.find(name);
               bool found_in_outer_scope_location_map = (iter != outer_scope_node_arg_to_location_map_.end());
 
@@ -556,7 +556,8 @@ class PlannerImpl {
                 // For certain older opsets (Scan-8), we may not have added explicit subgraph inputs
                 // to the outer scope location map. See explanation in IsNodeWhereNodeInputsAreSameAsExplicitSubgraphInputs()
                 // called in FinalizeSessionStateImpl() in SessionState.
-                ORT_ENFORCE(found_in_outer_scope_location_map);
+                ORT_ENFORCE(found_in_outer_scope_location_map,
+                            "There is no location for this node arg in the outer scope location map");
               }
 
               if (found_in_outer_scope_location_map) {
