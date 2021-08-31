@@ -95,6 +95,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # indicators of some logic have been executed previously thus could be skipped for faster training
         self._skip_check = _SkipCheck.SKIP_CHECK_DISABLED
+        self._first_skip_check_warning = True
 
         # Graph transformer config
         # Specify cast propagation strategy. Currently three strategies are available, NONE, INSERT-AND-REDUCE and FLOOD-FILL
