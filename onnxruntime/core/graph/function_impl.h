@@ -27,19 +27,23 @@ class FunctionImpl final : public Function {
   // a Function Op. This takes in a FunctionProto and constructs function body
   // from it. The function body initialization happens during model load in graph resolve
   // phase.
-  // model_local_functions contains domain:optype to model_local_functions map. This is 
+  // model_local_functions contains domain:optype to model_local_functions map. This is
   // used to resolve and initialize nested functions.
-  FunctionImpl(const onnxruntime::Graph& graph,
+  FunctionImpl(onnxruntime::Graph& graph,
                const onnxruntime::NodeIndex& node_index,
                const ONNX_NAMESPACE::FunctionProto& onnx_func,
-               const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
-               const logging::Logger& logger);
+               const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& in_model_function_protos,
+               std::vector<std::unique_ptr<onnxruntime::Function>>& function_container,
+               const logging::Logger& logger,
+               bool isNestedFunction = false);
 
   ~FunctionImpl() override;
 
   const ONNX_NAMESPACE::OpSchema& OpSchema() const override;
 
   const onnxruntime::Graph& Body() const override;
+
+  onnxruntime::Graph& MutableBody() override;
 
  private:
   const onnxruntime::Graph* const parent_graph_;
@@ -61,6 +65,8 @@ class ViewerFunctionImpl final : public Function {
   const ONNX_NAMESPACE::OpSchema& OpSchema() const override { return *op_schema_; }
 
   const onnxruntime::Graph& Body() const override { ORT_THROW("Not supported"); }
+
+  onnxruntime::Graph& MutableBody() override { ORT_THROW("Not supported"); }
 
  private:
   std::unique_ptr<ONNX_NAMESPACE::OpSchema> op_schema_;

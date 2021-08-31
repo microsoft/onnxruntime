@@ -193,7 +193,7 @@ TEST(FunctionVerification, VerifyModelLocalFunctions) {
   const char* code = R"ONNX(
 <
   ir_version: 8,
-  opset_import: [ "" : 13, "custom_domain" : 1],
+  opset_import: [ "" : 13, "custom.domain" : 1],
   producer_name: "FunctionProtoTest",
   producer_version: "1.0",
   model_version: 1,
@@ -201,7 +201,7 @@ TEST(FunctionVerification, VerifyModelLocalFunctions) {
 >
 agraph (float[N] x) => (uint8[N] w)
 {
-    y = custom_domain.foo(x)
+    y = custom.domain.foo(x)
     w = Identity(y)
 }
 )ONNX";
@@ -231,7 +231,7 @@ agraph (float[N] x) => (uint8[N] w)
   }
 
   function_proto->set_name("foo");
-  function_proto->set_domain("custom_domain");
+  function_proto->set_domain("custom.domain");
   function_proto->set_doc_string("Test function proto");
   function_proto->add_input("x");
   function_proto->add_output("y");
@@ -253,7 +253,7 @@ TEST(FunctionVerification, VerifyNestedModelLocalFunctions) {
   const char* code = R"ONNX(
 <
   ir_version: 8,
-  opset_import: [ "" : 13, "custom_domain" : 1],
+  opset_import: [ "" : 13, "custom_domainA" : 1],
   producer_name: "FunctionProtoTest",
   producer_version: "1.0",
   model_version: 1,
@@ -261,8 +261,8 @@ TEST(FunctionVerification, VerifyNestedModelLocalFunctions) {
 >
 agraph (float[N] x) => (uint8[N] w)
 {
-    y = custom_domain.foo(x)
-    w = Identity(y)
+    c = custom_domainA.foo(x)
+    w = Identity(c)
 }
 )ONNX";
 
@@ -292,7 +292,7 @@ agraph (float[N] x) => (uint8[N] w)
   }
 
   function_proto->set_name("foo");
-  function_proto->set_domain("custom_domain_1");
+  function_proto->set_domain("custom_domainB");
   function_proto->set_doc_string("Test function proto");
   function_proto->add_input("x");
   function_proto->add_output("y");
@@ -310,8 +310,8 @@ agraph (float[N] x) => (uint8[N] w)
   function_proto = model_proto.mutable_functions()->Add();
   func_body_nodes = FunctionBodyHelper::BuildNodes(
       {// nodes: {outputs, op, inputs, attributes, domain}
-       {{"b"}, "foo", {"a"}, {}, "custom_domain_1"},
-       {{"c"}, "Identity", {"b"}}});
+       {{"y"}, "foo", {"x"}, {}, "custom_domainB"},
+       {{"c"}, "Identity", {"y"}}});
 
   for (const auto& node : func_body_nodes) {
     auto new_node = function_proto->add_node();
@@ -319,21 +319,17 @@ agraph (float[N] x) => (uint8[N] w)
   }
 
   function_proto->set_name("foo");
-  function_proto->set_domain("custom_domain");
+  function_proto->set_domain("custom_domainA");
   function_proto->set_doc_string("Test function proto");
-  function_proto->add_input("a");
+  function_proto->add_input("x");
   function_proto->add_output("c");
 
-  std::unordered_map<std::string, int> func2_opset_imports({{"", 13}, {"custom_domain_1", 1}});
+  std::unordered_map<std::string, int> func2_opset_imports({{"", 13}, {"custom_domainB", 1}});
   for (auto& opset_import : func2_opset_imports) {
     auto* func_opset_import = function_proto->mutable_opset_import()->Add();
     func_opset_import->set_domain(opset_import.first);
     func_opset_import->set_version(opset_import.second);
   }
-
-  auto* value_info = model_proto.mutable_graph()->add_value_info();
-  value_info->mutable_type()->mutable_tensor_type()->set_elem_type(2);
-  value_info->set_name("y");
 
   std::shared_ptr<Model> model;
   std::shared_ptr<onnxruntime::OnnxRuntimeOpSchemaRegistry> registry = std::make_shared<OnnxRuntimeOpSchemaRegistry>();

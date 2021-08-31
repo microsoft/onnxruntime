@@ -147,18 +147,23 @@ class Node {
   Gets the function body if applicable otherwise nullptr
   @param try_init_func_body If not already intialized, initialize the function body
   (only applicable to operators which are defined as function in ONNX spec).
-  Function body can be initialized in 2 cases :
+  Function body can be initialized in 3 cases :
   1. For nodes of type "Fused"
-  2. For nodes which are defined as functions in ONNX spec (example: DynamicQuantizeLinear)
+  2. For nodes which are defined as functions in the spec (example: DynamicQuantizeLinear)
+  3. For nodes which reference a model local function. These functions are defined in the model itself and
+  do not have any schema associated with them.
   For all other cases this will always return nullptr.
   Nodes of type "Fused" are created during partitioning and the function body
   initialization for such nodes also happens during node creation. Therefore,
-  initialization of function body will happen via this method only in case 2 mentioned above.
+  initialization of function body will happen via this method only in cases 2 and 3 mentioned above.
   */
   const Function* GetFunctionBody(bool try_init_func_body = true);
 
   /** Gets the function body if applicable otherwise nullptr. */
   const Function* GetFunctionBody() const noexcept { return func_body_; }
+
+  /** Gets the mutable function body if applicable otherwise nullptr. */
+  Function* GetMutableFunctionBody(bool try_init_func_body = true);
 
 #endif
 
@@ -384,6 +389,9 @@ class Node {
     execution_provider_type_ = execution_provider_type;
   }
 
+  /** Sets initialized function body for node.*/
+  void SetFunctionBody(Function& func);
+
   /** Call the provided function for all explicit inputs, implicit inputs, and outputs of this Node.
       If the NodeArg is an explicit or implicit input, is_input will be true when func is called.
       @param include_missing_optional_defs Include NodeArgs that are optional and were not provided
@@ -516,8 +524,6 @@ class Node {
   // validate and update the input arg count
   common::Status UpdateInputArgCount();
 
-  void SetFunctionBody(const Function& func);
-
   const Definitions& GetDefinitions() const noexcept { return definitions_; }
   const Relationships& GetRelationships() const noexcept { return relationships_; }
 
@@ -547,7 +553,7 @@ class Node {
   Node::Type node_type_ = Node::Type::Primitive;
 
   // The function body is owned by graph_
-  const Function* func_body_ = nullptr;
+  Function* func_body_ = nullptr;
 
   // Node doc string.
   std::string description_;
@@ -1007,8 +1013,8 @@ class Graph {
   /** Initialize function body for the given node */
   void InitFunctionBodyForNode(Node& node);
 
-  /** Add function proto to model local functions container */
-  void AddModelLocalFunction(const ONNX_NAMESPACE::FunctionProto* func_proto);
+  /** Gets Model local functions from the root/parent graph.*/
+  std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& GetModelLocalFunctions();
 
   /** Mark a NodeArg name as coming from the outer scope when programmatically constructing a Graph that will
   be used as a GraphProto attribute in another Node..
@@ -1033,7 +1039,7 @@ class Graph {
   void SetOutputs(const std::vector<const NodeArg*>& outputs);
 
   /** Sets the type of a NodeArg, replacing existing type/shape if any */
-  void SetNodeArgType(NodeArg& arg, const onnx::TypeProto& type_proto);
+  void SetNodeArgType(NodeArg& arg, const ONNX_NAMESPACE::TypeProto& type_proto);
 
   const Node* GetProducerNode(const std::string& node_arg_name) const {
     return GetProducerNodeImpl(*this, node_arg_name);
@@ -1095,6 +1101,9 @@ class Graph {
     // Whether to set that no proto sync is required after resolving.
     // Useful for resolving right after loading from a GraphProto.
     bool no_proto_sync_required = false;
+    // When set to true, graph resolve will be called for initialized function bodies as well. This is used 
+    // in case of nested model local functions.
+    bool traverse_function_body = false;
   };
 
   /**
@@ -1381,6 +1390,7 @@ class Graph {
 #if !defined(ORT_MINIMAL_BUILD)
   IOnnxRuntimeOpSchemaCollectionPtr schema_registry_;
 
+  // Container to hold initialized function bodies
   std::vector<std::unique_ptr<onnxruntime::Function>> function_container_;
 
   std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_local_functions_;

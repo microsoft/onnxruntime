@@ -794,7 +794,7 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std:
 
 common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
                                               const Path& model_path,
-                                              ONNX_NAMESPACE::TensorProto& tensor) {
+                                              ONNX_NAMESPACE::TensorProto& tensor, const std::string& tensor_name) {
   const AttributeProto& constant_attribute = node.attribute(0);
 
   switch (constant_attribute.type()) {
@@ -837,12 +837,18 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
   }
 
   // set name last in case attribute type was tensor (would copy over name)
-  *(tensor.mutable_name()) = node.output(0);
+  *(tensor.mutable_name()) = tensor_name;
 
   return Status::OK();
 }
 
-template <typename T>
+common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
+                                              const Path& model_path,
+                                              ONNX_NAMESPACE::TensorProto& tensor) {
+  return ConstantNodeProtoToTensorProto(node, model_path, tensor, node.output(0));
+}
+
+  template <typename T>
 static Status CopySparseData(size_t n_sparse_elements,
                              const ONNX_NAMESPACE::TensorProto& indices,
                              gsl::span<const int64_t> dims,
