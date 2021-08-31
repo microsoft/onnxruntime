@@ -1,7 +1,6 @@
 ---
 title: JavaScript API
 parent: API docs
-grand_parent: Reference
 nav_order: 5
 ---
 

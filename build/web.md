@@ -1,8 +1,7 @@
 ---
 title: Build for web
-parent: Build ORT
+parent: Build ORT packages
 nav_order: 4
-grand_parent: Setup
 ---
 
 # Build ONNX Runtime for Web

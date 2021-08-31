@@ -1,7 +1,6 @@
 ---
 title: Build for inferencing
-parent: Build ORT
-grand_parent: Setup
+parent: Build ORT packages
 nav_order: 1
 ---
 

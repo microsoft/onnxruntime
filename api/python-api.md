@@ -1,7 +1,6 @@
 ---
 title: Python API
 parent: API docs
-grand_parent: Reference
 nav_order: 7
 ---
 
@@ -35,4 +34,4 @@ For Python compiler version notes, see [this page](https://github.com/microsoft/
 [https://www.onnxruntime.ai/python](https://www.onnxruntime.ai/python/)
 
 ## Samples
-See [Tutorials: API Basics - Python](../../tutorials/inferencing/api-basics.md#python)
+See [Tutorials: API Basics - Python](../tutorials/inferencing/api-basics.md#python)
