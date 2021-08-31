@@ -7,7 +7,7 @@
 import os
 import logging
 import torch
-import onnx
+import shutil
 import random
 import numpy
 import time
@@ -777,6 +777,16 @@ class Gpt2Helper:
             model_name += "_past"
 
         if new_folder:
+            # Remove the directories if existed.
+            for suffix in ["", "_fp32", "_fp16", "_int8"]:
+                new_dir = os.path.join(output_dir, model_name + suffix)
+                if os.path.exists(new_dir):
+                    try:
+                        shutil.rmtree(new_dir)
+                        logger.info(f"Removed the existed directory: {new_dir}")
+                    except OSError as e:
+                        logger.info(f"Failed to remove the directory {new_dir}: {e.strerror}")
+                    
             # store each model to its own directory (for external data format).
             return {
                 "raw": os.path.join(os.path.join(output_dir, model_name), model_name + ".onnx"),
