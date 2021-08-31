@@ -30,7 +30,7 @@ void TestConvTransposeOpInitializer(const ConvTransposeOpAttributes& attributes,
                                     bool is_filter_initializer = false,
                                     OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                                     const std::string& err_str = "",
-                                    const std::unordered_set<std::string>& excluded_provider_types = {kTensorrtExecutionProvider, kOpenVINOExecutionProvider}) {
+                                    const std::unordered_set<std::string>& excluded_provider_types = {kTensorrtExecutionProvider}) {
   OpTester test("ConvTranspose", 11);
   test.AddAttribute("kernel_shape", attributes.kernel_shape);
   test.AddAttribute("group", attributes.group);
@@ -256,7 +256,7 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_1) {
                         18.0f, 27.0f, 27.0f, 18.0f,
                         12.0f, 18.0f, 18.0f, 12.0f};
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
-                      OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+                      OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_1_group_2_for_tranpose_path) {
@@ -384,7 +384,7 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_1_group_2_for_tranpose_path
       12.0f,
   };
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
-                      OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+                      OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_2) {
