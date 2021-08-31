@@ -88,17 +88,16 @@ def call_python_forward_function(
                 # Use the first context we see because all of arg's
                 # share the same one.
                 ctx = arg.grad_fn
-                first_tensor_output = ctx
+                first_tensor_output = arg
                 break
             if training_mode_flag:
                 # Must extract one valid context from result tensors.
                 assert ctx is not None
+                torch_interop_utils.register_grad_fn(id(ctx), first_tensor_output)
             else:
                 # Context must not present under non-training mode.
                 assert ctx is None
-
-            torch_interop_utils.register_grad_fn(id(ctx), first_tensor_output)
-            return ctx, first_tensor_output
+            return ctx
 
         if isinstance(result, torch.Tensor):
             ctx = register_context([result])
