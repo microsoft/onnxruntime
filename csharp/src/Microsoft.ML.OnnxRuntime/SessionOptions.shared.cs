@@ -52,6 +52,53 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionOptions(out handle));
         }
 
+#if __IOS__
+        /// <summary>
+        /// A helper method to construct a SessionOptions object for CUDA execution.
+        /// Use only if CUDA is installed and you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="deviceId"></param>
+        /// <remarks>Not implemented for iOS.</remarks>
+        /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
+        public static SessionOptions MakeSessionOptionWithCudaProvider(int deviceId = 0) => throw new NotImplementedException();
+
+        /// <summary>
+        /// A helper method to construct a SessionOptions object for TensorRT execution.
+        /// Use only if CUDA/TensorRT are installed and you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="deviceId"></param>
+        /// <remarks>Not implemented for iOS.</remarks>
+        /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
+        public static SessionOptions MakeSessionOptionWithTensorrtProvider(int deviceId = 0) => throw new NotImplementedException();
+
+        /// <summary>
+        /// A helper method to construct a SessionOptions object for TensorRT execution provider.
+        /// Use only if CUDA/TensorRT are installed and you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="trtProviderOptions">TensorRT EP provider options</param>
+        /// <remarks>Not implemented for iOS.</remarks>
+        /// <returns>A SessionsOptions() object configured for execution on provider options</returns>
+        public static SessionOptions MakeSessionOptionWithTensorrtProvider(OrtTensorRTProviderOptions trtProviderOptions) => throw new NotImplementedException();
+
+        /// <summary>
+        /// A helper method to construct a SessionOptions object for Nuphar execution.
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="settings">settings string, comprises of comma separated key:value pairs. default is empty</param>
+        /// <remarks>Not implemented for iOS.</remarks>
+        /// <returns>A SessionsOptions() object configured for execution with Nuphar</returns>
+        public static SessionOptions MakeSessionOptionWithNupharProvider(String settings = "") => throw new NotImplementedException();
+
+        /// <summary>
+        /// A helper method to construct a SessionOptions object for ROCM execution.
+        /// Use only if ROCM is installed and you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="deviceId"></param>
+        /// <remarks>Not implemented for iOS.</remarks>
+        /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
+        public static SessionOptions MakeSessionOptionWithRocmProvider(int deviceId = 0, UIntPtr gpuMemLimit = default) => throw new NotImplementedException();
+#else
+
         /// <summary>
         /// A helper method to construct a SessionOptions object for CUDA execution.
         /// Use only if CUDA is installed and you have the onnxruntime package specific to this Execution Provider.
@@ -104,7 +151,7 @@ namespace Microsoft.ML.OnnxRuntime
             try
             {
                 // Make sure that CUDA EP uses the same device id as TensorRT EP.
-                int deviceId = trtProviderOptions.GetDeviceId() ;
+                int deviceId = trtProviderOptions.GetDeviceId();
 
                 NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_TensorRT(options.Handle, trtProviderOptions.Handle));
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA(options.Handle, deviceId));
@@ -152,18 +199,94 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options.Handle, 1));
             return options;
         }
+#endif
 
         #endregion
 
         #region ExecutionProviderAppends
+
         /// <summary>
         /// Appends CPU EP to a list of available execution providers for the session.
         /// </summary>
         /// <param name="useArena">1 - use arena, 0 - do not use arena</param>
-        public void AppendExecutionProvider_CPU(int useArena = 1)
+        public void AppendExecutionProvider_CPU(int useArena)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(handle, useArena));
         }
+
+#if __IOS__
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <remarks>Not implemented for iOS.</remarks>
+        /// <param name="useArena">1 - use allocation arena, 0 - otherwise</param>
+        public void AppendExecutionProvider_Dnnl(int useArena = 1) => throw new NotImplementedException();
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <remarks>Not implemented for iOS.</remarks>
+        /// <param name="deviceId">integer device ID</param>
+        public void AppendExecutionProvider_CUDA(int deviceId = 0) => throw new NotImplementedException();
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <remarks>Not implemented for iOS.</remarks>
+        /// <param name="deviceId">device identification</param>
+        public void AppendExecutionProvider_DML(int deviceId = 0) => throw new NotImplementedException();
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <remarks>Not implemented for iOS.</remarks>
+        /// <param name="deviceId">device identification, default empty string</param>
+        public void AppendExecutionProvider_OpenVINO(string deviceId = "") => throw new NotImplementedException();
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <remarks>Not implemented for iOS.</remarks>
+        /// <param name="deviceId">device identification</param>
+        public void AppendExecutionProvider_Tensorrt(int deviceId = 0) => throw new NotImplementedException();
+
+        /// <summary>
+        /// Append a TensorRT EP instance (based on specified configuration) to the SessionOptions instance.
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <remarks>Not implemented for iOS.</remarks>
+        /// <param name="trtProviderOptions">TensorRT EP provider options</param>
+        public void AppendExecutionProvider_Tensorrt(OrtTensorRTProviderOptions trtProviderOptions) => throw new NotImplementedException();
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <remarks>Not implemented for iOS.</remarks>
+        /// <param name="deviceId">integer device ID</param>
+        public void AppendExecutionProvider_ROCM(int deviceId = 0, UIntPtr gpuMemLimit = default) => throw new NotImplementedException();
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <remarks>Not implemented for iOS.</remarks>
+        /// <param name="deviceId">device identification</param>
+        public void AppendExecutionProvider_MIGraphX(int deviceId = 0) => throw new NotImplementedException();
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <remarks>Not implemented for iOS.</remarks>
+        /// <param name="nnapi_flags">nnapi specific flag mask</param>
+        public void AppendExecutionProvider_Nnapi(uint nnapi_flags = 0) => throw new NotImplementedException();
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <remarks>Not implemented for iOS.</remarks>
+        /// <param name="settings">string with Nuphar specific settings</param>
+        public void AppendExecutionProvider_Nuphar(string settings = "") => throw new NotImplementedException();
+
+#else
 
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
@@ -266,6 +389,9 @@ namespace Microsoft.ML.OnnxRuntime
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(handle, 1, pinnedSettingsName.Pointer));
             }
         }
+
+#endif
+
         #endregion //ExecutionProviderAppends
 
         #region Public Methods

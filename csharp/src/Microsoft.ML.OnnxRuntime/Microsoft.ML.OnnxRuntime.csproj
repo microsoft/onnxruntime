@@ -85,6 +85,12 @@
         <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\MacOS</OnnxRuntimeBuildDirectory>
         <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)</NativeBuildOutputDir>
     </PropertyGroup>
+    <PropertyGroup Condition="$(TargetFramework.StartsWith('xamarinios'))">
+      <DefineConstants>__IOS__;</DefineConstants>
+    </PropertyGroup>
+    <PropertyGroup Condition="$(TargetFramework.StartsWith('monoandroid'))">
+      <DefineConstants>__ANDROID__;</DefineConstants>
+    </PropertyGroup>
 
   <ItemGroup>
     <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\session\onnxruntime_*.h"
