@@ -17,7 +17,8 @@ steps:
 
 # update these if the E2E test data changes
 - script: |-
-    sed -i orttraining/orttraining/python/training/ortmodule/_graph_execution_manager.py 's|session_options.use_deterministic_compute = False|session_options.use_deterministic_compute = True|g'
+    sed -i 's|session_options.use_deterministic_compute = False|session_options.use_deterministic_compute = True|g' \
+       orttraining/orttraining/python/training/ortmodule/_graph_execution_manager.py
   displayName: 'Toggle ON deterministic compute mode'
 
 - script: |-
