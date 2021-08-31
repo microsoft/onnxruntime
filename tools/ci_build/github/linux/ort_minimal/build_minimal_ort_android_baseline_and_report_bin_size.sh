@@ -35,4 +35,5 @@ python3 /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/check_build_bin
     --threshold=$BINARY_SIZE_LIMIT_IN_BYTES \
     /build/MinSizeRel/libonnxruntime.so
 
-
+echo "The content of binary_size_data.txt"
+cat /build/MinSizeRel/binary_size_data.txt
