@@ -93,11 +93,6 @@ jobs:
         - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/$(build_args) -b $(branch) -i ort-$(branch)'
           displayName: 'Build latest ORT Image'
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
-        
-        - ${{ if eq(parameters.RunPython38, true) }}:
-          - script: 'docker build --build-arg IMAGE=ort-$(branch) -t ort-$(branch) -f $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.python38 .'
-            displayName: 'Build Python 3.8 Image'
-            workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
 
       - ${{ if ne(parameters.RunDocker, true) }}:
         - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/ort_build_latest.py -b $(branch) -c /usr/local/cuda -o ~/repos/onnxruntime/ -t ${{ parameters.TrtVersion }}'
