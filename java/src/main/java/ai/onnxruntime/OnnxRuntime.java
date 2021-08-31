@@ -207,6 +207,10 @@ final class OnnxRuntime {
    * @return True if the library is ready for loading by ORT's native code, false otherwise.
    */
   static synchronized boolean extractProviderLibrary(String libraryName) {
+    // Android does not need to extract library and it has no shared provider library
+    if (isAndroid()) {
+      return false;
+    }
     // Check if we've already extracted or check this provider, and it's ready
     if (extractedSharedProviders.contains(libraryName)) {
       return true;

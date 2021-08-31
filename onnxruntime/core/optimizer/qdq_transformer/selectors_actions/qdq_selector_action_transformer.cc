@@ -1,10 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/optimizer/qdq_transformer/qdq_actions.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
+
+#include "core/optimizer/qdq_transformer/selectors_actions/qdq_actions.h"
 #if !defined(ORT_MINIMAL_BUILD)
-#include "core/optimizer/qdq_transformer/qdq_selector_action_transformer.h"
-#include "core/optimizer/qdq_transformer/qdq_selectors.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #endif
 
 namespace onnxruntime {

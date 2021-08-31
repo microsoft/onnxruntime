@@ -58,6 +58,10 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer, const 
   ORT_UNUSED_PARAMETER(kernel_registries);
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
+  //Enable CI Logs
+  if (!(GetEnvironmentVar("ORT_OPENVINO_ENABLE_CI_LOG").empty())) {
+    std::cout << "In the OpenVINO EP" << std::endl;
+  }
   openvino_ep::BackendManager::GetGlobalContext().onnx_model_name = graph_viewer.Name();
 #ifdef _WIN32
   std::wstring onnx_path = graph_viewer.ModelPath().ToPathString();
@@ -67,14 +71,7 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer, const 
 #endif
   openvino_ep::BackendManager::GetGlobalContext().onnx_opset_version = graph_viewer.DomainToVersionMap().at(kOnnxDomain);
 
-#if defined OPENVINO_2020_3
-  result = openvino_ep::GetCapability_2020_3(graph_viewer,
-                                             openvino_ep::BackendManager::GetGlobalContext().device_type);
-#elif defined (OPENVINO_2021_1)
-  openvino_ep::GetCapability obj(graph_viewer,
-                                 openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2021_1");
-  result = obj.Execute();
-#elif defined (OPENVINO_2021_2)
+#if defined (OPENVINO_2021_2)
   openvino_ep::GetCapability obj(graph_viewer,
                                  openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2021_2");
   result = obj.Execute();

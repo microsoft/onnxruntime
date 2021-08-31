@@ -107,6 +107,7 @@ option(onnxruntime_USE_ROCM "Build with AMD GPU support" OFF)
 # Options related to reducing the binary size produced by the build
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
 option(onnxruntime_DISABLE_ML_OPS "Disable traditional ML ops" OFF)
+option(onnxruntime_DISABLE_SPARSE_TENSORS "Disable sparse tensors data types" OFF)
 cmake_dependent_option(onnxruntime_DISABLE_RTTI "Disable RTTI" ON "NOT onnxruntime_ENABLE_PYTHON" OFF)
 # For now onnxruntime_DISABLE_EXCEPTIONS will only work with onnxruntime_MINIMAL_BUILD, more changes (ONNX, non-CPU EP, ...) are required to run this standalone
 option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handling. Requires onnxruntime_MINIMAL_BUILD currently." OFF)
@@ -116,6 +117,8 @@ option(onnxruntime_MINIMAL_BUILD_CUSTOM_OPS "Add custom operator kernels support
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
 option(onnxruntime_DISABLE_ORT_FORMAT_LOAD "Disable loading an ORT format model when onnxruntime_MINIMAL_BUILD=OFF (i.e. in a full build)." OFF)
 option(onnxruntime_DISABLE_EXTERNAL_INITIALIZERS "Don't allow models to load external data" OFF)
+cmake_dependent_option(onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION "Enable runtime graph optimization of ORT format models." ON
+                       "NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_EXTENDED_MINIMAL_BUILD" OFF)
 
 #A special option just for debugging and sanitize check. Please do not enable in option in retail builds.
 #The option has no effect on Windows.
@@ -155,7 +158,12 @@ option(onnxruntime_ENABLE_EAGER_MODE "build ort eager mode")
 option(onnxruntime_BUILD_OPSCHEMA_LIB "Build op schema library" ON)
 
 # option to enable custom operators in onnxruntime-extensions
-option(onnxruntime_ENABLE_EXTENSION_CUSTOM_OPS "Enable custom operators in onnxruntime-extensions" OFF)
+option(onnxruntime_USE_EXTENSIONS "Build with onnxruntime-extensions for more features" OFF)
+
+# Enable registering custom op schemas from shared libraries in python environment.
+option(onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS "Enable registering user defined custom op schemas dynamically" OFF)
+
+set(ONNX_CUSTOM_PROTOC_EXECUTABLE "" CACHE STRING "Specify custom protoc executable to build ONNX")
 
 # pre-build python path
 option(onnxruntime_PREBUILT_PYTORCH_PATH "Path to pytorch installation dir")
@@ -363,6 +371,10 @@ else()
   if (NOT onnxruntime_DISABLE_ORT_FORMAT_LOAD)
     add_compile_definitions(ENABLE_ORT_FORMAT_LOAD)
   endif()
+endif()
+
+if (onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+  add_compile_definitions(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 endif()
 
 if(onnxruntime_ENABLE_LTO)
@@ -756,6 +768,10 @@ endif()
 
 if (onnxruntime_DISABLE_ML_OPS)
   add_definitions(-DDISABLE_ML_OPS)
+endif()
+
+if (onnxruntime_DISABLE_SPARSE_TENSORS)
+  add_compile_definitions(DISABLE_SPARSE_TENSORS)
 endif()
 
 if (onnxruntime_USE_CUDA AND "${onnxruntime_CUDNN_HOME}" STREQUAL "")
@@ -1282,18 +1298,9 @@ if (onnxruntime_USE_TVM)
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm)
 endif()
 
-if (onnxruntime_ENABLE_EXTENSION_CUSTOM_OPS)
-  # add compile definition to enable custom operators in onnxruntime-extensions
-  add_compile_definitions(ENABLE_EXTENSION_CUSTOM_OPS)
-
-  # set options for onnxruntime-extensions
-  set(OCOS_ENABLE_CTEST OFF CACHE INTERNAL "")
-  set(OCOS_ENABLE_STATIC_LIB ON CACHE INTERNAL "")
-  set(OCOS_ENABLE_SPM_TOKENIZER OFF CACHE INTERNAL "")
-  add_subdirectory(external/onnxruntime-extensions EXCLUDE_FROM_ALL)
-  # target library or executable are defined in CMakeLists.txt of onnxruntime-extensions
-  target_include_directories(ocos_operators PRIVATE ${RE2_INCLUDE_DIR} external/json/include)
-  target_include_directories(ortcustomops PUBLIC external/onnxruntime-extensions/shared)
+# onnxruntime-extensions
+if (onnxruntime_USE_EXTENSIONS)
+  include(extensions)
 endif()
 
 if (APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Android")
@@ -1384,13 +1391,7 @@ if(onnxruntime_USE_OPENVINO)
   endif()
 
   # Check OpenVINO version for support
-  if (${VER} MATCHES "2020.3" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2020.3")
-    set(OPENVINO_VERSION "2020.3")
-    add_definitions(-DOPENVINO_2020_3=1)
-  elseif (${VER} MATCHES "2021.1" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.1")
-    set(OPENVINO_VERSION "2021.1")
-    add_definitions(-DOPENVINO_2021_1=1)
-  elseif (${VER} MATCHES "2021.2" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.2")
+  if (${VER} MATCHES "2021.2" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.2")
     set(OPENVINO_VERSION "2021.2")
     add_definitions(-DOPENVINO_2021_2=1)
   elseif (${VER} MATCHES "2021.3" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.3")
@@ -1840,5 +1841,27 @@ endif()
 
 if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
   add_compile_definitions(DEBUG_NODE_INPUTS_OUTPUTS)
+endif()
+
+if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
+  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    message(FATAL_ERROR "External custom operator schemas feature is only supported on Linux")
+  endif()
+
+  if (NOT ${ONNX_CUSTOM_PROTOC_EXECUTABLE} STREQUAL "")
+    message(FATAL_ERROR "External custom operator schemas is not supported with the user specified protc executable")
+  endif()
+
+  if (NOT onnxruntime_ENABLE_TRAINING)
+    message(FATAL_ERROR "External custom operator schemas is supported only with --enable-training option")
+  endif()
+
+  add_custom_target(install_protobuf ALL DEPENDS protobuf::libprotobuf  protobuf::protoc)
+  add_custom_command(
+    TARGET install_protobuf
+    COMMAND ${CMAKE_COMMAND} -DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR} -P cmake_install.cmake
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/external/protobuf/cmake
+    COMMENT "Installing protobuf"
+  )
 endif()
 
