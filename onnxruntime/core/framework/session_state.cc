@@ -1097,8 +1097,8 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
                                   remove_initializers, constant_initializers_use_count);
 }
 
-// We accumulate all nested subgraph(s) information (kernel create info maps and execution providers)
-// relative to the current depth  (i.e.) if we were on the first nested subgraph, we accumulate
+// We accumulate all nested subgraph(s) kernel create info maps relative to the current depth
+// (i.e.) if we were on the first nested subgraph, we accumulate
 // information from ALL the nested subgraphs within it.
 // This information is necessary to plan the right location for initializers
 // in a given level because they could be used in one of the nested subgraphs relative to the
@@ -1119,8 +1119,7 @@ static void AccumulateAllNestedSubgraphsInfo(
     const SessionState& session_state,
     const std::string& subgraph_kernel_create_info_map_key_base,
     size_t graph_depth,
-    /*out*/ SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
-    /*out*/ std::unordered_map<std::string, std::reference_wrapper<const ExecutionProviders>>& subgraphs_execution_providers) {
+    /*out*/ SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps) {
   for (const auto& entry : session_state.GetSubgraphSessionStateMap()) {
     auto node_index = entry.first;
 
@@ -1136,20 +1135,15 @@ static void AccumulateAllNestedSubgraphsInfo(
       // The end user is never likely to see an error with the following line.
       // Points to an internal processing error if we hit this.
       ORT_ENFORCE(subgraphs_kernel_create_info_maps.find(local_subgraph_kernel_create_info_map_key) ==
-                      subgraphs_kernel_create_info_maps.end() &&
-                  subgraphs_execution_providers.find(local_subgraph_kernel_create_info_map_key) ==
-                      subgraphs_execution_providers.end());
+                  subgraphs_kernel_create_info_maps.end());
 
       subgraphs_kernel_create_info_maps.insert({local_subgraph_kernel_create_info_map_key,
                                                 subgraph_session_state.GetKernelCreateInfoMap()});
-      subgraphs_execution_providers.insert({local_subgraph_kernel_create_info_map_key,
-                                            subgraph_session_state.GetExecutionProviders()});
 
       // Recurse into the subgraph session state
       AccumulateAllNestedSubgraphsInfo(subgraph_session_state,
                                        local_subgraph_kernel_create_info_map_key,
-                                       graph_depth + 1, subgraphs_kernel_create_info_maps,
-                                       subgraphs_execution_providers);
+                                       graph_depth + 1, subgraphs_kernel_create_info_maps);
     }
   }
 }
@@ -1178,14 +1172,12 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   }
 
   SubgraphsKernelCreateInfoMaps subgraphs_kernel_create_info_maps;
-  std::unordered_map<std::string, std::reference_wrapper<const ExecutionProviders>> subgraphs_execution_providers;
-  AccumulateAllNestedSubgraphsInfo(*this, "", 0, subgraphs_kernel_create_info_maps, subgraphs_execution_providers);
+  AccumulateAllNestedSubgraphsInfo(*this, "", 0, subgraphs_kernel_create_info_maps);
 
   SequentialPlannerContext context(session_options.execution_mode, session_options.execution_order, session_options.enable_mem_reuse);
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
                                                     execution_providers_, kernel_create_info_map_,
                                                     subgraphs_kernel_create_info_maps,
-                                                    subgraphs_execution_providers,
                                                     ort_value_name_idx_map_, context, p_seq_exec_plan_));
   //Record the allocation plan
 

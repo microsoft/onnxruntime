@@ -143,7 +143,6 @@ class PlannerImpl {
               const std::vector<const NodeArg*>& outer_scope_node_args, const ExecutionProviders& providers,
               const KernelCreateInfoMap& kernel_create_info_map,
               const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
-              const std::unordered_map<std::string, std::reference_wrapper<const ExecutionProviders>>& subgraphs_execution_providers,
               const OrtValueNameIdxMap& ort_value_name_idx_map,
               const ISequentialPlannerContext& context, SequentialExecutionPlan& plan)
       : context_(context),
@@ -154,7 +153,6 @@ class PlannerImpl {
         execution_providers_(providers),
         kernel_create_info_map_(kernel_create_info_map),
         subgraphs_kernel_create_info_maps_(subgraphs_kernel_create_info_maps),
-        subgraphs_execution_providers_(subgraphs_execution_providers),
         ort_value_name_idx_map_(ort_value_name_idx_map) {}
 
   Status CreatePlan();
@@ -170,8 +168,6 @@ class PlannerImpl {
 
   const KernelCreateInfoMap& kernel_create_info_map_;
   const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps_;
-
-  const std::unordered_map<std::string, std::reference_wrapper<const ExecutionProviders>>& subgraphs_execution_providers_;
 
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
 
@@ -602,23 +598,21 @@ class PlannerImpl {
   }
 
   OrtMemoryInfo GetLocationForNodeInput(size_t input_index, const Node& node,
-                                        const KernelCreateInfoMap& kernel_create_info_map,
-                                        const ExecutionProviders& execution_providers) {
-    auto* p_provider = execution_providers.Get(node);
+                                        const KernelCreateInfoMap& kernel_create_info_map) {
+    auto* p_provider = execution_providers_.Get(node);
     ORT_ENFORCE(p_provider);
 
     const KernelCreateInfo& kernel_create_info = GetKernelCreateInfo(kernel_create_info_map, node.Index());
 
     if (utils::IsInputOnCpu(node, &kernel_create_info, input_index))
       // weights are not output from any node, so it's OK to put its location on CPU provider
-      return execution_providers.GetDefaultCpuMemoryInfo();
+      return execution_providers_.GetDefaultCpuMemoryInfo();
     return p_provider->GetAllocator(0, OrtMemTypeDefault)->Info();
   }
 
   Status GeneratePlanForWeightsHelper(const GraphViewer& graph_viewer,
                                       const InitializedTensorSet& weights,
                                       const KernelCreateInfoMap& kernel_create_info_map,
-                                      const ExecutionProviders& execution_providers,
                                       const std::string& subgraph_kernel_create_info_map_key_base,
                                       size_t graph_depth,
                                       /*out*/ std::vector<std::vector<OrtMemoryInfo>>& locations) {
@@ -634,45 +628,42 @@ class PlannerImpl {
           continue;
         }
 
-        ORT_TRY {
-          auto& def_name = input_node_arg->Name();
+        auto& def_name = input_node_arg->Name();
 
-          // This node input doesn't correspond to any of the weights
-          if (!weights.count(def_name)) {
+        // This node input doesn't correspond to any of the weights
+        if (!weights.count(def_name)) {
+          continue;
+        }
+
+        // While processing subgraphs, if we don't see an entry in the implicit
+        // inputs of the node containing the subgraph, it is a shadow value.
+        auto is_shadow_value_in_subgraph = [](const Node& subgraph_parent_node,
+                                              const std::string& def_name) -> bool {
+          bool is_shadow_value_in_subgraph = true;
+          for (const auto& implicit_input : subgraph_parent_node.ImplicitInputDefs()) {
+            if (implicit_input->Name() == def_name) {
+              is_shadow_value_in_subgraph = false;
+              break;
+            }
+          }
+
+          return is_shadow_value_in_subgraph;
+        };
+
+        // Skip processing shadow values in subgraphs
+        if (graph_depth > 0) {
+          // We are processing a subgraph if we enter this
+          const auto* parent_node = graph_viewer.ParentNode();
+
+          // Skip processing if it is a shadow value
+          if (is_shadow_value_in_subgraph(*parent_node, def_name)) {
             continue;
           }
-
-          // Skip processing shadow values in subgraphs.
-          // While processing subgraphs, if we don't see this entry in the implicit
-          // inputs of the node containing the subgraph, skip processing it as it is
-          // a shadow value.
-          if (graph_depth > 0) {
-            // We are processing a subgraph if we enter this
-            const auto* parent_node = graph_viewer.ParentNode();
-
-            bool is_implicit_input = false;
-            for (const auto& implicit_input : parent_node->ImplicitInputDefs()) {
-              if (implicit_input->Name() == def_name) {
-                is_implicit_input = true;
-                break;
-              }
-            }
-
-            // Only proceed if it is an implicit input
-            if (!is_implicit_input) {
-              continue;
-            }
-          }
-
-          auto wt_index = Index(def_name);
-          locations[wt_index].emplace_back(
-              GetLocationForNodeInput(node_input_index, node, kernel_create_info_map, execution_providers));
         }
-        ORT_CATCH(const std::exception& ex) {
-          ORT_HANDLE_EXCEPTION([&]() {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
-          });
-        }
+
+        auto wt_index = Index(def_name);
+        locations[wt_index].emplace_back(
+            GetLocationForNodeInput(node_input_index, node, kernel_create_info_map));
       }
 
       // If the node has subgraphs (i.e.) control flow nodes,
@@ -691,13 +682,9 @@ class PlannerImpl {
           auto specific_subgraph_kernel_create_info_map = subgraphs_kernel_create_info_maps_.find(local_subgraph_kernel_create_info_map_key);
           ORT_ENFORCE(specific_subgraph_kernel_create_info_map != subgraphs_kernel_create_info_maps_.end());
 
-          auto specific_subgraph_execution_providers = subgraphs_execution_providers_.find(local_subgraph_kernel_create_info_map_key);
-          ORT_ENFORCE(specific_subgraph_execution_providers != subgraphs_execution_providers_.end());
-
           ORT_RETURN_IF_ERROR(GeneratePlanForWeightsHelper(subgraph_viewer,
                                                            weights,
                                                            specific_subgraph_kernel_create_info_map->second,
-                                                           specific_subgraph_execution_providers->second,
                                                            local_subgraph_kernel_create_info_map_key,
                                                            graph_depth + 1,
                                                            locations));
@@ -711,9 +698,15 @@ class PlannerImpl {
   Status GeneratePlanForWeights() {
     std::vector<std::vector<OrtMemoryInfo>> locations(plan_.allocation_plan.size());
 
-    ORT_RETURN_IF_ERROR(GeneratePlanForWeightsHelper(graph_viewer_, graph_viewer_.GetAllInitializedTensors(),
-                                                     kernel_create_info_map_, execution_providers_,
-                                                     "", 0, locations));
+    ORT_TRY {
+      ORT_RETURN_IF_ERROR(GeneratePlanForWeightsHelper(graph_viewer_, graph_viewer_.GetAllInitializedTensors(),
+                                                       kernel_create_info_map_, "", 0, locations));
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
+      });
+    }
 
     for (size_t i = 0; i != locations.size(); ++i) {
       const std::vector<OrtMemoryInfo>& loc = locations[i];
@@ -1171,7 +1164,6 @@ Status SequentialPlanner::CreatePlan(
     const ExecutionProviders& providers,
     const KernelCreateInfoMap& kernel_create_info_map,
     const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
-    const std::unordered_map<std::string, std::reference_wrapper<const ExecutionProviders>>& subgraphs_execution_providers,
     const OrtValueNameIdxMap& ort_value_name_idx_map,
     const ISequentialPlannerContext& context,
     std::unique_ptr<SequentialExecutionPlan>& plan) {
@@ -1180,7 +1172,6 @@ Status SequentialPlanner::CreatePlan(
 
   PlannerImpl planner(parent_node, graph_viewer, outer_scope_node_args, providers,
                       kernel_create_info_map, subgraphs_kernel_create_info_maps,
-                      subgraphs_execution_providers,
                       ort_value_name_idx_map, context, *plan);
 
   return planner.CreatePlan();

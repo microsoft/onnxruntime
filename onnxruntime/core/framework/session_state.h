@@ -78,6 +78,8 @@ class MemoryInfo;
  *   s.GetKernel(...);
  */
 
+// subgraph SessionState. entry for node containing subgraph, with value containing attribute:SessionState pair
+// as a node may contain multiple subgraphs (e.g. 'If' has one for both the 'then' and 'else' branches).
 using SubgraphSessionStateMap =
     std::unordered_map<onnxruntime::NodeIndex, std::unordered_map<std::string, std::unique_ptr<SessionState>>>;
 
@@ -105,7 +107,6 @@ class SessionState {
         use_deterministic_compute_(use_deterministic_compute),
         enable_mem_reuse_(enable_mem_reuse),
         prepacked_weights_container_(prepacked_weights_container) {
-
     SetupAllocators();
   }
 
@@ -330,7 +331,7 @@ class SessionState {
     return subgraph_session_states_;
   }
 
-  #ifdef DEBUG_NODE_INPUTS_OUTPUTS
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
   void IncrementGraphExecutionCounter() {
     ++graph_executions_counter_;
   }
@@ -338,8 +339,8 @@ class SessionState {
   size_t GetGraphExecutionCounter() const {
     return graph_executions_counter_;
   }
-  #endif
-        
+#endif
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
@@ -476,8 +477,6 @@ class SessionState {
   NameNodeInfoMapType input_names_to_nodeinfo_mapping_;
   NameNodeInfoMapType output_names_to_nodeinfo_mapping_;
 
-  // subgraph SessionState. entry for node containing subgraph, with value containing attribute:SessionState pair
-  // as a node may contain multiple subgraphs (e.g. 'If' has one for both the 'then' and 'else' branches).
   SubgraphSessionStateMap subgraph_session_states_;
 
   // either threadpool could be nullptr
