@@ -30,7 +30,7 @@ void TestConvTransposeOpInitializer(const ConvTransposeOpAttributes& attributes,
                                     bool is_filter_initializer = false,
                                     OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                                     const std::string& err_str = "",
-                                    const std::unordered_set<std::string>& excluded_provider_types = {kTensorrtExecutionProvider}) {
+                                    const std::unordered_set<std::string>& excluded_provider_types = {kTensorrtExecutionProvider, kOpenVINOExecutionProvider}) {
   OpTester test("ConvTranspose", 11);
   test.AddAttribute("kernel_shape", attributes.kernel_shape);
   test.AddAttribute("group", attributes.group);
