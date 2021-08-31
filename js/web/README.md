@@ -38,8 +38,8 @@ Refer to the following links for development information:
 | :--------------: | :---------: | :---------: | :---------: | :---------: | :-----: |
 |    Windows 10    | wasm, webgl | wasm, webgl |      -      | wasm, webgl |  wasm   |
 |      macOS       | wasm, webgl | wasm, webgl | wasm, webgl | wasm, webgl |  wasm   |
-| Ubuntu LTS 18.04 |    wasm     |    wasm     |      -      |    wasm     |  wasm   |
-|       iOS        |    wasm     |    wasm     |  wasm       |      -      |    -    |
+| Ubuntu LTS 18.04 | wasm, webgl | wasm, webgl |      -      | wasm, webgl |  wasm   |
+|       iOS        |    wasm     |    wasm     |    wasm     |      -      |    -    |
 |     Android      | wasm, webgl | wasm, webgl |      -      |      -      |    -    |
 
 ### Operators
