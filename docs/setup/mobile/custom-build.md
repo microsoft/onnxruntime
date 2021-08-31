@@ -1,7 +1,7 @@
 ---
 title: Custom Build
 parent: Deploy ONNX Runtime Mobile
-grand_parent: How to
+grand_parent: Setup
 has_children: false
 nav_order: 4
 ---

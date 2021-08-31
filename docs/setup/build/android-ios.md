@@ -2,7 +2,7 @@
 title: Build for Android/iOS
 parent: Build ORT
 nav_order: 5
-grand_parent: How to
+grand_parent: Setup
 ---
 
 # Build ONNX Runtime for Android and iOS

@@ -1,6 +1,6 @@
 ---
 title: Tune performance
-parent: How to
+parent: Setup
 nav_order: 3
 ---
 

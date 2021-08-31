@@ -1,7 +1,7 @@
 ---
 title: Build for training
 parent: Build ORT
-grand_parent: How to
+grand_parent: Setup
 nav_order: 2
 ---
 

@@ -1,6 +1,6 @@
 ---
 title: Use custom operators
-parent: How to
+parent: Setup
 nav_order: 6
 ---
 # Custom operators

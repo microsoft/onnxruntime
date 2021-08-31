@@ -1,6 +1,6 @@
 ---
 title: Deploy ONNX Runtime Mobile
-parent: How to
+parent: Setup
 has_children: true
 nav_order: 5
 ---

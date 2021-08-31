@@ -1,7 +1,7 @@
 ---
 title: Build for inferencing
 parent: Build ORT
-grand_parent: How to
+grand_parent: Setup
 nav_order: 1
 ---
 

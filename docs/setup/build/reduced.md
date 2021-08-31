@@ -1,6 +1,6 @@
 ---
 title: Build with reduced size
-grand_parent: How to
+grand_parent: Setup
 parent: Build ORT
 nav_order: 6
 ---

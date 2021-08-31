@@ -1,6 +1,6 @@
 ---
 title: Add a new execution provider
-parent: How to
+parent: Setup
 nav_order: 7
 ---
 

@@ -14,8 +14,8 @@ logo: "/images/ONNX-Runtime-logo.svg"
 aux_links:
   "Tutorials":
     - "/docs/tutorials/"
-  "How to":
-    - "/docs/how-to/"
+  "Setup":
+    - "/docs/setup/"
   "Reference":
     - "/docs/reference/"
   "Resources":
