@@ -23,7 +23,8 @@ extern "C" {
 #endif
 
 #ifndef USE_DML
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_DML, _In_ OrtSessionOptions* options, int device_id) {
+ORT_EXPORT ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_DML, _In_ OrtSessionOptions* options,
+                               int device_id) {
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(device_id);
   return CreateNotEnabledStatus("DML");
@@ -31,8 +32,8 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_DML, _In_ OrtSessio
 #endif
 
 #ifndef USE_MIGRAPHX
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_MIGraphX,
-                    _In_ OrtSessionOptions* options, int device_id) {
+ORT_EXPORT ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_MIGraphX,
+                               _In_ OrtSessionOptions* options, int device_id) {
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(device_id);
   return CreateNotEnabledStatus("MIGraphX");
@@ -40,8 +41,8 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_MIGraphX,
 #endif
 
 #ifndef USE_ROCM
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_ROCM,
-                    _In_ OrtSessionOptions* options, int device_id, size_t gpu_mem_limit) {
+ORT_EXPORT ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_ROCM,
+                               _In_ OrtSessionOptions* options, int device_id, size_t gpu_mem_limit) {
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(device_id);
   ORT_UNUSED_PARAMETER(gpu_mem_limit);
@@ -50,8 +51,8 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_ROCM,
 #endif
 
 #ifndef USE_NNAPI
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Nnapi,
-                    _In_ OrtSessionOptions* options, uint32_t nnapi_flags) {
+ORT_EXPORT ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Nnapi,
+                               _In_ OrtSessionOptions* options, uint32_t nnapi_flags) {
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(nnapi_flags);
   return CreateNotEnabledStatus("NNAPI");
@@ -59,8 +60,9 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Nnapi,
 #endif
 
 #ifndef USE_NUPHAR
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Nuphar,
-                    _In_ OrtSessionOptions* options, int allow_unaligned_buffers, _In_ const char* settings) {
+ORT_EXPORT ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Nuphar,
+                               _In_ OrtSessionOptions* options, int allow_unaligned_buffers,
+                               _In_ const char* settings) {
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(allow_unaligned_buffers);
   ORT_UNUSED_PARAMETER(settings);
