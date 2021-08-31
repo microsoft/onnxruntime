@@ -274,7 +274,7 @@ std::shared_ptr<IExecutionProvider> GetOrCreateExecutionProvider(const std::stri
   else{
     // the EP doesn't support cache, register the instance to session
     auto ep = CreateTrainingEP(session_options, provider_type, provider_options_map);
-    return std::move(ep);
+    return ep;
   }
 }
 
