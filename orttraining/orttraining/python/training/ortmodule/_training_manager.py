@@ -65,6 +65,15 @@ class TrainingManager(GraphExecutionManager):
             return self._fallback_manager.fallback(self._original_module, self._debug_options.logging.log_level, *inputs, **kwargs)
 
         try:
+            if self._first_skip_check_warning == True and self._skip_check.is_disabled() == False \
+                and self._debug_options.logging.log_level <= _logger.LogLevel.WARNING:
+                # Only change this after the firs time a warning is issued.
+                self._first_skip_check_warning = False
+                warnings.warn(f"Fast path enabled - skipping checks."
+                              f"rebuild gradient graph: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT)},"
+                              f"execution agent recreation: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT)},"
+                              f"device check: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE)}", UserWarning)
+
             # If exporting module to ONNX for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
             build_gradient_graph = False
