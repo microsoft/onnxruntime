@@ -76,8 +76,8 @@ void* CUDAExternalAllocator::Alloc(size_t size) {
 }
 
 void CUDAExternalAllocator::Free(void* p) {
-  std::lock_guard<OrtMutex> lock(lock_);
   free_(p);
+  std::lock_guard<OrtMutex> lock(lock_);
   auto it = reserved_.find(p);
   if (it != reserved_.end()) {
     reserved_.erase(it);
@@ -86,8 +86,8 @@ void CUDAExternalAllocator::Free(void* p) {
 }
 
 void* CUDAExternalAllocator::Reserve(size_t size) {
-  std::lock_guard<OrtMutex> lock(lock_);
   void* p = Alloc(size);
+  std::lock_guard<OrtMutex> lock(lock_);
   ORT_ENFORCE(reserved_.find(p) == reserved_.end());
   reserved_.insert(p);
   return p;
