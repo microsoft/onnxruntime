@@ -59,7 +59,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list):
                     is_versioned_dylib = re.match(r'.*[\.\d+]+\.dylib$', child_file.name)
                     if child_file.is_file() and child_file.suffix == '.dylib' and not is_versioned_dylib:
                         files_list.append('<file src="' + str(child_file) +
-                                          '" target="runtimes/osx.10.13-%s/native"/>' % cpu_arch)
+                                          '" target="runtimes/osx.10.14-%s/native"/>' % cpu_arch)
         for cpu_arch in ['x64', 'aarch64']:
             if child.name == get_package_name('linux', cpu_arch, ep):
                 child = child / 'lib'
