@@ -206,7 +206,7 @@ class _FallbackManager(object):
 
         assert self.is_pending(), '`fallback` can only be called when there is a pending fallback'
 
-        if log_level <= _logger.LogLevel.WARNING:
+        if log_level <= _logger.LogLevel.INFO:
             warnings.warn(
                 (f'Fallback due to exception {type(self._exception)} was triggered. '
                  f'See details below:\n\n{get_exception_as_string(self._exception)}'), UserWarning)
