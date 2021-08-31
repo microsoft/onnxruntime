@@ -503,6 +503,7 @@ static Status ReleaseNodeMLValues(ExecutionFrame& frame,
                                   const logging::Logger& logger) {
   for (auto i = node_exec_plan.free_from_index; i <= node_exec_plan.free_to_index; ++i) {
     auto ort_value_idx = seq_exec_plan.to_be_freed[i];
+    std::cout << "Releasing ort_value with index: " << ort_value_idx << std::endl;
     VLOGS(logger, 1) << "Releasing ort_value with index: " << ort_value_idx;
     ORT_RETURN_IF_ERROR(frame.ReleaseMLValue(ort_value_idx));
   }

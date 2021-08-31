@@ -349,6 +349,10 @@ size_t TensorTypeBase::Size() const {
 
 template <typename T>
 static void Delete(void* p) {
+  if constexpr (std::is_same<T, Tensor>::value) {
+    auto* tensor = reinterpret_cast<Tensor*>(p);
+    std::cout << "Deleting " << tensor->DataRaw() << std::endl;
+  }
   delete static_cast<T*>(p);
 }
 

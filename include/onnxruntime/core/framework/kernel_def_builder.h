@@ -71,6 +71,10 @@ class KernelDef {
     return alias_map_;
   }
 
+  const std::vector<std::pair<int, int>>& MayAlias() const {
+    return may_alias_map_;
+  }
+
   const optional<std::pair<int, int>>& VariadicAlias() const {
     return variadic_alias_offsets_;
   }
@@ -152,6 +156,9 @@ class KernelDef {
 
   // An element <i, j> means that output j is an alias of input i.
   std::vector<std::pair<int, int>> alias_map_;
+
+  // An element <i, j> means that output j may alias input i.
+  std::vector<std::pair<int, int>> may_alias_map_;
 
   // This variable stores <input_offset, output_offset> for the variadic alias mapping
   // output 'i + output_offset' is an alias of input 'i + input_offset' for all i >= 0
@@ -272,6 +279,17 @@ class KernelDefBuilder {
   */
   KernelDefBuilder& Alias(const std::vector<std::pair<int, int>>& aliases);
   KernelDefBuilder& Alias(int input_index, int output_index);
+
+  /**
+     May-Alias mapping from inputs to outputs. Similar to Alias, except that
+     aliasing behavior is not known statically.
+
+     With Alias, the memory planner will always try to pass the sample pointer
+     as the output to enable aliasing. With MayAlias, this is not done
+     automatically, and must be requested explicitly in the kernel.
+  */
+  KernelDefBuilder& MayAlias(const std::vector<std::pair<int, int>>& aliases);
+  KernelDefBuilder& MayAlias(int input_index, int output_index);
 
   /**
      Apply variadic number of alias mapping from inputs to outputs. 

@@ -128,6 +128,14 @@ bool KernelDef::IsConflict(const KernelDef& other) const {
   if (alias_map_.empty() && !other.Alias().empty())
     return false;
 
+  //check may-alias
+  for (auto& it : may_alias_map_) {
+    if (std::find(other.MayAlias().begin(), other.MayAlias().end(), it) == other.MayAlias().end())
+      return false;
+  }
+  if (may_alias_map_.empty() && !other.MayAlias().empty())
+    return false;
+
   //check memory type
   auto& other_input_mem_types = other.input_memory_type_args_;
   for (auto it : input_memory_type_args_) {
@@ -253,6 +261,16 @@ KernelDefBuilder& KernelDefBuilder::Alias(const std::vector<std::pair<int, int>>
 
 KernelDefBuilder& KernelDefBuilder::Alias(int input_index, int output_index) {
   kernel_def_->alias_map_.emplace_back(input_index, output_index);
+  return *this;
+}
+
+KernelDefBuilder& KernelDefBuilder::MayAlias(const std::vector<std::pair<int, int>>& aliases) {
+  kernel_def_->may_alias_map_ = aliases;
+  return *this;
+}
+
+KernelDefBuilder& KernelDefBuilder::MayAlias(int input_index, int output_index) {
+  kernel_def_->may_alias_map_.emplace_back(input_index, output_index);
   return *this;
 }
 

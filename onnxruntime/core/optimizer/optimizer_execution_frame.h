@@ -87,6 +87,9 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Info);
   };
 
+  Status GetRuntimeAliasedNodeOutputMLValue(int output_arg_index, int input_arg_index,
+                                            OrtValue*& p_output_ort_value) override;
+
   OptimizerExecutionFrame(const Info& info,
                           const std::vector<int>& fetch_mlvalue_idxs,
                           const std::vector<OrtValue>& fetches = {});

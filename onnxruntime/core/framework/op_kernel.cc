@@ -56,6 +56,20 @@ SparseTensor* OpKernelContext::OutputSparse(int index, const TensorShape& shape)
 }
 #endif
 
+Tensor* OpKernelContext::AliasedOutput(int output_index, int input_index) {
+  // check that this output may alias this input dynamically
+  std::pair<int, int> pair{input_index, output_index};
+  auto may_alias_map = kernel_->KernelDef().MayAlias();
+  bool pair_in_map = std::find(may_alias_map.begin(), may_alias_map.end(), pair) != may_alias_map.end();
+  ORT_ENFORCE(pair_in_map, "Requested output ", output_index, " to dynamically alias input ", input_index, ", but this was not declared in the may_alias_map of the kernel");
+
+  OrtValue* value = nullptr;
+  auto status = execution_frame_->GetRuntimeAliasedNodeOutputMLValue(GetOutputArgIndex(output_index), GetInputArgIndex(input_index), value);
+  ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
+
+  return value ? value->GetMutable<Tensor>() : nullptr;
+}
+
 bool OpKernelContext::TryGetInferredInputShape(int index, TensorShape& shape) const {
   return execution_frame_->TryGetInferredShape(GetInputArgIndex(index), shape);
 }

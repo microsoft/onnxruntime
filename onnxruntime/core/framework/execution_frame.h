@@ -67,6 +67,8 @@ class IExecutionFrame {
   Status GetOrCreateNodeOutputMLValue(const int index, int output_arg_index, const TensorShape* shape,
                                       OrtValue*& p_ort_value, const Node& node);
 
+  virtual Status GetRuntimeAliasedNodeOutputMLValue(int output_arg_index, int input_arg_index, OrtValue*& p_output_ort_value) = 0;
+
   // This function try retrieve the inferred shapes for the given NodeArg index.
   // If the retrieval is successful, this function returns true and false otherwise.
   virtual bool TryGetInferredShape(int index, TensorShape& shape) const;
@@ -92,6 +94,10 @@ class IExecutionFrame {
   // returns true if the ort_value_idx is an output from the graph
   bool IsOutput(int ort_value_idx) const;
 
+  // All the intermediate values for the entire graph.
+  // Input and Output values are passed in by executors
+  std::vector<OrtValue> all_values_;
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(IExecutionFrame);
 
@@ -113,10 +119,6 @@ class IExecutionFrame {
   virtual const DataTransferManager& GetDataTransferManager() const = 0;
 
   const NodeIndexInfo& node_index_info_;
-
-  // All the intermediate values for the entire graph.
-  // Input and Output values are passed in by executors
-  std::vector<OrtValue> all_values_;
 
   // perf optimization to avoid calling all_values_.size() repeatedly as the size is fixed once constructed
   const size_t all_values_size_;
@@ -146,6 +148,9 @@ class ExecutionFrame final : public IExecutionFrame {
   Status AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_value, int ort_value_index_reuse, MLDataType element_type,
                                                 const OrtMemoryInfo& location, const TensorShape& shape,
                                                 bool create_fence = false);
+
+  Status GetRuntimeAliasedNodeOutputMLValue(int output_arg_index, int input_arg_index,
+                                            OrtValue*& p_output_ort_value) override;
 
   // thread-safe
   Status GeneratePatterns(MemoryPatternGroup* out) const;

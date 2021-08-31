@@ -176,5 +176,12 @@ Status OptimizerExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value,
   Tensor::InitOrtValue(element_type, *shape, std::move(allocator_ptr), ort_value);
   return Status::OK();
 }
+Status OptimizerExecutionFrame::GetRuntimeAliasedNodeOutputMLValue(int output_arg_index, int input_arg_index,
+                                                                   OrtValue*& p_output_ort_value) {
+  ORT_UNUSED_PARAMETER(output_arg_index);
+  ORT_UNUSED_PARAMETER(input_arg_index);
+  ORT_UNUSED_PARAMETER(p_output_ort_value);
+  ORT_RETURN_IF(true, "TODO");
+}
 
 }  // namespace onnxruntime

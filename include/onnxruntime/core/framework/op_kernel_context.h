@@ -62,6 +62,10 @@ class OpKernelContext {
   Tensor* Output(int index, const std::vector<int64_t>& shape);
   Tensor* Output(int index, const std::initializer_list<int64_t>& shape);
 
+  // request an output that is an alias of an input
+  // This function will error out if MayAlias(input_index, output_index) was not declared on the kernel
+  Tensor* AliasedOutput(int output_index, int input_index);
+
   // Fetch a required tensor output, enforcing that it is present.
   Tensor& RequiredOutput(int index, const TensorShape& shape) {
     Tensor* output_ptr = Output(index, shape);

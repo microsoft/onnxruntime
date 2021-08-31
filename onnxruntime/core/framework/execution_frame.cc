@@ -172,6 +172,41 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
   return status;
 }
 
+Status ExecutionFrame::GetRuntimeAliasedNodeOutputMLValue(int output_arg_index, int input_arg_index,
+                                                          OrtValue*& p_output_ort_value) {
+  auto status = Status::OK();
+
+  int output_ort_value_idx = GetNodeIdxToMLValueIdx(output_arg_index);
+  int input_ort_value_idx = GetNodeIdxToMLValueIdx(input_arg_index);
+
+  // check if the allocation type is kAllocate
+  const SequentialExecutionPlan* p_seq_exec_plan = session_state_.GetExecutionPlan();
+  const auto& alloc_plan = p_seq_exec_plan->allocation_plan;
+  ORT_ENFORCE(output_ort_value_idx >= 0 && static_cast<size_t>(output_ort_value_idx) < alloc_plan.size());
+  const auto& per_alloc_plan = alloc_plan[output_ort_value_idx];
+
+  // error for now, later fall back to GetOrCreateNodeOutputMLValue
+  ORT_RETURN_IF_NOT(per_alloc_plan.alloc_kind == AllocKind::kAllocate, "TODO output ", output_ort_value_idx, " was ", per_alloc_plan.alloc_kind);
+
+  // return nullptr if it is optional
+  if (output_ort_value_idx == NodeIndexInfo::kInvalidEntry || input_ort_value_idx == NodeIndexInfo::kInvalidEntry) {
+    p_output_ort_value = nullptr;
+  } else {
+    p_output_ort_value = &all_values_[output_ort_value_idx];
+    OrtValue* p_input_ort_value = &all_values_[input_ort_value_idx];
+
+    ORT_RETURN_IF_NOT(p_input_ort_value->IsTensor(), "For runtime aliasing, the input must be a tensor");
+
+    // we call the implicit copy constructor of OrtValue which will make the output share the same data as the input
+    *p_output_ort_value = *p_input_ort_value;
+
+    // after all this, the input and output ort values should share their data
+    ORT_ENFORCE_DEBUG(p_output_ort_value->Get<Tensor>().DataRaw() == p_input_ort_value->Get<Tensor>().DataRaw());
+  }
+
+  return status;
+}
+
 bool IExecutionFrame::TryGetInferredShape(int /*index*/, TensorShape& /*shape*/) const {
   // By default, there is not information about inferred shape, so this default
   // implementation always returns false. The derived class of IExecutionFrame
