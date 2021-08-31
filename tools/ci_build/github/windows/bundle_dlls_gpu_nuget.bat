@@ -19,5 +19,9 @@ FOR /R %%i IN (*.nupkg) do (
        move onnxruntime-win-x64-tensorrt\lib\onnxruntime.lib runtimes\win-x64\native\onnxruntime.lib
        move onnxruntime-win-x64-tensorrt\lib\onnxruntime.pdb runtimes\win-x64\native\onnxruntime.pdb
        7z a  %%~ni.nupkg runtimes
+
+       mkdir build\native\include
+       move onnxruntime-linux-x64-tensorrt\include\tensorrt_provider_factory.h build\native\include\tensorrt_provider_factory.h 
+       7z a  %%~ni.nupkg build 
    )
 ) 

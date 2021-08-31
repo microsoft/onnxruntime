@@ -188,7 +188,9 @@ NS_ASSUME_NONNULL_BEGIN
 
     for (size_t i = 0; i < nameCount; ++i) {
       auto name = std::unique_ptr<char[], decltype(deleter)>{getName(i, allocator), deleter};
-      [result addObject:[NSString stringWithUTF8String:name.get()]];
+      NSString* nameNsstr = [NSString stringWithUTF8String:name.get()];
+      NSAssert(nameNsstr != nil, @"nameNsstr must not be nil");
+      [result addObject:nameNsstr];
     }
 
     return result;

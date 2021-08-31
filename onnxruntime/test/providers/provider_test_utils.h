@@ -149,6 +149,7 @@ struct TTensorType {
 template <typename T>
 const TTypeProto<T> TTensorType<T>::s_type_proto;
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 struct TSparseTensorProto {
   explicit TSparseTensorProto(int32_t dtype, const std::vector<int64_t>* shape = nullptr) {
     proto.mutable_sparse_tensor_type()->set_elem_type(dtype);
@@ -165,6 +166,7 @@ struct TSparseTensorProto {
   }
   ONNX_NAMESPACE::TypeProto proto;
 };
+#endif
 
 // TypeProto for map<TKey, TVal>
 template <typename TKey, typename TVal>
@@ -295,6 +297,7 @@ class OpTester {
     AddData(input_data_, name, dims, p_values, size, is_initializer, false, dim_params);
   }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   // Useful to add boolean data
   template <typename T>
   void AddSparseCooInput(const char* name, const std::vector<int64_t>& dims,
@@ -394,6 +397,7 @@ class OpTester {
                               gsl::make_span(outer_indices),
                               dim_params);
   }
+#endif
 
   // Add other registered types, possibly experimental
   template <typename T>
@@ -475,7 +479,8 @@ class OpTester {
     AddData(output_data_, name, dims, p_values, size, false,
             sort_output, nullptr /* dim_params */, rel_error, abs_error);
   }
- 
+
+#if !defined(DISABLE_SPARSE_TENSORS)
   template <typename T>
   void AddSparseCooOutput(const char* name, const std::vector<int64_t>& dims,
                           const std::initializer_list<T>& expected_values,
@@ -571,6 +576,7 @@ class OpTester {
                               gsl::make_span(expected_inner_indices),
                               gsl::make_span(expected_outer_indices));
   }
+#endif
 
   /*
   * Use this API to add an output *edge* to the node/op being tested that shouldn't have any 
@@ -585,7 +591,7 @@ class OpTester {
     output_data_.push_back(Data(NodeArg(name, &TTensorType<T>::s_type_proto.proto), OrtValue(), optional<float>(),
                                 optional<float>()));
   }
-  
+
   // Add other registered types, possibly experimental
   template <typename T>
   void AddOutput(const char* name, const T& val) {
@@ -858,6 +864,7 @@ class OpTester {
 
   void CopyDataToTensor(gsl::span<const gsl::byte> data, Tensor& dst);
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   NodeArg MakeSparseNodeArg(int32_t dtype, const char* name,
                             const std::vector<int64_t>& dims,
                             const std::vector<std::string>* dim_params);
@@ -899,6 +906,7 @@ class OpTester {
   void AddSparseTensorData(std::vector<Data>& data, NodeArg node_arg,
                            std::unique_ptr<SparseTensor> p_tensor,
                            const CheckParams& check_params);
+#endif
 
   const char* domain_;
   int opset_version_;

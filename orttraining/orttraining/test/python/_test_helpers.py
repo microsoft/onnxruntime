@@ -9,6 +9,7 @@ from onnxruntime.training import orttrainer
 
 try:
     from onnxruntime.training.ortmodule import ORTModule
+    from onnxruntime.training.ortmodule._custom_autograd_function import enable_custom_autograd_support
     from onnxruntime.training.ortmodule._graph_execution_manager_factory import GraphExecutionManagerFactory
     from onnxruntime.training.ortmodule._fallback import ORTModuleInitException
 except ImportError:
@@ -194,10 +195,7 @@ def assert_values_are_close(input, other, rtol=1e-05, atol=1e-06):
         assert False, err_msg
 
 def enable_custom_autograd_function(module):
-    for mode in [True, False]:
-        module._torch_module._execution_manager(mode)._enable_custom_autograd_function = True
-        module._torch_module._execution_manager(mode)._save_onnx = True
-        module._torch_module._execution_manager(mode)._save_onnx_prefix = "utbench"
+    enable_custom_autograd_support()
 
 def run_with_pytorch_on_device(device, model, input_list, label_input, is_eval_mode=False):
     with torch.no_grad():
@@ -231,8 +229,8 @@ def run_with_ort_on_device(device, model, input_list, label_input, is_eval_mode=
     with torch.no_grad():
         model = copy.deepcopy(model)
         model.to(device)
-    model = ORTModule(model)
     enable_custom_autograd_function(model)
+    model = ORTModule(model)
     if is_eval_mode:
         model.eval()
     else:

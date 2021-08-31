@@ -7,10 +7,10 @@ namespace onnxruntime {
 namespace python {
 namespace py = pybind11;
 
-void CreatePybindStateModule(py::module& m);
+void CreateInferencePybindStateModule(py::module& m);
 
 PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
-  CreatePybindStateModule(m);
+  CreateInferencePybindStateModule(m);
 }
 }
 }

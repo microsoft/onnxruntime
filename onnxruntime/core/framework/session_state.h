@@ -169,7 +169,9 @@ class SessionState {
      */
   const std::unordered_map<int, OrtValue>& GetConstantInitializedTensors() const;
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   bool IsSparseInitializer(int ort_value_index) const;
+#endif
 
 #ifdef ENABLE_TRAINING
   /**
@@ -271,7 +273,7 @@ class SessionState {
   const KernelCreateInfo& GetNodeKernelCreateInfo(NodeIndex node_index) const;
 
   /// Return SessionState for the given Node index and attribute name if found.
-  const SessionState* GetSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name) const;
+  const SessionState* GetSubgraphSessionState(NodeIndex index, const std::string& attribute_name) const;
 
   concurrency::ThreadPool* GetThreadPool() const noexcept { return thread_pool_; }
   concurrency::ThreadPool* GetInterOpThreadPool() const noexcept { return inter_op_thread_pool_; }
@@ -379,7 +381,9 @@ class SessionState {
                                   _In_opt_ const Node* parent_node,
                                   const SessionOptions& session_options,
                                   bool remove_initializers,
-                                  std::unordered_map<std::string, size_t>& constant_initializers_use_count);
+                                  std::unordered_map<std::string, size_t>& constant_initializers_use_count,
+                                  const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map = {},
+                                  bool graph_info_already_created = false);
 
 #ifdef ENABLE_TRAINING
   Status GeneratePatternGroupCache(
@@ -449,11 +453,13 @@ class SessionState {
   // subset of initialized_tensors_ that are constant and cannot be overridden at runtime
   std::unordered_map<int, OrtValue> constant_initialized_tensors_;
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   // This is an auxiliary lookup to check if the OrtValue was actually a sparse tensor
   // this is needed because we currently convert all sparse initializer into dense Tensors
   // if and when we actually place SparseTensor instances (we should) into OrtValues, we
   // will not need this structure.
   std::unordered_set<int> sparse_initialized_tensors_;
+#endif
 
   // This data structure is for uninitializing string tensors and
   // munmap memory region and close file descriptor
