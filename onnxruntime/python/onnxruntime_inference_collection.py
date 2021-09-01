@@ -346,10 +346,8 @@ class InferenceSession(Session):
                                                                         provider_options,
                                                                         available_providers)
 
-        if providers == [] and 'CUDAExecutionProvider' in available_providers:
-            warnings.warn("Starting from next ORT release, user needs to explicitly set providers to include 'CUDAExecutionProvider' when instantiating InferenceSession. " +
-                          "Please see https://onnxruntime.ai/python/api_summary.html#onnxruntime.InferenceSession for detail. " +
-                          "For example, onnxruntime.InferenceSession(..., providers=[\"CUDAExecutionProvider\"], ...).")
+        if providers == [] and len(available_providers) > 1:
+            warnings.warn("Deprecation warning. This ORT build has [{}] enabled. The next release (ORT 1.10) will require explicitly setting the providers parameter (as opposed to the current behavior of providers getting set/registered by default based on the build flags) when instantiating InferenceSession.".format(available_providers) + "For example, onnxruntime.InferenceSession(..., providers=[\"CUDAExecutionProvider\"], ...).")
 
         session_options = self._sess_options if self._sess_options else C.get_default_session_options()
         if self._model_path:
