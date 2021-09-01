@@ -15,7 +15,6 @@
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/data_transfer_utils.h"
 #include "core/framework/data_types_internal.h"
-#include "core/providers/get_execution_providers.h"
 #include "core/framework/provider_options_utils.h"
 #include "core/framework/random_seed.h"
 #include "core/framework/sparse_tensor.h"
@@ -23,6 +22,7 @@
 #include "core/framework/TensorSeq.h"
 #include "core/graph/graph_viewer.h"
 #include "core/platform/env.h"
+#include "core/providers/get_execution_providers.h"
 #include "core/session/IOBinding.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -338,12 +338,12 @@ const ROCMExecutionProviderInfo GetROCMExecutionProviderInfo(const ProviderOptio
 #endif
 
 std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
-  InferenceSession* sess,
+  const SessionOptions& session_options,
   const std::string& type,
   const ProviderOptionsMap& provider_options_map){
   if (type == kCpuExecutionProvider) {
     return onnxruntime::CreateExecutionProviderFactory_CPU(
-                                        sess->GetSessionOptions().enable_cpu_mem_arena)->CreateProvider();
+                                        session_options.enable_cpu_mem_arena)->CreateProvider();
   } else if (type == kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
     std::string calibration_table, cache_path, lib_path;
@@ -530,7 +530,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
   } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL
     return onnxruntime::CreateExecutionProviderFactory_Dnnl(
-      sess->GetSessionOptions().enable_cpu_mem_arena)->CreateProvider();
+      session_options.enable_cpu_mem_arena)->CreateProvider();
 #endif
   } else if (type == kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
@@ -628,12 +628,12 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
   } else if (type == kAclExecutionProvider) {
 #ifdef USE_ACL
     return onnxruntime::CreateExecutionProviderFactory_ACL(
-      sess->GetSessionOptions().enable_cpu_mem_arena)->CreateProvider();
+      session_options.enable_cpu_mem_arena)->CreateProvider();
 #endif
   } else if (type == kArmNNExecutionProvider) {
 #ifdef USE_ARMNN
     return onnxruntime::CreateExecutionProviderFactory_ArmNN(
-      sess->GetSessionOptions().enable_cpu_mem_arena)->CreateProvider();
+      session_options.enable_cpu_mem_arena)->CreateProvider();
 #endif
   } else if (type == kDmlExecutionProvider) {
 #ifdef USE_DML
@@ -655,7 +655,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #if !defined(__ANDROID__)
     LOGS_DEFAULT(WARNING) << "NNAPI execution provider can only be used to generate ORT format model in this build.";
 #endif
-    const auto partitioning_stop_ops_list = sess->GetSessionOptions().config_options.GetConfigEntry(
+    const auto partitioning_stop_ops_list = session_options.config_options.GetConfigEntry(
         kOrtSessionOptionsConfigNnapiEpPartitioningStopOps);
     return onnxruntime::CreateExecutionProviderFactory_Nnapi(0, partitioning_stop_ops_list)->CreateProvider();
 #endif
@@ -705,7 +705,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
   ORT_UNUSED_PARAMETER(provider_options_map);
 
   for (const std::string& type : provider_types) {
-    auto ep = CreateExecutionProviderInstance(sess, type, provider_options_map);
+    auto ep = CreateExecutionProviderInstance(sess->GetSessionOptions(), type, provider_options_map);
     if (ep)
       OrtPybindThrowIfError(sess->RegisterExecutionProvider(std::move(ep)));
   }
@@ -831,11 +831,6 @@ void addGlobalMethods(py::module& m, Environment& env) {
   m.def(
       "get_all_providers", []() -> const std::vector<std::string>& { return GetAllExecutionProviderNames(); },
       "Return list of Execution Providers that this version of Onnxruntime can support. "
-      "The order of elements represents the default priority order of Execution Providers "
-      "from highest to lowest.");
-  m.def(
-      "get_available_providers", []() -> const std::vector<std::string>& { return GetAvailableExecutionProviderNames(); },
-      "Return list of available Execution Providers available in this installed version of Onnxruntime. "
       "The order of elements represents the default priority order of Execution Providers "
       "from highest to lowest.");
   m.def(
