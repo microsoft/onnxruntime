@@ -1,6 +1,6 @@
 ---
 title: Quantize ONNX Models
-parent: Setup
+parent: Performance
 nav_order: 4
 ---
 # Quantize ONNX Models

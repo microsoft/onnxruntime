@@ -1,6 +1,6 @@
 ---
 title: Install ORT
-parent: Setup
+has_children: false
 nav_order: 1
 ---
 

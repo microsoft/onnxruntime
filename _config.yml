@@ -17,8 +17,8 @@ aux_links:
     - "/docs/get-started/"
   "Tutorials":
     - "/docs/tutorials/"
-  "Setup":
-    - "/docs/setup/"
+  "Install":
+    - "/docs/install/"
   "Reference":
     - "/docs/reference/"
   "Performance":
