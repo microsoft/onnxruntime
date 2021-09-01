@@ -64,9 +64,9 @@ jobs:
         workingDirectory: $(Build.SourcesDirectory)
 
     - script: |
-       set -e -x       
+       set -e -x
        mkdir $(Build.ArtifactStagingDirectory)/testdata
-       cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata 
+       cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata
        ls -al $(Build.ArtifactStagingDirectory)
       displayName: 'Create Artifacts'
 
@@ -114,7 +114,7 @@ jobs:
         export ONNX_ML=1
         export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
         sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
-        sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer        
+        sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py ${{ parameters.AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config Release
       displayName: 'Build and Test MacOS'
     - template: c-api-artifacts-package-and-publish-steps-posix.yml
@@ -126,7 +126,7 @@ jobs:
           commitId: $(OnnxRuntimeGitCommitHash)
 
     - script: |
-       set -e -x       
+       set -e -x
        mkdir $(Build.ArtifactStagingDirectory)/testdata
        cp $(Build.BinariesDirectory)/Release/libcustom_op_library.dylib $(Build.ArtifactStagingDirectory)/testdata
       displayName: 'Create Artifacts'
@@ -143,7 +143,6 @@ jobs:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()
-
 
 - template: win-ci.yml
   parameters:
@@ -197,6 +196,7 @@ jobs:
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: false
 
+
 - job: NuGet_Packaging_CPU
   workspace:
     clean: all
@@ -226,7 +226,7 @@ jobs:
     inputs:
       artifactName: 'onnxruntime-win-x86'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-      
+
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - NuGet'
     inputs:
@@ -268,12 +268,10 @@ jobs:
      dir
     workingDirectory: '$(Build.BinariesDirectory)/nuget-artifact'
     displayName: 'List artifacts'
-
   - script: |
      mklink /D /J models C:\local\models
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Create models link'
-
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 5.7.0
     inputs:
@@ -311,18 +309,19 @@ jobs:
       configuration: RelWithDebInfo
       arguments: '--configuration RelWithDebInfo -t:CreatePackage -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-  - task: BatchScript@1
-    displayName: 'Bundle Native NuGet and other binaries'
+  
+  - task: CopyFiles@2
+    displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
     inputs:
-      filename: $(Build.SourcesDirectory)\tools\ci_build\github\windows\bundle_dlls.bat
-      workingFolder: $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+      Contents: '*.nupkg'
+      TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
   - task: CopyFiles@2
     displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
     inputs:
-      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts'
-      Contents: '*.nupkg'
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+      Contents: '*.snupkg'
       TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
   - task: CopyFiles@2
@@ -342,7 +341,7 @@ jobs:
     parameters:
       NugetPath: '$(Build.ArtifactStagingDirectory)'
       NugetPackage: 'Microsoft.ML.OnnxRuntime.*nupkg'
-      PlatformsSupported: 'win-x64,win-x86,linux-x64,osx-x64'
+      PlatformsSupported: 'win-x64,win-x86,linux-x64,osx.10.14-x64'
       VerifyNugetSigning: false
 
   - task: PublishPipelineArtifact@0
@@ -351,11 +350,6 @@ jobs:
       artifactName: 'drop-signed-nuget-CPU'
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
-  - powershell: |
-     $counter = 0
-     Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.nupkg | foreach {7z x -y -o$counter $_.fullname;$counter++}
-    workingDirectory: '$(Build.ArtifactStagingDirectory)'
-    displayName: 'Unzip files to sanitize the PE files'
 
   - task: DotNetCoreCLI@2
     displayName: 'Build C#'
@@ -366,9 +360,6 @@ jobs:
       configuration: RelWithDebInfo
       arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-  - task: BinSkim@4
-    displayName: 'Run BinSkim'
 
   - task: RoslynAnalyzers@2
     displayName: 'Run Roslyn Analyzers'
@@ -385,7 +376,6 @@ jobs:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
     condition: always()
-
 
 - template: ../nuget/templates/test_win.yml
   parameters:
