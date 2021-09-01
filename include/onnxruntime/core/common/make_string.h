@@ -28,6 +28,7 @@ namespace detail {
 inline void MakeStringImpl(std::ostringstream& /*ss*/) noexcept {
 }
 
+#if 0
 template <typename T>
 inline void MakeStringImpl(std::ostringstream& ss, const T& t) noexcept {
   ss << t;
@@ -38,6 +39,12 @@ inline void MakeStringImpl(std::ostringstream& ss, const T& t, const Args&... ar
   MakeStringImpl(ss, t);
   MakeStringImpl(ss, args...);
 }
+#else
+template <typename... Args>
+inline void MakeStringImpl(std::ostringstream& ss, const Args&... args) noexcept {
+  (ss << ... << args);
+}
+#endif
 
 // see MakeString comments for explanation of why this is necessary
 template <typename... Args>
