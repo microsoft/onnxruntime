@@ -149,7 +149,6 @@ class BertOnnxModel(OnnxModel):
         # restore opset version
         self.set_opset_version(original_opset_version)
 
-
     def use_dynamic_axes(self, dynamic_batch_dim='batch_size', dynamic_seq_len='max_seq_len'):
         """
         Update input and output shape to use dynamic axes.

@@ -271,7 +271,9 @@ class FusionEmbedLayerNoMask(Fusion):
                                  /          Shape
                                 /              |
                               /              Gather (indices=1)
-                            /                  |
+                             /                  |
+                            /                  Add (optional, B=0)
+                           /                    |
                         Gather (segment_ids) Unsqueeze (axes=0)
                            \        |           |
                             \     Gather      Slice (data[1,512], starts=0, ends=*, axes=1, steps=1)
@@ -282,19 +284,47 @@ class FusionEmbedLayerNoMask(Fusion):
                                        |
                                 LayerNormalization
         """
-        path = self.model.match_parent_path(position_embedding_gather, ['Slice', 'Unsqueeze', 'Gather', 'Shape'],
-                                            [1, 2, 0, 0], output_name_to_node)
-        if path is not None:
-            slice, unsqueeze, gather, shape = path
-            if not (self.utils.check_node_input_value(gather, 1, 1)):
-                return False
-            if not (self.utils.check_node_attribute(unsqueeze, "axes", [0], default_value=[0])):
-                return False
-            if not (self.utils.check_node_input_value(slice, 1, [0])):
-                return False
-            return input_ids == shape.input[0]
+        path = self.model.match_parent_path(position_embedding_gather, ['Slice', 'Unsqueeze'], [1, 2],
+                                            output_name_to_node)
+        if path is None:
+            return False
 
-        return False
+        slice, unsqueeze = path
+        slice_weight = self.model.get_constant_value(slice.input[0])
+        if not (slice_weight is not None  and len(slice_weight.shape) == 2 and slice_weight.shape[0] == 1 \
+                and self.utils.check_node_input_value(slice, 1, [0]) \
+                and self.utils.check_node_input_value(slice, 3, [1]) \
+                and (len(slice.input) == 4 or self.utils.check_node_input_value(slice, 4, [1]))):
+            return False
+
+        opset_version = self.model.get_opset_version()
+        if opset_version < 13:
+            if not FusionUtils.check_node_attribute(unsqueeze, 'axes', [0]):
+                return False
+        else:
+            if not self.utils.check_node_input_value(unsqueeze, 1, [0]):
+                return False
+
+        node = self.model.get_parent(unsqueeze, 0, output_name_to_node)
+        if node is None:
+            return False
+        if node.op_type == "Add":
+            if not self.utils.check_node_input_value(node, 1, 0):
+                return False
+            gather = self.model.get_parent(node, 0, output_name_to_node)
+        else:
+            gather = node
+
+        if gather is None or gather.op_type != "Gather":
+            return False
+        if not (self.utils.check_node_input_value(gather, 1, 1)):
+            return False
+
+        shape = self.model.get_parent(gather, 0, output_name_to_node)
+        if shape is None or shape.op_type != "Shape":
+            return False
+
+        return input_ids == shape.input[0]
 
     def match_position_embedding(self, position_embedding_gather, input_ids, output_name_to_node):
         if self.match_position_embedding_bert(position_embedding_gather, input_ids, output_name_to_node):
