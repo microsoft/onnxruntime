@@ -1,15 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <PropertyGroup Condition="('$(OutputType)'!='Library' OR '$(IsAppExtension)'=='True')">
-    <MTouchExtraArgs Condition="!$(MTouchExtraArgs.Contains('-registrar:'))">$(MTouchExtraArgs) -registrar:static</MTouchExtraArgs>
-  </PropertyGroup>
-
   <ItemGroup Condition="('$(OutputType)'!='Library' OR '$(IsAppExtension)'=='True')">
-      <NativeReference Include="$(MSBuildThisDirectory)..\..\runtimes\ios\native\onnxruntime.framework">
+      <NativeReference Include="$(MSBuildThisFileDirectory)..\..\runtimes\ios\native\onnxruntime.framework">
         <Kind>Framework</Kind>
         <IsCxx>True</IsCxx>
         <SmartLink>True</SmartLink>
         <ForceLoad>True</ForceLoad>
       </NativeReference>
-	</ItemGroup>
+    </ItemGroup>
 </Project>
