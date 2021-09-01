@@ -21,7 +21,7 @@ class EPRegistrationTests(unittest.TestCase):
     sess.initialize_session(['TestExecutionProvider'], 
                         [{'device_id':'0'}], 
                         set())
-    print("Create session with customize execution provider successfully!")
+    print("Created session with customize execution provider successfully!")
 
 
 if __name__ == '__main__':

@@ -321,7 +321,7 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   m.def(
       "get_available_providers", []() -> const std::vector<std::string>& { 
         return GetTrainingEnv().GetAvailableTrainingExecutionProviderTypes(); },
-      "Return list of available Execution Providers available in this installed version of Onnxruntime. "
+      "Return list of available Execution Providers in this installed version of Onnxruntime. "
       "The order of elements represents the default priority order of Execution Providers "
       "from highest to lowest.");
 
