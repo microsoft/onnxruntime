@@ -287,9 +287,6 @@ TEST(TransposeOpTest, Transpose102) {
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  //TensorRT: illegal error
 }
 
-
-
-
 TEST(TransposeOpTest, TransposeReshape) {
   std::vector<int64_t> input_shape({1, 4, 2, 1, 3});
   std::vector<float> input_vals = {

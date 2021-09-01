@@ -28,7 +28,7 @@ ONNX_OPERATOR_KERNEL_EX(
     Transpose);
 
 // special case acceleration using cublas matrix transpose
-static std::tuple<int, int> TryTransposeWithCublas(const std::vector<size_t>& perm, const std::vector<int64_t>& input_shape) {
+static std::tuple<int, int> TryTransposeWithCublas(const std::vector<size_t>& perm, const TensorShape& input_shape) {
   int M = 0;
   int N = 0;
 
@@ -60,10 +60,7 @@ Status TransposeWithCublas(cudaStream_t stream, cublasHandle_t cublas_handle, co
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
   const CudaT* input_data = reinterpret_cast<const CudaT*>(input.Data<T>());
   CudaT* output_data = reinterpret_cast<CudaT*>(output.MutableData<T>());
-
-  std::cout<< "TransposeWithCublas \n";
-
-
+  
   CUBLAS_RETURN_IF_ERROR(
       cublasTransposeHelper(stream,
                             cublas_handle,
@@ -98,7 +95,7 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
   auto rank = static_cast<int32_t>(input_dims.size());
 
   // flatten the adjacent dimensions which are contiguous
-  // for example: permutations[0, 3, 2, 1] -> [0, 2, 1], permutations[0, 3, 1, 2] -> [0, 2, 1]
+  // for example: permutations[0, 2, 3, 1] -> [0, 2, 1], permutations[0, 3, 1, 2] -> [0, 2, 1]
   auto new_rank = rank;
   std::vector<size_t> new_permutations(permutations);
   std::vector<int64_t> new_input_dims(input_dims);
@@ -157,6 +154,15 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
         return TransposeWithCublas<MLFloat16>(stream, cublas_handle, input, output, M, N);
       }
     }
+  }
+
+  // Transpose102 can be treated as a speacial case of Trasnpose0213 with first dimension being 1.
+  // This will handled by optimized Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim kernel
+  if (new_permutations == std::vector<size_t>{1, 0, 2}) {
+    new_permutations.assign({0, 2, 1, 3});
+    new_input_dims.insert(new_input_dims.begin(), 1);
+    new_output_dims.insert(new_output_dims.begin(), 1);
+    new_rank = 4;
   }
 
   TensorPitches new_input_strides(new_input_dims);
