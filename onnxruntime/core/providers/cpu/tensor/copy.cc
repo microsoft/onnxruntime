@@ -39,8 +39,8 @@ inline bool CanCoalesce(
     return true;
   }
 
-  for (const auto& strides_ : tensors_strides) {
-    std::vector<int64_t>& strides = strides_.get();
+  for (const auto& cur_stride : tensors_strides) {
+    std::vector<int64_t>& strides = cur_stride.get();
     if (shape_ndim * strides[ndim] != strides[dim]) {
       return false;
     }
@@ -54,8 +54,8 @@ inline bool CanCoalesce(
 inline void CopyStride(
     std::initializer_list<std::reference_wrapper<std::vector<int64_t>>>& tensors_strides,
     std::size_t dim, std::size_t ndim) {
-  for (const auto& strides_ : tensors_strides) {
-    std::vector<int64_t>& strides = strides_.get();
+  for (const auto& cur_stride : tensors_strides) {
+    std::vector<int64_t>& strides = cur_stride.get();
     strides[dim] = strides[ndim];
   }
 }
@@ -91,8 +91,8 @@ void CoalesceDimensions(std::initializer_list<std::reference_wrapper<std::vector
   }
 
   shape.resize(current_dim + 1);
-  for (const auto& strides_ : tensors_strides) {
-    std::vector<int64_t>& strides = strides_.get();
+  for (const auto& cur_stride : tensors_strides) {
+    std::vector<int64_t>& strides = cur_stride.get();
     strides.resize(current_dim + 1);
   }
 }

@@ -3,8 +3,10 @@
 
 #pragma once
 
-#include "core/providers/common.h"
 #include "core/platform/threadpool.h"
+#include "core/providers/common.h"
+#include "core/providers/op_kernel_type_control.h"
+#include "core/providers/op_kernel_type_control_utils.h"
 
 #include <vector>
 
@@ -28,28 +30,25 @@ void Copy1DNonContiguous(T* dst, int64_t dst_stride, const T* src, int64_t src_s
 
 template <typename T>
 void Copy1DContiguous(T* dst, const T* src, std::ptrdiff_t count) {
-  memcpy(dst, src, count * sizeof(T));
-}
-
-template <>
-void Copy1DContiguous<std::string>(std::string* dst, const std::string* src, std::ptrdiff_t count) {
-  Copy1DNonContiguous(dst, 1, src, 1, count);
+  if constexpr (std::is_same_v<std::string, T>) {
+    Copy1DNonContiguous(dst, 1, src, 1, count);
+  } else {
+    memcpy(dst, src, count * sizeof(T));
+  }
 }
 
 template <typename T>
 void Copy1D(T* dst, int64_t dst_stride, const T* src, int64_t src_stride, std::ptrdiff_t count) {
-  if (dst_stride == 1 && src_stride == 1) {
-    Copy1DContiguous(dst, src, count);
-  } else {
+  if constexpr (std::is_same_v<std::string, T>) {
+    // strings should always be copied using the for loop
     Copy1DNonContiguous(dst, dst_stride, src, src_stride, count);
+  } else {
+    if (dst_stride == 1 && src_stride == 1) {
+      Copy1DContiguous(dst, src, count);
+    } else {
+      Copy1DNonContiguous(dst, dst_stride, src, src_stride, count);
+    }
   }
-}
-
-template <>
-void Copy1D<std::string>(std::string* dst, int64_t dst_stride, const std::string* src, int64_t src_stride,
-                         std::ptrdiff_t count) {
-  // strings should always be copied using the for loop
-  Copy1DNonContiguous(dst, dst_stride, src, src_stride, count);
 }
 
 struct NdCounter {
@@ -117,8 +116,10 @@ void StridedCopy(concurrency::ThreadPool* thread_pool,
   std::vector<int64_t> copy_shape(copy_shape_in.GetDims());
 
   CoalesceDimensions({dst_strides, src_strides}, copy_shape);
-  ORT_ENFORCE(dst_strides.size() == src_strides.size() && src_strides.size() == copy_shape.size(),
-              "src and dst must have same shape");
+  ORT_ENFORCE(dst_strides.size() == src_strides.size() &&
+                  src_strides.size() == copy_shape.size() &&
+                  !copy_shape.empty(),
+              "src and dst must have same shape and not be rank 0.");
 
   const std::size_t dims = copy_shape.size();
   // We will iterate over the output dimensions
@@ -136,11 +137,9 @@ void StridedCopy(concurrency::ThreadPool* thread_pool,
   // TODOs for when we have strided tensors:
   // - Reorder dimensions so that we iterate along the smallest strides first
 
-  ORT_ENFORCE(dims > 0);
-
   if (dims <= 2 && src_strides[dims - 1] == 1 && dst_strides[dims - 1] == 1) {
     // Fast path for 2D copies that skips the NdCounter required in the general case.
-    // This avoids overhead which becomes noticable at smaller iteration sizes.
+    // This avoids overhead which becomes noticeable at smaller iteration sizes.
     //
     // After coalescing, the case is actually quite common since all tensors in ORT are contiguous
 
@@ -190,14 +189,20 @@ void StridedCopy(concurrency::ThreadPool* thread_pool,
           Copy1DContiguous<T>(dst + dst_idx, src + src_idx, last_span_size);
         });
   } else {
+    // enforce that the lambda doesn't change anything
+    const std::vector<int64_t>& const_dst_strides = dst_strides;
+    const std::vector<int64_t>& const_src_strides = src_strides;
+    const std::vector<int64_t>& const_copy_shape = copy_shape;
+
     concurrency::ThreadPool::TryParallelFor(
         thread_pool, num_iterations,
         {static_cast<float>(sizeof(T)), static_cast<float>(sizeof(T)), 1.0F},
-        [copy_shape, dst_strides, dst, src, src_strides, dims](std::ptrdiff_t first, std::ptrdiff_t last) {
-          NdCounter counter(copy_shape, first, last);
+        [&const_copy_shape, &const_dst_strides, dst, src, &const_src_strides, dims](std::ptrdiff_t first,
+                                                                                    std::ptrdiff_t last) {
+          NdCounter counter(const_copy_shape, first, last);
 
-          auto last_dst_stride = dst_strides[dims - 1];
-          auto last_src_stride = src_strides[dims - 1];
+          auto last_dst_stride = const_dst_strides[dims - 1];
+          auto last_src_stride = const_src_strides[dims - 1];
 
           auto iter_size = counter.NextStepSize();
           while (iter_size > 0) {
@@ -205,8 +210,8 @@ void StridedCopy(concurrency::ThreadPool* thread_pool,
             std::ptrdiff_t dst_idx = 0;
             std::ptrdiff_t src_idx = 0;
             for (std::size_t dim = 0; dim < dims; dim++) {
-              dst_idx += counter.current_index[dim] * dst_strides[dim];
-              src_idx += counter.current_index[dim] * src_strides[dim];
+              dst_idx += counter.current_index[dim] * const_dst_strides[dim];
+              src_idx += counter.current_index[dim] * const_src_strides[dim];
             }
             // we can copy until the current dimension is done (or until we hit the last element we are trying to copy)
             Copy1D<T>(dst + dst_idx, last_dst_stride, src + src_idx, last_src_stride, iter_size);
@@ -244,7 +249,7 @@ bool StridedCopyIfEnabled(concurrency::ThreadPool* thread_pool,
 }
 
 // EnabledTypes is an onnxruntime::TypeList with the enabled types in this build.
-// see "core/framework/element_type_lists.h" for default lists or the usaage in
+// see "core/framework/element_type_lists.h" for default lists or the usage in
 // onnxruntime/core/providers/cpu/tensor/concat.cc for
 template <typename EnabledDataTypes>
 Status DispatchStridedCopy(concurrency::ThreadPool* thread_pool,
@@ -279,7 +284,7 @@ Status DispatchStridedCopy(concurrency::ThreadPool* thread_pool,
                                                                      copy_shape, src, src_strides);
         break;
       case sizeof(uint8_t):
-        static_assert(sizeof(bool) == sizeof(uint8_t), "Need to enabled separate case for 'bool' on this platform.");
+        static_assert(sizeof(bool) == sizeof(uint8_t), "Need to enable separate case for 'bool' on this platform.");
         supported = StridedCopyIfEnabled<EnabledDataTypes, uint8_t>(thread_pool, dst, dst_offset, dst_strides,
                                                                     copy_shape, src, src_strides);
         break;

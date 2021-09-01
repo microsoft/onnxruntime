@@ -8,7 +8,6 @@
 #include "core/providers/common.h"
 #include "core/providers/cpu/tensor/copy.h"
 #include "core/providers/op_kernel_type_control.h"
-#include "core/providers/op_kernel_type_control_utils.h"
 
 namespace onnxruntime {
 
