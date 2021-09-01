@@ -17,7 +17,7 @@ void CoalesceDimensions(
 
 std::vector<int64_t> StridesForTensor(const Tensor& tensor);
 
-namespace {
+namespace strided_copy_detail {
 
 template <typename T>
 void Copy1DNonContiguous(T* dst, int64_t dst_stride, const T* src, int64_t src_stride, std::ptrdiff_t count) {
@@ -101,7 +101,7 @@ struct NdCounter {
   std::vector<int64_t> current_index;
   const std::vector<int64_t>& shape;
 };
-}  // namespace
+}  // namespace strided_copy_detail
 
 template <typename T>
 void StridedCopy(concurrency::ThreadPool* thread_pool,
@@ -165,7 +165,7 @@ void StridedCopy(concurrency::ThreadPool* thread_pool,
             auto elements_to_copy = contiguous_span_size - inner;
             // never copy more than what is in our partition
             elements_to_copy = std::min<std::ptrdiff_t>(elements_to_copy, last - first);
-            Copy1DContiguous<T>(dst + dst_idx, src + src_idx, elements_to_copy);
+            strided_copy_detail::Copy1DContiguous<T>(dst + dst_idx, src + src_idx, elements_to_copy);
             inner = 0;
             outer++;
             first += elements_to_copy;
@@ -177,7 +177,7 @@ void StridedCopy(concurrency::ThreadPool* thread_pool,
 
           // Step 2: copy contiguous span by contiguous span until we reach the penultimate span
           while (first < last - contiguous_span_size) {
-            Copy1DContiguous<T>(dst + dst_idx, src + src_idx, contiguous_span_size);
+            strided_copy_detail::Copy1DContiguous<T>(dst + dst_idx, src + src_idx, contiguous_span_size);
             dst_idx += dst_stride;
             src_idx += src_stride;
             first += contiguous_span_size;
@@ -186,7 +186,7 @@ void StridedCopy(concurrency::ThreadPool* thread_pool,
           // element in our partition
           ORT_ENFORCE(last >= first);
           auto last_span_size = last - first;
-          Copy1DContiguous<T>(dst + dst_idx, src + src_idx, last_span_size);
+          strided_copy_detail::Copy1DContiguous<T>(dst + dst_idx, src + src_idx, last_span_size);
         });
   } else {
     // enforce that the lambda doesn't change anything
@@ -199,7 +199,7 @@ void StridedCopy(concurrency::ThreadPool* thread_pool,
         {static_cast<float>(sizeof(T)), static_cast<float>(sizeof(T)), 1.0F},
         [&const_copy_shape, &const_dst_strides, dst, src, &const_src_strides, dims](std::ptrdiff_t first,
                                                                                     std::ptrdiff_t last) {
-          NdCounter counter(const_copy_shape, first, last);
+          strided_copy_detail::NdCounter counter(const_copy_shape, first, last);
 
           auto last_dst_stride = const_dst_strides[dims - 1];
           auto last_src_stride = const_src_strides[dims - 1];
@@ -214,7 +214,7 @@ void StridedCopy(concurrency::ThreadPool* thread_pool,
               src_idx += counter.current_index[dim] * const_src_strides[dim];
             }
             // we can copy until the current dimension is done (or until we hit the last element we are trying to copy)
-            Copy1D<T>(dst + dst_idx, last_dst_stride, src + src_idx, last_src_stride, iter_size);
+            strided_copy_detail::Copy1D<T>(dst + dst_idx, last_dst_stride, src + src_idx, last_src_stride, iter_size);
 
             counter.Step(iter_size);
             iter_size = counter.NextStepSize();
