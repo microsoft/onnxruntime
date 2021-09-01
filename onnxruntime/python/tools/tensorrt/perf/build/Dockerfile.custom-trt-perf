@@ -9,6 +9,7 @@ FROM ${IMAGE}
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_BRANCH=master
 ARG TRT_VERSION=8.0.1.6
+ARG CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80
 
 SHELL ["/bin/bash", "-c"]
 
@@ -26,7 +27,7 @@ RUN cd onnxruntime &&\
     if [ ${trt_v} != "8.0" ] ; then add_args="--skip_submodule_sync"; fi &&\
     ./onnxruntime/python/tools/tensorrt/perf/build/checkout_trt.sh ${trt_v} &&\
     echo ${add_args} &&\
-    /bin/sh build.sh --parallel --build_shared_lib --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ --config Release --build_wheel --skip_tests ${add_args} --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80' &&\
+    /bin/sh build.sh --parallel --build_shared_lib --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ --config Release --build_wheel --skip_tests ${add_args} --cmake_extra_defines "'CMAKE_CUDA_ARCHITECTURES="${CMAKE_CUDA_ARCHITECTURES}"'"
     pip install /code/onnxruntime/build/Linux/Release/dist/*.whl &&\
     cd .. 
 
