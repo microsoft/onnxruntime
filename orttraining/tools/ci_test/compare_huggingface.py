@@ -22,4 +22,5 @@ for i in range(len(json_actual['steps'])):
   assert(almost_equal(step_actual['loss'], step_expect['loss']))
 
 # perf match
+print('samples_per_second actual {:.3f} expected {:.3f}'.format(json_actual['samples_per_second'], json_expect['samples_per_second']))
 assert(json_actual['samples_per_second'] >= 0.95*json_expect['samples_per_second'])
