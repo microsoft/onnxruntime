@@ -387,6 +387,13 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
   }
 
   endProfiling(): void {
-    // TODO: implement profiling
+    const wasm = getInstance();
+
+    // profile file name is not used yet, but it must be freed.
+    const profileFileName = wasm._OrtEndProfiling(this.sessionHandle);
+    if (profileFileName === 0) {
+      throw new Error('Can\'t get an profile file name');
+    }
+    wasm._OrtFree(profileFileName);
   }
 }
