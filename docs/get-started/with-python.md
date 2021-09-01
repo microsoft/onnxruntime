@@ -35,11 +35,28 @@ pip install onnx-tf
 ## sklearn
 pip install skl2onnx
 ```
-## Train a model using your favorite framework
 
-### PyTorch Computer Vision
+## Examples
+Train a model using your favorite framework, export to ONNX format and inference in any supported ONNX Runtime language!
 
-### SciKit Learn Computer Vision
+### PyTorch CV
+{: .no_toc }
+TODO
+
+### PyTorch NLP
+{: .no_toc }
+TODO
+
+### TensorFlow CV
+{: .no_toc }
+TODO
+
+### Tensorflow NLP
+{: .no_toc }
+TODO
+
+### SciKit Learn CV
+{: .no_toc }
 
 We’ll use the famous iris datasets.
 
@@ -107,3 +124,7 @@ pred_onx = sess.run(
 print(pred_onx)
 
 ```
+
+### SciKit Learn NLP
+{: .no_toc }
+TODO
