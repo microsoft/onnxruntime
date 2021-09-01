@@ -250,7 +250,7 @@ else()
 endif()
 
 configure_file(${ONNXRUNTIME_ROOT}/python/_pybind_state.py.in
-               ${CMAKE_BINARY_DIR}/onnxruntime/capi/_pybind_state.py)
+               ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime/capi/_pybind_state.py)
 
 if (onnxruntime_ENABLE_TRAINING)
   file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
