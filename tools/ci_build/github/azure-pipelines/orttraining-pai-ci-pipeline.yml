@@ -19,7 +19,7 @@ steps:
 - script: |-
     sed -i 's|session_options.use_deterministic_compute = False|session_options.use_deterministic_compute = True|g' \
        orttraining/orttraining/python/training/ortmodule/_graph_execution_manager.py
-  displayName: 'Toggle ON deterministic compute mode'
+  displayName: 'Toggle ON deterministic compute mode for ORTModule'
 
 - script: |-
     export ROCM_HOME=/opt/rocm
@@ -38,6 +38,11 @@ steps:
     --build_wheel \
     --skip_tests
   displayName: 'Build onnxruntime'
+
+- script: |-
+    cd ./build/RelWithDebInfo &&\
+    ../../tools/ci_build/github/pai/pai_test_launcher.sh
+  displayName: 'Run onnxruntime unit tests'
 
 - script: |-
     cd ./build/RelWithDebInfo
@@ -224,11 +229,6 @@ steps:
 #      ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.t5-large.json 
 #  displayName: 'Run Python Hugging-Face T5-L test'
 #  condition: succeededOrFailed() # ensure all tests are run
-
-- script: |-
-    cd ./build/RelWithDebInfo &&\
-    ../../tools/ci_build/github/pai/pai_test_launcher.sh
-  displayName: 'Run onnxruntime unit tests'
 
 # update these if the E2E test data changes
 - script: |-
