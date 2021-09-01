@@ -5,16 +5,15 @@ nav_order: 7
 ---
 
 # ONNX Runtime Python API
-{: .no_toc }
 
-## Contents
-{: .no_toc }
+## API Reference Docs
 
-* TOC placeholder
-{:toc}
+[Go to the Python API Reference](../../python/api_summary.html)
 
-## Supported Versions
-Python 3.6 - 3.9
+
+## Tutorials
+
+[Tutorials](../../python/tutorial.html)
 
 ## Builds
 If using pip, run pip install `--upgrade pip` prior to downloading.	 
@@ -29,9 +28,9 @@ If using pip, run pip install `--upgrade pip` prior to downloading.
 
 For Python compiler version notes, see [this page](https://github.com/microsoft/onnxruntime/tree/master/docs/Python_Dev_Notes.md)
 
-## API Reference
-
-[https://www.onnxruntime.ai/python](https://www.onnxruntime.ai/python/)
 
 ## Samples
 See [Tutorials: API Basics - Python](../tutorials/inferencing/api-basics.md#python)
+
+## Supported Versions
+Python 3.6 - 3.9

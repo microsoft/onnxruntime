@@ -11,13 +11,88 @@ See the [installation matrix](https://onnxruntime.ai) for recommended instructio
 
 Details on OS versions, compilers, language versions, dependent libraries, etc can be found under [Compatibility](../resources/compatibility.md#Environment-compatibility).
 
+
 ## Contents
 {: .no_toc }
 
 * TOC placeholder
 {:toc}
 
-## Inference
+## Python Installs
+
+### Install ONNX Runtime (ORT)
+{: .no_toc }
+
+```bash
+pip install onnxruntime
+```
+```bash
+pip install onnxruntime-gpu
+```
+
+### Install ONNX to export the model
+{: .no_toc }
+
+```bash
+## pytorch
+pip install onnx-pytorch
+```
+```bash
+## tensorflow
+pip install onnx-tf
+```
+```bash
+## sklearn
+pip install skl2onnx
+```
+
+## C#/C/C++/WinML Installs
+
+### Install ONNX Runtime (ORT)
+{: .no_toc }
+
+```bash
+# CPU 
+dotnet add package Microsoft.ML.OnnxRuntime --version 1.8.1
+```
+```bash
+# GPU
+dotnet add package Microsoft.ML.OnnxRuntime.Gpu --version 1.8.1
+```
+```bash
+# DirectML
+dotnet add package Microsoft.ML.OnnxRuntime.DirectML --version 1.8.1
+```
+
+```bash
+# WinML
+dotnet add package Microsoft.AI.MachineLearning --version 1.8.1
+```
+## JavaScript Installs
+
+### Web ORT (client)
+{: .no_toc }
+
+```bash
+npm install onnxruntime-web
+```
+
+### Node ORT (server)
+{: .no_toc }
+
+```bash
+npm install onnxruntime-node
+```
+
+### React Native ORT
+{: .no_toc }
+
+```bash
+npm install onnxruntime-react-native
+```
+
+
+## Inference install table for all languages
 
 The table below lists the build variants available as officially supported packages. Others can be [built from source](../how-to/build/inferencing.md) from each release branch.
 
@@ -58,7 +133,7 @@ by running `locale-gen en_US.UTF-8` and `update-locale LANG=en_US.UTF-8`
 
 
 
-## Training
+## Training install table for all languages
 
 ONNX Runtime Training packages are available for different versions of PyTorch, CUDA and ROCm versions. 
 
