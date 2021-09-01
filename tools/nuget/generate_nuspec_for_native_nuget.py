@@ -4,6 +4,73 @@
 import argparse
 import sys
 import os
+import re
+from pathlib import Path
+
+
+# What does the names of our C API tarball/zip files looks like
+# os: win, linux, osx
+# ep: cuda, tensorrt, None
+def get_package_name(os, cpu_arch, ep):
+    pkg_name = None
+    if os == 'win':
+        pkg_name = "onnxruntime-win-"
+        pkg_name += cpu_arch
+        if ep == 'cuda':
+            pkg_name += "-cuda"
+        elif ep == 'tensorrt':
+            pkg_name += "-tensorrt"
+    elif os == 'linux':
+        pkg_name = "onnxruntime-linux-"
+        pkg_name += cpu_arch
+        if ep == 'cuda':
+            pkg_name += "-cuda"
+        elif ep == 'tensorrt':
+            pkg_name += "-tensorrt"
+    elif os == 'osx':
+        pkg_name = "onnxruntime-osx-" + cpu_arch
+    return pkg_name
+
+
+# Currently we take onnxruntime_providers_cuda from CUDA build
+# And onnxruntime, onnxruntime_providers_shared and onnxruntime_providers_tensorrt from tensorrt build
+def is_this_file_needed(ep, filename):
+    return (ep != 'cuda' or 'cuda' in filename) and (ep != 'tensorrt' or 'cuda' not in filename)
+
+
+# nuget_artifacts_dir: the directory with uncompressed C API tarball/zip files
+# ep: cuda, tensorrt, None
+# files_list: a list of xml string pieces to append
+# This function has no return value. It updates files_list directly
+def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list):
+    for child in nuget_artifacts_dir.iterdir():
+        for cpu_arch in ['x86', 'x64', 'arm', 'arm64']:
+            if child.name == get_package_name('win', cpu_arch, ep):
+                child = child / 'lib'
+                for child_file in child.iterdir():
+                    if child_file.suffix in ['.dll', '.pdb', '.lib'] and is_this_file_needed(ep, child_file.name):
+                        files_list.append('<file src="' + str(child_file) +
+                                          '" target="runtimes/win-%s/native"/>' % cpu_arch)
+        for cpu_arch in ['x64', 'arm64']:
+            if child.name == get_package_name('osx', cpu_arch, ep):
+                child = child / 'lib'
+                for child_file in child.iterdir():
+                    # Check if the file has digits like onnxruntime.1.8.0.dylib. We can skip such things
+                    is_versioned_dylib = re.match(r'.*[\.\d+]+\.dylib$', child_file.name)
+                    if child_file.is_file() and child_file.suffix == '.dylib' and not is_versioned_dylib:
+                        files_list.append('<file src="' + str(child_file) +
+                                          '" target="runtimes/osx.10.14-%s/native"/>' % cpu_arch)
+        for cpu_arch in ['x64', 'aarch64']:
+            if child.name == get_package_name('linux', cpu_arch, ep):
+                child = child / 'lib'
+                if cpu_arch == 'x86_64':
+                    cpu_arch = 'x64'
+                for child_file in child.iterdir():
+                    if not child_file.is_file():
+                        continue
+                    if child_file.suffix == '.so' and is_this_file_needed(ep, child_file.name):
+                        files_list.append('<file src="' + str(child_file) +
+                                          '" target="runtimes/linux-%s/native"/>' % cpu_arch)
 
 
 def parse_arguments():
@@ -302,16 +369,30 @@ def generate_files(list, args):
             files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, interop_pdb) +
                               '" target="lib\\net5.0\\Microsoft.AI.MachineLearning.Interop.pdb" />')
 
+    is_ado_packaging_build = False
     # Process runtimes
     # Process onnxruntime import lib, dll, and pdb
     if is_windows_build:
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.lib') +
-                          runtimes + ' />')
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.dll') +
-                          runtimes + ' />')
-        if os.path.exists(os.path.join(args.native_build_path, 'onnxruntime.pdb')):
-            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.pdb') +
+        nuget_artifacts_dir = Path(args.native_build_path) / 'nuget-artifacts'
+        if nuget_artifacts_dir.exists():
+            # Code path for ADO build pipeline, the files under 'nuget-artifacts' are
+            # downloaded from other build jobs
+            if is_cuda_gpu_package:
+                ep_list = ['tensorrt', 'cuda', None]
+            else:
+                ep_list = [None]
+            for ep in ep_list:
+                generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list)
+            is_ado_packaging_build = True
+        else:
+            # Code path for local dev build
+            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.lib') +
                               runtimes + ' />')
+            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.dll') +
+                              runtimes + ' />')
+            if os.path.exists(os.path.join(args.native_build_path, 'onnxruntime.pdb')):
+                files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.pdb') +
+                                  runtimes + ' />')
     else:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'nuget-staging/usr/local/lib',
                           'libonnxruntime.so') + '" target="runtimes\\linux-' + args.target_architecture +
@@ -335,7 +416,7 @@ def generate_files(list, args):
                           ('lib\\uap10.0' if args.is_store_build else '_native') +
                           '\\Microsoft.AI.MachineLearning.pdb" />')
     # Process execution providers which are built as shared libs
-    if args.execution_provider == "tensorrt":
+    if args.execution_provider == "tensorrt" and not is_ado_packaging_build:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['providers_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
@@ -362,7 +443,7 @@ def generate_files(list, args):
                           nuget_dependencies['openvino_ep_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
 
-    if args.execution_provider == "cuda" or is_cuda_gpu_package:
+    if args.execution_provider == "cuda" or is_cuda_gpu_package and not is_ado_packaging_build:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['providers_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
