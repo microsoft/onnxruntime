@@ -135,7 +135,6 @@ class SymbolicShapeInference:
             'GatherElements': self._infer_GatherElements,
             'GatherND': self._infer_GatherND,
             'Gelu': self._pass_on_shape_and_type,
-            'GlobalAveragePool': self._infer_GlobalAveragePool,
             'If': self._infer_If,
             'Loop': self._infer_Loop,
             'MatMul': self._infer_MatMul,
@@ -857,15 +856,6 @@ class SymbolicShapeInference:
         vi.CopyFrom(
             helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type,
                                           new_shape))
-
-    def _infer_GlobalAveragePool(self, node):
-        shape = self._get_shape(node, 0)
-        assert len(shape) == 4
-        shape[2] = 1
-        shape[3] = 1
-        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
-        vi = self.known_vi_[node.output[0]]
-        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, shape))
 
     def _infer_If(self, node):
         # special case for constant condition, in case there are mismatching shape from the non-executed branch
