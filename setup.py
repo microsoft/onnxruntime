@@ -117,35 +117,21 @@ try:
                 self.root_is_pure = False
 
         def _rewrite_ld_preload(self, to_preload):
-            with open('onnxruntime/capi/_ld_preload.py', 'rt') as f:
-                ld_preload = f.read().splitlines()
-            with open('onnxruntime/capi/_ld_preload.py', 'wt') as f:
-                for line in ld_preload:
-                    f.write(line)
-                    f.write('\n')
-                    if 'LD_PRELOAD_BEGIN_MARK' in line:
-                        break
+            with open('onnxruntime/capi/_ld_preload.py', 'a') as f:
                 if len(to_preload) > 0:
                     f.write('from ctypes import CDLL, RTLD_GLOBAL\n')
                     for library in to_preload:
                         f.write('_{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split('.')[0], library))
 
         def _rewrite_ld_preload_cuda(self, to_preload):
-            with open('onnxruntime/capi/_ld_preload.py', 'rt') as f:
-                ld_preload = f.read().splitlines()
-            with open('onnxruntime/capi/_ld_preload.py', 'wt') as f:
-                for line in ld_preload:
-                    f.write(line)
-                    f.write('\n')
-                    if 'LD_PRELOAD_BEGIN_MARK' in line:
-                        break
+            with open('onnxruntime/capi/_ld_preload.py', 'a') as f:
                 if len(to_preload) > 0:
                     f.write('from ctypes import CDLL, RTLD_GLOBAL\n')
                     f.write('try:\n')
                     for library in to_preload:
                         f.write('    _{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split('.')[0], library))
                     f.write('except:\n')
-                    f.write('    os.environ["CUDA_UNAVAILABLE"] = 1\n')
+                    f.write('    os.environ["ORT_CUDA_UNAVAILABLE"] = 1\n')
 
         def run(self):
             if is_manylinux:
