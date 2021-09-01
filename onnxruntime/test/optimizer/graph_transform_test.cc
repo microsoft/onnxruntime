@@ -732,7 +732,8 @@ TEST_F(GraphTransformationTests, FuseConvActivation) {
                                                                                  {ORT_TSTR("fusion/conv_clip.onnx"), "Clip"},
                                                                                  {ORT_TSTR("fusion/conv_sigmoid.onnx"), "Sigmoid"},
                                                                                  {ORT_TSTR("fusion/conv_tanh.onnx"), "Tanh"},
-                                                                                 {ORT_TSTR("fusion/conv_leakyrelu.onnx"), "LeakyRelu"}};
+                                                                                 {ORT_TSTR("fusion/conv_leakyrelu.onnx"), "LeakyRelu"},
+                                                                                 {ORT_TSTR("fusion/conv_hardsigmoid.onnx"), "HardSigmoid"}};
 #endif
   for (const auto& model : model_to_op_name) {
     auto model_uri = MODEL_FOLDER + model.first;

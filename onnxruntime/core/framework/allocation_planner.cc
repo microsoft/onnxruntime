@@ -121,6 +121,7 @@ class PlannerImpl {
   PlannerImpl(const Node* parent_node, const onnxruntime::GraphViewer& graph_viewer,
               const std::vector<const NodeArg*>& outer_scope_node_args, const ExecutionProviders& providers,
               const std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map,
+              const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
               const OrtValueNameIdxMap& ort_value_name_idx_map,
               const ISequentialPlannerContext& context, SequentialExecutionPlan& plan)
       : context_(context),
@@ -130,6 +131,7 @@ class PlannerImpl {
         outer_scope_node_args_(outer_scope_node_args),
         execution_providers_(providers),
         kernel_create_info_map_(kernel_create_info_map),
+        outer_scope_node_arg_to_location_map_(outer_scope_node_arg_to_location_map),
         ort_value_name_idx_map_(ort_value_name_idx_map) {}
 
   Status CreatePlan();
@@ -144,6 +146,9 @@ class PlannerImpl {
   const ExecutionProviders& execution_providers_;
 
   const std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map_;
+
+  const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map_;
+
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
 
   // OrtValueInfo: Auxiliary information about an OrtValue used only during plan-generation:
@@ -261,9 +266,9 @@ class PlannerImpl {
     // Inputs of Yields are essentially the outputs for FW partial subgraph
     // Thses tensors will be pass back to pytorch, thus cannot share the buffer with other tensors
 
-    // Unhandled corner case: 
+    // Unhandled corner case:
     // If FW output tensor is consumed by BW graph, and pytorch performs an inplace operation on th returned tensor,
-    // we will run into a buffer corruption problem. 
+    // we will run into a buffer corruption problem.
     // One potential fix is returning a copy of output tensor, if it has downstream dependency
     auto p_next_node = node.OutputNodesBegin();
     if (p_next_node != node.OutputNodesEnd() && p_next_node->OpType() == "YieldOp") {
@@ -483,6 +488,8 @@ class PlannerImpl {
       UseCount(initializer_name)++;
     }
 
+    std::unordered_set<OrtValueIndex> set_node_arg_has_explicit_consumer;
+
     for (SequentialExecutionPlan::NodeExecutionPlan& step : plan_.execution_plan) {
       auto pnode = graph_viewer_.GetNode(step.node_index);
       if (pnode == nullptr) {
@@ -507,26 +514,56 @@ class PlannerImpl {
 
       // increment UseCount and add location information if applicable for the provided input def
       auto process_input = [&graph_inputs, &exec_provider, &p_kernel_def, &is_implicit_input,
+                            &set_node_arg_has_explicit_consumer,
                             this](const NodeArg& input, size_t arg_idx) {
         const auto& name = input.Name();
         UseCount(name)++;
 
+        bool is_graph_input = (graph_inputs.find(name) != graph_inputs.cend());
+        bool is_outer_scope_arg = std::find_if(outer_scope_node_args_.cbegin(), outer_scope_node_args_.cend(),
+                                               [&name](const NodeArg* value) {
+                                                 return value && value->Name() == name;
+                                               }) != outer_scope_node_args_.cend();
+        bool is_subgraph = (parent_node_ != nullptr);
+
         // If it's a graph input or outer scope node arg, set its plan.
         // NOTE: Copy nodes should have already been added if a graph input is fed as input
         // to nodes assigned to different providers.
-        if (graph_inputs.find(name) != graph_inputs.cend() ||
-            std::find_if(outer_scope_node_args_.cbegin(), outer_scope_node_args_.cend(),
-                         [&name](const NodeArg* value) {
-                           return value && value->Name() == name;
-                         }) != outer_scope_node_args_.cend()) {
+
+        if (is_graph_input || is_outer_scope_arg) {
           OrtValueIndex index = Index(name);
 
-          // implicit inputs do not have an entry in the kernel def, so do nothing to them here, leaving the control
-          //   flow op (Loop, Scan, If) to do the necessary copy if the input crosses different provider.
-          // matching logic is used in TransformerMemcpyImpl::ProcessDefs
           if (!is_implicit_input) {
             OrtMemType mem_type = p_kernel_def->InputMemoryType(arg_idx);
             plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, mem_type)->Info());
+            set_node_arg_has_explicit_consumer.insert(index);
+          } else {  // implicit input
+            // Only process an implicit input:
+            // 1) Within a subgraph
+            // 2) If there is no explicit consumer at this graph level
+            // If there is an explicit consumer, the location MUST be where it is consumed
+            // and not where it is located in the outer scope.
+            // It is okay if we process a node consuming this arg as an implicit input
+            // ahead of a node that is an explicit consumer, because we will just reset
+            // this location in the 'if' branch above.
+
+            if (is_subgraph && set_node_arg_has_explicit_consumer.count(index) == 0) {
+              auto iter = outer_scope_node_arg_to_location_map_.find(name);
+              bool found_in_outer_scope_location_map = (iter != outer_scope_node_arg_to_location_map_.end());
+
+              if (!is_graph_input) {
+                // Failing this enforce for an implicit subgraph input points to an internal error somewhere.
+                // For certain older opsets (Scan-8), we may not have added explicit subgraph inputs
+                // to the outer scope location map. See explanation in IsNodeWhereNodeInputsAreSameAsExplicitSubgraphInputs()
+                // called in FinalizeSessionStateImpl() in SessionState.
+                ORT_ENFORCE(found_in_outer_scope_location_map,
+                            "There is no location for this node arg in the outer scope location map");
+              }
+
+              if (found_in_outer_scope_location_map) {
+                plan_.SetLocation(static_cast<size_t>(index), iter->second);
+              }
+            }
           }
         }
 
@@ -1062,6 +1099,7 @@ Status SequentialPlanner::CreatePlan(
     const std::vector<const NodeArg*>& outer_scope_node_args,
     const ExecutionProviders& providers,
     const std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map,
+    const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
     const OrtValueNameIdxMap& ort_value_name_idx_map,
     const ISequentialPlannerContext& context,
     std::unique_ptr<SequentialExecutionPlan>& plan) {
@@ -1069,7 +1107,8 @@ Status SequentialPlanner::CreatePlan(
   plan = std::make_unique<SequentialExecutionPlan>();
 
   PlannerImpl planner(parent_node, graph_viewer, outer_scope_node_args, providers,
-                      kernel_create_info_map, ort_value_name_idx_map, context, *plan);
+                      kernel_create_info_map, outer_scope_node_arg_to_location_map,
+                      ort_value_name_idx_map, context, *plan);
 
   return planner.CreatePlan();
 }

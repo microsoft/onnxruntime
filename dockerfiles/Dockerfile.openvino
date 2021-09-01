@@ -5,6 +5,7 @@
 
 ARG OPENVINO_VERSION=2021.4
 
+
 # Build stage
 FROM openvino/ubuntu18_runtime:${OPENVINO_VERSION} AS builder
 
@@ -16,9 +17,6 @@ ARG DEVICE=CPU_FP32
 ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime.git
 ARG ONNXRUNTIME_BRANCH=master
 
-ENV PATH /opt/miniconda/bin:/code/cmake-3.21.0-linux-x86_64/bin:$PATH
-ENV LD_LIBRARY_PATH=/opt/miniconda/lib:/usr/lib:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
-
 ENV InferenceEngine_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/share
 ENV ngraph_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/ngraph/cmake
 
@@ -29,7 +27,7 @@ RUN /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh
 RUN ln -s cmake-* cmake-dir
 RUN python3 -m pip install wheel
 ENV PATH=${WORKDIR_PATH}/cmake-dir/bin:$PATH
-RUN cd onnxruntime/cmake/external/onnx && python3 setup.py install 
+RUN pip3 install onnx
 RUN cd onnxruntime && ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE} --build_shared_lib --build_wheel 
 
 #Steps to download sources
@@ -45,7 +43,6 @@ RUN tar cvf GPL_sources.tar.gz /sources
 FROM openvino/ubuntu18_runtime:${OPENVINO_VERSION}
 
 ENV DEBIAN_FRONTEND noninteractive
-
 USER root
 COPY --from=builder /home/openvino/onnxruntime/build/Linux/Release/dist/*.whl ./
 COPY --from=builder /GPL_sources.tar.gz ./

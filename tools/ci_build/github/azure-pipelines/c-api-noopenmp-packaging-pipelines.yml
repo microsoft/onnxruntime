@@ -122,6 +122,7 @@ jobs:
   dependsOn:
   - Linux_C_API_Packaging_GPU_x64
   - Windows_Packaging_gpu
+  - Windows_Packaging_tensorrt
   condition: succeeded()
   steps:
   - checkout: self
