@@ -1,6 +1,6 @@
 ---
 title: Java API
-parent: API's
+parent: API Docs
 nav_order: 4
 ---
 

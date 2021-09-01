@@ -1,6 +1,6 @@
 ---
 title: C# API
-parent: API's
+parent: API Docs
 nav_order: 3
 ---
 

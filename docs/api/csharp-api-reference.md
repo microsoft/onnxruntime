@@ -1,5 +1,7 @@
 ---
-nav_exclude: true 
+title: C# API
+parent: API Docs
+nav_order: 2
 ---
 
 # C# API Reference
