@@ -157,7 +157,6 @@ class FusionEmbedLayerNoMask(Fusion):
     def finish_fusion(self, layernorm, embed_node, nodes_to_remove):
         self.model.replace_input_of_all_nodes(layernorm.output[0], embed_node.output[0])
         self.nodes_to_remove.extend(nodes_to_remove)
-        self.node_name_to_graph_name[embed_node.name] = self.this_graph_name
         # use prune graph to clean up postion embedding subgraph.
         self.prune_graph = True
 
