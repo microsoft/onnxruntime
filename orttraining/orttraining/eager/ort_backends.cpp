@@ -15,6 +15,9 @@
 namespace onnxruntime{
 namespace python{
   Environment& GetTrainingORTEnv();
+  std::shared_ptr<IExecutionProvider> GetOrCreateExecutionProvider(const std::string& provider_type,
+                                                                 const ProviderOptionsMap& provider_options_map,
+                                                                 const SessionOptions& session_options);
 }
 }
 
@@ -41,53 +44,15 @@ ORTBackendsManager::ORTBackendsManager(const onnxruntime::logging::Logger& logge
   }
 }
 
-void ORTBackendsManager::RegisterProviderLib(const std::string& provider_type, 
-                                             const std::string& lib_path,
-                                             const std::string& entry_point){
-  additional_provider_libs_.insert({provider_type, {lib_path, entry_point}});
-}
-
 onnxruntime::Status ORTBackendsManager::set_device(size_t device_index, const std::string& provider_type,
                                  const ProviderOptions& provider_options){
-  // query avalible device
-  auto& available_providers = GetAvailableExecutionProviderNames();
-  std::unique_ptr<IExecutionProvider> provider_p;
-  if (std::find(available_providers.begin(), available_providers.end(), provider_type) != available_providers.end()){
-    if (provider_type == kCpuExecutionProvider){
-      provider_p = onnxruntime::CreateExecutionProviderFactory_CPU(0)->CreateProvider();
-    }
-  }
-  else{
-    auto shared_lib_path_it = additional_provider_libs_.find(provider_type);
-    if (shared_lib_path_it == additional_provider_libs_.end()){
-      return onnxruntime::Status(common::StatusCategory::ONNXRUNTIME,
-                          common::StatusCode::INVALID_ARGUMENT, 
-                          "Execution provider: " + provider_type + " is not supported.");
-    }
-
-    void* handle;
-    auto lib_path = shared_lib_path_it->second.first;
-    auto entry_point = shared_lib_path_it->second.second;
-    auto error = Env::Default().LoadDynamicLibrary(lib_path, false, &handle);
-    if (!error.IsOK()) {
-      return onnxruntime::Status(common::StatusCategory::ONNXRUNTIME,
-                                 common::StatusCode::INVALID_ARGUMENT, 
-                                 "Load shared execution provider: " + provider_type + " failed: "
-                                 + error.ErrorMessage());
-    }
-
-    Provider* (*PGetProvider)();
-    ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle, entry_point, (void**)&PGetProvider));
-
-    Provider* provider = PGetProvider();
-    std::shared_ptr<IExecutionProviderFactory> ep_factory = provider->CreateExecutionProviderFactory(&provider_options);
-    provider_p = ep_factory->CreateProvider();
-  }
-
+  auto ep = onnxruntime::python::GetOrCreateExecutionProvider(provider_type, 
+                               ProviderOptionsMap{{provider_type, provider_options}},
+                               SessionOptions{});
 
   auto invoker = 
   std::make_unique<onnxruntime::ORTInvoker>(
-    std::move(provider_p),
+    std::move(ep),
     logger_,
     custom_op_schema_);
 
