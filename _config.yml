@@ -11,15 +11,20 @@ kramdown:
   parse_block_html: true
   toc_levels: "1,2,3"
 logo: "/images/ONNX-Runtime-logo.svg"
-aux_links:
+aux_links:  
+
+  "Get Started":
+    - "/docs/get-started/"
   "Tutorials":
     - "/docs/tutorials/"
   "Setup":
     - "/docs/setup/"
   "Reference":
     - "/docs/reference/"
-  "Resources":
-    - "/docs/resources/"
+  "Performance":
+    - "/docs/performance/"
+  "Execution Providers":
+    - "/docs/execution-providers/"
   "GitHub":
     - "https://github.com/microsoft/onnxruntime"
 ga_tracking: UA-156955408-1    

@@ -1,7 +1,7 @@
 ---
-title: Reference
+title: Performance
 has_children: true
-nav_order: 7
+nav_order: 11
 ---
 
 # ONNX Runtime Reference
