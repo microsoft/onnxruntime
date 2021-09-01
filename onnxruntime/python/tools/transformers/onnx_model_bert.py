@@ -8,6 +8,7 @@ from typing import List
 from onnx import ModelProto, TensorProto, helper
 from onnx_model import OnnxModel
 from fusion_reshape import FusionReshape
+from fusion_shape import FusionShape
 from fusion_layernorm import FusionLayerNormalization, FusionLayerNormalizationTF
 from fusion_skiplayernorm import FusionSkipLayerNormalization, FusionBiasSkipLayerNormalization
 from fusion_embedlayer import FusionEmbedLayerNormalization
@@ -74,6 +75,10 @@ class BertOnnxModel(OnnxModel):
         fusion = FusionReshape(self)
         fusion.apply()
 
+    def fuse_shape(self):
+        fusion = FusionShape(self)
+        fusion.apply()
+
     def fuse_embed_layer(self):
         fusion = FusionEmbedLayerNormalization(self)
         fusion.apply()
@@ -117,7 +122,7 @@ class BertOnnxModel(OnnxModel):
         return inputs
 
     def change_input_to_int32(self):
-        original_opset_version = self.model.opset_import[0].version
+        original_opset_version = self.get_opset_version()
         graph = self.graph()
 
         new_graph_inputs = []
@@ -139,10 +144,11 @@ class BertOnnxModel(OnnxModel):
                                       initializer=graph.initializer,
                                       value_info=graph.value_info)
 
-        self.model = helper.make_model(graph_def, producer_name='onnxruntime-tools')
+        self.model = helper.make_model(graph_def, producer_name='onnxruntime')
 
         # restore opset version
-        self.model.opset_import[0].version = original_opset_version
+        self.set_opset_version(original_opset_version)
+
 
     def use_dynamic_axes(self, dynamic_batch_dim='batch_size', dynamic_seq_len='max_seq_len'):
         """
@@ -259,6 +265,7 @@ class BertOnnxModel(OnnxModel):
 
         self.fuse_reshape()
 
+        # TODO: shall we place it after attenion and embed layer norm to be consistent with ORT?
         if (options is None) or options.enable_skip_layer_norm:
             self.fuse_skip_layer_norm()
 
@@ -266,6 +273,8 @@ class BertOnnxModel(OnnxModel):
             if options is not None:
                 self.attention_mask.set_mask_format(options.attention_mask_format)
             self.fuse_attention()
+
+        self.fuse_shape()
 
         if (options is None) or options.enable_embed_layer_norm:
             self.fuse_embed_layer()
@@ -294,7 +303,7 @@ class BertOnnxModel(OnnxModel):
         if add_dynamic_axes:
             self.use_dynamic_axes()
 
-        logger.info(f"opset verion: {self.model.opset_import[0].version}")
+        logger.info(f"opset verion: {self.get_opset_version()}")
 
     def get_fused_operator_statistics(self):
         """

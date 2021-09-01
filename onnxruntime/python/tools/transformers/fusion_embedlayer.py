@@ -16,7 +16,7 @@ logger = getLogger(__name__)
 class FusionEmbedLayerNoMask(Fusion):
     """
      Fuse embedding layer into one node (EmbedLayerNormalization).
-     It supports the following model types: BERT, DistilBert, Roberta, ALBert, DistilRoberta.
+     It supports the following model types: BERT, DistilBert, Roberta, ALBert.
     """
     def __init__(self, model: OnnxModel, description='no mask'):
         super().__init__(model, "EmbedLayerNormalization", ["LayerNormalization", "SkipLayerNormalization"],
@@ -146,10 +146,11 @@ class FusionEmbedLayerNoMask(Fusion):
         if len(embed_node.attribute) == 0:
             embed_node.attribute.extend([helper.make_attribute("epsilon", 1.0E-12)])
 
+        # Make sure new EmbedLayerNormalization node is the last one in self.nodes_to_add.
         nodes_to_add.append(embed_node)
-        self.nodes_to_add.extend(nodes_to_add)
         for node in nodes_to_add:
             self.node_name_to_graph_name[node.name] = self.this_graph_name
+        self.nodes_to_add.extend(nodes_to_add)
 
         self.embed_node = embed_node
         return embed_node
@@ -168,11 +169,11 @@ class FusionEmbedLayerNoMask(Fusion):
                 |      \
                 |     Shape
                 |       |   \
-                |       |    Gather
+                |       |    Gather (indices=1)
                 |       |       |
                 |       |      Cast (optional)
                 |       |       |
-                |       |      Range
+                |       |      Range (start=0, end=*, delta=1)
                 |       |       |
                 |       |    Unsqueeze
                 |       |    /
@@ -197,7 +198,17 @@ class FusionEmbedLayerNoMask(Fusion):
         if path2 is None:
             return False
 
-        if path2[-1].input[0] != input_ids:
+        range_node = path2[1]
+        if not (self.utils.check_node_input_value(range_node, 0, 0)
+                and self.utils.check_node_input_value(range_node, 2, 1)):
+            return False
+
+        gather_node = path2[-2]
+        if not (self.utils.check_node_input_value(gather_node, 1, 1)):
+            return False
+
+        shape_node = path2[-1]
+        if shape_node.input[0] != input_ids:
             return False
 
         return True
@@ -261,11 +272,11 @@ class FusionEmbedLayerNoMask(Fusion):
                                 /              |
                               /              Gather (indices=1)
                             /                  |
-                        Gather (segment_ids) Unsqueeze
+                        Gather (segment_ids) Unsqueeze (axes=0)
                            \        |           |
-                            \     Gather      Slice
+                            \     Gather      Slice (data[1,512], starts=0, ends=*, axes=1, steps=1)
                               \    /            |
-                                Add          Gather
+                                Add          Gather 
                                    \       /
                                       Add
                                        |
@@ -274,7 +285,14 @@ class FusionEmbedLayerNoMask(Fusion):
         path = self.model.match_parent_path(position_embedding_gather, ['Slice', 'Unsqueeze', 'Gather', 'Shape'],
                                             [1, 2, 0, 0], output_name_to_node)
         if path is not None:
-            return input_ids == path[-1].input[0]
+            slice, unsqueeze, gather, shape = path
+            if not (self.utils.check_node_input_value(gather, 1, 1)):
+                return False
+            if not (self.utils.check_node_attribute(unsqueeze, "axes", [0], default_value=[0])):
+                return False
+            if not (self.utils.check_node_input_value(slice, 1, [0])):
+                return False
+            return input_ids == shape.input[0]
 
         return False
 
@@ -319,7 +337,7 @@ class FusionEmbedLayerNoMask(Fusion):
         if not self.check_attention_subgraph(layernorm, input_name_to_nodes, is_distil_bert=True):
             return False
 
-        if not self.match_position_embedding_distilbert(position_embedding_gather, input_ids, output_name_to_node):
+        if not self.match_position_embedding(position_embedding_gather, input_ids, output_name_to_node):
             return False
 
         if not self.check_embedding(word_embedding_gather, None, position_embedding_gather):
@@ -378,18 +396,18 @@ class FusionEmbedLayerNoMask(Fusion):
         # TODO: use other information (like initializer names) to identify different embedding weights automatically.
         if word_embedding_table.shape[0] <= position_embedding_table.shape[0]:
             logger.warn(
-                "size of word_embedding_table ({word_embedding_gather.input[0]}) < position_embedding_table ({position_embedding_gather.input[0]}) "
+                f"word_embedding_table ({word_embedding_gather.input[0]}) size {word_embedding_table.shape[0]} <= position_embedding_table ({position_embedding_gather.input[0]}) size {position_embedding_table.shape[0]}"
             )
 
         if segment_ids:
             if word_embedding_table.shape[0] <= segment_embedding_table.shape[0]:
                 logger.warn(
-                    "size of word_embedding_table ({word_embedding_gather.input[0]}:{word_embedding_table.shape[0]}) < segment_embedding_table ({segment_embedding_gather.input[0]}:{segment_embedding_table.shape[0]})"
+                    f"word_embedding_table ({word_embedding_gather.input[0]}) size {word_embedding_table.shape[0]} <= segment_embedding_table ({segment_embedding_gather.input[0]}) size {segment_embedding_table.shape[0]}"
                 )
 
             if position_embedding_table.shape[0] <= segment_embedding_table.shape[0]:
                 logger.warn(
-                    "size of position_embedding_table ({position_embedding_gather.input[0]}:{position_embedding_table.shape[0]}) < segment_embedding_table ({segment_embedding_gather.input[0]}:{segment_embedding_table.shape[0]})"
+                    f"position_embedding_table ({position_embedding_gather.input[0]}) size {position_embedding_table.shape[0]} <= segment_embedding_table ({segment_embedding_gather.input[0]}) size {segment_embedding_table.shape[0]}"
                 )
 
         return True
@@ -442,7 +460,12 @@ class FusionEmbedLayerNoMask(Fusion):
 
         position_embedding_gather = position_embedding_path[0]
         if not self.match_position_embedding(position_embedding_gather, input_ids, output_name_to_node):
-            return False
+            if not self.match_position_embedding(segment_embedding_gather, input_ids, output_name_to_node):
+                return False
+            # position and segment are switched
+            temp = segment_embedding_gather
+            segment_embedding_gather = position_embedding_gather
+            position_embedding_gather = temp
 
         if not self.check_embedding(word_embedding_gather, segment_embedding_gather, position_embedding_gather):
             return False
@@ -489,4 +512,3 @@ class FusionEmbedLayerNormalization(FusionEmbedLayerNoMask):
                     self.nodes_to_remove.extend([node])
                     embed_node.input.append(mask_input_name)
                     embed_node.output[1] = mask_index
-                    self.nodes_to_add.append(embed_node)
