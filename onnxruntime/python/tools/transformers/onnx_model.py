@@ -485,7 +485,7 @@ class OnnxModel:
         return None
 
     @staticmethod
-    def get_node_attribute(node:NodeProto, attribute_name: str):
+    def get_node_attribute(node: NodeProto, attribute_name: str):
         for attr in node.attribute:
             if attr.name == attribute_name:
                 value = helper.get_attribute_value(attr)
@@ -551,8 +551,6 @@ class OnnxModel:
 
         fp16_model = convert_float_to_float16(model, **parameters)
         self.initialize(fp16_model)
-
-        
 
         # Convert_float_to_float16 might add Cast(to=10) --> Cast(to=1) when two consequent nodes are computed in FP32.
         # Below are post-processing that removes those Cast nodes.
