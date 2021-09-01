@@ -46,7 +46,7 @@ ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 #endif
 
 #ifdef ENABLE_EXTENSION_CUSTOM_OPS
-#include "ortcustomops.h"
+#include "onnxruntime_extensions.h"
 #endif
 
 using namespace onnxruntime::logging;

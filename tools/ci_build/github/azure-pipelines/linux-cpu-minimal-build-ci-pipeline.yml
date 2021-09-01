@@ -177,6 +177,19 @@ jobs:
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_android_baseline_and_report_bin_size.sh
       workingDirectory: $(Build.SourcesDirectory)
 
+
+  - task: AzureCLI@2
+    displayName: 'Azure CLI'
+    condition: and (succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+    inputs:
+      azureSubscription: AIInfraBuild
+      scriptLocation: inlineScript
+      scriptType: bash
+      inlineScript: |
+        /usr/bin/python3 $(Build.SourcesDirectory)/tools/ci_build/github/windows/post_binary_sizes_to_dashboard.py --commit_hash=$(Build.SourceVersion) \
+        --size_data_file=$(Build.BinariesDirectory)/MinSizeRel/binary_size_data.txt --build_project=onnxruntime --build_id=$(Build.BuildId)
+      workingDirectory: '$(Build.BinariesDirectory)'
+
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'
     inputs:

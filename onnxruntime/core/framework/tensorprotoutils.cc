@@ -842,37 +842,93 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
 }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
-template <typename T>
 static Status CopySparseData(size_t n_sparse_elements,
                              const ONNX_NAMESPACE::TensorProto& indices,
+                             const Path& model_path,
                              gsl::span<const int64_t> dims,
                              std::function<void(size_t from_idx, size_t to_idx)> copier) {
   Status status = Status::OK();
   TensorShape indices_shape(indices.dims().data(), indices.dims().size());
+  const auto elements = gsl::narrow<size_t>(indices_shape.Size());
 
-  ORT_RETURN_IF_NOT(indices.data_type() == ONNX_NAMESPACE ::TensorProto_DataType_INT64, "Indicies expected to be INT64");
-
+  std::vector<int64_t> indices_values;  // used for conversion of smaller size indices
+  std::vector<uint8_t> unpack_buffer;
   gsl::span<const int64_t> indices_data;
-  const auto elements = static_cast<size_t>(indices_shape.Size());
-  if (indices.int64_data_size() > 0) {
-    indices_data = gsl::make_span<const int64_t>(indices.int64_data().data(), elements);
-  } else if (indices.has_raw_data()) {
-    ORT_RETURN_IF_NOT(indices.raw_data().size() == (elements * sizeof(int64_t)),
-                      "Sparse Indicies raw data size does not match expected.");
-    indices_data = gsl::make_span<const int64_t>(reinterpret_cast<const int64_t*>(indices.raw_data().data()), elements);
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Invalid SparseTensor indices. Should either have raw or int64 data");
+  const bool has_raw_data = indices.has_raw_data();
+  switch (indices.data_type()) {
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+      if (has_raw_data) {
+        ORT_RETURN_IF_NOT(indices.raw_data().size() == (elements * sizeof(int64_t)),
+                          "Sparse Indices raw data size does not match expected.");
+        ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
+        indices_data = gsl::make_span(unpack_buffer).as_span<const int64_t>();
+      } else {
+        ORT_RETURN_IF_NOT(indices.int64_data_size() == static_cast<int64_t>(elements), "Sparse indices int64 data size does not match expected");
+        indices_data = gsl::make_span(indices.int64_data().data(), elements);
+      }
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
+      if (has_raw_data) {
+        ORT_RETURN_IF_NOT(indices.raw_data().size() == (elements * sizeof(int32_t)),
+                          "Sparse Indices raw data size does not match expected.");
+        ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
+        auto int32_span = gsl::make_span(unpack_buffer).as_span<const int32_t>();
+        indices_values.insert(indices_values.cend(), int32_span.cbegin(), int32_span.cend());
+        unpack_buffer.clear();
+        unpack_buffer.shrink_to_fit();
+      } else {
+        ORT_RETURN_IF_NOT(indices.int32_data_size() == static_cast<int64_t>(elements), "Sparse indices int32 data size does not match expected");
+        indices_values.insert(indices_values.cend(), indices.int32_data().cbegin(), indices.int32_data().cend());
+      }
+      indices_data = gsl::make_span(indices_values);
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT16: {
+      if (has_raw_data) {
+        ORT_RETURN_IF_NOT(indices.raw_data().size() == (elements * sizeof(int16_t)),
+                          "Sparse Indices raw data size does not match expected.");
+        ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
+        auto int16_span = gsl::make_span(unpack_buffer).as_span<const int16_t>();
+        indices_values.insert(indices_values.cend(), int16_span.cbegin(), int16_span.cend());
+        indices_data = gsl::make_span(indices_values);
+        unpack_buffer.clear();
+        unpack_buffer.shrink_to_fit();
+      } else {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
+                               "Invalid SparseTensor indices. INT16 indices must be in the raw data of indices tensor");
+      }
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
+      if (has_raw_data) {
+        ORT_RETURN_IF_NOT(indices.raw_data().size() == elements,
+                          "Sparse Indices raw data size does not match expected.");
+        ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
+        auto int8_span = gsl::make_span(unpack_buffer).as_span<const int8_t>();
+        indices_values.insert(indices_values.cend(), int8_span.cbegin(), int8_span.cend());
+        indices_data = gsl::make_span(indices_values);
+        unpack_buffer.clear();
+        unpack_buffer.shrink_to_fit();
+      } else {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
+                               "Invalid SparseTensor indices. INT8 indices must be in the raw data of indices tensor");
+      }
+      break;
+    }
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
+                             "Invalid SparseTensor indices. Should one of the following types: int8, int16, int32 or int64");
   }
 
   if (indices_shape.NumDimensions() == 1) {
     // flattened indexes
     for (size_t i = 0; i < n_sparse_elements; ++i) {
-      copier(i, static_cast<size_t>(indices_data[i]));
+      copier(i, gsl::narrow<size_t>(indices_data[i]));
     }
   } else if (indices_shape.NumDimensions() == 2) {
     // entries in format {NNZ, rank}
-    size_t rank = static_cast<size_t>(indices_shape[1]);
-    ORT_ENFORCE(rank == dims.size() && rank > 0);
+    ORT_ENFORCE(indices_shape[1] > 0 && static_cast<size_t>(indices_shape[1]) == dims.size());
+    auto rank = static_cast<size_t>(indices_shape[1]);
     const int64_t* cur_index = indices_data.data();
     std::vector<size_t> multipliers;
     multipliers.resize(rank);
@@ -880,20 +936,20 @@ static Status CopySparseData(size_t n_sparse_elements,
     // calculate sum of inner dimension elements for each dimension.
     // e.g. if shape {2,3,4}, the result should be {3*4, 4, 1}
     multipliers[rank - 1] = 1;
-    for (int32_t r = static_cast<int32_t>(rank) - 2; r >= 0; --r) {
-      multipliers[r] = static_cast<size_t>(dims[r + 1]) * multipliers[r + 1];
+    for (auto r = rank - 1; r > 0; --r) {
+      multipliers[r - 1] = SafeInt<size_t>(dims[r]) * multipliers[r];
     }
 
     // calculate the offset for the entry
     // e.g. if shape was {2,3,4} and entry was (1, 0, 2) the offset is 14
     // as there are 2 rows, each with 12 entries per row
     for (size_t i = 0; i < n_sparse_elements; ++i) {
-      size_t idx = 0;
+      SafeInt<int64_t> idx = 0;
       for (size_t j = 0; j < rank; ++j) {
-        idx += static_cast<size_t>(cur_index[j]) * multipliers[j];
+        idx += SafeInt<int64_t>(cur_index[j]) * multipliers[j];
       }
 
-      copier(i, idx);
+      copier(i, static_cast<size_t>(idx));
       cur_index += rank;
     }
 
@@ -905,29 +961,7 @@ static Status CopySparseData(size_t n_sparse_elements,
 
   return status;
 }
-#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
-namespace conversion_internal {
-#if !defined(DISABLE_SPARSE_TENSORS)
-struct UnsupportedSparseDataType {
-  void operator()(int32_t dt_type, Status& status) const {
-    status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported sparse tensor data type of ", dt_type);
-  }
-};
-#endif
-template <typename T>
-struct GetElementSize {
-  Status operator()(size_t& element_size) const {
-    element_size = sizeof(T);
-    return Status::OK();
-  }
-};
-
-using SupportedConversionTypeList = onnxruntime::TypeList<float, double, MLFloat16, BFloat16,
-                                                          int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>;
-}  // namespace conversion_internal
-
-#if !defined(DISABLE_SPARSE_TENSORS)
 common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseTensorProto& sparse,
                                                    const Path& model_path,
                                                    ONNX_NAMESPACE::TensorProto& dense) {
@@ -953,74 +987,70 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
   auto dims = gsl::make_span<const int64_t>(dense.dims().data(), dense.dims().size());
 
   if (type != TensorProto_DataType_STRING) {
+    auto ml_data = DataTypeImpl::TensorTypeFromONNXEnum(type)->GetElementType();
+    size_t element_size = ml_data->Size();
+
     // need to read in sparse data first as it could be in a type specific field, in raw data, or in external data
     std::vector<uint8_t> sparse_data_storage;
     ORT_RETURN_IF_ERROR(UnpackInitializerData(sparse_values, model_path, sparse_data_storage));
     void* sparse_data = sparse_data_storage.data();
-    size_t element_size = 0;
-    // We want to this list to match the one used below in DenseTensorToSparseTensorProto()
-    MLTypeCallDispatcherFromTypeList<conversion_internal::SupportedConversionTypeList> type_disp(type);
-    ORT_RETURN_IF_ERROR(
-        (type_disp.InvokeRetWithUnsupportedPolicy<Status, conversion_internal::GetElementSize, conversion_internal::UnsupportedSparseDataType>(element_size)));
 
     // by putting the data into a std::string we can avoid a copy as set_raw_data can do a std::move
-    // into the TensorProto. however to actually write to the buffer we have created in the std::string we need
-    // this somewhat dirty hack to get a mutable pointer. we could alternatively use &dense_data_storage.front()
-    // but using const_cast makes it more obvious we're doing something ugly.
-    // C++17 add non-const data() where we could remove const_cast
+    // into the TensorProto.
     std::string dense_data_storage(n_dense_elements * element_size, 0);
     if (n_sparse_elements > 0) {
-      void* dense_data = const_cast<char*>(dense_data_storage.data());
+      void* dense_data = dense_data_storage.data();
 
       switch (element_size) {
         case 1: {
-          auto dense_data_span = gsl::make_span<uint8_t>(static_cast<uint8_t*>(dense_data), n_dense_elements);
-          status = CopySparseData<uint8_t>(
+          status = CopySparseData(
               n_sparse_elements,
-              indices, dims,
-              [sparse_data, dense_data_span](size_t from_idx, size_t to_idx) {
-                dense_data_span[to_idx] = static_cast<const uint8_t*>(sparse_data)[from_idx];
+              indices, model_path, dims,
+              [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
+                static_cast<uint8_t*>(dense_data)[to_idx] = static_cast<const uint8_t*>(sparse_data)[from_idx];
               });
 
           break;
         }
         case 2: {
-          auto dense_data_span = gsl::make_span<uint16_t>(static_cast<uint16_t*>(dense_data), n_dense_elements);
-          status = CopySparseData<uint16_t>(
+          status = CopySparseData(
               n_sparse_elements,
-              indices, dims,
-              [sparse_data, dense_data_span](size_t from_idx, size_t to_idx) {
-                dense_data_span[to_idx] = static_cast<const uint16_t*>(sparse_data)[from_idx];
+              indices, model_path, dims,
+              [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
+                const auto* src = static_cast<const uint16_t*>(sparse_data) + from_idx;
+                auto* dst = static_cast<uint16_t*>(dense_data) + to_idx;
+                memcpy(dst, src, sizeof(uint16_t));
               });
 
           break;
         }
         case 4: {
-          auto dense_data_span = gsl::make_span<uint32_t>(static_cast<uint32_t*>(dense_data), n_dense_elements);
-          status = CopySparseData<uint32_t>(
+          status = CopySparseData(
               n_sparse_elements,
-              indices, dims,
-              [sparse_data, dense_data_span](size_t from_idx, size_t to_idx) {
-                dense_data_span[to_idx] = static_cast<const uint32_t*>(sparse_data)[from_idx];
+              indices, model_path, dims,
+              [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
+                const auto* src = static_cast<const uint32_t*>(sparse_data) + from_idx;
+                auto* dst = static_cast<uint32_t*>(dense_data) + to_idx;
+                memcpy(dst, src, sizeof(uint32_t));
               });
 
           break;
         }
         case 8: {
-          auto dense_data_span = gsl::make_span<uint64_t>(static_cast<uint64_t*>(dense_data), n_dense_elements);
-          status = CopySparseData<uint64_t>(
+          status = CopySparseData(
               n_sparse_elements,
-              indices, dims,
-              [sparse_data, dense_data_span](size_t from_idx, size_t to_idx) {
-                dense_data_span[to_idx] = static_cast<const uint64_t*>(sparse_data)[from_idx];
+              indices, model_path, dims,
+              [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
+                const auto* src = static_cast<const uint64_t*>(sparse_data) + from_idx;
+                auto* dst = static_cast<uint64_t*>(dense_data) + to_idx;
+                memcpy(dst, src, sizeof(uint64_t));
               });
           break;
         }
 
         default:
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                 " BUG! Report to onnxruntime team. element_size of: ",
-                                 element_size, " is not supported.", " type: ", type);
+                                 "Element_size of: ", element_size, " is not supported.", " type: ", type);
       }
 
       ORT_RETURN_IF_ERROR(status);
@@ -1029,7 +1059,8 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
 
   } else {
     // No request for std::string
-    conversion_internal::UnsupportedSparseDataType()(ONNX_NAMESPACE::TensorProto_DataType_STRING, status);
+    status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported sparse tensor data type of ",
+                             ONNX_NAMESPACE::TensorProto_DataType_STRING);
   }
   return status;
 }
@@ -1040,36 +1071,6 @@ using IsZeroFunc = bool (*)(const void*);
 // Copy element
 using CopyElementFunc = void (*)(void* dest, const void* src, int64_t dest_index, int64_t src_index);
 
-static void SparsifyGeneric(const void* dense_raw_data, size_t n_dense_elements, size_t element_size,
-                            IsZeroFunc is_zero, CopyElementFunc copy,
-                            TensorProto& values, TensorProto& indices) {
-  auto advance = [element_size](const void* start, size_t elements) -> const void* {
-    return (reinterpret_cast<const uint8_t*>(start) + elements * element_size);
-  };
-
-  const auto* cbegin = dense_raw_data;
-  const auto* const cend = advance(cbegin, n_dense_elements);
-  auto& indices_data = *indices.mutable_int64_data();
-  int64_t index = 0;
-  while (cbegin != cend) {
-    if (!is_zero(cbegin)) {
-      indices_data.Add(index);
-    }
-    ++index;
-    cbegin = advance(cbegin, 1U);
-  }
-
-  auto& raw_data = *values.mutable_raw_data();
-  raw_data.resize(indices.int64_data_size() * element_size);
-  void* data_dest = const_cast<char*>(raw_data.data());
-
-  int64_t dest_index = 0;
-  for (auto src_index : indices.int64_data()) {
-    copy(data_dest, dense_raw_data, dest_index, src_index);
-    ++dest_index;
-  }
-}
-
 // Here we are not using tolerance for FP types since these dense tensors were
 // created from sparse initializers where zeros were absolute
 template <typename T>
@@ -1079,7 +1080,85 @@ inline bool IsZero(const void* p) {
 
 template <typename T>
 inline void CopyElement(void* dst, const void* src, int64_t dst_index, int64_t src_index) {
-  reinterpret_cast<T*>(dst)[dst_index] = reinterpret_cast<const T*>(src)[src_index];
+  const auto* src_p = reinterpret_cast<const T*>(src) + src_index;
+  auto* dst_p = reinterpret_cast<T*>(dst) + dst_index;
+  memcpy(dst_p, src_p, sizeof(T));
+}
+
+template <>
+inline void CopyElement<uint8_t>(void* dst, const void* src, int64_t dst_index, int64_t src_index) {
+  reinterpret_cast<uint8_t*>(dst)[dst_index] = reinterpret_cast<const uint8_t*>(src)[src_index];
+}
+
+
+template <typename T>
+static void SetIndices(gsl::span<int64_t> gathered_indices,
+                       std::string& raw_indices,
+                       TensorProto& indices) {
+  raw_indices.resize(gathered_indices.size() * sizeof(T));
+  auto* ind_dest = reinterpret_cast<T*>(raw_indices.data());
+  size_t dest_index = 0;
+  for (auto src_index : gathered_indices) {
+    ORT_IF_CONSTEXPR(sizeof(T) == sizeof(int8_t)) {
+      ind_dest[dest_index] = static_cast<T>(src_index);
+    } else {
+      auto* dst = ind_dest + dest_index;
+      T v = static_cast<T>(src_index);
+      memcpy(dst, &v, sizeof(T));
+    }
+    ++dest_index;
+  }
+  indices.set_data_type(utils::ToTensorProtoElementType<T>());
+}
+
+static void SparsifyGeneric(const void* dense_raw_data, size_t n_dense_elements, size_t element_size,
+                            IsZeroFunc is_zero, CopyElementFunc copy,
+                            TensorProto& values, TensorProto& indices,
+                            size_t& nnz) {
+  auto advance = [element_size](const void* start, size_t elements) -> const void* {
+    return (reinterpret_cast<const uint8_t*>(start) + elements * element_size);
+  };
+
+  const auto* cbegin = dense_raw_data;
+  const auto* const cend = advance(cbegin, n_dense_elements);
+  std::vector<int64_t> gathered_indices;
+  int64_t index = 0;
+  while (cbegin != cend) {
+    if (!is_zero(cbegin)) {
+      gathered_indices.push_back(index);
+    }
+    ++index;
+    cbegin = advance(cbegin, 1U);
+  }
+
+  if (!gathered_indices.empty()) {
+    auto& raw_data = *values.mutable_raw_data();
+    raw_data.resize(gathered_indices.size() * element_size);
+    void* data_dest = raw_data.data();
+
+    int64_t dest_index = 0;
+    for (auto src_index : gathered_indices) {
+      copy(data_dest, dense_raw_data, dest_index, src_index);
+      ++dest_index;
+    }
+
+    auto gathered_span = gsl::make_span(gathered_indices);
+    auto& raw_indices = *indices.mutable_raw_data();
+    const auto max_index = gathered_indices.back();
+    if (max_index <= std::numeric_limits<int8_t>::max()) {
+      SetIndices<int8_t>(gathered_span, raw_indices, indices);
+    } else if (max_index <= std::numeric_limits<int16_t>::max()) {
+      SetIndices<int16_t>(gathered_span, raw_indices, indices);
+    } else if (max_index <= std::numeric_limits<int32_t>::max()) {
+      SetIndices<int32_t>(gathered_span, raw_indices, indices);
+    } else {
+      SetIndices<int64_t>(gathered_span, raw_indices, indices);
+    }
+  } else {
+    indices.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
+    indices.set_raw_data(std::string());
+  }
+  nnz = gathered_indices.size();
 }
 
 common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto& dense_proto,
@@ -1087,11 +1166,9 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
                                               ONNX_NAMESPACE::SparseTensorProto& result) {
   ORT_ENFORCE(HasDataType(dense_proto), "Must have a valid data type");
 
-  const bool is_string_data = dense_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING;
-  if (is_string_data) {
-    Status status{};
-    conversion_internal::UnsupportedSparseDataType()(ONNX_NAMESPACE::TensorProto_DataType_STRING, status);
-    return status;
+  if (dense_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported sparse tensor data type of ",
+                           ONNX_NAMESPACE::TensorProto_DataType_STRING);
   }
 
   const auto data_type = dense_proto.data_type();
@@ -1101,51 +1178,47 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
   values.set_data_type(data_type);
 
   auto& indices = *sparse_proto.mutable_indices();
-  indices.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
 
   SafeInt<size_t> n_dense_elements = 1;
   for (auto dim : dense_proto.dims()) {
     n_dense_elements *= dim;
   }
 
+  auto ml_data = DataTypeImpl::TensorTypeFromONNXEnum(data_type)->GetElementType();
+  size_t element_size = ml_data->Size();
+
   std::vector<uint8_t> dense_raw_data;
   ORT_RETURN_IF_ERROR(UnpackInitializerData(dense_proto, model_path, dense_raw_data));
-  size_t element_size = 0;
-  // We want this type list to match the one above in SparseTensorProtoToDenseTensorProto
-  MLTypeCallDispatcherFromTypeList<conversion_internal::SupportedConversionTypeList> type_disp(data_type);
-  ORT_RETURN_IF_ERROR(
-      (type_disp.InvokeRetWithUnsupportedPolicy<Status, conversion_internal::GetElementSize, conversion_internal::UnsupportedSparseDataType>(element_size)));
 
+  size_t nnz = 0;
   void* dense_data = dense_raw_data.data();
   switch (element_size) {
     case 1: {
       SparsifyGeneric(dense_data, n_dense_elements, element_size,
-                      IsZero<uint8_t>, CopyElement<uint8_t>, values, indices);
+                      IsZero<uint8_t>, CopyElement<uint8_t>, values, indices, nnz);
       break;
     }
     case 2: {
       SparsifyGeneric(dense_data, n_dense_elements, element_size,
-                      IsZero<uint16_t>, CopyElement<uint16_t>, values, indices);
+                      IsZero<uint16_t>, CopyElement<uint16_t>, values, indices, nnz);
       break;
     }
     case 4: {
       SparsifyGeneric(dense_data, n_dense_elements, element_size,
-                      IsZero<uint32_t>, CopyElement<uint32_t>, values, indices);
+                      IsZero<uint32_t>, CopyElement<uint32_t>, values, indices, nnz);
       break;
     }
     case 8: {
       SparsifyGeneric(dense_data, n_dense_elements, element_size,
-                      IsZero<uint64_t>, CopyElement<uint64_t>, values, indices);
+                      IsZero<uint64_t>, CopyElement<uint64_t>, values, indices, nnz);
       break;
     }
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             " BUG! Report to onnxruntime team. element_size of: ",
-                             element_size, " is not supported.", " data_type: ", data_type);
+                             "Element_size of: ", element_size, " is not supported.", " data_type: ", data_type);
   }
 
   // Fix up shapes
-  const auto nnz = indices.int64_data_size();
   values.add_dims(nnz);
   indices.add_dims(nnz);
 
