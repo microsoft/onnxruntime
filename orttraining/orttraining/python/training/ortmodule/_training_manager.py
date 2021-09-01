@@ -65,9 +65,20 @@ class TrainingManager(GraphExecutionManager):
             return self._fallback_manager.fallback(self._original_module, self._debug_options.logging.log_level, *inputs, **kwargs)
 
         try:
-            # Exporting module to ONNX for the first time
+            if self._first_skip_check_warning == True and self._skip_check.is_disabled() == False \
+                and self._debug_options.logging.log_level <= _logger.LogLevel.WARNING:
+                # Only change this after the firs time a warning is issued.
+                self._first_skip_check_warning = False
+                warnings.warn(f"Fast path enabled - skipping checks."
+                              f"rebuild gradient graph: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT)},"
+                              f"execution agent recreation: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT)},"
+                              f"device check: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE)}", UserWarning)
+
+            # If exporting module to ONNX for the first time, this skip check will not take effect.
+            # It will only take effect on subsequent forward calls.
             build_gradient_graph = False
-            if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) == False:
+            if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) == False or \
+                not self._onnx_models.exported_model:
                 build_gradient_graph = self._export_model(*inputs, **kwargs)
                 if build_gradient_graph:
                     # If model was exported, then initialize the graph builder
@@ -92,8 +103,11 @@ class TrainingManager(GraphExecutionManager):
                 if build_gradient_graph:
                     self._build_graph()
 
+            # If creating the execution agent for the first time, this skip check will not take effect.
+            # It will only take effect on subsequent forward calls.
             create_execution_session = False
-            if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT) == False:
+            if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT) == False or \
+                not self._execution_agent:
                 device = _utils.get_device_from_module(self._original_module) or \
                     _utils.get_device_from_inputs(inputs, kwargs)
                 # The _training_session/_inference_session should be created every time
@@ -106,14 +120,6 @@ class TrainingManager(GraphExecutionManager):
                 # Create execution session creates the training_session
                 self._create_execution_agent()
 
-                # disable some checks after execution session is created the first time
-                if self._skip_check.is_disabled() == False:
-                    self._skip_check = _SkipCheck.SKIP_CHECK_BUILD_GRADIENT | _SkipCheck.SKIP_CHECK_EXECUTION_AGENT | _SkipCheck.SKIP_CHECK_DEVICE
-
-                    if self._debug_options.logging.log_level <= _logger.LogLevel.WARNING:
-                        warnings.warn("Fast path enabled - skipping checks for rebuilding gradient graph, execution agent creation, and device during training.",
-                                      UserWarning)
-                
                 self._gradient_accumulation_manager.initialize(self._enable_grad_acc_optimization, self._flattened_module, self._graph_info)
         
             self._gradient_accumulation_manager.maybe_update_cache_before_run()

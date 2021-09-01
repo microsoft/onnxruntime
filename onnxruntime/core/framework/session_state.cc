@@ -1174,6 +1174,57 @@ static Status OuterScopeNodeArgLocationAccumulator(const SequentialExecutionPlan
   return Status::OK();
 }
 
+// We accumulate all nested subgraph(s) kernel create info maps relative to the current depth
+// (i.e.) if we were on the first nested subgraph, we accumulate information from ALL the
+// nested subgraphs within it.
+// This information is necessary to plan the right location for initializers
+// in a given level because they could be used in one of the nested subgraphs relative to the
+// current level (not just within the same level or even one level deep).
+// Since we need to package up information from multiple levels of nested subgraphs, the key we use
+// is "{key_for_node_containing_subgraph} + current_depth + node_index_containing_the_subgraph + attribute_name".
+// {key_for_node_containing_subgraph} is empty for the main graph.
+
+// For example, if we want to store information corresponding to a nested subgraph wrt to the main graph and
+// the node index  of the node in the main graph was 2 and the attribute containing the specific
+// subgraph was "then_branch", the key would be depth + node_index + attribute = 0 + 2 + then_branch
+// = "02then_branch".
+
+// If that subgraph contained another subgraph at node index 1, then the key would be,
+// {02then_branch} + 1 + 1 + "then_branch" = "02then_branch11then_branch".
+
+static void AccumulateAllNestedSubgraphsInfo(
+    const SessionState& session_state,
+    const std::string& subgraph_kernel_create_info_map_key_base,
+    size_t graph_depth,
+    /*out*/ SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps) {
+  for (const auto& entry : session_state.GetSubgraphSessionStateMap()) {
+    auto node_index = entry.first;
+
+    for (const auto& name_to_subgraph_session_state : entry.second) {
+      const auto& subgraph_attr_name = name_to_subgraph_session_state.first;
+
+      SessionState& subgraph_session_state = *name_to_subgraph_session_state.second;
+
+      const auto& local_subgraph_kernel_create_info_map_key =
+          NestedSubgraphInfoDetails::ComposeNestedSubgraphInfoKeyHelper(subgraph_kernel_create_info_map_key_base,
+                                                                        graph_depth, node_index, subgraph_attr_name);
+
+      // The end user is never likely to see an error with the following line.
+      // Points to an internal processing error if we hit this.
+      ORT_ENFORCE(subgraphs_kernel_create_info_maps.find(local_subgraph_kernel_create_info_map_key) ==
+                  subgraphs_kernel_create_info_maps.end());
+
+      subgraphs_kernel_create_info_maps.insert({local_subgraph_kernel_create_info_map_key,
+                                                subgraph_session_state.GetKernelCreateInfoMap()});
+
+      // Recurse into the subgraph session state
+      AccumulateAllNestedSubgraphsInfo(subgraph_session_state,
+                                       local_subgraph_kernel_create_info_map_key,
+                                       graph_depth + 1, subgraphs_kernel_create_info_maps);
+    }
+  }
+}
+
 Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                                               KernelRegistryManager& kernel_registry_manager,
                                               _In_opt_ const Node* parent_node,
@@ -1201,9 +1252,13 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                   });
   }
 
+  SubgraphsKernelCreateInfoMaps subgraphs_kernel_create_info_maps;
+  AccumulateAllNestedSubgraphsInfo(*this, "", 0, subgraphs_kernel_create_info_maps);
+
   SequentialPlannerContext context(session_options.execution_mode, session_options.execution_order, session_options.enable_mem_reuse);
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
                                                     execution_providers_, kernel_create_info_map_,
+                                                    subgraphs_kernel_create_info_maps,
                                                     outer_scope_node_arg_to_location_map,
                                                     ort_value_name_idx_map_, context, p_seq_exec_plan_));
   //Record the allocation plan

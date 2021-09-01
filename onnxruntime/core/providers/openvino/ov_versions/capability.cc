@@ -30,8 +30,6 @@ GetCapability::GetCapability(const GraphViewer& graph_viewer_param, std::string 
                 graph_viewer_(graph_viewer_param), device_type_(device_type_param){
   if (version_param == "V_2021_2") {
     data_ops_ = new DataOps(graph_viewer_, V_2021_2, device_type_);
-  } else if (version_param == "V_2021_1") {
-    data_ops_ = new DataOps(graph_viewer_, V_2021_1, device_type_);
   } else if (version_param == "V_2021_3") {
     data_ops_ = new DataOps(graph_viewer_, V_2021_3, device_type_);
   } else if (version_param == "V_2021_4") {
@@ -110,6 +108,10 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
     AppendClusterToSubGraph(graph_viewer_.GetNodesInTopologicalOrder(), inputs, outputs, result);
 
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model is fully supported by OpenVINO";
+    //Enable CI Logs
+    if(backend_utils::IsCILogEnabled()) {
+      std::cout << "Model is fully supported on OpenVINO" << std::endl;
+    }
     openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph = true;
 
   } else {  // unsupported_nodes_idx.empty()

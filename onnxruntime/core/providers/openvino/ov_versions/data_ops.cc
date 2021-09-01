@@ -75,6 +75,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Ceil", V_2020_4, {"GPU"}},
     {"Ceil", V_2021_3, {"MYRIAD"}},
     {"Ceil", V_2021_2, {"GPU", "MYRIAD"}},
+    {"Ceil", V_2021_4, {"All"}},
     {"Clip", V_2020_4, {"All"}},
     {"Concat", V_2020_4, {"All"}},
     {"Constant", V_2020_4, {"All"}},
@@ -97,17 +98,20 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Gather", V_2020_4, {"All"}},
     {"GatherElements", V_2021_3, {"MYRIAD"}},
     {"GatherND", V_2021_2, {"MYRIAD"}},
+    {"GatherND", V_2021_4, {"All"}},
     {"Gemm", V_2020_4, {"All"}},
     {"GlobalAveragePool", V_2020_4, {"All"}},
     {"GlobalLpPool", V_2020_4, {"CPU", "GPU"}},
     {"Greater", V_2020_4, {"All"}},
     {"Identity", V_2020_4, {"All"}},
+    {"ImageScaler", V_2021_4, {"All"}},
     {"InstanceNormalization", V_2020_4, {"All"}},
     {"HardSigmoid", V_2020_4, {"CPU", "GPU"}},
     {"LeakyRelu", V_2020_4, {"All"}},
     {"Less", V_2020_4, {"All"}},
     {"Log", V_2020_4, {"All"}},
     {"Loop", V_2021_3, {"MYRIAD"}},
+    {"Loop", V_2021_4, {"All"}},
     {"LRN", V_2020_4, {"All"}},
     {"LSTM", V_2020_4, {"All"}},
     {"MatMul", V_2020_4, {"All"}},
@@ -141,6 +145,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Reshape", V_2020_4, {"All"}},
     {"RoiAlign", V_2021_1, {"All"}},
     {"Round", V_2021_2, {"MYRIAD"}},
+    {"Round", V_2021_4, {"All"}},
     {"Scatter", V_2021_1, {"MYRIAD"}},
     {"ScatterElements", V_2021_2, {"MYRIAD"}},
     {"Selu", V_2020_4, {"CPU", "GPU"}},
@@ -162,6 +167,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Tan", V_2020_4, {"CPU", "GPU"}},
     {"Tanh", V_2020_4, {"All"}},
     {"Tile", V_2021_3, {"MYRIAD"}},
+    {"Tile", V_2021_3, {"All"}},
     {"Transpose", V_2020_4, {"All"}},
     {"TopK", V_2020_4, {"All"}},
     {"Unsqueeze", V_2020_4, {"All"}},
@@ -224,30 +230,14 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"Clip", V_2021_2, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Resize", V_2021_2, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Equal", V_2021_2, {"MYRIAD"}});
-
-  no_dimension_supported_.push_back({"Unsqueeze", V_2020_4, {"All"}});
-  no_dimension_supported_.push_back({"Squeeze", V_2020_4, {"All"}});
-  no_dimension_supported_.push_back({"Cast", V_2020_4, {"All"}});
-  no_dimension_supported_.push_back({"Gather", V_2020_4, {"All"}});
-  no_dimension_supported_.push_back({"Mul", V_2020_4, {"All"}});
-  no_dimension_supported_.push_back({"Sub", V_2020_4, {"All"}});
-  no_dimension_supported_.push_back({"Min", V_2020_4, {"All"}});
-  no_dimension_supported_.push_back({"Div", V_2020_4, {"All"}});
-  no_dimension_supported_.push_back({"Floor", V_2020_4, {"All"}});
-  no_dimension_supported_.push_back({"Where", V_2021_2, {"All"}});
-  no_dimension_supported_.push_back({"Range", V_2021_2, {"All"}});
-  no_dimension_supported_.push_back({"ArgMin", V_2021_2, {"MYRIAD"}});
-  no_dimension_supported_.push_back({"Max", V_2021_2, {"MYRIAD"}});
-  no_dimension_supported_.push_back({"Add", V_2021_2, {"MYRIAD"}});
-  no_dimension_supported_.push_back({"Less", V_2021_2, {"MYRIAD"}});
-  no_dimension_supported_.push_back({"Greater", V_2021_2, {"MYRIAD"}});
-  no_dimension_supported_.push_back({"Clip", V_2021_2, {"MYRIAD"}});
-  no_dimension_supported_.push_back({"Resize", V_2021_2, {"MYRIAD"}});
-  no_dimension_supported_.push_back({"Equal", V_2021_2, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Reshape", V_2021_3, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Ceil", V_2021_3, {"MYRIAD"}});
+  no_dimension_supported_.push_back({"Ceil", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"Loop", V_2021_3, {"MYRIAD"}});
+  no_dimension_supported_.push_back({"Loop", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"ReduceMin", V_2021_3, {"MYRIAD"}});
+  no_dimension_supported_.push_back({"ReduceMin", V_2021_4, {"All"}});
+  no_dimension_supported_.push_back({"ReduceMax", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"QuantizeLinear", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"DequantizeLinear", V_2021_4, {"All"}});
   
@@ -409,10 +399,6 @@ void DataOps::populate_op_mode_supported() {
                                bool if_bias = false;
                                const auto& attributes = node->GetAttributes();
                                auto out_shape_attr = attributes.find("output_shape");
-
-                               //tensor type does not support output_shape in Attributes
-                               if (out_shape_attr != attributes.end())
-                                  return true;
 
                                // If the device is GPU
                                if (device_id_.find("GPU") != std::string::npos) {
