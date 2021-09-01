@@ -129,6 +129,7 @@ class BertOnnxModel(OnnxModel):
 
         Returns:
             NodeProto: a new Cast node that added. None if Cast node is not added.
+            List[NodeProto]: Cast nodes that have been removed.
         """
         assert isinstance(graph, GraphProto)
         assert isinstance(graph_input, ValueInfoProto)
@@ -138,6 +139,8 @@ class BertOnnxModel(OnnxModel):
             return None
 
         new_cast_node = None
+        nodes_to_remove = []
+
         input_name_to_nodes = self.input_name_to_nodes()
         if graph_input.name in input_name_to_nodes:
             nodes = input_name_to_nodes[graph_input.name]
@@ -161,7 +164,6 @@ class BertOnnxModel(OnnxModel):
             # For children that is Cast node, no need to insert Cast.
             # When the children is Cast to int32, we can remove that Cast node since input type is int32 now.
             nodes_cast = [node for node in nodes if node.op_type == 'Cast']
-            nodes_to_remove = []
             for node in nodes_cast:
                 if OnnxModel.get_node_attribute(node, "to") == int(new_type):
                     self.replace_input_of_all_nodes(node.output[0], graph_input.name)
@@ -171,18 +173,22 @@ class BertOnnxModel(OnnxModel):
                 self.remove_nodes(nodes_to_remove)
 
         graph_input.type.tensor_type.elem_type = int(new_type)
-        return new_cast_node
+        return new_cast_node, nodes_to_remove
 
     def change_graph_inputs_to_int32(self):
         """Change data type of all graph inputs to int32 type, and add Cast node if needed.
         """
         graph = self.graph()
-        new_cast_node_count = 0
+        add_cast_count = 0
+        remove_cast_count = 0
         for graph_input in graph.input:
-            new_cast_node = self.change_graph_input_type(graph, graph_input, TensorProto.INT32)
-            if new_cast_node:
-                new_cast_node_count += 1
-        logger.info(f"Graph inputs are changed to int32 and {new_cast_node_count} Cast nodes added.")
+            new_node, removed_nodes = self.change_graph_input_type(graph, graph_input, TensorProto.INT32)
+            if new_node:
+                add_cast_count += 1
+            remove_cast_count += len(removed_nodes)
+        logger.info(
+            f"Graph inputs are changed to int32. Added {add_cast_count} Cast nodes, and removed {remove_cast_count} Cast nodes."
+        )
 
     def use_dynamic_axes(self, dynamic_batch_dim='batch_size', dynamic_seq_len='max_seq_len'):
         """
