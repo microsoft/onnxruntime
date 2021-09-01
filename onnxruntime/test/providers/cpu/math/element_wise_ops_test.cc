@@ -1553,6 +1553,15 @@ TEST(MathOpTest, Xor) {
   test.Run();
 }
 
+
+TEST(MathOpTest, Xor_Issue8880) {
+  OpTester test("Xor");
+  test.AddInput<bool>("A", {1}, {true});
+  test.AddInput<bool>("B", {1}, {false});
+  test.AddOutput<bool>("C", {1}, {true});
+  test.Run();
+}
+
 TEST(MathOpTest, Xor_bcast3v2d) {
   OpTester test("Xor");
 
