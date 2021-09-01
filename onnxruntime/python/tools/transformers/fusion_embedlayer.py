@@ -19,10 +19,12 @@ class FusionEmbedLayerNoMask(Fusion):
      It supports the following model types: BERT, DistilBert, Roberta, ALBert, DistilRoberta.
     """
     def __init__(self, model: OnnxModel, description='no mask'):
-        super().__init__(model, "EmbedLayerNormalization", ["LayerNormalization", "SkipLayerNormalization"], description)
+        super().__init__(model, "EmbedLayerNormalization", ["LayerNormalization", "SkipLayerNormalization"],
+                         description)
         self.utils = FusionUtils(model)
-        self.attention = None
         self.shape_infer_helper = self.model.infer_runtime_shape({}, update=True)
+        # The following will be reset in each fuse call of FusionEmbedLayerNormalization
+        self.attention = None
         self.embed_node = None
 
     def match_two_gather(self, add):
@@ -60,13 +62,16 @@ class FusionEmbedLayerNoMask(Fusion):
             # For Albert, there is MatMul+Add after embedding layer before attention.
             if len(children) == 1 and children[0].op_type == "MatMul" and children[0].output[0] in input_name_to_nodes:
                 grandchildren = input_name_to_nodes[children[0].output[0]]
-                if len(grandchildren) == 1 and grandchildren[0].op_type == "Add" and grandchildren[0].output[0] in input_name_to_nodes:
+                if len(grandchildren) == 1 and grandchildren[0].op_type == "Add" and grandchildren[0].output[
+                        0] in input_name_to_nodes:
                     nodes = input_name_to_nodes[grandchildren[0].output[0]]
+                    for node in nodes:
+                        if node.op_type == "Attention":
+                            self.attention = node
+                            return True
                     children_types = sorted([child.op_type for child in nodes])
-                    if "Attention" in children_types:
-                        return True
-
-            children_types = sorted([child.op_type for child in children])
+            else:
+                children_types = sorted([child.op_type for child in children])
 
             # Two Shape nodes might be merged by ORT
             if is_distil_bert:
@@ -92,8 +97,6 @@ class FusionEmbedLayerNoMask(Fusion):
         # Cast segment_ids to int32.
         segment_ids, segment_ids_cast_node = self.cast_to_int32(segment_ids)
 
-
-
         return segment_ids, segment_embedding_gather
 
     def create_fused_node(self, input_ids, layernorm, word_embedding_gather, position_embedding_weight_node,
@@ -108,7 +111,7 @@ class FusionEmbedLayerNoMask(Fusion):
         if layernorm.op_type == "LayerNormalization":
             gamma = layernorm.input[1]
             beta = layernorm.input[2]
-        else: # SkipLayerNormalization
+        else:  # SkipLayerNormalization
             gamma = layernorm.input[2]
             beta = layernorm.input[3]
 
@@ -224,7 +227,9 @@ class FusionEmbedLayerNoMask(Fusion):
                                        |
                                 LayerNormalization
         """
-        path = self.model.match_parent_path(position_embedding_gather, ['Cast', 'Add', 'Cast', 'Mul', 'CumSum', 'Cast', 'Not', 'Equal'], [1, 0, 0, 0, 0, 0, 0, 0], output_name_to_node)
+        path = self.model.match_parent_path(position_embedding_gather,
+                                            ['Cast', 'Add', 'Cast', 'Mul', 'CumSum', 'Cast', 'Not', 'Equal'],
+                                            [1, 0, 0, 0, 0, 0, 0, 0], output_name_to_node)
         if path is not None:
             # constant input of Add shall be 1.
             i, value = self.model.get_constant_input(path[1])
@@ -237,9 +242,11 @@ class FusionEmbedLayerNoMask(Fusion):
                 return False
 
             return input_ids == path[-1].input[0]
-        
+
         # Deal with optional Cast
-        path = self.model.match_parent_path(position_embedding_gather, ['Add', 'Cast', 'Mul', 'CumSum', 'Cast', 'Not', 'Equal'], [1, 0, 0, 0, 0, 0, 0], output_name_to_node)
+        path = self.model.match_parent_path(position_embedding_gather,
+                                            ['Add', 'Cast', 'Mul', 'CumSum', 'Cast', 'Not', 'Equal'],
+                                            [1, 0, 0, 0, 0, 0, 0], output_name_to_node)
         if path is not None:
             return input_ids == path[-1].input[0]
 
@@ -265,7 +272,8 @@ class FusionEmbedLayerNoMask(Fusion):
                                        |
                                 LayerNormalization
         """
-        path = self.model.match_parent_path(position_embedding_gather, ['Slice', 'Unsqueeze', 'Gather', 'Shape'], [1, 2, 0, 0], output_name_to_node)
+        path = self.model.match_parent_path(position_embedding_gather, ['Slice', 'Unsqueeze', 'Gather', 'Shape'],
+                                            [1, 2, 0, 0], output_name_to_node)
         if path is not None:
             return input_ids == path[-1].input[0]
 
@@ -277,7 +285,7 @@ class FusionEmbedLayerNoMask(Fusion):
 
         if self.match_position_embedding_roberta(position_embedding_gather, input_ids, output_name_to_node):
             return True
-        
+
         if self.match_position_embedding_distilbert(position_embedding_gather, input_ids, output_name_to_node):
             return True
 
@@ -318,7 +326,8 @@ class FusionEmbedLayerNoMask(Fusion):
         if not self.check_embedding(word_embedding_gather, None, position_embedding_gather):
             return False
 
-        nodes_to_remove = [add_before_layernorm, word_embedding_gather, position_embedding_gather] + ([] if layernorm == add_before_layernorm else [layernorm])
+        nodes_to_remove = [add_before_layernorm, word_embedding_gather, position_embedding_gather
+                           ] + ([] if layernorm == add_before_layernorm else [layernorm])
         embed_node = self.create_fused_node(input_ids, layernorm, word_embedding_gather, position_embedding_gather,
                                             False, None, output_name_to_node, nodes_to_remove)
         self.finish_fusion(layernorm, embed_node, nodes_to_remove)
@@ -335,19 +344,18 @@ class FusionEmbedLayerNoMask(Fusion):
             input_ids_shape = self.shape_infer_helper.get_edge_shape(input_ids)
             position_ids_shape = self.shape_infer_helper.get_edge_shape(position_ids)
             assert input_ids_shape and position_ids_shape
-            if not (len(input_ids_shape)==2 and len(position_ids_shape) == 2 and input_ids_shape[1] == position_ids_shape[1]):
+            if not (len(input_ids_shape) == 2 and len(position_ids_shape) == 2
+                    and input_ids_shape[1] == position_ids_shape[1]):
                 logger.info(
-                    "Cannot fuse EmbedLayerNormalization: input_ids and position_ids not matched in 2nd dimension: {} vs {}".format(
-                        input_ids_shape, position_ids_shape))
+                    "Cannot fuse EmbedLayerNormalization: input_ids and position_ids not matched in 2nd dimension: {} vs {}"
+                    .format(input_ids_shape, position_ids_shape))
                 return False
 
             if segment_ids and not self.shape_infer_helper.compare_shape(input_ids, segment_ids):
                 logger.info(
-                    "Cannot fuse EmbedLayerNormalization: input_ids and segment_ids does not have same shape: {} != {}".format(
-                        input_ids_shape,self.shape_infer_helper.get_edge_shape(segment_ids)))
+                    "Cannot fuse EmbedLayerNormalization: input_ids and segment_ids does not have same shape: {} != {}".
+                    format(input_ids_shape, self.shape_infer_helper.get_edge_shape(segment_ids)))
                 return False
-
-            
 
         word_embedding_table = self.model.get_constant_value(word_embedding_gather.input[0])
         if word_embedding_table is None or len(word_embedding_table.shape) != 2:
@@ -370,14 +378,20 @@ class FusionEmbedLayerNoMask(Fusion):
         # In normal case, word embeding table is the largest, and segment embedding table is the smallest, while postion embedding table is in between.
         # TODO: use other information (like initializer names) to identify different embedding weights automatically.
         if word_embedding_table.shape[0] <= position_embedding_table.shape[0]:
-            logger.warn("size of word_embedding_table ({word_embedding_gather.input[0]}) < position_embedding_table ({position_embedding_gather.input[0]}) ")
+            logger.warn(
+                "size of word_embedding_table ({word_embedding_gather.input[0]}) < position_embedding_table ({position_embedding_gather.input[0]}) "
+            )
 
         if segment_ids:
             if word_embedding_table.shape[0] <= segment_embedding_table.shape[0]:
-                logger.warn("size of word_embedding_table ({word_embedding_gather.input[0]}:{word_embedding_table.shape[0]}) < segment_embedding_table ({segment_embedding_gather.input[0]}:{segment_embedding_table.shape[0]})")
+                logger.warn(
+                    "size of word_embedding_table ({word_embedding_gather.input[0]}:{word_embedding_table.shape[0]}) < segment_embedding_table ({segment_embedding_gather.input[0]}:{segment_embedding_table.shape[0]})"
+                )
 
             if position_embedding_table.shape[0] <= segment_embedding_table.shape[0]:
-                logger.warn("size of position_embedding_table ({position_embedding_gather.input[0]}:{position_embedding_table.shape[0]}) < segment_embedding_table ({segment_embedding_gather.input[0]}:{segment_embedding_table.shape[0]})")
+                logger.warn(
+                    "size of position_embedding_table ({position_embedding_gather.input[0]}:{position_embedding_table.shape[0]}) < segment_embedding_table ({segment_embedding_gather.input[0]}:{segment_embedding_table.shape[0]})"
+                )
 
         return True
 
@@ -385,7 +399,6 @@ class FusionEmbedLayerNoMask(Fusion):
         graph_input = self.model.find_graph_input(input_name)
         if graph_input is not None and graph_input.type.tensor_type.elem_type != TensorProto.INT32:
             cast_output, cast_node = self.cast_input_to_int32(input_name)
-
 
     def cast_to_int32(self, input):
         input_cast_node = None
@@ -447,8 +460,8 @@ class FusionEmbedLayerNoMask(Fusion):
             if first_add_path is None:
                 return
             add_before_layernorm = first_add_path[0]
-        else: # SkipLayerNormalization
-            add_before_layernorm = node # Add is fused into SkipLayerNormalization
+        else:  # SkipLayerNormalization
+            add_before_layernorm = node  # Add is fused into SkipLayerNormalization
 
         if self.fuse_distilbert(node, add_before_layernorm, input_name_to_nodes, output_name_to_node):
             return
@@ -457,25 +470,22 @@ class FusionEmbedLayerNoMask(Fusion):
             return
 
 
-
 class FusionEmbedLayerNormalization(FusionEmbedLayerNoMask):
     def __init__(self, model: OnnxModel):
         super().__init__(model, "with mask")
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
-        old_count = len(self.nodes_to_add)
-
+        # Reset attention and embed_node so that we know fusion is successful when they are not None.
+        self.attention = None
+        self.embed_node = None
         super().fuse(node, input_name_to_nodes, output_name_to_node)
-        if len(self.nodes_to_add) == old_count:
-            return
 
-        if self.attention is not None:
+        if self.attention and self.embed_node:
             mask_index = self.attention.input[3]
             if mask_index in output_name_to_node:
                 node = output_name_to_node[mask_index]
                 if node.op_type == "ReduceSum":
                     embed_node = self.embed_node
-                    assert embed_node is not None
                     mask_input_name = node.input[0]
                     self.nodes_to_remove.extend([node])
                     embed_node.input.append(mask_input_name)
