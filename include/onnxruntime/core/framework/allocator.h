@@ -130,12 +130,12 @@ class IAllocator {
      Create a std::unique_ptr that is allocated and freed by the provided IAllocator.
      @param allocator The allocator.
      @param count_or_bytes The exact bytes to allocate if T is void, otherwise the number of elements to allocate.
-     @param is_transient If true, call Reserve() instead of Alloc() to allocate memory.
+     @param use_reserve If true, call Reserve() instead of Alloc() to allocate memory.
      @returns std::unique_ptr with allocated memory and deleter.
   */
   template <typename T>
   static IAllocatorUniquePtr<T> MakeUniquePtr(std::shared_ptr<IAllocator> allocator, size_t count_or_bytes,
-                                              bool is_transient = false) {
+                                              bool use_reserve = false) {
     if (allocator == nullptr) return nullptr;
     // for now limit to fundamental types. we could support others, but to do so either we or the caller
     // needs to call the dtor for the objects, for buffers allocated on device we don't have destructor
@@ -154,7 +154,7 @@ class IAllocator {
     }
 
     return IAllocatorUniquePtr<T>{
-        static_cast<T*>(is_transient ? allocator->Reserve(alloc_size) : allocator->Alloc(alloc_size)),  // allocate
+        static_cast<T*>(use_reserve ? allocator->Reserve(alloc_size) : allocator->Alloc(alloc_size)),  // allocate
         [=](T* ptr) {  // capture 'allocator' by value so it's always valid
           allocator->Free(ptr);
         }};
