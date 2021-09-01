@@ -364,12 +364,10 @@ jobs:
      dir
     workingDirectory: '$(Build.BinariesDirectory)/nuget-artifact'
     displayName: 'List artifacts'
-
   - script: |
      mklink /D /J models C:\local\models
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Create models link'
-
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 5.7.0
     inputs:
@@ -407,18 +405,19 @@ jobs:
       configuration: RelWithDebInfo
       arguments: '--configuration RelWithDebInfo -t:CreatePackage -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-  - task: BatchScript@1
-    displayName: 'Bundle Native NuGet and other binaries'
+  
+  - task: CopyFiles@2
+    displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
     inputs:
-      filename: $(Build.SourcesDirectory)\tools\ci_build\github\windows\bundle_dlls.bat
-      workingFolder: $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+      Contents: '*.nupkg'
+      TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
   - task: CopyFiles@2
     displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
     inputs:
-      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts'
-      Contents: '*.nupkg'
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+      Contents: '*.snupkg'
       TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
   - task: CopyFiles@2
@@ -438,7 +437,7 @@ jobs:
     parameters:
       NugetPath: '$(Build.ArtifactStagingDirectory)'
       NugetPackage: 'Microsoft.ML.OnnxRuntime.*nupkg'
-      PlatformsSupported: 'win-x64,win-x86,linux-x64,osx-x64'
+      PlatformsSupported: 'win-x64,win-x86,linux-x64,osx.10.13-x64'
       VerifyNugetSigning: false
 
   - task: PublishPipelineArtifact@0
@@ -447,11 +446,6 @@ jobs:
       artifactName: 'drop-signed-nuget-CPU'
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
-  - powershell: |
-     $counter = 0
-     Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.nupkg | foreach {7z x -y -o$counter $_.fullname;$counter++}
-    workingDirectory: '$(Build.ArtifactStagingDirectory)'
-    displayName: 'Unzip files to sanitize the PE files'
 
   - task: DotNetCoreCLI@2
     displayName: 'Build C#'
@@ -462,9 +456,6 @@ jobs:
       configuration: RelWithDebInfo
       arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-  - task: BinSkim@4
-    displayName: 'Run BinSkim'
 
   - task: RoslynAnalyzers@2
     displayName: 'Run Roslyn Analyzers'
@@ -481,7 +472,6 @@ jobs:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
     condition: always()
-
 
 - template: ../nuget/templates/test_win.yml
   parameters:
