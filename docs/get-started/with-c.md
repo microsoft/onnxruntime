@@ -1,8 +1,7 @@
 ---
 title: C
 parent: Get Started
-toc: true
-nav_order: 5
+nav_exclude: true
 ---
 # Get Started
 {: .no_toc }
