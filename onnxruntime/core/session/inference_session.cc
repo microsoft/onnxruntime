@@ -110,28 +110,25 @@ Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_verbose,
   for (const auto& node : graph.Nodes()) {
     const auto& node_provider = node.GetExecutionProviderType();
     if (node_provider.empty()) {
-      std::ostringstream oss;
-      oss << "Could not find an implementation for the node ";
-      if (!node.Name().empty()) {
-        oss << node.Name() << ":";
-      }
-      oss << node.OpType() << "(" << node.SinceVersion() << ")";
-
-      return Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED, oss.str());
-    } else {
-      if (is_verbose) {  // TODO: should we disable this if the number of nodes are above a certain threshold?
-        std::string node_str = node.OpType();
-        node_str += " (";
-        node_str += node.Name();
-        node_str += ")";
-        node_placements[node_provider].push_back(node_str);
-      }
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "Could not find an implementation for ",
+                             node.OpType(), "(", node.SinceVersion(), ") node with name '", node.Name(), "'");
     }
+
+#if !defined(ORT_MINIMAL_BUILD)
+    if (is_verbose) {  // TODO: should we disable this if the number of nodes is above a certain threshold?
+      const std::string node_str = node.OpType() + " (" + node.Name() + ")";
+      node_placements[node_provider].push_back(node_str);
+    }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
     // recurse into subgraphs
     const auto subgraphs = node.GetSubgraphs();
     for (const auto& subgraph : subgraphs) {
-      ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEpImpl(*subgraph, is_verbose, node_placements));
+      const auto status = VerifyEachNodeIsAssignedToAnEpImpl(*subgraph, is_verbose, node_placements);
+      if (!status.IsOK()) {
+        return status;
+      }
     }
   }
 
@@ -140,10 +137,16 @@ Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_verbose,
 
 Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger& logger) {
   NodePlacementMap node_placements{};
+#if !defined(ORT_MINIMAL_BUILD)
   const bool is_verbose_mode = logger.GetSeverity() == logging::Severity::kVERBOSE;
+#else
+  ORT_UNUSED_PARAMETER(logger);
+  const bool is_verbose_mode = false;
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
-  ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEpImpl(graph, is_verbose_mode, node_placements));
+  const auto status = VerifyEachNodeIsAssignedToAnEpImpl(graph, is_verbose_mode, node_placements);
 
+#if !defined(ORT_MINIMAL_BUILD)
   // print placement info
   if (is_verbose_mode) {
     LOGS(logger, VERBOSE) << "Node placements";
@@ -158,8 +161,9 @@ Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger&
       }
     }
   }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
-  return Status::OK();
+  return status;
 }
 }  // namespace
 
