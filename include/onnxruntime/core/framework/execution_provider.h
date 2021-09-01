@@ -50,9 +50,9 @@ struct NodeComputeInfo {
 
 class IExecutionProvider {
  protected:
-  IExecutionProvider(const std::string& type, bool use_metadef_id_creator = false)
+  IExecutionProvider(const std::string& type, bool use_model_id_creator = false)
       : type_{type} {
-    if (use_metadef_id_creator) {
+    if (use_model_id_creator) {
       model_id_generator_ = std::make_unique<ModelIdGenerator>();
     }
   }
