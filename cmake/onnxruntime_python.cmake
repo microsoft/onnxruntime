@@ -396,6 +396,9 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_srcs}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      ${CMAKE_CURRENT_BINARY_DIR}/_pybind_state.py
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_capi_training_srcs}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training/
