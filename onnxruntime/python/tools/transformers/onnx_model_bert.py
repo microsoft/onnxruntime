@@ -136,7 +136,7 @@ class BertOnnxModel(OnnxModel):
         assert self.find_graph_input(graph_input.name)
 
         if graph_input.type.tensor_type.elem_type == int(new_type):
-            return None
+            return None, []
 
         new_cast_node = None
         nodes_to_remove = []
