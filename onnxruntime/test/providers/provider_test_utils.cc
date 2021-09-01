@@ -548,6 +548,7 @@ void OpTester::AddShapeToTensorData(NodeArg& node_arg, const std::vector<int64_t
   }
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 static std::unique_ptr<SparseTensor> MakeSparseTensor(MLDataType data_type, const std::vector<int64_t>& dims) {
   TensorShape shape{dims};
   auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
@@ -673,7 +674,7 @@ void OpTester::AddSparseCsrTensorStrings(std::vector<Data>& data,
   NodeArg node_arg = MakeSparseNodeArg(dtype, name, dims, dim_params);
   AddSparseTensorData(data, std::move(node_arg), std::move(p_tensor), CheckParams());
 }
-
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 void OpTester::AddInitializers(onnxruntime::Graph& graph) {
   for (auto index : initializer_index_) {
@@ -851,9 +852,10 @@ std::vector<OrtValue> OpTester::ExecuteModel(
                           expected_shape.NumDimensions());
               for (size_t d = 0; d < inferred_dims.size(); ++d) {
                 // check equal unless the input involved a symbolic dimension
-                if (inferred_dims[d] != -1)
+                if (inferred_dims[d] != -1) {
                   EXPECT_EQ(expected_shape[d], inferred_dims[d])
                       << "Output idx = " << idx << " dim = " << d;
+                }
               }
             }
             Check(expected_data, ort_value.Get<Tensor>(), provider_type);
@@ -1094,7 +1096,8 @@ void OpTester::Run(
               provider_type == onnxruntime::kTensorrtExecutionProvider ||
               provider_type == onnxruntime::kNupharExecutionProvider ||
               provider_type == onnxruntime::kNnapiExecutionProvider ||
-              provider_type == onnxruntime::kCoreMLExecutionProvider)
+              provider_type == onnxruntime::kCoreMLExecutionProvider ||
+              provider_type == onnxruntime::kDnnlExecutionProvider)
             continue;
           auto reg = execution_provider->GetKernelRegistry();
           if (!KernelRegistry::HasImplementationOf(*reg, node, execution_provider->Type())) {

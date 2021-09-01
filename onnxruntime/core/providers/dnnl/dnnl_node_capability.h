@@ -103,6 +103,7 @@ class DnnlPoolNodeCapability : public DnnlDefaultNodeCapability {
  private:
   bool IsAttributeSupported(const Node* node) const;
   bool IsDimensionSupported(const Node* node) const;
+  bool IsMaxPoolIndicesSupported(const Node* node) const;
 };
 
 /**
@@ -131,6 +132,22 @@ class DnnlReduceMeanNodeCapability : public DnnlDefaultNodeCapability {
 
  private:
   bool IsAttributeSupported(const Node* node) const;
+  bool IsDimensionSupported(const Node* node) const;
+};
+
+/**
+ * Decide if a Softmax op is supported by DnnlExecutionProvider
+ *
+ * Dnnl Softmax doesnt support few attribute values for opset < 13 with axis values anything other than 2
+ */
+class DnnlSoftmaxNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlSoftmaxNodeCapability() : DnnlDefaultNodeCapability({"float"}) {}
+
+  bool Supported(const Node* node) const override;
+
+ private:
+  bool IsAttributeSupported(const Node* node) const;
 };
 
 /**
@@ -144,6 +161,74 @@ class DnnlMatMulNodeCapability : public DnnlDefaultNodeCapability {
 
  private:
   bool IsDimensionSupported(const Node* node) const;
+};
+
+/**
+ * Decide if a MatMulInteger op is supported by DnnlExecutionProvider
+ */
+class DnnlMatMulIntegerNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlMatMulIntegerNodeCapability() : DnnlDefaultNodeCapability({"int8", "uint8"}) {}
+
+  bool Supported(const Node* node) const override;
+
+ private:
+  bool IsDimensionSupported(const Node* node) const;
+};
+
+/**
+ * Decide if aSum op is supported by DnnlExecutionProvider
+ * OneDNN does not support Numpy-style broadcasting for 'Sum'
+ */
+class DnnlSumNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  // OneDNN reports support for sum of type f32, f16, bf16, i8 and u8
+  // Onnx reports support for float, float16, bfloat16, and double
+  // Onnxruntime only has unittests for float and double.
+  // To enable float16 and bfloat16 we will should add tests to verify those data types.
+  DnnlSumNodeCapability() : DnnlDefaultNodeCapability({"float" /*, "float16", "bfloat16", "int8", "uint8"*/}) {}
+
+  bool Supported(const Node* node) const override;
+
+ private:
+  bool IsDimensionSupported(const Node* node) const;
+};
+
+/**
+ * Decide if a Binary op is supported by DnnlExecutionProvider
+ */
+class DnnlBinaryNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlBinaryNodeCapability() : DnnlDefaultNodeCapability({"int8", "uint8", "float"}) {}
+
+  bool Supported(const Node* node) const override;
+
+ private:
+  bool IsDimensionSupported(const Node* node) const;
+};
+
+class DnnlElementwiseCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlElementwiseCapability() : DnnlDefaultNodeCapability({"float"}) {}
+
+  bool Supported(const Node* node) const override;
+
+ private:
+  bool IsDimensionSupported(const Node* node) const;
+};
+
+/**
+ * Decide if a Gemm op is supported by DnnlExecutionProvider
+ */
+class DnnlGemmNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlGemmNodeCapability() : DnnlDefaultNodeCapability({"float"}) {}
+
+  bool Supported(const Node* node) const override;
+
+ private:
+  DnnlMatMulNodeCapability _matmul;
+  DnnlBinaryNodeCapability _binary;
 };
 
 }  // namespace onnxruntime

@@ -3,7 +3,7 @@ trigger: none
 jobs:
 - job: Onnxruntime_Linux_pytorch_export
 
-  timeoutInMinutes: 90
+  timeoutInMinutes: 120
 
   steps:
   - checkout: self

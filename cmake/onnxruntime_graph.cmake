@@ -26,10 +26,13 @@ if (onnxruntime_MINIMAL_BUILD)
     "${ONNXRUNTIME_ROOT}/core/graph/function*"
   )
 
-  # no optimizer support initially
-  list(APPEND onnxruntime_graph_src_exclude_patterns
-    "${ONNXRUNTIME_ROOT}/core/graph/graph_utils.*"
-  )
+  # no optimizer support in base minimal build
+  # some optimizer support in extended minimal build
+  if (NOT onnxruntime_EXTENDED_MINIMAL_BUILD)
+    list(APPEND onnxruntime_graph_src_exclude_patterns
+      "${ONNXRUNTIME_ROOT}/core/graph/graph_utils.*"
+    )
+  endif()
 endif()
 
 if (onnxruntime_DISABLE_CONTRIB_OPS)
@@ -81,7 +84,9 @@ endif()
 onnxruntime_add_static_library(onnxruntime_graph ${onnxruntime_graph_lib_src})
 add_dependencies(onnxruntime_graph onnx_proto flatbuffers)
 onnxruntime_add_include_to_target(onnxruntime_graph onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
-
+if(NOT MSVC)
+  target_compile_options(onnxruntime_graph PRIVATE "-Wno-parentheses")
+endif()
 if (onnxruntime_ENABLE_TRAINING)
   #TODO: the graph library should focus on ONNX IR, it shouldn't depend on math libraries like MKLML/OpenBlas
   target_include_directories(onnxruntime_graph PRIVATE ${MKLML_INCLUDE_DIR})

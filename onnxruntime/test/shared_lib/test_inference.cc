@@ -23,6 +23,7 @@
 #include "test_fixture.h"
 #include "utils.h"
 #include "custom_op_utils.h"
+#include <gsl/gsl>
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -175,6 +176,12 @@ static constexpr PATH_TYPE VARIED_INPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/f
 static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_bar_1.onnx");
 static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/foo_bar_2.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_WITH_ATTRIBUTES_URI = TSTR("testdata/foo_bar_3.onnx");
+#if !defined(DISABLE_SPARSE_TENSORS)
+static constexpr PATH_TYPE SPARSE_OUTPUT_MODEL_URI = TSTR("testdata/sparse_initializer_as_output.onnx");
+#ifndef DISABLE_CONTRIB_OPS
+static constexpr PATH_TYPE SPARSE_INPUT_MATMUL_MODEL_URI = TSTR("testdata/sparse_to_dense_matmul.onnx");
+#endif
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 #ifdef ENABLE_EXTENSION_CUSTOM_OPS
 static constexpr PATH_TYPE ORT_CUSTOM_OPS_MODEL_URI = TSTR("testdata/custom_op_string_lower.onnx");
@@ -238,6 +245,123 @@ TEST(CApiTest, dim_param) {
 INSTANTIATE_TEST_SUITE_P(CApiTestWithProviders,
                          CApiTestWithProvider,
                          ::testing::Values(0, 1, 2, 3, 4));
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+TEST(CApiTest, SparseOutputModel) {
+  std::vector<int64_t> dense_shape{3, 3};
+  std::vector<float> values{1.764052391052246, 0.40015721321105957, 0.978738009929657};
+  std::vector<int64_t> values_shape{3};
+  std::vector<int64_t> coo_indices{2, 3, 5};
+  std::vector<int64_t> indices_shape{3};
+
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> input_names;
+  const char* const output_names[] = {"values"};
+  Ort::Session session(*ort_env, SPARSE_OUTPUT_MODEL_URI, Ort::SessionOptions{});
+  auto ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
+                                   output_names, 1);
+  ASSERT_EQ(ort_outputs.size(), 1U);
+  const auto& sparse_output = ort_outputs[0];
+  auto ti = sparse_output.GetTypeInfo();
+  ASSERT_EQ(ONNX_TYPE_SPARSETENSOR, ti.GetONNXType());
+  auto tensor_type_shape = ti.GetTensorTypeAndShapeInfo();
+  ASSERT_EQ(dense_shape, tensor_type_shape.GetShape());
+  ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, tensor_type_shape.GetElementType());
+
+  ASSERT_EQ(ORT_SPARSE_COO, sparse_output.GetSparseFormat());
+  auto values_ts = sparse_output.GetSparseTensorValuesTypeAndShapeInfo();
+  ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, values_ts.GetElementType());
+  ASSERT_EQ(values_shape, values_ts.GetShape());
+
+  const auto* values_fetch = sparse_output.GetSparseTensorValues<float>();
+  auto val_span = gsl::make_span(values_fetch, values.size());
+  ASSERT_TRUE(std::equal(values.cbegin(), values.cend(), val_span.cbegin(), val_span.cend()));
+
+  auto indices_ts = sparse_output.GetSparseTensorIndicesTypeShapeInfo(ORT_SPARSE_COO_INDICES);
+  ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, indices_ts.GetElementType());
+  ASSERT_EQ(indices_shape, indices_ts.GetShape());
+
+  size_t num_indices = 0;
+  const int64_t* indices = sparse_output.GetSparseTensorIndicesData<int64_t>(ORT_SPARSE_COO_INDICES, num_indices);
+  ASSERT_EQ(num_indices, static_cast<size_t>(indices_shape[0]));
+  auto ind_span = gsl::make_span(indices, num_indices);
+  ASSERT_TRUE(std::equal(coo_indices.cbegin(), coo_indices.cend(), ind_span.cbegin(), ind_span.cend()));
+}
+
+#ifndef DISABLE_CONTRIB_OPS
+TEST(CApiTest, SparseInputModel) {
+
+  std::vector<int64_t> common_shape{9, 9};  // inputs and outputs same shape
+  std::vector<float> A_values{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0,
+                              10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0,
+                              18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0,
+                              26.0, 27.0, 28.0, 29.0, 30.0, 31.0, 32.0, 33.0,
+                              34.0, 35.0, 36.0, 37.0, 38.0, 39.0, 40.0, 41.0,
+                              42.0, 43.0, 44.0, 45.0, 46.0, 47.0, 48.0, 49.0,
+                              50.0, 51.0, 52.0, 53.0};
+
+  // 2 - D index
+  std::vector<int64_t> indices_shape{gsl::narrow<int64_t>(A_values.size()), 2};
+  std::vector<int64_t> A_indices{0, 1, 0, 2, 0, 6, 0, 7, 0, 8, 1, 0, 1,
+                                 1, 1, 2, 1, 6, 1, 7, 1, 8, 2, 0, 2, 1,
+                                 2, 2, 2, 6, 2, 7, 2, 8, 3, 3, 3, 4, 3,
+                                 5, 3, 6, 3, 7, 3, 8, 4, 3, 4, 4, 4, 5,
+                                 4, 6, 4, 7, 4, 8, 5, 3, 5, 4, 5, 5, 5,
+                                 6, 5, 7, 5, 8, 6, 0, 6, 1, 6, 2, 6, 3,
+                                 6, 4, 6, 5, 7, 0, 7, 1, 7, 2, 7, 3, 7,
+                                 4, 7, 5, 8, 0, 8, 1, 8, 2, 8, 3, 8, 4,
+                                 8, 5};
+
+  std::vector<float> B_data{0, 1, 2, 0, 0, 0, 3, 4, 5,
+                            6, 7, 8, 0, 0, 0, 9, 10, 11,
+                            12, 13, 14, 0, 0, 0, 15, 16, 17,
+                            0, 0, 0, 18, 19, 20, 21, 22, 23,
+                            0, 0, 0, 24, 25, 26, 27, 28, 29,
+                            0, 0, 0, 30, 31, 32, 33, 34, 35,
+                            36, 37, 38, 39, 40, 41, 0, 0, 0,
+                            42, 43, 44, 45, 46, 47, 0, 0, 0,
+                            48, 49, 50, 51, 52, 53, 0, 0, 0};
+
+   std::vector<float> Y_result{546, 561, 576, 552, 564, 576, 39, 42, 45,
+                              1410, 1461, 1512, 1362, 1392, 1422, 201, 222, 243,
+                              2274, 2361, 2448, 2172, 2220, 2268, 363, 402, 441,
+                              2784, 2850, 2916, 4362, 4485, 4608, 1551, 1608, 1665,
+                              3540, 3624, 3708, 5604, 5763, 5922, 2037, 2112, 2187,
+                              4296, 4398, 4500, 6846, 7041, 7236, 2523, 2616, 2709,
+                              678, 789, 900, 2892, 3012, 3132, 4263, 4494, 4725,
+                              786, 915, 1044, 3324, 3462, 3600, 4911, 5178, 5445,
+                              894, 1041, 1188, 3756, 3912, 4068, 5559, 5862, 6165};
+
+   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+   Ort::Value::Shape ort_dense_shape{common_shape.data(), common_shape.size()};
+   Ort::Value::Shape ort_values_shape{&indices_shape[0], 1U};
+   auto a_st = Ort::Value::CreateSparseTensor(info, A_values.data(), ort_dense_shape, ort_values_shape);
+   a_st.UseCooIndices(A_indices.data(), A_indices.size());
+
+   auto b_tensor = Ort::Value::CreateTensor(info, B_data.data(), B_data.size(), common_shape.data(), common_shape.size());
+
+   std::vector<Ort::Value> ort_inputs;
+   ort_inputs.push_back(std::move(a_st));
+   ort_inputs.push_back(std::move(b_tensor));
+   const char* input_names[] = {"sparse_A", "dense_B"};
+   const char* const output_names[] = {"dense_Y"};
+   Ort::Session session(*ort_env, SPARSE_INPUT_MATMUL_MODEL_URI, Ort::SessionOptions{});
+   auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
+                                  output_names, 1);
+   ASSERT_EQ(ort_outputs.size(), 1U);
+   const auto& dense_Y = ort_outputs[0];
+   ASSERT_TRUE(dense_Y.IsTensor());
+
+   auto result_ts = dense_Y.GetTensorTypeAndShapeInfo();
+   ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, result_ts.GetElementType());
+   ASSERT_EQ(common_shape, result_ts.GetShape());
+
+   const auto* result_vals = dense_Y.GetTensorData<float>();
+   auto result_span = gsl::make_span(result_vals, Y_result.size());
+   ASSERT_TRUE(std::equal(Y_result.cbegin(), Y_result.cend(), result_span.cbegin(), result_span.cend()));
+}
+#endif // DISABLE_CONTRIB_OPS
+#endif // !defined(DISABLE_SPARSE_TENSORS)
 
 TEST(CApiTest, custom_op_handler) {
   std::cout << "Running custom op inference" << std::endl;

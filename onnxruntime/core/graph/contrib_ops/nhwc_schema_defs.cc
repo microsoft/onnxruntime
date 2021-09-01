@@ -94,6 +94,9 @@ class NhwcInferenceContext : public InferenceContext {
     return nullptr;
   }
 
+  const TensorShapeProto* getSymbolicInput(size_t) const override {
+    return nullptr;
+  }
 
  private:
   InferenceContext& ctx_;

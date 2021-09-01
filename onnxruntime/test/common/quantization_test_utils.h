@@ -42,6 +42,20 @@ inline std::vector<T> QuantizeLinearTestVector(
   return result;
 }
 
+template <typename T>
+std::vector<T> ToVector(const int* value, int size) {
+  std::vector<T> data(size);
+  for (int i = 0; i < size; i++) {
+    data[i] = static_cast<T>(value[i]);
+  }
+  return data;
+}
+
+template <typename T>
+T GetMiddle(const std::vector<T>& v) {
+  const auto min_max_pair = std::minmax_element(v.begin(), v.end());
+  return (*(min_max_pair.first) + *(min_max_pair.second)) / 2;
+}
+
 }  // namespace test
 }  // namespace onnxruntime
-

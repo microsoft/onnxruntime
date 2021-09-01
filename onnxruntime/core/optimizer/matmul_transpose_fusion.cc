@@ -142,13 +142,14 @@ static Node* ReorderCastAndTranspose(Graph& graph, Node* cast,
   const std::vector<NodeArg*> new_transpose_input_defs = {&new_cast_output};
   const std::vector<NodeArg*> new_transpose_output_defs = {cast_output};
 
-  (void)graph.AddNode(graph.GenerateNodeName(cast->Name() + "_transformed"),
+  Node& new_cast = graph.AddNode(graph.GenerateNodeName(cast->Name() + "_transformed"),
                       cast->OpType(),
                       "Created a new Cast node to interchange Cast and Transpose nodes",
                       new_cast_input_defs,
                       new_cast_output_defs,
                       &cast->GetAttributes(),
                       cast->Domain());
+  new_cast.SetExecutionProviderType(cast->GetExecutionProviderType());
 
   Node& new_transpose = graph.AddNode(graph.GenerateNodeName(transpose->Name() + "_transformed"),
                                       transpose->OpType(),
@@ -157,6 +158,7 @@ static Node* ReorderCastAndTranspose(Graph& graph, Node* cast,
                                       new_transpose_output_defs,
                                       &transpose->GetAttributes(),
                                       transpose->Domain());
+  new_transpose.SetExecutionProviderType(transpose->GetExecutionProviderType());
 
   size_t consumers = UpdateConsumerCount(graph, transpose->MutableOutputDefs()[0], consumer_count);
   graph_utils::RemoveNodeOutputEdges(graph, *cast);

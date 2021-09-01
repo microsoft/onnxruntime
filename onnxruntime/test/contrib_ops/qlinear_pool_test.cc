@@ -420,5 +420,47 @@ TEST(QLinearPoolTest, AveragePool3D_IncludePadPixel_nhwc) {
       1);                  // count_include_pad
 }
 
+
+TEST(QLinearPoolTest, AveragePool2D_BigImage) {
+  RunQLinearAveragePoolNchwU8(
+      {1, 1, 32, 64},  // x shape
+      {1, 1, 32, 64},  // expected y shape
+      {3, 3},          // kernel shape
+      {1, 1},          // strides
+      {1, 1, 1, 1},    // pads
+      1);              // count_include_pad
+}
+
+TEST(QLinearPoolTest, AveragePool2D_BigImage_nhwc) {
+  RunQLinearAveragePoolNhwcU8(
+      {1, 1, 32, 64},  // x shape
+      {1, 1, 32, 64},  // expected y shape
+      {3, 3},          // kernel shape
+      {1, 1},          // strides
+      {1, 1, 1, 1},    // pads
+      1);              // count_include_pad
+}
+
+TEST(QLinearPoolTest, AveragePool2D_Global) {
+  RunQLinearAveragePoolNchwU8(
+      {1, 2, 32, 16},  // x shape
+      {1, 2, 1, 1},    // expected y shape
+      {32, 16},        // kernel shape
+      {1, 1},          // strides
+      {0, 0, 0, 0},    // pads
+      1);              // count_include_pad
+}
+
+TEST(QLinearPoolTest, AveragePool2D_Global_nhwc) {
+  RunQLinearAveragePoolNhwcU8(
+      {1, 2, 32, 16},  // x shape
+      {1, 2, 1, 1},    // expected y shape
+      {32, 16},        // kernel shape
+      {1, 1},          // strides
+      {0, 0, 0, 0},    // pads
+      1);              // count_include_pad
+}
+
+
 }  // namespace test
 }  // namespace onnxruntime

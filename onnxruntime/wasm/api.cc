@@ -103,6 +103,11 @@ OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
 
   RETURN_NULLPTR_IF_ERROR(SetSessionLogVerbosityLevel, session_options, log_verbosity_level);
 
+#ifdef ENABLE_EXTENSION_CUSTOM_OPS
+  // Enable ORT CustomOps in onnxruntime-extensions
+  RETURN_NULLPTR_IF_ERROR(EnableOrtCustomOps, session_options);
+#endif
+
   return session_options;
 }
 
@@ -121,11 +126,6 @@ OrtSession* OrtCreateSession(void* data, size_t data_length, OrtSessionOptions* 
   if (session_options == nullptr) {
     return nullptr;
   }
-
-#ifdef ENABLE_EXTENSION_CUSTOM_OPS
-  // Enable ORT CustomOps in onnxruntime-extensions
-  RETURN_NULLPTR_IF_ERROR(EnableOrtCustomOps, session_options);
-#endif
 
 #if defined(__EMSCRIPTEN_PTHREADS__)
   RETURN_NULLPTR_IF_ERROR(DisablePerSessionThreads, session_options);

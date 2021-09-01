@@ -14,6 +14,7 @@ Pod::Spec.new do |s|
   s.ios.deployment_target = '@IOS_DEPLOYMENT_TARGET@'
   s.preserve_paths = [ @LICENSE_FILE@ ]
   s.default_subspec = "Core"
+  s.static_framework = true
 
   s.subspec "Core" do |core|
     core.dependency "onnxruntime-mobile-c", "#{s.version}"
@@ -28,7 +29,7 @@ Pod::Spec.new do |s|
 
     core.pod_target_xcconfig = {
       "HEADER_SEARCH_PATHS" => include_dirs.join(" "),
-      "EXCLUDED_ARCHS[sdk=iphonesimulator*]": "arm64",
+      "OTHER_CPLUSPLUSFLAGS" => "-fvisibility=hidden -fvisibility-inlines-hidden",
     }
 
     core.public_header_files = [

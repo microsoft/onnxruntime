@@ -12,6 +12,7 @@ set(WINML_TEST_INC_DIR
   ${REPO_ROOT}/cmake/external/protobuf/src
   ${REPO_ROOT}/cmake/external/wil/include
   ${REPO_ROOT}/cmake/external/SafeInt
+  ${REPO_ROOT}/cmake/external/optional-lite/include
   ${CMAKE_CURRENT_BINARY_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated
@@ -190,7 +191,7 @@ set_winml_target_properties(winml_google_test_lib)
 set_winml_target_properties(winml_test_common)
 get_winml_test_api_src(${WINML_TEST_SRC_DIR} winml_test_api_src)
 
-if (NOT ${winml_is_inbox})
+if (NOT WINDOWS_STORE AND NOT ${winml_is_inbox})
   get_winml_test_api_redist_only_src(${WINML_TEST_SRC_DIR} winml_test_api_redist_only_src)
 endif()
 

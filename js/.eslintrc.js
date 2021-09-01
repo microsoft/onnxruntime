@@ -1,3 +1,8 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+'use strict';
+
 module.exports = {
   root: true,
   ignorePatterns: ['**/*.js', 'node_modules/', 'types/', 'dist/'],
@@ -64,7 +69,7 @@ module.exports = {
     'eqeqeq': ['error', 'smart'],
     'guard-for-in': 'error',
     'id-match': 'error',
-    'max-len': ['error', { 'code': 120 }],
+    'max-len': ['error', { 'code': 120, 'ignorePattern': '^import\\s.+\\sfrom\\s.+;$' }],
     'new-parens': 'error',
     'no-bitwise': 'error',
     'no-caller': 'error',

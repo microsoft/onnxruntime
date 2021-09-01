@@ -5,13 +5,13 @@
 
 namespace onnxruntime {
 
+#if !defined(ORT_MINIMAL_BUILD)
 SelectorActionTransformer::SelectorActionTransformer(const std::string& name,
                                                      SelectorsAndActions&& selectors_and_actions,
                                                      bool save)
     : GraphTransformer{name},
       selectors_and_actions_{std::move(selectors_and_actions)},
       save_{save} {
-#if !defined(ORT_MINIMAL_BUILD)
   // setup a map so we lookup by operator type efficiently
   for (const auto& map_entry : selectors_and_actions_.SelectorsAndActionsMap()) {
     for (const auto& op_info : map_entry.second->ops_and_versions) {
@@ -20,8 +20,14 @@ SelectorActionTransformer::SelectorActionTransformer(const std::string& name,
       ORT_ENFORCE(inserted, "Multiple entries for operator is not supported. OpType=", op_info.first);
     }
   }
-#endif
 }
+#else
+SelectorActionTransformer::SelectorActionTransformer(const std::string& name,
+                                                     SelectorsAndActions&& selectors_and_actions,
+                                                     bool /*save*/)
+    : GraphTransformer{name},
+      selectors_and_actions_{std::move(selectors_and_actions)} {}
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
 void SelectorsAndActions::RegisterSelectorAndAction(const std::string& name,

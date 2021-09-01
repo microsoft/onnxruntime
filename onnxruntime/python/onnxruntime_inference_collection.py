@@ -205,7 +205,7 @@ class Session:
         :param input_feed: dictionary ``{ input_name: input_ort_value }``
          See ``OrtValue`` class how to create OrtValue from numpy array or SparseTensor
         :param run_options: See :class:`onnxruntime.RunOptions`.
-        :return an array of OrtValues
+        :return: an array of OrtValues
         ::
 
             sess.run([output_name], {input_name: x})
@@ -669,7 +669,7 @@ class SparseTensor:
          have a 1-D shape when it contains a linear index of non-zero values and its length must be equal to
          that of the values. It can also be of 2-D shape, in which has it contains pairs of coordinates for
          each of the nnz values and its length must be exactly twice of the values length.
-        :param ort_device - describes the backing memory owned by the supplied nummpy arrays. Only CPU memory is
+        :param ort_device: - describes the backing memory owned by the supplied nummpy arrays. Only CPU memory is
          suppored for non-numeric data types.
 
          For primitive types, the method will map values and coo_indices arrays into native memory and will use
@@ -693,7 +693,7 @@ class SparseTensor:
          Its length must be equal to that of the values.
         :param outer_indices:  contiguous 1-D numpy array(int64) that contains CSR outer indices for the tensor.
          Its length must be equal to the number of rows + 1.
-        :param ort_device - describes the backing memory owned by the supplied nummpy arrays. Only CPU memory is
+        :param ort_device: - describes the backing memory owned by the supplied nummpy arrays. Only CPU memory is
          suppored for non-numeric data types.
 
          For primitive types, the method will map values and indices arrays into native memory and will use them as
@@ -747,7 +747,7 @@ class SparseTensor:
     def to_cuda(self, ort_device):
         '''
         Returns a copy of this instance on the specified cuda device
-        :param ort_device with name 'cuda' and valid gpu device id
+        :param ort_device: with name 'cuda' and valid gpu device id
         The method will throw if:
         - this instance contains strings
         - this instance is already on GPU. Cross GPU copy is not supported
