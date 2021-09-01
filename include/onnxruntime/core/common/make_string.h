@@ -78,7 +78,7 @@ using if_char_array_make_ptr_t = typename if_char_array_make_ptr<T>::type;
  * This version uses the current locale.
  */
 template <typename... Args>
-inline std::string MakeString(const Args&... args) {
+std::string MakeString(const Args&... args) {
   // We need to update the types from the MakeString template instantiation to decay any char[n] to char*.
   //   e.g. MakeString("in", "out") goes from MakeString<char[2], char[3]> to MakeStringImpl<char*, char*>
   //        so that MakeString("out", "in") will also match MakeStringImpl<char*, char*> instead of requiring
@@ -98,7 +98,7 @@ inline std::string MakeString(const Args&... args) {
  * This version uses std::locale::classic().
  */
 template <typename... Args>
-inline std::string MakeStringWithClassicLocale(const Args&... args) {
+std::string MakeStringWithClassicLocale(const Args&... args) {
   std::ostringstream ss;
   ss.imbue(std::locale::classic());
   detail::MakeStringImpl(ss, args...);
