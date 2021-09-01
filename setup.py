@@ -323,8 +323,10 @@ if enable_training:
                      'onnxruntime.training.ortmodule.experimental.json_config',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions.aten_op_executor',
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions.torch_interop_utils',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions.torch_gpu_allocator'])
     package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.aten_op_executor'] = ['*.cc']
+    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.torch_interop_utils'] = ['*.cc']
     package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.torch_gpu_allocator'] = ['*.cc']
     requirements_file = "requirements-training.txt"
     # with training, we want to follow this naming convention:
