@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(DISABLE_SPARSE_TENSORS)
+
 #include "core/framework/sparse_utils.h"
 #include "core/common/status.h"
 #include "core/framework/tensor.h"
@@ -308,8 +310,8 @@ Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const Spa
     const int64_t* indices = nullptr;
     const auto num_values = src.Values().Shape().Size();
     const auto num_indices = src.AsCoo().Indices().Shape().Size();
-    ORT_RETURN_IF_NOT((num_values == num_indices || 2 * num_values == num_indices), 
-      "Expecting indices to be equal the number of values or be twice as many");
+    ORT_RETURN_IF_NOT((num_values == num_indices || 2 * num_values == num_indices),
+                      "Expecting indices to be equal the number of values or be twice as many");
 
     SparseTensor src_cpu;
     if (src.Location().device.Type() != OrtDevice::CPU) {
@@ -400,13 +402,12 @@ void ScanAndRecordCoo(gsl::span<const T> src_span,
       }
     }
     ++index;
-   }
- }
+  }
+}
 
 Status DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Tensor& src,
                               const AllocatorPtr& cpu_allocator,
                               const AllocatorPtr& dst_allocator, bool linear_index, SparseTensor& dst) {
-
   const IDataTransfer* data_transfer = data_manager.GetDataTransfer(cpu_allocator->Info().device,
                                                                     dst_allocator->Info().device);
   ORT_RETURN_IF_NOT(data_transfer != nullptr, "Unable to find a data transfer for copying from device type: ",
@@ -510,3 +511,5 @@ Status DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Ten
 
 }  // namespace sparse_utils
 }  // namespace onnxruntime
+
+#endif  // !defined(DISABLE_SPARSE_TENSORS)

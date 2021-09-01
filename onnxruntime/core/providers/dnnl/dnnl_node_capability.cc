@@ -339,6 +339,8 @@ bool DnnlSumNodeCapability::IsDimensionSupported(const Node* node) const {
   return true;
 }
 
+// DnnlBinaryNodeCapability class
+//-------------------------------------
 bool DnnlBinaryNodeCapability::Supported(const Node* node) const {
   if (!IsTypeSupported(node)) return false;
   if (!IsDimensionSupported(node)) return false;
@@ -367,6 +369,38 @@ bool DnnlBinaryNodeCapability::IsDimensionSupported(const Node* node) const {
   if (src0_is_scalar && src1_is_scalar) {
     return false;
   }
+  return true;
+}
+
+// DnnlBinaryNodeCapability class
+//-------------------------------------
+bool DnnlElementwiseCapability::Supported(const Node* node) const {
+  if (!IsTypeSupported(node)) return false;
+  if (!IsDimensionSupported(node)) return false;
+  return true;
+}
+
+bool DnnlElementwiseCapability::IsDimensionSupported(const Node* node) const {
+  auto node_inputs = node->InputDefs();
+  if (node_inputs[0]->Shape() == nullptr) {
+    return true;
+  }
+
+  // OneDNN will silently convert scaler values to a {1} tensor which causes issues for
+  // for Onnruntime when it expects an empty tensor i.e. {}
+  // TODO convert {1} outputs back to scaler {} once that is done DnnlElementwiseCapability
+  // can be removed and just us the DnnlDefaultNodeCapability.
+  if (node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() == 0) {
+    return false;
+  }
+  return true;
+}
+
+// DnnlGemmNodeCapability class
+//-------------------------------------
+bool DnnlGemmNodeCapability::Supported(const Node* node) const {
+  if (!_matmul.Supported(node)) return false;
+  if (!_binary.Supported(node)) return false;
   return true;
 }
 

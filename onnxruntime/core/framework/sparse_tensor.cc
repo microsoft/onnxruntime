@@ -1,13 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(DISABLE_SPARSE_TENSORS)
+
 #include "core/framework/data_types.h"
 #include "core/framework/sparse_tensor.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/utils.h"
 
-#include <safeint/SafeInt.hpp>
+#include "core/common/safeint.h"
 
 using namespace onnxruntime::common;
 
@@ -588,3 +590,5 @@ Status SparseTensor::Copy(const IDataTransfer& data_transfer, SparseTensor& dst_
 }
 
 }  // namespace onnxruntime
+
+#endif  // !defined(DISABLE_SPARSE_TENSORS)

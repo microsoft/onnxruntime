@@ -36,6 +36,11 @@ export declare namespace Env {
      * an absolute path.
      */
     wasmPaths?: WasmPrefixOrFilePaths;
+
+    /**
+     * Set or get a boolean value indicating whether to proxy the execution of main thread to a worker thread.
+     */
+    proxy?: boolean;
   }
 
   export interface WebGLFlags {

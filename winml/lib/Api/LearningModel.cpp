@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "pch.h"
+#include "lib/Api/pch/pch.h"
 
 #include "LearningModel.h"
 
@@ -21,13 +21,23 @@ LearningModel::LearningModel(
   _winmlt::TelemetryEvent loadModel_event(_winmlt::EventCategory::kModelLoad);
 
   WINML_THROW_IF_FAILED(CreateOnnxruntimeEngineFactory(engine_factory_.put()));
-  auto file_handle = wil::unique_handle(CreateFileW(path.c_str(),
-                                        GENERIC_READ,
-                                        0,
-                                        NULL,
-                                        OPEN_EXISTING,
-                                        FILE_ATTRIBUTE_READONLY,
-                                        NULL));
+
+  wil::unique_handle file_handle{
+#if WINVER >= _WIN32_WINNT_WIN8
+      CreateFile2(path.c_str(),
+                  GENERIC_READ,
+                  0,
+                  OPEN_EXISTING,
+                  NULL)};
+#else
+      CreateFileW(path.c_str(),
+                  GENERIC_READ,
+                  0,
+                  NULL,
+                  OPEN_EXISTING,
+                  FILE_ATTRIBUTE_READONLY,
+                  NULL)};
+#endif
 
   WINML_THROW_HR_IF_TRUE_MSG(__HRESULT_FROM_WIN32(GetLastError()),
                              file_handle.get() == INVALID_HANDLE_VALUE,
@@ -53,12 +63,12 @@ LearningModel::LearningModel(
   WINML_THROW_HR_IF_TRUE_MSG(__HRESULT_FROM_WIN32(GetLastError()),
                              file_mapping == nullptr,
                              "Model load failed!");
-
-  auto file_size_in_bytes = GetFileSize(file_handle.get(), NULL);
-  WINML_THROW_IF_FAILED(engine_factory_->CreateModel(buffer, file_size_in_bytes, model_.put()));
-
+  LARGE_INTEGER file_size;
+  WINML_THROW_HR_IF_FALSE_MSG(__HRESULT_FROM_WIN32(GetLastError()),
+                              GetFileSizeEx(file_handle.get(), &file_size),
+                              "GetFileSizeEx");
+  WINML_THROW_IF_FAILED(engine_factory_->CreateModel(buffer, static_cast<size_t>(file_size.QuadPart), model_.put()));
   WINML_THROW_HR_IF_TRUE_MSG(E_UNEXPECTED, UnmapViewOfFile(buffer) == 0, "Could not unmap model file.");
-  
   WINML_THROW_IF_FAILED(model_->GetModelInfo(model_info_.put()));
 }
 WINML_CATCH_ALL
