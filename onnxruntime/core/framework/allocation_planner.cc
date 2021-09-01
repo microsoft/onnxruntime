@@ -646,12 +646,12 @@ class PlannerImpl {
     return p_provider->GetAllocator(0, OrtMemTypeDefault)->Info();
   }
 
-  Status GeneratePlanForWeightsHelper(const GraphViewer& graph_viewer,
-                                      const InitializedTensorSet& weights,
-                                      const KernelCreateInfoMap& kernel_create_info_map,
-                                      const std::string& subgraph_kernel_create_info_map_key_base,
-                                      size_t graph_depth,
-                                      /*out*/ std::vector<std::vector<OrtMemoryInfo>>& locations) {
+  void GeneratePlanForWeightsHelper(const GraphViewer& graph_viewer,
+                                    const InitializedTensorSet& weights,
+                                    const KernelCreateInfoMap& kernel_create_info_map,
+                                    const std::string& subgraph_kernel_create_info_map_key_base,
+                                    size_t graph_depth,
+                                    /*out*/ std::vector<std::vector<OrtMemoryInfo>>& locations) {
     for (const auto& node : graph_viewer.Nodes()) {
       const auto& input_node_args = node.InputDefs();
       size_t num_node_inputs = input_node_args.size();
@@ -718,31 +718,22 @@ class PlannerImpl {
           auto specific_subgraph_kernel_create_info_map = subgraphs_kernel_create_info_maps_.find(local_subgraph_kernel_create_info_map_key);
           ORT_ENFORCE(specific_subgraph_kernel_create_info_map != subgraphs_kernel_create_info_maps_.end());
 
-          ORT_RETURN_IF_ERROR(GeneratePlanForWeightsHelper(subgraph_viewer,
-                                                           weights,
-                                                           specific_subgraph_kernel_create_info_map->second,
-                                                           local_subgraph_kernel_create_info_map_key,
-                                                           graph_depth + 1,
-                                                           locations));
+          GeneratePlanForWeightsHelper(subgraph_viewer,
+                                       weights,
+                                       specific_subgraph_kernel_create_info_map->second,
+                                       local_subgraph_kernel_create_info_map_key,
+                                       graph_depth + 1,
+                                       locations);
         }
       }
     }
-
-    return Status::OK();
   }
 
   Status GeneratePlanForWeights() {
     std::vector<std::vector<OrtMemoryInfo>> locations(plan_.allocation_plan.size());
 
-    ORT_TRY {
-      ORT_RETURN_IF_ERROR(GeneratePlanForWeightsHelper(graph_viewer_, graph_viewer_.GetAllInitializedTensors(),
-                                                       kernel_create_info_map_, "", 0, locations));
-    }
-    ORT_CATCH(const std::exception& ex) {
-      ORT_HANDLE_EXCEPTION([&]() {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
-      });
-    }
+    GeneratePlanForWeightsHelper(graph_viewer_, graph_viewer_.GetAllInitializedTensors(),
+                                 kernel_create_info_map_, "", 0, locations);
 
     for (size_t i = 0; i != locations.size(); ++i) {
       const std::vector<OrtMemoryInfo>& loc = locations[i];
@@ -771,7 +762,7 @@ class PlannerImpl {
   // Should only be used after ProcessDef()
   Status ComputeReusePlan() {
     std::vector<SequentialExecutionPlan::NodeExecutionPlan>& execution_plan(plan_.execution_plan);
-    //copy the usecounts to an vector, before computing reuse
+    //copy the use counts to a vector, before computing reuse
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     std::vector<int> ort_value_usecount;
     for (auto ort_value_info : ort_value_info_) {
