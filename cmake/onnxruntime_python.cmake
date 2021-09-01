@@ -242,8 +242,8 @@ endif()
 
 # Generate _pybind_state.py from _pybind_state.py.in replacing macros with either setdlopenflags or ""
 if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
-  set(ONNXRUNTIME_SETDLOPENFLAGS_GLOBAL "sys.setdlopenflags(os.RTLD_GLOBAL|os.RTLD_NOW|os.RTLD_DEEPBIND)")
-  set(ONNXRUNTIME_SETDLOPENFLAGS_LOCAL  "sys.setdlopenflags(os.RTLD_GLOBAL|os.RTLD_NOW|os.RTLD_DEEPBIND)")
+  set(ONNXRUNTIME_SETDLOPENFLAGS_GLOBAL "sys.setdlopenflags(os.RTLD_LOCAL|os.RTLD_NOW|os.RTLD_DEEPBIND)")
+  set(ONNXRUNTIME_SETDLOPENFLAGS_LOCAL  "sys.setdlopenflags(os.RTLD_G|os.RTLD_NOW|os.RTLD_DEEPBIND)")
 else()
   set(ONNXRUNTIME_SETDLOPENFLAGS_GLOBAL "")
   set(ONNXRUNTIME_SETDLOPENFLAGS_LOCAL  "")
