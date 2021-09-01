@@ -162,8 +162,8 @@ def check_for_name_collisions_and_bind_methods_to_ortmodule(ortmodule: torch.nn.
                         "User Module's method may not be called upon invocation through ORTModule.")
                 else:
                     # This is a custom method, copy it and bind the copy to ORTModule.
-                    # This is needed for cases where the user's custom method makes invokes
-                    # the forward method. It should go through ORTModule's forwrad implementation
+                    # This is needed for cases where the user's custom method invokes
+                    # the forward method. It should go through ORTModule's forward implementation
                     # and not go through the user defined forward method.
                     ortmodule.__dict__[attribute_name] = types.MethodType(copy.deepcopy(attribute.__func__), ortmodule)
         else:
