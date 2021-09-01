@@ -22,7 +22,7 @@ namespace onnxruntime {
 
 class ORTInvoker {
  public:
-  ORTInvoker(std::unique_ptr<IExecutionProvider> execution_provider, 
+  ORTInvoker(std::shared_ptr<IExecutionProvider> execution_provider, 
              const logging::Logger& logger,
              const IOnnxRuntimeOpSchemaRegistryList& custom_op_registries) : 
       execution_provider_(std::move(execution_provider)), logger_(logger), custom_op_registries_(custom_op_registries) {
@@ -44,7 +44,7 @@ class ORTInvoker {
                         const int version = -1);
 
  private:
-  std::unique_ptr<IExecutionProvider> execution_provider_;
+  std::shared_ptr<IExecutionProvider> execution_provider_;
   const logging::Logger& logger_;
   // custom ops for current execution provider
   // we need the op schema to resolve the output type during invoke

@@ -588,11 +588,6 @@ def is_ubuntu_1604():
     return dist == 'Ubuntu' and ver.startswith('16.04')
 
 
-def is_ubuntu():
-    dist, _ = get_linux_distro()
-    return dist == 'Ubuntu'
-
-
 def get_config_build_dir(build_dir, config):
     # build directory per configuration
     return os.path.join(build_dir, config)
@@ -2020,6 +2015,10 @@ def main():
     if args.use_openvino == "VAD-F_FP32":
         args.test = False
 
+    # Disabling unit tests for GPU and MYRIAD on nuget creation
+    if args.use_openvino != "CPU_FP32" and args.build_nuget:
+        args.test = False
+
     configs = set(args.config)
 
     # setup paths and directories
@@ -2215,8 +2214,8 @@ def main():
                         args.eager_customop_header, args.eager_customop_module, True)
 
             gen_ort_ops()
-        if args.enable_external_custom_op_schemas and not is_ubuntu():
-            raise BuildError("Registering external custom op schemas is only supported on Ubuntu.")
+        if args.enable_external_custom_op_schemas and not is_linux():
+            raise BuildError("Registering external custom op schemas is only supported on Linux.")
 
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home, mpi_home, nccl_home,
