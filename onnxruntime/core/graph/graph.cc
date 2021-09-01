@@ -3798,7 +3798,7 @@ Status Graph::InlineFunction(Node& node) {
   // Map of function input outputs to nodes input/outputs
   std::unordered_map<std::string, NodeArg*> remap_input_output;
   // Set of node input output names as these names need to be preserved during inlining
-  std::unordered_set<std::string> node_input_output_names;
+  std::unordered_set<std::string> func_input_output_names;
 
   ORT_ENFORCE(node.MutableInputDefs().size() == subgraph.GetInputsIncludingInitializers().size(),
               "Node " + node.Name() + "'s number of inputs is different from function body graph's number of input.");
@@ -3811,7 +3811,7 @@ Status Graph::InlineFunction(Node& node) {
     if (input->Name() != node.MutableInputDefs()[i]->Name()) {
       remap_input_output[input->Name()] = node.MutableInputDefs()[i];
     }
-    node_input_output_names.insert(node.MutableInputDefs()[i]->Name());
+    func_input_output_names.insert(input->Name());
   }
 
   for (size_t i = 0; i < subgraph.GetOutputs().size(); ++i) {
@@ -3819,7 +3819,7 @@ Status Graph::InlineFunction(Node& node) {
     if (output->Name() != node.MutableOutputDefs()[i]->Name()) {
       remap_input_output[output->Name()] = node.MutableOutputDefs()[i];
     }
-    node_input_output_names.insert(node.MutableOutputDefs()[i]->Name());
+    func_input_output_names.insert(output->Name());
   }
 
   // create a uniq_identifier to append to every node name and intermidiate input\outputs
@@ -3842,14 +3842,16 @@ Status Graph::InlineFunction(Node& node) {
     } else {
       std::vector<NodeArg*> inputs, outputs;
       for (auto* input : subgraph_node.InputDefs()) {
-        auto it = remap_input_output.find(input->Name());
-        if (it != remap_input_output.end()) {
-          // This is a subgraph input/output and needs to be remapped to node input to preserve naming
-          inputs.push_back(it->second);
-        } else if (node_input_output_names.find(input->Name()) != node_input_output_names.end()) {
-          // This is a subgraph input/output so preserve the existing name
-          auto& n_input = GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
-          inputs.push_back(&n_input);
+        if (func_input_output_names.find(input->Name()) != func_input_output_names.end()) {
+          auto it = remap_input_output.find(input->Name());
+          if (it != remap_input_output.end()) {
+            // This is a function input/output and needs to be remapped to node input for correctness
+            inputs.push_back(it->second);
+          } else {
+            // This is a function input/output so preserve the existing name
+            auto& n_input = GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
+            inputs.push_back(&n_input);
+          }
         } else {
           // This is an intermidiate input. Add a unique identifier as suffix to make sure
           // there is no name collision with names in parent graph
@@ -3858,14 +3860,15 @@ Status Graph::InlineFunction(Node& node) {
         }
       }
       for (auto* output : subgraph_node.OutputDefs()) {
-        auto it = remap_input_output.find(output->Name());
-        if (it != remap_input_output.end())
-          outputs.push_back(it->second);
-        else if (node_input_output_names.find(output->Name()) != node_input_output_names.end()) {
-          auto& n_output = GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
-          outputs.push_back(&n_output);
-        }
-        else{
+        if (func_input_output_names.find(output->Name()) != func_input_output_names.end()) {
+          auto it = remap_input_output.find(output->Name());
+          if (it != remap_input_output.end()) {
+            outputs.push_back(it->second);
+          } else {
+            auto& n_output = GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
+            outputs.push_back(&n_output);
+          }
+        } else {
           auto& n_output = GetOrCreateNodeArg(output->Name() + uniq_identifier, output->TypeAsProto());
           outputs.push_back(&n_output);
         }

@@ -708,6 +708,11 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
   // Nested model local functions need to be initialized before Graph::Resolve() can be called for the function body.
   // Parse the graph and initialize functions for nodes which reference model local functions.
   // Only parse the graph if the model contains model local functions.
+  // Once all model local functions within function body are initialized, Graph Resolve for parent function body is called
+  // During graph resolve for parent function, graph resolve for every nested model local function is called too...
+  // Such a top down approach is required to successfully carry out type inference for schema less functions.
+  // Schema defined funcitons are treated a bit different from model local aka schema less functions. These are initialized
+  // during graph resolve of parent functions.
   if (model_local_functions.size() > 0) {
     for (auto node = function_body_graph.Nodes().begin(); node != function_body_graph.Nodes().end(); ++node) {
       // Init nested functions
