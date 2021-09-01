@@ -398,11 +398,10 @@ class SymbolicShapeInference:
             # (3) The initializer is not in graph input. The means the node input is "constant" in inference.
             initializers = []
             if (get_opset(self.out_mp_) >= 9) and node.op_type in ['Unsqueeze']:
-                #initializers = [
-                #    self.initializers_[name] for name in node.input
-                #    if (name in self.initializers_ and name not in self.graph_inputs_)
-                #]
-                initializers = []
+                initializers = [
+                    self.initializers_[name] for name in node.input
+                    if (name in self.initializers_ and name not in self.graph_inputs_)
+                ]
 
             # run single node inference with self.known_vi_ shapes
             tmp_graph = helper.make_graph(
