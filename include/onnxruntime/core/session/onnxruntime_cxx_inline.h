@@ -115,37 +115,31 @@ inline const OrtMemoryInfo* AllocatorWithDefaultOptions::GetInfo() const {
   return out;
 }
 
-template <typename B>
-inline std::string BaseMemoryInfo<B>::GetAllocatorName() const {
+inline std::string MemoryInfo::GetAllocatorName() const {
   const char* name = nullptr;
   ThrowOnError(GetApi().MemoryInfoGetName(*this, &name));
   return std::string(name);
 }
 
-template <typename B>
-inline OrtAllocatorType BaseMemoryInfo<B>::GetAllocatorType() const {
+inline OrtAllocatorType MemoryInfo::GetAllocatorType() const {
   OrtAllocatorType type;
   ThrowOnError(GetApi().MemoryInfoGetType(*this, &type));
   return type;
 }
 
-template <typename B>
-int BaseMemoryInfo<B>::GetDeviceId() const {
+inline int MemoryInfo::GetDeviceId() const {
   int id = 0;
   ThrowOnError(GetApi().MemoryInfoGetId(*this, &id));
   return id;
 }
 
-template <typename B>
-inline OrtMemType BaseMemoryInfo<B>::GetMemoryType() const {
+inline OrtMemType MemoryInfo::GetMemoryType() const {
   OrtMemType type;
   ThrowOnError(GetApi().MemoryInfoGetMemType(*this, &type));
   return type;
 }
 
-template <typename B>
-template <typename U>
-inline bool BaseMemoryInfo<B>::operator==(const BaseMemoryInfo<U>& o) const {
+inline bool MemoryInfo::operator==(const MemoryInfo& o) const {
   int comp_result = 0;
   ThrowOnError(Ort::GetApi().CompareMemoryInfo(*this, o, &comp_result));
   return comp_result == 0;
@@ -182,10 +176,10 @@ inline void Allocator::Free(void* p) const {
   ThrowOnError(GetApi().AllocatorFree(p_, p));
 }
 
-inline UnownedMemoryInfo Allocator::GetInfo() const {
+inline Unowned<const MemoryInfo> Allocator::GetInfo() const {
   const OrtMemoryInfo* out = nullptr;
   ThrowOnError(GetApi().AllocatorGetInfo(p_, &out));
-  return UnownedMemoryInfo(out);
+  return Unowned<const MemoryInfo>(const_cast<OrtMemoryInfo*>(out));
 }
 
 inline IoBinding::IoBinding(Session& session) {
@@ -371,6 +365,12 @@ inline RunOptions& RunOptions::SetRunLogSeverityLevel(int level) {
 inline int RunOptions::GetRunLogVerbosityLevel() const {
   int out;
   ThrowOnError(GetApi().RunOptionsGetRunLogVerbosityLevel(p_, &out));
+  return out;
+}
+
+inline int RunOptions::GetRunLogSeverityLevel() const {
+  int out;
+  ThrowOnError(GetApi().RunOptionsGetRunLogSeverityLevel(p_, &out));
   return out;
 }
 
