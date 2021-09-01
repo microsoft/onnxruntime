@@ -42,6 +42,7 @@ class SymbolicShapeInferenceHelper(SymbolicShapeInference):
     # override _preprocess() to avoid unnecessary model copy since ctor copies the model
     def _preprocess(self, in_mp):
         self.out_mp_ = in_mp
+        self.graph_inputs_ = dict([(i.name, i) for i in list(self.out_mp_.graph.input)])
         self.initializers_ = dict([(i.name, i) for i in self.out_mp_.graph.initializer])
         self.known_vi_ = dict([(i.name, i) for i in list(self.out_mp_.graph.input)])
         self.known_vi_.update(
