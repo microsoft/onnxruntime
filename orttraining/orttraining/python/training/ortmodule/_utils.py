@@ -7,10 +7,12 @@ from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi import _pybind_state as C
 from ._fallback import _FallbackManager, ORTModuleFallbackException, ORTModuleDeviceException, wrap_exception
 
+import copy
 import inspect
 import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
 from typing import List
+import types
 import warnings
 
 
@@ -116,8 +118,12 @@ def _create_iobinding(io_binding, inputs, model, device):
     for value_info in model.graph.output:
         io_binding.bind_output(value_info.name, device.type, device_id=get_device_index(device))
 
-def check_for_name_collisions(ortmodule: torch.nn.Module, user_module: torch.nn.Module):
-    """Raises if there are any common attributes between the user's model and ORTModule.
+def check_for_name_collisions_and_bind_methods_to_ortmodule(ortmodule: torch.nn.Module,
+                                                            user_module: torch.nn.Module):
+    """Warns if there are any common attributes between the user's model and ORTModule and binds user methods to ORTModule
+
+    If there are methods defined on the user's model that ORTModule does not recognize (custom methods),
+    then this function binds these methods to ORTModule.
 
     Args:
         ortmodule: the ORTModule instance
@@ -138,17 +144,28 @@ def check_for_name_collisions(ortmodule: torch.nn.Module, user_module: torch.nn.
             if attribute_name.startswith('__'):
                 continue
 
+            # if the attribute is not a torch attribute, or if the torch attribute
+            # corresponding to attribute_name is not a method or the user attribute
+            # does not equal the torch attribute, then this is a user defined method.
             if attribute_name not in torch_module_attributes or \
                 not inspect.ismethod(torch_module_attributes[attribute_name]) or \
                 attribute.__func__ != torch_module_attributes[attribute_name].__func__:
 
+                # forward is expected to be defined by the user.
                 if attribute_name == 'forward':
                     continue
 
                 # This is a user defined/overriden method. Check for collisions.
                 if attribute_name in ortmodule_attributes:
+                    # This is a user defined method, issue a warning.
                     warnings.warn(f"User Module's attribute name {attribute_name} collides with ORTModule's attribute name. "
                         "User Module's method may not be called upon invocation through ORTModule.")
+                else:
+                    # This is a custom method, copy it and bind the copy to ORTModule.
+                    # This is needed for cases where the user's custom method makes invokes
+                    # the forward method. It should go through ORTModule's forwrad implementation
+                    # and not go through the user defined forward method.
+                    ortmodule.__dict__[attribute_name] = types.MethodType(copy.deepcopy(attribute.__func__), ortmodule)
         else:
             if attribute_name not in torch_module_attributes and attribute_name in ortmodule_attributes:
                 # This is a user defined attribute that collides with ORTModule

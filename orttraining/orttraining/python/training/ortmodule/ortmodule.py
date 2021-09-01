@@ -83,9 +83,10 @@ class ORTModule(torch.nn.Module):
             CustomOpSymbolicRegistry.register_all()
             CustomGradientRegistry.register_all()
 
-            # Make sure that the user defined model does not have any name collisions
-            # with the ORTModule attribute names.
-            _utils.check_for_name_collisions(self, module)
+            # Warn user if there are name collisions between user model's and ORTModule attributes
+            # And if there are custom methods defined on the user's model, copy and bind them to
+            # ORTModule.
+            _utils.check_for_name_collisions_and_bind_methods_to_ortmodule(self, module)
 
         except ORTModuleFallbackException as e:
             self._torch_module = TorchModulePytorch(module)
