@@ -173,8 +173,8 @@ common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
 }
 #endif
 
-int IExecutionProvider::ModelMetadefIdGenerator::GenerateId(const onnxruntime::GraphViewer& graph_viewer,
-                                                            uint64_t& model_hash, bool full_hashing_enable) {
+int IExecutionProvider::ModelIdGenerator::GenerateId(const onnxruntime::GraphViewer& graph_viewer,
+                                                            uint64_t& model_hash, bool hash_model_name, bool hash_nodes) {
   model_hash = 0;
 
   // find the top level graph
@@ -208,20 +208,24 @@ int IExecutionProvider::ModelMetadefIdGenerator::GenerateId(const onnxruntime::G
     // this may not be available if the model was loaded from a stream or in-memory bytes
     const auto& model_path = main_graph.ModelPath();
     if (!model_path.IsEmpty()) {
-      // get model name
-      PathString leaf = main_graph.ModelPath().GetComponents().back();
-      std::string model_name = ToMBString(leaf.c_str());
+      std::string path_str;
+      if (hash_model_name) {
+        PathString leaf = model_path.GetComponents().back();
+        path_str = ToMBString(leaf.c_str());
+      } else {
+        path_str = ToMBString(model_path.ToPathString().c_str());
+      }
 
       // ensure enough characters are hashed in case model names are short or very similar
-      int32_t model_name_length = gsl::narrow_cast<int32_t>(model_name.size());
+      int32_t path_length = gsl::narrow_cast<int32_t>(path_str.size());
       int32_t string_length = 0, hash_string_length = 500;
       while (string_length < hash_string_length) {
-        hash_str(model_name);
-        string_length += model_name_length;
+        hash_str(path_str);
+        string_length += path_length;
       }
     }
     
-    if (model_path.IsEmpty() || full_hashing_enable) {  
+    if (model_path.IsEmpty() || hash_nodes) {  
       // fingerprint the main graph by hashing graph inputs and the ordered outputs from each node
       for (const auto* node_arg : main_graph.GetInputsIncludingInitializers()) {
         hash_str(node_arg->Name());
@@ -242,18 +246,28 @@ int IExecutionProvider::ModelMetadefIdGenerator::GenerateId(const onnxruntime::G
   }
 
   // return the current unique id, and increment to update
-  return model_metadef_id_[model_hash]++;
+  return model_id_[model_hash]++;
 }
 
-int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash, bool full_hashing_enable) const {
-  ORT_ENFORCE(metadef_id_generator_,
+int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) const {
+  ORT_ENFORCE(model_id_generator_,
               "IExecutionProvider constructor must be called with true for use_metadef_id_creator");
 
   // if the EP is shared across multiple sessions there's a very small potential for concurrency issues.
   // use a lock when generating an id to be paranoid
   static OrtMutex mutex;
   std::lock_guard<OrtMutex> lock(mutex);
-  return metadef_id_generator_->GenerateId(graph_viewer, model_hash, full_hashing_enable);
+  return model_id_generator_->GenerateId(graph_viewer, model_hash);
 }
 
+int IExecutionProvider::GenerateModelId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) const {
+  ORT_ENFORCE(model_id_generator_,
+              "IExecutionProvider constructor must be called with true for use_metadef_id_creator");
+
+  // if the EP is shared across multiple sessions there's a very small potential for concurrency issues.
+  // use a lock when generating an id to be paranoid
+  static OrtMutex mutex;
+  std::lock_guard<OrtMutex> lock(mutex);
+  return model_id_generator_->GenerateId(graph_viewer, model_hash, true, true);
+}
 }  // namespace onnxruntime

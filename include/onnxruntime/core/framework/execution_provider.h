@@ -53,7 +53,7 @@ class IExecutionProvider {
   IExecutionProvider(const std::string& type, bool use_metadef_id_creator = false)
       : type_{type} {
     if (use_metadef_id_creator) {
-      metadef_id_generator_ = std::make_unique<ModelMetadefIdGenerator>();
+      model_id_generator_ = std::make_unique<ModelIdGenerator>();
     }
   }
 
@@ -257,7 +257,10 @@ class IExecutionProvider {
             NOTE: Ideally this would be a protected method, but to work across the EP bridge it has to be public and 
                   virtual, and ModelMetadefIdGenerator but be defined in the header as well.
    */
-  virtual int GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash, bool full_hashing_enable=false) const;
+  virtual int GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) const;
+
+  //Generate a unique id for a model. Values are unique for a model instance. 
+  virtual int GenerateModelId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) const;
 
   /**
      Register allocators used for EP
@@ -278,15 +281,15 @@ class IExecutionProvider {
 
   // helper to generate ids that are unique to model and deterministic, even if the execution provider is shared across
   // multiple sessions.
-  class ModelMetadefIdGenerator {
+  class ModelIdGenerator {
    public:
-    int GenerateId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash, bool full_hashing_enable);
+    int GenerateId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash, bool hash_model_name = false, bool hash_nodes = false);
 
    private:
     std::unordered_map<uint64_t, int64_t> main_graph_hash_;  // map graph instance hash to model contents hash
-    std::unordered_map<int64_t, int> model_metadef_id_;      // current unique id for model
+    std::unordered_map<int64_t, int> model_id_;      // current unique id for model
   };
 
-  std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
+  std::unique_ptr<ModelIdGenerator> model_id_generator_;
 };
 }  // namespace onnxruntime
