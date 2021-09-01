@@ -28,7 +28,7 @@ ONNX_OPERATOR_KERNEL_EX(
     Transpose);
 
 // special case acceleration using cublas matrix transpose
-static std::tuple<int, int> TryTransposeWithCublas(const std::vector<size_t>& perm, const TensorShape& input_shape) {
+static std::tuple<int, int> TryTransposeWithCublas(const std::vector<size_t>& perm, const std::vector<int64_t>& input_shape) {
   int M = 0;
   int N = 0;
 
@@ -60,6 +60,10 @@ Status TransposeWithCublas(cudaStream_t stream, cublasHandle_t cublas_handle, co
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
   const CudaT* input_data = reinterpret_cast<const CudaT*>(input.Data<T>());
   CudaT* output_data = reinterpret_cast<CudaT*>(output.MutableData<T>());
+
+  std::cout<< "TransposeWithCublas \n";
+
+
   CUBLAS_RETURN_IF_ERROR(
       cublasTransposeHelper(stream,
                             cublas_handle,
@@ -89,30 +93,12 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
   if (output.Shape().Size() == 0)
     return Status::OK();
 
-  auto element_type = input.GetElementType();
-  if (element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ||
-      element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE ||
-      element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
-    auto mn = TryTransposeWithCublas(permutations, input_shape_override ? *input_shape_override : input.Shape());
-    int M = std::get<0>(mn);
-    int N = std::get<1>(mn);
-    if (M != 0 && N != 0) {
-      if (element_type == utils::GetONNXTensorElementDataType<float>()) {
-        return TransposeWithCublas<float>(stream, cublas_handle, input, output, M, N);
-      } else if (element_type == utils::GetONNXTensorElementDataType<double>()) {
-        return TransposeWithCublas<double>(stream, cublas_handle, input, output, M, N);
-      } else {
-        return TransposeWithCublas<MLFloat16>(stream, cublas_handle, input, output, M, N);
-      }
-    }
-  }
-
   const std::vector<int64_t>& input_dims = input_shape_override ? input_shape_override->GetDims() : input.Shape().GetDims();
   const std::vector<int64_t>& output_dims = output.Shape().GetDims();
   auto rank = static_cast<int32_t>(input_dims.size());
 
   // flatten the adjacent dimensions which are contiguous
-  // for example: permutations[0, 2, 3, 1] -> [0, 2, 1], permutations[0, 3, 1, 2] -> [0, 2, 1]
+  // for example: permutations[0, 3, 2, 1] -> [0, 2, 1], permutations[0, 3, 1, 2] -> [0, 2, 1]
   auto new_rank = rank;
   std::vector<size_t> new_permutations(permutations);
   std::vector<int64_t> new_input_dims(input_dims);
@@ -154,6 +140,24 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
   new_permutations.resize(new_rank);
   new_input_dims.resize(new_rank);
   new_output_dims.resize(new_rank);
+
+  auto element_type = input.GetElementType();
+  if (element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ||
+      element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE ||
+      element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
+    auto mn = TryTransposeWithCublas(new_permutations, new_input_dims);
+    int M = std::get<0>(mn);
+    int N = std::get<1>(mn);
+    if (M != 0 && N != 0) {
+      if (element_type == utils::GetONNXTensorElementDataType<float>()) {
+        return TransposeWithCublas<float>(stream, cublas_handle, input, output, M, N);
+      } else if (element_type == utils::GetONNXTensorElementDataType<double>()) {
+        return TransposeWithCublas<double>(stream, cublas_handle, input, output, M, N);
+      } else {
+        return TransposeWithCublas<MLFloat16>(stream, cublas_handle, input, output, M, N);
+      }
+    }
+  }
 
   TensorPitches new_input_strides(new_input_dims);
   TensorPitches new_output_strides(new_output_dims);
