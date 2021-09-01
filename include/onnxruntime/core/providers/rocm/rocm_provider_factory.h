@@ -10,9 +10,7 @@ extern "C" {
 /**
  * \param device_id hip device id, starts from zero.
  */
-// declared in include/onnxruntime/core/session/onnxruntime_c_api.h for convenience and so we can provide a graceful
-// error message if not enabled.
-//ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_ROCM, _In_ OrtSessionOptions* options, int device_id, size_t gpu_mem_limit);
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_ROCM, _In_ OrtSessionOptions* options, int device_id, size_t gpu_mem_limit);
 
 #ifdef __cplusplus
 }

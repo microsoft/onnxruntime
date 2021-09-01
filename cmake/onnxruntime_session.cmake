@@ -5,7 +5,6 @@ file(GLOB onnxruntime_session_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_INCLUDE_DIR}/core/session/*.h"
     "${ONNXRUNTIME_ROOT}/core/session/*.h"
     "${ONNXRUNTIME_ROOT}/core/session/*.cc"
-    "${ONNXRUNTIME_ROOT}/core/session/symbols.txt"
     )
 
 if (onnxruntime_MINIMAL_BUILD)
@@ -30,8 +29,8 @@ if(NOT MSVC)
 endif()
 target_include_directories(onnxruntime_session PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
 target_link_libraries(onnxruntime_session PRIVATE nlohmann_json::nlohmann_json)
-if(onnxruntime_ENABLE_EXTENSION_CUSTOM_OPS)
-  target_link_libraries(onnxruntime_session PRIVATE ortcustomops)
+if (onnxruntime_USE_EXTENSIONS)
+  target_link_libraries(onnxruntime_session PRIVATE onnxruntime_extensions)
 endif()
 add_dependencies(onnxruntime_session ${onnxruntime_EXTERNAL_DEPENDENCIES})
 set_target_properties(onnxruntime_session PROPERTIES FOLDER "ONNXRuntime")

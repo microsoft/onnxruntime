@@ -102,8 +102,8 @@ class ParityTask:
         with open(csv_filename, mode="a", newline='') as csv_file:
             column_names = [
                 "experiment", "run_id", "model_name", "model_class", "gpu", "precision", "optimizer", "test_cases",
-                "keep_io_types", "io_block_list", "op_block_list", "node_block_list", "ORT_TRANSFORMER_OPTIONS",
-                "ORT_CUDA_GEMM_OPTIONS", "onnxruntime"
+                "keep_io_types", "io_block_list", "op_block_list", "node_block_list", "force_fp16_initializers",
+                "ORT_TRANSFORMER_OPTIONS", "ORT_CUDA_GEMM_OPTIONS", "onnxruntime"
             ] + self.metric_names
 
             csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
