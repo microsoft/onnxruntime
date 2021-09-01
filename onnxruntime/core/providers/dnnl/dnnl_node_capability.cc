@@ -405,4 +405,22 @@ bool DnnlGemmNodeCapability::Supported(const Node* node) const {
   return true;
 }
 
+// DnnlReshapeNodeCapability class
+//-------------------------------------
+bool DnnlReshapeNodeCapability::Supported(const Node* node) const {
+  if (!IsTypeSupported(node)) return false;
+  if (!IsDimensionSupported(node)) return false;
+  return true;
+}
+bool DnnlReshapeNodeCapability::IsDimensionSupported(const Node* node) const {
+  auto node_inputs = node->InputDefs();
+  // We can not reshape a one dimentional tensor to a scalar output
+  if (node_inputs[1]->Shape() != nullptr &&
+      node_inputs[1]->Shape()->dim_size() == 1 &&
+      node_inputs[1]->Shape()->dim(0).dim_value() == 0) {
+      return false;
+  }
+
+  return true;
+}
 }  // namespace onnxruntime

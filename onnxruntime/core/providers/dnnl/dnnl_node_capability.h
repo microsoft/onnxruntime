@@ -231,4 +231,19 @@ class DnnlGemmNodeCapability : public DnnlDefaultNodeCapability {
   DnnlBinaryNodeCapability _binary;
 };
 
+class DnnlReshapeNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlReshapeNodeCapability() : DnnlDefaultNodeCapability({"float",
+                                                           "float16",
+                                                           "bfloat16",
+                                                           "int32",
+                                                           "int8",
+                                                           "uint8"}) {}
+
+  bool Supported(const Node* node) const override;
+
+ private:
+  bool IsDimensionSupported(const Node* node) const;
+};
+
 }  // namespace onnxruntime
