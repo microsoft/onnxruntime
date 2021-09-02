@@ -1472,6 +1472,9 @@ if (onnxruntime_USE_CUDA)
   else()
     #CUDA 10.2 on Linux doesn't support C++17
     set(CMAKE_CUDA_STANDARD 14)
+    # set a project wide compile definition to select a pre-C++17 implementation
+    # TODO get rid of this when we build everything with C++17 or greater
+    add_compile_definitions(ORT_USE_PRE_CXX17_IMPL)
   endif()
   file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
   set(ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_LIBRARIES})
