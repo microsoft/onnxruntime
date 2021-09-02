@@ -85,7 +85,7 @@ def check_if_dlls_are_present(package_type, is_windows_ai_package, is_gpu_packag
 
         elif platform.startswith("linux"):
             if package_type == "nuget":
-                folder = "runtimes/" + platform + "/native/libonnxruntime.so"
+                folder = "runtimes/" + platform + "/native"
                 header_folder = "build/native/include"
             else: # tarball package
                 folder  = package_path + "/lib"
