@@ -28,28 +28,35 @@
 
 namespace onnxruntime {
 
+#if !defined(ORT_MINIMAL_BUILD)
+#define BATCHNORM_INCLUDE_TRAINING_SUPPORT
+#endif
+
 template <typename T>
 class BatchNorm : public OpKernel {
  public:
   explicit BatchNorm(const OpKernelInfo& op_kernel_info)
-      : OpKernel(op_kernel_info), is_spatial_(op_kernel_info.GetAttrOrDefault<int64_t>("spatial", 1) == 1) {
-    epsilon_ = op_kernel_info.GetAttrOrDefault<float>("epsilon", 1e-5f);
-    momentum_ = op_kernel_info.GetAttrOrDefault<float>("momentum", 0.9f);
-
+      : OpKernel(op_kernel_info),
+        epsilon_(op_kernel_info.GetAttrOrDefault<float>("epsilon", 1e-5f)),
+        is_spatial_(op_kernel_info.GetAttrOrDefault<int64_t>("spatial", 1) == 1) {
     // For opset 6-8, if spatial attribute exists, pick up the value (by default spatial == 1)
     // From opset 9 onwards, by default, only the spatial case (spatial == 1) is defined per spec
     // For opset 14 onwards, training is an attribute.
     // For opset < 14, since no training attribute is present we assume optional outputs indicate training mode.
     if (op_kernel_info.node().SinceVersion() == 14) {
       is_train_ = op_kernel_info.GetAttrOrDefault<int64_t>("training_mode", 0) == 1;
-      size_t output_count = op_kernel_info.node().OutputDefs().size();
-      ORT_ENFORCE((is_train_ && output_count == 3) || (!is_train_ && output_count == 1),
-                  "Output running_mean and running_var are valid and required for training mode.");
     } else {
-      is_train_ = OpKernel::Node().OutputDefs().size() > 1;
+      is_train_ = op_kernel_info.GetOutputCount() > 1;
     }
 
-    ORT_ENFORCE(!is_train_ || is_spatial_, "Training mode does not support non-spatial BN");
+    if (is_train_) {
+#if defined(BATCHNORM_INCLUDE_TRAINING_SUPPORT)
+      momentum_ = op_kernel_info.GetAttrOrDefault<float>("momentum", 0.9f);
+      ORT_ENFORCE(is_spatial_, "Training mode only supports spatial BN");
+#else
+      ORT_THROW("Training mode is not supported in this build.");
+#endif
+    }
   }
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
@@ -77,6 +84,7 @@ class BatchNorm : public OpKernel {
     // calculate sample_size (including all channels)
     size_t sample_size_incl_all_channels = sample_size * C;
 
+#if defined(BATCHNORM_INCLUDE_TRAINING_SUPPORT)
     AllocatorPtr alloc;
     ORT_RETURN_IF_ERROR(p_op_kernel_context->GetTempSpaceAllocator(&alloc));
 
@@ -95,6 +103,7 @@ class BatchNorm : public OpKernel {
       saved_mean = &saved_mean_allocated;
       saved_inv_std = &saved_inv_std_allocated;
     }
+#endif
 
     ConstEigenArrayMap<T> X_arr(X->template Data<T>(),
                                 is_spatial_ ? sample_size : sample_size_incl_all_channels,
@@ -102,6 +111,7 @@ class BatchNorm : public OpKernel {
     ConstEigenVectorArrayMap<T> scale_arr(scale->template Data<T>(), is_spatial_ ? C : sample_size_incl_all_channels);
     ConstEigenVectorArrayMap<T> bias_arr(B->template Data<T>(), is_spatial_ ? C : sample_size_incl_all_channels);
 
+#if defined(BATCHNORM_INCLUDE_TRAINING_SUPPORT)
     // Note that we only support spatial BN for training
     if (is_train_) {
       EigenVectorArrayMap<T> saved_mean_arr(saved_mean->template MutableData<T>(), C);
@@ -140,6 +150,7 @@ class BatchNorm : public OpKernel {
       running_mean_arr = input_running_mean_arr * momentum_ + saved_mean_arr * (1. - momentum_);
       running_var_arr = input_running_var_arr * momentum_ + saved_var_arr * (1. - momentum_);
     }
+#endif
 
     // Regardless of training or testing, we will apply the estimated mean
     // and standard deviation to the input. For testing, they are
@@ -151,14 +162,21 @@ class BatchNorm : public OpKernel {
       ConstEigenVectorArrayMap<T> var_arr(var->template Data<T>(), is_spatial_ ? C : sample_size_incl_all_channels);
       inv_std = (var_arr + epsilon_).sqrt().inverse();
     } else {
+#if defined(BATCHNORM_INCLUDE_TRAINING_SUPPORT)
       EigenVectorArrayMap<T> saved_inv_std_arr(saved_inv_std->template MutableData<T>(), C);
       saved_inv_std_arr = (saved_inv_std_arr + epsilon_).inverse().sqrt();
       inv_std = saved_inv_std_arr;
+#endif
     }
 
     // If we're training, do batch normalization based on computation from this batch
-    ConstEigenVectorArrayMap<T> mean_arr(!is_train_ ? mean->template Data<T>() : saved_mean->template Data<T>(),
-                                         is_spatial_ ? C : sample_size_incl_all_channels);
+    ConstEigenVectorArrayMap<T> mean_arr(
+#if defined(BATCHNORM_INCLUDE_TRAINING_SUPPORT)
+        !is_train_ ? mean->template Data<T>() : saved_mean->template Data<T>(),
+#else
+        mean->template Data<T>(),
+#endif
+        is_spatial_ ? C : sample_size_incl_all_channels);
 
     // We can fuse the output computation as follows:
     //   ((x - est_mean) * (inv_var) * scale + bias
@@ -184,7 +202,7 @@ class BatchNorm : public OpKernel {
 
  protected:
   float epsilon_;
-  float momentum_;
+  float momentum_{0};
   const bool is_spatial_;
   int64_t is_train_;
 };
