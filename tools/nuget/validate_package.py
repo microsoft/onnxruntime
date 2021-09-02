@@ -8,13 +8,14 @@ import zipfile  # Available Python 3.2 or higher
 import glob
 import re
 
-linux_gpu_package_libraries = ["libonnxruntime_providers_shared.so", "libonnxruntime_providers_cuda.so", \
+linux_gpu_package_libraries = ["libonnxruntime_providers_shared.so", "libonnxruntime_providers_cuda.so",
                                "libonnxruntime_providers_tensorrt.so"]
-win_gpu_package_libraries = ["onnxruntime_providers_shared.lib", "onnxruntime_providers_shared.dll", \
-                             "onnxruntime_providers_cuda.lib", "onnxruntime_providers_cuda.dll", \
+win_gpu_package_libraries = ["onnxruntime_providers_shared.lib", "onnxruntime_providers_shared.dll",
+                             "onnxruntime_providers_cuda.lib", "onnxruntime_providers_cuda.dll",
                              "onnxruntime_providers_tensorrt.lib", "onnxruntime_providers_tensorrt.dll"]
-gpu_related_header_files = ["cpu_provider_factory.h", "tensorrt_provider_factory.h", "onnxruntime_c_api.h", \
+gpu_related_header_files = ["cpu_provider_factory.h", "tensorrt_provider_factory.h", "onnxruntime_c_api.h",
                             "onnxruntime_cxx_api.h", "onnxruntime_cxx_inline.h"]
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
@@ -24,7 +25,8 @@ def parse_arguments():
     parser.add_argument("--package_type", required=True, help="Specify nuget, tarball or zip.")
     parser.add_argument("--package_name", required=True, help="Package name to be validated.")
     parser.add_argument("--package_path", required=True,
-                        help="Path containing the package to be validated. Must only contain only one package within this.")
+                        help="Path containing the package to be validated.
+                        Must only contain only one package within this.")
     parser.add_argument("--platforms_supported", required=True,
                         help="Comma separated list (no space). Ex: linux-x64,win-x86,osx-x64")
     parser.add_argument("--verify_nuget_signing",
@@ -42,11 +44,11 @@ def is_windows():
     return sys.platform.startswith("win")
 
 
-def check_if_dlls_are_present(package_type, is_windows_ai_package, is_gpu_package, platforms_supported, \
+def check_if_dlls_are_present(package_type, is_windows_ai_package, is_gpu_package, platforms_supported,
                               zip_file, package_path):
     platforms = platforms_supported.strip().split(",")
     if package_type == "tarball":
-        file_list_in_package = list() 
+        file_list_in_package = list()
         for (dirpath, dirnames, filenames) in os.walk(package_path):
             file_list_in_package += [os.path.join(dirpath, file) for file in filenames]
     else:
@@ -59,8 +61,8 @@ def check_if_dlls_are_present(package_type, is_windows_ai_package, is_gpu_packag
             if package_type == "nuget":
                 folder = "runtimes/" + platform + "/" + native_folder
                 header_folder = "build/native/include"
-            else: # zip package
-                folder  = package_path + "/lib"
+            else:  # zip package
+                folder = package_path + "/lib"
                 header_folder = package_path + "/include"
 
             path = folder + "/" + "onnxruntime.dll"
@@ -70,13 +72,13 @@ def check_if_dlls_are_present(package_type, is_windows_ai_package, is_gpu_packag
                 raise Exception("onnxruntime.dll not found for " + platform)
 
             if is_gpu_package:
-                for dll in win_gpu_package_libraries: 
+                for dll in win_gpu_package_libraries:
                     path = folder + "/" + dll
                     print('Checking path: ' + path)
                     if (path not in file_list_in_package):
                         print(dll + " not found for " + platform)
                         raise Exception(dll + " not found for " + platform)
-                for header in gpu_related_header_files: 
+                for header in gpu_related_header_files:
                     path = header_folder + "/" + header
                     print('Checking path: ' + path)
                     if (path not in file_list_in_package):
@@ -84,11 +86,11 @@ def check_if_dlls_are_present(package_type, is_windows_ai_package, is_gpu_packag
                         raise Exception(header + " not found for " + platform)
 
         elif platform.startswith("linux"):
-            if package_type == "nuget": 
+            if package_type == "nuget":
                 folder = "runtimes/" + platform + "/native"
                 header_folder = "build/native/include"
-            else: # tarball package
-                folder  = package_path + "/lib"
+            else:  # tarball package
+                folder = package_path + "/lib"
                 header_folder = package_path + "/include"
 
             path = folder + "/" + "libonnxruntime.so"
@@ -98,13 +100,13 @@ def check_if_dlls_are_present(package_type, is_windows_ai_package, is_gpu_packag
                 raise Exception("libonnxruntime.so not found for " + platform)
 
             if is_gpu_package:
-                for so in linux_gpu_package_libraries: 
+                for so in linux_gpu_package_libraries:
                     path = folder + "/" + so
                     print('Checking path: ' + path)
                     if (path not in file_list_in_package):
                         print(so + " not found for " + platform)
                         raise Exception(so + " not found for " + platform)
-                for header in gpu_related_header_files: 
+                for header in gpu_related_header_files:
                     path = header_folder + "/" + header
                     print('Checking path: ' + path)
                     if (path not in file_list_in_package):
@@ -137,6 +139,7 @@ def check_if_nuget_is_signed(nuget_path):
 
     return False
 
+
 def validate_tarball(args):
     files = glob.glob(os.path.join(args.package_path, args.package_name))
     if (len(files) != 1):
@@ -146,19 +149,20 @@ def validate_tarball(args):
 
     package_name = args.package_name
     if "-gpu-" in package_name.lower():
-        is_gpu_package = True 
+        is_gpu_package = True
     else:
         is_gpu_package = False
 
-    package_folder = re.search('(.*)\..*', package_name).group(1)
+    package_folder = re.search('(.*)[.].*', package_name).group(1)
 
     print('tar zxvf ' + package_name)
     os.system("tar zxvf " + package_name)
 
     is_windows_ai_package = False
     zip_file = None
-    check_if_dlls_are_present(args.package_type, is_windows_ai_package, is_gpu_package, \
-                                  args.platforms_supported, zip_file, package_folder)
+    check_if_dlls_are_present(args.package_type, is_windows_ai_package, is_gpu_package,
+                              args.platforms_supported, zip_file, package_folder)
+
 
 def validate_zip(args):
     files = glob.glob(os.path.join(args.package_path, args.package_name))
@@ -169,16 +173,17 @@ def validate_zip(args):
 
     package_name = args.package_name
     if "-gpu-" in package_name.lower():
-        is_gpu_package = True 
+        is_gpu_package = True
     else:
         is_gpu_package = False
 
-    package_folder = re.search('(.*)\..*', package_name).group(1)
+    package_folder = re.search('(.*)[.].*', package_name).group(1)
 
     is_windows_ai_package = False
     zip_file = zipfile.ZipFile(package_name)
-    check_if_dlls_are_present(args.package_type, is_windows_ai_package, is_gpu_package, \
-                                  args.platforms_supported, zip_file, package_folder)
+    check_if_dlls_are_present(args.package_type, is_windows_ai_package, is_gpu_package,
+                              args.platforms_supported, zip_file, package_folder)
+
 
 def validate_nuget(args):
     files = glob.glob(os.path.join(args.package_path, args.package_name))
@@ -191,7 +196,7 @@ def validate_nuget(args):
     full_nuget_path = os.path.join(args.package_path, nuget_file_name)
 
     if "Gpu" in nuget_file_name:
-        is_gpu_package = True 
+        is_gpu_package = True
     else:
         is_gpu_package = False
 
@@ -210,8 +215,8 @@ def validate_nuget(args):
 
     # Do all validations here
     try:
-        # if not is_windows():
-            # raise Exception('Nuget validation is currently supported only on Windows')
+        if not is_windows():
+            raise Exception('Nuget validation is currently supported only on Windows')
 
         # Make a copy of the Nuget package
         print('Copying [' + full_nuget_path + '] -> [' + nupkg_copy_name + '], and extracting its contents')
@@ -224,7 +229,7 @@ def validate_nuget(args):
         # Check if the relevant dlls are present in the Nuget/Zip
         print('Checking if the Nuget contains relevant dlls')
         is_windows_ai_package = os.path.basename(full_nuget_path).startswith('Microsoft.AI.MachineLearning')
-        check_if_dlls_are_present(args.package_type, is_windows_ai_package, is_gpu_package, \
+        check_if_dlls_are_present(args.package_type, is_windows_ai_package, is_gpu_package,
                                   args.platforms_supported, zip_file, None)
 
         # Check if the Nuget has been signed
@@ -255,6 +260,7 @@ def validate_nuget(args):
         else:
             raise Exception('Nuget validation was unsuccessful')
 
+
 def main():
     args = parse_arguments()
 
@@ -266,6 +272,7 @@ def main():
         validate_zip(args)
     else:
         print('Package type {} is not supported'.format(args.package_type))
+
 
 if __name__ == "__main__":
     sys.exit(main())
