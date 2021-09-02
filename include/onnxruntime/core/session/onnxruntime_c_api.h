@@ -445,7 +445,7 @@ ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION;
 */
 struct OrtApi {
 
-  /// \name Error Handling
+  /// \name OrtStatus
   /// @{
 
   /**
@@ -1463,18 +1463,44 @@ struct OrtApi {
                   _In_ const int64_t* dim_values, size_t dim_count, _Outptr_ OrtValue** out);
 
   /// @}
-  /// \name Release Types
+  /// \name OrtEnv
   /// @{
-
   ORT_CLASS_RELEASE(Env);
+  /// @}
+  /// \name OrtStatus
+  /// @{
   ORT_CLASS_RELEASE(Status);
+  /// @}
+  /// \name OrtMemoryInfo
+  /// @{
   ORT_CLASS_RELEASE(MemoryInfo);
-  ORT_CLASS_RELEASE(Session); //Don't call ReleaseSession from Dllmain (because session owns a thread pool)
+  /// @}
+  /// \name OrtSession
+  /// @{
+  ORT_CLASS_RELEASE(Session);  //Don't call ReleaseSession from Dllmain (because session owns a thread pool)
+  /// @}
+  /// \name OrtValue
+  /// @{
   ORT_CLASS_RELEASE(Value);
+  /// @}
+  /// \name OrtRunOptions
+  /// @{
   ORT_CLASS_RELEASE(RunOptions);
+  /// @}
+  /// \name OrtTypeInfo
+  /// @{
   ORT_CLASS_RELEASE(TypeInfo);
+  /// @}
+  /// \name OrtTensorTypeAndShapeInfo
+  /// @{
   ORT_CLASS_RELEASE(TensorTypeAndShapeInfo);
+  /// @}
+  /// \name OrtSessionOptions
+  /// @{
   ORT_CLASS_RELEASE(SessionOptions);
+  /// @}
+  /// \name OrtCustomOpDomain
+  /// @{
   ORT_CLASS_RELEASE(CustomOpDomain);
 
   /// @}
@@ -1571,10 +1597,12 @@ struct OrtApi {
                   _Outptr_ OrtTypeInfo** type_info);
 
   /// @}
-  /// \name Release Types
+  /// \name OrtMapTypeInfo
   /// @{
-
   ORT_CLASS_RELEASE(MapTypeInfo);
+  /// @}
+  /// \name OrtSequenceTypeInfo
+  /// @{
   ORT_CLASS_RELEASE(SequenceTypeInfo);
 
   /// @}
@@ -2438,7 +2466,7 @@ struct OrtApi {
 
   /** \brief Create an OrtTensorRTProviderOptionsV2
   *
-  * \param[out] out Newly created ::OrtTensorRTProviderOptionsV2. Must be released with OrtApi::ReleaseTensorRTProviderOptionsV2
+  * \param[out] out Newly created ::OrtTensorRTProviderOptionsV2. Must be released with OrtApi::ReleaseTensorRTProviderOptions
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
@@ -2447,7 +2475,7 @@ struct OrtApi {
   /** \brief Set options in a TensorRT Execution Provider.
   *
   * Please refer to https://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html#c-api-example
-  * to know the available keys and values. Key should be in null terminated string format of the member of ::OrtTensorRTProviderOptions
+  * to know the available keys and values. Key should be in null terminated string format of the member of ::OrtTensorRTProviderOptionsV2
   * and value should be its related range.
   *
   * For example, key="trt_max_workspace_size" and value="2147483648"
@@ -2477,7 +2505,11 @@ struct OrtApi {
   */
   ORT_API2_STATUS(GetTensorRTProviderOptionsAsString, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
 
-  ORT_CLASS_RELEASE(TensorRTProviderOptionsV2);
+  /** \brief Release an ::OrtTensorRTProviderOptionsV2
+  *
+  * \note This is an exception in the naming convention of other Release* functions, as the name of the method does not have the V2 suffix, but the type does
+  */
+  void(ORT_API_CALL * ReleaseTensorRTProviderOptions)(_Frees_ptr_opt_ OrtTensorRTProviderOptionsV2* input);
 
   /// @}
   /// \name OrtSessionOptions
@@ -2492,7 +2524,7 @@ struct OrtApi {
   ORT_API2_STATUS(EnableOrtCustomOps, _Inout_ OrtSessionOptions* options);
 
   /// @}
-  /// \name OrtEnv
+  /// \name OrtAllocator
   /// @{
 
   /** \brief Register a custom allocator
