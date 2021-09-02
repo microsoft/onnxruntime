@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/tensor.h"
+#include "core/providers/cpu/nn/batch_norm.h"  // for BATCHNORM_INCLUDE_TRAINING_SUPPORT
 #include "core/session/inference_session.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -46,10 +47,10 @@ void TestBatchNorm(const unordered_map<string, vector<T>>& input_data_map,
     excluded_eps.insert(kOpenVINOExecutionProvider);
   }
 
-  // OpenVINO: Disabled due to software limitations
-  #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M) || defined(OPENVINO_CONFIG_CPU_FP32)
-    excluded_eps.insert(kOpenVINOExecutionProvider);
-  #endif
+// OpenVINO: Disabled due to software limitations
+#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M) || defined(OPENVINO_CONFIG_CPU_FP32)
+  excluded_eps.insert(kOpenVINOExecutionProvider);
+#endif
   test.Run(expect_result, err_str, excluded_eps);
 }
 
@@ -736,6 +737,7 @@ TEST(BatchNormTest, BatchNorm2d_fp16) {
 #endif
 
 // TODO fix flaky test for CUDA
+#ifdef BATCHNORM_INCLUDE_TRAINING_SUPPORT
 TEST(BatchNormTest, ForwardTrainingTestWithSavedOutputsOpset9) {
   OpTester test("BatchNormalization", 9);
   float epsilon = 1e-05f;
@@ -814,6 +816,7 @@ TEST(BatchNormTest, ForwardTrainingTestOpset15) {
   // Same exclusions as the opset 14 test
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
 }
+#endif  // BATCHNORM_INCLUDE_TRAINING_SUPPORT
 
 }  // namespace test
 }  // namespace onnxruntime
