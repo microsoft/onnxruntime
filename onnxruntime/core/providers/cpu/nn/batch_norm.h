@@ -46,17 +46,12 @@ class BatchNorm : public OpKernel {
     if (op_kernel_info.node().SinceVersion() == 14) {
       is_train_ = op_kernel_info.GetAttrOrDefault<int64_t>("training_mode", 0) == 1;
     } else {
-      is_train_ = OpKernel::Node().OutputDefs().size() > 1;
+      is_train_ = op_kernel_info.GetOutputCount() > 1;
     }
 
     if (is_train_) {
 #if defined(BATCHNORM_INCLUDE_TRAINING_SUPPORT)
-      size_t output_count = op_kernel_info.node().OutputDefs().size();
-      ORT_ENFORCE((is_train_ && output_count == 3) || (!is_train_ && output_count == 1),
-                  "Output running_mean and running_var are valid and required for training mode.");
-
       momentum_ = op_kernel_info.GetAttrOrDefault<float>("momentum", 0.9f);
-
       ORT_ENFORCE(!is_spatial_, "Training mode does not support non-spatial BN");
 #else
       ORT_THROW("Training mode is not supported in this build.");
