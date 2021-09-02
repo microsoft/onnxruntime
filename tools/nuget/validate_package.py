@@ -210,8 +210,8 @@ def validate_nuget(args):
 
     # Do all validations here
     try:
-        # if not is_windows():
-            # raise Exception('Nuget validation is currently supported only on Windows')
+        if not is_windows():
+            raise Exception('Nuget validation is currently supported only on Windows')
 
         # Make a copy of the Nuget package
         print('Copying [' + full_nuget_path + '] -> [' + nupkg_copy_name + '], and extracting its contents')
