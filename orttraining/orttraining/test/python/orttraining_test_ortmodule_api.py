@@ -1543,15 +1543,26 @@ def test_named_tuple_return_value_module(device):
 def test_exception_raised_for_custom_class_return_value_module(device):
 
     N, D_in, H, D_out = 64, 784, 500, 10
-    model = NeuralNetCustomClassOutput(D_in, H, D_out).to(device)
-    model = ORTModule(model)
+    pt_model = NeuralNetCustomClassOutput(D_in, H, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
     x = torch.randn(N, D_in, device=device)
     y = torch.randn(N, D_in, device=device)
     z = torch.randn(N, D_in, device=device)
 
-    with pytest.raises(_fallback.ORTModuleIOError) as runtime_error:
-        model(x, y, z)
-    assert 'ORTModule does not support the following model output type' in str(runtime_error.value)
+    from onnxruntime.training.ortmodule._fallback import _FallbackPolicy
+    if _test_helpers.is_all_or_nothing_fallback_enabled(None, _FallbackPolicy.FALLBACK_UNSUPPORTED_DATA):
+        # Fallback
+        pt_out = pt_model(x, y, z)
+        ort_out = pt_model(x, y, z)
+        # Assert that the output from torch is the same as the one from ORTModule
+        _test_helpers.assert_values_are_close(pt_out.out1, ort_out.out1)
+        _test_helpers.assert_values_are_close(pt_out.out2, ort_out.out2)
+        _test_helpers.assert_values_are_close(pt_out.out3, ort_out.out3)
+    else:
+        # ORT backend
+        with pytest.raises(_fallback.ORTModuleIOError) as runtime_error:
+            model(x, y, z)
+        assert 'ORTModule does not support the following model output type' in str(runtime_error.value)
 
 def test_dynamic_axes_config():
     device = 'cuda'
@@ -1588,9 +1599,19 @@ def test_model_with_multiple_devices_cpu_cuda():
 
     pt_model = MultipleDeviceModel()
     x = torch.randn(20, 10)
-    with pytest.raises(_fallback.ORTModuleFallbackException) as e:
-        ort_model = ORTModule(pt_model)
-    assert str(e.value) == 'ORTModule supports a single device per model'
+
+    from onnxruntime.training.ortmodule._fallback import _FallbackPolicy
+    if _test_helpers.is_all_or_nothing_fallback_enabled(None, _FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE):
+        # Fallback
+        ort_model = ORTModule(copy.deepcopy(pt_model))
+        with pytest.raises(RuntimeError) as runtime_error:
+            ort_model(x)
+        assert f"Expected all tensors to be on the same device, but found at least two devices" in str(runtime_error.value)
+    else:
+        # ORT backend
+        with pytest.raises(_fallback.ORTModuleFallbackException) as e:
+            ort_model = ORTModule(pt_model)
+        assert str(e.value) == 'ORTModule supports a single device per model'
 
 def test_model_with_multiple_devices_to_to():
     class MultipleDeviceModel(torch.nn.Module):
@@ -1606,9 +1627,18 @@ def test_model_with_multiple_devices_to_to():
 
     pt_model = MultipleDeviceModel()
     x = torch.randn(20, 10)
-    with pytest.raises(_fallback.ORTModuleFallbackException) as e:
-        ort_model = ORTModule(pt_model)
-    assert str(e.value) == 'ORTModule supports a single device per model'
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    from onnxruntime.training.ortmodule._fallback import _FallbackPolicy
+    if _test_helpers.is_all_or_nothing_fallback_enabled(None, _FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE):
+        # Fallback
+        with pytest.raises(RuntimeError) as runtime_error:
+            ort_model(x)
+        assert f"Expected all tensors to be on the same device, but found at least two devices" in str(runtime_error.value)
+    else:
+        # ORT backend
+        with pytest.raises(_fallback.ORTModuleFallbackException) as e:
+            ort_model = ORTModule(pt_model)
+        assert str(e.value) == 'ORTModule supports a single device per model'
 
 def test_model_with_multiple_devices_to_cpu():
     class MultipleDeviceModel(torch.nn.Module):
@@ -1624,9 +1654,18 @@ def test_model_with_multiple_devices_to_cpu():
 
     pt_model = MultipleDeviceModel()
     x = torch.randn(20, 10)
-    with pytest.raises(_fallback.ORTModuleFallbackException) as e:
-        ort_model = ORTModule(pt_model)
-    assert str(e.value) == 'ORTModule supports a single device per model'
+    from onnxruntime.training.ortmodule._fallback import _FallbackPolicy
+    if _test_helpers.is_all_or_nothing_fallback_enabled(None, _FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE):
+        # Fallback
+        ort_model = ORTModule(copy.deepcopy(pt_model))
+        with pytest.raises(RuntimeError) as runtime_error:
+            ort_model(x)
+        assert f"Expected all tensors to be on the same device, but found at least two devices" in str(runtime_error.value)
+    else:
+        # ORT backend
+        with pytest.raises(_fallback.ORTModuleFallbackException) as e:
+            ort_model = ORTModule(pt_model)
+        assert str(e.value) == 'ORTModule supports a single device per model'
 
 def test_model_with_multiple_devices_to_cuda():
     class MultipleDeviceModel(torch.nn.Module):
@@ -1642,10 +1681,18 @@ def test_model_with_multiple_devices_to_cuda():
 
     pt_model = MultipleDeviceModel()
     x = torch.randn(20, 10)
-    with pytest.raises(_fallback.ORTModuleFallbackException) as e:
-        ort_model = ORTModule(pt_model)
-
-    assert str(e.value) == 'ORTModule supports a single device per model'
+    from onnxruntime.training.ortmodule._fallback import _FallbackPolicy
+    if _test_helpers.is_all_or_nothing_fallback_enabled(None, _FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE):
+        # Fallback
+        ort_model = ORTModule(copy.deepcopy(pt_model))
+        with pytest.raises(RuntimeError) as runtime_error:
+            ort_model(x)
+        assert f"Expected all tensors to be on the same device, but found at least two devices" in str(runtime_error.value)
+    else:
+        # ORT backend
+        with pytest.raises(_fallback.ORTModuleFallbackException) as e:
+            ort_model = ORTModule(pt_model)
+        assert str(e.value) == 'ORTModule supports a single device per model'
 
 @pytest.mark.parametrize("device", ['cuda', 'cuda:0', 'cuda:1', 'cuda:2'])
 def test_model_with_different_cuda_devices(device):
@@ -1823,9 +1870,17 @@ def test_forward_data_and_model_on_different_devices(data_device, model_device):
 
     # Now that the model has been exported, feed in data from device other than the model device
     x = torch.randn(N, D_in, device=data_device)
-    with pytest.raises(_fallback.ORTModuleDeviceException) as runtime_error:
-        ort_model(x)
-    assert f"Input argument to forward found on device {torch.device(x.device)}, but expected it to be on module device {ort_model._torch_module._execution_manager(ort_model._is_training())._device}." in str(runtime_error.value)
+    from onnxruntime.training.ortmodule._fallback import _FallbackPolicy, ORTModuleDeviceException
+    if _test_helpers.is_all_or_nothing_fallback_enabled(None, _FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE):
+        # Fallback
+        with pytest.raises(RuntimeError) as runtime_error:
+            ort_model(x)
+        assert f"Expected all tensors to be on the same device, but found at least two devices" in str(runtime_error.value)
+    else:
+        # ORT backend
+        with pytest.raises(ORTModuleDeviceException) as runtime_error:
+            ort_model(x)
+        assert f"Input argument to forward found on device {torch.device(x.device)}, but expected it to be on module device {ort_model._torch_module._execution_manager(ort_model._is_training())._device}." in str(runtime_error.value)
 
 def test_forward_returns_none_type_as_output():
     class NeuralNetNoneTypeOutput(torch.nn.Module):
@@ -2990,11 +3045,21 @@ def test_hf_save_pretrained():
 
 def test_input_with_string_exception():
 
-    model = MyStrNet()
-    model = ORTModule(model)
-    with pytest.raises(_fallback.ORTModuleIOError) as ex_info:
-        _ = model(torch.randn(1, 2), 'hello')
-    assert "ORTModule does not support the following model data type <class 'str'>" in str(ex_info.value)
+    pt_model = MyStrNet()
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    x = torch.randn(1, 2)
+
+    from onnxruntime.training.ortmodule._fallback import _FallbackPolicy
+    if _test_helpers.is_all_or_nothing_fallback_enabled(None, _FallbackPolicy.FALLBACK_UNSUPPORTED_DATA):
+        # Fallback
+        pt_out = pt_model(x, 'hello')
+        ort_out = pt_model(x, 'hello')
+        _test_helpers.assert_values_are_close(pt_out, ort_out)
+    else:
+        # ORT backend
+        with pytest.raises(_fallback.ORTModuleIOError) as ex_info:
+            _ = ort_model(x, 'hello')
+        assert "ORTModule does not support the following model data type <class 'str'>" in str(ex_info.value)
 
 def test_ortmodule_list_input():
     class ListNet(torch.nn.Module):
@@ -3212,15 +3277,15 @@ def test_ortmodule_gradient_accumulation_optimization_correctness():
             loss = prediction.sum()
         loss.backward()
         return loss.detach()
-    
+
     def run_optim_step(optimizer):
         optimizer.step()
         optimizer.zero_grad()
-    
+
     GA_steps = 2
     tgt_model.zero_grad()
     opt_model.zero_grad()
-    
+
     for step in range(10):
         x = torch.randn(N, D_in, device=device)
         tgt_loss = run_step(tgt_model, x)
