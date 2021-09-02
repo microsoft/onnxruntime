@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {Guid} from 'guid-typescript';
 import {Logger, Profiler} from '../../instrument';
 import {Tensor} from '../../tensor';
 
@@ -27,6 +28,7 @@ export class TextureManager {
   private readonly inUseTextures: Map<string, WebGLTexture[]>;
   private readonly idleTextures: Map<string, WebGLTexture[]>;
   private readonly textureLookup: Map<WebGLTexture, string>;
+  private readonly pendingRead: Map<Guid, Array<(arr: Tensor.NumberType) => void>>;
 
   constructor(
       public glContext: WebGLContext, public layoutStrategy: TextureLayoutStrategy, public profiler: Readonly<Profiler>,
@@ -87,6 +89,31 @@ export class TextureManager {
       const data = this.glContext.readTexture(
           td.texture, td.width, td.height, dataSize, this.toEncoderType(dataType), channels!);
       return this.toTensorData(dataType, data);
+    });
+  }
+  async readTextureAsync(td: TextureData, dataType: Tensor.DataType, channels?: number): Promise<Tensor.NumberType> {
+    const dataId = td.tensor.dataId;
+    if (!channels) {
+      channels = 1;
+    }
+    if (this.pendingRead.has(dataId)) {
+      const subscribers = this.pendingRead.get(dataId);
+      return new Promise<Tensor.NumberType>(resolve => subscribers?.push(resolve));
+    }
+    return this.profiler.event('backend', 'TextureManager.readTextureAsync', async () => {
+      this.pendingRead.set(dataId, []);
+      const dataSize = td.shape.reduce((a, b) => a * b) * channels!;
+      // eslint-disable-next-line no-console
+      console.log('reading texture async...');
+      // add a fence waiting for the data to be ready
+      await this.glContext.createAndWaitForFence();
+      const data = this.glContext.readTexture(
+          td.texture, td.width, td.height, dataSize, this.toEncoderType(dataType), channels!);
+      const tensorData = this.toTensorData(dataType, data);
+      const subscribers = this.pendingRead.get(dataId);
+      this.pendingRead.delete(dataId);
+      subscribers?.forEach(resolve => resolve(tensorData));
+      return tensorData;
     });
   }
   readUint8TextureAsFloat(td: TextureData): Float32Array {

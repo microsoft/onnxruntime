@@ -139,8 +139,11 @@ export class ExecutionPlan {
         if (thisValue === undefined) {
           throw new Error(`required output [${outputIndex}] does not have value`);
         }
-        // eslint-disable-next-line no-unused-expressions
-        thisValue.data;
+
+        if (thisValue.getData() === undefined) {
+          // eslint-disable-next-line no-unused-expressions
+          thisValue.data;
+        }
         output.push(thisValue);
       });
       Logger.verbose('ExecPlan', 'disposing of inferenceHandler');

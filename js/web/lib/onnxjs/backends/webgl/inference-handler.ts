@@ -245,8 +245,8 @@ export class WebGLInferenceHandler implements InferenceHandler {
       ...layout,
       tensor: tensor ||
           new Tensor(
-                  layout.unpackedShape, dataType, (_id: Tensor.Id) => this.readTexture(textureData), undefined,
-                  undefined, tensorId),
+                  layout.unpackedShape, dataType, (_id: Tensor.Id) => this.readTexture(textureData),
+                  async (_id: Tensor.Id) => this.readTextureAsync(textureData), undefined, tensorId),
       texture
     };
     this.setTextureData(textureData.tensor.dataId, textureData, layout.isPacked);
@@ -285,6 +285,16 @@ export class WebGLInferenceHandler implements InferenceHandler {
       return this.session.textureManager.readUint8TextureAsFloat(encodeAsUint8(this, textureData));
     }
     return this.session.textureManager.readTexture(textureData, textureData.tensor.type, textureData.channels);
+  }
+
+  async readTextureAsync(textureData: TextureData): Promise<Tensor.NumberType> {
+    if (textureData.isPacked) {
+      return this.readTextureAsync(this.unpack(textureData));
+    }
+    if (!this.session.backend.glContext.isFloat32DownloadSupported) {
+      return this.session.textureManager.readUint8TextureAsFloat(encodeAsUint8(this, textureData));
+    }
+    return this.session.textureManager.readTextureAsync(textureData, textureData.tensor.type, textureData.channels);
   }
 
   pack(input: TextureData): TextureData {

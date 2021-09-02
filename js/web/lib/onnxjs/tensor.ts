@@ -131,9 +131,6 @@ export class Tensor {
    * get the underlying tensor data asynchronously
    */
   async getData(): Promise<TensorData> {
-    // TBD: This function is designed for usage when any backend data provider offers a way to retrieve data in an
-    //      asynchronous way. should implement this function when enabling webgl async read data.
-
     if (this.cache === undefined) {
       this.cache = await this.asyncDataProvider!(this.dataId);
     }
