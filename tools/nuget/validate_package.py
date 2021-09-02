@@ -151,24 +151,23 @@ def validate_tarball(args):
         raise Exception('No packages / more than one packages found in the given path.')
     
     print(files)
-    full_package_path = files[0]
-    if "-gpu-" in full_package_path.lower():
+
+    package_name = args.package_name
+    if "-gpu-" in package_name.lower():
         is_gpu_package = True 
     else:
         is_gpu_package = False
 
-    name = re.search('(.*)\..*', full_package_path).group(1)
+    name = re.search('(.*)\..*', package_name).group(1)
     print(name)
 
-    print('tar zxvf ' + full_package_path)
-    os.system("tar zxvf " + full_package_path)
-    # package_path = os.path.join(args.package_path, name)
+    print('tar zxvf ' + package_name)
+    os.system("tar zxvf " + package_name)
 
     is_windows_ai_package = False
     zip_file = None
-    full_package_folder = name
     check_if_dlls_are_present(args.package_type, is_windows_ai_package, is_gpu_package, \
-                                  args.platforms_supported, zip_file, full_package_folder)
+                                  args.platforms_supported, zip_file, name)
 
 def validate_zip(args):
     files = glob.glob(os.path.join(args.package_path, args.package_name))
@@ -177,19 +176,20 @@ def validate_zip(args):
         print(files)
         raise Exception('No packages / more than one packages found in the given path.')
 
-    full_package_path = files[0]
-    if "-gpu-" in full_package_path.lower():
+    package_name = args.package_name
+    if "-gpu-" in package_name.lower():
         is_gpu_package = True 
     else:
         is_gpu_package = False
 
-    name = re.search('(.*)\..*', full_package_path).group(1)
+    name = re.search('(.*)\..*', package_name).group(1)
+    print(name)
 
     zip_file = zipfile.ZipFile(full_package_path)
     is_windows_ai_package = False
     full_package_folder = name
     check_if_dlls_are_present(args.package_type, is_windows_ai_package, is_gpu_package, \
-                                  args.platforms_supported, zip_file, full_package_folder)
+                                  args.platforms_supported, zip_file, name)
 
 def validate_nuget(args):
     files = glob.glob(os.path.join(args.package_path, args.package_name))

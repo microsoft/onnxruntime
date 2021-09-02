@@ -317,6 +317,7 @@ jobs:
       PackageName: 'onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
       PlatformsSupported: 'linux-x64'
       VerifyNugetSigning: false
+      workingDirectory: '$(Build.ArtifactStagingDirectory)'
 
   - task: PublishPipelineArtifact@1
     inputs:
@@ -387,6 +388,7 @@ jobs:
       PackageName: 'onnxruntime-win-x64-gpu-*.zip'
       PlatformsSupported: 'win-x64'
       VerifyNugetSigning: false
+      workingDirectory: '$(Build.ArtifactStagingDirectory)'
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline Combined GPU Package Artifact'
