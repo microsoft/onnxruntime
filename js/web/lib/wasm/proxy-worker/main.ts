@@ -4,7 +4,7 @@
 /// <reference lib="webworker" />
 
 import {OrtWasmMessage} from '../proxy-messages';
-import {createSession, extractTransferableBuffers, initOrt, releaseSession, run} from '../wasm-core-impl';
+import {createSession, endProfiling, extractTransferableBuffers, initOrt, releaseSession, run} from '../wasm-core-impl';
 import {initializeWebAssembly} from '../wasm-factory';
 
 self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
@@ -49,6 +49,15 @@ self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
         postMessage({type: 'run', out: outputs} as OrtWasmMessage, extractTransferableBuffers(outputs));
       } catch (err) {
         postMessage({type: 'run', err} as OrtWasmMessage);
+      }
+      break;
+    case 'end-profiling':
+      try {
+        const handler = ev.data.in!;
+        endProfiling(handler);
+        postMessage({type: 'end-profiling'} as OrtWasmMessage);
+      } catch (err) {
+        postMessage({type: 'end-profiling', err} as OrtWasmMessage);
       }
       break;
     default:
