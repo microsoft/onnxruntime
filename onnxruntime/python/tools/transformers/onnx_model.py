@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 import numpy as np
 from collections import deque
-from onnx import onnx_pb, AttributeProto, ModelProto, TensorProto, numpy_helper, helper, external_data_helper, save_model
+from onnx import onnx_pb, AttributeProto, ModelProto, TensorProto, NodeProto, numpy_helper, helper, external_data_helper, save_model
 from shape_infer_helper import SymbolicShapeInferenceHelper
 
 logger = logging.getLogger(__name__)
@@ -484,6 +484,14 @@ class OnnxModel:
 
         return None
 
+    @staticmethod
+    def get_node_attribute(node: NodeProto, attribute_name: str):
+        for attr in node.attribute:
+            if attr.name == attribute_name:
+                value = helper.get_attribute_value(attr)
+                return value
+        return None
+
     def convert_model_float32_to_float16(self, cast_input_output=True):
         logger.warn(
             'The function convert_model_float32_to_float16 is deprecated. Use convert_float_to_float16 instead!')
@@ -544,13 +552,6 @@ class OnnxModel:
         fp16_model = convert_float_to_float16(model, **parameters)
         self.initialize(fp16_model)
 
-        def get_node_attribute(node, attribute_name: str):
-            for attr in node.attribute:
-                if attr.name == attribute_name:
-                    value = helper.get_attribute_value(attr)
-                    return value
-            return None
-
         # Convert_float_to_float16 might add Cast(to=10) --> Cast(to=1) when two consequent nodes are computed in FP32.
         # Below are post-processing that removes those Cast nodes.
         # Remove first Cast nodes in path like  --> Cast --> Cast -->
@@ -565,7 +566,7 @@ class OnnxModel:
 
         # Remove the second cast node.
         for node in self.nodes():
-            if node.op_type == "Cast" and get_node_attribute(node, "to") == int(TensorProto.FLOAT) and \
+            if node.op_type == "Cast" and OnnxModel.get_node_attribute(node, "to") == int(TensorProto.FLOAT) and \
                 self.get_dtype(node.input[0])  == int(TensorProto.FLOAT):
 
                 if self.find_graph_output(node.output[0]):

@@ -5,7 +5,7 @@
 
 from logging import getLogger
 from typing import List
-from onnx import ModelProto, TensorProto, helper
+from onnx import GraphProto, ModelProto, TensorProto, ValueInfoProto, helper
 from onnx_model import OnnxModel
 from fusion_reshape import FusionReshape
 from fusion_layernorm import FusionLayerNormalization, FusionLayerNormalizationTF
@@ -116,33 +116,79 @@ class BertOnnxModel(OnnxModel):
         inputs += self.get_graph_inputs_from_node_type('Attention', [3], casted)
         return inputs
 
-    def change_input_to_int32(self):
-        original_opset_version = self.model.opset_import[0].version
+    def change_graph_input_type(self,
+                                graph: GraphProto,
+                                graph_input: ValueInfoProto,
+                                new_type: int = TensorProto.INT32):
+        """Change graph input type, and add Cast node if needed.
+
+        Args:
+            graph (GraphProto): graph
+            graph_input (TensorProto): input of the graph
+            new_type (int, optional): new data type. Defaults to TensorProto.INT32.
+
+        Returns:
+            NodeProto: a new Cast node that added. None if Cast node is not added.
+            List[NodeProto]: Cast nodes that have been removed.
+        """
+        assert isinstance(graph, GraphProto)
+        assert isinstance(graph_input, ValueInfoProto)
+        assert self.find_graph_input(graph_input.name)
+
+        if graph_input.type.tensor_type.elem_type == int(new_type):
+            return None, []
+
+        new_cast_node = None
+        nodes_to_remove = []
+
+        input_name_to_nodes = self.input_name_to_nodes()
+        if graph_input.name in input_name_to_nodes:
+            nodes = input_name_to_nodes[graph_input.name]
+
+            # For children that is not Cast node, insert a Cast node to convert int32 to original data type.
+            nodes_not_cast = [node for node in nodes if node.op_type != 'Cast']
+            if nodes_not_cast:
+                node_name = self.create_node_name('Cast')
+                output_name = node_name + '_' + graph_input.name
+                new_value_info = graph.value_info.add()
+                new_value_info.CopyFrom(graph_input)
+                new_value_info.name = output_name
+                new_cast_node = helper.make_node('Cast', [graph_input.name], [output_name],
+                                                 to=int(graph_input.type.tensor_type.elem_type),
+                                                 name=node_name)
+                graph.node.extend([new_cast_node])
+
+                for node in nodes_not_cast:
+                    OnnxModel.replace_node_input(node, graph_input.name, output_name)
+
+            # For children that is Cast node, no need to insert Cast.
+            # When the children is Cast to int32, we can remove that Cast node since input type is int32 now.
+            nodes_cast = [node for node in nodes if node.op_type == 'Cast']
+            for node in nodes_cast:
+                if OnnxModel.get_node_attribute(node, "to") == int(new_type):
+                    self.replace_input_of_all_nodes(node.output[0], graph_input.name)
+                if not self.find_graph_output(node.output[0]):
+                    nodes_to_remove.append(node)
+            if nodes_to_remove:
+                self.remove_nodes(nodes_to_remove)
+
+        graph_input.type.tensor_type.elem_type = int(new_type)
+        return new_cast_node, nodes_to_remove
+
+    def change_graph_inputs_to_int32(self):
+        """Change data type of all graph inputs to int32 type, and add Cast node if needed.
+        """
         graph = self.graph()
-
-        new_graph_inputs = []
-        casted_bert_graph_inputs = self.get_graph_inputs_from_fused_nodes(casted=True)
-
-        for input in graph.input:
-            if input.name in casted_bert_graph_inputs:
-                self.utils.remove_cast_int32(input.name)
-                int32_input = helper.make_tensor_value_info(input.name, TensorProto.INT32,
-                                                            self.tensor_shape_to_list(input.type.tensor_type))
-                new_graph_inputs.append(int32_input)
-            else:
-                new_graph_inputs.append(input)
-
-        graph_def = helper.make_graph(graph.node,
-                                      'int32 inputs',
-                                      new_graph_inputs,
-                                      graph.output,
-                                      initializer=graph.initializer,
-                                      value_info=graph.value_info)
-
-        self.model = helper.make_model(graph_def, producer_name='onnxruntime-tools')
-
-        # restore opset version
-        self.model.opset_import[0].version = original_opset_version
+        add_cast_count = 0
+        remove_cast_count = 0
+        for graph_input in graph.input:
+            new_node, removed_nodes = self.change_graph_input_type(graph, graph_input, TensorProto.INT32)
+            if new_node:
+                add_cast_count += 1
+            remove_cast_count += len(removed_nodes)
+        logger.info(
+            f"Graph inputs are changed to int32. Added {add_cast_count} Cast nodes, and removed {remove_cast_count} Cast nodes."
+        )
 
     def use_dynamic_axes(self, dynamic_batch_dim='batch_size', dynamic_seq_len='max_seq_len'):
         """
