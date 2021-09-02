@@ -16,7 +16,7 @@ logger = getLogger(__name__)
 class FusionEmbedLayerNoMask(Fusion):
     """
      Fuse embedding layer into one node (EmbedLayerNormalization).
-     It supports the following model types: BERT, DistilBert, Roberta, ALBert.
+     It supports the following model types: BERT, DistilBert, ALBert.
     """
     def __init__(self, model: OnnxModel, description='no mask'):
         super().__init__(model, "EmbedLayerNormalization", ["LayerNormalization", "SkipLayerNormalization"],
@@ -164,26 +164,22 @@ class FusionEmbedLayerNoMask(Fusion):
     def match_position_embedding_distilbert(self, position_embedding_gather, input_ids, output_name_to_node):
         """  Match position embedding path from input_ids to Gather for DistilBert.
 
-        DistilBert has word and position embeddings, subgraph pattern is like
-                input_ids
-                |      \
-                |     Shape
-                |       |   \
-                |       |    Gather (indices=1)
-                |       |       |
-                |       |      Cast (optional)
-                |       |       |
-                |       |      Range (start=0, end=*, delta=1)
-                |       |       |
-                |       |    Unsqueeze
-                |       |    /
-                |      Expand
-                |        |
-             Gather    Gather
-                  \   /
-                   Add
-                    |
-            LayerNormalization
+        Pattern is like the following:
+                 (input_ids)
+                      |
+                     Shape
+                       |   \
+                       |    Gather (indices=1)
+                       |       |
+                       |      Cast (optional)
+                       |       |
+                       |      Range (start=0, end=*, delta=1)
+                       |       |
+                       |    Unsqueeze
+                       |    /
+                      Expand
+                        |
+                      Gather
         """
         path1 = self.model.match_parent_path(position_embedding_gather, ['Expand', 'Shape'], [1, 1])
         if path1 is None:
@@ -216,49 +212,48 @@ class FusionEmbedLayerNoMask(Fusion):
     def match_position_embedding_roberta(self, position_embedding_gather, input_ids, output_name_to_node):
         """  Match position embedding path from input_ids to Gather for Roberta.
 
-        Roberta Embedding Layer Pattern:       
-                   (input_ids) -- Equal(B=0) -- Not
-                          |                     |
-                          |                   Cast (to=6)
-                          |                     |  \
-                          |                     |   CumSum(axis=1)
-                          |                     |   /
-                          |                     Mul
-                          |                     |
-                          |                    Cast (to=7)
-                          |                     |
-                        Gather (segment_ids)  Add (B=1)
-                           \        |           |
-                            \     Gather      Cast (to=7, optional)
-                              \    /            |
-                                Add          Gather
-                                   \       /
-                                      Add
-                                       |
-                                LayerNormalization
-        """
-        path = self.model.match_parent_path(position_embedding_gather,
-                                            ['Cast', 'Add', 'Cast', 'Mul', 'CumSum', 'Cast', 'Not', 'Equal'],
-                                            [1, 0, 0, 0, 0, 0, 0, 0], output_name_to_node)
+        Roberta Embedding Layer Pattern (* is optional since it might be removed by ORT):       
+          (input_ids) --> Equal(B=0) -- Not -- Cast(to=6) -- CumSum(axis=1) -- Mul -- Cast(to=7) -- Add(B=1) -- Cast(to=7)* --> Gather
+                                                |                              ^
+                                                V                              |
+                                                +------------------------------+  
+
+        Roberta new pattern from transformers v4.9:
+           (input_ids) --> Equal(B=1) -- Not -- Cast(to=6) -- CumSum(axis=1) -- Add(B=0) -- Mul -- Cast(to=7) -- Add(B=1) --> Gather
+                                                |                                           ^
+                                                V                                           |
+                                                +-------------------------------------------+  
+        
+        start_node = position_embedding_gather
+        start_index = 1
+
+        # match optional Cast node.
+        parent = self.model.get_parent(start_node, start_index, output_name_to_node)
+        if parent is None:
+            return
+        if parent.op_type == "Cast":
+            if OnnxModel.get_node_attribute(parent, "to") != 7:
+                return
+            start_node = parent
+            start_index = 0
+
+        i, path, return_indices = self.model.match_parent_paths(
+            start_node,
+            [ (['Add', 'Cast', 'Mul', 'CumSum', 'Cast', 'Not', 'Equal'], [start_index, 0, 0, 0, 0, 0, 0]),
+              (['Add', 'Cast', 'Mul', 'Add', 'CumSum', 'Cast', 'Not', 'Equal'], [start_index, 0, 0, 0, 0, 0, 0, 0])],
+            output_name_to_node)
+
         if path is not None:
             # constant input of Add shall be 1.
-            i, value = self.model.get_constant_input(path[1])
+            i, value = self.model.get_constant_input(path[0])
             if value != 1:
                 return False
 
-            # constant input of Equal shall be 0. In distilroberta, the constant is 1
-            i, value = self.model.get_constant_input(path[-1])
-            if value != 0:
-                return False
-
+            # TODO: EmbedLayerNormalization supports padding in calculating position index.
+            _, padding_word_id = self.model.get_constant_input(path[-1])
+            
             return input_ids == path[-1].input[0]
-
-        # Deal with optional Cast
-        path = self.model.match_parent_path(position_embedding_gather,
-                                            ['Add', 'Cast', 'Mul', 'CumSum', 'Cast', 'Not', 'Equal'],
-                                            [1, 0, 0, 0, 0, 0, 0], output_name_to_node)
-        if path is not None:
-            return input_ids == path[-1].input[0]
+        """
 
         return False
 
@@ -330,8 +325,9 @@ class FusionEmbedLayerNoMask(Fusion):
         if self.match_position_embedding_bert(position_embedding_gather, input_ids, output_name_to_node):
             return True
 
-        if self.match_position_embedding_roberta(position_embedding_gather, input_ids, output_name_to_node):
-            return True
+        # TODO: To support Roberta, EmbedLayerNormalization need support padding in calculating position index.
+        #if self.match_position_embedding_roberta(position_embedding_gather, input_ids, output_name_to_node):
+        #    return True
 
         if self.match_position_embedding_distilbert(position_embedding_gather, input_ids, output_name_to_node):
             return True
