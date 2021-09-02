@@ -7,6 +7,8 @@
 ARG OS_VERSION=18.04
 FROM nvidia/cuda:11.4.0-cudnn8-devel-ubuntu${OS_VERSION}
 
+ENV LD_LIBRARY_PATH /usr/local/cuda-11.1/targets/x86_64-linux/lib/:$LD_LIBRARY_PATH
+
 RUN apt-get update &&\
     apt-get install -y sudo git bash unattended-upgrades wget
 RUN unattended-upgrade
