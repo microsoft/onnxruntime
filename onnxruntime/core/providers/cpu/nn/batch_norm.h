@@ -52,7 +52,7 @@ class BatchNorm : public OpKernel {
     if (is_train_) {
 #if defined(BATCHNORM_INCLUDE_TRAINING_SUPPORT)
       momentum_ = op_kernel_info.GetAttrOrDefault<float>("momentum", 0.9f);
-      ORT_ENFORCE(!is_spatial_, "Training mode does not support non-spatial BN");
+      ORT_ENFORCE(is_spatial_, "Training mode only supports spatial BN");
 #else
       ORT_THROW("Training mode is not supported in this build.");
 #endif
