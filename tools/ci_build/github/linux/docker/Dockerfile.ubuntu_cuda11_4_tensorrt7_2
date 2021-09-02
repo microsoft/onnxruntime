@@ -11,10 +11,6 @@ ADD scripts/ scripts/
 RUN chmod +x scripts/install_python.sh
 RUN scripts/install_python.sh
 
-#ADD scripts/install_python.sh install_python.sh 
-#RUN chmod +x install_python.sh
-#RUN ./install_python.sh 
-
 # Install TensorRT
 RUN cd /tmp &&\
     rm /etc/apt/sources.list.d/nvidia-ml.list &&\
@@ -24,4 +20,3 @@ RUN cd /tmp &&\
 RUN v="7.2.3-1+cuda11.1" &&\
     apt-get install -y libnvinfer7=${v} libnvinfer-plugin7=${v} libnvparsers7=${v} libnvonnxparsers7=${v} libnvinfer-dev=${v} libnvinfer-plugin-dev=${v} libnvparsers-dev=${v} python3-libnvinfer=${v} &&\
     apt-mark hold libnvinfer7 libnvinfer-plugin7 libnvparsers7 libnvonnxparsers7 libnvinfer-dev libnvinfer-plugin-dev libnvparsers-dev python3-libnvinfer
-
