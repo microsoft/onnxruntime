@@ -1,10 +1,9 @@
 ---
 title: Java API
 parent: API Docs
-nav_order: 4
+nav_order: 3
 ---
 
-<!-- it is what it is -->
 <iframe 
     src="./java/index.html" 
     frameborder="0" 
