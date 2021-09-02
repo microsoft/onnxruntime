@@ -24,7 +24,7 @@ def parse_arguments():
     # Main arguments
     parser.add_argument("--package_type", required=True, help="Specify nuget, tarball or zip.")
     parser.add_argument("--package_name", required=True, help="Package name to be validated.")
-    parser.add_argument("--package_path", required=True, help="Path containing the package to be validated." + \
+    parser.add_argument("--package_path", required=True, help="Path containing the package to be validated." +
                         "Must only contain only one package within this.")
     parser.add_argument("--platforms_supported", required=True,
                         help="Comma separated list (no space). Ex: linux-x64,win-x86,osx-x64")
