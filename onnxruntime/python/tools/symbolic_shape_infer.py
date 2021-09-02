@@ -128,6 +128,7 @@ class SymbolicShapeInference:
             'Conv': self._infer_Conv,
             'CumSum': self._pass_on_shape_and_type,
             'Div': self._infer_symbolic_compute_ops,
+            'Einsum' : self._infer_Einsum,
             'Expand': self._infer_Expand,
             'Equal': self._infer_symbolic_compute_ops,
             'Floor': self._infer_symbolic_compute_ops,
@@ -803,6 +804,40 @@ class SymbolicShapeInference:
         vi.CopyFrom(
             helper.make_tensor_value_info(node.output[0], vi.type.tensor_type.elem_type,
                                           get_shape_from_sympy_shape(sympy_shape)))
+
+    def _infer_Einsum(self, node):
+        shape_0 = self._get_sympy_shape(node, 0)
+        shape_1 = self._get_sympy_shape(node, 1)
+        shape_0_len = len(shape_0)
+        shape_1_len = len(shape_1)
+
+        equation = get_attribute(node, 'equation') # e.g b'abc,cde->abde'
+
+        assert(equation[shape_0_len] == 44) # ','
+        assert(equation[shape_0_len + shape_1_len + 1] == 45 and equation[shape_0_len + shape_1_len + 2] == 62) # '->'
+
+        letter_to_dim = {}
+        for i in range(shape_0_len):
+            letter_to_dim[equation[i]] = shape_0[i]
+        
+        offset = shape_0_len + 1
+        for i in range(shape_1_len):
+            letter = equation[i + offset]
+            dim = shape_1[i]
+            if letter not in letter_to_dim.keys():
+                letter_to_dim[letter] = dim
+            elif type(dim) != sympy.Symbol:
+                letter_to_dim[letter] = dim
+        
+        new_sympy_shape = []
+        offset = shape_0_len + shape_1_len + 3
+        while offset < len(equation):
+            new_sympy_shape.append(letter_to_dim[equation[offset]])
+            offset = offset + 1
+
+        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, new_sympy_shape))
 
     def _infer_Expand(self, node):
         expand_to_shape = as_list(self._try_get_value(node, 1), keep_none=True)
