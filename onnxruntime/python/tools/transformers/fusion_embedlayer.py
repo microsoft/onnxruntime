@@ -3,9 +3,9 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 
-from typing import Dict
+from typing import Dict, List, Tuple, Union
 from logging import getLogger
-from onnx import helper, TensorProto
+from onnx import helper, TensorProto, NodeProto
 from onnx_model import OnnxModel
 from fusion_base import Fusion
 from fusion_utils import FusionUtils
@@ -18,7 +18,7 @@ class FusionEmbedLayerNoMask(Fusion):
      Fuse embedding layer into one node (EmbedLayerNormalization).
      It supports the following model types: BERT, DistilBert, ALBert.
     """
-    def __init__(self, model: OnnxModel, description='no mask'):
+    def __init__(self, model: OnnxModel, description: str = 'no mask'):
         super().__init__(model, "EmbedLayerNormalization", ["LayerNormalization", "SkipLayerNormalization"],
                          description)
         self.utils = FusionUtils(model)
@@ -27,7 +27,7 @@ class FusionEmbedLayerNoMask(Fusion):
         self.attention = None
         self.embed_node = None
 
-    def match_two_gather(self, add):
+    def match_two_gather(self, add: NodeProto) -> Union[None, Tuple[NodeProto, NodeProto]]:
         gather_0_path = self.model.match_parent_path(add, ['Gather'], [0])
         if gather_0_path is None:
             return None
@@ -38,7 +38,8 @@ class FusionEmbedLayerNoMask(Fusion):
 
         return gather_0_path[0], gather_1_path[0]
 
-    def check_attention_subgraph(self, layernorm, input_name_to_nodes, is_distil_bert):
+    def check_attention_subgraph(self, layernorm: NodeProto, input_name_to_nodes: Dict[str, List[NodeProto]],
+                                 is_distil_bert: bool) -> bool:
         """Check that LayerNormalization has a child of Attention node or subgraph like Attention.
 
         Args:
@@ -87,79 +88,6 @@ class FusionEmbedLayerNoMask(Fusion):
                     logger.debug("No Attention like subgraph in children of LayerNormalization")
                     return False
         return True
-
-    def process_segment(self, segment_embedding_gather, output_name_to_node, input_ids_cast_node, nodes_to_remove,
-                        nodes_to_add):
-        segment_ids = segment_embedding_gather.input[1]
-
-        nodes_to_remove.append(segment_embedding_gather)
-
-        # Cast segment_ids to int32.
-        segment_ids, segment_ids_cast_node = self.cast_to_int32(segment_ids)
-
-        return segment_ids, segment_embedding_gather
-
-    def create_fused_node(self, input_ids, layernorm, word_embedding_gather, position_embedding_weight_node,
-                          has_segment_embedding, segment_embedding_gather, output_name_to_node, nodes_to_remove):
-        nodes_to_add = []
-        # Cast input_ids and segment_ids to int32.
-        input_ids, input_ids_cast_node = self.cast_to_int32(input_ids)
-
-        node_name = self.model.create_node_name('EmbedLayerNormalization')
-        output_name = node_name + "_output"
-
-        if layernorm.op_type == "LayerNormalization":
-            gamma = layernorm.input[1]
-            beta = layernorm.input[2]
-        else:  # SkipLayerNormalization
-            gamma = layernorm.input[2]
-            beta = layernorm.input[3]
-
-        embed_node_inputs = None
-        if has_segment_embedding:
-            segment_ids, segment_embedding_gather = self.process_segment(segment_embedding_gather, output_name_to_node,
-                                                                         input_ids_cast_node, nodes_to_remove,
-                                                                         nodes_to_add)
-
-            embed_node_inputs = [
-                input_ids, segment_ids, word_embedding_gather.input[0], position_embedding_weight_node.input[0],
-                segment_embedding_gather.input[0], gamma, beta
-            ]
-        else:
-            embed_node_inputs = [
-                input_ids, '', word_embedding_gather.input[0], position_embedding_weight_node.input[0], '', gamma, beta
-            ]
-
-        embed_node = helper.make_node('EmbedLayerNormalization',
-                                      embed_node_inputs,
-                                      outputs=[node_name + "_output", node_name + "_dummy_mask_index"],
-                                      name=node_name)
-
-        embed_node.domain = "com.microsoft"
-
-        # Pass attribute "epsilon" from normalize node to EmbedLayerNormalization.
-        for att in layernorm.attribute:
-            if att.name == 'epsilon':
-                embed_node.attribute.extend([att])
-        # Set default value to 1e-12 if no attribute is found.
-        # OnnxRuntime 1.2.0 or older has no epsilon attribute. The optimized model can only work for 1.3.0 or later.
-        if len(embed_node.attribute) == 0:
-            embed_node.attribute.extend([helper.make_attribute("epsilon", 1.0E-12)])
-
-        # Make sure new EmbedLayerNormalization node is the last one in self.nodes_to_add.
-        nodes_to_add.append(embed_node)
-        for node in nodes_to_add:
-            self.node_name_to_graph_name[node.name] = self.this_graph_name
-        self.nodes_to_add.extend(nodes_to_add)
-
-        self.embed_node = embed_node
-        return embed_node
-
-    def finish_fusion(self, layernorm, embed_node, nodes_to_remove):
-        self.model.replace_input_of_all_nodes(layernorm.output[0], embed_node.output[0])
-        self.nodes_to_remove.extend(nodes_to_remove)
-        # use prune graph to clean up postion embedding subgraph.
-        self.prune_graph = True
 
     def match_position_embedding_distilbert(self, position_embedding_gather, input_ids, output_name_to_node):
         """  Match position embedding path from input_ids to Gather for DistilBert.
@@ -212,18 +140,18 @@ class FusionEmbedLayerNoMask(Fusion):
     def match_position_embedding_roberta(self, position_embedding_gather, input_ids, output_name_to_node):
         """  Match position embedding path from input_ids to Gather for Roberta.
 
-        Roberta Embedding Layer Pattern (* is optional since it might be removed by ORT):       
-          (input_ids) --> Equal(B=0) -- Not -- Cast(to=6) -- CumSum(axis=1) -- Mul -- Cast(to=7) -- Add(B=1) -- Cast(to=7)* --> Gather
+        Roberta Embedding Layer Pattern (* is optional since it might be removed by ORT, ? is the padding word id):       
+          (input_ids) --> Equal(B=?) -- Not -- Cast(to=6) -- CumSum(axis=1) -- Mul -- Cast(to=7) -- Add(B=1) -- Cast(to=7)* --> Gather
                                                 |                              ^
                                                 V                              |
                                                 +------------------------------+  
 
         Roberta new pattern from transformers v4.9:
-           (input_ids) --> Equal(B=1) -- Not -- Cast(to=6) -- CumSum(axis=1) -- Add(B=0) -- Mul -- Cast(to=7) -- Add(B=1) --> Gather
+           (input_ids) --> Equal(B=?) -- Not -- Cast(to=6) -- CumSum(axis=1) -- Add(B=0) -- Mul -- Cast(to=7) -- Add(B=1) --> Gather
                                                 |                                           ^
                                                 V                                           |
                                                 +-------------------------------------------+  
-        
+
         start_node = position_embedding_gather
         start_index = 1
 
@@ -249,9 +177,8 @@ class FusionEmbedLayerNoMask(Fusion):
             if value != 1:
                 return False
 
-            # TODO: EmbedLayerNormalization supports padding in calculating position index.
-            _, padding_word_id = self.model.get_constant_input(path[-1])
-            
+            _, self.padding_word_id = self.model.get_constant_input(path[-1])
+
             return input_ids == path[-1].input[0]
         """
 
@@ -325,7 +252,8 @@ class FusionEmbedLayerNoMask(Fusion):
         if self.match_position_embedding_bert(position_embedding_gather, input_ids, output_name_to_node):
             return True
 
-        # TODO: To support Roberta, EmbedLayerNormalization need support padding in calculating position index.
+        # TODO: Support roberta (position starts from 2 instead of 0) in EmbedLayerNormalization kernel
+        #       related: https://github.com/huggingface/transformers/issues/10736
         #if self.match_position_embedding_roberta(position_embedding_gather, input_ids, output_name_to_node):
         #    return True
 
@@ -333,48 +261,6 @@ class FusionEmbedLayerNoMask(Fusion):
             return True
 
         return False
-
-    def fuse_distilbert(self, layernorm, add_before_layernorm, input_name_to_nodes, output_name_to_node):
-        """Fuse embedding layer for DistilBert
-        Args:
-            layernorm (NodeProto): node of LayerNormalization or SkipLayerNormalization
-            add_before_layernorm (NodeProto): the Add node before LayerNormalization, or the SkipLayerNormalization itself
-            input_name_to_nodes (Dict[str, List[NodeProto]]): map from input name to nodes
-            output_name_to_node (Dict[str, List[NodeProto]]): map from output name to nodes
-        """
-
-        # DistilBert has no segment embedding, subgraph pattern is like
-        #       input_ids
-        #        |      \
-        #        |     (position_embedding_subgraph)
-        #        |        |
-        #     Gather    Gather
-        #          \   /
-        #           Add
-        #            |
-        #    LayerNormalization
-        two_gather = self.match_two_gather(add_before_layernorm)
-        if two_gather is None:
-            return False
-
-        word_embedding_gather, position_embedding_gather = two_gather
-        input_ids = word_embedding_gather.input[1]
-
-        if not self.check_attention_subgraph(layernorm, input_name_to_nodes, is_distil_bert=True):
-            return False
-
-        if not self.match_position_embedding(position_embedding_gather, input_ids, output_name_to_node):
-            return False
-
-        if not self.check_embedding(word_embedding_gather, None, position_embedding_gather):
-            return False
-
-        nodes_to_remove = [add_before_layernorm, word_embedding_gather, position_embedding_gather
-                           ] + ([] if layernorm == add_before_layernorm else [layernorm])
-        embed_node = self.create_fused_node(input_ids, layernorm, word_embedding_gather, position_embedding_gather,
-                                            False, None, output_name_to_node, nodes_to_remove)
-        self.finish_fusion(layernorm, embed_node, nodes_to_remove)
-        return True
 
     def check_embedding(self, word_embedding_gather, segment_embedding_gather, position_embedding_gather):
         """Sanity check of embedding weights, and match hidden_size of weights and shape of inputs.
@@ -438,23 +324,137 @@ class FusionEmbedLayerNoMask(Fusion):
 
         return True
 
-    def cast_graph_input_to_int32(self, input_name: str):
-        graph_input = self.model.find_graph_input(input_name)
-        if graph_input is not None and graph_input.type.tensor_type.elem_type != TensorProto.INT32:
-            cast_output, cast_node = self.cast_input_to_int32(input_name)
+    def cast_to_int32(self, input_name: str) -> Tuple[str, Union[None, NodeProto]]:
+        """Cast a graph input or node input to int32.
 
-    def cast_to_int32(self, input):
+        Args:
+            input_name (str): name of graph input or node input
+
+        Returns:
+            A tuple of casted input name and the cast node.
+            int32_output (str): If input is int32, it is the input name, Otherwise it is output name of Cast node.
+            input_cast_node (Union[None, NodeProto]): Cast node. It could be None if input is int32.
+        """
         input_cast_node = None
-        graph_input = self.model.find_graph_input(input)
+        graph_input = self.model.find_graph_input(input_name)
         if graph_input is not None:
             if graph_input.type.tensor_type.elem_type != TensorProto.INT32:
-                int32_output, input_cast_node = self.utils.cast_input_to_int32(input)
+                int32_output, input_cast_node = self.utils.cast_input_to_int32(input_name)
             else:
-                int32_output = input
+                int32_output = input_name
         else:
-            int32_output, input_cast_node = self.utils.cast_input_to_int32(input)
+            int32_output, input_cast_node = self.utils.cast_input_to_int32(input_name)
 
         return int32_output, input_cast_node
+
+    def create_fused_node(self, input_ids: str, layernorm: NodeProto, word_embedding_gather: NodeProto,
+                          position_embedding_gather: NodeProto, segment_embedding_gather: Union[None, NodeProto]):
+        """Create an EmbedLayerNormalization node. Note that segment embedding is optional.
+
+        Args:
+            input_ids (str): input_ids for word embeddings
+            layernorm (NodeProto): LayerNormalization or SkipLayerNormalization node.
+            word_embedding_gather (NodeProto): the Gather node for word embedding
+            position_embedding_gather (NodeProto): the Gather node for position embedding
+            segment_embedding_gather (Union[None, NodeProto]): the Gather node for segment embedding, or None.
+
+        Returns:
+            NodeProto: the EmbedLayerNormalization node created.
+        """
+        nodes_to_add = []
+        input_ids, _ = self.cast_to_int32(input_ids)
+
+        node_name = self.model.create_node_name('EmbedLayerNormalization')
+
+        if layernorm.op_type == "LayerNormalization":
+            gamma = layernorm.input[1]
+            beta = layernorm.input[2]
+        else:  # SkipLayerNormalization
+            gamma = layernorm.input[2]
+            beta = layernorm.input[3]
+
+        embed_node_inputs = None
+        if segment_embedding_gather is not None:
+            segment_ids, _ = self.cast_to_int32(segment_embedding_gather.input[1])
+
+            embed_node_inputs = [
+                input_ids, segment_ids, word_embedding_gather.input[0], position_embedding_gather.input[0],
+                segment_embedding_gather.input[0], gamma, beta
+            ]
+        else:  # no segment embedding
+            embed_node_inputs = [
+                input_ids, '', word_embedding_gather.input[0], position_embedding_gather.input[0], '', gamma, beta
+            ]
+
+        embed_node = helper.make_node('EmbedLayerNormalization',
+                                      embed_node_inputs,
+                                      outputs=[node_name + "_output", node_name + "_dummy_mask_index"],
+                                      name=node_name)
+
+        embed_node.domain = "com.microsoft"
+
+        # Pass attribute "epsilon" from normalize node to EmbedLayerNormalization.
+        for att in layernorm.attribute:
+            if att.name == 'epsilon':
+                embed_node.attribute.extend([att])
+        # Set default value to 1e-12 if no attribute is found.
+        # OnnxRuntime 1.2.0 or older has no epsilon attribute. The optimized model can only work for 1.3.0 or later.
+        if len(embed_node.attribute) == 0:
+            embed_node.attribute.extend([helper.make_attribute("epsilon", 1.0E-12)])
+
+        # Make sure new EmbedLayerNormalization node is the last one in self.nodes_to_add.
+        nodes_to_add.append(embed_node)
+        for node in nodes_to_add:
+            self.node_name_to_graph_name[node.name] = self.this_graph_name
+        self.nodes_to_add.extend(nodes_to_add)
+
+        self.embed_node = embed_node
+        return embed_node
+
+    def finish_fusion(self, layernorm, embed_node):
+        self.model.replace_input_of_all_nodes(layernorm.output[0], embed_node.output[0])
+        # use prune graph to remove nodes that is not needed
+        self.prune_graph = True
+
+    def fuse_distilbert(self, layernorm, add_before_layernorm, input_name_to_nodes, output_name_to_node):
+        """Fuse embedding layer for DistilBert
+        Args:
+            layernorm (NodeProto): node of LayerNormalization or SkipLayerNormalization
+            add_before_layernorm (NodeProto): the Add node before LayerNormalization, or the SkipLayerNormalization itself
+            input_name_to_nodes (Dict[str, List[NodeProto]]): map from input name to nodes
+            output_name_to_node (Dict[str, List[NodeProto]]): map from output name to nodes
+        """
+
+        # DistilBert has no segment embedding, subgraph pattern is like
+        #       input_ids
+        #        |      \
+        #        |     (position_embedding_subgraph)
+        #        |        |
+        #     Gather    Gather
+        #          \   /
+        #           Add
+        #            |
+        #    LayerNormalization
+        two_gather = self.match_two_gather(add_before_layernorm)
+        if two_gather is None:
+            return False
+
+        word_embedding_gather, position_embedding_gather = two_gather
+        input_ids = word_embedding_gather.input[1]
+
+        if not self.check_attention_subgraph(layernorm, input_name_to_nodes, is_distil_bert=True):
+            return False
+
+        if not self.match_position_embedding(position_embedding_gather, input_ids, output_name_to_node):
+            return False
+
+        if not self.check_embedding(word_embedding_gather, None, position_embedding_gather):
+            return False
+
+        embed_node = self.create_fused_node(input_ids, layernorm, word_embedding_gather, position_embedding_gather,
+                                            None)
+        self.finish_fusion(layernorm, embed_node)
+        return True
 
     def fuse_bert(self, layernorm, add_before_layernorm, input_name_to_nodes, output_name_to_node):
         """Fuse embedding layer for Bert
@@ -496,10 +496,9 @@ class FusionEmbedLayerNoMask(Fusion):
         if not self.check_embedding(word_embedding_gather, segment_embedding_gather, position_embedding_gather):
             return False
 
-        nodes_to_remove = [add_before_layernorm] + ([] if layernorm == add_before_layernorm else [layernorm])
         embed_node = self.create_fused_node(input_ids, layernorm, word_embedding_gather, position_embedding_gather,
-                                            True, segment_embedding_gather, output_name_to_node, nodes_to_remove)
-        self.finish_fusion(layernorm, embed_node, nodes_to_remove)
+                                            segment_embedding_gather)
+        self.finish_fusion(layernorm, embed_node)
         return True
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):

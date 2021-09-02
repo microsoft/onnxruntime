@@ -12,7 +12,7 @@ from fusion_shape import FusionShape
 from fusion_layernorm import FusionLayerNormalization, FusionLayerNormalizationTF
 from fusion_skiplayernorm import FusionSkipLayerNormalization, FusionBiasSkipLayerNormalization
 from fusion_embedlayer import FusionEmbedLayerNormalization
-from fusion_attention import FusionAttention, AttentionMask, AttentionMaskFormat
+from fusion_attention import FusionAttention, AttentionMask
 from fusion_gelu import FusionGelu
 from fusion_fastgelu import FusionFastGelu
 from fusion_biasgelu import FusionBiasGelu
@@ -317,6 +317,8 @@ class BertOnnxModel(OnnxModel):
             if options is not None:
                 self.attention_mask.set_mask_format(options.attention_mask_format)
             self.fuse_attention()
+
+        self.fuse_shape()
 
         if (options is None) or options.enable_embed_layer_norm:
             self.fuse_embed_layer()
