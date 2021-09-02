@@ -7,6 +7,7 @@
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
+#include "core/providers/get_execution_providers.h"
 
 #include "core/platform/env.h"
 #include "core/session/provider_bridge_ort.h"
@@ -20,7 +21,7 @@ namespace py = pybind11;
 using namespace onnxruntime::logging;
 
 std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
-  InferenceSession* sess,
+  const SessionOptions& session_options,
   const std::string& type,
   const ProviderOptionsMap& provider_options_map);
 
@@ -41,6 +42,7 @@ void addObjectMethodsForEager(py::module& m);
 void InitArray();
 
 using ExecutionProviderMap = std::unordered_map<std::string, std::shared_ptr<IExecutionProvider> >;
+using ExecutionProviderLibInfoMap = std::unordered_map<std::string, std::pair<std::string, ProviderOptions> > ;
 
 bool GetDyanmicExecutionProviderHash(
     const std::string& ep_shared_lib_path,
@@ -137,6 +139,8 @@ public:
                                                   Severity::kWARNING, false, LoggingManager::InstanceType::Default,
                                                   &SessionObjectInitializer::default_logger_id),
                                               ort_env_));
+    auto& builtinEPs = GetAvailableExecutionProviderNames();
+    available_training_eps_.assign(builtinEPs.begin(), builtinEPs.end());
   }
 
   Environment& GetORTEnv(){
@@ -156,6 +160,20 @@ public:
                                           std::move(execution_provider)});
   }
 
+  void RegisterExtExecutionProviderInfo(const std::string& provider_type, 
+                                        const std::string& provider_lib_path,
+                                        const ProviderOptions& default_options){
+    ext_execution_provider_info_map_.insert({provider_type, {provider_lib_path, default_options}});
+    if (std::find(available_training_eps_.begin(), available_training_eps_.end(), provider_type) == available_training_eps_.end())
+      available_training_eps_.push_back(provider_type);
+  }
+
+  const std::vector<std::string>& GetAvailableTrainingExecutionProviderTypes(){
+    return available_training_eps_;
+  }
+
+  ExecutionProviderLibInfoMap ext_execution_provider_info_map_;
+
 private:
   std::string GetExecutionProviderMapKey(const std::string& provider_type,
                                          size_t hash){
@@ -166,6 +184,7 @@ private:
 
   std::unique_ptr<Environment> ort_env_;
   ExecutionProviderMap execution_provider_instances_map_;
+  std::vector<std::string> available_training_eps_;
 };
 
 static std::unique_ptr<ORTTrainingPythonEnv> ort_training_env;
@@ -199,30 +218,72 @@ Environment& GetTrainingORTEnv() {
   return ort_training_env->GetORTEnv();
 }
 
+void ResolveExtraProviderOptions(const std::string& provider_type,
+                                 const ProviderOptionsMap& original_provider_options_map,
+                                 ProviderOptionsMap& merged_options){
+  auto& training_env = GetTrainingEnv();
+  auto it = training_env.ext_execution_provider_info_map_.find(provider_type);
+  if (it == training_env.ext_execution_provider_info_map_.end()){
+    //nothing changed.
+    merged_options = original_provider_options_map;
+  }else{
+    ProviderOptions options = it->second.second;
+    options.insert({kExecutionProviderSharedLibraryPath, it->second.first});
+    auto original_map_it = original_provider_options_map.find(provider_type);
+    if (original_map_it != original_provider_options_map.end()){
+      for (auto [k, v] : original_map_it->second){
+        options.insert({k, v});
+      }
+    }
+    merged_options[provider_type] = options;
+  }
+}
+
+std::unique_ptr<IExecutionProvider> CreateTrainingEP(
+  const SessionOptions& session_options,
+  const std::string& provider_type,
+  const ProviderOptionsMap& provider_options_map){
+  ORTTrainingPythonEnv& training_env = GetTrainingEnv();
+  if (training_env.ext_execution_provider_info_map_.find(provider_type) != 
+      training_env.ext_execution_provider_info_map_.end()){
+    ProviderOptionsMap merged_options;
+    ResolveExtraProviderOptions(provider_type, provider_options_map, merged_options);
+    return CreateExecutionProviderInstance(session_options, provider_type, merged_options);
+  }else{
+    return CreateExecutionProviderInstance(session_options, provider_type, provider_options_map);
+  }
+}
+
+std::shared_ptr<IExecutionProvider> GetOrCreateExecutionProvider(const std::string& provider_type,
+                                                                 const ProviderOptionsMap& provider_options_map,
+                                                                 const SessionOptions& session_options){
+  ORTTrainingPythonEnv& training_env = GetTrainingEnv();
+  // search in environment
+  size_t hash;
+  if (GetProviderInstanceHash(provider_type, provider_options_map, hash)){
+    auto cached_provider_instance = training_env.GetExecutionProviderInstance(provider_type, hash);
+    if (!cached_provider_instance){
+      auto ep = CreateTrainingEP(session_options, provider_type, provider_options_map);
+      if (ep){
+        training_env.AddExecutionProvider(provider_type, hash, std::move(ep));
+        cached_provider_instance = training_env.GetExecutionProviderInstance(provider_type, hash);
+      }
+    }
+    return cached_provider_instance;
+  }
+  else{
+    // the EP doesn't support cache, register the instance to session
+    auto ep = CreateTrainingEP(session_options, provider_type, provider_options_map);
+    return ep;
+  }
+}
+
 void ORTTrainingRegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types,
                                        const ProviderOptionsMap& provider_options_map) {
-  // search in environment
-  ORTTrainingPythonEnv& training_env = GetTrainingEnv();
   for (auto provider_type : provider_types){
-    size_t hash;
-    if (GetProviderInstanceHash(provider_type, provider_options_map, hash)){
-      auto cached_provider_instance = training_env.GetExecutionProviderInstance(provider_type, hash);
-      if (!cached_provider_instance){
-        auto ep = CreateExecutionProviderInstance(sess, provider_type, provider_options_map);
-        if (ep){
-          training_env.AddExecutionProvider(provider_type, hash, std::move(ep));
-          cached_provider_instance = training_env.GetExecutionProviderInstance(provider_type, hash);
-        }
-      }
-      if (cached_provider_instance)
-        OrtPybindThrowIfError(sess->RegisterExecutionProvider(cached_provider_instance));
-    }
-    else{
-      // the EP doesn't support cache, register the instance to session
-      auto ep = CreateExecutionProviderInstance(sess, provider_type, provider_options_map);
-      if (ep)
-        OrtPybindThrowIfError(sess->RegisterExecutionProvider(std::move(ep)));
-    }
+    auto ep = GetOrCreateExecutionProvider(provider_type, provider_options_map, sess->GetSessionOptions());
+    if (ep)
+      OrtPybindThrowIfError(sess->RegisterExecutionProvider(ep));
   }
 }
 
@@ -250,6 +311,19 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 #ifdef ENABLE_EAGER_MODE
   addObjectMethodsForEager(m);
 #endif
+  
+  m.def("_register_provider_lib", [](const std::string& name, 
+                                     const std::string& provider_shared_lib_path,
+                                     const ProviderOptions& default_options) {
+    GetTrainingEnv().RegisterExtExecutionProviderInfo(name, provider_shared_lib_path, default_options);
+  });
+
+  m.def(
+      "get_available_providers", []() -> const std::vector<std::string>& { 
+        return GetTrainingEnv().GetAvailableTrainingExecutionProviderTypes(); },
+      "Return list of available Execution Providers in this installed version of Onnxruntime. "
+      "The order of elements represents the default priority order of Execution Providers "
+      "from highest to lowest.");
 
   // clean the ort training environment when python interpreter exit
   // otherwise the global var will be de-constrcut after user main.

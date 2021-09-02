@@ -50,7 +50,8 @@ MODEL_TYPES = {
 def optimize_by_onnxruntime(onnx_model_path: str,
                             use_gpu: bool = False,
                             optimized_model_path: str = None,
-                            opt_level: int = 99) -> str:
+                            opt_level: int = 99,
+                            disabled_optimizers=[]) -> str:
     """
     Use onnxruntime to optimize model.
 
@@ -59,7 +60,7 @@ def optimize_by_onnxruntime(onnx_model_path: str,
         use_gpu (bool): whether the optimized model is targeted to run in GPU.
         optimized_model_path (str or None): the path of optimized model.
         opt_level (int): graph optimization level.
-
+        disabled_optimizers (List[str]): a list of names of disabled optimizers
     Returns:
         optimized_model_path (str): the path of optimized model
     """
@@ -84,10 +85,17 @@ def optimize_by_onnxruntime(onnx_model_path: str,
 
     sess_options.optimized_model_filepath = optimized_model_path
 
+    kwargs = {}
+    if disabled_optimizers:
+        kwargs["disabled_optimizers"] = disabled_optimizers
+
     if not use_gpu:
-        session = onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=['CPUExecutionProvider'])
+        session = onnxruntime.InferenceSession(onnx_model_path,
+                                               sess_options,
+                                               providers=['CPUExecutionProvider'],
+                                               **kwargs)
     else:
-        session = onnxruntime.InferenceSession(onnx_model_path, sess_options)
+        session = onnxruntime.InferenceSession(onnx_model_path, sess_options, **kwargs)
         assert 'CUDAExecutionProvider' in session.get_providers()  # Make sure there is GPU
 
     assert os.path.exists(optimized_model_path) and os.path.isfile(optimized_model_path)
@@ -254,7 +262,15 @@ def optimize_model(input,
 
     temp_model_path = None
     if opt_level > 1:
-        temp_model_path = optimize_by_onnxruntime(input, use_gpu=use_gpu, opt_level=opt_level)
+        # Disable some optimizers that might cause failure in symbolic shape inference or attention fusion.
+        disabled_optimizers = [] if only_onnxruntime else [
+            'MatMulScaleFusion', 'MatMulAddFusion'
+            'SimplifiedLayerNormFusion', 'GemmActivationFusion', 'BiasSoftmaxFusion'
+        ]
+        temp_model_path = optimize_by_onnxruntime(input,
+                                                  use_gpu=use_gpu,
+                                                  opt_level=opt_level,
+                                                  disabled_optimizers=disabled_optimizers)
     elif opt_level == 1:
         # basic optimizations (like constant folding and cast elimation) are not specified to exection provider.
         # CPU provider is used here so that there is no extra node for GPU memory copy.
