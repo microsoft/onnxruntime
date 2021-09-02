@@ -335,6 +335,7 @@ jobs:
   steps:
   - checkout: self
     submodules: false
+  - template: templates/set-version-number-variables-step.yml
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Combined GPU'
     inputs:
@@ -385,7 +386,7 @@ jobs:
     parameters:
       PackageType: 'zip'
       PackagePath: '$(Build.ArtifactStagingDirectory)'
-      PackageName: 'onnxruntime-win-x64-gpu-*.zip'
+      PackageName: 'onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip'
       PlatformsSupported: 'win-x64'
       VerifyNugetSigning: false
       workingDirectory: '$(Build.ArtifactStagingDirectory)'

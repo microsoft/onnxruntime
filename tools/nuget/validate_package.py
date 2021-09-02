@@ -185,7 +185,7 @@ def validate_zip(args):
     name = re.search('(.*)\..*', package_name).group(1)
     print(name)
 
-    zip_file = zipfile.ZipFile(full_package_path)
+    zip_file = zipfile.ZipFile(package_name)
     is_windows_ai_package = False
     full_package_folder = name
     check_if_dlls_are_present(args.package_type, is_windows_ai_package, is_gpu_package, \
