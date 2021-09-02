@@ -29,7 +29,7 @@ ORTMODULE_FALLBACK_POLICY = _FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE |\
                             _FallbackPolicy.FALLBACK_UNSUPPORTED_TORCH_MODEL |\
                             _FallbackPolicy.FALLBACK_UNSUPPORTED_ONNX_MODEL |\
                             _FallbackPolicy.FALLBACK_BAD_INITIALIZATION
-ORTMODULE_FALLBACK_RETRY = True
+ORTMODULE_FALLBACK_RETRY = False
 
 # Verify minimum PyTorch version is installed before proceding to ONNX Runtime initialization
 try:
