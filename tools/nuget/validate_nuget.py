@@ -55,11 +55,13 @@ def check_if_dlls_are_present(is_windows_ai_package, is_gpu_package, platforms_s
             if is_gpu_package:
                 for dll in win_gpu_package_libraries: 
                     path = "runtimes/" + platform + "/" + native_folder + "/" + dll
+                    print('Checking path: ' + path)
                     if (path not in zip_file.namelist()):
                         print(dll + " not found for " + platform)
                         raise Exception(dll + " not found for " + platform)
                 for header in gpu_related_header_files: 
-                    path = "build/nativa/include/" + header
+                    path = "build/native/include/" + header
+                    print('Checking path: ' + path)
                     if (path not in zip_file.namelist()):
                         print(header + " not found for " + platform)
                         raise Exception(header + " not found for " + platform)
@@ -74,11 +76,13 @@ def check_if_dlls_are_present(is_windows_ai_package, is_gpu_package, platforms_s
             if is_gpu_package:
                 for so in linux_gpu_package_libraries: 
                     path = "runtimes/" + platform + "/" + native_folder + "/" + so
+                    print('Checking path: ' + path)
                     if (path not in zip_file.namelist()):
                         print(so + " not found for " + platform)
                         raise Exception(so + " not found for " + platform)
                 for header in gpu_related_header_files: 
-                    path = "build/nativa/include/" + header
+                    path = "build/native/include/" + header
+                    print('Checking path: ' + path)
                     if (path not in zip_file.namelist()):
                         print(header + " not found for " + platform)
                         raise Exception(header + " not found for " + platform)
