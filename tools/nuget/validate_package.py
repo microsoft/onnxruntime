@@ -67,6 +67,8 @@ def check_if_dlls_are_present(package_type, is_windows_ai_package, is_gpu_packag
             print('Checking path: ' + path)
             if (path not in file_list_in_package):
                 print("onnxruntime.dll not found for " + platform)
+                print(package_path)
+                print(path)
                 print(file_list_in_package)
                 raise Exception("onnxruntime.dll not found for " + platform)
 
@@ -96,6 +98,9 @@ def check_if_dlls_are_present(package_type, is_windows_ai_package, is_gpu_packag
             print('Checking path: ' + path)
             if (path not in file_list_in_package):
                 print("libonnxruntime.so not found for " + platform)
+                print(package_path)
+                print(path)
+                print(file_list_in_package)
                 raise Exception("libonnxruntime.so not found for " + platform)
 
             if is_gpu_package:
