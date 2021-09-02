@@ -1,21 +1,38 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-#
-# Register pytorch symbolic for export using ONNX Runtime contrib ops
 
-from torch.onnx import register_custom_op_symbolic
+"""
+Support for registering ONNX Runtime's built-in contrib ops with
+PyTorch-ONNX exporter (torch.onnx.export).
+"""
+
+import typing
+
+try:
+    from torch.onnx import register_custom_op_symbolic
+except ModuleNotFoundError:
+    raise ModuleNotFoundError(
+        "This module is only useful in combination with PyTorch. "
+        "To install PyTorch see https://pytorch.org/.")
 import torch.onnx.symbolic_helper as sym_help
+import torch.onnx.symbolic_registry as sym_registry
 
-_onnx_opset_version = 1
+_OPSET_VERSION = 1
+_registered_ops: typing.AbstractSet[str] = set()
 
 
-def register_custom_op():
+def _reg(symbolic_fn: typing.Callable):
+    name = "::%s" % symbolic_fn.__name__
+    register_custom_op_symbolic(name, symbolic_fn, _OPSET_VERSION)
+    _registered_ops.add(name)
+
+
+def register():
+    """Register ONNX Runtime's built-in contrib ops.
+
+    Should be run before torch.onnx.export().
     """
-    This function registers symbolic functions for
-    custom ops that are implemented as part of ONNX Runtime
-    """
 
-    # Symbolic definition
     def grid_sample(g, input, grid, mode, padding_mode, align_corners):
         # mode
         #   'bilinear'      : onnx::Constant[value={0}]
@@ -42,46 +59,33 @@ def register_custom_op():
                     mode_s=mode_str,
                     padding_mode_s=padding_mode_str,
                     align_corners_i=align_corners)
+    _reg(grid_sample)
 
     def inverse(g, self):
         return g.op("com.microsoft::Inverse", self).setType(self.type())
+    _reg(inverse)
 
     def gelu(g, self):
         return g.op("com.microsoft::Gelu", self).setType(self.type())
+    _reg(gelu)
 
     def triu(g, self, diagonal):
         return g.op("com.microsoft::Trilu", self, diagonal, upper_i=1).setType(self.type())
+    _reg(triu)
 
     def tril(g, self, diagonal):
         return g.op("com.microsoft::Trilu", self, diagonal, upper_i=0).setType(self.type())
-
-    # Op Registration
-    register_custom_op_symbolic('::grid_sampler', grid_sample, _onnx_opset_version)
-    register_custom_op_symbolic('::inverse', inverse, _onnx_opset_version)
-    register_custom_op_symbolic('::gelu', gelu, _onnx_opset_version)
-    register_custom_op_symbolic('::triu', triu, _onnx_opset_version)
-    register_custom_op_symbolic('::tril', tril, _onnx_opset_version)
+    _reg(tril)
 
 
-def unregister_custom_op():
-    """
-    This function unregisters symbolic functions for
-    custom ops that are implemented as part of ONNX Runtime
-    """
 
-    import torch.onnx.symbolic_registry as sym_registry
-
+def unregister():
+    """Unregister ONNX Runtime's built-in contrib ops."""
     # TODO: replace this once PyTorch supports unregister natively.
-    def unregister(name, opset_version):
+    # https://msdata.visualstudio.com/Vienna/_workitems/edit/1342343
+    for name in _registered_ops:
         ns, kind = name.split("::")
-        from torch.onnx.symbolic_helper import _onnx_stable_opsets
-
-        for version in _onnx_stable_opsets:
-            if version >= opset_version and sym_registry.is_registered_op(kind, ns, version):
+        for version in sym_help._onnx_stable_opsets:
+            if (version >= _OPSET_VERSION and
+                sym_registry.is_registered_op(kind, ns, version)):
                 del sym_registry._registry[(ns, version)][kind]
-
-    unregister('::grid_sampler', _onnx_opset_version)
-    unregister('::inverse', _onnx_opset_version)
-    unregister('::gelu', _onnx_opset_version)
-    unregister('::triu', _onnx_opset_version)
-    unregister('::tril', _onnx_opset_version)
