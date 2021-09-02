@@ -161,6 +161,25 @@ def validate_tarball(args):
     check_if_dlls_are_present(args.package_type, is_windows_ai_package, is_gpu_package, \
                                   args.platforms_supported, full_package_path)
 
+def validate_zip(args):
+    files = glob.glob(os.path.join(args.package_path, args.package_name))
+    if (len(files) != 1):
+        print('packages found in path: ')
+        print(files)
+        raise Exception('No packages / more than one packages found in the given path.')
+    package_file_name = files[0]
+    full_package_path = os.path.join(args.package_path, package_file_name)
+
+    if "gpu" in package_file_name.lower():
+        is_gpu_package = True 
+    else:
+        is_gpu_package = False
+
+    zip_file = zipfile.ZipFile(full_package_path)
+    is_windows_ai_package = False
+    check_if_dlls_are_present(args.package_type, is_windows_ai_package, is_gpu_package, \
+                                  args.platforms_supported, zip_file)
+
 def validate_nuget(args):
     files = glob.glob(os.path.join(args.package_path, args.package_name))
     nuget_packages_found_in_path = [i for i in files if i.endswith('.nupkg') and "Managed" not in i]
