@@ -35,6 +35,14 @@ class ORTModule(torch.nn.Module):
     """
 
     def __init__(self, module, debug_options=None):
+
+        # NOTE: torch.nn.Modules that call setattr on their internal attributes regularly
+        #       (for example PyTorch Lightning), will trigger regular re-exports. This is
+        #       because ORTModule auto detects such setattrs on the original module and
+        #       marks the model as stale. This is a known limitation. To disable repeated
+        #       re-export checks when not required, please set the environment variable
+        #       ORTMODULE_SKIPCHECK_POLICY to SKIP_CHECK_BUILD_GRADIENT|SKIP_CHECK_EXECUTION_AGENT
+
         # Set _is_initialized attribute first which starts off as False.
         # This variable will be used for comparing strings in __setattr__ and __getattr__
         # NOTE: Do not rename/move.
