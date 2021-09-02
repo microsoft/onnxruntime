@@ -240,6 +240,18 @@ else()
   )
 endif()
 
+# Generate _pybind_state.py from _pybind_state.py.in replacing macros with either setdlopenflags or ""
+if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
+  set(ONNXRUNTIME_SETDLOPENFLAGS_GLOBAL "sys.setdlopenflags(os.RTLD_GLOBAL|os.RTLD_NOW|os.RTLD_DEEPBIND)")
+  set(ONNXRUNTIME_SETDLOPENFLAGS_LOCAL  "sys.setdlopenflags(os.RTLD_LOCAL|os.RTLD_NOW|os.RTLD_DEEPBIND)")
+else()
+  set(ONNXRUNTIME_SETDLOPENFLAGS_GLOBAL "")
+  set(ONNXRUNTIME_SETDLOPENFLAGS_LOCAL  "")
+endif()
+
+configure_file(${ONNXRUNTIME_ROOT}/python/_pybind_state.py.in
+               ${CMAKE_BINARY_DIR}/onnxruntime/capi/_pybind_state.py)
+
 if (onnxruntime_ENABLE_TRAINING)
   file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/deprecated/*.py"
@@ -383,6 +395,9 @@ add_custom_command(
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/backend/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_srcs}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      ${CMAKE_BINARY_DIR}/onnxruntime/capi/_pybind_state.py
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_capi_training_srcs}
