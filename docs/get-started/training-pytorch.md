@@ -1,6 +1,6 @@
 ---
-title: Training API
-parent: API Docs
+title: ORT Training with PyTorch
+parent: Get Started
 nav_order: 10
 ---
 

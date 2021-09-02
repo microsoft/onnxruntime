@@ -1,10 +1,10 @@
 ---
-title: C++ API
-parent: API Docs
+title: C++
+parent: Get Started
 nav_order: 2
 ---
 
-# ONNX Runtime C++ API
+# ONNX Runtime C++
 {: .no_toc }
 
 ## Contents
@@ -25,7 +25,7 @@ nav_order: 2
 .zip and .tgz files are also included as assets in each [Github release](https://github.com/microsoft/onnxruntime/releases).
 
 ## API Reference
-The C++ API is a thin wrapper of the C API. Please refer to [C API](./c-api.html) for more details.
+The C++ API is a thin wrapper of the C API. Please refer to [C API](./with-c.html) for more details.
 
 ## Samples
 See [Tutorials: API Basics - C++](../../tutorials/inferencing/api-basics.md#c)
