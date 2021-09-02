@@ -67,9 +67,6 @@ def check_if_dlls_are_present(package_type, is_windows_ai_package, is_gpu_packag
             print('Checking path: ' + path)
             if (path not in file_list_in_package):
                 print("onnxruntime.dll not found for " + platform)
-                print(package_path)
-                print(path)
-                print(file_list_in_package)
                 raise Exception("onnxruntime.dll not found for " + platform)
 
             if is_gpu_package:
@@ -98,9 +95,6 @@ def check_if_dlls_are_present(package_type, is_windows_ai_package, is_gpu_packag
             print('Checking path: ' + path)
             if (path not in file_list_in_package):
                 print("libonnxruntime.so not found for " + platform)
-                print(package_path)
-                print(path)
-                print(file_list_in_package)
                 raise Exception("libonnxruntime.so not found for " + platform)
 
             if is_gpu_package:
@@ -149,8 +143,6 @@ def validate_tarball(args):
         print('packages found in path: ')
         print(files)
         raise Exception('No packages / more than one packages found in the given path.')
-    
-    print(files)
 
     package_name = args.package_name
     if "-gpu-" in package_name.lower():
@@ -158,8 +150,7 @@ def validate_tarball(args):
     else:
         is_gpu_package = False
 
-    name = re.search('(.*)\..*', package_name).group(1)
-    print(name)
+    package_folder = re.search('(.*)\..*', package_name).group(1)
 
     print('tar zxvf ' + package_name)
     os.system("tar zxvf " + package_name)
@@ -167,7 +158,7 @@ def validate_tarball(args):
     is_windows_ai_package = False
     zip_file = None
     check_if_dlls_are_present(args.package_type, is_windows_ai_package, is_gpu_package, \
-                                  args.platforms_supported, zip_file, name)
+                                  args.platforms_supported, zip_file, package_folder)
 
 def validate_zip(args):
     files = glob.glob(os.path.join(args.package_path, args.package_name))
@@ -182,14 +173,12 @@ def validate_zip(args):
     else:
         is_gpu_package = False
 
-    name = re.search('(.*)\..*', package_name).group(1)
-    print(name)
+    package_folder = re.search('(.*)\..*', package_name).group(1)
 
-    zip_file = zipfile.ZipFile(package_name)
     is_windows_ai_package = False
-    full_package_folder = name
+    zip_file = zipfile.ZipFile(package_name)
     check_if_dlls_are_present(args.package_type, is_windows_ai_package, is_gpu_package, \
-                                  args.platforms_supported, zip_file, name)
+                                  args.platforms_supported, zip_file, package_folder)
 
 def validate_nuget(args):
     files = glob.glob(os.path.join(args.package_path, args.package_name))
