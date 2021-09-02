@@ -28,7 +28,7 @@ def is_all_or_nothing_fallback_enabled(model, policy=None):
     from onnxruntime.training.ortmodule._fallback import _FallbackPolicy
 
     if not policy:
-        _FallbackPolicy.FALLBACK_DISABLE
+        policy = _FallbackPolicy.FALLBACK_DISABLE
 
     fallback_on_env = policy in ORTMODULE_FALLBACK_POLICY
     fallback_on_model = False
