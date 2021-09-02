@@ -24,8 +24,12 @@ MINIMUM_RUNTIME_PYTORCH_VERSION_STR = '1.8.1'
 TORCH_CPP_DIR = os.path.join(os.path.dirname(__file__),
                              'torch_cpp_extensions')
 _FALLBACK_INIT_EXCEPTION = None
-ORTMODULE_FALLBACK_POLICY = _FallbackPolicy.FALLBACK_DISABLE
-ORTMODULE_FALLBACK_RETRY = True
+ORTMODULE_FALLBACK_POLICY = _FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE |\
+                            _FallbackPolicy.FALLBACK_UNSUPPORTED_DATA |\
+                            _FallbackPolicy.FALLBACK_UNSUPPORTED_TORCH_MODEL |\
+                            _FallbackPolicy.FALLBACK_UNSUPPORTED_ONNX_MODEL |\
+                            _FallbackPolicy.FALLBACK_BAD_INITIALIZATION
+ORTMODULE_FALLBACK_RETRY = False
 
 # Verify minimum PyTorch version is installed before proceding to ONNX Runtime initialization
 try:
