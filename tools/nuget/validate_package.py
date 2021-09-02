@@ -41,14 +41,14 @@ def is_windows():
     return sys.platform.startswith("win")
 
 
-def check_if_dlls_are_present(package_type, is_windows_ai_package, is_gpu_package, platforms_supported, package_file):
+def check_if_dlls_are_present(package_type, is_windows_ai_package, is_gpu_package, platforms_supported, zip_file, package_path):
     platforms = platforms_supported.strip().split(",")
     if package_type == "tarball":
         file_list_in_package = list() 
-        for (dirpath, dirnames, filenames) in os.walk(package_file):
+        for (dirpath, dirnames, filenames) in os.walk(package_path):
             file_list_in_package += [os.path.join(dirpath, file) for file in filenames]
     else:
-        file_list_in_package = package_file.namelist()
+        file_list_in_package = zip_file.namelist()
 
     for platform in platforms:
         if platform.startswith("win"):
@@ -58,8 +58,8 @@ def check_if_dlls_are_present(package_type, is_windows_ai_package, is_gpu_packag
                 folder = "runtimes/" + platform + "/" + native_folder
                 header_folder = "build/native/include"
             else:
-                folder  = "lib"
-                header_folder = "include"
+                folder  = package_file + "/lib"
+                header_folder = package_file + "/include"
 
             path = folder + "/" + "onnxruntime.dll"
             print('Checking path: ' + path)
@@ -155,11 +155,12 @@ def validate_tarball(args):
 
     print('tar zxvf ' + full_package_path)
     os.system("tar zxvf " + full_package_path)
-    full_package_path = os.path.join(args.package_path, name)
+    package_path = os.path.join(args.package_path, name)
 
     is_windows_ai_package = False
+    zip_file = None
     check_if_dlls_are_present(args.package_type, is_windows_ai_package, is_gpu_package, \
-                                  args.platforms_supported, full_package_path)
+                                  args.platforms_supported, zip_file, package_path)
 
 def validate_zip(args):
     files = glob.glob(os.path.join(args.package_path, args.package_name))
@@ -175,10 +176,13 @@ def validate_zip(args):
     else:
         is_gpu_package = False
 
+    name = re.search('(.*)\..*', package_file_name).group(1)
+
     zip_file = zipfile.ZipFile(full_package_path)
     is_windows_ai_package = False
+    package_path = name
     check_if_dlls_are_present(args.package_type, is_windows_ai_package, is_gpu_package, \
-                                  args.platforms_supported, zip_file)
+                                  args.platforms_supported, zip_file, package_path)
 
 def validate_nuget(args):
     files = glob.glob(os.path.join(args.package_path, args.package_name))
@@ -225,7 +229,7 @@ def validate_nuget(args):
         print('Checking if the Nuget contains relevant dlls')
         is_windows_ai_package = os.path.basename(full_nuget_path).startswith('Microsoft.AI.MachineLearning')
         check_if_dlls_are_present(args.package_type, is_windows_ai_package, is_gpu_package, \
-                                  args.platforms_supported, zip_file)
+                                  args.platforms_supported, zip_file, None)
 
         # Check if the Nuget has been signed
         if (args.verify_nuget_signing != 'true' and args.verify_nuget_signing != 'false'):
