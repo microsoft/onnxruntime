@@ -1248,10 +1248,10 @@ TEST_F(GraphTransformationTests, GemmTransposeFusion2OutputsFromTranspose) {
 
   auto& node = *gemm_node;
   ASSERT_TRUE(node.OpType() == "Gemm");
-  ASSERT_FALSE(static_cast<bool>(node.GetAttributes().at("transA").i()));
+  ASSERT_TRUE(static_cast<bool>(node.GetAttributes().at("transA").i()));
   ASSERT_TRUE(static_cast<bool>(node.GetAttributes().at("transB").i()));
   auto new_input_defs = node.InputDefs();
-  ASSERT_TRUE(new_input_defs[0]->Name() == "A");
+  ASSERT_TRUE(new_input_defs[0]->Name() == "tp0");
   ASSERT_TRUE(new_input_defs[1]->Name() == "B");
 }
 
@@ -1286,10 +1286,10 @@ TEST_F(GraphTransformationTests, GemmTransposeFusion2OutputsFromTransposeTo2Gemm
 
   auto& node1 = *gemm1_node;
   ASSERT_TRUE(node1.OpType() == "Gemm");
-  ASSERT_FALSE(static_cast<bool>(node1.GetAttributes().at("transA").i()));
+  ASSERT_TRUE(static_cast<bool>(node1.GetAttributes().at("transA").i()));
   ASSERT_TRUE(static_cast<bool>(node1.GetAttributes().at("transB").i()));
   auto new_input_defs1 = node1.InputDefs();
-  ASSERT_TRUE(new_input_defs1[0]->Name() == "A");
+  ASSERT_TRUE(new_input_defs1[0]->Name() == "tp0");
   ASSERT_TRUE(new_input_defs1[1]->Name() == "B");
 
   auto gemm2_node =
