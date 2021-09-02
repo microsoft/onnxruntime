@@ -19,11 +19,11 @@ endif()
 file(GLOB onnxruntime_pybind_srcs CONFIGURE_DEPENDS
   ${onnxruntime_pybind_srcs_pattern}
   )
-  
+
 if(NOT onnxruntime_PYBIND_EXPORT_OPSCHEMA)
   list(REMOVE_ITEM onnxruntime_pybind_srcs  ${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_schema.cc)
 endif()
-  
+
 if(onnxruntime_ENABLE_TRAINING)
   list(REMOVE_ITEM onnxruntime_pybind_srcs  ${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_module.cc)
 endif()
@@ -38,11 +38,11 @@ if (onnxruntime_ENABLE_EAGER_MODE)
     )
 
   if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    list(APPEND onnxruntime_eager_extension_srcs 
+    list(APPEND onnxruntime_eager_extension_srcs
               "${ORTTRAINING_ROOT}/orttraining/core/framework/torch/dlpack_python.cc")
   endif()
 
-  list(APPEND onnxruntime_pybind_srcs 
+  list(APPEND onnxruntime_pybind_srcs
               ${onnxruntime_eager_extension_srcs})
 endif()
 
@@ -285,9 +285,6 @@ if (onnxruntime_ENABLE_TRAINING)
   )
   file(GLOB onnxruntime_python_ortmodule_torch_cpp_ext_torch_gpu_allocator_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/torch_gpu_allocator/*"
-  )
-  file(GLOB onnxruntime_python_train_tools_srcs CONFIGURE_DEPENDS
-    "${REPO_ROOT}/tools/python/register_custom_ops_pytorch_exporter.py"
   )
 else()
   file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
@@ -557,9 +554,6 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_ortmodule_torch_cpp_ext_torch_gpu_allocator_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/torch_gpu_allocator/
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_train_tools_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/
   )
 endif()
 

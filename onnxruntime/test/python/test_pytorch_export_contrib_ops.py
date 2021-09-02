@@ -1,15 +1,15 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-#
-# Test export of pytorch operators using ONNX Runtime contrib ops
+
+"""Test export of PyTorch operators using ONNX Runtime contrib ops."""
 
 import torch
 import onnxruntime
+from onnxruntime.tools import pytorch_export_contrib_ops
 import numpy as np
 import unittest
 import io
 import copy
-from python.register_custom_ops_pytorch_exporter import register_custom_op
 
 
 def ort_test_with_input(ort_sess, input, output, rtol, atol):
@@ -35,9 +35,8 @@ def ort_test_with_input(ort_sess, input, output, rtol, atol):
     [np.testing.assert_allclose(out, ort_out, rtol=rtol, atol=atol) for out, ort_out in zip(outputs, ort_outs)]
 
 
-# These set of tests verify ONNX model export and compare onnxruntime outputs to pytorch.
-# To register custom ops and run the tests, you should set PYTHONPATH as:
-# PYTHONPATH=<path_to_onnxruntime/tools> python -m pytest -v test_custom_ops_pytorch_exporter.py
+# These set of tests verify ONNX model export and compares outputs between
+# PyTorch and ORT.
 class ONNXExporterTest(unittest.TestCase):
     from torch.onnx.symbolic_helper import _export_onnx_opset_version
     opset_version = _export_onnx_opset_version
@@ -45,7 +44,7 @@ class ONNXExporterTest(unittest.TestCase):
 
     def setUp(self):
         torch.manual_seed(0)
-        register_custom_op()
+        pytorch_export_contrib_ops.register()
 
     def run_test(self, model, input=None,
                  custom_opsets=None,
@@ -103,12 +102,12 @@ class ONNXExporterTest(unittest.TestCase):
                 return torch.inverse(x) + x
 
         x = torch.randn(2, 3, 3)
-        self.run_test(CustomInverse(), x, custom_opsets={'com.microsoft': 1})
+        self.run_test(CustomInverse(), x, custom_opsets={"com.microsoft": 1})
 
     def test_gelu(self):
         model = torch.nn.GELU()
         x = torch.randn(3, 3)
-        self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+        self.run_test(model, x, custom_opsets={"com.microsoft": 1})
 
     def test_triu(self):
         for i in range(-5, 5):
@@ -118,13 +117,13 @@ class ONNXExporterTest(unittest.TestCase):
 
             model = Module()
             x = torch.randn(5, 4, 7, dtype=torch.float32)
-            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+            self.run_test(model, x, custom_opsets={"com.microsoft": 1})
 
             x = torch.randn(5, 4, 0, dtype=torch.float32)
-            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+            self.run_test(model, x, custom_opsets={"com.microsoft": 1})
 
             x = torch.randn(5, 0, 0, dtype=torch.float32)
-            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+            self.run_test(model, x, custom_opsets={"com.microsoft": 1})
 
         for i in range(-5, 5):
             class Module2D(torch.nn.Module):
@@ -133,13 +132,13 @@ class ONNXExporterTest(unittest.TestCase):
 
             model = Module2D()
             x = torch.randn(4, 7, dtype=torch.float32)
-            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+            self.run_test(model, x, custom_opsets={"com.microsoft": 1})
 
             x = torch.randn(0, 7, dtype=torch.float32)
-            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+            self.run_test(model, x, custom_opsets={"com.microsoft": 1})
 
             x = torch.randn(0, 0, dtype=torch.float32)
-            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+            self.run_test(model, x, custom_opsets={"com.microsoft": 1})
 
     def test_tril(self):
         for i in range(-5, 5):
@@ -149,13 +148,13 @@ class ONNXExporterTest(unittest.TestCase):
 
             model = Module()
             x = torch.randn(5, 4, 7, dtype=torch.float32)
-            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+            self.run_test(model, x, custom_opsets={"com.microsoft": 1})
 
             x = torch.randn(5, 4, 0, dtype=torch.float32)
-            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+            self.run_test(model, x, custom_opsets={"com.microsoft": 1})
 
             x = torch.randn(5, 0, 0, dtype=torch.float32)
-            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+            self.run_test(model, x, custom_opsets={"com.microsoft": 1})
 
         for i in range(-5, 5):
             class Module2D(torch.nn.Module):
@@ -164,13 +163,13 @@ class ONNXExporterTest(unittest.TestCase):
 
             model = Module2D()
             x = torch.randn(4, 7, dtype=torch.float32)
-            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+            self.run_test(model, x, custom_opsets={"com.microsoft": 1})
 
             x = torch.randn(0, 7, dtype=torch.float32)
-            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+            self.run_test(model, x, custom_opsets={"com.microsoft": 1})
 
             x = torch.randn(0, 0, dtype=torch.float32)
-            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+            self.run_test(model, x, custom_opsets={"com.microsoft": 1})
 
 
 # opset 9 tests, with keep_initializers_as_inputs=False for
@@ -181,5 +180,5 @@ ONNXExporterTest_opset9_IRv4 = type(str("TestONNXRuntime_opset9_IRv4"),
                                          keep_initializers_as_inputs=False))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
