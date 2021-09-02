@@ -1,32 +1,57 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+set(onnxruntime_optimizer_src_patterns)
+
 if (onnxruntime_MINIMAL_BUILD)
   # we include a couple of files so a library is produced and we minimize other changes to the build setup.
-  # as the transformer base class will be unused it will be excluded from the final binary size
-  file(GLOB onnxruntime_optimizer_srcs CONFIGURE_DEPENDS
+  # if the transformer base class is unused it will be excluded from the final binary size
+  list(APPEND onnxruntime_optimizer_src_patterns
     "${ONNXRUNTIME_INCLUDE_DIR}/core/optimizer/graph_transformer.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/graph_transformer.cc"
   )
+
+  if (onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+    list(APPEND onnxruntime_optimizer_src_patterns
+      "${ONNXRUNTIME_ROOT}/core/optimizer/ort_format_runtime_optimization/utils.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/ort_format_runtime_optimization/utils.cc"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/qdq_util.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/qdq_util.cc"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/selectors_actions/*.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/selectors_actions/*.cc"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/*.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/*.cc"
+    )
+  endif()
 else()
-  file(GLOB onnxruntime_optimizer_srcs CONFIGURE_DEPENDS
+  list(APPEND onnxruntime_optimizer_src_patterns
     "${ONNXRUNTIME_INCLUDE_DIR}/core/optimizer/*.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/*.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/*.cc"
     "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/*.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/selectors_actions/*.h"
+    "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/selectors_actions/*.cc"
     "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/*.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/*.cc"
   )
+
+  if (onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+    list(APPEND onnxruntime_optimizer_src_patterns
+      "${ONNXRUNTIME_ROOT}/core/optimizer/ort_format_runtime_optimization/utils.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/ort_format_runtime_optimization/utils.cc"
+    )
+  endif()
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
-    file(GLOB orttraining_optimizer_srcs CONFIGURE_DEPENDS
-        "${ORTTRAINING_SOURCE_DIR}/core/optimizer/*.h"
-        "${ORTTRAINING_SOURCE_DIR}/core/optimizer/*.cc"
-        )
-    set(onnxruntime_optimizer_srcs ${onnxruntime_optimizer_srcs} ${orttraining_optimizer_srcs})
+  list(APPEND onnxruntime_optimizer_src_patterns
+    "${ORTTRAINING_SOURCE_DIR}/core/optimizer/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/core/optimizer/*.cc"
+  )
 endif()
+
+file(GLOB onnxruntime_optimizer_srcs CONFIGURE_DEPENDS ${onnxruntime_optimizer_src_patterns})
 
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_optimizer_srcs})
 

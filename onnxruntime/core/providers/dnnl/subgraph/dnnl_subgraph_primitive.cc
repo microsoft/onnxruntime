@@ -6,12 +6,13 @@
 #include "dnnl_batchnorm.h"
 #include "dnnl_binary.h"
 #include "dnnl_conv.h"
+#include "dnnl_elementwise.h"
+#include "dnnl_gemm.h"
 #include "dnnl_lrn.h"
 #include "dnnl_matmul.h"
 #include "dnnl_matmul_integer.h"
 #include "dnnl_pool.h"
 #include "dnnl_reducemean.h"
-#include "dnnl_relu.h"
 #include "dnnl_softmax.h"
 #include "dnnl_sum.h"
 
@@ -34,6 +35,49 @@ int Product(dnnl::memory::dims d) {
   for (const auto& e : d)
     result *= (int)e;
   return result;
+}
+
+void DnnlSubgraphPrimitive::AddKernels() {
+  std::unordered_set<std::string> binary_ops = {"Add", "Div", "Mul", "Sub"};
+  std::unordered_set<std::string> elementwise_ops = {"Abs", "Elu", "Exp","Log", "Relu", "Round", "Sigmoid", "Softplus", "Sqrt", "Tanh"};
+  std::unordered_set<std::string> pool_ops = {"AveragePool", "GlobalAveragePool", "GlobalMaxPool", "MaxPool"};
+  for (auto& node : subgraph_->GetDnnlNodes()) {
+    if (node.OpType() == "BatchNormalization") {
+      DnnlBatchNorm().CreatePrimitive(*this, node);
+    } else if (binary_ops.count(node.OpType())) {
+      DnnlBinary().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Conv") {
+      DnnlConv().CreatePrimitive(*this, node);
+    } else if (elementwise_ops.count(node.OpType())) {
+      DnnlElementwise().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Gemm") {
+      DnnlGemm().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "LRN") {
+      DnnlLrn().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "MatMul") {
+      DnnlMatMul().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "MatMulInteger") {
+      DnnlMatMulInteger().CreatePrimitive(*this, node);
+    } else if (pool_ops.count(node.OpType())) {
+      DnnlPool().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "ReduceMean") {
+      DnnlReduceMean().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Softmax") {
+      DnnlSoftmax().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Sum") {
+      DnnlSum().CreatePrimitive(*this, node);
+#if defined(ENABLE_TRAINING)
+    } else if (node.OpType() == "AveragePoolGrad" || node.OpType() == "MaxPoolGrad") {
+      DnnlPoolGrad().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "ConvGrad") {
+      DnnlConvGrad().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "ReluGrad") {
+      DnnlReluGrad().CreatePrimitive(*this, node);
+#endif
+    } else {
+      throw std::invalid_argument("Kernel not found");
+    }
+  }
 }
 
 DnnlSubgraphPrimitive::DnnlSubgraphPrimitive(ort_dnnl::DnnlSubgraph& dnnl_subgraph) {
@@ -193,46 +237,6 @@ void DnnlSubgraphPrimitive::AddInitializers() {
   }
 }
 
-void DnnlSubgraphPrimitive::AddKernels() {
-  std::unordered_set<std::string> binary_ops = {"Add", "Mul", "Sub", "Div"};
-  for (auto& node : subgraph_->GetDnnlNodes()) {
-    if (node.OpType() == "AveragePool" || node.OpType() == "GlobalAveragePool" ||
-        node.OpType() == "GlobalMaxPool" || node.OpType() == "MaxPool") {
-      DnnlPool().CreatePrimitive(*this, node);
-    } else if (binary_ops.count(node.OpType())) {
-      DnnlBinary().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "BatchNormalization") {
-      DnnlBatchNorm().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "Conv") {
-      DnnlConv().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "LRN") {
-      DnnlLrn().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "MatMul") {
-      DnnlMatMul().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "MatMulInteger") {
-      DnnlMatMulInteger().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "ReduceMean") {
-      DnnlReduceMean().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "Relu") {
-      DnnlRelu().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "Softmax") {
-      DnnlSoftmax().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "Sum") {
-      DnnlSum().CreatePrimitive(*this, node);
-#if defined(ENABLE_TRAINING)
-    } else if (node.OpType() == "AveragePoolGrad" || node.OpType() == "MaxPoolGrad") {
-      DnnlPoolGrad().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "ConvGrad") {
-      DnnlConvGrad().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "ReluGrad") {
-      DnnlReluGrad().CreatePrimitive(*this, node);
-#endif
-    } else {
-      throw std::invalid_argument("Kernel not found");
-    }
-  }
-}
-
 void DnnlSubgraphPrimitive::AddOutputs() {
   for (auto& tensor : subgraph_->GetDnnlOutputs()) {
     auto dnnl_data_type = tensor.Type();
@@ -356,7 +360,7 @@ void DnnlSubgraphPrimitive::SetInitializer(std::string memory_name, dnnl::memory
   }
 }
 
-dnnl::memory DnnlSubgraphPrimitive::GetMemoryAndReshape(ort_dnnl::DnnlTensor tensor, dnnl::memory::desc mem_desc, dnnl::engine eng) {
+dnnl::memory DnnlSubgraphPrimitive::GetMemoryAndReshape(ort_dnnl::DnnlTensor tensor, dnnl::memory::desc mem_desc, dnnl::engine eng, bool transpose) {
   // if found just return
   if (HasMemory(tensor.Name(), mem_desc, eng)) {
     return GetMemory(tensor.Name(), mem_desc, eng);
@@ -372,7 +376,7 @@ dnnl::memory DnnlSubgraphPrimitive::GetMemoryAndReshape(ort_dnnl::DnnlTensor ten
   auto mem_to = dnnl::memory(mem_desc, eng);
 
   // if it is a reshape, ensure reorder is possible by making the same dims
-  if (mem_from.get_desc().dims() != mem_to.get_desc().dims()) {
+  if (mem_from.get_desc().dims() != mem_to.get_desc().dims() || transpose) {
     auto mem_from_dims = mem_from.get_desc().dims();
     auto mem_to_dims = mem_to.get_desc().dims();
     if (Product(mem_from_dims) != Product(mem_to_dims)) {
