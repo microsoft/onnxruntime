@@ -898,7 +898,7 @@ Status Xor::Compute(OpKernelContext* context) const {
   ProcessBroadcastSpanFuncs funcs{
       [](BroadcastHelper& per_iter_bh) {
         bool input0 = per_iter_bh.ScalarInput0<bool>();
-        auto input1 = per_iter_bh.EigenInput0<bool>();
+        auto input1 = per_iter_bh.EigenInput1<bool>();
         auto output = per_iter_bh.OutputEigen<bool>();
         if (input0)
           output.array() = !input1.array();
