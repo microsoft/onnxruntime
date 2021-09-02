@@ -10,14 +10,13 @@ class AttentionBase;
 
 class GatherBase__Prepare;
 class SliceOp__PrepareForComputeMetadata;  // Directly maps to SliceOp::PrepareForComputeMetadata
-class UnsqueezeBase__Prepare;              // Directly maps to UnsqueezeBase::Prepare
 
 struct ProviderHostCPU {
 
   // From cpu/tensor/gatherbase.h
   virtual Status GatherBase__PrepareForCompute(const GatherBase* p, OpKernelContext* context, GatherBase__Prepare& prepare) = 0;
   // From cpu/tensor/unsqueeze.h
-  virtual Status UnsqueezeBase__PrepareCompute(const UnsqueezeBase* p, OpKernelContext* ctx, UnsqueezeBase__Prepare& prepare) = 0;
+  virtual Status UnsqueezeBase__PrepareCompute(const UnsqueezeBase* p, OpKernelContext* ctx, const TensorShape& input_shape, TensorShape& output_shape) = 0;
 
   // NonMaxSuppresionBase
   virtual Status NonMaxSuppressionBase__PrepareCompute(OpKernelContext* ctx, PrepareContext& pc) = 0;

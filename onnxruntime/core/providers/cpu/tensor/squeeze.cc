@@ -32,4 +32,23 @@ ONNX_CPU_OPERATOR_KERNEL(
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
         .Alias(0, 0),
     Squeeze);
+
+std::vector<int64_t> SqueezeBase::ComputeAxes(OpKernelContext* context, const std::vector<int64_t>& axes_attr) {
+  std::vector<int64_t> axes;
+  size_t num_inputs = context->InputCount();
+  if (num_inputs == 2) {  //axes is an input
+    const Tensor* axes_tensor = context->Input<Tensor>(1);
+    ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
+    ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1,
+                "An axes tensor must be a vector tensor.");
+    auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
+    const auto* data = axes_tensor->template Data<int64_t>();
+    axes.assign(data, data + nDims);
+  } else {
+    axes.assign(axes_attr.begin(), axes_attr.end());
+  }
+  return axes;
+}
+
+
 }  // namespace onnxruntime

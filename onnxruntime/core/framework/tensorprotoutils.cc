@@ -1098,9 +1098,8 @@ static void SparsifyGeneric(const void* dense_raw_data, size_t n_dense_elements,
                             sparse_utils::IsZeroFunc is_zero, sparse_utils::CopyElementFunc copy,
                             TensorProto& values, TensorProto& indices,
                             size_t& nnz) {
-  auto advance = [element_size](const void* start, size_t elements) -> const void* {
-    return (reinterpret_cast<const uint8_t*>(start) + elements * element_size);
-  };
+
+  sparse_utils::Advance advance(element_size);
 
   const auto* cbegin = dense_raw_data;
   const auto* const cend = advance(cbegin, n_dense_elements);

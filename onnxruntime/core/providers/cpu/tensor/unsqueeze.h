@@ -12,12 +12,8 @@ namespace onnxruntime {
 
 class UnsqueezeBase {
  public:
-  struct Prepare {
-    const Tensor* input_tensor = nullptr;
-    Tensor* output_tensor = nullptr;
-  };
 
-  Status PrepareCompute(OpKernelContext* context, Prepare& p) const;
+  Status PrepareCompute(OpKernelContext* context, const TensorShape& input_shape, TensorShape& output_shape) const;
 
  protected:
   UnsqueezeBase(const OpKernelInfo& info) {

@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace test {
 
-TEST(MakeCooSparse, TestFlatIndices) {
+TEST(SparseMakeCoo, TestFlatIndices) {
   const std::vector<int64_t> dense_shape{4, 2};
   const std::vector<float> values{3.f, 5.f, 7.f};
   const std::vector<int64_t> flat_indices{3, 5, 7};
@@ -22,7 +22,7 @@ TEST(MakeCooSparse, TestFlatIndices) {
   tester.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(MakeCooSparse, Test2DIndices) {
+TEST(SparseMakeCoo, Test2DIndices) {
   const std::vector<int64_t> dense_shape{4, 2};
   const std::vector<float> values{3.f, 5.f, 7.f};
   const std::vector<int64_t> indices{1, 1, 2, 1, 3, 1};
@@ -35,7 +35,7 @@ TEST(MakeCooSparse, Test2DIndices) {
   tester.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(MakeCooSparse, TestFullySparse) {
+TEST(SparseMakeCoo, TestFullySparse) {
   const std::vector<int64_t> dense_shape{4, 2};
   const std::vector<float> values;
   const std::vector<int64_t> indices;
@@ -47,6 +47,48 @@ TEST(MakeCooSparse, TestFullySparse) {
   tester.AddSparseCooOutput("Output", dense_shape, gsl::make_span(values), indices);
   tester.Run(OpTester::ExpectResult::kExpectSuccess);
 }
+
+TEST(SparseDecomposeCoo, TestFlatIndices) {
+  const std::vector<int64_t> dense_shape{4, 2};
+  const std::vector<float> values{3.f, 5.f, 7.f};
+  const std::vector<int64_t> flat_indices{3, 5, 7};
+
+  OpTester tester("SparseDecomposeToDense", 1, onnxruntime::kMSDomain);
+  tester.AddSparseCooInput("SparseCooInput", dense_shape, values, flat_indices);
+  tester.AddOutput("DenseShape", {2}, dense_shape);
+  tester.AddOutput("Values", {3}, values);
+  tester.AddOutput("Indices", {3}, flat_indices);
+  tester.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(SparseDecomposeCoo, Test2DIndices) {
+  const std::vector<int64_t> dense_shape{4, 2};
+  const std::vector<float> values{3.f, 5.f, 7.f};
+  const std::vector<int64_t> indices{1, 1, 2, 1, 3, 1};
+  const std::vector<int64_t> expected_indices{3, 5, 7};
+
+  OpTester tester("SparseDecomposeToDense", 1, onnxruntime::kMSDomain);
+  tester.AddSparseCooInput("SparseCooInput", dense_shape, values, indices);
+  tester.AddOutput("DenseShape", {2}, dense_shape);
+  tester.AddOutput("Values", {3}, values);
+  tester.AddOutput("Indices", {3}, expected_indices);
+  tester.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(SparseDecomposeCoo, TestFullySparse) {
+  const std::vector<int64_t> dense_shape{4, 2};
+  const std::vector<float> values;
+  const std::vector<int64_t> indices;
+
+  OpTester tester("SparseDecomposeToDense", 1, onnxruntime::kMSDomain);
+  tester.AddSparseCooInput("SparseCooInput", dense_shape, values, indices);
+  tester.AddOutput("DenseShape", {2}, dense_shape);
+  tester.AddOutput("Values", {0}, values);
+  tester.AddOutput("Indices", {0}, indices);
+  tester.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+
 
 }
 }  // namespace onnxruntime

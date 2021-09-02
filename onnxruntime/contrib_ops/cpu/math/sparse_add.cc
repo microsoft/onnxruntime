@@ -32,17 +32,6 @@ ONNX_OPERATOR_KERNEL_EX(
 
 namespace {
 
-Status ConvertIndicesTo1DAndCopy(const SparseTensor& input_sparse, SparseTensor::CooMutator& coo_mutator) {
-  const auto cols = input_sparse.DenseShape().GetDims()[0];
-  const auto& indices = input_sparse.AsCoo().Indices();
-  auto ind_span = indices.DataAsSpan<int64_t>();
-  std::vector<int64_t> new_ind;
-  new_ind.reserve(ind_span.size() / 2);
-  ORT_RETURN_IF_ERROR(sparse_utils::Convert2DCooIndicesTo1D(cols, ind_span, new_ind));
-  memcpy(coo_mutator.Indices().MutableDataRaw(), new_ind.data(), new_ind.size() * sizeof(int64_t));
-  return Status::OK();
-}
-
 // Can't use SparseTensor::Copy because dense shapes may not match
 Status CopySparseToOutput(const SparseTensor& input, SparseTensor& output) {
   const auto& indices = input.AsCoo().Indices();
@@ -50,17 +39,15 @@ Status CopySparseToOutput(const SparseTensor& input, SparseTensor& output) {
   // if we had 2-D indices and the output shape is bigger than 2-D then
   // we convert to flat indices bc 2-D indices only apply to 2-D tensors
   const auto ind_ndims = indices.Shape().NumDimensions();
-  const auto indices_size = gsl::narrow<size_t>(indices.Shape().Size());
   if (ind_ndims == 2 && output_ndims > ind_ndims) {
+    const auto indices_size = gsl::narrow<size_t>(indices.Shape().Size());
     ORT_RETURN_IF_NOT(indices_size % 2, "Indices size must be divisible by 2");
     const auto new_indices_size = indices_size / 2;
     auto coo_mutator = output.MakeCooData(input.NumValues(), new_indices_size);
-    ORT_RETURN_IF_ERROR(ConvertIndicesTo1DAndCopy(input, coo_mutator));
-    memcpy(coo_mutator.Values().MutableDataRaw(), input.Values().DataRaw(), input.Values().SizeInBytes());
+    ORT_RETURN_IF_ERROR(sparse_utils::ConvertIndicesTo1DAndCopy(input, coo_mutator));
+    sparse_utils::CopyCpuTensor(input.Values(), coo_mutator.Values());
   } else {
-    auto coo_mutator = output.MakeCooData(input.NumValues(), indices_size);
-    memcpy(coo_mutator.Values().MutableDataRaw(), input.Values().DataRaw(), input.Values().SizeInBytes());
-    memcpy(coo_mutator.Indices().MutableDataRaw(), indices.DataRaw(), indices.SizeInBytes());
+    sparse_utils::CopyCpuSparseCooTensor(input, output);
   }
   return Status::OK();
 }
@@ -74,8 +61,10 @@ gsl::span<const int64_t> GetIndicesSpan(const SparseTensor& input, std::vector<i
     ORT_ENFORCE(input.DenseShape().NumDimensions() == 2, "Expecting dense shape to be 2-D");
     const auto cols = input.DenseShape().GetDims()[1];
     const auto ind_span = indices.DataAsSpan<int64_t>();
-    ORT_THROW_IF_ERROR(sparse_utils::Convert2DCooIndicesTo1D(cols, ind_span, converted));
-    result = gsl::make_span(converted);
+    converted.resize(ind_span.size() / 2);
+    auto converted_span = gsl::make_span(converted);
+    ORT_THROW_IF_ERROR(sparse_utils::Convert2DCooIndicesTo1D(cols, ind_span, converted_span));
+    result = converted_span;
   } else {
     result = indices.DataAsSpan<int64_t>();
   }
@@ -84,7 +73,7 @@ gsl::span<const int64_t> GetIndicesSpan(const SparseTensor& input, std::vector<i
 
 template <typename T>
 struct Sum {
-  void operator()(const void* lhs, size_t lhs_idx, const void* rhs, size_t rhs_idx, void* result, size_t res_idx) {
+  void operator()(const void* lhs, size_t lhs_idx, const void* rhs, size_t rhs_idx, void* result, size_t res_idx) const {
     reinterpret_cast<T*>(result)[res_idx] = reinterpret_cast<const T*>(lhs)[lhs_idx] + reinterpret_cast<const T*>(rhs)[rhs_idx];
   }
 };
@@ -172,19 +161,19 @@ Status Add::Compute(OpKernelContext* ctx) const {
       sparse_utils::CopyElementFunc copy_func;
       switch (element_size) {
         case 1: {
-          copy_func = sparse_utils::CopyElement<uint8_t>;
+          copy_func = sparse_utils::CopyElementAligned<uint8_t>;
           break;
         }
         case 2: {
-          copy_func = sparse_utils::CopyElement<uint16_t>;
+          copy_func = sparse_utils::CopyElementAligned<uint16_t>;
           break;
         }
         case 4: {
-          copy_func = sparse_utils::CopyElement<uint32_t>;
+          copy_func = sparse_utils::CopyElementAligned<uint32_t>;
           break;
         }
         case 8: {
-          copy_func = sparse_utils::CopyElement<uint64_t>;
+          copy_func = sparse_utils::CopyElementAligned<uint64_t>;
           break;
         }
         default:

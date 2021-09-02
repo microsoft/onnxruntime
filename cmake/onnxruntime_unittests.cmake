@@ -268,7 +268,7 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
       "${TEST_SRC_DIR}/contrib_ops/*.cc"
       "${TEST_SRC_DIR}/contrib_ops/math/*.h"
       "${TEST_SRC_DIR}/contrib_ops/math/*.cc"
-	  "${TEST_SRC_DIR}/contrib_ops/tensor/*.h"
+      "${TEST_SRC_DIR}/contrib_ops/tensor/*.h"
       "${TEST_SRC_DIR}/contrib_ops/tensor/*.cc")
   endif()
 

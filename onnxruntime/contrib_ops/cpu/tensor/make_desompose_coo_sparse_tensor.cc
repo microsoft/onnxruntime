@@ -53,7 +53,7 @@ Status MakeCooSparse::Compute(OpKernelContext* ctx) const {
                 "indices must not have more dimensions than dense_shape");
   if (indices_ndims == 1) {
     ORT_RETURN_IF_NOT(std::is_sorted(indices_span.cbegin(), indices_span.cend()),
-      "COO indices must be sorted in ascending order");
+                      "COO indices must be sorted in ascending order");
     for (auto idx : indices_span) {
       ORT_RETURN_IF_NOT(idx < dense_values_count,
                         "Index: ", idx, " out of bounds. Dense shape count: ", dense_values_count);
@@ -71,7 +71,8 @@ Status MakeCooSparse::Compute(OpKernelContext* ctx) const {
                         "Indices col is out of bounds: ", indices_span[i + 1], " cols: ", cols);
     }
     std::vector<int64_t> flat_indices;
-    ORT_RETURN_IF_ERROR(sparse_utils::Convert2DCooIndicesTo1D(cols, indices_span, flat_indices));
+    flat_indices.resize(indices_span.size() / 2);
+    ORT_RETURN_IF_ERROR(sparse_utils::Convert2DCooIndicesTo1D(cols, indices_span, gsl::make_span(flat_indices)));
     ORT_RETURN_IF_NOT(std::is_sorted(flat_indices.cbegin(), flat_indices.cend()),
                       "COO indices must be sorted in ascending order");
   }
@@ -83,6 +84,62 @@ Status MakeCooSparse::Compute(OpKernelContext* ctx) const {
   const void* values_data = values_input.DataRaw();
   ORT_RETURN_IF_ERROR(output.MakeCooData(*data_transfer, values_input.Location(), nnz_values_count, values_data,
                                          indices_span));
+
+  return Status::OK();
+}
+
+class SparseDecomposeToDense final : public OpKernel {
+ public:
+  explicit SparseDecomposeToDense(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext*) const override;
+};
+
+ONNX_OPERATOR_KERNEL_EX(
+    SparseDecomposeToDense,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", BuildKernelDefSparseConstraintsFromTypeList<element_type_lists::All>())
+        .TypeConstraint("T1", BuildKernelDefConstraintsFromTypeList<element_type_lists::All>())
+        .TypeConstraint("T2", BuildKernelDefConstraints<int64_t>()),
+    SparseDecomposeToDense);
+
+Status SparseDecomposeToDense::Compute(OpKernelContext* ctx) const {
+  const SparseTensor& input_tensor = *ctx->Input<SparseTensor>(0);
+  ORT_RETURN_IF_NOT(input_tensor.Format() == SparseFormat::kCoo, "Input must be Sparse COO format");
+
+  const auto& dense_shape = input_tensor.DenseShape();
+  Tensor& output_shape = *ctx->Output(0, {gsl::narrow<int64_t>(dense_shape.NumDimensions())});
+  memcpy(output_shape.MutableDataRaw(), dense_shape.GetDims().data(), output_shape.SizeInBytes());
+
+  const auto& input_values = input_tensor.Values();
+  const auto& input_values_shape = input_values.Shape();
+  Tensor& output_values = *ctx->Output(1, input_values_shape);
+  sparse_utils::CopySparseCpuValues(input_tensor, output_values);
+
+  // XXX: We always output 1-D indices, as the initial examples suggest
+  // that the customer prefers to deal with 1-D indices
+  const auto& input_indices = input_tensor.AsCoo().Indices();
+  const auto& input_indices_shape = input_indices.Shape();
+  if (input_indices_shape.NumDimensions() == 1) {
+    Tensor& output_indices = *ctx->Output(2, input_indices_shape);
+    memcpy(output_indices.MutableDataRaw(), input_indices.DataRaw(), input_indices.SizeInBytes());
+  } else if (input_indices_shape.NumDimensions() == 2) {
+    ORT_RETURN_IF_NOT(dense_shape.NumDimensions() == 2, "Expecting 2-D Sparse input for 2-D coo indices");
+    const auto dst_indices_size = input_indices_shape.Size() / 2;
+    ORT_RETURN_IF_NOT(input_values_shape.Size() == dst_indices_size, "Invalid input. 1-D indices size must be equal to that of values");
+    Tensor& output_indices = *ctx->Output(2, {dst_indices_size});
+    if (dst_indices_size > 0) {
+      const auto cols = dense_shape.GetDims()[1];
+      sparse_utils::Convert2DCooIndicesTo1D(cols, input_indices.DataAsSpan<int64_t>(),
+                                            output_indices.MutableDataAsSpan<int64_t>());
+    }
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid COO indices shape: ", input_indices.Shape().ToString());
+  }
 
   return Status::OK();
 }

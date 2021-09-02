@@ -279,6 +279,28 @@ static const std::vector<std::string>& numeric_sparse_tensor_types_except_half()
       "sparse_tensor(bool)"};
   return numeric_sparse_tensor_types_except_half;
 }
+
+static const std::vector<std::string>& all_sparse_tensor_types_with_bfloat() {
+  static const std::vector<std::string> all_sparse_tensor_types_with_bfloat = {
+      "sparse_tensor(uint8)",
+      "sparse_tensor(uint16)",
+      "sparse_tensor(uint32)",
+      "sparse_tensor(uint64)",
+      "sparse_tensor(int8)",
+      "sparse_tensor(int16)",
+      "sparse_tensor(int32)",
+      "sparse_tensor(int64)",
+      "sparse_tensor(bfloat16)",
+      "sparse_tensor(float16)",
+      "sparse_tensor(float)",
+      "sparse_tensor(double)",
+      "sparse_tensor(string)",
+      "sparse_tensor(bool)",
+      "sparse_tensor(complex64)",
+      "sparse_tensor(complex128)"};
+  return all_sparse_tensor_types_with_bfloat;
+}
+
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
@@ -1944,12 +1966,13 @@ COO format.
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Input(0, "DenseShape", "A 1-D tensor that contains a dense shape of the original dense tensor", "T1")
-      .Input(1, "Values", "A dense tensor that contains non-zero values", "T")
+      .Input(1, "Values", "A dense tensor that contains values", "T")
       .Input(2, "Indices", "Contains either 1-D or 2-D COO indices", "T1")
       .Output(0, "Output", "Sparse Tensor in COO format", "T2")
       .TypeConstraint("T", OpSchema::all_tensor_types_with_bfloat(), "All tensor types")
       .TypeConstraint("T1", {"tensor(int64)"}, "Index type")
       .TypeConstraint("T2", numeric_sparse_tensor_types_except_half(), "Numeric sparse types")
+      .SetDoc(MakeCooSparse_doc)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         auto input_type = ctx.getInputType(1);
         if (nullptr == input_type) {
@@ -1958,6 +1981,46 @@ COO format.
         auto element_type = getTensorElementType(*input_type);
         propagateElemTypeFromDtypeToOutput(ctx, element_type, 0, TypeProto::kSparseTensorType);
       });
+
+static const char* SparseDecomposeToDense_doc = R"DOC(
+    This is a utility op that decomposes a Sparse Tensor in COO format
+    to three dense tensors (dense_shape, values, 1-D indices).)DOC";
+
+ONNX_CONTRIB_OPERATOR_SCHEMA(SparseDecomposeToDense)
+    .SetDomain(kMSDomain)
+    .SinceVersion(1)
+    .Input(0, "SparseCooInput", "A Sparse Tensor in COO format.", "T")
+    .Output(0, "DenseShape", "A 1-D tensor that contains a dense shape of the original dense tensor.", "T2")
+    .Output(1, "Values", "A dense tensor that contains values.", "T1")
+    .Output(2, "Indices", "A dense tensor that contains either 1-D (common case) or 2-D COO indices.", "T2")
+    .TypeConstraint("T", all_sparse_tensor_types_with_bfloat(), "All supported types")
+    .TypeConstraint("T1", OpSchema::all_tensor_types_with_bfloat(), "All supported types")
+    .TypeConstraint("T2", {"tensor(int64)"}, "Index type")
+    .SetDoc(SparseDecomposeToDense_doc)
+    .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+      propagateElemTypeFromDtypeToOutput(ctx, TensorProto_DataType_INT64, 0, TypeProto::kTensorType);  // dense shape
+      TensorShapeProto dense_shape_shape;
+      if (hasInputShape(ctx, 0)) {
+        const auto& dense_shape = getInputShape(ctx, 0);
+        dense_shape_shape.add_dim()->set_dim_value(dense_shape.dim_size());
+      } else {
+        dense_shape_shape.add_dim();
+      }
+      updateOutputShape(ctx, 0, dense_shape_shape);
+
+      auto input_type = ctx.getInputType(0);
+      if (nullptr == input_type) {
+        fail_type_inference("Input 0 expected to have type but instead is null");
+      }
+      const auto input_values_type = getTensorElementType(*input_type);
+      propagateElemTypeFromDtypeToOutput(ctx, input_values_type, 1, TypeProto::kTensorType);  // values
+      TensorShapeProto output_shape_1_2;
+      output_shape_1_2.add_dim();
+      updateOutputShape(ctx, 1, output_shape_1_2);
+
+      propagateElemTypeFromDtypeToOutput(ctx, TensorProto_DataType_INT64, 2, TypeProto::kTensorType);  // indices
+      updateOutputShape(ctx, 2, output_shape_1_2);
+    });
 
   static const char* NonZero_doc = R"DOC(
   Behaves similar to https://github.com/onnx/onnx/blob/master/docs/Operators.md#NonZero
@@ -1975,6 +2038,7 @@ COO format.
       .Output(0, "B", "An up to 2-dimensional dense matrix B", "T1")
       .TypeConstraint("T", {"sparse_tensor(float)"}, "Constrain to float at this time")
       .TypeConstraint("T1", {"tensor(int64)"}, "Index type")
+      .SetDoc(NonZero_doc)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         // Output type is index type
         propagateElemTypeFromDtypeToOutput(ctx, TensorProto_DataType_INT64, 0);
@@ -1989,20 +2053,23 @@ COO format.
       });
 
   static const char* Gather_doc = R"DOC(
+XXX: This is very different from the standard Gather. (I would call it a Filter).
+XXX: Extra effort required to either merge the two or present a separate op.
 This is a simplified version of ONNX Gather. No axis support.
 The input 0 is a sparse tensor in COO format
-The input 1 is a dense tensor containing COO 1-D indices of elements to gather.
+The input 1 is a dense tensor containing COO 1-D sorted indices of elements to gather.
 The output is a sparse tensor of the same shape as input that contains values
 of the input sparse tensor that match the input 1 indices.
 )DOC";
   ONNX_CONTRIB_OPERATOR_SCHEMA(Gather)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "A", "Sparse matrix in COO format", "T")
-      .Input(1, "B", "Dense matrix containing indices into A ", "T1")
-      .Output(0, "Y", "Filtered A", "T")
-      .TypeConstraint("T", {"sparse_tensor(float)"}, "Constrain input and output float at this time")
+      .Input(0, "data", "Sparse tensor in COO format", "T")
+      .Input(1, "indices", "Dense matrix containing sorted indices into A ", "T1")
+      .Output(0, "output", "Filtered data", "T")
+      .TypeConstraint("T", all_sparse_tensor_types_with_bfloat(), "All sparse tensor types")
       .TypeConstraint("T1", {"tensor(int64)"}, "Index type")
+      .SetDoc(Gather_doc)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         if (!hasInputShape(ctx, 0)) {
@@ -2019,56 +2086,125 @@ there could be only a single axes entry. This means that if the incoming tensor 
 2-D COO indices, they would be converted to 1-D indices.
 Output is a reshaped sparse tensor with the same data.
 )DOC";
-  ONNX_CONTRIB_OPERATOR_SCHEMA(Sequeeze)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Squeeze)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "data", "Sparse 2-D matrix in COO format", "T")
-      .Attr(
+      .Input(0, "data", "Sparse 2-D tensor in COO format", "T")
+      .Input(
+          1,
           "axes",
-          "Should contain a single value 0 or 1 "
-          "from the back. Accepted range is [-2, 1] where r = rank(data).",
-          AttributeProto::INTS,
-          OPTIONAL_VALUE)
-      .Output(0, "squeezed ", "Reshaped tensor with the same data", "T")
-      .TypeConstraint("T", {"sparse_tensor(float)"}, "Constrain input and output float at this time")
+          "List of integers indicating the dimensions to squeeze. Negative value means counting dimensions "
+          "from the back. Accepted range is [-r, r-1] where r = rank(data). For sparse inputs axes must have only one entry",
+          "tensor(int64)",
+          OpSchema::Optional,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .Output(
+          0,
+          "squeezed",
+          "Reshaped sparse tensor with same data as input.",
+          "T",
+          OpSchema::Single,
+          true,
+          1,
+          OpSchema::Differentiable)
+      .TypeConstraint("T", all_sparse_tensor_types_with_bfloat(), "All sparse types")
+      .SetDoc(Squeeze_doc)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        // Sparse specific shape inference
+        // Make it generic for both Tensor and SparseTensor so we can merge it
+        // easier in the future
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        if (!hasInputShape(ctx, 0)) {
+
+        if (!hasNInputShapes(ctx, 1)) {
           return;
         }
-        const TensorShapeProto& input_shape = getInputShape(ctx, 0);
-        if (input_shape.dim_size() == 2) {
-          fail_shape_inference("Input must have two dimensions")
-        }
-        const auto* axes_attr = ctx.getAttribute("axes");
-        TensorShapeProto output_shape;
-        if (axes_attr == nullptr) {
-          // Remove all ones
-          for (const auto& d : input_shape.dim()) {
-            if (d.has_dim_value() && d.dim_value() != 1) {
-              *output_shape.add_dim() = d;
-            }
+
+        std::vector<int64_t> axes;
+        size_t num_inputs = ctx.getNumInputs();
+        bool axes_not_specified = false;
+
+        if ((num_inputs == 2) && ctx.getInputType(1)) {  //'axes' is input
+          auto axes_proto = ctx.getInputData(1);
+          if (axes_proto == nullptr) {
+            // skip if axes is not an initializer
+            return;
           }
+          axes = ParseData<int64_t>(axes_proto);
         } else {
-          if (axes_attr->type() != AttributeProto_AttributeType_INTS ||
-              axes_attr->ints_size() != 1) {
-            fail_shape_inference("Expecting optional axes to be INTS with a single entry 0 or 1");
-          }
-          const auto axes_v = *axes_attr->ints().cbegin();
-          if (axes_v != 0 && axes_v != 1) {
-            fail_shape_inference("Expecting optional axes to be INTS with a single entry 0 or 1");
-          }
-          const auto& target_dim = input_shape.dim(static_cast<int>(axes_v));
-          if (!target_dim.has_dim_value() || target_dim.dim_value() != 1) {
-            fail_shape_inference("Dim specified by is not equal to 1");
-          }
-          *output_shape.add_dim() = (axes_v == 0) ? input_shape.dim(1) : input_shape.dim(0);
+          // axes not specified
+          axes_not_specified = true;
         }
-        if (output_shape.dim_size() != 1) {
-          fail_shape_inference("Failed to infer 1-D output_shape");
+
+        const auto& input_shape = getInputShape(ctx, 0);
+        const auto input_ndim = input_shape.dim_size();
+
+        std::transform(
+            axes.begin(),
+            axes.end(),
+            axes.begin(),
+            [&](int64_t axis) -> int64_t {
+              return axis < 0 ? axis + input_ndim : axis;
+            });
+
+        for (int i = 0; i < input_ndim; ++i) {
+          if (!input_shape.dim(i).has_dim_value() && axes_not_specified) {
+            // if dim has a symbolic value and the axes spec want to act on all dims,
+            // return early because we can't infer the shape
+            return;
+          }
         }
-        updateOutputShape(ctx, 0, output_shape, TypeProto::kSparseTensorType);
+
+        const auto* input_type = ctx.getInputType(0);
+        const bool sparse_input = input_type->value_case() == TypeProto::kSparseTensorType;
+
+        if (sparse_input) {
+          if (axes.size() > 1) {
+            fail_shape_inference(
+                "'axes' input must contain only one entry for sparse inputs");
+          }
+          if (!axes.empty() && axes[0] != 0 && axes[1] != 1) {
+            fail_shape_inference(
+                "'axes' only entry must be either 0 or 1 for sparse tensors");
+          }
+        }
+
+        // sort after correcting negative axes values (if any) in the previous
+        // step
+        std::sort(axes.begin(), axes.end());
+
+        TensorShapeProto output_shape;
+        if (auto* shape = getOutputShape(ctx, 0)) {
+          output_shape = *shape;
+        }
+
+        for (int i = 0; i < input_ndim; ++i) {
+          if (axes_not_specified && input_shape.dim(i).dim_value() == 1) {
+            // if axes not specified, do not keep shape if the dimension is equal to one
+            continue;
+          } else if (!axes_not_specified && std::find(axes.begin(), axes.end(), i) != axes.end()) {
+            // if axes wants to explicitly act on this dim, fail explicitly only if the
+            // dim is numerical and != 1. If the dim is 1 or symbolic, remove it. If
+            // the dim is symbolic, runtime engines should check that the dimension is
+            // actually 1 when the op is evaluated
+            if (input_shape.dim(i).has_dim_value() && input_shape.dim(i).dim_value() != 1) {
+              fail_shape_inference(
+                  "Dimension of input ",
+                  i,
+                  " must be 1 instead of ",
+                  input_shape.dim(i).dim_value());
+            }
+          } else {
+            *output_shape.add_dim() = input_shape.dim(i);
+          }
+        }
+
+        // We do not allow empty shapes for sparse
+        if (sparse_input && output_shape.dim_size() == 0) {
+          output_shape.add_dim()->set_dim_value(1);
+        }
+
+        updateOutputShape(ctx, 0, output_shape, (sparse_input) ? TypeProto::kSparseTensorType : TypeProto::kTensorType);
       });
 
   static const char* Unsqueeze_doc = R"DOC(
@@ -2094,55 +2230,123 @@ Output is a reshaped sparse tensor with the same data.
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Input(0, "data", "Sparse 1-D sparse in COO format", "T")
-      .Attr(
+      .Input(
+          0,
+          "data",
+          "Sparse 1-D sparse in COO format",
+          "T",
+          OpSchema::Single,
+          true,
+          1,
+          OpSchema::Differentiable)
+      .Input(
+          1,
           "axes",
-          "Should contain a single value [-2, 1]",
-          AttributeProto::INTS)
-      .Output(0, "expanded  ", "Reshaped tensor with the same data as input", "T")
-      .TypeConstraint("T", {"sparse_tensor(float)"}, "Constrain input and output float at this time")
+          "List of integers indicating the dimensions to be inserted. Negative value means counting dimensions "
+          "from the back. Accepted range is [-r, r-1] where r = rank(expanded). For sparse inputs, axes can have only 1 entry",
+          "tensor(int64)",
+          OpSchema::Single,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .Output(
+          0,
+          "expanded",
+          "Reshaped tensor with same data as input.",
+          "T",
+          OpSchema::Single,
+          true,
+          1,
+          OpSchema::Differentiable)
+      .TypeConstraint("T", all_sparse_tensor_types_with_bfloat(), "All sparse types")
+      .SetDoc(Unsqueeze_doc)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        // Sparse specific shape inference
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        if (!hasInputShape(ctx, 0)) {
+        if (!hasNInputShapes(ctx, 1)) {
           return;
         }
-        const TensorShapeProto& input_shape = getInputShape(ctx, 0);
-        if (input_shape.dim_size() == 1) {
-          fail_shape_inference("Input must have one dimension")
+        std::vector<int64_t> axes;
+        auto axes_proto = ctx.getInputData(1);
+        if (axes_proto == nullptr) {
+          // skip if axes is not an initializer
+          return;
         }
-        const auto* axes_attr = ctx.getAttribute("axes");
-        if (axes_attr == nullptr) {
-          fail_shape_inference("Axes attribute is required");
+        axes = ParseData<int64_t>(axes_proto);
+
+        const auto* input_type = ctx.getInputType(0);
+        const bool sparse_input = input_type->value_case() == TypeProto::kSparseTensorType;
+
+        if (sparse_input) {
+          if (axes.size() > 1) {
+            fail_shape_inference(
+                "'axes' input must contain only one entry for sparse inputs");
+          }
+          if (!axes.empty() && axes[0] != 0 && axes[1] != 1) {
+            fail_shape_inference(
+                "'axes' only entry must be either 0 or 1 for sparse tensors");
+          }
         } else {
-          if (axes_attr->type() != AttributeProto_AttributeType_INTS ||
-              axes_attr->ints_size() != 1) {
-            fail_shape_inference("Expecting optional axes to be INTS with a single entry 0 or 1");
+          // validate 'axes' for duplicate entries
+          std::unordered_set<int64_t> unique_values;
+          for (const auto val : axes) {
+            auto p = unique_values.insert(val);
+            if (!p.second) {
+              fail_shape_inference(
+                  "'axes' attribute must not contain any duplicates");
+            }
           }
-          const auto axes_v = *axes_attr->ints().cbegin();
-          if (axes_v != 0 && axes_v != 1) {
-            fail_shape_inference("Expecting optional axes to be INTS with a single entry 0 or 1");
-          }
-          const auto& target_dim = input_shape.dim(static_cast<int>(axes_v));
-          if (!target_dim.has_dim_value() || target_dim.dim_value() != 1) {
-            fail_shape_inference("Dim specified by is not equal to 1");
-          }
-          TensorShapeProto output_shape;
-          if (axes_v == 0) {
-            output_shape.add_dim()->set_dim_value(1);
-            *output_shape.add_dim() = input_shape.dim(0);
-          } else {
-            *output_shape.add_dim() = input_shape.dim(0);
-            output_shape.add_dim()->set_dim_value(1);
-          }
-          updateOutputShape(ctx, 0, output_shape, TypeProto::kSparseTensorType);
         }
+
+        TensorShapeProto input_shape;
+        if (hasInputShape(ctx, 0)) {
+          input_shape = getInputShape(ctx, 0);
+        }
+        const auto input_ndim = input_shape.dim_size();
+        const auto output_ndim = input_ndim + static_cast<int>(axes.size());
+        for (auto& axe : axes) {
+          if (axe < -output_ndim || axe >= output_ndim) {
+            fail_shape_inference(
+                "values in 'axes' are beyond the bounds of the computed output shape");
+          }
+          if (axe < 0) {
+            axe += output_ndim;
+          }
+        }
+
+        // sort after correcting negative axes values (if any) in the previous
+        // step
+        std::sort(axes.begin(), axes.end());
+
+        TensorShapeProto output_shape;
+        if (auto* shape = getOutputShape(ctx, 0)) {
+          output_shape = *shape;
+        }
+
+        int j = 0;
+        for (int i = 0; i < input_ndim; ++i) {
+          while (static_cast<size_t>(j) < axes.size() &&
+                 axes[j] == output_shape.dim_size()) {
+            output_shape.add_dim()->set_dim_value(1);
+            ++j;
+          }
+          *output_shape.add_dim() = input_shape.dim(i);
+        }
+
+        while (static_cast<size_t>(j) < axes.size() &&
+               axes[j] == axes[j] == output_shape.dim_size()) {
+          output_shape.add_dim()->set_dim_value(1);
+          ++j;
+        }
+
+        updateOutputShape(ctx, 0, output_shape, (sparse_input) ? TypeProto::kSparseTensorType : TypeProto::kTensorType);
       });
 
-  static const char* SparseMatMul_doc = R"DOC(
+#if !defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
+  static const char* SparseGemm_doc = R"DOC(
   Behaves as to https://github.com/onnx/onnx/blob/master/docs/Operators.md#Matmul
   No transpose supported
 )DOC";
-  ONNX_CONTRIB_OPERATOR_SCHEMA(SparseMatMul)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Gemm)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Input(0, "A", "Sparse tensor (M,K) COO format", "T")
@@ -2153,7 +2357,18 @@ Output is a reshaped sparse tensor with the same data.
           "Scalar multiplier for the product of the input tensors A * B.",
           AttributeProto::FLOAT,
           1.0f)
+      .Attr(
+          "transA",
+          "Whether A should be transposed on the last two dimensions before doing multiplication",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Attr(
+          "transB",
+          "Whether B should be transposed on the last two dimensions before doing multiplication",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
       .TypeConstraint("T", {"sparse_tensor(float)"}, "Constrain input and output float at this time")
+      .SetDoc(SparseGemm_doc)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         const auto* input_type0 = ctx.getInputType(0);
         const auto* input_type1 = ctx.getInputType(1);
@@ -2164,9 +2379,10 @@ Output is a reshaped sparse tensor with the same data.
           fail_type_inference("Both inputs must have the same element type");
         }
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        // TODO: replace with ONNX one when that one is fixed
+        // TODO: replace  with ONNX one when that one is fixed
         sparseCompatibleMatmulShapeInference(ctx, 0, 1);
       });
+#endif
 
   static const char* Add_doc = R"DOC(
   Behaves as to https://github.com/onnx/onnx/blob/master/docs/Operators.md#Add
@@ -2181,6 +2397,7 @@ Output is a reshaped sparse tensor with the same data.
       .Input(1, "B", "1 or 2 - dimensional sparse matrix B COO format", "T")
       .Output(0, "Y", "Sum of the respective elements of A and B", "T")
       .TypeConstraint("T", numeric_sparse_tensor_types_except_half(), "Constrain input and output float at this time")
+      .SetDoc(Add_doc)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
@@ -2201,10 +2418,13 @@ Output is a reshaped sparse tensor with the same data.
       });
 
   static const char* Binarizer_doc = R"DOC(
+This is similar to https://github.com/onnx/onnx/blob/master/docs/Operators-ml.md#ai.onnx.ml.Binarizer
+The presence of NaN will cause it to return an error.
 The operator will accept a single sparse tensor input and will output
 a sparse tensor of the same shape and type. For each of the elements it
 would compare the value of the 'threshold' attribute and for all values above the threshold
 it would set the output value for the same index to T(1) and T(0) otherwise.
+NaN 
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Binarizer)
@@ -2216,8 +2436,14 @@ it would set the output value for the same index to T(1) and T(0) otherwise.
           "A boundary value",
           AttributeProto::FLOAT,
           static_cast<float>(0))
-      .Output(0, "Y", "A sparse tensor with 1 or 0 for each of the input values", "T")
-      .TypeConstraint("T", {"sparse_tensor(float)"}, "Constrain input and output float at this time")
+      .Output(0, "Y", "A sparse tensor of the same type as input with 1 or 0 for each of the input values", "T")
+      .TypeConstraint("T",
+                      {"sparse_tensor(float)",
+                       "sparse_tensor(double)",
+                       "sparse_tensor(int64)",
+                       "sparse_tensor(int32)"},
+                      "The input must be a tensor of a numeric type. The output will be of the same tensor type.")
+      .SetDoc(Binarizer_doc)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         propagateShapeFromInputToOutput(ctx, 0, 0);
@@ -2255,26 +2481,34 @@ The sparse output will have ones at the following flat COO indices: 0 and 4 (1 x
       .Input(0, "A", "1-D dense tensor containing values to be categorized", "T")
       .Output(0, "Y", "1-of-K 2-D sparse tensor output", "T1")
       .Attr(
-          "categories",
-          "list of cat_ints",
+          "cats_int64s",
+          "List of categories, ints.",
           AttributeProto::INTS)
-      .TypeConstraint(
-          "T", {"tensor(int64)"}, "ints")
-      .TypeConstraint("T1", {"sparse_tensor(float)"}, "index type")
+      .Attr(
+          "zeros",
+          "If true and category is not present, will return all zeros; if false and a category if not found, the operator will fail.",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
+      .TypeConstraint("T", {"tensor(int64)"}, "ints")
+      .TypeConstraint("T1", {"sparse_tensor(float)"}, "Only 1.f values are returned")
+      .SetDoc(OneHotEncoder_doc)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateElemTypeFromDtypeToOutput(ctx, TensorProto_DataType_INT64, 0);
+        propagateElemTypeFromDtypeToOutput(ctx, TensorProto_DataType_FLOAT, 0);
         if (!hasInputShape(ctx, 0)) {
           return;
         }
         int cat_len = 0;
         const AttributeProto* cat_attr = nullptr;
-        if ((cat_attr = ctx.getAttribute("cat_ints")) != nullptr &&
+        if ((cat_attr = ctx.getAttribute("cats_int64s")) != nullptr &&
             cat_attr->type() == AttributeProto_AttributeType_INTS) {
           cat_len = cat_attr->ints_size();
         } else {
           fail_shape_inference("Can't get categories attribute");
         }
         const auto& shape0 = getInputShape(ctx, 0);
+        if (shape0.dim_size() != 1) {
+          fail_shape_inference("Expecting a 1-D input");
+        }
         TensorShapeProto output_shape;
         *output_shape.add_dim() = shape0.dim(0);
         output_shape.add_dim()->set_dim_value(cat_len);

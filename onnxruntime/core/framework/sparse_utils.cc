@@ -15,15 +15,6 @@
 namespace onnxruntime {
 namespace sparse_utils {
 
-Status Convert2DCooIndicesTo1D(int64_t cols, gsl::span<const int64_t> input, std::vector<int64_t>& output) {
-  ORT_RETURN_IF_NOT(input.size() % 2 == 0, "2-D indices size must be evenly divisible by 2");
-  for (size_t i = 0, limit = input.size(); i < limit; i += 2) {
-    int64_t ind = input[i] * cols + input[i + 1];
-    output.push_back(ind);
-  }
-  return Status::OK();
-}
-
 #if !defined(ORT_MINIMAL_BUILD)
 template <typename T, typename ValueRecorder>
 void ScanAndRecordCsr(gsl::span<const T> src_span, int64_t cols,
@@ -198,21 +189,21 @@ Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const Spa
 
     CopyElementFunc copy_func;
     if (is_string) {
-      copy_func = CopyElement<std::string>;
+      copy_func = CopyElementAligned<std::string>;
     } else {
       const auto element_size = src.DataType()->Size();
       switch (element_size) {
         case sizeof(uint8_t):
-          copy_func = CopyElement<uint8_t>;
+          copy_func = CopyElementAligned<uint8_t>;
           break;
         case sizeof(uint16_t):
-          copy_func = CopyElement<uint16_t>;
+          copy_func = CopyElementAligned<uint16_t>;
           break;
         case sizeof(uint32_t):
-          copy_func = CopyElement<uint32_t>;
+          copy_func = CopyElementAligned<uint32_t>;
           break;
         case sizeof(uint64_t):
-          copy_func = CopyElement<uint64_t>;
+          copy_func = CopyElementAligned<uint64_t>;
           break;
         default:
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported element size: ", element_size);
@@ -306,20 +297,20 @@ Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const Spa
     const auto element_size = src.DataType()->Size();
     CopyElementFunc copy_func = nullptr;
     if (src.IsDataTypeString()) {
-      copy_func = CopyElement<std::string>;
+      copy_func = CopyElementAligned<std::string>;
     } else {
       switch (element_size) {
         case sizeof(uint8_t):
-          copy_func = CopyElement<uint8_t>;
+          copy_func = CopyElementAligned<uint8_t>;
           break;
         case sizeof(uint16_t): {
-          copy_func = CopyElement<uint16_t>;
+          copy_func = CopyElementAligned<uint16_t>;
         } break;
         case sizeof(uint32_t): {
-          copy_func = CopyElement<uint32_t>;
+          copy_func = CopyElementAligned<uint32_t>;
         } break;
         case sizeof(uint64_t): {
-          copy_func = CopyElement<uint64_t>;
+          copy_func = CopyElementAligned<uint64_t>;
         } break;
         default:
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported element size: ", element_size);
@@ -481,6 +472,128 @@ Status DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Ten
   }
 
   dst = std::move(dst_result);
+
+  return Status::OK();
+}
+
+void CopyCpuTensor(const Tensor& src, Tensor& dst) {
+  ORT_ENFORCE(src.Shape().Size() == dst.Shape().Size(), "Src and Dst tensors must be the same size");
+  if (src.IsDataTypeString()) {
+    auto str_span = src.DataAsSpan<std::string>();
+    auto* dst_iter = dst.MutableData<std::string>();
+    std::copy(str_span.cbegin(), str_span.cend(), dst_iter);
+  } else {
+    memcpy(dst.MutableDataRaw(), src.DataRaw(), src.SizeInBytes());
+  }
+}
+
+void CopyCpuSparseCooTensor(const SparseTensor& src, SparseTensor& tgt) {
+  if (&src != &tgt) {
+    ORT_ENFORCE(src.DenseShape().Size() <= tgt.DenseShape().Size(), "Target shape Size() must be at least source size");
+    ORT_ENFORCE(src.GetElementType() == tgt.GetElementType(), "Must the same element type");
+    if (src.Format() == SparseFormat::kCoo) {
+      auto coo_view = src.AsCoo();
+      const auto indices_size = gsl::narrow<size_t>(coo_view.Indices().Shape().Size());
+      auto coo_mutator = tgt.MakeCooData(src.NumValues(), indices_size);
+      CopySparseCpuValues(src, coo_mutator.Values());
+      memcpy(coo_mutator.Indices().MutableDataRaw(), coo_view.Indices().DataRaw(), coo_view.Indices().SizeInBytes());
+    } else {
+      ORT_THROW("Only COO format is supported. Consider using SparseTensor::Copy");
+    }
+  }
+}
+
+Status Convert2DCooIndicesTo1D(int64_t cols, gsl::span<const int64_t> input_span, gsl::span<int64_t> output_span) {
+  ORT_RETURN_IF_NOT(input_span.size() % 2 == 0, "2-D indices size must be evenly divisible by 2");
+  ORT_RETURN_IF_NOT(output_span.size() * 2 == input_span.size(), "Output span size must be twice less as input_span");
+  for (size_t i = 0, dst_idx = 0, limit = input_span.size(); i < limit; i += 2, dst_idx++) {
+    int64_t ind = input_span[i] * cols + input_span[i + 1];
+    output_span[dst_idx] = ind;
+  }
+  return Status::OK();
+}
+
+Status ConvertIndicesTo1DAndCopy(const SparseTensor& input_sparse, SparseTensor::CooMutator& coo_mutator) {
+  const auto cols = input_sparse.DenseShape().GetDims()[1];
+  const auto& indices = input_sparse.AsCoo().Indices();
+  const auto ind_span = indices.DataAsSpan<int64_t>();
+
+  auto& dest_indices = coo_mutator.Indices();
+  ORT_RETURN_IF_ERROR(Convert2DCooIndicesTo1D(cols, ind_span, dest_indices.MutableDataAsSpan<int64_t>()));
+  return Status::OK();
+}
+
+Status ConvertCooIndicesToCsrIndices(const TensorShape& dense_shape, size_t input_indices_ndims,
+                                     gsl::span<const int64_t> input_indices,
+                                     std::vector<int64_t>& inner_indices, std::vector<int64_t>& outer_indices) {
+  // Fully sparse case
+  if (input_indices.empty()) {
+    inner_indices.clear();
+    outer_indices.clear();
+    return Status::OK();
+  }
+
+  if (dense_shape.NumDimensions() == 1) {
+    ORT_RETURN_IF_NOT(input_indices_ndims == 1, "COO indices must be 1-D for 1-D dense shape");
+    inner_indices.reserve(input_indices.size());
+    inner_indices.insert(inner_indices.end(), input_indices.cbegin(), input_indices.cend());
+    outer_indices.push_back(0);
+    outer_indices.push_back(gsl::narrow<int64_t>(inner_indices.size()));
+  } else if (dense_shape.NumDimensions() == 2) {
+    const auto rows = dense_shape.GetDims()[0];
+    const auto cols = dense_shape.GetDims()[1];
+    inner_indices.reserve(input_indices.size());
+    outer_indices.reserve(rows + 1);
+    outer_indices.push_back(0);
+    if (input_indices_ndims == 1) {
+      int64_t row = 0;
+      for (auto idx : input_indices) {
+        auto cur_row = idx / cols;
+        auto cur_col = idx - cur_row * cols;
+        if (cur_row != row) {
+          outer_indices.push_back(static_cast<int64_t>(inner_indices.size()));
+          row = cur_row;
+        }
+        inner_indices.push_back(cur_col);
+      }
+    } else if (input_indices_ndims == 2) {
+      int64_t row = 0;
+      for (size_t i = 0, limit = input_indices.size(); i < limit; i += 2) {
+        auto cur_row = input_indices[i];
+        auto cur_col = input_indices[i + 1];
+        if (cur_row != row) {
+          outer_indices.push_back(static_cast<int64_t>(inner_indices.size()));
+          row = cur_row;
+        }
+        inner_indices.push_back(cur_col);
+      }
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid COO indices shape with ndim: ", input_indices_ndims);
+    }
+    outer_indices.push_back(static_cast<int64_t>(inner_indices.size()));
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CSR indices only applicable to matrices. DenseShape: ", dense_shape.ToString());
+  }
+  return Status::OK();
+}
+
+Status ConvertCsrIndicesToCooIndices(int64_t cols, gsl::span<const int64_t> input_inner,
+                                     gsl::span<const int64_t> input_outer,
+                                     gsl::span<int64_t> output_indices) {
+  // Fully sparse
+  if (input_inner.empty()) {
+    return Status::OK();
+  }
+
+  ORT_RETURN_IF_NOT(input_inner.size() == output_indices.size(), "Expecting output size the same as inner indices");
+  size_t inner_ind = 0;
+  for (size_t i = 1, limit = input_outer.size(); i < limit; ++i) {
+    const int64_t row_offset = static_cast<int64_t>((i - 1) * cols);
+    for (size_t c = 0, c_limit = input_outer[i] - input_outer[i - 1]; c < c_limit; ++c, ++inner_ind) {
+      int64_t coo_ind = row_offset + input_inner[inner_ind];
+      output_indices[inner_ind] = coo_ind;
+    }
+  }
 
   return Status::OK();
 }

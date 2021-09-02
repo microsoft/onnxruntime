@@ -65,9 +65,7 @@ Status NonZero::Compute(OpKernelContext* ctx) const {
   }
 
   const auto elements = A->NumValues();
-  auto advance = [element_size](const void* start, size_t elements) -> const void* {
-    return (reinterpret_cast<const uint8_t*>(start) + elements * element_size);
-  };
+  sparse_utils::Advance advance(element_size);
 
   std::vector<size_t> ind_ind;
   ind_ind.reserve(elements);

@@ -14,6 +14,8 @@
 namespace onnxruntime {
 
 class SqueezeBase {
+ public:
+  static std::vector<int64_t> ComputeAxes(OpKernelContext* context, const std::vector<int64_t>& axes_attr);
  protected:
   explicit SqueezeBase(const OpKernelInfo& info) {
     std::vector<int64_t> axes;
@@ -70,24 +72,9 @@ class Squeeze final : public OpKernel, public SqueezeBase {
     const auto* X = context->Input<Tensor>(0);
     const TensorShape& X_shape = X->Shape();
 
-    std::vector<int64_t> axes;
-    size_t num_inputs = context->InputCount();
-    if (num_inputs == 2) {  //axes is an input
-      const Tensor* axes_tensor = context->Input<Tensor>(1);
-      ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
-      ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1,
-                  "An axes tensor must be a vector tensor.");
-      auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
-      const auto* data = axes_tensor->template Data<int64_t>();
-      axes.assign(data, data + nDims);
-    } else {
-      axes.assign(axes_.begin(), axes_.end());
-    }
-
+    std::vector<int64_t> axes = ComputeAxes(context, axes_);
     std::vector<int64_t> output_shape = ComputeOutputShape(X_shape, axes);
-
     Tensor* Y = context->Output(0, TensorShape(output_shape));
-
     CopyCpuTensor(X, Y);
 
     return Status::OK();

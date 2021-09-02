@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/unsqueeze.h"
+#include "core/providers/cpu/tensor/squeeze.h"
 #include "utils.h"
 #include "core/providers/common.h"
 
@@ -36,29 +37,20 @@ ONNX_CPU_OPERATOR_KERNEL(
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     Unsqueeze);
 
-Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, Prepare& p) const {
-  const auto* X = ctx->Input<Tensor>(0);
-  ORT_ENFORCE(X != nullptr);
-  auto& input_tensor = *X;
+Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, const TensorShape& input_shape, TensorShape& output_shape) const {
 
-  std::vector<int64_t> axes;
-  size_t num_inputs = ctx->InputCount();
-  if (num_inputs == 2) {  //axes is an input
-    const Tensor* axes_tensor = ctx->Input<Tensor>(1);
-    ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
-    ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 0 ||
-                    axes_tensor->Shape().NumDimensions() == 1,
-                "An axes tensor must be a scalar or a 1-D tensor.");
-    auto num_axes_elements = static_cast<size_t>(axes_tensor->Shape().Size());
-    const auto* data = axes_tensor->template Data<int64_t>();
-    axes.assign(data, data + num_axes_elements);
-  } else {
-    axes.assign(axes_.begin(), axes_.end());
+  std::vector<int64_t> axes = SqueezeBase::ComputeAxes(ctx, axes_);
+#if !defined(DISABLE_SPARSE_TENSORS)
+  if (ctx->InputType(0)->IsSparseTensorType()) {
+    ORT_RETURN_IF_NOT(axes.size() <= 1, "Axes expected to have at most 1 element for sparse Unsqueeze");
+    if (!axes.empty()) {
+      ORT_RETURN_IF_NOT(axes[0] == 0 || axes[0] == 1, "Axes entry may be either 0 or 1 for sparse tensors");
+    }
   }
-
+#endif
   // New dimension count is the current dimensions + the number of entries in axes
   // Initialize output_dims to 0 in each axis initially
-  std::vector<int64_t> output_dims(axes.size() + input_tensor.Shape().NumDimensions(), 0);
+  std::vector<int64_t> output_dims(axes.size() + input_shape.NumDimensions(), 0);
 
   // Set all axes indices to 1 in output_dims and check for duplicates
   for (int64_t axis : axes) {
@@ -73,25 +65,26 @@ Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, Prepare& p) const {
 
   // Now fill in the zero entries with the existing shape
   {
-    auto begin = input_tensor.Shape().GetDims().cbegin();
+    auto begin = input_shape.GetDims().cbegin();
     for (auto& axisSize : output_dims) {
       if (axisSize == 0)
         axisSize = *begin++;
     }
-    assert(begin == input_tensor.Shape().GetDims().cend());
+    assert(begin == input_shape.GetDims().cend());
   }
 
-  TensorShape output_shape(output_dims);
-  p.output_tensor = ctx->Output(0, output_shape);
-  ORT_ENFORCE(nullptr != p.output_tensor);
-  p.input_tensor = &input_tensor;
+  output_shape = TensorShape(output_dims);
   return Status::OK();
 }
 
 Status Unsqueeze::Compute(OpKernelContext* ctx) const {
-  Prepare p;
-  ORT_RETURN_IF_ERROR(PrepareCompute(ctx, p));
-  CopyCpuTensor(p.input_tensor, p.output_tensor);
+  const auto* input_tensor = ctx->Input<Tensor>(0);
+  ORT_ENFORCE(input_tensor != nullptr);
+  TensorShape output_shape;
+  ORT_RETURN_IF_ERROR(PrepareCompute(ctx, input_tensor->Shape(), output_shape));
+  auto* output_tensor = ctx->Output(0, output_shape);
+  ORT_RETURN_IF(nullptr == output_tensor, "Failed to get output tensor");
+  CopyCpuTensor(input_tensor, output_tensor);
   return Status::OK();
 }
 }  // namespace onnxruntime

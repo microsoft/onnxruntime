@@ -1,18 +1,22 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if !defined(DISABLE_SPARSE_TENSORS)
-
 #pragma once
+
+#if !defined(DISABLE_SPARSE_TENSORS)
 
 #include "core/framework/allocator.h"
 #include "gsl/gsl"
 
+#ifndef SHARED_PROVIDER
+#include "core/framework/sparse_tensor.h"
+#endif
+
 namespace onnxruntime {
 #ifndef SHARED_PROVIDER
 class Tensor;
-class SparseTensor;
 class DataTransferManager;
+
 namespace common {
 class Status;
 }
@@ -103,7 +107,6 @@ using IsZeroFunc = bool (*)(const void*);
 // Copy element
 using CopyElementFunc = void (*)(void* dest, const void* src, int64_t dest_index, int64_t src_index);
 
-
 // Here we are not using tolerance for FP types since these dense tensors were
 // created from sparse initializers where zeros were absolute
 template <typename T>
@@ -125,6 +128,14 @@ struct NotZero<std::string> {
   }
 };
 
+/// <summary>
+/// Useful when dealing with non-aligned buffers so we copy data byte by byte
+/// </summary>
+/// <typeparam name="T"></typeparam>
+/// <param name="dst"></param>
+/// <param name="src"></param>
+/// <param name="dst_index"></param>
+/// <param name="src_index"></param>
 template <typename T>
 inline void CopyElement(void* dst, const void* src, int64_t dst_index, int64_t src_index) {
   const auto* src_p = reinterpret_cast<const T*>(src) + src_index;
@@ -137,12 +148,101 @@ inline void CopyElement<uint8_t>(void* dst, const void* src, int64_t dst_index, 
   reinterpret_cast<uint8_t*>(dst)[dst_index] = reinterpret_cast<const uint8_t*>(src)[src_index];
 }
 
-template<>
+template <>
 inline void CopyElement<std::string>(void* dst, const void* src, int64_t dst_index, int64_t src_index) {
   reinterpret_cast<std::string*>(dst)[dst_index] = reinterpret_cast<const std::string*>(src)[src_index];
 }
 
-Status Convert2DCooIndicesTo1D(int64_t cols, gsl::span<const int64_t> input, std::vector<int64_t>& output);
+template <typename T>
+inline void CopyElementAligned(void* dst, const void* src, int64_t dst_index, int64_t src_index) {
+  reinterpret_cast<T*>(dst)[dst_index] = reinterpret_cast<const T*>(src)[src_index];
+}
+
+/// <summary>
+/// Advance through binary data in element_size increments.
+/// </summary>
+struct Advance {
+  size_t element_size_;
+  explicit Advance(size_t element_size) : element_size_(element_size) {}
+  const void* operator()(const void* start, size_t elements) const {
+    return (reinterpret_cast<const uint8_t*>(start) + elements * element_size_);
+  }
+};
+
+/// <summary>
+/// Converts 2-D COO indices into 1-D flat indices.
+/// The data is assumed to be on CPU.
+/// </summary>
+/// <param name="cols">cols for the 2-D dense shape</param>
+/// <param name="input_span">original @-d indices</param>
+/// <param name="output_span"></param>
+/// <returns>Status</returns>
+Status Convert2DCooIndicesTo1D(int64_t cols, gsl::span<const int64_t> input_span, gsl::span<int64_t> output_span);
+
+/// <summary>
+/// Calls Convert2DCooIndicesTo1D() and copies into the coo_mutator
+/// The data is assumed to be on CPU.
+/// </summary>
+/// <param name="input_sparse"></param>
+/// <param name="coo_mutator"></param>
+/// <returns></returns>
+Status ConvertIndicesTo1DAndCopy(const SparseTensor& input_sparse, SparseTensor::CooMutator& coo_mutator);
+
+/// <summary>
+/// The function performs conversion of input COO indices into
+/// CSR indices and places results into inner_indices and outer_indices vectors.
+/// In case we have a 1-D dense shape (a vector) then the inner indices is a just a copy
+/// of input_indices and we have two entries in the outer_indices.
+/// </summary>
+/// <param name="input_indices_ndims">indices either 1-D or 2-D indices</param>
+/// <param name="input_indices"></param>
+/// <param name="inner_indices"></param>
+/// <param name="outer_indices"></param>
+/// <returns></returns>
+Status ConvertCooIndicesToCsrIndices(const TensorShape& dense_shape, size_t input_indices_ndims,
+                                     gsl::span<const int64_t> input_indices,
+                                     std::vector<int64_t>& inner_indices,
+                                     std::vector<int64_t>& outer_indices);
+
+/// <summary>
+/// Converts Csr indices into 1-D COO indices
+/// </summary>
+/// <param name="cols"></param>
+/// <param name="input_inner"></param>
+/// <param name="input_outer"></param>
+/// <param name="output_indices"></param>
+/// <returns></returns>
+Status ConvertCsrIndicesToCooIndices(int64_t cols, gsl::span<const int64_t> input_inner,
+                                     gsl::span<const int64_t> input_outer,
+                                     gsl::span<int64_t> output_indices);
+
+/// <summary>
+/// Copies one tensor to another on CPU
+/// </summary>
+/// <param name="src"></param>
+/// <param name="dst"></param>
+void CopyCpuTensor(const Tensor& src, Tensor& dst);
+
+/// <summary>
+/// Copies values from input to destination values tensor
+/// </summary>
+/// <param name="input_sparse"></param>
+/// <param name="output_values"></param>
+inline void CopySparseCpuValues(const SparseTensor& src, Tensor& output_values) {
+  CopyCpuTensor(src.Values(), output_values);
+}
+
+
+/// <summary>
+/// Utility to copy data from one sparse tensor to another.
+/// SparseTensor::Copy requires tensors to have same shapes, otherwise it
+/// is preferable.
+/// This assumes the destination has a compatible shapes. I.e.
+/// all source indices remain valid.
+/// </summary>
+/// <param name="src"></param>
+/// <param name="tgt"></param>
+void CopyCpuSparseCooTensor(const SparseTensor& src, SparseTensor& tgt);
 
 }  // namespace sparse_utils
 }  // namespace onnxruntime

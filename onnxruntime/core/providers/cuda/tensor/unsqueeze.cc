@@ -40,16 +40,18 @@ ONNX_OPERATOR_KERNEL_EX(
     Unsqueeze);
 
 Status Unsqueeze::ComputeInternal(OpKernelContext* ctx) const {
-  Prepare p;
-  ORT_RETURN_IF_ERROR(PrepareCompute(ctx, p));
+  const auto* input_tensor = ctx->Input<Tensor>(0);
+  TensorShape output_shape;
+  ORT_RETURN_IF_ERROR(PrepareCompute(ctx, input_tensor->Shape(), output_shape));
 
-  const void* input = p.input_tensor->DataRaw();
-  void* output = p.output_tensor->MutableDataRaw();
+  auto* output_tensor = ctx->Output(0, output_shape);
+  const void* input = input_tensor->DataRaw();
+  void* output = output_tensor->MutableDataRaw();
   if (input == output)
     return Status::OK();
 
-  auto count = p.input_tensor->Shape().Size();
-  auto element_bytes = p.input_tensor->DataType()->Size();
+  auto count = input_tensor->Shape().Size();
+  auto element_bytes = input_tensor->DataType()->Size();
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output, input, count * element_bytes, cudaMemcpyDeviceToDevice, Stream()));
 
   return Status::OK();

@@ -51,7 +51,9 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   // From cpu/tensor/gatherbase.h (direct)
   Status GatherBase__PrepareForCompute(const GatherBase* p, OpKernelContext* context, GatherBase__Prepare& prepare) override { return p->GatherBase::PrepareForCompute(context, reinterpret_cast<GatherBase::Prepare&>(prepare)); }
   // From cpu/tensor/unsqueeze.h (direct)
-  Status UnsqueezeBase__PrepareCompute(const UnsqueezeBase* p, OpKernelContext* ctx, UnsqueezeBase__Prepare& prepare) override { return p->UnsqueezeBase::PrepareCompute(ctx, reinterpret_cast<UnsqueezeBase::Prepare&>(prepare)); }
+  Status UnsqueezeBase__PrepareCompute(const UnsqueezeBase* p, OpKernelContext* ctx, const TensorShape& input_shape, TensorShape& output_shape) override { 
+    return p->UnsqueezeBase::PrepareCompute(ctx, input_shape, output_shape); 
+  }
 
   // NonMaxSuppressionBase (direct)
   Status NonMaxSuppressionBase__PrepareCompute(OpKernelContext* ctx, PrepareContext& pc) override { return NonMaxSuppressionBase::PrepareCompute(ctx, pc); }
