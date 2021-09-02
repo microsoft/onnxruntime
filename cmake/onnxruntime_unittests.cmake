@@ -410,8 +410,8 @@ set(onnxruntime_test_framework_libs
   onnxruntime_framework
   onnxruntime_util
   onnxruntime_graph
+  ${ONNXRUNTIME_MLAS_LIBS}
   onnxruntime_common
-  onnxruntime_mlas
   )
 
 set(onnxruntime_test_server_libs
@@ -504,8 +504,8 @@ set(ONNXRUNTIME_TEST_LIBS
     onnxruntime_framework
     onnxruntime_util
     onnxruntime_graph
+    ${ONNXRUNTIME_MLAS_LIBS}
     onnxruntime_common
-    onnxruntime_mlas
     onnxruntime_flatbuffers
 )
 
@@ -853,9 +853,9 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     file(GLOB_RECURSE MLAS_BENCH_SOURCE_FILES "${MLAS_BENCH_DIR}/*.cpp" "${MLAS_BENCH_DIR}/*.h")
     onnxruntime_add_executable(onnxruntime_mlas_benchmark ${MLAS_BENCH_SOURCE_FILES})
     target_include_directories(onnxruntime_mlas_benchmark PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
-    target_link_libraries(onnxruntime_mlas_benchmark PRIVATE benchmark::benchmark onnxruntime_util onnxruntime_framework onnxruntime_mlas onnxruntime_common ${CMAKE_DL_LIBS})
+    target_link_libraries(onnxruntime_mlas_benchmark PRIVATE benchmark::benchmark onnxruntime_util onnxruntime_framework ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
     if(NOT WIN32)
-      target_link_libraries(onnxruntime_mlas_benchmark PRIVATE nsync_cpp)
+      target_link_libraries(onnxruntime_mlas_benchmark PRIVATE nsync_cpp ${CMAKE_DL_LIBS})
     endif()
     set_target_properties(onnxruntime_mlas_benchmark PROPERTIES FOLDER "ONNXRuntimeTest")
   endif()
@@ -896,8 +896,8 @@ if(onnxruntime_ENABLE_EAGER_MODE)
           onnxruntime_framework
           flatbuffers
           onnxruntime_graph
+          ${ONNXRUNTIME_MLAS_LIBS}
           onnxruntime_common
-          onnxruntime_mlas
           onnx
           onnx_proto
           ${PROTOBUF_LIB}
@@ -1105,7 +1105,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   endif()
   target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}
           ${CMAKE_CURRENT_BINARY_DIR})
-  set(onnxruntime_mlas_test_libs GTest::gtest GTest::gmock onnxruntime_mlas onnxruntime_common)
+  set(onnxruntime_mlas_test_libs GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common)
   if(NOT WIN32)
     list(APPEND onnxruntime_mlas_test_libs nsync_cpp ${CMAKE_DL_LIBS})
   endif()

@@ -134,8 +134,8 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_framework
     onnxruntime_util
     onnxruntime_graph
+    ${ONNXRUNTIME_MLAS_LIBS}
     onnxruntime_common
-    onnxruntime_mlas
     onnxruntime_flatbuffers
     ${pybind11_lib}
 )
@@ -383,6 +383,9 @@ add_custom_command(
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${REPO_ROOT}/docs/Privacy.md
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${REPO_ROOT}/docs/python/README.rst
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${REPO_ROOT}/LICENSE
