@@ -651,7 +651,7 @@ struct Value : Base<OrtValue> {
   /// at difference device than the allocator, a X-device copy will be performed if possible.
   /// </summary>
   /// <param name="data_mem_info">specified buffer memory description</param>
-  /// <param name="values_param">values buffer information</param>
+  /// <param name="values">values buffer information</param>
   /// <param name="inner_indices_data">csr inner indices pointer or nullptr for fully sparse tensors</param>
   /// <param name="inner_indices_num">number of csr inner indices or 0 for fully sparse tensors</param>
   /// <param name="outer_indices_data">pointer to csr indices data or nullptr for fully sparse tensors</param>
@@ -667,7 +667,7 @@ struct Value : Base<OrtValue> {
   /// at difference device than the allocator, a X-device copy will be performed if possible.
   /// </summary>
   /// <param name="data_mem_info">specified buffer memory description</param>
-  /// <param name="values_param">values buffer information</param>
+  /// <param name="values">values buffer information</param>
   /// <param name="indices_shape">indices shape. use {0} for fully sparse tensors</param>
   /// <param name="indices_data">pointer to indices data or nullptr for fully sparse tensors</param>
   void FillSparseTensorBlockSparse(const OrtMemoryInfo* data_mem_info,
@@ -695,9 +695,9 @@ struct Value : Base<OrtValue> {
   /// indices have their own enum values even if a give format has more than one kind of indices.
   /// Use GetSparseTensorIndicesData() to obtain pointer to indices buffer.
   /// </summary>
-  /// <param name="">enum requested</param>
+  /// <param name="format">enum requested</param>
   /// <returns>type and shape information</returns>
-  TensorTypeAndShapeInfo GetSparseTensorIndicesTypeShapeInfo(OrtSparseIndicesFormat) const;
+  TensorTypeAndShapeInfo GetSparseTensorIndicesTypeShapeInfo(OrtSparseIndicesFormat format) const;
 
   /// <summary>
   /// The API retrieves a pointer to the internal indices buffer. The API merely performs
