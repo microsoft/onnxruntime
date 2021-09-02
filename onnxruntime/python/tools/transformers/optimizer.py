@@ -338,7 +338,7 @@ def main():
         optimizer.convert_float_to_float16(keep_io_types=True)
 
     if args.input_int32:
-        optimizer.change_input_to_int32()
+        optimizer.change_graph_inputs_to_int32()
 
     optimizer.save_model_to_file(args.output, args.use_external_data_format)
 
