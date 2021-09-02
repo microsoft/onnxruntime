@@ -14,6 +14,6 @@ steps:
     - task: PythonScript@0
       displayName: 'Validate Package'
       inputs:
-        scriptPath: '$(Build.SourcesDirectory)\tools\nuget\validate_nuget.py'
+        scriptPath: '$(Build.SourcesDirectory)\tools\nuget\validate_package.py'
         arguments: '--package_type ${{parameters.PackageType}} --package_name ${{parameters.PackageName}} --package_path ${{parameters.PackagePath}} --platforms_supported ${{parameters.PlatformsSupported}} --verify_nuget_signing ${{parameters.VerifyNugetSigning}}'
         workingDirectory: "$(Build.BinariesDirectory)"
