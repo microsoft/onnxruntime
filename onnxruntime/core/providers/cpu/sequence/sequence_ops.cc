@@ -181,7 +181,8 @@ ONNX_CPU_OPERATOR_KERNEL(
         .TypeConstraint("S", DataTypeImpl::AllSequenceTensorTypes())
         .TypeConstraint("I", std::vector<MLDataType>{
                                  DataTypeImpl::GetTensorType<int32_t>(),
-                                 DataTypeImpl::GetTensorType<int64_t>()}),
+                                 DataTypeImpl::GetTensorType<int64_t>()})
+        .Alias(0, 0),
     SequenceInsert);
 
 Status CreateCopyAndAppendCpuTensor(const Tensor& in_tensor, OpKernelContext* context, std::vector<Tensor>& tensors) {
@@ -252,7 +253,8 @@ ONNX_CPU_OPERATOR_KERNEL(
         .TypeConstraint("S", DataTypeImpl::AllSequenceTensorTypes())
         .TypeConstraint("I", std::vector<MLDataType>{
                                  DataTypeImpl::GetTensorType<int32_t>(),
-                                 DataTypeImpl::GetTensorType<int64_t>()}),
+                                 DataTypeImpl::GetTensorType<int64_t>()})
+        .Alias(0, 0),
     SequenceErase);
 
 Status SequenceErase::Compute(OpKernelContext* context) const {
