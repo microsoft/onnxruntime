@@ -337,12 +337,13 @@ const ROCMExecutionProviderInfo GetROCMExecutionProviderInfo(const ProviderOptio
 #endif
 
 std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
-  const SessionOptions& session_options,
-  const std::string& type,
-  const ProviderOptionsMap& provider_options_map){
+    const SessionOptions& session_options,
+    const std::string& type,
+    const ProviderOptionsMap& provider_options_map) {
   if (type == kCpuExecutionProvider) {
     return onnxruntime::CreateExecutionProviderFactory_CPU(
-                                        session_options.enable_cpu_mem_arena)->CreateProvider();
+               session_options.enable_cpu_mem_arena)
+        ->CreateProvider();
   } else if (type == kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
     std::string calibration_table, cache_path, lib_path;
@@ -530,7 +531,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
   } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL
     return onnxruntime::CreateExecutionProviderFactory_Dnnl(
-      session_options.enable_cpu_mem_arena)->CreateProvider();
+               session_options.enable_cpu_mem_arena)
+        ->CreateProvider();
 #endif
   } else if (type == kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
@@ -629,12 +631,14 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
   } else if (type == kAclExecutionProvider) {
 #ifdef USE_ACL
     return onnxruntime::CreateExecutionProviderFactory_ACL(
-      session_options.enable_cpu_mem_arena)->CreateProvider();
+               session_options.enable_cpu_mem_arena)
+        ->CreateProvider();
 #endif
   } else if (type == kArmNNExecutionProvider) {
 #ifdef USE_ARMNN
     return onnxruntime::CreateExecutionProviderFactory_ArmNN(
-      session_options.enable_cpu_mem_arena)->CreateProvider();
+               session_options.enable_cpu_mem_arena)
+        ->CreateProvider();
 #endif
   } else if (type == kDmlExecutionProvider) {
 #ifdef USE_DML
