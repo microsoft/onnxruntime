@@ -41,7 +41,8 @@ def is_windows():
     return sys.platform.startswith("win")
 
 
-def check_if_dlls_are_present(package_type, is_windows_ai_package, is_gpu_package, platforms_supported, zip_file, package_path):
+def check_if_dlls_are_present(package_type, is_windows_ai_package, is_gpu_package, platforms_supported, \
+                              zip_file, package_path):
     platforms = platforms_supported.strip().split(",")
     if package_type == "tarball":
         file_list_in_package = list() 
@@ -57,9 +58,9 @@ def check_if_dlls_are_present(package_type, is_windows_ai_package, is_gpu_packag
             if package_type == "nuget":
                 folder = "runtimes/" + platform + "/" + native_folder
                 header_folder = "build/native/include"
-            else:
-                folder  = package_file + "/lib"
-                header_folder = package_file + "/include"
+            else: # zip package
+                folder  = package_path + "/lib"
+                header_folder = package_path + "/include"
 
             path = folder + "/" + "onnxruntime.dll"
             print('Checking path: ' + path)
@@ -86,9 +87,9 @@ def check_if_dlls_are_present(package_type, is_windows_ai_package, is_gpu_packag
             if package_type == "nuget": 
                 folder = "runtimes/" + platform + "/native/libonnxruntime.so"
                 header_folder = "build/native/include"
-            else:
-                folder  = package_file + "/lib"
-                header_folder = package_file + "/include"
+            else: # tarball package
+                folder  = package_path + "/lib"
+                header_folder = package_path + "/include"
 
             path = folder + "/" + "libonnxruntime.so"
             print('Checking path: ' + path)
