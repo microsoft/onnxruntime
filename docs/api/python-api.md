@@ -8,12 +8,12 @@ nav_order: 7
 
 ## API Reference Docs
 
-[Go to the Python API Reference](../../python/api_summary.html)
+[Go to the Python API Reference](./python/api_summary.html)
 
 
 ## Tutorials
 
-[Tutorials](../../python/tutorial.html)
+[Tutorials](./python/tutorial.html)
 
 ## Builds
 If using pip, run pip install `--upgrade pip` prior to downloading.	 

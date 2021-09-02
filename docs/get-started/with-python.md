@@ -4,7 +4,7 @@ parent: Get Started
 toc: true
 nav_order: 1
 ---
-# Get started using ONNX Runtime (ORT) with Python
+# Python ORT Inference Quickstart
 {: .no_toc }
 
 Below is a quick guide to get the packages installed to use ONNX for model serialization and infernece with ORT.
@@ -28,10 +28,12 @@ pip install onnxruntime
 ```python
 ## pytorch
 pip install onnx-pytorch
-
+```
+```python
 ## tensorflow
 pip install onnx-tf
-
+```
+```python
 ## sklearn
 pip install skl2onnx
 ```
@@ -128,3 +130,10 @@ print(pred_onx)
 ### SciKit Learn NLP
 {: .no_toc }
 TODO
+
+
+## Learn More
+- [Python Tutorials](./Tutorials/)
+- [Python Github Quickstart Templates](https://github.com/onnxruntime)
+- [Python API Reference](./api/csharp-api.html)
+ 
