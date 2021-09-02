@@ -2,6 +2,8 @@
 # Licensed under the MIT License.
 # orttraining_test_ortmodule_api.py
 
+from functools import reduce
+import itertools
 import math
 import random
 import copy
@@ -18,7 +20,7 @@ from inspect import signature
 import tempfile
 import os
 
-from onnxruntime.training.ortmodule import ORTModule, _utils, _io, DebugOptions, LogLevel, _fallback
+from onnxruntime.training.ortmodule import ORTModule, _utils, _io, DebugOptions, LogLevel, _fallback, _graph_execution_manager
 import _test_helpers
 
 # Import autocasting libs
@@ -3612,3 +3614,21 @@ def test_ortmodule_ortmodule_method_attribute_copy():
     assert type(out1.grad_fn).__name__ == '_ORTModuleFunctionBackward'
     assert type(out2.grad_fn).__name__ == '_ORTModuleFunctionBackward'
     assert type(out3.grad_fn).__name__ == 'AddmmBackward'
+
+@pytest.mark.parametrize("policy_str, policy",[
+    ('SKIP_CHECK_DISABLED', _graph_execution_manager._SkipCheck.SKIP_CHECK_DISABLED),
+    ('SKIP_CHECK_DEVICE', _graph_execution_manager._SkipCheck.SKIP_CHECK_DEVICE),
+    ('SKIP_CHECK_BUILD_GRADIENT', _graph_execution_manager._SkipCheck.SKIP_CHECK_BUILD_GRADIENT),
+    ('SKIP_CHECK_EXECUTION_AGENT', _graph_execution_manager._SkipCheck.SKIP_CHECK_EXECUTION_AGENT),
+])
+def test_ortmodule_skip_check_load_from_os_env(policy_str, policy):
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    os.environ['ORTMODULE_SKIPCHECK_POLICY'] = policy_str
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    ort_model = ORTModule(model)
+
+    for training_mode in [False, True]:
+        assert ort_model._torch_module._execution_manager(training_mode)._skip_check == policy
+
+    del os.environ['ORTMODULE_SKIPCHECK_POLICY']

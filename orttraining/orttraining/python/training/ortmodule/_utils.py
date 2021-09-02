@@ -7,6 +7,7 @@ from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi import _pybind_state as C
 from ._fallback import _FallbackManager, ORTModuleFallbackException, ORTModuleDeviceException, wrap_exception
 
+import os
 import copy
 import inspect
 import torch
@@ -172,3 +173,8 @@ def check_for_name_collisions_and_bind_methods_to_ortmodule(ortmodule: torch.nn.
                 if attribute_name in ortmodule_attributes:
                     warnings.warn(f"User Module's attribute name {attribute_name} collides with ORTModule's attribute name. "
                     "User Module's attribute may not be returned when trying to retrieve the attribute through ORTModule.")
+
+def parse_os_env_skip_check_flags(env_name, default_skip_check_str):
+    """Returns a list of SkipChecks as defined by os env variable env_name or default provided"""
+
+    return os.getenv(env_name, default_skip_check_str).split('|')

@@ -22,6 +22,7 @@ from onnxruntime.capi import _pybind_state as C
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 from abc import ABC, abstractmethod
 import copy
+from functools import reduce
 import io
 import inspect
 import os
@@ -94,7 +95,10 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._execution_agent = None
 
         # indicators of some logic have been executed previously thus could be skipped for faster training
-        self._skip_check = _SkipCheck.SKIP_CHECK_DISABLED
+        self._skip_check = reduce(lambda x, y: x | y,
+                                  [_SkipCheck[name] for name in
+                                    _utils.parse_os_env_skip_check_flags('ORTMODULE_SKIPCHECK_POLICY',
+                                                                         _SkipCheck.SKIP_CHECK_DISABLED.name)])
         self._first_skip_check_warning = True
 
         # Graph transformer config
