@@ -6,6 +6,7 @@ import sys
 import os
 import zipfile  # Available Python 3.2 or higher
 import glob
+import re
 
 linux_gpu_package_libraries = ["libonnxruntime_providers_shared.so", "libonnxruntime_providers_cuda.so", \
                                "libonnxruntime_providers_tensorrt.so"]
@@ -138,7 +139,6 @@ def check_if_nuget_is_signed(nuget_path):
     return False
 
 def validate_tarball(args):
-    import re
     files = glob.glob(os.path.join(args.package_path, args.package_name))
     if (len(files) != 1):
         print('packages found in path: ')
@@ -156,10 +156,11 @@ def validate_tarball(args):
 
     print('tar zxvf ' + full_package_path)
     os.system("tar zxvf " + full_package_path)
-    package_path = os.path.join(args.package_path, name)
+    # package_path = os.path.join(args.package_path, name)
 
     is_windows_ai_package = False
     zip_file = None
+    package_path = name
     check_if_dlls_are_present(args.package_type, is_windows_ai_package, is_gpu_package, \
                                   args.platforms_supported, zip_file, package_path)
 
