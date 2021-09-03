@@ -23,7 +23,7 @@ jobs:
   timeoutInMinutes:  120
   pool: 'Onnxruntime-Linux-GPU'
   variables:
-      CUDA_VERSION: '11.1'
+      CUDA_VERSION: '11.0'
   steps:
     - template: templates/set-version-number-variables-step.yml
     - template: templates/get-docker-image-steps.yml
