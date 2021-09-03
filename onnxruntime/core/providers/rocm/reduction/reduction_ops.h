@@ -140,7 +140,9 @@ class ReduceMax final : public ReduceKernel<true> {
 template <typename T>
 class ReduceMean final : public ReduceKernel<true> {
  public:
-  ReduceMean(const OpKernelInfo& info) : ReduceKernel<true>(info) {}
+  ReduceMean(const OpKernelInfo& info) : ReduceKernel<true>(info) {
+    fast_reduction_ = true;
+  }
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
     return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_AVG);

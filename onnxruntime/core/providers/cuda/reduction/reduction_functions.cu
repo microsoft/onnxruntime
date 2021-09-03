@@ -12,6 +12,7 @@
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cuda/reduction/reduction_utils.cuh"
+#include "core/providers/cuda/cu_inc/unary_elementwise_impl.cuh"
 
 namespace onnxruntime {
 namespace cuda {
@@ -458,14 +459,30 @@ Status call_reduce_matrix_rows(cudaStream_t stream, const TIn* input, TOut* outp
 }
 }  // namespace detail
 
+template <typename T>
+struct OP_Mean {
+  __device__ __inline__ T operator()(const T& a) const {
+    return a / v_;
+  }
+
+  OP_Mean(T v) : v_(v) {}
+
+  T v_;
+};
+
 template <typename TIn, typename TOut>
-Status reduce_matrix_rows(cudaStream_t stream, const TIn* input, TOut* output, int m, int n, bool reset_initial_output) {
+Status reduce_matrix_rows(cudaStream_t stream, const TIn* input, TOut* output, int m, int n, bool reset_initial_output, bool mean) {
   using TBuf = AccumulationType_t<TIn>;
-  return detail::call_reduce_matrix_rows<TIn, TOut, TBuf>(stream, input, output, m, n, reset_initial_output);
+  Status status = detail::call_reduce_matrix_rows<TIn, TOut, TBuf>(stream, input, output, m, n, reset_initial_output);
+  ORT_RETURN_IF_ERROR(status);
+  if (mean) {
+    UnaryElementWiseImpl(stream, output, output, OP_Mean<TOut>(static_cast<TOut>(m)), static_cast<size_t>(n));
+  }
+  return Status::OK();
 }
 
 #define INSTANTIATE_REDUCE_MATRIX_ROWS(T) \
-  template Status reduce_matrix_rows<T, T>(cudaStream_t stream, const T* input, T* output, int m, int n, bool reset_initial_output)
+  template Status reduce_matrix_rows<T, T>(cudaStream_t stream, const T* input, T* output, int m, int n, bool reset_initial_output, bool mean)
 INSTANTIATE_REDUCE_MATRIX_ROWS(half);
 INSTANTIATE_REDUCE_MATRIX_ROWS(float);
 INSTANTIATE_REDUCE_MATRIX_ROWS(double);
@@ -475,13 +492,18 @@ INSTANTIATE_REDUCE_MATRIX_ROWS(nv_bfloat16);
 #undef INSTANTIATE_REDUCE_MATRIX_ROWS
 
 template <typename TIn, typename TOut>
-Status reduce_matrix_columns(cudaStream_t stream, const TIn* input, TOut* output, int m, int n, void* buffer, size_t buffer_size) {
-  return detail::call_reduce_matrix_columns<TIn, TOut, Identity, Identity, false>(
+Status reduce_matrix_columns(cudaStream_t stream, const TIn* input, TOut* output, int m, int n, void* buffer, size_t buffer_size, bool mean) {
+  Status status = detail::call_reduce_matrix_columns<TIn, TOut, Identity, Identity, false>(
     stream, input, output, m, n, buffer, buffer_size);
+  ORT_RETURN_IF_ERROR(status);
+  if (mean) {
+    UnaryElementWiseImpl(stream, output, output, OP_Mean<TOut>(static_cast<TOut>(n)), static_cast<size_t>(m));
+  }
+  return Status::OK();
 }
 
 #define INSTANTIATE_REDUCE_MATRIX_COLUMNS(T) \
-  template Status reduce_matrix_columns<T, T>(cudaStream_t stream, const T* input, T* output, int m, int n, void* buffer, size_t buffer_size)
+  template Status reduce_matrix_columns<T, T>(cudaStream_t stream, const T* input, T* output, int m, int n, void* buffer, size_t buffer_size, bool mean)
 INSTANTIATE_REDUCE_MATRIX_COLUMNS(half);
 INSTANTIATE_REDUCE_MATRIX_COLUMNS(float);
 INSTANTIATE_REDUCE_MATRIX_COLUMNS(double);

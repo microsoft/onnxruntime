@@ -89,7 +89,7 @@ ApplicableMatrixReduction get_applicable_matrix_reduction(
  * @param reset_initial_output Whether to reset (i.e., zero) the output values first.
  */
 template <typename TIn, typename TOut>
-Status reduce_matrix_rows(cudaStream_t stream, const TIn* input, TOut* output, int m, int n, bool reset_initial_output = true);
+Status reduce_matrix_rows(cudaStream_t stream, const TIn* input, TOut* output, int m, int n, bool reset_initial_output = true, bool mean = false);
 
 /**
  * Reduces the columns in a row-major matrix to a single column containing the sum of each row.
@@ -101,7 +101,7 @@ Status reduce_matrix_rows(cudaStream_t stream, const TIn* input, TOut* output, i
  * @param buffer_size The size of the intermediate buffer in bytes.
  */
 template <typename TIn, typename TOut>
-Status reduce_matrix_columns(cudaStream_t stream, const TIn* input, TOut* output, int m, int n, void* buffer, size_t buffer_size);
+Status reduce_matrix_columns(cudaStream_t stream, const TIn* input, TOut* output, int m, int n, void* buffer, size_t buffer_size, bool mean = false);
 
 }  // namespace cuda
 }  // namespace onnxruntime

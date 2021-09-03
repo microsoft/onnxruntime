@@ -447,13 +447,14 @@ Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, Pr
     int m{}, n{};
     const auto applicable_matrix_reduction = get_applicable_matrix_reduction(
         miopen_reduce_op, input_shape.GetDims(), axes, m, n);
+    bool is_mean = (miopen_reduce_op == MIOPEN_REDUCE_TENSOR_AVG);
     switch (applicable_matrix_reduction) {
       case ApplicableMatrixReduction::Rows: {
         return reduce_matrix_rows(
             stream,
             reinterpret_cast<const HipT*>(input.template Data<T>()),
             reinterpret_cast<HipT*>(output.template MutableData<T>()),
-            m, n);
+            m, n, true, is_mean);
       }
       case ApplicableMatrixReduction::Columns: {
         const auto buffer_size_bytes = compute_reduce_matrix_columns_buffer_size<HipT>(m, n);
@@ -462,7 +463,7 @@ Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, Pr
             stream,
             reinterpret_cast<const HipT*>(input.template Data<T>()),
             reinterpret_cast<HipT*>(output.template MutableData<T>()),
-            m, n, buffer.get(), buffer_size_bytes);
+            m, n, buffer.get(), buffer_size_bytes, is_mean);
       }
       default:
         break;
