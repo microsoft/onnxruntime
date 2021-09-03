@@ -25,7 +25,7 @@
 #include "core/profile/context.h"
 #endif
 
-// #define TRACE_EXECUTION
+#define TRACE_EXECUTION
 
 // Define this symbol to create Concurrency Visualizer markers.
 // See https://docs.microsoft.com/en-us/visualstudio/profiling/concurrency-visualizer-sdk
@@ -101,7 +101,7 @@ static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_co
 #if defined(TRACE_EXECUTION)
       const TensorShape& tensor_shape = p_tensor->Shape();
       size_t element_size = p_tensor->DataType()->Size();
-      LOGS(logger, INFO) << node_name << " input[" << i << "]"
+      LOGS_DEFAULT(INFO) << node_name << " input[" << i << "]"
                          << " is_param=" << is_param
                          << " size=" << tensor_size
                          << " shape=" << tensor_shape.ToString()
@@ -157,7 +157,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
 
 // Enable TRACE_EXECUTION compile flag to dump execution plan
 #if defined(TRACE_EXECUTION)
-  std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
+  LOGS(logger, INFO) << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
 #endif
 
   const auto& graph_viewer = session_state.GetGraphViewer();

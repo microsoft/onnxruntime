@@ -263,7 +263,7 @@ packages = [
 
 requirements_file = "requirements.txt"
 
-local_version = None
+local_version = "+cpu-trace-execution"
 enable_training = parse_arg_remove_boolean(sys.argv, '--enable_training')
 default_training_package_device = parse_arg_remove_boolean(sys.argv, '--default_training_package_device')
 
