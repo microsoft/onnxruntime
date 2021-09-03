@@ -1509,14 +1509,11 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
       }
 
       // Eliminate FP32 input casts and FP16 output casts
-      if ((strategy_ & GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::RemoveInputOutputUpDownCasts) !=
-          GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::None) {
-        for (auto node_index : node_topology_list) {
-          Node* node = graph.GetNode(node_index);
-          if (nullptr != node &&
-              std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end()) {
-            local_modified |= RemoveInputOutputUpDownCasts(graph, node, removed_nodes, level_, logger);
-          }
+      for (auto node_index : node_topology_list) {
+        Node* node = graph.GetNode(node_index);
+        if (nullptr != node &&
+            std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end()) {
+          local_modified |= RemoveInputOutputUpDownCasts(graph, node, removed_nodes, level_, logger);
         }
       }
 
