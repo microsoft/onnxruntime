@@ -131,8 +131,9 @@ try:
                     f.write('try:\n')
                     for library in to_preload:
                         f.write('    _{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split('.')[0], library))
-                    f.write('except:\n')
-                    f.write('    os.environ["ORT_CUDA_UNAVAILABLE"] = 1\n')
+                    f.write('except OSError:\n')
+                    f.write('    import os\n')
+                    f.write('    os.environ["ORT_CUDA_UNAVAILABLE"] = "1"\n')
 
         def run(self):
             if is_manylinux:
