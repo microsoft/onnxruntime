@@ -66,7 +66,7 @@ static std::string GetName(const std::pair<const NodeArg*, std::vector<Node*>>& 
 */
 static std::vector<std::unordered_set<std::string>> fp16_allow_ops = {
     /* Level 0 */ {},
-    /* Level 1 */ {"Transpose", "Relu", "Reshape", "Split", "Tanh"},
+    /* Level 1 */ {"Transpose", "Relu", "Reshape", "Split", "Tanh", "Squeeze", "Unsqueeze"},
     /* Level 2 */ {"BiasGelu", "Dropout", "FastGelu", "Gather", "Gelu", "LayerNormalization", "Where"}};
 
 /*
@@ -80,6 +80,8 @@ static std::unordered_map<std::string, std::vector<int>> opcode_to_input_map = {
     {"Reshape", {0}},
     {"Dropout", {0}},
     {"LayerNormalization", {0, 1, 2}},
+    {"Squeeze", {0}},
+    {"Unsqueeze", {0}}
 };
 
 static std::unordered_map<std::string, std::vector<int>> opcode_to_output_map = {
@@ -87,6 +89,8 @@ static std::unordered_map<std::string, std::vector<int>> opcode_to_output_map = 
     {"Reshape", {0}},
     {"Dropout", {0}},
     {"LayerNormalization", {0}},
+    {"Squeeze", {0}},
+    {"Unsqueeze", {0}}
 };
 
 static std::unordered_set<std::string> inserted_node_names;   // Names of the nodes inserted
