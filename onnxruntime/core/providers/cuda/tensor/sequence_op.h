@@ -35,7 +35,7 @@ class SequenceAt final : public CudaKernel {
     const void* source_addr = source_tensor.DataRaw(source_type);
 
     Tensor* target_tensor = context->Output(0, source_tensor.Shape());
-    ORT_ENFORCE(target_tensor != nullptr, "SequenceAt GPU: Got nullptr for output tensor.");
+
     void* target_addr = target_tensor->MutableDataRaw(source_type);
 
     if (source_addr != target_addr) {
@@ -180,7 +180,7 @@ class SequenceErase final : public CudaKernel {
     ORT_ENFORCE(context->GetTempSpaceAllocator(&alloc).IsOK(),
                 "SequenceErase GPU: Unable to get an allocator.");
     TensorSeq* Y = context->Output<TensorSeq>(0);
-    ORT_ENFORCE(Y != nullptr, "SequenceErase GPU: Failed to allocate output tensor sequence.");
+
     Y->SetType(X->DataType());
     for (int64_t i = 0; i < X_size; ++i) {
       if (i == idx) {
@@ -223,14 +223,13 @@ class SequenceInsert final : public CudaKernel {
       ORT_ENFORCE(idx >= 0 && idx <= S_size, "SequenceInsert GPU: Invalid sequence index.");
     }
     const Tensor* X = context->Input<Tensor>(1);
-    ORT_ENFORCE(X != nullptr, "SequenceInsert GPU: Got nullptr for tensor input.");
 
     AllocatorPtr alloc;
     ORT_ENFORCE(context->GetTempSpaceAllocator(&alloc).IsOK(),
                 "SequenceInsert GPU: Unable to get an allocator.");
 
     TensorSeq* Y = context->Output<TensorSeq>(0);
-    ORT_ENFORCE(Y != nullptr, "SequenceInsert GPU: Failed to allocate output tensor sequence.");
+
     Y->SetType(S->DataType());
     for (int64_t i = 0; i < S_size; ++i) {
       if (i == idx) {

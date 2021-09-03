@@ -61,24 +61,25 @@ class IdentityOp final : public OpKernel {
       }
     } else {
       const auto* X = context->Input<TensorSeq>(0);
-      ORT_ENFORCE(X != nullptr);
-      TensorSeq* output = context->Output<TensorSeq>(0);
-      output->SetType(X->DataType());
+      auto* Y = context->Output<TensorSeq>(0);
+      if (X != Y) {
+        Y->SetType(X->DataType());
 
-      AllocatorPtr alloc;
-      auto status = context->GetTempSpaceAllocator(&alloc);
-      if (!status.IsOK()) {
-        ORT_THROW("Unable to get an allocator");
-      }
-      std::vector<Tensor> tensors;
-      for (auto it = X->begin(), end = X->end(); it != end; ++it) {
-        Tensor tmp(it->DataType(), onnxruntime::TensorShape(it->Shape()), alloc);
-        size_t bytes = it->SizeInBytes();
-        memcpy(tmp.MutableDataRaw(), it->DataRaw(), bytes);
-        tensors.push_back(std::move(tmp));
-      }
+        AllocatorPtr alloc;
+        auto status = context->GetTempSpaceAllocator(&alloc);
+        if (!status.IsOK()) {
+          ORT_THROW("Unable to get an allocator");
+        }
+        std::vector<Tensor> tensors;
+        for (auto it = X->begin(), end = X->end(); it != end; ++it) {
+          Tensor tmp(it->DataType(), onnxruntime::TensorShape(it->Shape()), alloc);
+          size_t bytes = it->SizeInBytes();
+          memcpy(tmp.MutableDataRaw(), it->DataRaw(), bytes);
+          tensors.push_back(std::move(tmp));
+        }
 
-      output->SetElements(std::move(tensors));
+        Y->SetElements(std::move(tensors));
+      }
     }
 
     return Status::OK();

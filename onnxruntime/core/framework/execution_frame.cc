@@ -671,11 +671,17 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       return status;
   }
 
-  if (ml_type->IsTensorType()) {
-    ORT_ENFORCE(shape, "Allocation of tensor types requires a shape.");
+  auto is_tensor_type = ml_type->IsTensorType();
+  auto is_tensor_seq_type = ml_type->IsTensorSequenceType();
+
+  if (is_tensor_type || is_tensor_seq_type) {
+    if (is_tensor_type) {
+      ORT_ENFORCE(shape, "Allocation of tensor types requires a shape.");
+    }
 
     // tensors
-    const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
+    const auto* ml_data_type = is_tensor_type ? static_cast<const TensorTypeBase*>(ml_type)->GetElementType()
+                                              : static_cast<const SequenceTensorTypeBase*>(ml_type)->GetElementType();
 
     AllocKind alloc_kind = per_alloc_plan.alloc_kind;
     switch (alloc_kind) {
@@ -683,8 +689,13 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       // In the future we may want to have different way to handle it.
       case AllocKind::kAllocateOutput:
       case AllocKind::kAllocate: {
-        ORT_RETURN_IF_ERROR(AllocateMLValueTensorSelfOwnBuffer(ort_value, ort_value_index, ml_data_type, alloc_info,
-                                                               *shape, per_alloc_plan.create_fence_if_async));
+        if (is_tensor_type) {
+          ORT_RETURN_IF_ERROR(AllocateMLValueTensorSelfOwnBuffer(ort_value, ort_value_index, ml_data_type, alloc_info,
+                                                                 *shape, per_alloc_plan.create_fence_if_async));
+        } else {
+          ORT_RETURN_IF_ERROR(AllocateTensorSequence(ort_value));
+        }
+
         break;
       }
       case AllocKind::kReuse: {
@@ -697,8 +708,12 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
         if (!reuse_value.IsAllocated()) {
           ORT_RETURN_IF_ERROR(AllocateAsPerAllocationPlan(reuse_value, reuse_mlvalue_index, shape));
         }
-        ORT_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(
-            ort_value, reuse_mlvalue_index, ml_data_type, alloc_info, *shape, per_alloc_plan.create_fence_if_async));
+        if (is_tensor_type) {
+          ORT_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(
+              ort_value, reuse_mlvalue_index, ml_data_type, alloc_info, *shape, per_alloc_plan.create_fence_if_async));
+        } else {
+          ort_value = GetMutableMLValue(reuse_mlvalue_index);
+        }
         break;
       }
       case AllocKind::kShare: {
@@ -727,8 +742,6 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
     // Model load should have failed so this should be unreachable
     ORT_THROW("SparseTensor is not supported in this build.");
 #endif
-  } else if (ml_type->IsTensorSequenceType()) {
-    return AllocateTensorSequence(ort_value);
   } else {
     return AllocateTraditionalMLValue(ort_value, *static_cast<const NonTensorTypeBase*>(ml_type));
   }

@@ -18,17 +18,10 @@ class IdentityOp final : public CudaKernel {
     auto X_ml_type = context->InputType(0);
     if (X_ml_type->IsTensorType()) {
       const Tensor* X = context->Input<Tensor>(0);
-      if (nullptr == X) {
-        return Status(common::ONNXRUNTIME, common::FAIL,
-                      "IdentityOp cuda: input count mismatch.");
-      }
       const TensorShape& shape = X->Shape();
-      Tensor* Y = context->Output(0, shape);
-      if (nullptr == Y) {
-        return Status(common::ONNXRUNTIME, common::FAIL,
-                      "IdentityOp cuda: failed to allocate output tensor.");
-      }
       auto X_type = X->DataType();
+
+      Tensor* Y = context->Output(0, shape);
 
       const void* source = X->DataRaw(X_type);
       void* target = Y->MutableDataRaw(X_type);
@@ -53,9 +46,7 @@ class IdentityOp final : public CudaKernel {
       }
     } else if (X_ml_type->IsTensorSequenceType()) {
       const TensorSeq* X = context->Input<TensorSeq>(0);
-      ORT_ENFORCE(X != nullptr, "IdentityOp cuda: input tensor is missing.");
       TensorSeq* Y = context->Output<TensorSeq>(0);
-      ORT_ENFORCE(Y != nullptr, "IdentityOp cuda: failed to allocate output tensor sequence.");
       if (X == Y) {
         return Status::OK();
       }

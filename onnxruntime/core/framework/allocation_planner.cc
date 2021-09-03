@@ -346,7 +346,8 @@ class PlannerImpl {
             auto input_arg_index = Index(p_input_arg->Name());
             auto original = Buffer(input_arg_index);
             if (1 == UseCount(original)) {
-              if (SameSize(*p_input_arg, *p_output_arg)) {
+              auto is_tensor_type = (p_input_arg->TypeAsProto()->value_case() == TypeProto::kTensorType);
+              if (!is_tensor_type || SameSize(*p_input_arg, *p_output_arg)) {
                 // we can reuse this input since it is its last use and permitted for in-place update
                 *reusable_input = input_arg_index;  // or original; both should be okay
                 return true;
