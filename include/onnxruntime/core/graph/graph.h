@@ -394,7 +394,9 @@ class Node {
     execution_provider_type_ = execution_provider_type;
   }
 
-  /** Sets initialized function body for node.*/
+  /** Sets initialized function body for node. This is called right after function body initialization for a node.
+  * or during function inlining when a nested function is encountered.
+  */
   void SetFunctionBody(Function& func);
 
   /** Call the provided function for all explicit inputs, implicit inputs, and outputs of this Node.
@@ -1023,7 +1025,7 @@ class Graph {
   void InitFunctionBodyForNode(Node& node);
 
   /** Gets Model local functions from the root/parent graph.*/
-  std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& GetModelLocalFunctions();
+  const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& GetModelLocalFunctions();
 
   /** Mark a NodeArg name as coming from the outer scope when programmatically constructing a Graph that will
   be used as a GraphProto attribute in another Node..

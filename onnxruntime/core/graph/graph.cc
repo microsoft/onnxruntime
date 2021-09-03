@@ -2479,7 +2479,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   return Status::OK();
 }
 
-std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& Graph::GetModelLocalFunctions() {
+const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& Graph::GetModelLocalFunctions() {
   if (parent_graph_ == nullptr) {
     return model_local_functions_;
   }
@@ -2489,8 +2489,8 @@ std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& Graph::Ge
 void Graph::InitFunctionBodyForNode(Node& node) {
   ONNX_NAMESPACE::FunctionProto onnx_function_proto;
   if (node.op_ && (node.op_->HasFunction() || node.op_->HasContextDependentFunction())) {
-    // This node has a schema defined function proto. If it is a context dependant function
-    // then build it otherwise fetch the functionproto from schema.
+    // This node has a schema defined function proto. If it is a context dependent function
+    // then build it otherwise fetch the FunctionProto from schema.
     if (node.op_->HasContextDependentFunction()) {
       NodeProto node_proto;
       node.ToProto(node_proto);
@@ -2510,8 +2510,8 @@ void Graph::InitFunctionBodyForNode(Node& node) {
       onnx_function_proto = *(node.op_->GetFunction());
     }
   } else {
-    std::string func_identifier = node.Domain() + ":" + node.OpType();
-    const auto& model_local_functions = this->GetModelLocalFunctions();
+    std::string func_identifier = function_utils::GetFunctionIdentifier(node);
+    const auto& model_local_functions = GetModelLocalFunctions();
     auto iter = model_local_functions.find(func_identifier);
     if (iter == model_local_functions.end()) {
       return;
@@ -2522,8 +2522,9 @@ void Graph::InitFunctionBodyForNode(Node& node) {
   }
 
   ORT_TRY {
+    // Explicitly pass the model local functions as t
     auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
-                                                                this->GetModelLocalFunctions(), function_container_, logger_);
+                                                                GetModelLocalFunctions(), function_container_, logger_);
     function_container_.emplace_back(std::move(func_ptr));
     node.SetFunctionBody(*function_container_.back());
   }
@@ -3800,12 +3801,6 @@ Status Graph::InlineFunction(Node& node) {
   // Set of node input output names as these names need to be preserved during inlining
   std::unordered_set<std::string> func_input_output_names;
 
-  ORT_ENFORCE(node.MutableInputDefs().size() == subgraph.GetInputsIncludingInitializers().size(),
-              "Node " + node.Name() + "'s number of inputs is different from function body graph's number of input.");
-
-  ORT_ENFORCE(node.MutableOutputDefs().size() == subgraph.GetOutputs().size(),
-              "Node ", node.Name(), "'s number of outputs is different from function body graph's number of outputs.");
-
   for (size_t i = 0; i < subgraph.GetInputsIncludingInitializers().size(); ++i) {
     auto* input = subgraph.GetInputsIncludingInitializers()[i];
     if (input->Name() != node.MutableInputDefs()[i]->Name()) {
@@ -3822,7 +3817,8 @@ Status Graph::InlineFunction(Node& node) {
     func_input_output_names.insert(output->Name());
   }
 
-  // create a uniq_identifier to append to every node name and intermidiate input\outputs
+  
+  // create a uniq_identifier to append to every node name and intermediate input\outputs
   // to make sure there are no unintended duplicates
   std::stringstream ss;
   ss << static_cast<const void*>(&node);
@@ -3853,7 +3849,7 @@ Status Graph::InlineFunction(Node& node) {
             inputs.push_back(&n_input);
           }
         } else {
-          // This is an intermidiate input. Add a unique identifier as suffix to make sure
+          // This is an intermediate input. Add a unique identifier as suffix to make sure
           // there is no name collision with names in parent graph
           auto& n_input = GetOrCreateNodeArg(input->Name() + uniq_identifier, input->TypeAsProto());
           inputs.push_back(&n_input);

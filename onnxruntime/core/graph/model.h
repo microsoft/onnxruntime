@@ -41,7 +41,7 @@ class Model {
                  bool is_onnx_domain_only,
                  const logging::Logger& logger)
       : Model(graph_name, is_onnx_domain_only, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {},
-              {} , logger) {}
+              {}, logger) {}
 
   // Construct model from scratch.
   explicit Model(const std::string& graph_name,

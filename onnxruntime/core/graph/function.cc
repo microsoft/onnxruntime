@@ -13,41 +13,41 @@ namespace ONNX_NAMESPACE {
 // TODO: Add this to onnx instead of adding it here.
 void InferShapeForFunctionNode(
     InferenceContext& ctx,
-    const FunctionProto& func,
+    const FunctionProto& func_proto,
     const std::unordered_map<std::string, int>& func_opset_imports,
     const ShapeInferenceOptions& options,
     const ISchemaRegistry* schema_registry,
     const std::unordered_map<std::string, const FunctionProto*>& in_model_functions) {
   GraphProto g;
   // Get a temporary tensor-shape map
-  const auto num_func_inputs = func.input_size();
-  std::unordered_map<std::string, TypeProto*> valueTypesByName;
-  std::vector<TypeProto> types_cache(func.input_size());
+  const auto num_func_inputs = func_proto.input_size();
+  std::unordered_map<std::string, TypeProto*> value_types_by_name;
+  std::vector<TypeProto> types_cache(func_proto.input_size());
   for (int i = 0; i < num_func_inputs; ++i) {
     types_cache[i] = *ctx.getInputType(i);
-    valueTypesByName[func.input().Get(i)] = &types_cache[i];
+    value_types_by_name[func_proto.input().Get(i)] = &types_cache[i];
   }
 
   // Get a temporary initial value map
-  std::unordered_map<std::string, const TensorProto*> initializersByName;
-  std::unordered_map<std::string, const SparseTensorProto*> sparseInitializersByName;
+  std::unordered_map<std::string, const TensorProto*> initializers_by_name;
+  std::unordered_map<std::string, const SparseTensorProto*> sparse_initializers_by_name;
   for (int i = 0; i < static_cast<int>(ctx.getNumInputs()) && i < num_func_inputs; ++i) {
     const TypeProto* type = ctx.getInputType(i);
     if (type->value_case() == TypeProto::kTensorType && ctx.getInputData(i) != nullptr) {
-      initializersByName[func.input().Get(i)] = ctx.getInputData(i);
+      initializers_by_name[func_proto.input().Get(i)] = ctx.getInputData(i);
     } else if (type->value_case() == TypeProto::kSparseTensorType &&
                ctx.getInputSparseData(i) != nullptr) {
-      sparseInitializersByName[func.input().Get(i)] = ctx.getInputSparseData(i);
+      sparse_initializers_by_name[func_proto.input().Get(i)] = ctx.getInputSparseData(i);
     }
   }
   std::unordered_map<std::string, const AttributeProto*> attr_map;
-  for (auto& attr : func.attribute()) {
+  for (auto& attr : func_proto.attribute()) {
     if (ctx.getAttribute(attr) != nullptr) {
       attr_map[attr] = ctx.getAttribute(attr);
     }
   }
 
-  for (auto& n : func.node()) {
+  for (auto& n : func_proto.node()) {
     NodeProto copy_n(n);
     // Add attribute information into the temporary node
     copy_n.clear_attribute();
@@ -63,7 +63,7 @@ void InferShapeForFunctionNode(
       }
     }
     ONNX_NAMESPACE::shape_inference::InferenceContextImpl func_node_ctx(
-        copy_n, valueTypesByName, initializersByName, sparseInitializersByName, {});
+        copy_n, value_types_by_name, initializers_by_name, sparse_initializers_by_name, {});
 
     // Resolve domain for node
     auto it = func_opset_imports.find(n.domain());
@@ -75,7 +75,7 @@ void InferShapeForFunctionNode(
     if (schema) {
       schema->GetTypeAndShapeInferenceFunction()(func_node_ctx);
     } else {
-      // check model local functions for funciton proto
+      // check model local functions for FunctionProto
       auto iter = in_model_functions.find(n.domain() + ":" + n.op_type());
       if (iter == in_model_functions.end()) {
         return;
@@ -94,9 +94,9 @@ void InferShapeForFunctionNode(
     for (int i = 0; i < copy_n.output_size(); ++i) {
       TypeProto* inferred_output_type = func_node_ctx.getOutputType(i);
       // Checking, Storing the inferred information
-      auto iter = valueTypesByName.find(n.output(i));
+      auto iter = value_types_by_name.find(n.output(i));
       TypeProto* existingType = nullptr;
-      if (iter != valueTypesByName.end()) {
+      if (iter != value_types_by_name.end()) {
         existingType = iter->second;
         shape_inference::checkShapesAndTypes(*inferred_output_type, *existingType);
       } else {
@@ -110,14 +110,14 @@ void InferShapeForFunctionNode(
       shape_inference::mergeShapesAndTypes(*inferred_output_type, existingType);
 
       // Make merged info available to further inference.
-      valueTypesByName[copy_n.output(i)] = existingType;
+      value_types_by_name[copy_n.output(i)] = existingType;
     }
   }
-  for (int i = 0; i < func.output_size(); ++i) {
-    const std::string& output_name = func.output().Get(i);
+  for (int i = 0; i < func_proto.output_size(); ++i) {
+    const std::string& output_name = func_proto.output().Get(i);
     // Skip if no type inferred for the tensor
-    auto iter = valueTypesByName.find(output_name);
-    if (iter != valueTypesByName.cend()) {
+    auto iter = value_types_by_name.find(output_name);
+    if (iter != value_types_by_name.cend()) {
       // Copy the type info to ctx
       // to pass back to maingraph
       auto type_proto = ctx.getOutputType(i);
@@ -153,8 +153,10 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_func_proto
   // Create an all permissive list of data types. This will be used in case of model local functions
   // when we cannot infer the type constraints from function proto body
   std::unordered_set<std::string> all_types;
-  all_types.insert(ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat().cbegin(), ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat().cend());
-  all_types.insert(ONNX_NAMESPACE::OpSchema::all_tensor_sequence_types().cbegin(), ONNX_NAMESPACE::OpSchema::all_tensor_sequence_types().cend());
+  all_types.insert(ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat().cbegin(),
+                   ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat().cend());
+  all_types.insert(ONNX_NAMESPACE::OpSchema::all_tensor_sequence_types().cbegin(),
+                   ONNX_NAMESPACE::OpSchema::all_tensor_sequence_types().cend());
 
   auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
   std::unordered_map<std::string, int> opset_imports;
@@ -198,7 +200,10 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_func_proto
         std::string type_str = node_op_schema ? node_op_schema->outputs().at(i).GetTypeStr() + "out" + std::to_string(i) : "Tout" + std::to_string(i);
         output_types_list[idx] = std::make_pair(out_name, type_str);
         if (!type_constraint_map.count(type_str)) {
-          // Same as above. Add all types to allowed types list of schema for the node is not available.
+          // If schema is available for the node then get the allowed types from the schema
+          // else add all types to allowed types list. It is OK to add all types. Any issues will be
+          // caught later if we try to inline the nodes and there is no kernl available for
+          // the requested types.
           if (node_op_schema) {
             for (auto data_type : node_op_schema->outputs().at(i).GetTypes()) {
               type_constraint_map[type_str].emplace_back(*data_type);
@@ -242,25 +247,26 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_func_proto
   }
 }
 
-// Utility function to initialize function body for nested model local function
-// graph: Graph in which this node belongs too. For nested functions, graph is the parent function body graph
-// node_index: index of the node in graph
-// onnx_function_proto: FunctionProto for the function
-// in_model_function_protos: Model local functions. These are schema less functions which are defined in the ModelProto of the main/parent model.
-// function_container: graph level function container which will own the initialized function body
-// logger: instance of Logger
-// isNestedFunction: True if this is a nested function. For nested functions graph resolved is delayed untill parent function body is fully initialized.
-void InitNestedModelLocalFunction(onnxruntime::Graph& graph,
+/** Utility function to initialize function body for nested model local function
+  @params graph Graph in which this node belongs too. For nested functions, graph is the parent function body graph
+  @params node_index index of the node in graph
+  @params onnx_function_proto FunctionProto for the function
+  @param in_model_function_protos Model local functions. These are schema less functions which are defined in the ModelProto of the main/parent model.
+  @params function_container graph level function container which will own the initialized function body
+  @params logger instance of Logger
+  @params is_nested_function True if this is a nested function. For nested functions graph resolved is delayed until parent function body is fully initialized.
+*/
+static void InitNestedModelLocalFunction(onnxruntime::Graph& graph,
                                   const onnxruntime::NodeIndex& node_index,
                                   ONNX_NAMESPACE::FunctionProto& onnx_function_proto,
                                   const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& in_model_function_protos,
                                   std::vector<std::unique_ptr<onnxruntime::Function>>& function_container,
                                   const logging::Logger& logger,
-                                  bool isNestedFunction) {
+                                  bool is_nested_function) {
   ORT_TRY {
     auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(graph, node_index, onnx_function_proto,
                                                                 in_model_function_protos, function_container,
-                                                                logger, isNestedFunction);
+                                                                logger, is_nested_function);
     function_container.emplace_back(std::move(func_ptr));
     auto* node_in_graph = graph.GetNode(node_index);
     node_in_graph->SetFunctionBody(*function_container.back());
@@ -288,7 +294,7 @@ void InitNestedModelLocalFunction(onnxruntime::Graph& graph,
 // E.g. For Range-11, {"start" : 0, "limit": 1, "delta": 2}
 // (5) A map containing the output name from the op schema to the corresponding index
 // E.g. For Range-11, {"output" : 0}
-static void update_subgraphs_within_function_body(ONNX_NAMESPACE::GraphProto& subgraph_proto,
+static void UpdateSubgraphsWithinFunctionBody(ONNX_NAMESPACE::GraphProto& subgraph_proto,
                                                   const Graph& parent_graph,
                                                   const ONNX_NAMESPACE::NodeProto& function_node_in_parent_graph,
                                                   const std::unordered_map<std::string, int>& input_name_idx_map,
@@ -328,7 +334,7 @@ static void update_subgraphs_within_function_body(ONNX_NAMESPACE::GraphProto& su
       }
       // Recurse into any subgraphs in the current subgraph being processed
       if ((*subgraph_node_attr).has_g()) {
-        update_subgraphs_within_function_body(*(*subgraph_node_attr).mutable_g(),
+        UpdateSubgraphsWithinFunctionBody(*(*subgraph_node_attr).mutable_g(),
                                               parent_graph, function_node_in_parent_graph,
                                               input_name_idx_map, output_name_idx_map);
       }
@@ -456,12 +462,12 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
                            const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
                            std::vector<std::unique_ptr<onnxruntime::Function>>& function_container,
                            const logging::Logger& logger,
-                           bool isNestedFunction)
+                           bool is_nested_function)
     : parent_graph_(&graph),
       body_(onnx_func_proto.name(), false, onnxruntime::ModelMetaData(),
             graph.ModelPath().ToPathString(), IOnnxRuntimeOpSchemaRegistryList(),
             onnx_func_proto.opset_import_size() != 0 ? GetFunctionOpsetImports(onnx_func_proto, graph.DomainToVersionMap()) : graph.DomainToVersionMap(),
-            {} ,logger),
+            {}, logger),
       onnx_func_proto_(onnx_func_proto) {
   // Make a copy of the FunctionProto.
   // All FunctionBody ops with the same op type seem to share the same FunctionProto struct within a model.
@@ -469,6 +475,7 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
   // as we might make some modifications to the FunctionProto along the way
 
   const auto* node_in_parent_graph = parent_graph_->GetNode(node_index);
+
   // For schema defined functions get the version from the node in parent graph.
   // For the functions which do not have schema defined (model local functions)
   // get the since version from the version in opset imports using the domain.
@@ -593,7 +600,7 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
           graph_inputs[iter->second] = &unused_formal_param;
         }
       } else {
-        // // If input is part of function outputs, preserve NodeArg and input/output names
+        // If input is part of function outputs, preserve NodeArg and input/output names
         iter = output_name_idx_map.find(tensor_name);
         if (iter != output_name_idx_map.end()) {
           const std::string& actual_parameter_name = function_op_node_proto.output().Get(iter->second);
@@ -602,16 +609,16 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
           auto& n_input = function_body_graph.GetOrCreateNodeArg(actual_parameter_name, actual_type);
           inputs.push_back(&n_input);
         } else {
-          // Input is intermidiate input in function body.
-          // Check if input name needs to be mapped to a new uniq name (this is required when node input\outputs
-          // have same names as intermidiate input\outputs.
+          // Input is intermediate input in function body.
+          // Check if input name needs to be mapped to a new unique name (this is required when node input\outputs
+          // have same names as intermediate input\outputs.
           auto it = internal_input_output_updates.find(tensor_name);
           if (it != internal_input_output_updates.end()) {
             auto& n_input = function_body_graph.GetOrCreateNodeArg(
                 it->second, nullptr);
             inputs.push_back(&n_input);
           } else {
-            // Input is intermidiate function body input and has no name collision with node input\output
+            // Input is intermediate function body input and has no name collision with node input\output
             // It can be added to the graph without any modification
             auto& n_input = function_body_graph.GetOrCreateNodeArg(
                 tensor_name, nullptr);
@@ -641,9 +648,9 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
           graph_outputs[iter->second] = &unused_formal_param;
         }
       } else {
-        // Output is intermidiate output in function body.
+        // Output is intermediate output in function body.
         // Check if output name needs to be mapped to a new unique name (this is required when node input\outputs
-        // have same names as intermidiate input\outputs.
+        // have same names as intermediate input\outputs.
         auto it = node_input_outputs.find(tensor_name);
         if (it != node_input_outputs.end()) {
           auto& n_output = function_body_graph.GetOrCreateNodeArg(
@@ -682,7 +689,7 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
          node_attr != (*node).mutable_attribute()->end(); ++node_attr) {
       // If this node contains subgraphs, the node inputs/outputs within them needs to be fixed as well
       if ((*node_attr).has_g()) {
-        update_subgraphs_within_function_body(*(*node_attr).mutable_g(),
+        UpdateSubgraphsWithinFunctionBody(*(*node_attr).mutable_g(),
                                               *parent_graph_, function_op_node_proto,
                                               input_name_idx_map, output_name_idx_map);
       }
@@ -711,12 +718,12 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
   // Once all model local functions within function body are initialized, Graph Resolve for parent function body is called
   // During graph resolve for parent function, graph resolve for every nested model local function is called too...
   // Such a top down approach is required to successfully carry out type inference for schema less functions.
-  // Schema defined funcitons are treated a bit different from model local aka schema less functions. These are initialized
+  // Schema defined functions are treated a bit different from model local aka schema less functions. These are initialized
   // during graph resolve of parent functions.
   if (model_local_functions.size() > 0) {
     for (auto node = function_body_graph.Nodes().begin(); node != function_body_graph.Nodes().end(); ++node) {
       // Init nested functions
-      std::string func_identifier = node->Domain() + ":" + node->OpType();
+      std::string func_identifier = function_utils::GetFunctionIdentifier(*node);
       auto iter = model_local_functions.find(func_identifier);
       if (iter == model_local_functions.end()) {
         continue;
@@ -731,11 +738,18 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
   // Graph resolve should be called on the parent functions only. Skip resolve if this is a nested function.
   // Nested function bodies will be resolved along with parent function body as we set traverse_function_body to true.
   // This is only applicable for model local functions which are schema less.
-  if (!isNestedFunction) {
+  if (!is_nested_function) {
     onnxruntime::Graph::ResolveOptions options;
     options.traverse_function_body = true;
     auto status = function_body_graph.Resolve(options);
+
     ORT_ENFORCE(status.IsOK(), "Resolve subgraph failed:", status.ErrorMessage());
+
+    ORT_ENFORCE(node_in_parent_graph->InputDefs().size() == function_body_graph.GetInputsIncludingInitializers().size(),
+                "Node " + node_in_parent_graph->Name() + "'s number of inputs is different from function body graph's number of input.");
+
+    ORT_ENFORCE(node_in_parent_graph->OutputDefs().size() == function_body_graph.GetOutputs().size(),
+                "Node ", node_in_parent_graph->Name(), "'s number of outputs is different from function body graph's number of outputs.");
   }
 
 }  // namespace onnxruntime

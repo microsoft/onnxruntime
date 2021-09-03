@@ -35,7 +35,7 @@ class FunctionImpl final : public Function {
                const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& in_model_function_protos,
                std::vector<std::unique_ptr<onnxruntime::Function>>& function_container,
                const logging::Logger& logger,
-               bool isNestedFunction = false);
+               bool is_nested_function = false);
 
   ~FunctionImpl() override;
 
@@ -71,5 +71,15 @@ class ViewerFunctionImpl final : public Function {
  private:
   std::unique_ptr<ONNX_NAMESPACE::OpSchema> op_schema_;
 };
+
+namespace function_utils {
+/** Get the unique id for function. This is used as a key to find the 
+* relevant model local function from it's container.
+*/
+inline std::string GetFunctionIdentifier(const Node& node) {
+  return node.Domain() + ":" + node.OpType();
+}
+}
+
 
 }  // namespace onnxruntime

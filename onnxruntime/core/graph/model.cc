@@ -86,7 +86,7 @@ Model::Model(const std::string& graph_name,
   for (auto& func : model_local_functions) {
     auto func_ptr = model_proto_.add_functions();
     func_ptr->CopyFrom(func);
-    model_local_funcs[func_ptr->domain() + ":" + func_ptr->name()] = func_ptr;
+    model_local_funcs[model_load_utils::GetModelLocalFuncId(*func_ptr)] = func_ptr;
   }
 
 
