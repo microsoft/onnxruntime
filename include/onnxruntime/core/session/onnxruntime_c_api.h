@@ -194,6 +194,7 @@ ORT_RUNTIME_CLASS(ThreadingOptions);
 ORT_RUNTIME_CLASS(ArenaCfg);
 ORT_RUNTIME_CLASS(PrepackedWeightsContainer);
 ORT_RUNTIME_CLASS(TensorRTProviderOptionsV2);
+ORT_RUNTIME_CLASS(MIGraphXProviderOptions);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -339,6 +340,15 @@ typedef struct OrtTensorRTProviderOptions {
   const char* trt_engine_decryption_lib_path;   // specify engine decryption library path
   int trt_force_sequential_engine_build;        // force building TensorRT engine sequentially. Default 0 = false, nonzero = true
 } OrtTensorRTProviderOptions;
+
+/// <summary>
+/// Options for the MIGraphX provider that are passed to SessionOptionsAppendExecutionProvider_MIGraphX
+/// </summary>
+typedef struct OrtMIGraphXProviderOptions {
+  int device_id;                                // hip device id.
+  int migraphx_fp16_enable;                     // enable MIGraphX FP16 precision. Default 0 = false, nonzero = true
+  int migraphx_int8_enable;                     // enable MIGraphX INT8 precision. Default 0 = false, nonzero = true
+} OrtMIGraphXProviderOptions;
 
 /// <summary>
 /// Options for the OpenVINO provider that are passed to SessionOptionsAppendExecutionProvider_OpenVINO
@@ -1738,6 +1748,13 @@ struct OrtApi {
    * \param[out] indices out param where the pointer to the internal buffer is returned. Do not free this buffer.
    */
   ORT_API2_STATUS(GetSparseTensorIndices, _In_ const OrtValue* ort_value, enum OrtSparseIndicesFormat indices_format, _Out_ size_t* num_indices, _Outptr_ const void** indices);
+
+  /**
+   * Append MIGraphX execution provider to the session options with MIGraphX provider options. 
+   * If MIGraphX is not available (due to a non MIGraphX enabled build), this function will return failure.
+   */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_MIGraphX1,
+                  _In_ OrtSessionOptions* options, _In_ const OrtMIGraphXProviderOptions* migraphx_options);
 };
 
 /*

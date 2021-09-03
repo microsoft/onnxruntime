@@ -2363,6 +2363,7 @@ static constexpr OrtApi ort_api_1_to_9 = {
     &OrtApis::GetSparseTensorValues,
     &OrtApis::GetSparseTensorIndicesTypeShape,
     &OrtApis::GetSparseTensorIndices,
+    &OrtApis::SessionOptionsAppendExecutionProvider_MIGraphX1,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
