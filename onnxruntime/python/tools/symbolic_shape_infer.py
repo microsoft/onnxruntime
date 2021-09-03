@@ -810,34 +810,61 @@ class SymbolicShapeInference:
                                           get_shape_from_sympy_shape(sympy_shape)))
 
     def _infer_Einsum(self, node):
-        shape_0 = self._get_sympy_shape(node, 0)
-        shape_1 = self._get_sympy_shape(node, 1)
-        shape_0_len = len(shape_0)
-        shape_1_len = len(shape_1)
+        # ref:https://github.com/onnx/onnx/blob/623dfaa0151b2e4ce49779c3ec31cbd78c592b80/onnx/defs/math/defs.cc#L3275
+        equation = get_attribute(node, 'equation') 
+        equation = equation.replace(b' ', b'')
+        mid_index = equation.find(b'->')
+        left_equation = equation[:mid_index] if mid_index != -1 else equation
 
-        equation = get_attribute(node, 'equation')  # e.g b'abc,cde->abde'
-
-        assert (equation[shape_0_len] == 44)  # ','
-        assert (equation[shape_0_len + shape_1_len + 1] == 45 and equation[shape_0_len + shape_1_len + 2] == 62)  # '->'
-
+        num_operands = 0
+        num_ellipsis = 0
+        num_ellipsis_indices = 0
+ 
         letter_to_dim = {}
-        for i in range(shape_0_len):
-            letter_to_dim[equation[i]] = shape_0[i]
 
-        offset = shape_0_len + 1
-        for i in range(shape_1_len):
-            letter = equation[i + offset]
-            dim = shape_1[i]
-            if letter not in letter_to_dim.keys():
-                letter_to_dim[letter] = dim
-            elif type(dim) != sympy.Symbol:
-                letter_to_dim[letter] = dim
+        terms = left_equation.split(b',')
+        for term in terms:
+            ellipsis_index = term.find(b'...')
+            shape = self._get_sympy_shape(node, num_operands)
+            rank = len(shape)
+            if ellipsis_index != -1:
+                if num_ellipsis == 0:
+                    num_ellipsis_indices = rank - len(term) + 3
+                num_ellipsis = num_ellipsis + 1
+            for i in range(1, rank + 1):
+                letter = term[-i]
+                if letter != b'.':
+                    dim = shape[-i]
+                    if letter not in letter_to_dim.keys():
+                        letter_to_dim[letter] = dim
+                    elif type(dim) != sympy.Symbol:
+                        letter_to_dim[letter] = dim
+            num_operands =  num_operands + 1     
 
         new_sympy_shape = []
-        offset = shape_0_len + shape_1_len + 3
-        while offset < len(equation):
-            new_sympy_shape.append(letter_to_dim[equation[offset]])
-            offset = offset + 1
+        from collections import OrderedDict
+        num_letter_occurrences = OrderedDict()
+        if mid_index != -1:
+            right_equation = equation[mid_index + 2:]
+            right_ellipsis_index = right_equation.find(b'...')
+            if right_ellipsis_index != -1:
+                for i in range(num_ellipsis_indices):
+                    new_sympy_shape.append(shape[i])
+            for c in right_equation:
+                if c != b'.':
+                    new_sympy_shape.append(letter_to_dim[c])
+        else:
+            for i in range(num_ellipsis_indices):
+                new_sympy_shape.append(shape[i])
+            for c in left_equation:
+                if c != b',' and c != b'.':
+                    if c in num_letter_occurrences:
+                        num_letter_occurrences[c] = num_letter_occurrences[c] + 1
+                    else:
+                        num_letter_occurrences[c] = 1
+            for key, value in num_letter_occurrences.items():
+                if value == 1:
+                    new_sympy_shape.append(letter_to_dim[key])
 
         output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
         vi = self.known_vi_[node.output[0]]
