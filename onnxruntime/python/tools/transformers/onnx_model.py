@@ -698,13 +698,9 @@ class OnnxModel:
         Args:
             outputs (list): a list of graph outputs to retain. If it is None, all graph outputs will be kept.
         """
-
-        for node in self.model.graph.node:
-            # Some operators with inner graph in attributes like 'body' 'else_branch' or 'then_branch'
-            if node.op_type in ['Loop', 'Scan', 'If']:
-                # TODO: handle inner graph
-                logger.debug(f"Skip prune_graph since graph has operator: {node.op_type}")
-                return
+        if len(self.graphs()) > 1:
+            logger.debug(f"Skip prune_graph since graph has subgraph")
+            return
 
         if outputs is None:
             outputs = [output.name for output in self.model.graph.output]
