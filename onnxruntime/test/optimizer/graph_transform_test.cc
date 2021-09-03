@@ -1272,8 +1272,6 @@ TEST_F(GraphTransformationTests, GemmTransposeFusion2OutputsFromTransposeTo2Gemm
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
-  Model::Save(*p_model, "./test.onnx");
-
   op_to_count = CountOpsInGraph(graph);
   ASSERT_EQ(op_to_count["Transpose"], 1);
   ASSERT_EQ(op_to_count["Gemm"], 2);
