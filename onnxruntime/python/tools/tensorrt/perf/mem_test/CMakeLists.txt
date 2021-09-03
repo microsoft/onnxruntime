@@ -8,8 +8,8 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include_directories( 
-	/workspace/onnxruntime/include/onnxruntime/core/session/
-	/workspace/onnxruntime/include/onnxruntime/core/providers/tensorrt/
+	/code/onnxruntime/include/onnxruntime/core/session/
+	/code/onnxruntime/include/onnxruntime/core/providers/tensorrt/
 )
 
 # Note for this to work with CUDA run the binary with this env var set: ASAN_OPTIONS=protect_shadow_gap=0
