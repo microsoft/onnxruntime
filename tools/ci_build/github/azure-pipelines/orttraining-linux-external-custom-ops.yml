@@ -72,6 +72,16 @@ jobs:
       workingDirectory: $(Build.BinariesDirectory)
 
   - task: CmdLine@2
+    displayName: 'Build and Install custom ops python package'
+    inputs:
+      script: |
+         docker exec -t \
+          -w  /build/Debug/external_custom_ops \
+          external_custom_ops_container \
+          /opt/python/cp38-cp38/bin/python3 -m pip install .
+      workingDirectory: $(Build.BinariesDirectory)
+
+  - task: CmdLine@2
     displayName: 'Test using external custom op module'
     inputs:
       script: |
