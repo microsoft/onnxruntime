@@ -19,6 +19,7 @@ constexpr const char* kCudnnConvAlgoSearch = "cudnn_conv_algo_search";
 constexpr const char* kDoCopyInDefaultStream = "do_copy_in_default_stream";
 constexpr const char* kGpuExternalAlloc = "gpu_external_alloc";
 constexpr const char* kGpuExternalFree = "gpu_external_free";
+constexpr const char* kGpuExternalEmptyCache = "gpu_external_empty_cache";
 }  // namespace provider_option_names
 }  // namespace rocm
 
@@ -39,6 +40,7 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
   ROCMExecutionProviderInfo info{};
   void* alloc = nullptr;
   void* free = nullptr;
+  void* empty_cache = nullptr;
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
           .AddValueParser(
@@ -71,6 +73,14 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
                 free = reinterpret_cast<void*>(address);
                 return Status::OK();
               })
+          .AddValueParser(
+              rocm::provider_option_names::kGpuExternalEmptyCache,
+              [&empty_cache](const std::string& value_str) -> Status {
+                size_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                empty_cache = reinterpret_cast<void*>(address);
+                return Status::OK();
+              })
           .AddAssignmentToReference(rocm::provider_option_names::kMemLimit, info.gpu_mem_limit)
           .AddAssignmentToEnumReference(
               rocm::provider_option_names::kArenaExtendStrategy,
@@ -81,7 +91,7 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
           .AddAssignmentToReference(rocm::provider_option_names::kDoCopyInDefaultStream, info.do_copy_in_default_stream)
           .Parse(options));
 
-  ROCMExecutionProviderExternalAllocatorInfo alloc_info{alloc, free};
+  ROCMExecutionProviderExternalAllocatorInfo alloc_info{alloc, free, empty_cache};
   info.external_allocator_info = alloc_info;
   return info;
 }
@@ -92,6 +102,7 @@ ProviderOptions ROCMExecutionProviderInfo::ToProviderOptions(const ROCMExecution
       {rocm::provider_option_names::kMemLimit, MakeStringWithClassicLocale(info.gpu_mem_limit)},
       {rocm::provider_option_names::kGpuExternalAlloc, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.alloc))},
       {rocm::provider_option_names::kGpuExternalFree, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.free))},
+      {rocm::provider_option_names::kGpuExternalEmptyCache, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.empty_cache))},
       {rocm::provider_option_names::kArenaExtendStrategy,
        EnumToName(*arena_extend_strategy_mapping, info.arena_extend_strategy)},
       {rocm::provider_option_names::kCudnnConvAlgoSearch,

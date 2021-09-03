@@ -110,28 +110,25 @@ Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_verbose,
   for (const auto& node : graph.Nodes()) {
     const auto& node_provider = node.GetExecutionProviderType();
     if (node_provider.empty()) {
-      std::ostringstream oss;
-      oss << "Could not find an implementation for the node ";
-      if (!node.Name().empty()) {
-        oss << node.Name() << ":";
-      }
-      oss << node.OpType() << "(" << node.SinceVersion() << ")";
-
-      return Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED, oss.str());
-    } else {
-      if (is_verbose) {  // TODO: should we disable this if the number of nodes are above a certain threshold?
-        std::string node_str = node.OpType();
-        node_str += " (";
-        node_str += node.Name();
-        node_str += ")";
-        node_placements[node_provider].push_back(node_str);
-      }
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "Could not find an implementation for ",
+                             node.OpType(), "(", node.SinceVersion(), ") node with name '", node.Name(), "'");
     }
+
+#if !defined(ORT_MINIMAL_BUILD)
+    if (is_verbose) {  // TODO: should we disable this if the number of nodes is above a certain threshold?
+      const std::string node_str = node.OpType() + " (" + node.Name() + ")";
+      node_placements[node_provider].push_back(node_str);
+    }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
     // recurse into subgraphs
     const auto subgraphs = node.GetSubgraphs();
     for (const auto& subgraph : subgraphs) {
-      ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEpImpl(*subgraph, is_verbose, node_placements));
+      const auto status = VerifyEachNodeIsAssignedToAnEpImpl(*subgraph, is_verbose, node_placements);
+      if (!status.IsOK()) {
+        return status;
+      }
     }
   }
 
@@ -140,10 +137,16 @@ Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_verbose,
 
 Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger& logger) {
   NodePlacementMap node_placements{};
+#if !defined(ORT_MINIMAL_BUILD)
   const bool is_verbose_mode = logger.GetSeverity() == logging::Severity::kVERBOSE;
+#else
+  ORT_UNUSED_PARAMETER(logger);
+  const bool is_verbose_mode = false;
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
-  ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEpImpl(graph, is_verbose_mode, node_placements));
+  const auto status = VerifyEachNodeIsAssignedToAnEpImpl(graph, is_verbose_mode, node_placements);
 
+#if !defined(ORT_MINIMAL_BUILD)
   // print placement info
   if (is_verbose_mode) {
     LOGS(logger, VERBOSE) << "Node placements";
@@ -158,8 +161,9 @@ Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger&
       }
     }
   }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
-  return Status::OK();
+  return status;
 }
 }  // namespace
 
@@ -1187,44 +1191,29 @@ Status TransformGraphForOrtFormatModel(onnxruntime::Graph& graph, const logging:
 
 Status AssignNodesToEpsFromHashesImpl(Graph& graph, const fbs::SessionState& fbs_session_state,
                                       const KernelRegistryManager& kernel_registry_manager) {
-  const auto* const fbs_sub_graph_session_states = fbs_session_state.sub_graph_session_states();
-  ORT_RETURN_IF(nullptr == fbs_sub_graph_session_states,
-                "SessionState for subgraphs is null. Invalid ORT format model.");
+  using experimental::utils::FbsSessionStateViewer;
+  const FbsSessionStateViewer fbs_session_state_viewer{fbs_session_state};
+  ORT_RETURN_IF_ERROR(fbs_session_state_viewer.Validate());
 
   for (auto& node : graph.Nodes()) {
     for (auto& [attribute, subgraph] : node.GetAttributeNameToMutableSubgraphMap()) {
-      const auto key = experimental::utils::GetSubGraphId(node.Index(), attribute);
-      const auto* const fbs_sub_graph_ss = fbs_sub_graph_session_states->LookupByKey(key.c_str());
-      ORT_RETURN_IF(nullptr == fbs_sub_graph_ss,
-                    "Subgraph SessionState entry for ", key, " is missing. Invalid ORT format model.");
+      const fbs::SessionState* fbs_subgraph_session_state;
+      ORT_RETURN_IF_ERROR(fbs_session_state_viewer.GetSubgraphSessionState(node.Index(), attribute,
+                                                                           fbs_subgraph_session_state));
 
-      const auto* const fbs_sub_session_state = fbs_sub_graph_ss->session_state();
-      ORT_RETURN_IF(nullptr == fbs_sub_session_state,
-                    "Subgraph SessionState for ", key, " is null. Invalid ORT format model.");
-
-      ORT_RETURN_IF_ERROR(AssignNodesToEpsFromHashesImpl(*subgraph, *fbs_sub_session_state, kernel_registry_manager));
+      ORT_RETURN_IF_ERROR(AssignNodesToEpsFromHashesImpl(*subgraph, *fbs_subgraph_session_state,
+                                                         kernel_registry_manager));
     }
   }
 
-  const auto* const fbs_kcis = fbs_session_state.kernels();
-  ORT_RETURN_IF(nullptr == fbs_kcis, "Kernel create info is null. Invalid ORT format model.");
-  const auto* const node_indices = fbs_kcis->node_indices();
-  const auto* const kernel_def_hashes = fbs_kcis->kernel_def_hashes();
-  ORT_RETURN_IF(nullptr == node_indices, "Kernel create info node indices are null. Invalid ORT format model.");
-  ORT_RETURN_IF(nullptr == kernel_def_hashes, "Kernel create info hashes are null. Invalid ORT format model.");
-  ORT_RETURN_IF_NOT(node_indices->size() == kernel_def_hashes->size(),
-                    "Size mismatch for kernel create info node indexes and hashes. Invalid ORT format model.",
-                    node_indices->size(), " != ", kernel_def_hashes->size());
-
-  for (flatbuffers::uoffset_t i = 0; i < node_indices->size(); ++i) {
-    const auto node_idx = node_indices->Get(i);
-    const auto kernel_hash = kernel_def_hashes->Get(i);
-    Node* node = graph.GetNode(node_idx);
+  for (FbsSessionStateViewer::Index i = 0, end = fbs_session_state_viewer.GetNumNodeKernelInfos(); i < end; ++i) {
+    const auto node_kernel_info = fbs_session_state_viewer.GetNodeKernelInfo(i);
+    Node* node = graph.GetNode(node_kernel_info.node_index);
     if (!node || !node->GetExecutionProviderType().empty()) continue;
 
     const KernelCreateInfo* kci = nullptr;
-    ORT_RETURN_IF_NOT(kernel_registry_manager.SearchKernelRegistriesByHash(kernel_hash, &kci),
-                      "Failed to find kernel def hash (", kernel_hash, ") in kernel registries for ",
+    ORT_RETURN_IF_NOT(kernel_registry_manager.SearchKernelRegistriesByHash(node_kernel_info.kernel_def_hash, &kci),
+                      "Failed to find kernel def hash (", node_kernel_info.kernel_def_hash, ") in kernel registries for ",
                       node->OpType(), "(", node->SinceVersion(), ") node with name '", node->Name(), "'.");
     node->SetExecutionProviderType(kci->kernel_def->Provider());
   }

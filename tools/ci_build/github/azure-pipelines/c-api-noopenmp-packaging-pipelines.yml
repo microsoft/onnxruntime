@@ -458,16 +458,17 @@ jobs:
       arguments: '--configuration RelWithDebInfo -t:CreatePackage -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-  - task: BatchScript@1
-    displayName: 'Bundle Native NuGet and other binaries'
+  - task: CopyFiles@2
+    displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
     inputs:
-      filename: $(Build.SourcesDirectory)\tools\ci_build\github\windows\bundle_dlls_gpu_nuget.bat
-      workingFolder: $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+      Contents: '*.snupkg'
+      TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
   - task: CopyFiles@2
     displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
     inputs:
-      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts'
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
       Contents: '*.nupkg'
       TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
@@ -497,12 +498,6 @@ jobs:
       artifactName: 'drop-signed-nuget-GPU'
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
-  - powershell: |
-     $counter = 0
-     Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.nupkg | foreach {7z x -y -o$counter $_.fullname;$counter++}
-    workingDirectory: '$(Build.ArtifactStagingDirectory)'
-    displayName: 'Unzip files to sanitize the PE files'
-
   - task: DotNetCoreCLI@2
     displayName: 'Build C#'
     inputs:
@@ -512,10 +507,6 @@ jobs:
       configuration: RelWithDebInfo
       arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-  #TODO: enable binskim
-  #- task: BinSkim@4
-  #  displayName: 'Run BinSkim'
 
   - task: RoslynAnalyzers@2
     displayName: 'Run Roslyn Analyzers'

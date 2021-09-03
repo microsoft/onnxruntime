@@ -323,8 +323,10 @@ if enable_training:
                      'onnxruntime.training.ortmodule.experimental.json_config',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions.aten_op_executor',
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions.torch_interop_utils',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions.torch_gpu_allocator'])
     package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.aten_op_executor'] = ['*.cc']
+    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.torch_interop_utils'] = ['*.cc']
     package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.torch_gpu_allocator'] = ['*.cc']
     requirements_file = "requirements-training.txt"
     # with training, we want to follow this naming convention:
@@ -338,36 +340,12 @@ if enable_training:
 
     # we want put default training packages to pypi. pypi does not accept package with a local version.
     if not default_training_package_device or nightly_build:
-        def get_torch_version():
-            try:
-                import torch
-                torch_version = torch.__version__
-                torch_version_plus_pos = torch_version.find('+')
-                if torch_version_plus_pos != -1:
-                    torch_version = torch_version[:torch_version_plus_pos]
-                torch_version = torch_version.replace('.', '')
-                return torch_version
-            except ImportError as error:
-                print("Error importing torch to get torch version:")
-                print(error)
-                return None
-
-        torch_version = get_torch_version()
         if cuda_version:
-            # removing '.' to make local Cuda version number in the same form as Pytorch.
-            if torch_version:
-                local_version = '+torch' + torch_version + '.'\
-                    + 'cu' + cuda_version.replace('.', '')
-            else:
-                local_version = '+cu' + cuda_version.replace('.', '')
-        elif rocm_version:
             # removing '.' to make Cuda version number in the same form as Pytorch.
-            rocm_version = rocm_version.replace('.', '')
-            if torch_version:
-                local_version = '+torch' + torch_version + '.'\
-                    + 'rocm' + rocm_version
-            else:
-                local_version = '+rocm' + rocm_version
+            local_version = '+cu' + cuda_version.replace('.', '')
+        elif rocm_version:
+            # removing '.' to make Rocm version number in the same form as Pytorch.
+            local_version = '+rocm' + rocm_version.replace('.', '')
         else:
             # cpu version for documentation
             local_version = '+cpu'

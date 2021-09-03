@@ -951,6 +951,14 @@ std::vector<gsl::not_null<const Graph*>> Node::GetSubgraphs() const {
   return subgraphs;
 }
 
+std::unordered_map<std::string, gsl::not_null<const Graph*>> Node::GetAttributeNameToSubgraphMap() const {
+  std::unordered_map<std::string, gsl::not_null<const Graph*>> attr_to_subgraphs;
+  for (auto& entry : attr_to_subgraph_map_) {
+    attr_to_subgraphs.insert({entry.first, entry.second});
+  }
+  return attr_to_subgraphs;
+}
+
 void Node::ForEachDef(std::function<void(const onnxruntime::NodeArg&, bool is_input)> func,
                       bool include_missing_optional_defs) const {
   for (const auto* arg : InputDefs()) {

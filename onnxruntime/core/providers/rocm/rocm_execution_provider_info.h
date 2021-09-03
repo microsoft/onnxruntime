@@ -15,15 +15,18 @@ namespace onnxruntime {
 struct ROCMExecutionProviderExternalAllocatorInfo {
   void* alloc{nullptr};
   void* free{nullptr};
+  void* empty_cache{nullptr};
 
   ROCMExecutionProviderExternalAllocatorInfo() {
     alloc = nullptr;
     free = nullptr;
+    empty_cache = nullptr;
   }
 
-  ROCMExecutionProviderExternalAllocatorInfo(void* a, void* f) {
+  ROCMExecutionProviderExternalAllocatorInfo(void* a, void* f, void* e) {
     alloc = a;
     free = f;
+    empty_cache = e;
   }
 
   bool UseExternalAllocator() const {
@@ -41,7 +44,7 @@ struct ROCMExecutionProviderInfo {
   void* user_compute_stream{nullptr};
   // The following OrtArenaCfg instance only characterizes the behavior of the default memory
   // arena allocator and not any other auxiliary allocator that may also be part of the ROCM EP.
-  // For example, auxiliary allocators `CUDA_PINNED` and `ROCM_CPU` will not be configured using this
+  // For example, auxiliary allocators `CUDA_PINNED` and `CUDA_CPU` will not be configured using this
   // arena config.
   OrtArenaCfg* default_memory_arena_cfg{nullptr};
   ROCMExecutionProviderExternalAllocatorInfo external_allocator_info{};

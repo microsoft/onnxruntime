@@ -1436,6 +1436,9 @@ def run_training_python_frontend_tests(cwd):
 
     run_subprocess([
         sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_checkpoint_functions.py'], cwd=cwd)
+    # Not technically training related, but it needs torch to be installed.
+    run_subprocess([
+        sys.executable, '-m', 'pytest', '-sv', 'test_pytorch_export_contrib_ops.py'], cwd=cwd)
 
 
 def run_training_python_frontend_e2e_tests(cwd):
@@ -2013,6 +2016,10 @@ def main():
     # Disabling unit tests for VAD-F as FPGA only supports
     # models with NCHW layout
     if args.use_openvino == "VAD-F_FP32":
+        args.test = False
+
+    # Disabling unit tests for GPU and MYRIAD on nuget creation
+    if args.use_openvino != "CPU_FP32" and args.build_nuget:
         args.test = False
 
     configs = set(args.config)

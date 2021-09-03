@@ -10,6 +10,7 @@ from torch.utils.dlpack import from_dlpack, to_dlpack
 
 from ._fallback import _FallbackManager, ORTModuleFallbackException, ORTModuleIOError, wrap_exception
 
+from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_interop_utils
 
 def wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace_flag, training_mode_flag, arg):
     '''
@@ -76,30 +77,33 @@ def call_python_forward_function(
             return arg
 
     def wrap_all_outputs(result, training_mode_flag):
-        def extract_context(result):
+        # This is mainly to hold grad_fn references by registering it into our PyNodeSharedPointerPool.
+        def register_context(result):
             # Search for context among all outputs.
             ctx = None
+            first_tensor_output = None
             for arg in result:
                 if not isinstance(arg, torch.Tensor) or not hasattr(arg, 'grad_fn'):
                     continue
                 # Use the first context we see because all of arg's
                 # share the same one.
                 ctx = arg.grad_fn
+                first_tensor_output = arg
                 break
             if training_mode_flag:
                 # Must extract one valid context from result tensors.
                 assert ctx is not None
+                torch_interop_utils.register_grad_fn(id(ctx), first_tensor_output)
             else:
                 # Context must not present under non-training mode.
                 assert ctx is None
-
             return ctx
 
         if isinstance(result, torch.Tensor):
-            ctx = extract_context([result])
+            ctx = register_context([result])
             return [ctx, to_dlpack(result)]
         elif isinstance(result, tuple) or isinstance(result, list):
-            ctx = extract_context(result)
+            ctx = register_context(result)
             wrapped = [ctx]
             wrapped.extend(list(to_dlpack(value) if value is not None else None for value in result))
             # Inside the returned list, first element is context and the rest
@@ -176,6 +180,9 @@ def call_python_backward_function(
 
         # Extract results as DLPack tensor list.
         wrapped_returned_args = wrap_all_outputs(result)
+
+        ctx = wrapped_args[0]
+        torch_interop_utils.unregister_grad_fn(id(ctx))
 
         return tuple(wrapped_returned_args)
     except Exception as e:

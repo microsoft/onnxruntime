@@ -381,6 +381,12 @@ class Node {
     return attr_to_subgraph_map_;
   }
 
+  /** Gets a map of attribute name to the const Graph instances for all subgraphs of the Node.
+  @returns Map of the attribute name that defines the subgraph to the subgraph's Graph instance.
+           nullptr if the Node has no subgraphs.
+  */
+  std::unordered_map<std::string, gsl::not_null<const Graph*>> GetAttributeNameToSubgraphMap() const;
+
   /** Gets the execution ProviderType that this node will be executed by. */
   ProviderType GetExecutionProviderType() const noexcept { return execution_provider_type_; }
 
