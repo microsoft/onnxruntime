@@ -56,6 +56,7 @@ ONNX_OPERATOR_KERNEL_EX(
     11,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("S", DataTypeImpl::AllFixedSizeSequenceTensorTypes()),
     ConcatFromSequence);
 
