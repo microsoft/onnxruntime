@@ -255,7 +255,7 @@ static inline bool CallSliceImplIfEnabled(OpKernelContext* ctx,
                                           SliceOp::PrepareForComputeMetadata& compute_metadata,
                                           Status& status) {
   constexpr bool enabled = utils::HasTypeWithSameSize<EnabledTypes, T>();
-  if (enabled) {
+  if constexpr (enabled) {
     status = SliceImpl<T>(ctx, input_tensor, compute_metadata);
   }
 
