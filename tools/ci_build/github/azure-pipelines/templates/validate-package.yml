@@ -1,8 +1,10 @@
 parameters:
-  NugetPath: ''
   PlatformsSupported: ''
   VerifyNugetSigning: ''
-  NugetPackage: '*'
+  PackageType: ''
+  PackageName: ''
+  PackagePath: ''
+  workingDirectory: "$(Build.BinariesDirectory)"
 
 steps:
     - task: UsePythonVersion@0
@@ -11,8 +13,8 @@ steps:
         versionSpec: 3.7
 
     - task: PythonScript@0
-      displayName: 'Validate Nuget'
+      displayName: 'Validate Package'
       inputs:
-        scriptPath: '$(Build.SourcesDirectory)\tools\nuget\validate_nuget.py'
-        arguments: '--nuget_package ${{parameters.NugetPackage}} --nuget_path ${{parameters.NugetPath}} --platforms_supported ${{parameters.PlatformsSupported}} --verify_nuget_signing ${{parameters.VerifyNugetSigning}}'
-        workingDirectory: "$(Build.BinariesDirectory)"
+        scriptPath: '$(Build.SourcesDirectory)/tools/nuget/validate_package.py'
+        arguments: '--package_type ${{parameters.PackageType}} --package_name ${{parameters.PackageName}} --package_path ${{parameters.PackagePath}} --platforms_supported ${{parameters.PlatformsSupported}} --verify_nuget_signing ${{parameters.VerifyNugetSigning}}'
+        workingDirectory: ${{parameters.workingDirectory}} 
