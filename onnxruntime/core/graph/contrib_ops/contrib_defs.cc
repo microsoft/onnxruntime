@@ -3194,6 +3194,30 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
         updateOutputShape(ctx, 0, {N, C, H_out, W_out});
       });
 
+  static const char* SparseDecomposeToDense_doc = R"DOC(
+    This is a utility op that decomposes a Sparse Tensor in COO format to three dense tensors (dense_shape, values, indices).)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SparseDecomposeToDense)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "SparseCooInput", "A Sparse Tensor in COO format.", "T")
+      .Output(0, "DenseShape", "A 1-D tensor that contains a dense shape of the original dense tensor.", "T1")
+      .Output(1, "Values", "A dense tensor that contains values.", "T2")
+      .Output(2, "Indices", "A dense tensor that contains either 1-D (common case) or 2-D COO indices.", "T1")
+      .TypeConstraint("T", numeric_sparse_tensor_types_except_half(), "Numeric sparse types")
+      .TypeConstraint("T1", {"tensor(int64)"}, "Index type")
+      .TypeConstraint("T2", OpSchema::all_tensor_types_with_bfloat(), "All tensor types.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        auto input_type = ctx.getInputType(0);
+        if (nullptr == input_type) {
+          fail_type_inference("Input 0 expected to have type but instead is null");
+        }
+        auto element_type = getTensorElementType(*input_type);
+        propagateElemTypeFromDtypeToOutput(ctx, TensorProto_DataType_INT64, 0); // dense shape
+        propagateElemTypeFromDtypeToOutput(ctx, element_type, 1); // values
+        propagateElemTypeFromDtypeToOutput(ctx, TensorProto_DataType_INT64, 2); // indices
+      });
+
 #ifndef _OPSCHEMA_LIB_
   // Register the NCHWc schemas if supported by the platform.
   if (MlasNchwcGetBlockSize() > 1) {
