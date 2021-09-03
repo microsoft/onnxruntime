@@ -3,6 +3,7 @@ from onnx import helper
 from onnx import TensorProto
 from onnx import OperatorSetIdProto
 import itertools
+import numpy as np
 
 onnxdomain = OperatorSetIdProto()
 onnxdomain.version = 12
@@ -379,6 +380,26 @@ def gen_bool_to_float_cast(model_path):
 
     save(model_path, [less1, cast1, cast2, cast3, add1], [X1, X2, X3], [Y], [])
 
+
+def gen_one_input_one_output_test(op, model_path, axes_attribute=False):
+    X = helper.make_tensor_value_info('x', TensorProto.FLOAT16, [2, 2])
+    output_shape = [2, 2]
+    if (op=="Unsqueeze"):
+        output_shape.append(1)
+    Y = helper.make_tensor_value_info('y', TensorProto.FLOAT16, output_shape)
+    node_inputs=[]
+    graph_inputs=[X]
+    cast1 = helper.make_node('Cast', ['x'], ['cast1'], name='cast1', to=TensorProto.FLOAT)
+    node_inputs.insert(0, 'cast1')
+    if axes_attribute:
+        node = helper.make_node(op, node_inputs, ['op_output'], name=op+str(1), axes=np.array([2]).astype(np.int64))
+    else:
+        node = helper.make_node(op, node_inputs, ['op_output'], name=op+str(1))
+    cast2 = helper.make_node('Cast', ['op_output'], [
+                             'y'], name='cast2', to=TensorProto.FLOAT16)
+    save(model_path, [cast1, node, cast2], graph_inputs, [Y], [])
+
+
 for (transpose_inputs, transpose_product, cast_inputs, cast_product, insert_add, cast_sum, cast_input2) in list(itertools.product([False, True], repeat=7)):
     if not insert_add and (cast_sum or cast_input2):
         continue
@@ -400,3 +421,5 @@ for (transpose, transpose_before_cast, second_matmul, add_products, cast_inputs)
 
 gen_bool_to_float16_cast("negative_test_case_bool_fp16_cast")
 gen_bool_to_float_cast("negative_test_case_bool_fp_cast")
+gen_one_input_one_output_test("Squeeze", "squeeze_cast_propagation_test")
+gen_one_input_one_output_test("Unsqueeze", "unsqueeze_cast_propagation_test", True)
