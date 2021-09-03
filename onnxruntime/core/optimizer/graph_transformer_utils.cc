@@ -39,6 +39,7 @@
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
+#include "core/optimizer/shape_optimization.h"
 #include "core/optimizer/unsqueeze_elimination.h"
 #include "core/optimizer/qdq_transformer/qdq_propagation.h"
 #include "core/optimizer/qdq_transformer/qdq_s8_to_u8.h"
@@ -78,6 +79,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<ConvMulFusion>());
       rules.push_back(std::make_unique<ConvBNFusion>());
       rules.push_back(std::make_unique<ReluQuantFusion>());
+      rules.push_back(std::make_unique<ShapeOptimization>());
       break;
 
     case TransformerLevel::Level2:

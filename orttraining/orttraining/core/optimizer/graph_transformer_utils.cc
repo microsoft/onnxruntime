@@ -40,6 +40,7 @@
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
+#include "core/optimizer/shape_optimization.h"
 #include "core/optimizer/unsqueeze_elimination.h"
 #include "core/optimizer/isinf_reducesum_fusion.h"
 #include "core/optimizer/propagate_cast_ops.h"
@@ -86,6 +87,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       rule_transformer->Register(std::make_unique<GemmTransposeFusion>());
       rule_transformer->Register(std::make_unique<NotWhereFusion>());
       rule_transformer->Register(std::make_unique<InsertSoftmaxCrossEntropyLossOutput>());
+      rule_transformer->Register(std::make_unique<ShapeOptimization>());
 
       // Remove duplicate nodes. Must be applied before any recompute transformations.
       transformers.emplace_back(std::make_unique<CommonSubexpressionEliminationApplyOnce>(compatible_eps));
