@@ -32,12 +32,6 @@ class ShapeOptimization : public RewriteRule {
     return {"Shape"};
   }
 
-  // To support additional op patterns, the new op must be added to this list.
-  std::vector<std::string> PreviousOpTypes() const noexcept {
-    return {"Transpose", "Cast"};
-  }
-
-
  private:
   bool SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const override;
 
