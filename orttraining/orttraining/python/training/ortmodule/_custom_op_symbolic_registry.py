@@ -57,6 +57,20 @@ def nll_loss(g, self, target, weight, reduction, ignore_index):
     return output
 
 
+@register_symbolic('ctc_loss')
+@parse_args('v', 'v', 'is', 'is', 'i', 'i', 'b')
+def ctc_loss(g, self, log_probs, targets, input_lengths, target_lengths, blank, reduction, zero_infinity):
+    # reduction: 0->none, 1->mean, 2->sum
+    reduction = sym_help._maybe_get_const(reduction, 'i')
+    reduction_vals = ['none', 'mean', 'sum']
+    reduction = reduction_vals[reduction]
+    output = g.op("com.microsoft::CTCLoss",
+                    self, log_probs, targets, input_lengths, target_lengths,
+                    blank=blank, reduction_s=reduction, zero_infinity=zero_infinity)
+    output.setType(self.type())
+    return output
+
+
 @register_symbolic('embedding')
 def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
     output = g.op("com.microsoft::ATenOp", weight, indices, padding_idx, scale_grad_by_freq, sparse,

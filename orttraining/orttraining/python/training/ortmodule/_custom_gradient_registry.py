@@ -125,3 +125,11 @@ def adaptive_avg_pool2d_gradient():
         (('ATenOp', 'com.microsoft'), ['GO(0)', 'I(0)'], [
          'GI(0)'], {'name': {'value': 'aten::_adaptive_avg_pool2d_backward', 'dtype': 'string'}}),
     ]
+
+
+@register_gradient('com.microsoft', 'ATenOp', 'aten::ctc_loss', '')
+def ctc_loss():
+    return [
+        (('ATenOp', 'com.microsoft'), ['GO(0)', 'I(0)', 'I(1)', 'I(2)', 'I(3)', 'I(4)', 'I(5)', 'I(6)', 'I(7)'], [
+         'GI(0)'], {'name': {'value': 'aten::_ctc_loss_backward', 'dtype': 'string'}}),
+    ]

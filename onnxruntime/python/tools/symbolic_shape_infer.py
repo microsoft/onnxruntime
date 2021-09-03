@@ -160,9 +160,10 @@ class SymbolicShapeInference:
             'Shape': self._infer_Shape,
             'Size': self._infer_Size,
             'Slice': self._infer_Slice,
-            'SoftmaxCrossEntropyLoss': self._infer_SoftmaxCrossEntropyLoss,
-            'SoftmaxCrossEntropyLossInternal': self._infer_SoftmaxCrossEntropyLoss,
-            'NegativeLogLikelihoodLossInternal': self._infer_SoftmaxCrossEntropyLoss,
+            'SoftmaxCrossEntropyLoss': self._infer_Loss,
+            'SoftmaxCrossEntropyLossInternal': self._infer_Loss,
+            'NegativeLogLikelihoodLossInternal': self._infer_Loss,
+            'CTCLoss': self._infer_Loss,
             'Split': self._infer_Split,
             'SplitToSequence': self._infer_SplitToSequence,
             'Squeeze': self._infer_Squeeze,
@@ -1415,7 +1416,7 @@ class SymbolicShapeInference:
                                                   and len(input_sympy_data.shape) == 1):
                 self.sympy_data_[node.output[0]] = input_sympy_data[starts[0]:ends[0]:steps[0]]
 
-    def _infer_SoftmaxCrossEntropyLoss(self, node):
+    def _infer_Loss(self, node):
         vi = self.known_vi_[node.output[0]]
         elem_type = self.known_vi_[node.input[0]].type.tensor_type.elem_type
         vi.type.tensor_type.elem_type = elem_type
