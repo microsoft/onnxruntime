@@ -1492,6 +1492,15 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
       }
     }
 
+    // Eliminate FP32 input casts and FP16 output casts
+    for (auto node_index : node_topology_list) {
+      Node* node = graph.GetNode(node_index);
+      if (nullptr != node &&
+          std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end()) {
+        local_modified |= RemoveInputOutputUpDownCasts(graph, node, removed_nodes, level_, logger);
+      }
+    }
+
     if ((strategy_ & GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill) !=
         GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::None) {
       // Propagate FP16 Casts from outputs to inputs
@@ -1509,15 +1518,6 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
         if (nullptr != node &&
             std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end()) {
           local_modified |= PropagateFP32CastsFromInputsToOutputs(graph, node, removed_nodes, level_, logger);
-        }
-      }
-
-      // Eliminate FP32 input casts and FP16 output casts
-      for (auto node_index : node_topology_list) {
-        Node* node = graph.GetNode(node_index);
-        if (nullptr != node &&
-            std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end()) {
-          local_modified |= RemoveInputOutputUpDownCasts(graph, node, removed_nodes, level_, logger);
         }
       }
 
