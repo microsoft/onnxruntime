@@ -8,10 +8,11 @@ from typing import List
 from onnx import GraphProto, ModelProto, TensorProto, ValueInfoProto, helper
 from onnx_model import OnnxModel
 from fusion_reshape import FusionReshape
+from fusion_shape import FusionShape
 from fusion_layernorm import FusionLayerNormalization, FusionLayerNormalizationTF
 from fusion_skiplayernorm import FusionSkipLayerNormalization, FusionBiasSkipLayerNormalization
 from fusion_embedlayer import FusionEmbedLayerNormalization
-from fusion_attention import FusionAttention, AttentionMask, AttentionMaskFormat
+from fusion_attention import FusionAttention, AttentionMask
 from fusion_gelu import FusionGelu
 from fusion_fastgelu import FusionFastGelu
 from fusion_biasgelu import FusionBiasGelu
@@ -72,6 +73,10 @@ class BertOnnxModel(OnnxModel):
 
     def fuse_reshape(self):
         fusion = FusionReshape(self)
+        fusion.apply()
+
+    def fuse_shape(self):
+        fusion = FusionShape(self)
         fusion.apply()
 
     def fuse_embed_layer(self):
@@ -313,6 +318,8 @@ class BertOnnxModel(OnnxModel):
                 self.attention_mask.set_mask_format(options.attention_mask_format)
             self.fuse_attention()
 
+        self.fuse_shape()
+
         if (options is None) or options.enable_embed_layer_norm:
             self.fuse_embed_layer()
 
@@ -340,7 +347,7 @@ class BertOnnxModel(OnnxModel):
         if add_dynamic_axes:
             self.use_dynamic_axes()
 
-        logger.info(f"opset verion: {self.model.opset_import[0].version}")
+        logger.info(f"opset verion: {self.get_opset_version()}")
 
     def get_fused_operator_statistics(self):
         """
