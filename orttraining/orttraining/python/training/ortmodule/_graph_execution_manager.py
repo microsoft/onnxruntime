@@ -164,6 +164,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_gpu_allocator
             self._torch_alloc = torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
             self._torch_free = torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
+            self._torch_empty_cache = torch_gpu_allocator.gpu_caching_allocator_empty_cache_address()
 
     def _validate_module_type(self, module):
         """Raises ORTModuleTorchModelException if the module is not a torch.nn.Module"""
@@ -230,12 +231,16 @@ class GraphExecutionManager(GraphExecutionInterface):
             providers = (["ROCMExecutionProvider"] if self.is_rocm_pytorch else [
                          "CUDAExecutionProvider"])
             providers.append("CPUExecutionProvider")
+            provider_option_map = {"device_id": str(self._device.index)}
+            if not self.is_rocm_pytorch:
+                # Set Conv algo search mode to HEURISTIC, which is same as PyTorch's default setting.
+                provider_option_map["cudnn_conv_algo_search"] = "HEURISTIC"
+                provider_option_map["cudnn_conv_use_max_workspace"] = "1"
             if self._use_external_gpu_allocator:
-                provider_options = [{"device_id": str(self._device.index),
-                                     "gpu_external_alloc": str(self._torch_alloc),
-                                     "gpu_external_free": str(self._torch_free)}, {}]
-            else:
-                provider_options = [{"device_id": str(self._device.index)}, {}]
+                provider_option_map["gpu_external_alloc"] = str(self._torch_alloc)
+                provider_option_map["gpu_external_free"] = str(self._torch_free)
+                provider_option_map["gpu_external_empty_cache"] = str(self._torch_empty_cache)
+            provider_options = [provider_option_map, {}]
         elif self._device.type == 'cpu':
             providers = ["CPUExecutionProvider"]
             provider_options = [{}]
