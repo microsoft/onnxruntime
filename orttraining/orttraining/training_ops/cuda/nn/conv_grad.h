@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include "core/common/common.h"
-#include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
 #include "core/providers/cuda/nn/conv.h"
@@ -12,15 +10,38 @@
 namespace onnxruntime {
 namespace cuda {
 
-struct ConvolutionArgs {
-  cudnnHandle_t handle;
+// cuDNN only takes 4D or 5D x tensor.
+constexpr int MAX_DIM = 3;
+
+struct ConvParams {
+  int8_t device_id;
   cudnnDataType_t data_type;
+  int input_size[2 + MAX_DIM];
+  uint8_t input_dim;
+  int weight_size[2 + MAX_DIM];
+  int padding[MAX_DIM * 2];
+  int stride[MAX_DIM];
+  int dilation[MAX_DIM];
+  int64_t groups;
+  int algo_mode;
+};
 
-  CudnnTensor i_desc, o_desc, b_desc;
+struct ConvArgs {
+  // Update needed if x or w's dims changed.
+  std::vector<int64_t> last_x_dims;
+  std::vector<int64_t> last_w_dims;
+
+  cudnnHandle_t handle;
+  ConvParams params;
+  CudnnTensor x_tensor, y_tensor, b_tensor;
   CudnnFilterDescriptor w_desc;
-  CudnnConvolutionDescriptor c_desc;
-
-  ConvolutionArgs() {}
+  CudnnConvolutionDescriptor conv_desc;
+  const void* x_data;
+  const void* w_data;
+  const void* dy_data;
+  void* dx_data;
+  void* dw_data;
+  void* db_data;
 };
 
 template <typename T>
@@ -39,19 +60,14 @@ class ConvGrad final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  protected:
-  mutable ConvolutionArgs args_;
-  Status PrepareArgs(const Tensor& input, const Tensor& output, const Tensor& weight, const Tensor* bias) const;
-
+  Status PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor& w, Tensor* dB, Tensor* dX, Tensor* dW) const;
+  mutable ConvArgs args_;
   ConvAttributes conv_attrs_;
 
-  // https://docs.nvidia.com/deeplearning/cudnn/archives/cudnn_742/cudnn-developer-guide/index.html#tensor_ops
-  static constexpr auto kDefaultConvBwdDataAlgo = CUDNN_CONVOLUTION_BWD_DATA_ALGO_1;
-  static constexpr auto kDefaultConvBwdFilterAlgo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1;
-
  private:
-  Status ComputeWeightGradient(Tensor* dW, const Tensor* dY, const Tensor* X) const;
-  Status ComputeInputGradient(Tensor* dX, const Tensor* dY, const Tensor* W) const;
-  Status ComputeBiasGradient(Tensor* dB, const Tensor* dY) const;
+  Status ComputeWeightGradient() const;
+  Status ComputeInputGradient() const;
+  Status ComputeBiasGradient() const;
 };
 
 }  // namespace cuda
