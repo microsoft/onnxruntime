@@ -43,7 +43,7 @@ jobs:
               --build_wheel \
               --enable_onnx_tests \
               --enable_transformers_tool_test \
-              --build_java --build_nodejs --update --build
+              --build_java --build_nodejs --update --build --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2

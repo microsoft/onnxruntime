@@ -10,7 +10,7 @@ from ._custom_gradient_registry import CustomGradientRegistry
 from .debug_options import DebugOptions
 from ._fallback import _FallbackManager, _FallbackPolicy, ORTModuleFallbackException, ORTModuleTorchModelException, wrap_exception
 from . import _FALLBACK_INIT_EXCEPTION, MINIMUM_RUNTIME_PYTORCH_VERSION_STR, ORTMODULE_FALLBACK_POLICY, ORTMODULE_FALLBACK_RETRY
-from onnxruntime.training import register_custom_ops_pytorch_exporter
+from onnxruntime.tools import pytorch_export_contrib_ops
 
 import functools
 import torch
@@ -71,7 +71,7 @@ class ORTModule(torch.nn.Module):
             super(ORTModule, self).__init__()
 
             # Support contrib OPs
-            register_custom_ops_pytorch_exporter.register_custom_op()
+            pytorch_export_contrib_ops.register()
             CustomOpSymbolicRegistry.register_all()
             CustomGradientRegistry.register_all()
 
