@@ -681,7 +681,30 @@ TEST_F(GraphTransformationTests, ShapeOptimizationCast) {
   ASSERT_TRUE(op_to_count["Cast"] == 2);  // can't remove Cast if it is graph output/ has additional consumers
 }
 
-#if defined(USE_CUDA) && !defined(DISABLE_CONTRIB_OPS)
+#ifndef DISABLE_CONTRIB_OPS
+
+TEST_F(GraphTransformationTests, ShapeOptimizationTranspose) {
+  auto model_uri = MODEL_FOLDER "fusion/shape_opt_transpose.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Shape"] == 4);
+  ASSERT_TRUE(op_to_count["Transpose"] == 4);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(std::make_unique<ShapeOptimization>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["com.microsoft.TransposeOfShape"] == 2);
+  ASSERT_TRUE(op_to_count["Shape"] == 2);
+  ASSERT_TRUE(op_to_count["Transpose"] == 2);  // can't remove Transpose if it is graph output/ has additional consumers
+}
+
+#if defined(USE_CUDA)
 // Conv->Add->Relu will be transformed to FusedConv
 TEST_F(GraphTransformationTests, FuseCudaConvAddRelu) {
   auto model_uri = MODEL_FOLDER "fusion/conv_add_relu.onnx";
@@ -742,7 +765,8 @@ TEST_F(GraphTransformationTests, FuseCudaConvAdd) {
   ASSERT_TRUE(op_to_count["Add"] == 1);  //Add remains, no transform applied to the graph
 }
 
-#endif
+#endif // USE_CUDA
+#endif // DISABLE_CONTRIB_OPS
 
 #ifndef DISABLE_CONTRIB_OPS
 TEST_F(GraphTransformationTests, FuseConvActivation) {

@@ -36,7 +36,32 @@ Status ShapeOptimization::Apply(Graph& graph, Node& shape_node, RewriteRuleEffec
     rule_effect = RewriteRuleEffect::kUpdatedCurrentNode;
 
   } else if (op_type == "Transpose") {
+#ifndef DISABLE_CONTRIB_OPS
+    auto& transpose_node = previous_node;
+    // add TransposeOfShape node
+    const std::vector<NodeArg*> new_input_defs{transpose_node.MutableInputDefs()[0]};
+    Node& fused_node = graph.AddNode(graph.GenerateNodeName("TransposeOfShape"),
+                                     "TransposeOfShape",
+                                     "fused transpose-shape subgraph ",
+                                     new_input_defs,
+                                     {}, {}, kMSDomain);
+    auto attributes = transpose_node.GetAttributes();
+    if (attributes.find("perm") != attributes.end()) {
+      auto perm = ONNX_NAMESPACE::RetrieveValues<int64_t>(attributes.at("perm"));
+      fused_node.AddAttribute("perm", perm);
+    }
+
+    // Assign provider to this new node. Provider should be same as the provider for old node.
+    fused_node.SetExecutionProviderType(shape_node.GetExecutionProviderType());
+
+    // move the output definition and edges from the mul_node to the div_node and delete the mul_node
+    graph_utils::FinalizeNodeFusion(graph, {transpose_node, shape_node}, fused_node);
+
+    rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
+
+#else
     rule_effect = RewriteRuleEffect::kNone;
+#endif
   } else {
     rule_effect = RewriteRuleEffect::kNone;
   }
