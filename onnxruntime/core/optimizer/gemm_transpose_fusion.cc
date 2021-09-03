@@ -32,7 +32,9 @@ Status GemmTransposeFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& m
       Node& A_node = *graph.GetNode(A_node_ptr->Index());
       transA = !transA;
       if (A_node.GetOutputEdgesCount() > 1) {
-        // remove the edge between the Transpose and Gemm nodes
+        // remove only the edge between the Transpose and Gemm nodes, the Transpose won't be removed 
+        // since it's still connected to other Gemm. When transformation for the last connected Gemm is
+        // being processed, it would fall into the else {} below to remove the Transpose node 
         int output_idx = graph_utils::GetNodeOutputIndexFromOutputName(A_node, gemm_node.MutableInputDefs()[0]->Name());
         graph.RemoveEdge(A_node.Index(), gemm_node.Index(), output_idx, 0);
       } else {
@@ -43,13 +45,11 @@ Status GemmTransposeFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& m
   }
   // check if input B is a Transpose
   if (B_node_ptr != nullptr && B_node_ptr->OpType() == "Transpose") {
-    // make sure all consumers are gemm nodes to avoid possible double transpose 
     std::vector<const Node*> gemm_nodes = graph_utils::FindChildrenByType(*B_node_ptr, "Gemm");
     if (gemm_nodes.size() == B_node_ptr->GetOutputEdgesCount()) {
       Node& B_node = *graph.GetNode(B_node_ptr->Index());
       transB = !transB;
       if (B_node.GetOutputEdgesCount() > 1) {
-        // remove the edge between the Transpose and Gemm nodes
         int output_idx = graph_utils::GetNodeOutputIndexFromOutputName(B_node, gemm_node.MutableInputDefs()[1]->Name());
         graph.RemoveEdge(B_node.Index(), gemm_node.Index(), output_idx, 1);
       } else {
