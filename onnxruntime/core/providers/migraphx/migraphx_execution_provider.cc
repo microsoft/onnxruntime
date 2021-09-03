@@ -1,21 +1,25 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License
 
-#include "core/framework/ortdevice.h"
+#include "core/providers/shared_library/provider_api.h"
+#include "core/session/onnxruntime_cxx_api.h"
+#include "core/common/safeint.h"
+// #include "core/framework/ortdevice.h"
 //#include "core/framework/provider_options.h"
 //#include "core/session/onnxruntime_c_api.h"
 
-#include "core/common/common.h"
-#include "core/common/logging/logging.h"
-#include "core/framework/compute_capability.h"
-#include "core/framework/allocatormgr.h"
-#include "core/framework/kernel_registry.h"
-#include "core/framework/memcpy.h"
-#include "core/graph/graph_viewer.h"
-#include "core/graph/model.h"
-#include "core/graph/graph_utils.h"
-#include "core/platform/env.h"
-#include "core/session/onnxruntime_cxx_api.h"
+
+// #include "core/common/common.h"
+// #include "core/common/logging/logging.h"
+// #include "core/framework/compute_capability.h"
+// #include "core/framework/allocatormgr.h"
+// #include "core/framework/kernel_registry.h"
+// #include "core/framework/memcpy.h"
+// #include "core/graph/graph_viewer.h"
+// #include "core/graph/model.h"
+// #include "core/graph/graph_utils.h"
+// #include "core/platform/env.h"
+
 #include "migraphx_call.h"
 #include "migraphx_execution_provider.h"
 #include "hip_allocator.h"
@@ -39,12 +43,27 @@
 
 namespace onnxruntime {
 
+class Memcpy final : public OpKernel {
+ public:
+  Memcpy(const OpKernelInfo& info) : OpKernel(info) {}
+
+  Status Compute(OpKernelContext* ctx) const override {
+    const auto* X = ctx->Input<Tensor>(0);
+    Tensor* Y = ctx->Output(0, X->Shape());
+    Status retval = Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
+    return retval;
+  }
+};
+
+template <typename T>
+KernelCreateInfo BuildKernelCreateInfo();
+
 ONNX_OPERATOR_KERNEL_EX(
     MemcpyFromHost,
     kOnnxDomain,
     1,
     kMIGraphXExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)
         .ExecQueueId(kHipStreamCopyIn)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
@@ -55,7 +74,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     1,
     kMIGraphXExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)
         .ExecQueueId(kHipStreamCopyOut)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
@@ -222,7 +241,8 @@ static bool can_eval_shape_general(const Graph& graph, const Node* node, const l
   auto inputs = node->InputDefs();
   for (std::size_t i = 0; i < inputs.size(); ++i)
   {
-    const std::string& input_name = graph_utils::GetNodeInputName(*node, i);
+    // const std::string& input_name = graph_utils::GetNodeInputName(*node, i);
+    const std::string& input_name = inputs.at(i)->Name();
     // If it is an initializer, it can be constant folded
     if (graph_utils::IsInitializer(graph, input_name, true))
     {
