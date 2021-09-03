@@ -36,7 +36,7 @@ Status DataCopy(const Tensor& input, Tensor& output, void* einsum_cuda_assets) {
 // CUDA EP specific Transpose helper
 Status Transpose(const std::vector<size_t>& permutation, const Tensor& input,
                  Tensor& output, const TensorShape* input_shape_override, void* einsum_cuda_assets) {
-  return cuda::Transpose::DoTranspose(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetDeviceProp(),
+  return cuda::Transpose::DoTranspose("Einsum TransposeHelper",static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetDeviceProp(),
                                       static_cast<cudaStream_t>(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetComputeStream()),
                                       static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cublas_handle_,
                                       permutation, input, output, input_shape_override);

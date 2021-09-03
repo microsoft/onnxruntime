@@ -81,7 +81,7 @@ static Status SpaceDepthOpCudaImpl(const cudaDeviceProp& prop,
                                    const int64_t in_dim1, const int64_t in_dim2, const int64_t in_dim3,
                                    const int64_t in_dim4, const int64_t in_dim5) {
   TensorShape virtual_input_shape{batch_size, in_dim1, in_dim2, in_dim3, in_dim4, in_dim5};
-  return Transpose::DoTranspose(prop, stream, cublas_handle, permutation, input, output, &virtual_input_shape);
+  return Transpose::DoTranspose("SpaceDepthOpCudaImpl", prop, stream, cublas_handle, permutation, input, output, &virtual_input_shape);
 }
 
 Status SpaceToDepth::ComputeInternal(OpKernelContext* context) const {

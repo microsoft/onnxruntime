@@ -184,7 +184,7 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL_BFloat16(true)
     auto temp_input = Tensor::Create(X->DataType(), TensorShape(transposed_input_dims), alloc);
 
     // Perform the transpose
-    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(cuda_ep_->GetDeviceProp(),
+    ORT_RETURN_IF_ERROR(Transpose::DoTranspose("Softmax187", cuda_ep_->GetDeviceProp(),
                                                Stream(),
                                                CublasHandle(),
                                                permutation, *X, *temp_input));
@@ -228,7 +228,8 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL_BFloat16(true)
       reverse_permutation[permutation[i]] = i;
     }
     // Perform the transpose to get the axes back to the original ordering
-    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(cuda_ep_->GetDeviceProp(),
+    ORT_RETURN_IF_ERROR(Transpose::DoTranspose("Softmax231",
+                                               cuda_ep_->GetDeviceProp(),
                                                Stream(),
                                                CublasHandle(),
                                                reverse_permutation, *intermediate_output, *Y));

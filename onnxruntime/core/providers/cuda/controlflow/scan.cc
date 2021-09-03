@@ -38,7 +38,7 @@ Scan<9>::Scan(const OpKernelInfo& info) : onnxruntime::Scan<9>(info) {
     // TODO: We construct a Transpose kernel on each call as doing so is fairly lightweight.
     // We could potentially keep a single instance and reuse it if that isn't performant enough.
     const OpKernelInfo& info = OpKernel::Info();
-    return cuda::Transpose::DoTranspose(cuda::Transpose(info), permutations, input, output);
+    return cuda::Transpose::DoTranspose("Scan", cuda::Transpose(info), permutations, input, output);
   };
 
   // copy into base class
