@@ -300,6 +300,15 @@ jobs:
       archiveFile: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
       replaceExistingArchive: true
 
+  - template: templates/validate-package.yml
+    parameters:
+      PackageType: 'tarball'
+      PackagePath: '$(Build.ArtifactStagingDirectory)'
+      PackageName: 'onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
+      PlatformsSupported: 'linux-x64'
+      VerifyNugetSigning: false
+      workingDirectory: '$(Build.ArtifactStagingDirectory)'
+
   - task: PublishPipelineArtifact@1
     inputs:
       targetPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
@@ -316,6 +325,7 @@ jobs:
   steps:
   - checkout: self
     submodules: false
+  - template: templates/set-version-number-variables-step.yml
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Combined GPU'
     inputs:
@@ -351,6 +361,15 @@ jobs:
       SourceFolder: '$(Build.BinariesDirectory)\zip-artifacts'
       Contents: 'onnxruntime-win-x64-gpu-*.zip'
       TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+  - template: templates/validate-package.yml
+    parameters:
+      PackageType: 'zip'
+      PackagePath: '$(Build.ArtifactStagingDirectory)'
+      PackageName: 'onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip'
+      PlatformsSupported: 'win-x64'
+      VerifyNugetSigning: false
+      workingDirectory: '$(Build.ArtifactStagingDirectory)'
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline Combined GPU Package Artifact'
@@ -485,10 +504,11 @@ jobs:
       FolderPath: '$(Build.ArtifactStagingDirectory)'
       DoEsrp: ${{ parameters.DoEsrp }}
 
-  - template: templates/validate-nuget.yml
+  - template: templates/validate-package.yml
     parameters:
-      NugetPath: '$(Build.ArtifactStagingDirectory)'
-      NugetPackage: 'Microsoft.ML.OnnxRuntime.*nupkg'
+      PackageType: 'nuget'
+      PackagePath: '$(Build.ArtifactStagingDirectory)'
+      PackageName: 'Microsoft.ML.OnnxRuntime.*nupkg'
       PlatformsSupported: 'win-x64,linux-x64'
       VerifyNugetSigning: false
 

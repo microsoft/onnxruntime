@@ -516,10 +516,11 @@ jobs:
       FolderPath: '$(Build.ArtifactStagingDirectory)/merged'
       DoEsrp: 'true'
 
-  - template: ../../templates/validate-nuget.yml
+  - template: ../../templates/validate-package.yml
     parameters:
-      NugetPath: '$(Build.ArtifactStagingDirectory)\merged'
-      NugetPackage: 'Microsoft.AI.MachineLearning*nupkg'
+      PackageType: 'nuget'
+      PackagePath: '$(Build.ArtifactStagingDirectory)\merged'
+      PackageName: 'Microsoft.AI.MachineLearning*nupkg'
       PlatformsSupported: 'win-x64,win-x86,win-arm64,win-arm'
       VerifyNugetSigning: 'true'
 

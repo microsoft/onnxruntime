@@ -337,10 +337,11 @@ jobs:
       FolderPath: '$(Build.ArtifactStagingDirectory)'
       DoEsrp: ${{ parameters.DoEsrp }}
 
-  - template: validate-nuget.yml
+  - template: validate-package.yml
     parameters:
-      NugetPath: '$(Build.ArtifactStagingDirectory)'
-      NugetPackage: 'Microsoft.ML.OnnxRuntime.*nupkg'
+      PackageType: 'nuget'
+      PackagePath: '$(Build.ArtifactStagingDirectory)'
+      PackageName: 'Microsoft.ML.OnnxRuntime.*nupkg'
       PlatformsSupported: 'win-x64,win-x86,linux-x64,osx.10.14-x64'
       VerifyNugetSigning: false
 
