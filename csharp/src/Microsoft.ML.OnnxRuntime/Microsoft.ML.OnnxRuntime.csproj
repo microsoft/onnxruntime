@@ -1,7 +1,7 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netstandard1.1</TargetFramework>
+    <TargetFrameworks>netstandard1.1;netstandard2.0</TargetFrameworks>
     <Platforms>AnyCPU;x86</Platforms>
     <LangVersion>7.2</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -139,10 +139,10 @@
           Pack="true"
           Visible="false"
     />
-    <None Include="$(PackageId).targets" 
-          PackagePath="\build\$(TargetFramework)"
+    <None Include="targets\netstandard\$(PackageId).targets"
+          PackagePath="build\netstandard1.1\$(PackageId).targets;build\netstandard2.0\$(PackageId).targets"
           Pack="true"
-          Visible="false"
+          Visible="false" 
     />
 
     <!-- Some tools to be packaged in nightly build only, should not be released -->
@@ -163,18 +163,18 @@
   </ItemGroup>
 
   <ItemGroup>
-    <LicenseFile Include="$(OnnxRuntimeCsharpRoot)\..\LICENSE" />
-    <TargetsFile Include="$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime\targets.xml" />
+    <LicenseFile Include="$(OnnxRuntimeCsharpRoot)\..\LICENSE" Visible="false" />
+    <TargetsFile Include="$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime\targets\netstandard\targets.xml" Visible="false" />
   </ItemGroup>
 
   <Target Name="CopyMiscFiles" BeforeTargets="Pack">
     <Copy SourceFiles="@(LicenseFile)" DestinationFiles="@(LicenseFile->'$(OnnxRuntimeCsharpRoot)\..\%(Filename).txt')" />
-    <Copy SourceFiles="@(TargetsFile)" DestinationFiles="@(TargetsFile->'$(OnnxRuntimeCsharpRoot)\src\\Microsoft.ML.OnnxRuntime\$(PackageId).targets')" />
+    <Copy SourceFiles="@(TargetsFile)" DestinationFiles="@(TargetsFile->'$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime\targets\netstandard\$(PackageId).targets')" />
   </Target>
 
   <Target Name="CopyPackage" AfterTargets="Pack">
   <Copy
-    SourceFiles="$(OutputPath)..\$(PackageId).$(PackageVersion).nupkg"
+    SourceFiles="$(OutputPath)\$(PackageId).$(PackageVersion).nupkg"
     DestinationFolder="$(NativeBuildOutputDir)\nuget-artifacts"
     />
 </Target>
