@@ -24,6 +24,8 @@ public:
 
   onnxruntime::ORTInvoker& GetInvoker(const at::Device device);
 
+  OrtDevice GetOrtDeviceInfo(size_t torch_device_index);
+
 private:
   std::map<at::DeviceIndex, std::unique_ptr<onnxruntime::ORTInvoker>> backends_;
   const onnxruntime::logging::Logger& logger_;

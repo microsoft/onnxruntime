@@ -59,6 +59,9 @@ void addObjectMethodsForEager(py::module& m){
       if (!status.IsOK())
         throw std::runtime_error(status.ErrorMessage());
     });
+  m.def("get_ort_device", [](size_t torch_device_index){
+    return torch_ort::eager::GetORTBackendsManager().GetOrtDeviceInfo(torch_device_index);
+  });
 
   auto customop_module = m.def_submodule("custom_ops");
   torch_ort::eager::GenerateCustomOpsBindings(customop_module);
