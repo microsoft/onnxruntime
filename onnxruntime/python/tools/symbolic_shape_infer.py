@@ -383,6 +383,7 @@ class SymbolicShapeInference:
             'If', 'Loop', 'Scan', 'SplitToSequence', 'ZipMap', \
             # contrib ops
 
+
             'Attention', 'BiasGelu', \
             'EmbedLayerNormalization', \
             'FastGelu', 'Gelu', 'LayerNormalization', \
@@ -811,7 +812,7 @@ class SymbolicShapeInference:
 
     def _infer_Einsum(self, node):
         # ref:https://github.com/onnx/onnx/blob/623dfaa0151b2e4ce49779c3ec31cbd78c592b80/onnx/defs/math/defs.cc#L3275
-        equation = get_attribute(node, 'equation') 
+        equation = get_attribute(node, 'equation')
         equation = equation.replace(b' ', b'')
         mid_index = equation.find(b'->')
         left_equation = equation[:mid_index] if mid_index != -1 else equation
@@ -819,7 +820,7 @@ class SymbolicShapeInference:
         num_operands = 0
         num_ellipsis = 0
         num_ellipsis_indices = 0
- 
+
         letter_to_dim = {}
 
         terms = left_equation.split(b',')
@@ -839,7 +840,7 @@ class SymbolicShapeInference:
                         letter_to_dim[letter] = dim
                     elif type(dim) != sympy.Symbol:
                         letter_to_dim[letter] = dim
-            num_operands =  num_operands + 1     
+            num_operands = num_operands + 1
 
         new_sympy_shape = []
         from collections import OrderedDict
