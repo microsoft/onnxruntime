@@ -863,6 +863,10 @@ list(LENGTH CMAKE_OSX_ARCHITECTURES CMAKE_OSX_ARCHITECTURES_LEN)
 if(APPLE)
     if(CMAKE_OSX_ARCHITECTURES_LEN LESS_EQUAL 1)
         set(CPUINFO_SUPPORTED TRUE)
+	elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
+        # We stitch multiple static libraries together when onnxruntime_BUILD_APPLE_FRAMEWORK is true,
+		# but that would not work for universal static libraries
+		message(FATAL_ERROR "universal binary is not supported for apple framework")
     endif()
 else()
     if(onnxruntime_BUILD_WEBASSEMBLY)
