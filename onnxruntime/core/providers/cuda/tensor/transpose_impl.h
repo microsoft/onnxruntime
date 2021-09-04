@@ -17,7 +17,8 @@ bool CanDoTranspose4DParallelizeMultipleElementsPerThreadInInnermostDim(const cu
                                                                         int32_t rank,
                                                                         const std::vector<int64_t>& input_dims,
                                                                         const std::vector<size_t>& permutations);
-Status Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim(cudaStream_t stream, size_t element_size, const TArray<int64_t>& input_shape,
+Status Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim(const cudaDeviceProp& prop, cudaStream_t stream,
+                                                                     size_t element_size, const TArray<int64_t>& input_shape,
                                                                      const TArray<int64_t>& input_strides, const void* input_data,
                                                                      const TArray<int64_t>& output_strides, void* output_data, int N);
 
@@ -26,7 +27,8 @@ bool CanDoTranspose4DParallelizeOneElementPerThread(const cudaDeviceProp& prop,
                                                     int32_t rank,
                                                     const std::vector<int64_t>& input_dims,
                                                     const std::vector<size_t>& permutations);
-Status Transpose4DParallelizeOneElementPerThread(cudaStream_t stream, size_t element_size, const TArray<int64_t>& input_shape,
+Status Transpose4DParallelizeOneElementPerThread(const cudaDeviceProp& prop, cudaStream_t stream,
+                                                 size_t element_size, const TArray<int64_t>& input_shape,
                                                  const TArray<int64_t>& input_strides, const void* input_data,
                                                  const TArray<int64_t>& output_strides, void* output_data, int N);
 

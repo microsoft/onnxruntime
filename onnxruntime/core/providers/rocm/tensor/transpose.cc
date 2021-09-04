@@ -173,7 +173,7 @@ Status Transpose::DoTranspose(const hipDeviceProp_t& prop,
       tmp_output_strides[i] = new_output_strides[new_permutations[i]];
     }
     return Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim(
-        stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
+        prop, stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
         tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()));
   } else if (CanDoTranspose4DParallelizeOneElementPerThread(
                  prop, element_size, new_rank, new_input_dims, new_permutations)) {
@@ -184,7 +184,7 @@ Status Transpose::DoTranspose(const hipDeviceProp_t& prop,
       tmp_output_strides[i] = new_output_strides[new_permutations[i]];
     }
     return Transpose4DParallelizeOneElementPerThread(
-        stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
+        prop, stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
         tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()));
   }
 

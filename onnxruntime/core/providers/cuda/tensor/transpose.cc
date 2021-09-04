@@ -60,6 +60,7 @@ Status TransposeWithCublas(cudaStream_t stream, cublasHandle_t cublas_handle, co
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
   const CudaT* input_data = reinterpret_cast<const CudaT*>(input.Data<T>());
   CudaT* output_data = reinterpret_cast<CudaT*>(output.MutableData<T>());
+  
   CUBLAS_RETURN_IF_ERROR(
       cublasTransposeHelper(stream,
                             cublas_handle,
@@ -88,24 +89,6 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
   // special case when there is a dim value of 0 in the shape.
   if (output.Shape().Size() == 0)
     return Status::OK();
-
-  auto element_type = input.GetElementType();
-  if (element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ||
-      element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE ||
-      element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
-    auto mn = TryTransposeWithCublas(permutations, input_shape_override ? *input_shape_override : input.Shape());
-    int M = std::get<0>(mn);
-    int N = std::get<1>(mn);
-    if (M != 0 && N != 0) {
-      if (element_type == utils::GetONNXTensorElementDataType<float>()) {
-        return TransposeWithCublas<float>(stream, cublas_handle, input, output, M, N);
-      } else if (element_type == utils::GetONNXTensorElementDataType<double>()) {
-        return TransposeWithCublas<double>(stream, cublas_handle, input, output, M, N);
-      } else {
-        return TransposeWithCublas<MLFloat16>(stream, cublas_handle, input, output, M, N);
-      }
-    }
-  }
 
   const std::vector<int64_t>& input_dims = input_shape_override ? input_shape_override->GetDims() : input.Shape().GetDims();
   const std::vector<int64_t>& output_dims = output.Shape().GetDims();
@@ -155,6 +138,33 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
   new_input_dims.resize(new_rank);
   new_output_dims.resize(new_rank);
 
+  auto element_type = input.GetElementType();
+  if (element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ||
+      element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE ||
+      element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
+    auto mn = TryTransposeWithCublas(new_permutations, new_input_dims);
+    int M = std::get<0>(mn);
+    int N = std::get<1>(mn);
+    if (M != 0 && N != 0) {
+      if (element_type == utils::GetONNXTensorElementDataType<float>()) {
+        return TransposeWithCublas<float>(stream, cublas_handle, input, output, M, N);
+      } else if (element_type == utils::GetONNXTensorElementDataType<double>()) {
+        return TransposeWithCublas<double>(stream, cublas_handle, input, output, M, N);
+      } else {
+        return TransposeWithCublas<MLFloat16>(stream, cublas_handle, input, output, M, N);
+      }
+    }
+  }
+
+  // Transpose102 can be treated as a speacial case of Trasnpose0213 with first dimension being 1.
+  // This will handled by optimized Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim kernel
+  if (new_permutations == std::vector<size_t>{1, 0, 2}) {
+    new_permutations.assign({0, 2, 1, 3});
+    new_input_dims.insert(new_input_dims.begin(), 1);
+    new_output_dims.insert(new_output_dims.begin(), 1);
+    new_rank = 4;
+  }
+
   TensorPitches new_input_strides(new_input_dims);
   TensorPitches new_output_strides(new_output_dims);
 
@@ -173,7 +183,7 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
       tmp_output_strides[i] = new_output_strides[new_permutations[i]];
     }
     return Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim(
-        stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
+        prop, stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
         tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()));
   } else if (CanDoTranspose4DParallelizeOneElementPerThread(
                  prop, element_size, new_rank, new_input_dims, new_permutations)) {
@@ -184,7 +194,7 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
       tmp_output_strides[i] = new_output_strides[new_permutations[i]];
     }
     return Transpose4DParallelizeOneElementPerThread(
-        stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
+        prop, stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
         tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()));
   }
 
