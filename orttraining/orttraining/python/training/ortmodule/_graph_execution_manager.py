@@ -22,6 +22,7 @@ from onnxruntime.capi import _pybind_state as C
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 from abc import ABC, abstractmethod
 import copy
+from functools import reduce
 import io
 import inspect
 import os
@@ -94,7 +95,10 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._execution_agent = None
 
         # indicators of some logic have been executed previously thus could be skipped for faster training
-        self._skip_check = _SkipCheck.SKIP_CHECK_DISABLED
+        self._skip_check = reduce(lambda x, y: x | y,
+                                  [_SkipCheck[name] for name in
+                                    _utils.parse_os_env_skip_check_flags('ORTMODULE_SKIPCHECK_POLICY',
+                                                                         _SkipCheck.SKIP_CHECK_DISABLED.name)])
         self._first_skip_check_warning = True
 
         # Graph transformer config
@@ -158,12 +162,17 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Memory aware gradient builder.
         self._use_memory_efficient_gradient = False
 
+        # Flag to re-export the model due to attribute change on original module.
+        # Re-export will be avoided if _skip_check is enabled.
+        self._original_model_has_changed = False
+
     def _get_torch_gpu_allocator_function_addresses(self):
         if self._use_external_gpu_allocator and torch.cuda.is_available():
             # CPP extension to get torch GPU allocator's alloc and free function addresses
             from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_gpu_allocator
             self._torch_alloc = torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
             self._torch_free = torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
+            self._torch_empty_cache = torch_gpu_allocator.gpu_caching_allocator_empty_cache_address()
 
     def _validate_module_type(self, module):
         """Raises ORTModuleTorchModelException if the module is not a torch.nn.Module"""
@@ -230,12 +239,16 @@ class GraphExecutionManager(GraphExecutionInterface):
             providers = (["ROCMExecutionProvider"] if self.is_rocm_pytorch else [
                          "CUDAExecutionProvider"])
             providers.append("CPUExecutionProvider")
+            provider_option_map = {"device_id": str(self._device.index)}
+            if not self.is_rocm_pytorch:
+                # Set Conv algo search mode to HEURISTIC, which is same as PyTorch's default setting.
+                provider_option_map["cudnn_conv_algo_search"] = "HEURISTIC"
+                provider_option_map["cudnn_conv_use_max_workspace"] = "1"
             if self._use_external_gpu_allocator:
-                provider_options = [{"device_id": str(self._device.index),
-                                     "gpu_external_alloc": str(self._torch_alloc),
-                                     "gpu_external_free": str(self._torch_free)}, {}]
-            else:
-                provider_options = [{"device_id": str(self._device.index)}, {}]
+                provider_option_map["gpu_external_alloc"] = str(self._torch_alloc)
+                provider_option_map["gpu_external_free"] = str(self._torch_free)
+                provider_option_map["gpu_external_empty_cache"] = str(self._torch_empty_cache)
+            provider_options = [provider_option_map, {}]
         elif self._device.type == 'cpu':
             providers = ["CPUExecutionProvider"]
             provider_options = [{}]
@@ -273,7 +286,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         schema = _io._extract_schema(
             {'args': copy.copy(inputs), 'kwargs': copy.copy(kwargs)})
-        if self._onnx_models.exported_model and schema == self._input_info.schema:
+        if self._onnx_models.exported_model and schema == self._input_info.schema and not self._original_model_has_changed:
             # All required models have already been exported previously
             return False
 
@@ -416,3 +429,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # between forward calls.
         self._graph_initializers = [param for name, param in self._flattened_module.named_parameters()
                                     if name in self._graph_initializer_names]
+
+    def signal_model_changed(self):
+        """Signals the execution manager to re-export the model on the next forward call"""
+        self._original_model_has_changed = True

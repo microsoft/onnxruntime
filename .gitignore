@@ -30,6 +30,7 @@ onnxruntime_profile*.json
 /docs/python/inference/examples/*.onnx
 /docs/python/inference/examples/graph.*
 /docs/python/*_LICENSE
+/LICENSE.txt
 /csharp/**/obj/
 /csharp/**/bin/
 /csharp/Directory.Build.props
@@ -37,8 +38,8 @@ docs/python/inference/*.onnx
 *.onnx
 onnxprofile_profile_test_*.json
 /csharp/packages
-/csharp/src/Microsoft.ML.OnnxRuntime/Microsoft.ML.OnnxRuntime.targets
-/csharp/src/Microsoft.ML.OnnxRuntime/Microsoft.ML.OnnxRuntime.props
+/csharp/src/Microsoft.ML.OnnxRuntime/targets/**/*.targets
+/csharp/src/Microsoft.ML.OnnxRuntime/targets/**/*.props
 cmake/external/FeaturizersLibrary/
 # Java specific ignores
 java/gradlew
@@ -53,7 +54,7 @@ onnxruntime/python/version_info.py
 /tools/perf_util/src/main/resources
 /orttraining/orttraining/eager/ort_aten.g.cpp
 /orttraining/orttraining/eager/ort_customops.g.cpp
-
+/csharp/**/packages
 # direnv, posh-direnv
 .envrc
 .psenvrc
