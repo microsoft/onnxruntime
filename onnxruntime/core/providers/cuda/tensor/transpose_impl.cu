@@ -44,7 +44,9 @@ Status Transpose3DImpl(cudaStream_t stream, size_t element_size,
                        const TArray<int64_t>& input_shape, const TArray<int64_t>& input_strides,
                        const void* input_data, void* output_data, int64_t N) {
   dim3 block_size(TILE_DIM, TILE_DIM);
-  dim3 grid_size(static_cast<unsigned int>(input_shape[2] / TILE_DIM), static_cast<unsigned int>(input_shape[1] / TILE_DIM), static_cast<unsigned int>(input_shape[0]));
+  dim3 grid_size(static_cast<unsigned int>(input_shape[2] / TILE_DIM),
+                 static_cast<unsigned int>(input_shape[1] / TILE_DIM),
+                 static_cast<unsigned int>(input_shape[0]));
 
   switch (element_size) {
     case sizeof(int8_t):
@@ -147,7 +149,8 @@ Status Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim(
   int64_t num_elements_in_last_two_dimensions = input_shape[2] * input_shape[3];
   int64_t num_block_ext = CeilDiv(num_elements_in_last_two_dimensions / num_elements_per_thread, prop.maxThreadsPerBlock);
 
-  dim3 block_size(static_cast<unsigned int>(input_shape[3] / num_elements_per_thread), static_cast<unsigned int>(CeilDiv(input_shape[2], num_block_ext));
+  dim3 block_size(static_cast<unsigned int>(input_shape[3] / num_elements_per_thread),
+                  static_cast<unsigned int>(CeilDiv(input_shape[2], num_block_ext)));
   dim3 grid_size(static_cast<unsigned int>(input_shape[1] * num_block_ext), static_cast<unsigned int>(input_shape[0]));
 
   switch (element_size) {
@@ -260,7 +263,7 @@ Status Transpose4DParallelizeOneElementPerThread(
   int64_t num_elements_in_last_two_dimensions = input_shape[2] * input_shape[3];
   int64_t num_block_ext = CeilDiv(num_elements_in_last_two_dimensions, prop.maxThreadsPerBlock);
 
-  dim3 block_size(static_cast<unsigned int>(input_shape[3]), static_cast<unsigned int>(CeilDiv(input_shape[2], num_block_ext));
+  dim3 block_size(static_cast<unsigned int>(input_shape[3]), static_cast<unsigned int>(CeilDiv(input_shape[2], num_block_ext)));
   dim3 grid_size(static_cast<unsigned int>(input_shape[1] * num_block_ext), static_cast<unsigned int>(input_shape[0]));
 
   Transpose4DKernelParallelizeOneElementPerThread<<<grid_size, block_size, 0, stream>>>(
