@@ -651,6 +651,53 @@ def test_gradient_correctness_conv1d(use_fp16, input_requires_grad):
             _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-5)
             _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=5e-3, atol=4e-3)
 
+@pytest.mark.parametrize("perm, shape", (
+    # Cases for Transpose4DKernelParallelizeOneElementPerThread
+    [[1,0,2], [1024,245,32]],
+    [[1,0,2], [2080,246,32]],
+    [[1,0,2], [1024,254,32]],
+    [[1,0,2], [2272,255,32]],
+    [[0,2,1,3], [260,8,246,32]],
+    [[0,2,1,3], [284,8,255,32]],
+    # Cases for Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim
+    [[1,0,2], [245,1024,32]],
+    [[1,0,2], [255,2272,32]],
+    [[1,0,2], [246,2080,32]],
+    [[1,0,2], [254,128,256]],
+    [[1,0,2], [260,245,256]],
+    [[1,0,2], [284,254,256]],
+    [[1,0,2], [245,260,256]],
+    [[1,0,2], [254,284,256]],
+    [[0,2,1,3], [260,8,2080,32]],
+    [[0,2,1,3], [284,8,2272,32]],
+    ))
+def test_gradient_correctness_transpose(perm, shape):
+    class NeuralNetTranspose(torch.nn.Module):
+        def __init__(self, perm):
+            super(NeuralNetTranspose, self).__init__()
+            self.perm = perm
+
+        def forward(self, input):
+            out = torch.sin(input.permute(*self.perm))
+            return out
+
+    device = 'cuda'
+    pt_model = NeuralNetTranspose(perm).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction
+
+    x = torch.randn(*shape, device=device, requires_grad=True)
+    pt_prediction = run_step(pt_model, x)
+    ort_prediction = run_step(ort_model, x)
+
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+    _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+
 @pytest.mark.parametrize("device", ['cuda', 'cpu'])
 @pytest.mark.parametrize("padding_idx", [None, 1])
 def test_gradient_correctness_embedding(device, padding_idx):
