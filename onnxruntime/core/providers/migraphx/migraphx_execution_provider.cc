@@ -224,8 +224,39 @@ static bool get_migraphx_type(ONNXTensorElementDataType type,
   return true;
 }
 
+static bool IsGraphInput(const GraphViewer& graph, const NodeArg* input)
+{
+  const auto& graph_inputs = graph.GetInputs();
+  return (std::find(graph_inputs.begin(), graph_inputs.end(), input) != graph_inputs.end());
+}
 
-static bool can_eval_shape_general(const Graph& graph, const Node* node, const logging::Logger& logger, std::vector<NodeIndex>& input_nodes)
+
+const Node* GetInputNode(const Node& node, int arg_index) {
+  int index = 0;
+  for (auto nit = node.InputNodesBegin(); nit != node.InputNodesEnd(); ++nit, ++index)
+  {
+    if (index == arg_index)
+    {
+      return &(*nit);
+    }
+  }
+
+  return nullptr;
+}
+
+std::vector<int> to_vector(const ONNX_NAMESPACE::int64s& nums)
+{
+  std::vector<int> result;
+  int num = nums.size();
+  for(int i = 0; i < num; ++i)
+  {
+    result.push_back(nums[i]);
+  }
+
+  return result;
+}
+
+static bool can_eval_shape_general(const GraphViewer& graph, const Node* node, const logging::Logger& logger, std::vector<NodeIndex>& input_nodes)
 {
   if (node == nullptr)
   {
@@ -244,19 +275,21 @@ static bool can_eval_shape_general(const Graph& graph, const Node* node, const l
     // const std::string& input_name = graph_utils::GetNodeInputName(*node, i);
     const std::string& input_name = inputs.at(i)->Name();
     // If it is an initializer, it can be constant folded
-    if (graph_utils::IsInitializer(graph, input_name, true))
+    // if (graph_utils::IsInitializer(graph, input_name, true))
+    if (graph.IsConstantInitializer(input_name, true))
     {
       continue;
     }
     
     // Input for sure cannot be constant folded
-    if (graph_utils::IsGraphInput(graph, inputs[i]))
+    if (IsGraphInput(graph, inputs[i]))
     {
       return false;
     }
 
     // get the corresponding input node
-    auto input_node = graph_utils::GetInputNode(*node, i);
+    // auto input_node = graph_utils::GetInputNode(*node, i);
+    auto input_node = GetInputNode(*node, i);
     if (input_node == nullptr)
     {
       return false;
@@ -281,27 +314,32 @@ static bool can_eval_shape_general(const Graph& graph, const Node* node, const l
   return true;
 }
 
-static bool can_eval_node_argument(const Graph& graph, const Node* node, std::vector<std::size_t> indices, const logging::Logger& logger, std::vector<NodeIndex>& input_nodes)
+static bool can_eval_node_argument(const GraphViewer& graph, const Node* node, std::vector<std::size_t> indices, const logging::Logger& logger, std::vector<NodeIndex>& input_nodes)
 {
   input_nodes.clear();
 
   for (auto& arg_index : indices)
   {
-    const std::string& input_name = graph_utils::GetNodeInputName(*node, arg_index);
+    // const std::string& input_name = graph_utils::GetNodeInputName(*node, arg_index);
+    auto node_inputs = node->InputDefs();
+    const std::string& input_name = node_inputs.at(arg_index)->Name();
     // an initializer itself is a constant
-    if (graph_utils::IsInitializer(graph, input_name, true))
+    // if (graph_utils::IsInitializer(graph, input_name, true))
+    if (graph.IsConstantInitializer(input_name, true))
     {
       continue;
     }
       
     // Input cannot be constant folded
     auto inputs = node->InputDefs();
-    if (graph_utils::IsGraphInput(graph, inputs[arg_index]))
+    // if (graph_utils::IsGraphInput(graph, inputs[arg_index]))
+    if (IsGraphInput(graph, inputs[arg_index]))
     {
       return false;
     }
 
-    auto input_node = graph_utils::GetInputNode(*node, arg_index);
+    // auto input_node = graph_utils::GetInputNode(*node, arg_index);
+    auto input_node = GetInputNode(*node, arg_index);
     if (!can_eval_shape_general(graph, input_node, logger, input_nodes))
     {
       return false;
@@ -318,12 +356,13 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
   if (optype == "ArgMax" or optype == "ArgMin") {
     const auto& attributes = node->GetAttributes();
     // we do not support select_last_index = 1 for now
-    const auto sli_attr = attributes.find("select_last_index");
-    if (sli_attr != attributes.end() && sli_attr->second.i() != 0) {
+    auto sli_attr = attributes.find("select_last_index");
+    if (sli_attr != attributes.end() && (*sli_attr).second.i() != 0) {
       return true;
     }
   } else if (optype == "ConstantOfShape") {
-    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {0}, logger, input_nodes))
+    // if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {0}, logger, input_nodes))
+    if (!can_eval_node_argument(graph_viewer, node, {0}, logger, input_nodes))
     {
       return true;
     }
@@ -348,7 +387,8 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     }
   } else if (optype == "Expand") {
     // MIGraphX only supports constant shape input values
-    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
+    // if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
+    if (!can_eval_node_argument(graph_viewer, node, {1}, logger, input_nodes))
     {
       return true;
     }
@@ -363,7 +403,7 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     const auto& attributes = node->GetAttributes();
     auto dila_attr = attributes.find("dilations");
     if (dila_attr != attributes.end()) {
-      auto dilas = dila_attr->second.ints();
+      auto dilas = to_vector((*dila_attr).second.ints());
       bool ret = std::all_of(dilas.begin(), dilas.end(), [](auto i) { return i == 1; });
       if (ret == false) {
         return true;
@@ -371,8 +411,8 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     }
 
     // storage order 1 (column major format) is not supported
-    const auto storage_order_attr = attributes.find("storage_order");
-    if (storage_order_attr != attributes.end() and storage_order_attr->second.i() != 0) {
+    auto storage_order_attr = attributes.find("storage_order");
+    if (storage_order_attr != attributes.end() and (*storage_order_attr).second.i() != 0) {
       return true;
     }
 
@@ -402,12 +442,14 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
       return true;
     }
   } else if (optype == "NonZero") {
-    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {0}, logger, input_nodes))
+    // if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {0}, logger, input_nodes))
+    if (!can_eval_node_argument(graph_viewer, node, {0}, logger, input_nodes))
     {
       return true;
     }
   } else if (optype == "OneHot") {
-    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
+    // if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
+    if (!can_eval_node_argument(graph_viewer, node, {1}, logger, input_nodes))
     {
       return true;
     }
@@ -415,7 +457,8 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     const auto& args = node->InputDefs();
     // if pad size is not constant, migraphx cannot support
     if (args.size() >= 2) {
-      if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
+      // if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
+      if (!can_eval_node_argument(graph_viewer, node, {1}, logger, input_nodes))
       {
         return true;
       }
@@ -423,10 +466,10 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
 
     const auto& attributes = node->GetAttributes();
     // Pad only support constant mode
-    const auto mode_attr = attributes.find("mode");
+    auto mode_attr = attributes.find("mode");
     std::string mode = "constant";
     if (mode_attr != attributes.end()) {
-      mode = mode_attr->second.s();
+      mode = (*mode_attr).second.s();
     }
     static const std::set<std::string> allowed_modes = {"constant", "reflect"};
     if (allowed_modes.count(mode) == 0) {
@@ -436,7 +479,8 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     // input value only applied to constant mode
     if (mode == "constant") {
       if (args.size() == 3) {
-        if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {2}, logger, input_nodes))
+        // if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {2}, logger, input_nodes))
+        if (!can_eval_node_argument(graph_viewer, node, {2}, logger, input_nodes))
         {
           return true;
         }
@@ -446,14 +490,16 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     auto arg_num = node->InputDefs().size();
     std::vector<std::size_t> vec(arg_num);
     std::iota(vec.begin(), vec.end(), 0);
-    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, vec, logger, input_nodes))
+    // if (!can_eval_node_argument(graph_viewer.GetGraph(), node, vec, logger, input_nodes))
+    if (!can_eval_node_argument(graph_viewer, node, vec, logger, input_nodes))
     {
       return true;
     }
   } else if (optype == "Reshape") {
     const auto& args = node->InputDefs();
     if (args.size() == 2) {
-      if (can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
+      // if (can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
+      if (can_eval_node_argument(graph_viewer, node, {1}, logger, input_nodes))
       {
         return false;
       }
@@ -461,18 +507,18 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     }
   } else if (optype == "Resize") {
     const auto& attributes = node->GetAttributes();
-    const auto ct_attr = attributes.find("coordinate_transformation_mode");
+    auto ct_attr = attributes.find("coordinate_transformation_mode");
     if (ct_attr != attributes.end()) {
-      auto ct = ct_attr->second.s();
+      auto ct = (*ct_attr).second.s();
       if (ct == "tf_crop_and_resize")
       {
         return true;
       }
     }
 
-    const auto mode_attr = attributes.find("mode");
+    auto mode_attr = attributes.find("mode");
     if (mode_attr != attributes.end()) {
-      auto mode = mode_attr->second.s();
+      auto mode = (*mode_attr).second.s();
       if (mode == "cubic")
       {
         return true;
@@ -484,7 +530,8 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     {
       std::vector<std::size_t> indices(args.size() - 1);
       std::iota(indices.begin(), indices.end(), 1);
-      if (can_eval_node_argument(graph_viewer.GetGraph(), node, indices, logger, input_nodes))
+      // if (can_eval_node_argument(graph_viewer.GetGraph(), node, indices, logger, input_nodes))
+      if (can_eval_node_argument(graph_viewer, node, indices, logger, input_nodes))
       {
         return false;
       }
@@ -493,7 +540,8 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
   } else if (optype == "ReduceSum") {
     const auto& args = node->InputDefs();
     if (args.size() == 2) {
-      if (can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
+      // if (can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
+      if (can_eval_node_argument(graph_viewer, node, {1}, logger, input_nodes))
       {
         return false;
       }
@@ -507,17 +555,18 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     std::vector<std::size_t> vec(arg_num);
     std::iota(vec.begin(), vec.end(), 0);
     vec.erase(vec.begin());
-    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, vec, logger, input_nodes))
+    // if (!can_eval_node_argument(graph_viewer.GetGraph(), node, vec, logger, input_nodes))
+    if (!can_eval_node_argument(graph_viewer, node, vec, logger, input_nodes))
     {
       return true;
     }
 
     const auto& attributes = node->GetAttributes();
     if (attributes.count("starts") > 0 and attributes.count("ends") > 0) {
-      const auto& starts = attributes.find("starts")->second.ints();
-      const auto& ends = attributes.find("ends")->second.ints();
-      for (int i = 0; i < starts.size(); ++i) {
-        if (starts.Get(i) > ends.Get(i)) {
+      auto starts = to_vector((*attributes.find("starts")).second.ints());
+      auto ends = to_vector((*attributes.find("ends")).second.ints());
+      for (std::size_t i = 0; i < starts.size(); ++i) {
+        if (starts.at(i) > ends.at(i)) {
           return true;
         }
       }
@@ -526,7 +575,7 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     // cannot process input dim of 0 size
     const auto arg_s = node->InputDefs()[0]->Shape();
     if (arg_s != nullptr) {
-      auto tensor_dims = arg_s->dim();
+      const auto& tensor_dims = arg_s->dim();
       std::vector<std::size_t> dims;
       std::transform(tensor_dims.begin(),
                      tensor_dims.end(),
@@ -545,21 +594,24 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
 
     const auto& args = node->InputDefs();
     if (args.size() == 2) {
-      if (can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
+      // if (can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
+      if (can_eval_node_argument(graph_viewer, node, {1}, logger, input_nodes))
       {
         return false;
       }
       return true;
     }
   } else if (optype == "Tile") {
-    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
+    // if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
+    if (!can_eval_node_argument(graph_viewer, node, {1}, logger, input_nodes))
     {
       return true;
     }
   } else if (optype == "Unsqueeze" or optype == "Squeeze") {
     const auto& args = node->InputDefs();
     if (args.size() == 2) {
-      if (can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
+      // if (can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
+      if (can_eval_node_argument(graph_viewer, node, {1}, logger, input_nodes))
       {
         return false;
       }
@@ -594,7 +646,8 @@ void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::v
         const auto& args = node->InputDefs();
         if (args.size() == 2) {
           std::vector<NodeIndex> node_inputs;
-          if (can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, node_inputs))
+          // if (can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, node_inputs))
+          if (can_eval_node_argument(graph_viewer, node, {1}, logger, node_inputs))
           {
             return (not std::all_of(node_inputs.begin(), node_inputs.end(), [&](auto index) {
               return std::find(git.begin(), git.end(), index) != git.end();
