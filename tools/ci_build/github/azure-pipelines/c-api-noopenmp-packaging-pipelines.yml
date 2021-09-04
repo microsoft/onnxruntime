@@ -479,9 +479,9 @@ jobs:
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - task: BatchScript@1
-    displayName: 'Bundle Native NuGet and other binaries'
+    displayName: 'Add TensorRT header file to the native nuGet package'
     inputs:
-      filename: $(Build.SourcesDirectory)\tools\ci_build\github\windows\bundle_dlls_gpu_nuget.bat
+      filename: $(Build.SourcesDirectory)\tools\ci_build\github\windows\bundle_nuget_with_native_headers.bat
       workingFolder: $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo
 
   - task: CopyFiles@2
