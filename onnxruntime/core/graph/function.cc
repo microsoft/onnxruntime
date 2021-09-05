@@ -68,7 +68,9 @@ void InferShapeForFunctionNode(
     // Resolve domain for node
     auto it = func_opset_imports.find(n.domain());
     if (it == func_opset_imports.end()) {
-      return;
+      fail_type_inference("Cannot infer type and shape for function", func_proto.name(),
+                          ". No opset import for domain", n.domain(), " referenced by function body node ",
+                          n.name(), " optype ", n.op_type());
     }
     auto domain_version = it->second;
     const auto schema = schema_registry->GetSchema(n.op_type(), domain_version, n.domain());
@@ -119,7 +121,7 @@ void InferShapeForFunctionNode(
     auto iter = value_types_by_name.find(output_name);
     if (iter != value_types_by_name.cend()) {
       // Copy the type info to ctx
-      // to pass back to maingraph
+      // to pass back to main graph
       auto type_proto = ctx.getOutputType(i);
       type_proto->CopyFrom(*(iter->second));
     }
