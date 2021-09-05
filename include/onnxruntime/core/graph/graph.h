@@ -1025,7 +1025,7 @@ class Graph {
   void InitFunctionBodyForNode(Node& node);
 
   /** Gets Model local functions from the root/parent graph.*/
-  const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& GetModelLocalFunctions();
+  const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& GetModelLocalFunctions() const;
 
   /** Mark a NodeArg name as coming from the outer scope when programmatically constructing a Graph that will
   be used as a GraphProto attribute in another Node..
