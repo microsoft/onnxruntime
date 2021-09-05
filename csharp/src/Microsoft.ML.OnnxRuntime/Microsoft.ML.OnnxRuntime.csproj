@@ -1,7 +1,7 @@
 <Project Sdk="MSBuild.Sdk.Extras/3.0.22">
 
   <PropertyGroup>
-    <TargetFrameworks>netstandard1.1;netstandard2.0;xamarinios10;monoandroid11.0;</TargetFrameworks>
+    <TargetFrameworks>netstandard1.1;netstandard2.0;xamarinios10;monoandroid11.0;net5.0;netcoreapp2.1;netcoreapp2.2;netcoreapp3.0;netcoreapp3.1;</TargetFrameworks>
     <Platforms>AnyCPU;x86</Platforms>
     <LangVersion>7.2</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -27,6 +27,7 @@
     <!--- The parameter OrtPackageId is only used for some conditional logic below -->    
     <PackageId>Microsoft.ML.OnnxRuntime.Managed</PackageId>
     <Authors>Microsoft</Authors>
+    <PackageVersion Condition=" '$(PackageVersion)' == '' And '$(Configuration)' == 'Debug' ">1.0.0</PackageVersion>
     <PackageVersion Condition=" '$(PackageVersion)' == '' ">0.0.0</PackageVersion>
     <Version>$(PackageVersion)</Version>
     <Description>This package contains ONNX Runtime for .Net platforms</Description>
@@ -86,10 +87,13 @@
         <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)</NativeBuildOutputDir>
     </PropertyGroup>
     <PropertyGroup Condition="$(TargetFramework.StartsWith('xamarinios'))">
-      <DefineConstants>__IOS__;</DefineConstants>
+      <DefineConstants>__IOS__;__MOBILE__;</DefineConstants>
     </PropertyGroup>
     <PropertyGroup Condition="$(TargetFramework.StartsWith('monoandroid'))">
-      <DefineConstants>__ANDROID__;</DefineConstants>
+      <DefineConstants>__ANDROID__;__MOBILE__;</DefineConstants>
+    </PropertyGroup>
+    <PropertyGroup Condition="$(TargetFramework.StartsWith('net5.0')) OR $(TargetFramework.StartsWith('netcoreapp'))">
+      <DefineConstants>__NETCOREAPP__;</DefineConstants>
     </PropertyGroup>
 
   <ItemGroup>
@@ -204,7 +208,14 @@
     <PackageReference Include="System.Memory" Version="4.5.4" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
     <Compile Include="**\*.netstandard.cs" Link="platform\netstandard\%(Filename)%(Extension)" />
-   <Compile Include="**\*.netstandard.*.cs" Link="platform\netstandard\%(Filename)%(Extension)" />
+    <Compile Include="**\*.netstandard.*.cs" Link="platform\netstandard\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup Condition="$(TargetFramework.StartsWith('net5.0'))  OR $(TargetFramework.StartsWith('netcoreapp'))">
+    <PackageReference Include="System.Memory" Version="4.5.4" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
+    <Compile Include="**\*.netcore.cs" Link="platform\netcore\%(Filename)%(Extension)" />
+    <Compile Include="**\*.netcore.*.cs" Link="platform\netcore\%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup Condition="$(TargetFramework.StartsWith('monoandroid'))">
