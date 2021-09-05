@@ -826,7 +826,7 @@ class SymbolicShapeInference:
         terms = left_equation.split(b',')
         for term in terms:
             ellipsis_index = term.find(b'...')
-            shape = self._get_sympy_shape(node, num_operands)
+            shape = self._get_shape(node, num_operands)
             rank = len(shape)
             if ellipsis_index != -1:
                 if num_ellipsis == 0:
@@ -834,7 +834,7 @@ class SymbolicShapeInference:
                 num_ellipsis = num_ellipsis + 1
             for i in range(1, rank + 1):
                 letter = term[-i]
-                if letter != b'.':
+                if letter != 46: # letter != b'.'
                     dim = shape[-i]
                     if letter not in letter_to_dim.keys():
                         letter_to_dim[letter] = dim
@@ -852,13 +852,13 @@ class SymbolicShapeInference:
                 for i in range(num_ellipsis_indices):
                     new_sympy_shape.append(shape[i])
             for c in right_equation:
-                if c != b'.':
+                if c != 46: # c != b'.'
                     new_sympy_shape.append(letter_to_dim[c])
         else:
             for i in range(num_ellipsis_indices):
                 new_sympy_shape.append(shape[i])
             for c in left_equation:
-                if c != b',' and c != b'.':
+                if c != 44 and c != 46: # c != b',' and c != b'.':
                     if c in num_letter_occurrences:
                         num_letter_occurrences[c] = num_letter_occurrences[c] + 1
                     else:
