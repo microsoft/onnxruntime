@@ -140,7 +140,7 @@ def parse_arguments():
         help="Configuration(s) to build.")
     parser.add_argument(
         "--update", action='store_true', help="Update makefiles.")
-    parser.add_argument("--build", action='store_true', help="Build.")g
+    parser.add_argument("--build", action='store_true', help="Build.")
     parser.add_argument(
         "--clean", action='store_true',
         help="Run 'cmake --build --target clean' for the selected config/s.")
