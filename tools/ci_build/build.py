@@ -140,7 +140,7 @@ def parse_arguments():
         help="Configuration(s) to build.")
     parser.add_argument(
         "--update", action='store_true', help="Update makefiles.")
-    parser.add_argument("--build", action='store_true', help="Build.")
+    parser.add_argument("--build", action='store_true', help="Build.")g
     parser.add_argument(
         "--clean", action='store_true',
         help="Run 'cmake --build --target clean' for the selected config/s.")
@@ -800,6 +800,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
         "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS=" + ("ON" if args.enable_external_custom_op_schemas
                                                               else "OFF"),
+        "-Donnxruntime_PARALLEL=" + args.parallel,
     ]
     # It should be default ON in CI build pipelines, and OFF in packaging pipelines.
     # And OFF for the people who are not actively developing onnx runtime.
