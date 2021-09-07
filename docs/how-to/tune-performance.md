@@ -187,6 +187,32 @@ The most widely used environment variables are:
   * ACTIVE will not yield CPU, instead it will have a while loop to check whether the next task is ready
   * Use PASSIVE if your CPU usage already high, and use ACTIVE when you want to trade CPU with latency
 
+### IOBinding
+When working with non-CPU execution providers it's most efficient to have inputs (and/or outputs) arranged on the target device (abstracted by the execution provider used) prior to executing the graph (calling Run). When the input is not copied to the target device, ORT copies it from the CPU as part of the Run() call. Similarly if the output is not pre-allocated on the device, ORT assumes that the output is requested on the CPU and copies it from the device as the last step of the Run() call. This obviously eats into the execution time of the graph misleading users into thinking ORT is slow when the majority of the time is spent in these copies. To address this we've introduced the notion of IOBinding. The key idea is to arrange for inputs to be copied to the device and for outputs to be pre-allocated on the device prior to calling Run(). IOBinding is available in all our language bindings. Following are code snippets in various languages demonstrating the usage of this feature.
+
+* C++
+```
+  Ort::Env env;
+  Ort::Session session(env, model_path, session_options);
+  Ort::IoBinding io_binding{session};
+  auto input_tensor = Ort::Value::CreateTensor<float>(memory_info, input_tensor_values.data(), input_tensor_size, input_node_dims.data(), 4);
+  io_binding.BindInput("input1", input_tensor);
+  Ort::MemoryInfo output_mem_info{"Cuda", OrtDeviceAllocator, 0,
+                                  OrtMemTypeDefault};
+  
+  // Use this to bind output to a device when the shape is not known in advance. If the shape is known you can use the other overload of this function that takes an Ort::Value as input (IoBinding::BindOutput(const char* name, const Value& value)).
+  // This internally calls the BindOutputToDevice C API.
+
+  io_binding.BindOutput("output1", output_mem_info);
+  session.Run(run_options, io_binding);
+```
+* Python
+https://github.com/microsoft/onnxruntime/blob/master/docs/python/inference/api_summary.rst#iobinding
+
+* C#
+https://github.com/microsoft/onnxruntime/blob/master/csharp/test/Microsoft.ML.OnnxRuntime.Tests/OrtIoBindingAllocationTest.cs 
+
+
 ## Troubleshooting performance issues
 
 The answers below are troubleshooting suggestions based on common previous user-filed issues and questions. This list is by no means exhaustive and there is a lot of case-by-case fluctuation depending on the model and specific usage scenario. Please use this information to guide your troubleshooting, search through previously filed issues for related topics, and/or file a new issue if your problem is still not resolved.
@@ -221,4 +247,4 @@ Depending on which execution provider you're using, it may not have full support
 
 NCHW and NHWC are two different memory layout for 4-D tensors.
 
-Most TensorFlow operations used by a CNN support both NHWC and NCHW data format. The Tensorflow team suggests that on GPU NCHW is faster but on CPU NHWC is sometimes faster in Tensorflow. However, ONNX only supports NCHW. As a result, if the original model is in NHWC format, when the model is converted extra transposes may be added. The [tensorflow-onnx](https://github.com/onnx/tensorflow-onnx) and [keras-onnx](https://github.com/onnx/keras-onnx) converters do remove many of these transposes, but if this doesn't help sufficiently, consider retraining the model using NCHW.
+Most TensorFlow operations used by a CNN support both NHWC and NCHW data format. The Tensorflow team suggests that on GPU NCHW is faster but on CPU NHWC is sometimes faster in Tensorflow. However, ONNX only supports NCHW. As a result, if the original model is in NHWC format, when the model is converted extra transposes may be added. The [tensorflow-onnx](https://github.com/onnx/tensorflow-onnx) converter does remove many of these transposes, but if this doesn't help sufficiently, consider retraining the model using NCHW.
