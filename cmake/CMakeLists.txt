@@ -12,6 +12,8 @@ cmake_policy(SET CMP0091 NEW)
 if (${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.20")
   cmake_policy(SET CMP0117 NEW)
 endif()
+# Don't let cmake set a default value for CMAKE_CUDA_ARCHITECTURES
+cmake_policy(SET CMP0104 OLD)
 
 # Project
 project(onnxruntime C CXX)
