@@ -164,7 +164,17 @@ COPY --from=build_cmake /manylinux-rootfs /
 COPY --from=build_swig /manylinux-rootfs /
 COPY --from=build_cpython /manylinux-rootfs /
 COPY --from=all_cpython /opt/_internal /opt/_internal/
-COPY build_scripts/finalize.sh build_scripts/update-system-packages.sh build_scripts/python-tag-abi-tag.py build_scripts/requirements.txt build_scripts/requirements-tools.txt /build_scripts/
+COPY build_scripts/finalize.sh \
+     build_scripts/update-system-packages.sh \
+     build_scripts/python-tag-abi-tag.py \
+     build_scripts/requirements3.6.txt \
+     build_scripts/requirements3.7.txt \
+     build_scripts/requirements3.8.txt \
+     build_scripts/requirements3.9.txt \
+     build_scripts/requirements3.10.txt \
+     build_scripts/requirements-base-tools.txt \
+     /build_scripts/
+COPY build_scripts/requirements-tools/* /build_scripts/requirements-tools/
 RUN manylinux-entrypoint /build_scripts/finalize.sh && rm -rf /build_scripts
 
 ENV SSL_CERT_FILE=/opt/_internal/certs.pem
