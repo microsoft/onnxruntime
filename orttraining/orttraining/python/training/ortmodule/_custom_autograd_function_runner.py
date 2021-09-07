@@ -10,7 +10,7 @@ from torch.utils.dlpack import from_dlpack, to_dlpack
 
 from ._fallback import _FallbackManager, ORTModuleFallbackException, ORTModuleIOError, wrap_exception
 
-from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_interop_utils
+from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_interop_utils, _clear_grad_fns_for_next_edges
 
 def wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace_flag, training_mode_flag, arg):
     '''
@@ -93,6 +93,7 @@ def call_python_forward_function(
             if training_mode_flag:
                 # Must extract one valid context from result tensors.
                 assert ctx is not None
+                _clear_grad_fns_for_next_edges(result)
                 torch_interop_utils.register_grad_fn(id(ctx), first_tensor_output)
             else:
                 # Context must not present under non-training mode.
@@ -158,36 +159,37 @@ def call_python_backward_function(
         inplace: indicates if args can be modified inside the custom function.
         args: inputs to "backward_function".
     '''
-    def wrap_all_outputs(result):
-        if isinstance(result, torch.Tensor):
-            return [to_dlpack(result)]
-        elif isinstance(result, tuple) or isinstance(result, list):
-            return [to_dlpack(value) if value is not None else None for value in result]
-        else:
-            raise wrap_exception(ORTModuleIOError,
-                                 TypeError(f'ORTModule does not support the following model output type {type(result)}.'))
+    with torch.no_grad():
+        def wrap_all_outputs(result):
+            if isinstance(result, torch.Tensor):
+                return [to_dlpack(result)]
+            elif isinstance(result, tuple) or isinstance(result, list):
+                return [to_dlpack(value) if value is not None else None for value in result]
+            else:
+                raise wrap_exception(ORTModuleIOError,
+                                    TypeError(f'ORTModule does not support the following model output type {type(result)}.'))
 
-    try:
-        # Backward inputs should not require gradients.
-        assert all(grad_flag == 0 for grad_flag in requires_grad_flags)
+        try:
+            # Backward inputs should not require gradients.
+            assert all(grad_flag == 0 for grad_flag in requires_grad_flags)
 
-        # Prepare inputs for calling Python function.
-        wrapped_args = list(wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace, is_training_mode, arg)
-                            for grad_flag, tensor_flag, arg in zip(requires_grad_flags, tensor_type_flags, args))
+            # Prepare inputs for calling Python function.
+            wrapped_args = list(wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace, is_training_mode, arg)
+                                for grad_flag, tensor_flag, arg in zip(requires_grad_flags, tensor_type_flags, args))
 
-        # Call Python function.
-        result = backward_function(*wrapped_args)
+            # Call Python function.
+            result = backward_function(*wrapped_args)
 
-        # Extract results as DLPack tensor list.
-        wrapped_returned_args = wrap_all_outputs(result)
+            # Extract results as DLPack tensor list.
+            wrapped_returned_args = wrap_all_outputs(result)
 
-        ctx = wrapped_args[0]
-        torch_interop_utils.unregister_grad_fn(id(ctx))
+            ctx = wrapped_args[0]
+            torch_interop_utils.unregister_grad_fn(id(ctx))
 
-        return tuple(wrapped_returned_args)
-    except Exception as e:
-        # Flush buffers. Otherwise, calling this from C++ may lose them.
-        print('Exception happens when running ', backward_function)
-        sys.stdout.flush()
-        sys.stderr.flush()
-        raise wrap_exception(ORTModuleFallbackException, e)
+            return tuple(wrapped_returned_args)
+        except Exception as e:
+            # Flush buffers. Otherwise, calling this from C++ may lose them.
+            print('Exception happens when running ', backward_function)
+            sys.stdout.flush()
+            sys.stderr.flush()
+            raise wrap_exception(ORTModuleFallbackException, e)
