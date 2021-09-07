@@ -712,6 +712,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
           ORT_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(
               ort_value, reuse_mlvalue_index, ml_data_type, alloc_info, *shape, per_alloc_plan.create_fence_if_async));
         } else {
+          ORT_ENFORCE(false);
           ort_value = GetMutableMLValue(reuse_mlvalue_index);
         }
         break;

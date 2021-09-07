@@ -69,7 +69,8 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("S", DataTypeImpl::AllFixedSizeSequenceTensorTypes())
         .TypeConstraint("I", std::vector<MLDataType>{
                                  DataTypeImpl::GetTensorType<int32_t>(),
-                                 DataTypeImpl::GetTensorType<int64_t>()}),
+                                 DataTypeImpl::GetTensorType<int64_t>()})
+        .MayInplace(0, 0),
     SequenceErase);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -82,7 +83,8 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("S", DataTypeImpl::AllFixedSizeSequenceTensorTypes())
         .TypeConstraint("I", std::vector<MLDataType>{
                                  DataTypeImpl::GetTensorType<int32_t>(),
-                                 DataTypeImpl::GetTensorType<int64_t>()}),
+                                 DataTypeImpl::GetTensorType<int64_t>()})
+        .MayInplace(0, 0),
     SequenceInsert);
 
 }  // namespace cuda

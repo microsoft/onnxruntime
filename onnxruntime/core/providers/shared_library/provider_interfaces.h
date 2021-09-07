@@ -750,6 +750,8 @@ struct ProviderHost {
   virtual size_t TensorSeq__Size(const TensorSeq* p) noexcept = 0;
   virtual const Tensor& TensorSeq__Get(const TensorSeq* p, size_t i) = 0;
   virtual void TensorSeq__Add(TensorSeq* p, Tensor&& tensor) = 0;
+  virtual void TensorSeq__Insert(TensorSeq* p, Tensor&& tensor, size_t pos) = 0;
+  virtual void TensorSeq__Erase(TensorSeq* p, size_t pos) = 0;
 
   // AllocatorManager
   virtual void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) = 0;

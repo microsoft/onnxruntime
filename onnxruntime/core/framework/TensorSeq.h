@@ -68,6 +68,20 @@ class TensorSeq {
     tensors_.push_back(std::move(tensor));
   }
 
+  void Insert(Tensor&& tensor, size_t pos) {
+    ORT_ENFORCE(IsSameDataType(tensor),
+                "TensorSeq: tensor to be added has a different data type.");
+    ORT_ENFORCE(pos >= 0 && pos <= Size(),
+                "TensorSeq: tensor to be added cannot be inserted at the specified position.");
+    tensors_.insert(tensors_.begin() + pos, std::move(tensor));
+  }
+
+  void Erase(size_t pos) {
+    ORT_ENFORCE(pos >= 0 && pos < Size(),
+                "TensorSeq: tensor cannot be erased at the specified position.");
+    tensors_.erase(tensors_.begin() + pos);
+  }
+
  private:
   // A sequence must be associated with only one data type and all tensors in the seq must be of that type
   // One other alternative of storing the data type of a seq is to templatize the TensorSeq class.
