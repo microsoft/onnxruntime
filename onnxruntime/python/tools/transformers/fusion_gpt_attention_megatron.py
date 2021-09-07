@@ -24,14 +24,7 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
     def __init__(self, model: OnnxModel, num_heads: int):
         super().__init__(model, num_heads)
 
-    def fuse_attention_node(self,
-                            matmul_before_split,
-                            add_before_split,
-                            past,
-                            present,
-                            input,
-                            reshape_qkv,
-                            mask):
+    def fuse_attention_node(self, matmul_before_split, add_before_split, past, present, input, reshape_qkv, mask):
         attention_node_name = self.model.create_node_name('GptAttention')
         int32_mask = self.cast_attention_mask(mask)
         output = reshape_qkv.output[0]
@@ -44,7 +37,7 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
         attention_node.domain = "com.microsoft"
         attention_node.attribute.extend([
             helper.make_attribute("num_heads", self.num_heads),
-            helper.make_attribute("unidirectional", 0) # unidirectional shall not be ON for 4D attention mask
+            helper.make_attribute("unidirectional", 0)  # unidirectional shall not be ON for 4D attention mask
         ])
 
         nodes_to_add = [attention_node]
@@ -54,7 +47,7 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
             self.node_name_to_graph_name[node.name] = self.this_graph_name
 
         self.nodes_to_remove.append(reshape_qkv)
-        
+
         # we rely on prune_graph() to clean old subgraph nodes
         self.prune_graph = True
 
@@ -231,5 +224,5 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
             logger.info("fuse_attention: expect present to be graph output")
             return
 
-        self.fuse_attention_node(matmul_before_split, add_before_split, past, present, layernorm_before_attention.output[0], reshape_qkv,
-                                 attention_mask)
+        self.fuse_attention_node(matmul_before_split, add_before_split, past, present,
+                                 layernorm_before_attention.output[0], reshape_qkv, attention_mask)

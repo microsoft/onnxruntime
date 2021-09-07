@@ -890,7 +890,11 @@ class OnnxModel:
                 from packaging.version import Version
                 from onnx import __version__ as onnx_version
                 if Version(onnx_version) >= Version("1.9.0"):
-                    save_model(self.model, output_path, save_as_external_data=use_external_data_format, all_tensors_to_one_file=all_tensors_to_one_file, location=location)
+                    save_model(self.model,
+                               output_path,
+                               save_as_external_data=use_external_data_format,
+                               all_tensors_to_one_file=all_tensors_to_one_file,
+                               location=location)
                     return
 
                 external_data_helper.convert_model_to_external_data(self.model,
