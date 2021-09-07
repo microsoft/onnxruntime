@@ -12,7 +12,8 @@ TrainingAgent::TrainingAgent(InferenceSession& session,
                              const std::vector<std::string>& fw_feed_names,
                              const std::vector<OrtDevice>& fw_outputs_device_info,
                              const std::vector<std::string>& bw_fetches_names,
-                             const std::vector<OrtDevice>& bw_outputs_device_info) : inference_session_(session) {
+                             const std::vector<OrtDevice>& bw_outputs_device_info,
+                             const std::vector<std::string>& bw_grad_buffer_feed_names) : inference_session_(session) {
   auto& session_state = session.GetSessionState();
   std::vector<std::string> fw_fetches_names;
   std::vector<std::string> bw_feed_names;
@@ -36,6 +37,9 @@ TrainingAgent::TrainingAgent(InferenceSession& session,
     }
     break_point += 1;
   }
+
+  // If accumulate gradient within ort is enabled, we need pass gradient buffers as backward inputs.
+  bw_feed_names.insert(bw_feed_names.end(), bw_grad_buffer_feed_names.begin(), bw_grad_buffer_feed_names.end());
 
   fw_program_counter_end_ = break_point;
   bw_program_counter_end_ = exec_plan_vec.size();

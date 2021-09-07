@@ -26,6 +26,8 @@ class TrainingManager(GraphExecutionManager):
     def __init__(self, model, debug_options: DebugOptions, fallback_manager: _FallbackManager):
         super().__init__(model, debug_options, fallback_manager)
         self._export_mode = torch.onnx.TrainingMode.TRAINING
+        self._grad_already_initialized = False
+        self.graph_initializer_param_to_training = None
 
     @staticmethod
     def execution_session_run_forward(execution_session, onnx_model, gradient_accumulation_manager, *inputs):
@@ -176,11 +178,28 @@ class TrainingManager(GraphExecutionManager):
                     # Unpack saved_tensor to trigger version detection that catches inplace corruption
                     _ = ctx.saved_tensors
 
+                    if self._accumulate_gradients_within_ort and self._grad_already_initialized is False:
+                        self.graph_initializer_param_to_training = [param for name, param in self._flattened_module.named_parameters()
+                                                                    if param.requires_grad and name in self._graph_initializer_names_to_train]
+
+                        # The param's grad attribute is None by default and becomes a Tensor the first time a call to loss.backward(), 
+                        # which triggers gradient computation and store calculated gradients into param.grad. Then the subsquent
+                        # iterations will always reuse the created param.grad for accumulating grad.
+                        # Following https://github.com/pytorch/pytorch/blame/b95ce1591d56d545391ad5651f17ceb3b398a666/docs/source/autograd.rst#L113,
+                        # we explicitly initialze it here to make sure the .grad is a valid tensor, then pass it as backward inputs.
+                        for param in self.graph_initializer_param_to_training:
+                            assert param.grad is None
+                            param.grad = torch.zeros_like(param)
+                        self._grad_already_initialized = True
+
                     # Use IO binding
                     # Push user output grads to ONNX backend.
                     backward_inputs = C.OrtValueVector()
                     # Preallocate length of the vector. And then delete as required towards the end.
-                    backward_inputs.reserve(len(grad_outputs))
+                    if self._accumulate_gradients_within_ort:
+                        backward_inputs.reserve(len(grad_outputs) + len(self._graph_initializer_names_to_train))
+                    else:
+                        backward_inputs.reserve(len(grad_outputs))
                     for idx, grad_output in enumerate(grad_outputs):
                         if idx in self._graph_info.output_grad_indices_non_differentiable:
                             assert grad_output is None, "ORT found the {}-th module output '{}' is " \
@@ -199,6 +218,11 @@ class TrainingManager(GraphExecutionManager):
                         elif not grad_output.is_contiguous():
                             grad_output = grad_output.contiguous()
                         backward_inputs.push_back(to_dlpack(grad_output), grad_output.dtype == torch.bool)
+
+                    if self._accumulate_gradients_within_ort:
+                        for param in self.graph_initializer_param_to_training:
+                            backward_inputs.push_back(to_dlpack(param.grad), param.grad.dtype == torch.bool)
+
                     backward_inputs.shrink_to_fit()
 
                     # Run and get results
@@ -238,7 +262,7 @@ class TrainingManager(GraphExecutionManager):
 
                     return tuple(results)
 
-            return _io.unflatten_user_output(self._module_output_schema,
+            forward_outputs = _io.unflatten_user_output(self._module_output_schema,
                                              _ORTModuleFunction.apply(
                                                  *_io._combine_input_buffers_initializers(
                                                      self._graph_initializers,
@@ -248,6 +272,17 @@ class TrainingManager(GraphExecutionManager):
                                                      inputs,
                                                      kwargs,
                                                      self._device)))
+
+            if self._accumulate_gradients_within_ort:
+                from onnxruntime.training.ortmodule.torch_cpp_extensions import _clear_grad_fns_for_next_edges
+                ret = []
+                if isinstance(forward_outputs, tuple):
+                    rets = list(forward_outputs)
+                else:
+                    rets = [forward_outputs]
+                _clear_grad_fns_for_next_edges(rets)
+
+            return forward_outputs
         except ORTModuleFallbackException as e:
             # Exceptions subject to fallback are handled here
             self._fallback_manager.handle_exception(exception=e,
@@ -277,7 +312,13 @@ class TrainingManager(GraphExecutionManager):
         """Creates a TrainingAgent that can run the forward and backward graph on the training model"""
 
         session_options, providers, provider_options = self._get_session_config()
-        fw_feed_names = [input.name for input in self._onnx_models.optimized_model.graph.input]
+        bw_grad_buffer_feed_names = []
+        if self._accumulate_gradients_within_ort:
+            fw_feed_names = [input.name for input in self._onnx_models.optimized_model.graph.input
+                             if input.name not in self._graph_info.initializer_grad_buffer_input_names]
+            bw_grad_buffer_feed_names = self._graph_info.initializer_grad_buffer_input_names
+        else:
+            fw_feed_names = [input.name for input in self._onnx_models.optimized_model.graph.input]
         fw_outputs_device_info = [
             C.OrtDevice(get_ort_device_type(self._device.type),
                         C.OrtDevice.default_memory(),
@@ -299,7 +340,8 @@ class TrainingManager(GraphExecutionManager):
                                               bw_outputs_device_info,
                                               session_options,
                                               providers,
-                                              provider_options)
+                                              provider_options,
+                                              bw_grad_buffer_feed_names=bw_grad_buffer_feed_names)
 
     def _reinitialize_graph_builder(self, input_info):
         """Return true if the module graph builder was reinitialized"""

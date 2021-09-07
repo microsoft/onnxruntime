@@ -392,14 +392,33 @@ void OrtModuleGraphBuilder::ReorderOutputs() {
     }
   }
 
+  std::vector<const NodeArg*> new_input_args = gradient_graph.GetInputs();
   // Add initializer gradients to graph outputs.
   graph_info_.initializer_grad_names_to_train.clear();
+  graph_info_.initializer_grad_buffer_input_names.clear();
   for (const auto& initializer_name : config_.initializer_names_to_train) {
     std::string initializer_gradient_name = GradientBuilderBase::GradientName(initializer_name);
     ORT_ENFORCE(gradient_output_arg_map.find(initializer_gradient_name) != gradient_output_arg_map.end(),
                 "Trainable initializer grad is not found on gradient graph.");
     graph_info_.initializer_grad_names_to_train.emplace_back(initializer_gradient_name);
-    new_output_args.emplace_back(gradient_output_arg_map[initializer_gradient_name]);
+    if (!config_.accumulate_gradients_within_ort) {
+      new_output_args.emplace_back(gradient_output_arg_map[initializer_gradient_name]);
+    } else {
+      auto input_arg = gradient_graph.GetNodeArg(initializer_gradient_name);
+      auto& old_grad_input_arg = gradient_graph.GetOrCreateNodeArg(input_arg->Name() + "_old", input_arg->TypeAsProto());
+      auto& new_grad_input_arg = gradient_graph.GetOrCreateNodeArg(input_arg->Name() + "_new", input_arg->TypeAsProto());
+      // Accumulate calculated gradient (_new) into gradient buffer (_old)
+      gradient_graph.AddNode("Sum_for_" + initializer_gradient_name, "InPlaceAccumulator", "Accumulate per iteration gradient",
+                              {&old_grad_input_arg, input_arg}, {&new_grad_input_arg}, {}, kMSDomain);
+
+      graph_info_.initializer_grad_buffer_input_names.emplace_back(old_grad_input_arg.Name());
+      new_input_args.emplace_back(&old_grad_input_arg);
+      new_output_args.emplace_back(&new_grad_input_arg);
+    }
+  }
+
+  if (config_.accumulate_gradients_within_ort) {
+    gradient_graph.SetInputs(new_input_args);
   }
 
   gradient_graph.SetOutputs(new_output_args);

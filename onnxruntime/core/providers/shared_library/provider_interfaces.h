@@ -626,6 +626,18 @@ struct ProviderHost {
   // OpKernel
   virtual const Node& OpKernel__Node(const OpKernel* p) = 0;
 
+  // OpKernelInternal
+  virtual bool OpKernelContextInternal_GetUseDeterministicCompute(const OpKernelContextInternal* p) const = 0;
+  virtual const SessionState* OpKernelContextInternal_SubgraphSessionState(OpKernelContextInternal* p, const std::string& attribute_name) = 0;
+  virtual const OrtValue* OpKernelContextInternal_GetInputMLValue(const OpKernelContextInternal* p, int index) const = 0;
+  virtual OrtValue* OpKernelContextInternal_GetOutputMLValue(OpKernelContextInternal* p, int index) = 0;
+#ifdef ENABLE_TRAINING
+  virtual Status OpKernelContextInternal_SetOutputMLValue(OpKernelContextInternal* p, int index, const OrtValue& ort_value) = 0;
+#endif
+  virtual OrtValue* OpKernelContextInternal_OutputMLValue(OpKernelContextInternal* p, int index, const TensorShape& shape) = 0;
+  virtual const std::vector<const OrtValue*>& OpKernelContextInternal_GetImplicitInputs(const OpKernelContextInternal* p) const = 0;
+  virtual const bool& OpKernelContextInternal_GetTerminateFlag(const OpKernelContextInternal* p) const = 0;
+
   // OpKernelContext
   virtual const Tensor* OpKernelContext__Input_Tensor(const OpKernelContext* p, int index) = 0;
 #if !defined(DISABLE_SPARSE_TENSORS)

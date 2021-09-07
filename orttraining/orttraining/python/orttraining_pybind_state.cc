@@ -602,9 +602,10 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def(py::init([](PyInferenceSession* session, const std::vector<std::string>& fw_feed_names,
                        const std::vector<OrtDevice>& fw_outputs_device_info,
                        const std::vector<std::string>& bw_fetches_names,
-                       const std::vector<OrtDevice>& bw_outputs_device_info) {
+                       const std::vector<OrtDevice>& bw_outputs_device_info,
+                       const std::vector<std::string>& bw_grad_buffer_feed_names) {
         return std::make_unique<TrainingAgent>(*session->GetSessionHandle(), fw_feed_names, fw_outputs_device_info,
-                                               bw_fetches_names, bw_outputs_device_info);
+                                               bw_fetches_names, bw_outputs_device_info, bw_grad_buffer_feed_names);
       }))
       .def("run_forward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state, OrtValueCachePtr cache) -> void {
         Status status = agent->RunForward(feeds, fetches, *state, cache);
@@ -677,6 +678,8 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def_readwrite("input_names_require_grad", &OrtModuleGraphBuilderConfiguration::input_names_require_grad)
       .def_readwrite("use_memory_efficient_gradient",
                      &OrtModuleGraphBuilderConfiguration::use_memory_efficient_gradient)
+      .def_readwrite("accumulate_gradients_within_ort",
+                     &OrtModuleGraphBuilderConfiguration::accumulate_gradients_within_ort)
       .def_readwrite("build_gradient_graph", &OrtModuleGraphBuilderConfiguration::build_gradient_graph)
       .def_readwrite("graph_transformer_config", &OrtModuleGraphBuilderConfiguration::graph_transformer_config)
       .def_readwrite("enable_caching", &OrtModuleGraphBuilderConfiguration::enable_caching)
@@ -690,6 +693,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def_readwrite("initializer_names", &GraphInfo::initializer_names)
       .def_readwrite("initializer_names_to_train", &GraphInfo::initializer_names_to_train)
       .def_readwrite("initializer_grad_names_to_train", &GraphInfo::initializer_grad_names_to_train)
+      .def_readwrite("initializer_grad_buffer_input_names", &GraphInfo::initializer_grad_buffer_input_names)
       .def_readwrite("user_output_names", &GraphInfo::user_output_names)
       .def_readwrite("output_grad_indices_non_differentiable", &GraphInfo::output_grad_indices_non_differentiable)
       .def_readwrite("output_grad_indices_require_full_shape", &GraphInfo::output_grad_indices_require_full_shape)

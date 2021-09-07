@@ -166,6 +166,7 @@ struct NodeAttributes;
 class OpKernel;
 struct OpKernelContext;
 struct OpKernelInfo;
+class OpKernelContextInternal;
 struct PrimitiveDataTypeBase;
 struct Tensor;
 struct SparseTensor;

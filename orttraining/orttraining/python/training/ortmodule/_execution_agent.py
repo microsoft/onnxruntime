@@ -79,7 +79,7 @@ class TrainingAgent(object):
 
     def __init__(self, path_or_bytes, fw_feed_names, fw_outputs_device_info,
                  bw_fetches_names, bw_outputs_device_info, session_options=None,
-                 providers=None, provider_options=None):
+                 providers=None, provider_options=None, bw_grad_buffer_feed_names=None):
         """
         :param path_or_bytes: filename or serialized ONNX or ORT format model in a byte string
         :param fw_feed_names: Feed names for foward pass.
@@ -93,6 +93,7 @@ class TrainingAgent(object):
             providers are used with the default precedence.
         :param provider_options: Optional sequence of options dicts corresponding
             to the providers listed in 'providers'.
+        :param bw_grad_buffer_feed_names: Gradient buffer feed names for backward pass.
 
         The model type will be inferred unless explicitly set in the SessionOptions.
         To explicitly set:
@@ -114,7 +115,7 @@ class TrainingAgent(object):
                                                                providers, provider_options)
 
         self._training_agent = C_TrainingAgent(self._inference_session._sess, fw_feed_names, fw_outputs_device_info,
-                                               bw_fetches_names, bw_outputs_device_info)
+                                               bw_fetches_names, bw_outputs_device_info, bw_grad_buffer_feed_names)
 
     def run_forward(self, feeds, fetches, state, cache=None):
         """

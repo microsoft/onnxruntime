@@ -710,6 +710,40 @@ struct ProviderHostImpl : ProviderHost {
   // OpKernel (direct)
   const Node& OpKernel__Node(const OpKernel* p) override { return p->OpKernel::Node(); }
 
+  // OpKernelInternal (direct)
+  bool OpKernelContextInternal_GetUseDeterministicCompute(const OpKernelContextInternal* p) const override {
+    return p->GetUseDeterministicCompute();
+  }
+
+  const SessionState* OpKernelContextInternal_SubgraphSessionState(OpKernelContextInternal* p, const std::string& attribute_name) override {
+    return p->SubgraphSessionState(attribute_name);
+  }
+
+  const OrtValue* OpKernelContextInternal_GetInputMLValue(const OpKernelContextInternal* p, int index) const override {
+    return p->GetInputMLValue(index);
+  }
+
+  OrtValue* OpKernelContextInternal_GetOutputMLValue(OpKernelContextInternal* p, int index) override {
+    return p->GetOutputMLValue(index);
+  }
+
+#ifdef ENABLE_TRAINING
+  Status OpKernelContextInternal_SetOutputMLValue(OpKernelContextInternal* p, int index, const OrtValue& ort_value) override {
+    return p->SetOutputMLValue(index, ort_value);
+  }
+#endif
+  OrtValue* OpKernelContextInternal_OutputMLValue(OpKernelContextInternal* p, int index, const TensorShape& shape) override {
+    return p->OutputMLValue(index, shape);
+  }
+
+  const std::vector<const OrtValue*>& OpKernelContextInternal_GetImplicitInputs(const OpKernelContextInternal* p) const override {
+    return p->GetImplicitInputs();
+  }
+
+  const bool& OpKernelContextInternal_GetTerminateFlag(const OpKernelContextInternal* p) const override {
+    return p->GetTerminateFlag();
+  }
+
   // OpKernelContext (wrapped)
   const Tensor* OpKernelContext__Input_Tensor(const OpKernelContext* p, int index) override { return p->Input<Tensor>(index); }
 #if !defined(DISABLE_SPARSE_TENSORS)

@@ -21,7 +21,8 @@ class TrainingAgent {
                          const std::vector<std::string>& fw_feed_names,
                          const std::vector<OrtDevice>& fw_outputs_device_info,
                          const std::vector<std::string>& bw_fetches_names,
-                         const std::vector<OrtDevice>& bw_outputs_device_info);
+                         const std::vector<OrtDevice>& bw_outputs_device_info,
+                         const std::vector<std::string>& bw_grad_buffer_feed_names = {});
   ~TrainingAgent();
   // For ORTModule.forward()
   common::Status RunForward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,

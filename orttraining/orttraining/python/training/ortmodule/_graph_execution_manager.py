@@ -157,6 +157,9 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Memory aware gradient builder.
         self._use_memory_efficient_gradient = False
 
+        # Let ORT accumulate gradients instead of PyTorch.
+        self._accumulate_gradients_within_ort = False
+
     def _get_torch_gpu_allocator_function_addresses(self):
         if self._use_external_gpu_allocator and torch.cuda.is_available():
             # CPP extension to get torch GPU allocator's alloc and free function addresses
@@ -329,7 +332,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         assert self._export_mode is not None, "Please use a concrete instance of ExecutionManager"
 
         try:
-            with torch.set_grad_enabled(self._enable_custom_autograd_function), \
+            with torch.set_grad_enabled(self._enable_custom_autograd_function and self._export_mode == torch.onnx.TrainingMode.TRAINING), \
                     _logger.suppress_os_stream_output(log_level=self._debug_options.logging.log_level):
                 torch.onnx.export(self._flattened_module,
                                   sample_inputs_as_tuple,
@@ -398,6 +401,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         grad_builder_config.enable_caching = self._enable_grad_acc_optimization
         grad_builder_config.loglevel = _logger.ortmodule_loglevel_to_onnxruntime_c_loglevel(self._debug_options.logging.log_level)
         grad_builder_config.use_memory_efficient_gradient = self._use_memory_efficient_gradient
+        grad_builder_config.accumulate_gradients_within_ort = self._accumulate_gradients_within_ort
         self._graph_builder = C.OrtModuleGraphBuilder()
 
         # It is assumed here that the order and names of the inputs and outputs are not modified by the backend in any way

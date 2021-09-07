@@ -26,6 +26,10 @@ struct OrtModuleGraphBuilderConfiguration {
 
   // Graph configuration.
   bool use_memory_efficient_gradient = false;
+
+  // If set to true, all gradients will be accumulated in ORT graph.
+  bool accumulate_gradients_within_ort = false;
+
   bool build_gradient_graph = true;
   bool enable_caching = false;
 
@@ -50,6 +54,8 @@ struct GraphInfo {
   std::vector<std::string> initializer_names_to_train{};
   // Trainable initializer grad names, ordered according to initializer_names_to_train.
   std::vector<std::string> initializer_grad_names_to_train{};
+  // Gradient buffer input names for trainable initializers.
+  std::vector<std::string> initializer_grad_buffer_input_names{};
   // The user outputs.
   std::vector<std::string> user_output_names{};
   // Indices of output grads that are non-differentiable.

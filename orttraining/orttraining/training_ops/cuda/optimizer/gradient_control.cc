@@ -6,6 +6,10 @@
 #include "core/providers/cuda/cuda_allocator.h"
 #include "common.h"
 #include "gradient_control.h"
+#ifndef SHARED_PROVIDER
+#include "core/framework/op_kernel_info.h"
+#include "core/framework/op_kernel_context_internal.h"
+#endif
 
 namespace onnxruntime {
 namespace cuda {
@@ -70,7 +74,12 @@ Status InPlaceAccumulator<T, T_GRAD>::ComputeInternal(OpKernelContext* ctx) cons
   const Tensor& left_addee_buffer = *ctx->Input<Tensor>(0);
   const Tensor& right_addee_buffer = *ctx->Input<Tensor>(1);
   const Tensor* do_update_tensor = ctx->Input<Tensor>(2);
-  Tensor& accumulation_output = *ctx->Output(0, left_addee_buffer.Shape());
+
+  // todo: use some attribute to limit the force inplace update???
+  auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(ctx);
+  const OrtValue* input_ortvalue = ctx_internal->GetInputMLValue(static_cast<int>(0));
+  ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(0, *input_ortvalue));
+  Tensor& accumulation_output = *ctx->Output<Tensor>(0);
 
   if (do_update_tensor) {
     const bool do_update = *(do_update_tensor->template Data<bool>());

@@ -679,6 +679,45 @@ struct Path final {
   PROVIDER_DISALLOW_ALL(Path)
 };
 
+
+class OpKernelContextInternal {
+public:
+  bool GetUseDeterministicCompute() const {
+    return g_host->OpKernelContextInternal_GetUseDeterministicCompute(this);
+  }
+
+  const SessionState* SubgraphSessionState(const std::string& attribute_name) {
+    return g_host->OpKernelContextInternal_SubgraphSessionState(this, attribute_name);
+  }
+
+  const OrtValue* GetInputMLValue(int index) const {
+    return g_host->OpKernelContextInternal_GetInputMLValue(this, index);
+  }
+
+  OrtValue* GetOutputMLValue(int index) {
+    return g_host->OpKernelContextInternal_GetOutputMLValue(this, index);
+  }
+
+#ifdef ENABLE_TRAINING
+  Status SetOutputMLValue(int index, const OrtValue& ort_value) {
+    return g_host->OpKernelContextInternal_SetOutputMLValue(this, index, ort_value);
+  }
+#endif
+
+  OrtValue* OutputMLValue(int index, const TensorShape& shape) {
+    return g_host->OpKernelContextInternal_OutputMLValue(this, index, shape);
+  }
+
+  // Get the OrtValue's for all implicit inputs. Order is same as Node::ImplicitInputDefs(). No nullptr entries.
+  const std::vector<const OrtValue*>& GetImplicitInputs() const {
+    return g_host->OpKernelContextInternal_GetImplicitInputs(this);
+  }
+
+  const bool& GetTerminateFlag() const noexcept { return g_host->OpKernelContextInternal_GetTerminateFlag(this); }
+
+PROVIDER_DISALLOW_ALL(OpKernelContextInternal)
+};
+
 struct OpKernelContext final {
   template <typename T>
   const T& RequiredInput(int index) const;
