@@ -3,7 +3,13 @@
 
 #pragma once
 
-#include "core/framework/execution_provider.h"
+#include "core/framework/ortdevice.h"
+#include "core/framework/provider_options.h"
+#include "core/session/onnxruntime_c_api.h"
+
+// #include "core/framework/execution_provider.h"
+// #include "core/graph/indexed_sub_graph.h"
+#include "core/providers/shared_library/provider_api.h"
 #include "core/platform/ort_mutex.h"
 #include <map>
 #include "migraphx_inc.h"
@@ -51,6 +57,19 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
+
+  // void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
+  // Status OnRunEnd() override;
+
+  // Status SetComputeStream(void* stream) override;
+
+  // void* GetComputeStream() const override { return static_cast<void*>(stream_); }
+
+  // ProviderOptions GetProviderOptions() const override {
+  //   return TensorrtExecutionProviderInfo::ToProviderOptions(info_);
+  // }
+
+  std::unique_ptr<IndexedSubGraph> GetSubGraph(const std::vector<std::size_t>& graph_nodes_index, const GraphViewer& graph) const;
 
 private:
   bool fp16_enable_ = false;

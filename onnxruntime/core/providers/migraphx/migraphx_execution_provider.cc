@@ -761,25 +761,184 @@ static bool IsNodeSupported(const std::set<std::string>& op_set,
   return true;
 }
 
-static void AppendNodesToSubGraph(const std::vector<NodeIndex>& nodes,
-                                  const std::vector<std::string>& inputs,
-                                  const std::vector<std::string>& outputs,
-                                  std::vector<std::unique_ptr<ComputeCapability>>& result) {
-  static size_t op_counter = 0;
+// Convert GraphViewer graph to GraphProto
+void ToGraphProtoInternal(const GraphViewer& graph, ONNX_NAMESPACE::GraphProto& graph_proto) {
+  for (const auto* input_arg : graph.GetInputs()) {
+    *(graph_proto.mutable_input()->Add()) = input_arg->ToProto();
+  }
 
-  auto meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
-  meta_def->name = "MIGraphX_" + std::to_string(++op_counter);
-  meta_def->domain = kMIGraphXDomain;
-  meta_def->since_version = 1;
-  meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
-  meta_def->inputs = inputs;
-  meta_def->outputs = outputs;
+  // Add all graph's initializers to the subgraph
+  const auto& init_tensors = graph.GetAllInitializedTensors();
+  for (const auto& tensor : init_tensors) {
+    *(graph_proto.mutable_initializer()->Add()) = *(tensor.second);
+  }
 
-  std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
-  sub_graph->nodes = nodes;
-  sub_graph->SetMetaDef(std::move(meta_def));
-  result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+  for (const auto* output_arg : graph.GetOutputs()) {
+    *(graph_proto.mutable_output()->Add()) = output_arg->ToProto();
+  }
+
+  for (const auto* value_info : graph.GetValueInfo()) {
+    *(graph_proto.mutable_value_info()->Add()) = value_info->ToProto();
+  }
+
+  // Nodes must be sorted in Topological Order in the GraphProto per ONNX spec.
+  for (auto& node_idx : graph.GetNodesInTopologicalOrder()) {
+    const gsl::not_null<ONNX_NAMESPACE::NodeProto*> node_proto{graph_proto.add_node()};
+    const gsl::not_null<const Node*> p_node{graph.GetNode(node_idx)};
+    p_node->ToProto(*node_proto);
+  }
 }
+
+std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const std::vector<std::size_t>& graph_nodes_index, const GraphViewer& graph) const {
+  // const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
+  std::unordered_set<size_t> node_set;
+  node_set.reserve(graph_nodes_index.size());
+  for (const auto& index : graph_nodes_index) {
+    node_set.insert(index);
+  }
+
+  // Get parent graph output names
+  std::unordered_set<std::string> graph_output_names;
+  for (const auto* output_arg : graph.GetOutputs()) {
+    graph_output_names.insert(output_arg->Name());
+  }
+
+  // Find inputs and outputs of the subgraph
+  std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::IndexedSubGraph::Create();
+  std::unordered_map<const NodeArg*, int> fused_inputs, fused_outputs, fused_outputs_to_add, graph_outputs_to_add;
+  std::unordered_set<const NodeArg*> erased;
+  int input_order = 0;
+  int output_order = 0;
+
+  for (const auto& index : graph_nodes_index) {
+    sub_graph->Nodes().push_back(index);
+    const auto& node = graph.GetNode(index);
+    for (const auto& input : node->InputDefs()) {
+      const auto& it = fused_outputs.find(input);
+      if (it != fused_outputs.end()) {
+        fused_outputs.erase(it);
+        erased.insert(input);
+      } else if (erased.find(input) == erased.end()) {
+        // Only when input is neither in output list nor erased list, add the input to input list
+        fused_inputs[input] = input_order++;
+      }
+    }
+
+    for (const auto& input : node->ImplicitInputDefs()) {
+      const auto& it = fused_outputs.find(input);
+      if (it != fused_outputs.end()) {
+        fused_outputs.erase(it);
+        erased.insert(input);
+      } else if (erased.find(input) == erased.end()) {
+        // Only when input is neither in output list nor erased list, add the input to input list
+        fused_inputs[input] = input_order++;
+      }
+    }
+
+    // For output searching, there are two special cases,
+    // One is, if node's OutputEdges are more than its outputs, meaning certain output is used more than once,
+    // if the output is connected to nodes that don't belong to the subgraph, the output need to be added
+    // to the output list
+    // The other one is, if subgraph's node output is parent graph's output. the node output should
+    // be also added to the subgraph's output list
+    if (node->GetOutputEdgesCount() > node->OutputDefs().size()) {
+      for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
+        const auto& node_idx = it->GetNode().Index();
+        const auto& output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
+        if (node_set.find(node_idx) != node_set.end()) {
+          const auto& iter = fused_inputs.find(output);
+          if (iter != fused_inputs.end()) {
+            fused_inputs.erase(iter);
+            erased.insert(output);
+          } else if (erased.find(output) == erased.end()) {
+            if (graph_output_names.find(output->Name()) != graph_output_names.end()) {
+              graph_outputs_to_add[output] = output_order;
+            }
+            fused_outputs[output] = output_order++;
+          }
+        } else {
+          fused_outputs_to_add[output] = output_order++;
+        }
+      }
+    } else {
+      for (const auto& output : node->OutputDefs()) {
+        const auto& it = fused_inputs.find(output);
+        if (it != fused_inputs.end()) {
+          fused_inputs.erase(it);
+          erased.insert(output);
+        }
+        // Only when output is neither in input list nor erased list, add the output to output list
+        else if (erased.find(output) == erased.end()) {
+          if (graph_output_names.find(output->Name()) != graph_output_names.end()) {
+            graph_outputs_to_add[output] = output_order;
+          }
+          fused_outputs[output] = output_order++;
+        }
+      }
+    }
+  }
+
+  fused_outputs.insert(fused_outputs_to_add.begin(), fused_outputs_to_add.end());
+  fused_outputs.insert(graph_outputs_to_add.begin(), graph_outputs_to_add.end());
+
+  // Sort inputs and outputs by the order they were added
+  std::multimap<int, const NodeArg*> inputs, outputs;
+  for (auto it = fused_inputs.begin(), end = fused_inputs.end(); it != end; ++it) {
+    inputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
+  }
+
+  for (auto it = fused_outputs.begin(), end = fused_outputs.end(); it != end; ++it) {
+    outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
+  }
+
+  // Generate unique kernel name for MIGraphX subgraph
+  uint64_t model_hash = 0;
+  int id = GenerateMetaDefId(graph, model_hash);
+  std::string subgraph_id = std::to_string(model_hash) + "_" + std::to_string(id);
+  auto meta_def = IndexedSubGraph_MetaDef::Create();
+  const std::string graph_type = graph.IsSubgraph() ? "subgraph" : "graph";
+  meta_def->name() = "MGXKernel_" + graph_type + "_" + graph.Name() + "_" + subgraph_id;
+
+  // Assign inputs and outputs to subgraph's meta_def
+  for (const auto& input : inputs) {
+    if (input.second->Exists()) {
+      meta_def->inputs().push_back(input.second->Name());
+    }
+  }
+
+  for (const auto& output : outputs) {
+    if (output.second->Exists()) {
+      meta_def->outputs().push_back(output.second->Name());
+    }
+  }
+
+  meta_def->domain() = kMSDomain;
+  meta_def->since_version() = 1;
+  sub_graph->SetMetaDef(std::move(meta_def));
+
+  return sub_graph;
+}
+
+
+// static void AppendNodesToSubGraph(const std::vector<NodeIndex>& nodes,
+//                                   const std::vector<std::string>& inputs,
+//                                   const std::vector<std::string>& outputs,
+//                                   std::vector<std::unique_ptr<ComputeCapability>>& result) {
+//   static size_t op_counter = 0;
+
+//   auto meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
+//   meta_def->name = "MIGraphX_" + std::to_string(++op_counter);
+//   meta_def->domain = kMIGraphXDomain;
+//   meta_def->since_version = 1;
+//   meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
+//   meta_def->inputs = inputs;
+//   meta_def->outputs = outputs;
+
+//   std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+//   sub_graph->nodes = nodes;
+//   sub_graph->SetMetaDef(std::move(meta_def));
+//   result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+// }
 
 static std::vector<NodeIndex>
 GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
@@ -842,146 +1001,161 @@ GetPartitionedSubgraphs(const std::vector<NodeIndex>& topological_order, const s
   return mgx_subgraphx;
 }
 
-static void GetInputsOutputsOfSubgraph(const GraphViewer& graph_viewer,
-                                       const std::vector<NodeIndex>& nodes,
-                                       const std::unordered_set<std::string>& mgx_required_initializers,
-                                       std::vector<std::string>& nodes_inputs,
-                                       std::vector<std::string>& nodes_outputs) {
-  std::unordered_set<std::string> input_args;
-  std::vector<std::string> ordered_input_args;
-  std::unordered_set<std::string> output_args;
-  std::unordered_set<std::string> external_output_args;
+// static void GetInputsOutputsOfSubgraph(const GraphViewer& graph_viewer,
+//                                        const std::vector<NodeIndex>& nodes,
+//                                        const std::unordered_set<std::string>& mgx_required_initializers,
+//                                        std::vector<std::string>& nodes_inputs,
+//                                        std::vector<std::string>& nodes_outputs) {
+//   std::unordered_set<std::string> input_args;
+//   std::vector<std::string> ordered_input_args;
+//   std::unordered_set<std::string> output_args;
+//   std::unordered_set<std::string> external_output_args;
 
-  for (const auto& node_idx : nodes) {
-    const auto& node = graph_viewer.GetNode(node_idx);
+//   for (const auto& node_idx : nodes) {
+//     const auto& node = graph_viewer.GetNode(node_idx);
 
-    // Collect all inputs and outputs
-    node->ForEachDef(
-        [&input_args, &ordered_input_args, &output_args](const NodeArg& node_arg, bool is_input) {
-          if (is_input) {
-            if (!input_args.count(node_arg.Name())) {
-              ordered_input_args.push_back(node_arg.Name());
-            }
-            input_args.insert(node_arg.Name());
-          } else {
-            output_args.insert(node_arg.Name());
-          }
-        },
-        true);
+//     // Collect all inputs and outputs
+//     node->ForEachDef(
+//         [&input_args, &ordered_input_args, &output_args](const NodeArg& node_arg, bool is_input) {
+//           if (is_input) {
+//             if (!input_args.count(node_arg.Name())) {
+//               ordered_input_args.push_back(node_arg.Name());
+//             }
+//             input_args.insert(node_arg.Name());
+//           } else {
+//             output_args.insert(node_arg.Name());
+//           }
+//         },
+//         true);
 
-    // Check if output of this node is used by nodes outside
-    // subgraph. If yes add this to cluster outputs
-    for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
-      const auto& ext_node = graph_viewer.GetNode((*it).Index());
+//     // Check if output of this node is used by nodes outside
+//     // subgraph. If yes add this to cluster outputs
+//     for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
+//       const auto& ext_node = graph_viewer.GetNode((*it).Index());
 
-      if (std::find(nodes.begin(), nodes.end(), ext_node->Index()) == nodes.end()) {
-        // Node is external to subgraph. Search through its
-        // inputs to find the output that is generated by subgraph.
-        std::set<std::string> ext_node_inputs;
-        ext_node->ForEachDef(
-            [&ext_node_inputs](const onnxruntime::NodeArg& arg, bool is_input) {
-              if (is_input) {
-                ext_node_inputs.insert(arg.Name());
-              }
-            },
-            true);
+//       if (std::find(nodes.begin(), nodes.end(), ext_node->Index()) == nodes.end()) {
+//         // Node is external to subgraph. Search through its
+//         // inputs to find the output that is generated by subgraph.
+//         std::set<std::string> ext_node_inputs;
+//         ext_node->ForEachDef(
+//             [&ext_node_inputs](const onnxruntime::NodeArg& arg, bool is_input) {
+//               if (is_input) {
+//                 ext_node_inputs.insert(arg.Name());
+//               }
+//             },
+//             true);
 
-        for (const auto& out_def : node->OutputDefs()) {
-          if (ext_node_inputs.find(out_def->Name()) != ext_node_inputs.end()) {
-            external_output_args.insert(out_def->Name());
-          }
-        }
-      }
-    }
-  }
+//         for (const auto& out_def : node->OutputDefs()) {
+//           if (ext_node_inputs.find(out_def->Name()) != ext_node_inputs.end()) {
+//             external_output_args.insert(out_def->Name());
+//           }
+//         }
+//       }
+//     }
+//   }
 
-  //Extract initializers used by subgraph.
-  std::unordered_set<std::string> original_graph_inputs;
-  for (const auto& node_arg : graph_viewer.GetInputsIncludingInitializers()) {
-    original_graph_inputs.insert(node_arg->Name());
-  }
+//   //Extract initializers used by subgraph.
+//   std::unordered_set<std::string> original_graph_inputs;
+//   for (const auto& node_arg : graph_viewer.GetInputsIncludingInitializers()) {
+//     original_graph_inputs.insert(node_arg->Name());
+//   }
 
-  const auto& initializers = graph_viewer.GetAllInitializedTensors();
-  std::vector<std::string> const_inputs;
-  for (const auto& in_arg : ordered_input_args) {
-    if ((initializers.count(in_arg) && !original_graph_inputs.count(in_arg)) ||
-        mgx_required_initializers.count(in_arg)) {
-      const_inputs.push_back(in_arg);
-    }
-  }
+//   const auto& initializers = graph_viewer.GetAllInitializedTensors();
+//   std::vector<std::string> const_inputs;
+//   for (const auto& in_arg : ordered_input_args) {
+//     if ((initializers.count(in_arg) && !original_graph_inputs.count(in_arg)) ||
+//         mgx_required_initializers.count(in_arg)) {
+//       const_inputs.push_back(in_arg);
+//     }
+//   }
 
-  for (const auto& in_arg : ordered_input_args) {
-    if (!output_args.count(in_arg) &&
-        !((initializers.count(in_arg) && !original_graph_inputs.count(in_arg)) ||
-          mgx_required_initializers.count(in_arg))) {
-      nodes_inputs.push_back(in_arg);
-    }
-  }
+//   for (const auto& in_arg : ordered_input_args) {
+//     if (!output_args.count(in_arg) &&
+//         !((initializers.count(in_arg) && !original_graph_inputs.count(in_arg)) ||
+//           mgx_required_initializers.count(in_arg))) {
+//       nodes_inputs.push_back(in_arg);
+//     }
+//   }
 
-  for (const auto& in_arg : const_inputs) {
-    nodes_inputs.push_back(in_arg);
-  }
+//   for (const auto& in_arg : const_inputs) {
+//     nodes_inputs.push_back(in_arg);
+//   }
 
-  std::copy(external_output_args.begin(), external_output_args.end(), std::back_inserter(nodes_outputs));
-  for (const auto& node_arg : graph_viewer.GetOutputs()) {
-    const auto& name = node_arg->Name();
-    if (output_args.count(name) && !external_output_args.count(name)) {
-      nodes_outputs.push_back(name);
-    }
-  }
-}
+//   std::copy(external_output_args.begin(), external_output_args.end(), std::back_inserter(nodes_outputs));
+//   for (const auto& node_arg : graph_viewer.GetOutputs()) {
+//     const auto& name = node_arg->Name();
+//     if (output_args.count(name) && !external_output_args.count(name)) {
+//       nodes_outputs.push_back(name);
+//     }
+//   }
+// }
+
+
 
 std::vector<std::unique_ptr<ComputeCapability>>
 MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                          const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
-  if (graph_viewer.IsSubgraph()) {
-    return result;
-  }
+  // if (graph_viewer.IsSubgraph()) {
+  //   return result;
+  // }
 
-  for (const auto& tensor : graph_viewer.GetAllInitializedTensors()) {
-    if (tensor.second->has_data_location() && tensor.second->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
-      LOGS_DEFAULT(WARNING) << "MIGraphX: Initializers with external data lepcation are not currently supported";
-      return result;
-    }
-  }
+  // for (const auto& tensor : graph_viewer.GetAllInitializedTensors()) {
+  //   if (tensor.second->has_data_location() && tensor.second->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
+  //     LOGS_DEFAULT(WARNING) << "MIGraphX: Initializers with external data lepcation are not currently supported";
+  //     return result;
+  //   }
+  // }
 
-  // Construct modelproto from graph
-  onnxruntime::Model model(graph_viewer.Name(), true, ModelMetaData(), PathString{},
-                           IOnnxRuntimeOpSchemaRegistryList(), graph_viewer.DomainToVersionMap(),
-                           std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
+  // // Construct modelproto from graph
+  // onnxruntime::Model model(graph_viewer.Name(), true, ModelMetaData(), PathString{},
+  //                          IOnnxRuntimeOpSchemaRegistryList(), graph_viewer.DomainToVersionMap(),
+  //                          std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
 
-  std::unordered_map<std::string, std::size_t> map_dim_param_values;
-  onnxruntime::Graph& graph_build = model.MainGraph();
+  // std::unordered_map<std::string, std::size_t> map_dim_param_values;
+  // onnxruntime::Graph& graph_build = model.MainGraph();
 
-  for (const auto& node : graph_viewer.Nodes()) {
-    std::vector<onnxruntime::NodeArg*> inputs, outputs;
-    for (auto input : node.InputDefs()) {
-      auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
-      inputs.push_back(&n_input);
-    }
-    for (auto output : node.OutputDefs()) {
-      auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
-      outputs.push_back(&n_output);
-    }
-    graph_build.AddNode(node.Name(), node.OpType(), node.Description(), inputs, outputs, &node.GetAttributes(), node.Domain());
-  }
+  // for (const auto& node : graph_viewer.Nodes()) {
+  //   std::vector<onnxruntime::NodeArg*> inputs, outputs;
+  //   for (auto input : node.InputDefs()) {
+  //     auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
+  //     inputs.push_back(&n_input);
+  //   }
+  //   for (auto output : node.OutputDefs()) {
+  //     auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
+  //     outputs.push_back(&n_output);
+  //   }
+  //   graph_build.AddNode(node.Name(), node.OpType(), node.Description(), inputs, outputs, &node.GetAttributes(), node.Domain());
+  // }
 
-  //Add initializer to graph
-  std::size_t init_tensor_num = 0;
-  const auto& init_tensors = graph_viewer.GetAllInitializedTensors();
-  for (const auto& tensor : init_tensors) {
-    init_tensor_num++;
-    graph_build.AddInitializedTensor(*(tensor.second));
-  }
+  // //Add initializer to graph
+  // std::size_t init_tensor_num = 0;
+  // const auto& init_tensors = graph_viewer.GetAllInitializedTensors();
+  // for (const auto& tensor : init_tensors) {
+  //   init_tensor_num++;
+  //   graph_build.AddInitializedTensor(*(tensor.second));
+  // }
 
-  ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  // ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
+  // model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
-  auto status = graph_build.Resolve();
+  // auto status = graph_build.Resolve();
   
+  // std::string onnx_string_buffer;
+  // model_proto.SerializeToString(&onnx_string_buffer);
+
+  auto model = graph_viewer.CreateModel(*GetLogger());
+  auto model_proto = model->ToProto();
+  ToGraphProtoInternal(graph_viewer, *model_proto->mutable_graph());
+  model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+
   std::string onnx_string_buffer;
-  model_proto.SerializeToString(&onnx_string_buffer);
+  model_proto->SerializeToString(onnx_string_buffer);
+
+  // debugging, write onnx to a buffer for debugging
+  std::ofstream ofs("ort_getcapability.onnx", std::ios::out);
+  ofs.write(onnx_string_buffer.data(), onnx_string_buffer.size());
+  ofs.close();
 
   // This is a list of initializers that migraphx considers as constants.
   // Example weights, reshape shape etc.
@@ -990,29 +1164,32 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   
   //If all ops are supported, no partitioning is required. Short-circuit and avoid splitting.
   if (unsupported_nodes.empty()) {
-    std::vector<std::string> inputs;
-    std::vector<std::string> outputs;
+    auto node_indices = graph_viewer.GetNodesInTopologicalOrder();
+    auto sub_graph = GetSubGraph(node_indices, graph_viewer);
+    result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+    // std::vector<std::string> inputs;
+    // std::vector<std::string> outputs;
 
-    //Fill inputs with names
-    std::for_each(graph_viewer.GetInputs().begin(), graph_viewer.GetInputs().end(),
-                  [&inputs](const NodeArg* node_arg) { inputs.push_back(node_arg->Name()); });
+    // //Fill inputs with names
+    // std::for_each(graph_viewer.GetInputs().begin(), graph_viewer.GetInputs().end(),
+    //               [&inputs](const NodeArg* node_arg) { inputs.push_back(node_arg->Name()); });
 
-    // In scenarios, when there are no inputs or all inputs being initializers,
-    // ConstantFolding optimization in onnxruntime pre-computes the value.
-    if (inputs.empty()) {
-      return result;
-    }
+    // // In scenarios, when there are no inputs or all inputs being initializers,
+    // // ConstantFolding optimization in onnxruntime pre-computes the value.
+    // if (inputs.empty()) {
+    //   return result;
+    // }
 
-    // Initializers need to be part of meta_def->inputs
-    std::for_each(mgx_required_initializers.begin(), mgx_required_initializers.end(),
-                  [&inputs](const std::string& initializer) { inputs.push_back(initializer); });
+    // // Initializers need to be part of meta_def->inputs
+    // std::for_each(mgx_required_initializers.begin(), mgx_required_initializers.end(),
+    //               [&inputs](const std::string& initializer) { inputs.push_back(initializer); });
 
-    // Fill outputs with names
-    std::for_each(graph_viewer.GetOutputs().begin(), graph_viewer.GetOutputs().end(),
-                  [&outputs](const NodeArg* node_arg) { outputs.push_back(node_arg->Name()); });
+    // // Fill outputs with names
+    // std::for_each(graph_viewer.GetOutputs().begin(), graph_viewer.GetOutputs().end(),
+    //               [&outputs](const NodeArg* node_arg) { outputs.push_back(node_arg->Name()); });
 
-    // Create and add this graph to result.
-    AppendNodesToSubGraph(graph_viewer.GetNodesInTopologicalOrder(), inputs, outputs, result);
+    // // Create and add this graph to result.
+    // AppendNodesToSubGraph(graph_viewer.GetNodesInTopologicalOrder(), inputs, outputs, result);
 
   } else {  // unsupported_nodes_idx.empty()
     if (unsupported_nodes.size() > 10)
@@ -1035,12 +1212,15 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     SubgraphPostProcessing(graph_viewer, mgx_clusters, *GetLogger());
 
     for (const auto& this_cluster : mgx_clusters) {
-      std::vector<std::string> cluster_inputs, cluster_outputs;
-      GetInputsOutputsOfSubgraph(graph_viewer, this_cluster, mgx_required_initializers, cluster_inputs, cluster_outputs);
+      auto sub_graph = GetSubGraph(this_cluster, graph_viewer);
+      result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+      
+      // std::vector<std::string> cluster_inputs, cluster_outputs;
+      // GetInputsOutputsOfSubgraph(graph_viewer, this_cluster, mgx_required_initializers, cluster_inputs, cluster_outputs);
 
-      if (!cluster_inputs.empty()) {
-        AppendNodesToSubGraph(this_cluster, cluster_inputs, cluster_outputs, result);
-      }
+      // if (!cluster_inputs.empty()) {
+      //   AppendNodesToSubGraph(this_cluster, cluster_inputs, cluster_outputs, result);
+      // }
     }
   }
 

@@ -4,7 +4,7 @@
 #include "core/providers/migraphx/migraphx_provider_factory.h"
 #include <atomic>
 #include "migraphx_execution_provider.h"
-#include "core/session/abi_session_options_impl.h"
+// #include "core/session/abi_session_options_impl.h"
 
 using namespace onnxruntime;
 
