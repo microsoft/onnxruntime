@@ -26,6 +26,7 @@
 #include "gpu_data_transfer.h"
 #include <fstream>
 #include <algorithm>
+#include <iterator>
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245)
@@ -83,7 +84,7 @@ ONNX_OPERATOR_KERNEL_EX(
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMIGraphXExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMIGraphXExecutionProvider, kOnnxDomain, 1, MemcpyToHost);
 
-static void RegisterMIGraphXKernels(KernelRegistry& kernel_registry) {
+static Status RegisterMIGraphXKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMIGraphXExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMIGraphXExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
@@ -92,19 +93,39 @@ static void RegisterMIGraphXKernels(KernelRegistry& kernel_registry) {
   for (auto& function_table_entry : function_table) {
     ORT_ENFORCE(kernel_registry.Register(function_table_entry()).IsOK());
   }
+
+  return Status::OK();
 }
 
-std::shared_ptr<KernelRegistry> GetMIGraphXKernelRegistry() {
-  std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
-  RegisterMIGraphXKernels(*kernel_registry);
+// std::shared_ptr<KernelRegistry> GetMIGraphXKernelRegistry() {
+//   std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
+//   RegisterMIGraphXKernels(*kernel_registry);
 
-  return kernel_registry;
+//   return kernel_registry;
+// }
+
+static std::shared_ptr<KernelRegistry> s_kernel_registry;
+
+void Shutdown_DeleteRegistry() {
+  s_kernel_registry.reset();
 }
 
 std::shared_ptr<KernelRegistry> MIGraphXExecutionProvider::GetKernelRegistry() const {
-  static std::shared_ptr<KernelRegistry> kernel_registry = onnxruntime::GetMIGraphXKernelRegistry();
-  return kernel_registry;
+  if (!s_kernel_registry) {
+    s_kernel_registry = KernelRegistry::Create();
+    auto status = RegisterMIGraphXKernels(*s_kernel_registry);
+    if (!status.IsOK())
+      s_kernel_registry.reset();
+    ORT_THROW_IF_ERROR(status);
+  }
+
+  return s_kernel_registry;
 }
+
+// std::shared_ptr<KernelRegistry> MIGraphXExecutionProvider::GetKernelRegistry() const {
+//   static std::shared_ptr<KernelRegistry> kernel_registry = onnxruntime::GetMIGraphXKernelRegistry();
+//   return kernel_registry;
+// }
 
 MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kMIGraphXExecutionProvider} {
@@ -688,7 +709,7 @@ void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::v
         if (std::any_of(inputs.begin(), inputs.end(), [&](auto& arg) {
           const auto& arg_s = arg->Shape();
           if (arg_s == nullptr) return false;
-          auto tensor_dims = arg_s->dim();
+          const auto& tensor_dims = arg_s->dim();
           std::vector<std::size_t> dims;
           std::transform(tensor_dims.begin(),
                         tensor_dims.end(),
@@ -1214,7 +1235,7 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     for (const auto& this_cluster : mgx_clusters) {
       auto sub_graph = GetSubGraph(this_cluster, graph_viewer);
       result.push_back(ComputeCapability::Create(std::move(sub_graph)));
-      
+
       // std::vector<std::string> cluster_inputs, cluster_outputs;
       // GetInputsOutputsOfSubgraph(graph_viewer, this_cluster, mgx_required_initializers, cluster_inputs, cluster_outputs);
 
@@ -1227,70 +1248,101 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   return result;
 }
 
-static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::Node* fused_node,
-                                                             const logging::Logger& logger) {
-  const auto* node_function = fused_node->GetFunctionBody();
+// static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::Node* fused_node,
+//                                                              const logging::Logger& logger) {
+//   const auto* node_function = fused_node->GetFunctionBody();
 
-  ORT_ENFORCE(node_function != nullptr, "Could not extract function body for node: ", fused_node->Name());
+//   ORT_ENFORCE(node_function != nullptr, "Could not extract function body for node: ", fused_node->Name());
 
-  const Graph& node_subgraph = node_function->Body();
-  onnxruntime::Model model{node_subgraph.Name(), true, ModelMetaData{}, PathString{},
-                           IOnnxRuntimeOpSchemaRegistryList{}, node_subgraph.DomainToVersionMap(),
-                           std::vector<ONNX_NAMESPACE::FunctionProto>(), logger};
+//   const Graph& node_subgraph = node_function->Body();
+//   onnxruntime::Model model{node_subgraph.Name(), true, ModelMetaData{}, PathString{},
+//                            IOnnxRuntimeOpSchemaRegistryList{}, node_subgraph.DomainToVersionMap(),
+//                            std::vector<ONNX_NAMESPACE::FunctionProto>(), logger};
 
-  ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-  *(model_proto.mutable_graph()) = node_subgraph.ToGraphProto();
+//   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
+//   *(model_proto.mutable_graph()) = node_subgraph.ToGraphProto();
 
-  auto opset = model_proto.add_opset_import();
-  opset->set_domain(kOnnxDomain);
-  opset->set_version(node_subgraph.DomainToVersionMap().at(kOnnxDomain));
+//   auto opset = model_proto.add_opset_import();
+//   opset->set_domain(kOnnxDomain);
+//   opset->set_version(node_subgraph.DomainToVersionMap().at(kOnnxDomain));
 
-  return model_proto;
-}
+//   return model_proto;
+// }
 
-bool get_input_output_names(std::string& onnx_buffer,
+// bool get_input_output_names(std::string& onnx_buffer,
+//                             std::vector<std::string>& input_names,
+//                             std::vector<std::string>& output_names) {
+//   bool no_input_shape = false;
+
+//   input_names.clear();
+//   output_names.clear();
+//   auto model = ONNX_NAMESPACE::ModelProto::Create();
+//   if (model->ParseFromString(onnx_buffer)) {
+//     // if (model.has_graph()) {
+//       // compute output names
+//       auto& graph = model->graph();
+
+//       // compute input names
+//       std::unordered_set<std::string> ini_names;
+//       for (auto&& f : graph.initializer())
+//         ini_names.insert(f.name());
+
+//       for (auto&& input : graph.input()) {
+//         const std::string& name = input.name();
+//         if (ini_names.count(name) == 0) {
+//           input_names.push_back(name);
+//           auto dim_size = input.type().tensor_type().shape().dim_size();
+//           if (dim_size == 0) {
+//             no_input_shape = true;
+//           }
+//         }
+//       }
+
+//       auto prog_output = graph.output();
+//       std::vector<std::string> all_output_names;
+//       std::vector<std::string> prog_output_names;
+//       std::transform(prog_output.begin(),
+//                      prog_output.end(),
+//                      std::back_inserter(all_output_names),
+//                      [](auto& node) { return node.name(); });
+//       std::copy_if(
+//           all_output_names.begin(),
+//           all_output_names.end(),
+//           std::back_inserter(output_names),
+//           [&](const auto& name) { return !name.empty(); });
+//     // }
+//   }
+
+//   return no_input_shape;
+// }
+
+bool get_input_output_names(const GraphViewer& graph,
                             std::vector<std::string>& input_names,
                             std::vector<std::string>& output_names) {
-  bool no_input_shape = false;
-
   input_names.clear();
   output_names.clear();
-  onnx::ModelProto model;
-  if (model.ParseFromArray(onnx_buffer.data(), onnx_buffer.size())) {
-    if (model.has_graph()) {
-      // compute output names
-      auto& graph = model.graph();
+  const auto& input_args = graph.GetInputs();
+  std::transform(input_args.begin(), input_args.end(), std::back_inserter(input_names), [](auto& arg){
+    return arg->Name();
+  });
 
-      // compute input names
-      std::unordered_set<std::string> ini_names;
-      for (auto&& f : graph.initializer())
-        ini_names.insert(f.name());
+  bool no_input_shape = std::any_of(input_args.begin(), input_args.end(), [&](auto arg) {
+    auto dim_size = arg->Shape()->dim_size();
+    return (dim_size == 0);
+  });
 
-      for (auto&& input : graph.input()) {
-        const std::string& name = input.name();
-        if (ini_names.count(name) == 0) {
-          input_names.push_back(name);
-          auto dim_size = input.type().tensor_type().shape().dim_size();
-          if (dim_size == 0) {
-            no_input_shape = true;
-          }
-        }
-      }
+  const auto& out_args = graph.GetOutputs();
+  std::vector<std::string> tmp_out_names;
+  std::transform(out_args.begin(),
+                 out_args.end(),
+                 std::back_inserter(tmp_out_names),
+                 [](auto& arg) { return arg->Name(); });
 
-      auto prog_output = graph.output();
-      std::vector<std::string> all_output_names;
-      std::vector<std::string> prog_output_names;
-      std::transform(prog_output.begin(),
-                     prog_output.end(),
-                     std::back_inserter(all_output_names),
-                     [](auto& node) { return node.name(); });
-      std::copy_if(
-          all_output_names.begin(),
-          all_output_names.end(),
-          std::back_inserter(output_names),
-          [&](const auto& name) { return !name.empty(); });
-    }
-  }
+  std::copy_if(
+      tmp_out_names.begin(),
+      tmp_out_names.end(),
+      std::back_inserter(output_names),
+      [&](const auto& name) { return !name.empty(); });
 
   return no_input_shape;
 }
@@ -1308,13 +1360,26 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
       input_name_index[input_defs[i]->Name()] = i;
     }
 
-    // reconstruct the subgraph proto from fused nodes
-    onnx::ModelProto model_proto = GetModelProtoFromFusedNode(fused_node, *GetLogger());
+    // Reconstruct graph proto from fused node's function body
+    const auto* func_body = fused_node->GetFunctionBody();
+    if (!func_body) {
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
+    }
+    const Graph& graph_body = func_body->Body();
+    auto graph_body_viewer = graph_body.CreateGraphViewer();
+    auto model = graph_body_viewer->CreateModel(*GetLogger());
+    auto model_proto = model->ToProto();
+    *model_proto->mutable_graph() = *graph_body.ToGraphProto();
+    model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     std::string onnx_string_buffer;
-    model_proto.SerializeToString(&onnx_string_buffer);
+    model_proto->SerializeToString(onnx_string_buffer);
+
+    // Temp code changes for debugging, dump MIGraphX subgraphs
+    std::fstream dump(fused_node->Name() + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
+    model_proto->SerializeToOstream(dump);
 
     std::vector<std::string> input_names, output_names;
-    no_input_shape = no_input_shape or get_input_output_names(onnx_string_buffer, input_names, output_names);
+    no_input_shape = no_input_shape or get_input_output_names(*graph_body_viewer, input_names, output_names);
 
     // by parsing the model_proto, create a program corresponding to
     // the input fused_node
