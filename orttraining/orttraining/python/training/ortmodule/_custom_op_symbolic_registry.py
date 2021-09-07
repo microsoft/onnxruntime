@@ -61,7 +61,7 @@ def nll_loss(g, self, target, weight, reduction, ignore_index):
 def ctc_loss(g, log_probs, targets, input_lengths, target_lengths, blank, reduction, zero_infinity):
     return g.op("com.microsoft::ATenOp",
                     log_probs, targets, input_lengths, target_lengths,
-                    blank, reduction, zero_infinity, name_s='aten::ctc_loss')
+                    blank, reduction, zero_infinity, name_s='aten::ctc_loss', outputs=2)[0]
 
 
 @register_symbolic('embedding')
