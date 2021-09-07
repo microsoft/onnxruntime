@@ -493,7 +493,7 @@ class OnnxModel:
         return None
 
     def convert_model_float32_to_float16(self, cast_input_output=True):
-        logger.warn(
+        logger.warning(
             'The function convert_model_float32_to_float16 is deprecated. Use convert_float_to_float16 instead!')
         self.convert_float_to_float16(use_symbolic_shape_infer=True, keep_io_types=cast_input_output)
 
