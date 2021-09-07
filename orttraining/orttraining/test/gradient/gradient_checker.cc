@@ -192,21 +192,22 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
               static_cast<int>(c));
           (*jacobian_ts)[calc_index.first][calc_index.second] = dx_flat[r];
         }
+
+        auto R = jacobian_ts->size();
+        auto C = jacobian_ts[0].size();
+
+        for (int r = 0; r < R; r++) {
+          std::cout << "row " << r << ": ";
+          for (int c = 0; c < C; c++) {
+            std::cout << (*jacobian_ts)[r][c];
+            std::cout << " ";
+          }
+          std::cout << std::endl;
+        }
+        std::cout << std::endl;
       }
     }
   }
-  auto R = jacobian_ts->size();
-  auto C = jacobian_ts[0].size();
-
-  for (int r = 0; r < R; r++) {
-    std::cout << "row " << r << ": ";
-    for (int c = 0; c < C; c++) {
-      std::cout << (*jacobian_ts)[r][c];
-      std::cout << " ";
-    }
-    std::cout << std::endl;
-  }
-  std::cout << std::endl;
   return Status::OK();
 }
 
@@ -474,12 +475,12 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
 
   int num_grad_builder_checks = check_not_have_shape_inferencing ? 2 : 1;
   bool add_shape = true;
-  for (int i = num_grad_builder_checks - 1; i < num_grad_builder_checks; i++, add_shape = false) {
+  for (int i = 0; i < num_grad_builder_checks; i++, add_shape = false) {
     // It is necessary to test for inputs with or without gradient.
     // We simply set each input without gradient to test the rest inputs' gradient.
     // In the last loop it tests for the case where all inputs are with gradient.
     size_t total_gradient_variations = check_not_have_gradient ? x_infos.size() + 1 : 1;
-    for (size_t x_gradient_variation = total_gradient_variations - 1; x_gradient_variation < total_gradient_variations; x_gradient_variation++) {
+    for (size_t x_gradient_variation = 0; x_gradient_variation < total_gradient_variations; x_gradient_variation++) {
       // Initialize theoretical Jacobians to zeros.
       std::vector<std::vector<JAC_T>> jacobian_ts;
       InitJacobians(x_infos, y_infos, &jacobian_ts);
