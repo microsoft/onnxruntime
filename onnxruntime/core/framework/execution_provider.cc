@@ -210,15 +210,18 @@ int IExecutionProvider::ModelIdGenerator::GenerateId(const onnxruntime::GraphVie
     if (!model_path.IsEmpty()) {
       std::string path_str;
       if (hash_model_name) {
+        // get model name
         PathString leaf = model_path.GetComponents().back();
         path_str = ToMBString(leaf.c_str());
       } else {
+        // get model path
         path_str = ToMBString(model_path.ToPathString().c_str());
       }
 
       // ensure enough characters are hashed in case model names are short or very similar
       int32_t path_length = gsl::narrow_cast<int32_t>(path_str.size());
-      int32_t string_length = 0, hash_string_length = 500;
+      int32_t string_length = 0;
+      constexpr int32_t hash_string_length = 500;
       while (string_length < hash_string_length) {
         hash_str(path_str);
         string_length += path_length;
@@ -227,6 +230,7 @@ int IExecutionProvider::ModelIdGenerator::GenerateId(const onnxruntime::GraphVie
     
     if (model_path.IsEmpty() || hash_nodes) {  
       // fingerprint the main graph by hashing graph inputs and the ordered outputs from each node
+      // if hash_nodes is false, only hash inputs/outputs when model path is not available
       for (const auto* node_arg : main_graph.GetInputsIncludingInitializers()) {
         hash_str(node_arg->Name());
       }  

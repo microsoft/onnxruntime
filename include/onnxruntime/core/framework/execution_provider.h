@@ -283,6 +283,10 @@ class IExecutionProvider {
   // multiple sessions.
   class ModelIdGenerator {
    public:
+    // Generate unique id by hashing model path/name and nodes
+    // hash_model_name: true: hash model name; false: hash model path
+    // hash_nodes: true: hash graph inputs and nodes outputs; false: hash inputs/outputs only when model path is not 
+    // available
     int GenerateId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash, bool hash_model_name = false, bool hash_nodes = false);
 
    private:
