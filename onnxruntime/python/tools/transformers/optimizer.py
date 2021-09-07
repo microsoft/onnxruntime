@@ -19,16 +19,12 @@
 
 import logging
 import coloredlogs
-import onnx
 import os
-import sys
 import argparse
-import numpy as np
 from typing import Dict
-from collections import deque
-from onnx import ModelProto, TensorProto, numpy_helper, load_model
+from onnx import load_model
 from onnx_model_bart import BartOnnxModel
-from onnx_model_bert import BertOnnxModel, BertOptimizationOptions
+from onnx_model_bert import BertOnnxModel
 from onnx_model_bert_tf import BertOnnxModelTF
 from onnx_model_bert_keras import BertOnnxModelKeras
 from onnx_model_gpt2 import Gpt2OnnxModel
@@ -338,7 +334,7 @@ def main():
         optimizer.convert_float_to_float16(keep_io_types=True)
 
     if args.input_int32:
-        optimizer.change_input_to_int32()
+        optimizer.change_graph_inputs_to_int32()
 
     optimizer.save_model_to_file(args.output, args.use_external_data_format)
 

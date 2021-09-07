@@ -1436,6 +1436,9 @@ def run_training_python_frontend_tests(cwd):
 
     run_subprocess([
         sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_checkpoint_functions.py'], cwd=cwd)
+    # Not technically training related, but it needs torch to be installed.
+    run_subprocess([
+        sys.executable, '-m', 'pytest', '-sv', 'test_pytorch_export_contrib_ops.py'], cwd=cwd)
 
 
 def run_training_python_frontend_e2e_tests(cwd):

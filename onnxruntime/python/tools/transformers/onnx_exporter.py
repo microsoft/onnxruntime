@@ -9,7 +9,7 @@ import numpy
 import os
 import torch
 from pathlib import Path
-from transformers import AutoConfig, AutoTokenizer, AutoModel, LxmertConfig, TransfoXLConfig
+from transformers import AutoConfig, AutoTokenizer, LxmertConfig, TransfoXLConfig
 from affinity_helper import AffinitySetting
 from benchmark_helper import create_onnxruntime_session, Precision
 from gpt2_helper import GPT2ModelNoPastState, PRETRAINED_GPT2_MODELS, TFGPT2ModelNoPastState

@@ -37,13 +37,17 @@ BERT_TEST_MODELS = {
 }
 
 
+def _get_fusion_test_model(file):
+    relative_path = os.path.join(os.path.dirname(__file__), '..', '..', 'testdata', 'transform', 'fusion', file)
+    if (os.path.exists(relative_path)):
+        return relative_path
+    return os.path.join('.', 'testdata', 'transform', 'fusion', file)
+
+
 def _get_test_model_path(name):
     sub_dir, file = BERT_TEST_MODELS[name]
     if sub_dir == "FUSION":
-        relative_path = os.path.join(os.path.dirname(__file__), '..', '..', 'testdata', 'transform', 'fusion', file)
-        if (os.path.exists(relative_path)):
-            return relative_path
-        return os.path.join('.', 'testdata', 'transform', 'fusion', file)
+        return _get_fusion_test_model(file)
     else:
         relative_path = os.path.join(os.path.dirname(__file__), 'test_data', sub_dir, file)
         if (os.path.exists(relative_path)):
@@ -58,7 +62,8 @@ class TestBertOptimization(unittest.TestCase):
                 print(f"Counters is not expected in test: {test_name}")
                 for op, counter in expected_node_count.items():
                     print("{}: {} expected={}".format(op, len(bert_model.get_nodes_by_op_type(op)), counter))
-            self.assertEqual(len(bert_model.get_nodes_by_op_type(op_type)), count)
+
+                self.assertEqual(len(bert_model.get_nodes_by_op_type(op_type)), count)
 
     # add test function for huggingface pytorch model
     def _test_optimizer_on_huggingface_model(self,
@@ -197,6 +202,20 @@ class TestBertOptimization(unittest.TestCase):
             'SkipLayerNormalization': 0
         }
         self.verify_node_count(model, expected_node_count, 'test_multiple_embed')
+
+    def test_embed_layer_norm_fusion(self):
+        onnx_files = []
+        for i in [3, 8, 9]:
+            onnx_files.append(f"embed_layer_norm_format{i}.onnx")
+            onnx_files.append(f"embed_layer_norm_format{i}_opset13.onnx")
+        onnx_files.append('embed_layer_norm_format3_no_cast.onnx')
+        onnx_files.append('embed_layer_norm_format3_no_cast_opset13.onnx')
+
+        for file in onnx_files:
+            input_model_path = _get_fusion_test_model(file)
+            model = optimize_model(input_model_path, 'bert')
+            expected_node_count = {'EmbedLayerNormalization': 1, 'Attention': 1, 'ReduceSum': 0}
+            self.verify_node_count(model, expected_node_count, file)
 
     # def test_bert_tf2onnx_0(self):
     #     input = _get_test_model_path('bert_tf2onnx_0')

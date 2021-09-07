@@ -7,6 +7,7 @@ Ensure that dependencies are available and then load the extension module.
 """
 import os
 import platform
+import sys
 
 from . import _ld_preload  # noqa: F401
 
@@ -17,5 +18,6 @@ if platform.system() == "Windows":
         if not os.path.isfile("C:\\Windows\\System32\\vcruntime140_1.dll"):
             raise ImportError(
                 "Microsoft Visual C++ Redistributable for Visual Studio 2019 not installed on the machine.")
-
+@ONNXRUNTIME_SETDLOPENFLAGS_GLOBAL@
 from .onnxruntime_pybind11_state import *  # noqa
+@ONNXRUNTIME_SETDLOPENFLAGS_LOCAL@
