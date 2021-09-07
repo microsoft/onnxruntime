@@ -180,7 +180,7 @@ std::vector<DLManagedTensor*> ExecuteATenOperator(const char* op_name, const cha
     torch::jit::push(stack, arguments[i]);
   }
 
-  aten_op.op->getOperation()(&stack);
+  aten_op.op->getOperation()(stack);
   std::vector<DLManagedTensor*> result;
   for (const auto& ret : torch::jit::pop(stack, aten_op.return_size)) {
     const auto& tensor = ret.toTensor();
