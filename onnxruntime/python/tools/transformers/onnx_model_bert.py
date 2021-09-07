@@ -8,6 +8,7 @@ from typing import List
 from onnx import GraphProto, ModelProto, TensorProto, ValueInfoProto, helper
 from onnx_model import OnnxModel
 from fusion_reshape import FusionReshape
+from fusion_remove_cast import FusionRemoveCast
 from fusion_shape import FusionShape
 from fusion_layernorm import FusionLayerNormalization, FusionLayerNormalizationTF
 from fusion_skiplayernorm import FusionSkipLayerNormalization, FusionBiasSkipLayerNormalization
@@ -77,6 +78,10 @@ class BertOnnxModel(OnnxModel):
 
     def fuse_shape(self):
         fusion = FusionShape(self)
+        fusion.apply()
+
+    def fusion_remove_cast(self):
+        fusion = FusionRemoveCast(self)
         fusion.apply()
 
     def fuse_embed_layer(self):
@@ -300,6 +305,8 @@ class BertOnnxModel(OnnxModel):
         self.prune_graph()
 
     def optimize(self, options: FusionOptions = None, add_dynamic_axes=False):
+        self.fusion_remove_cast()
+
         if (options is None) or options.enable_layer_norm:
             self.fuse_layer_norm()
 

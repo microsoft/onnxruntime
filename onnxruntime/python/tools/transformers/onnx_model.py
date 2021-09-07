@@ -863,11 +863,9 @@ class OnnxModel:
         #    self.graph_topological_sort(graph)
         OnnxModel.graph_topological_sort(self.model.graph)
 
-    def save_model_to_file(self, output_path, use_external_data_format=False):
+    def save_model_to_file(self, output_path, use_external_data_format=False, all_tensors_to_one_file=True):
         logger.info(f"Sort graphs in topological order")
         self.topological_sort()
-
-        logger.info(f"Output model to {output_path}")
 
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
@@ -878,13 +876,29 @@ class OnnxModel:
         else:
             # Save model to external data, which is needed for model size > 2GB
             if use_external_data_format:
-                data_file = str(Path(output_path).name + ".data")
-                if os.path.isfile(data_file):
-                    os.remove(data_file)
+                output_dir = Path(output_path).parent
+                if os.path.exists(output_dir):
+                    try:
+                        import shutil
+                        shutil.rmtree(output_dir)
+                        logger.info(f"Clear the existed directory for external data: {output_dir}")
+                    except OSError as e:
+                        logger.info(f"Failed to remove the directory {output_dir}: {e.strerror}")
+                Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                location = Path(output_path).name + ".data" if all_tensors_to_one_file else None
+
+                from packaging.version import Version
+                from onnx import __version__ as onnx_version
+                if Version(onnx_version) >= Version("1.9.0"):
+                    save_model(self.model, output_path, save_as_external_data=use_external_data_format, all_tensors_to_one_file=all_tensors_to_one_file, location=location)
+                    return
+
                 external_data_helper.convert_model_to_external_data(self.model,
-                                                                    all_tensors_to_one_file=True,
-                                                                    location=data_file)
+                                                                    all_tensors_to_one_file=all_tensors_to_one_file,
+                                                                    location=location)
             save_model(self.model, output_path)
+
+        logger.info(f"Model saved to {output_path}")
 
     def get_graph_inputs_excluding_initializers(self):
         """
