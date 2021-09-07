@@ -2395,20 +2395,20 @@ Return true if all elements are true and false otherwise.
         propagateShapeAndTypeFromFirstInput(ctx);
         propagateShapeFromInputToOutput(ctx, 0, 0);
 
-          // Inputs 1 to 4 must be of rank 1.
-          checkInputRank(ctx, 1, 1);
-          checkInputRank(ctx, 2, 1);
-          checkInputRank(ctx, 3, 1);
-          checkInputRank(ctx, 4, 1);
+        // Inputs 1 to 4 must be of rank 1.
+        checkInputRank(ctx, 1, 1);
+        checkInputRank(ctx, 2, 1);
+        checkInputRank(ctx, 3, 1);
+        checkInputRank(ctx, 4, 1);
 
-          Dim num_channels;
+        Dim num_channels;
 
-          if (hasInputShape(ctx, 0)) {
-            if (getInputShape(ctx, 0).dim_size() > 1)
-              unifyInputDim(ctx, 0, 1, num_channels);
-            else
-              unifyDim(num_channels, 1);
-          }
+        if (hasInputShape(ctx, 0)) {
+          if (getInputShape(ctx, 0).dim_size() > 1)
+            unifyInputDim(ctx, 0, 1, num_channels);
+          else
+            unifyDim(num_channels, 1);
+        }
 
         unifyInputDim(ctx, 1, 0, num_channels);
         unifyInputDim(ctx, 2, 0, num_channels);
