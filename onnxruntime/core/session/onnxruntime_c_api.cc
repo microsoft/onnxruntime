@@ -2340,7 +2340,6 @@ static constexpr OrtApi ort_api_1_to_9 = {
     &OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer,
     // End of Version 8 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    // Version 9 - In development, feel free to add/remove/rearrange here
     &OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2,
     &OrtApis::CreateTensorRTProviderOptions,
     &OrtApis::UpdateTensorRTProviderOptions,
