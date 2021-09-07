@@ -1406,85 +1406,85 @@ TEST(GradientCheckerTest, UnsqueezeGrad) {
 
 // TODO: Reshape missing
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#ifdef USE_CUDA
 // TODO fix flaky test
 // failing random seed: 4133818171
-TEST(GradientCheckerTest, BatchNormalizationGrad) {
+TEST(GradientCheckerTest, DISABLED_BatchNormalizationGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"BatchNormInternal", kMSDomain, 1};
+  OpDef op_def{"BatchNormalization"};
   float error_tolerance = 1e-2f;
-  // float epsilon = 1e-05f;
+  float epsilon = 1e-05f;
   float momentum = 0.1f;
 
   // image data example where input dimensions are (N X C X H X W)
-  // {
-  //   int channel_dim = 3;
-  //   TensorShape in_out_shape({3, channel_dim, 2, 4});
-  //   TensorShape channel_shape({channel_dim});
-  //   // inputs
-  //   TensorInfo x_info{in_out_shape, true};
-  //   TensorInfo scale_info{channel_shape, true};
-  //   TensorInfo bias_info{channel_shape, true};
-  //   TensorInfo mean_info(channel_shape, false);
-  //   TensorInfo var_info(channel_shape, false);
-  //   // outputs
-  //   TensorInfo y_info{in_out_shape, true};
-  //   TensorInfo running_mean_info(channel_shape, false);
-  //   TensorInfo running_var_info(channel_shape, false);
-  //   TensorInfo saved_mean_info(channel_shape, false);
-  //   TensorInfo saved_var_info(channel_shape, false);
+  {
+    int channel_dim = 3;
+    TensorShape in_out_shape({3, channel_dim, 2, 4});
+    TensorShape channel_shape({channel_dim});
+    // inputs
+    TensorInfo x_info{in_out_shape, true};
+    TensorInfo scale_info{channel_shape, true};
+    TensorInfo bias_info{channel_shape, true};
+    TensorInfo mean_info(channel_shape, false);
+    TensorInfo var_info(channel_shape, false);
+    // outputs
+    TensorInfo y_info{in_out_shape, true};
+    TensorInfo running_mean_info(channel_shape, false);
+    TensorInfo running_var_info(channel_shape, false);
+    TensorInfo saved_mean_info(channel_shape, false);
+    TensorInfo saved_var_info(channel_shape, false);
 
-  //   gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, bias_info, mean_info, var_info}, {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
-  //                                         {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)});
-  //   EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
-  // }
+    gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, bias_info, mean_info, var_info}, {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
+                                          {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)});
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
 
-  // // channel_size = 1
-  // {
-  //   int channel_dim = 1;
-  //   TensorShape in_out_shape({3, channel_dim, 2, 4});
-  //   TensorShape channel_shape({channel_dim});
-  //   // inputs
-  //   TensorInfo x_info{in_out_shape, true};
-  //   TensorInfo scale_info{channel_shape, true};
-  //   TensorInfo bias_info{channel_shape, true};
-  //   TensorInfo mean_info(channel_shape, false);
-  //   TensorInfo var_info(channel_shape, false);
-  //   // outputs
-  //   TensorInfo y_info{in_out_shape, true};
-  //   TensorInfo running_mean_info(channel_shape, false);
-  //   TensorInfo running_var_info(channel_shape, false);
-  //   TensorInfo saved_mean_info(channel_shape, false);
-  //   TensorInfo saved_var_info(channel_shape, false);
+  // channel_size = 1
+  {
+    int channel_dim = 1;
+    TensorShape in_out_shape({3, channel_dim, 2, 4});
+    TensorShape channel_shape({channel_dim});
+    // inputs
+    TensorInfo x_info{in_out_shape, true};
+    TensorInfo scale_info{channel_shape, true};
+    TensorInfo bias_info{channel_shape, true};
+    TensorInfo mean_info(channel_shape, false);
+    TensorInfo var_info(channel_shape, false);
+    // outputs
+    TensorInfo y_info{in_out_shape, true};
+    TensorInfo running_mean_info(channel_shape, false);
+    TensorInfo running_var_info(channel_shape, false);
+    TensorInfo saved_mean_info(channel_shape, false);
+    TensorInfo saved_var_info(channel_shape, false);
 
-  //   gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, bias_info, mean_info, var_info}, {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
-  //                                         {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)});
-  //   EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
-  // }
+    gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, bias_info, mean_info, var_info}, {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
+                                          {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)});
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
 
-  // // batch_size (N) = 1
-  // {
-  //   int channel_dim = 4;
-  //   TensorShape in_out_shape({1, channel_dim, 2});
-  //   TensorShape channel_shape({channel_dim});
-  //   // inputs
-  //   TensorInfo x_info{in_out_shape, true};
-  //   TensorInfo scale_info{channel_shape, true};
-  //   TensorInfo bias_info{channel_shape, true};
-  //   TensorInfo mean_info(channel_shape, false);
-  //   TensorInfo var_info(channel_shape, false);
-  //   // outputs
-  //   TensorInfo y_info{in_out_shape, true};
-  //   TensorInfo running_mean_info(channel_shape, false);
-  //   TensorInfo running_var_info(channel_shape, false);
-  //   TensorInfo saved_mean_info(channel_shape, false);
-  //   TensorInfo saved_var_info(channel_shape, false);
+  // batch_size (N) = 1
+  {
+    int channel_dim = 4;
+    TensorShape in_out_shape({1, channel_dim, 2});
+    TensorShape channel_shape({channel_dim});
+    // inputs
+    TensorInfo x_info{in_out_shape, true};
+    TensorInfo scale_info{channel_shape, true};
+    TensorInfo bias_info{channel_shape, true};
+    TensorInfo mean_info(channel_shape, false);
+    TensorInfo var_info(channel_shape, false);
+    // outputs
+    TensorInfo y_info{in_out_shape, true};
+    TensorInfo running_mean_info(channel_shape, false);
+    TensorInfo running_var_info(channel_shape, false);
+    TensorInfo saved_mean_info(channel_shape, false);
+    TensorInfo saved_var_info(channel_shape, false);
 
-  //   gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, bias_info, mean_info, var_info}, {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
-  //                                         {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)});
-  //   EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
-  // }
+    gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, bias_info, mean_info, var_info}, {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
+                                          {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)});
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
 
   // case with epsilon not explicitly provided (default value should be used)
   {
@@ -1505,33 +1505,32 @@ TEST(GradientCheckerTest, BatchNormalizationGrad) {
     TensorInfo saved_var_info(channel_shape, false);
 
     gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, bias_info, mean_info, var_info}, {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
-                                          {{1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f}, {1.f, 1.f, 1.f, 1.f}, {-1.f, -1.f, -1.f, -1.f}, {0.f, 0.f, 0.f, 0.f}, {1.f, 1.f, 1.f, 1.f}},
                                           {MakeAttribute("momentum", momentum)});
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // case for larger multi-dimensional X
-  // {
-  //   int channel_dim = 5;
-  //   TensorShape in_out_shape({6, channel_dim, 3, 2, 4});
-  //   TensorShape channel_shape({channel_dim});
-  //   // inputs
-  //   TensorInfo x_info{in_out_shape, true};
-  //   TensorInfo scale_info{channel_shape, true};
-  //   TensorInfo bias_info{channel_shape, true};
-  //   TensorInfo mean_info(channel_shape, false);
-  //   TensorInfo var_info(channel_shape, false);
-  //   // outputs
-  //   TensorInfo y_info{in_out_shape, true};
-  //   TensorInfo running_mean_info(channel_shape, false);
-  //   TensorInfo running_var_info(channel_shape, false);
-  //   TensorInfo saved_mean_info(channel_shape, false);
-  //   TensorInfo saved_var_info(channel_shape, false);
+  {
+    int channel_dim = 5;
+    TensorShape in_out_shape({6, channel_dim, 1, 3, 2, 4});
+    TensorShape channel_shape({channel_dim});
+    // inputs
+    TensorInfo x_info{in_out_shape, true};
+    TensorInfo scale_info{channel_shape, true};
+    TensorInfo bias_info{channel_shape, true};
+    TensorInfo mean_info(channel_shape, false);
+    TensorInfo var_info(channel_shape, false);
+    // outputs
+    TensorInfo y_info{in_out_shape, true};
+    TensorInfo running_mean_info(channel_shape, false);
+    TensorInfo running_var_info(channel_shape, false);
+    TensorInfo saved_mean_info(channel_shape, false);
+    TensorInfo saved_var_info(channel_shape, false);
 
-  //   gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, bias_info, mean_info, var_info}, {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
-  //                                         {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)});
-  //   EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
-  // }
+    gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, bias_info, mean_info, var_info}, {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
+                                          {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)});
+    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  }
 
   /* // single dimension input where C should be assumed to be 1 (does not seem to be currently supported by op)
   {

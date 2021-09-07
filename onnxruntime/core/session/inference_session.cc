@@ -1464,10 +1464,6 @@ common::Status InferenceSession::Initialize() {
     }
   }
 
-  PathString path_str("/home/aiscuser/model_train_0816.onnx");
-  std::remove(ToMBString(path_str).c_str());
-  Model::Save(*model_, path_str);
-
   return status;
 }
 

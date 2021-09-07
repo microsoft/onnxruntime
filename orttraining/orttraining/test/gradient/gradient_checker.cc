@@ -192,19 +192,6 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
               static_cast<int>(c));
           (*jacobian_ts)[calc_index.first][calc_index.second] = dx_flat[r];
         }
-
-        auto R = jacobian_ts->size();
-        auto C = jacobian_ts[0].size();
-
-        for (int r = 0; r < R; r++) {
-          std::cout << "row " << r << ": ";
-          for (int c = 0; c < C; c++) {
-            std::cout << (*jacobian_ts)[r][c];
-            std::cout << " ";
-          }
-          std::cout << std::endl;
-        }
-        std::cout << std::endl;
       }
     }
   }
