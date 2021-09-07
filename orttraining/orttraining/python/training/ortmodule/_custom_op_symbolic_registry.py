@@ -58,9 +58,9 @@ def nll_loss(g, self, target, weight, reduction, ignore_index):
 
 
 @register_symbolic('ctc_loss')
-def ctc_loss(g, self, log_probs, targets, input_lengths, target_lengths, blank, reduction, zero_infinity=False):
+def ctc_loss(g, log_probs, targets, input_lengths, target_lengths, blank, reduction, zero_infinity):
     return g.op("com.microsoft::ATenOp",
-                    self, log_probs, targets, input_lengths, target_lengths,
+                    log_probs, targets, input_lengths, target_lengths,
                     blank, reduction, zero_infinity, name_s='aten::ctc_loss')
 
 
