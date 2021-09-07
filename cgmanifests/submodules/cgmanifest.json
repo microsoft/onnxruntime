@@ -324,7 +324,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "4e50dbca6615635c6ace6105bbff449da5a567c4",
+          "commitHash": "1f416bb462689f3ef9e3f1057a113d9c6aba6972",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "git submodule at cmake/external/onnx-tensorrt"

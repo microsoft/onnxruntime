@@ -174,8 +174,8 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${onnxruntime_tvm_libs}
   onnxruntime_framework
   onnxruntime_graph
+  ${ONNXRUNTIME_MLAS_LIBS}
   onnxruntime_common
-  onnxruntime_mlas
   onnxruntime_flatbuffers
 )
 

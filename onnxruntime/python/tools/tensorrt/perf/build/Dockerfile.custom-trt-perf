@@ -1,0 +1,38 @@
+# --------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+# --------------------------------------------------------------
+
+ARG IMAGE=onnxruntime
+FROM ${IMAGE}
+
+ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
+ARG ONNXRUNTIME_BRANCH=master
+ARG TRT_VERSION=8.0.1.6
+ARG CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80
+
+WORKDIR /code
+ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/code/cmake-3.21.0-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
+ENV LD_LIBRARY_PATH /opt/miniconda/lib:$LD_LIBRARY_PATH
+
+SHELL ["/bin/bash", "-c"]
+
+# Prepare onnxruntime repository & build onnxruntime with TensorRT
+RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime &&\
+    /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh &&\
+    cp onnxruntime/docs/Privacy.md /code/Privacy.md &&\
+    cp onnxruntime/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt &&\
+    cp onnxruntime/ThirdPartyNotices.txt /code/ThirdPartyNotices.txt
+
+# Checkout appropriate TRT_VERSION and build
+RUN cd onnxruntime &&\
+    trt_v=${TRT_VERSION%.*.*} &&\
+    ./onnxruntime/python/tools/tensorrt/perf/build/checkout_trt.sh ${trt_v} &&\
+    /bin/sh build.sh --parallel --build_shared_lib --skip_submodule_sync --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ --config Release --build_wheel --skip_tests --skip_submodule_sync --cmake_extra_defines "'CMAKE_CUDA_ARCHITECTURES="${CMAKE_CUDA_ARCHITECTURES}"'" &&\
+    pip install /code/onnxruntime/build/Linux/Release/dist/*.whl &&\
+    cd .. 
+
+# Install extra dependencies
+RUN apt-get install -y --no-install-recommends libprotobuf-dev protobuf-compiler pciutils &&\
+    pip install --upgrade pip &&\
+    pip install pandas coloredlogs numpy flake8 onnx Cython onnxmltools sympy packaging psutil 

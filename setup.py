@@ -118,18 +118,22 @@ try:
                 self.root_is_pure = False
 
         def _rewrite_ld_preload(self, to_preload):
-            with open('onnxruntime/capi/_ld_preload.py', 'rt') as f:
-                ld_preload = f.read().splitlines()
-            with open('onnxruntime/capi/_ld_preload.py', 'wt') as f:
-                for line in ld_preload:
-                    f.write(line)
-                    f.write('\n')
-                    if 'LD_PRELOAD_BEGIN_MARK' in line:
-                        break
+            with open('onnxruntime/capi/_ld_preload.py', 'a') as f:
                 if len(to_preload) > 0:
                     f.write('from ctypes import CDLL, RTLD_GLOBAL\n')
                     for library in to_preload:
                         f.write('_{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split('.')[0], library))
+
+        def _rewrite_ld_preload_cuda(self, to_preload):
+            with open('onnxruntime/capi/_ld_preload.py', 'a') as f:
+                if len(to_preload) > 0:
+                    f.write('from ctypes import CDLL, RTLD_GLOBAL\n')
+                    f.write('try:\n')
+                    for library in to_preload:
+                        f.write('    _{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split('.')[0], library))
+                    f.write('except OSError:\n')
+                    f.write('    import os\n')
+                    f.write('    os.environ["ORT_CUDA_UNAVAILABLE"] = "1"\n')
 
         def run(self):
             if is_manylinux:
@@ -142,6 +146,7 @@ try:
                 dependencies = ['librccl.so', 'libamdhip64.so', 'librocblas.so', 'libMIOpen.so',
                                 'libhsa-runtime64.so', 'libhsakmt.so']
                 to_preload = []
+                to_preload_cuda = []
                 args = ['patchelf', '--debug']
                 for line in result.stdout.split('\n'):
                     for dependency in dependencies:
@@ -163,13 +168,14 @@ try:
                         for dependency in cuda_dependencies:
                             if dependency in line:
                                 if dependency not in to_preload:
-                                    to_preload.append(line)
+                                    to_preload_cuda.append(line)
                                 args.extend(['--remove-needed', line])
                     args.append(dest)
                     if len(args) > 3:
                         subprocess.run(args, check=True, stdout=subprocess.PIPE)
 
                 self._rewrite_ld_preload(to_preload)
+                self._rewrite_ld_preload_cuda(to_preload_cuda)
             _bdist_wheel.run(self)
             if is_manylinux:
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
