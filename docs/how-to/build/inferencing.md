@@ -48,13 +48,13 @@ The default Windows CMake Generator is Visual Studio 2017, but you can also use 
 
 #### macOS
 
-By default, ORT is configured to be built for a minimum target macOS version of 10.12.
-The shared library in the release Nuget(s) and the Python wheel may be installed on macOS versions of 10.12+.
+By default, ORT is configured to be built for a minimum target macOS version of 10.14.
+The shared library in the release Nuget(s) and the Python wheel may be installed on macOS versions of 10.14+.
 
 If you would like to use [Xcode](https://developer.apple.com/xcode/) to build the onnxruntime for x86_64 macOS, please add the --user_xcode argument in the command line.
 
 Without this flag, the cmake build generator will be Unix makefile by default.
-Also, if you want to cross-compile for Apple Silicon in an Intel-based MacOS machine, please add the argument --osx_arch arm64 with cmake > 3.19. Note: unit tests will be skipped due to the incompatible CPU instruction set.
+Also, if you want to cross-compile for Apple Silicon in an Intel-based MacOS machine, please add the argument `--cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64` with cmake > 3.19. Note: unit tests will be skipped due to the incompatible CPU instruction set. And if you want to generate a [Universal2 Binary](https://developer.apple.com/documentation/apple-silicon/building-a-universal-macos-binary), please use `--cmake_extra_defines CMAKE_OSX_ARCHITECTURES=x86_64;arm64`.
 
 #### Notes
 
@@ -416,7 +416,7 @@ This option is very fast and allows the package to be built in minutes, but is c
 
     The first line says your target operating system is Linux. That's always the case.    
     
-    The second line says the target CPU arch is aarch64, which should be consistent with the compiler you choose. Run your compiler with '-v', and look for the value of "--with-arch=".  If it was found, put the value in our line 2. e.g. If you saw "--with-arch=armv7-a", then you should "SET(CMAKE_SYSTEM_PROCESSOR armv7-a)".  Otherwise("--with-arch=" was not found), please get the value from the "Target:" line. Split the string with '-' and only take the first part. For example, if you saw "Target: aarch64-none-linux-gnu", then you should "SET(CMAKE_SYSTEM_PROCESSOR aarch64)"
+    The second line says the target CPU arch is aarch64, which should be the value of `uname -m` command output from your target device(e.g. raspberry pi). The value not only depends the hardware, but also depends on the target operating system. For example, if you installed a 32-bit Raspberry Pi OS on a 64-bit arm CPU, you will see "armv7l" instead of "aarch64" from the output of `uname -m`.
     
     CMAKE_C_COMPILER/CMAKE_CXX_COMPILER settings: Type "which aarch64-none-linux-gnu-gcc" in your shell to check if the tool exists. If not, please run "echo $PATH" and check your PATH env setting, or you may just put absolute paths here. Sometimes your compiler may have a different name, then you need to adjust the settings above accordingly.     
     

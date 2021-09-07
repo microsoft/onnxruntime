@@ -36,8 +36,8 @@ ONNX Runtime is not explicitly tested with every variation/combination of enviro
   * Should be compatible with [distributions supported by .NET Core](https://docs.microsoft.com/en-us/dotnet/core/install/linux)
 
 * Mac
-  * Tested with 10.14 (Mojave)
-  * May be compatible with 10.12+ (Sierra)
+  * Tested with 10.15 (Mojave)
+  * May be compatible with 10.14+ (Sierra)
 
 * Android
   * Tested with API level 28 (v9 "Pie")
@@ -49,7 +49,7 @@ ONNX Runtime is not explicitly tested with every variation/combination of enviro
 
 ### Compilers
 * Windows 10: Visual C++ 2019
-* Linux: gcc>=4.8
+* Linux: gcc>=8.0
 
 ### Dependent Libraries
 * [Submodules](https://github.com/microsoft/onnxruntime/tree/master/cgmanifests)
