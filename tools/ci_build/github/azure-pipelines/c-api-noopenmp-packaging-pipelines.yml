@@ -478,6 +478,12 @@ jobs:
       arguments: '--configuration RelWithDebInfo -t:CreatePackage -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
+  - task: BatchScript@1
+    displayName: 'Add TensorRT header file to the native nuGet package'
+    inputs:
+      filename: $(Build.SourcesDirectory)\tools\ci_build\github\windows\bundle_nuget_with_native_headers.bat
+      workingFolder: $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo
+
   - task: CopyFiles@2
     displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
     inputs:
