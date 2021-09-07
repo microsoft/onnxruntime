@@ -76,14 +76,12 @@ Status TransposeWithCublas(cudaStream_t stream, cublasHandle_t cublas_handle, co
   return Status::OK();
 }
 
-Status Transpose::DoTranspose(const std::string& node_name,
-                              const Transpose& transpose_kernel,
+Status Transpose::DoTranspose(const Transpose& transpose_kernel,
                               const std::vector<size_t>& permutations, const Tensor& input, Tensor& output) {
-  return Transpose::DoTranspose(node_name, transpose_kernel.GetDeviceProp(), transpose_kernel.Stream(), transpose_kernel.CublasHandle(), permutations, input, output);
+  return Transpose::DoTranspose(transpose_kernel.GetDeviceProp(), transpose_kernel.Stream(), transpose_kernel.CublasHandle(), permutations, input, output);
 }
 
-Status Transpose::DoTranspose(const std::string& node_name,
-                              const cudaDeviceProp& prop,
+Status Transpose::DoTranspose(const cudaDeviceProp& prop,
                               cudaStream_t stream,
                               const cublasHandle_t cublas_handle,
                               const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
@@ -211,24 +209,6 @@ Status Transpose::DoTranspose(const std::string& node_name,
     output_strides[i] = fast_divmod(gsl::narrow_cast<int>(new_output_strides[i]));
   }
 
-  std::cout << "Node: " << node_name << ", perm: [";
-  for (auto p : permutations) {
-    std::cout << p << ",";
-  }
-  std::cout << "], input_dims: [";
-  for (auto dim : input_dims) {
-    std::cout << dim << ",";
-  }
-  std::cout << "], new_perm: [";
-  for (auto p : new_permutations) {
-    std::cout << p << ",";
-  }
-  std::cout << "], new_input_dims: [";
-  for (auto dim : new_input_dims) {
-    std::cout << dim << ",";
-  }
-  std::cout << "]\n";
-
   auto status = TransposeImpl(stream, element_size, new_rank, input_strides, input.DataRaw(),
                               output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()));
 
@@ -253,7 +233,7 @@ Status Transpose::ComputeInternal(OpKernelContext* ctx) const {
   TensorShape output_shape{output_dims};
   Tensor* Y = ctx->Output(0, output_shape);
 
-  return DoTranspose(Node().Name(), this->GetDeviceProp(), this->Stream(), this->CublasHandle(), *p_perm, X, *Y);
+  return DoTranspose(this->GetDeviceProp(), this->Stream(), this->CublasHandle(), *p_perm, X, *Y);
 }
 
 }  // namespace cuda
