@@ -255,7 +255,7 @@ int IExecutionProvider::ModelIdGenerator::GenerateId(const onnxruntime::GraphVie
 
 int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) const {
   ORT_ENFORCE(model_id_generator_,
-              "IExecutionProvider constructor must be called with true for use_metadef_id_creator");
+              "IExecutionProvider constructor must be called with true for use_model_id_creator");
 
   // if the EP is shared across multiple sessions there's a very small potential for concurrency issues.
   // use a lock when generating an id to be paranoid
@@ -266,7 +266,7 @@ int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_
 
 int IExecutionProvider::GenerateModelId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) const {
   ORT_ENFORCE(model_id_generator_,
-              "IExecutionProvider constructor must be called with true for use_metadef_id_creator");
+              "IExecutionProvider constructor must be called with true for use_model_id_creator");
 
   // if the EP is shared across multiple sessions there's a very small potential for concurrency issues.
   // use a lock when generating an id to be paranoid
