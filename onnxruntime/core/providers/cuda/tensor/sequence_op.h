@@ -62,9 +62,7 @@ class SequenceConstruct final : public CudaKernel {
 
     TensorSeq* Y = context->Output<TensorSeq>(0);
     Y->SetType(first_dtype);
-    //Y->Reserve(num_inputs);
-    std::vector<Tensor> output_tensors;
-    output_tensors.reserve(num_inputs);
+    Y->Reserve(num_inputs);
 
     for (int input_idx = 0; input_idx < num_inputs; ++input_idx) {
       const auto* source_tensor = context->Input<Tensor>(input_idx);
@@ -81,11 +79,9 @@ class SequenceConstruct final : public CudaKernel {
                                            source_tensor->SizeInBytes(),
                                            cudaMemcpyDeviceToDevice, Stream()));
 
-      //Y->Add(std::move(*target_tensor));
-      output_tensors.push_back(std::move(*target_tensor));
+      Y->Add(std::move(*target_tensor));
     }
 
-    Y->SetElements(std::move(output_tensors));
     return Status::OK();
   }
 };  // SequenceConstruct
