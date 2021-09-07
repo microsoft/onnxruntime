@@ -127,7 +127,7 @@ def adaptive_avg_pool2d_gradient():
     ]
 
 
-@register_gradient('com.microsoft', 'ATenOp', 'aten::ctc_loss', '')
+@register_gradient('com.microsoft', 'ATenOp', 'aten::ctc_loss', 'Tensor')
 def ctc_loss_gradient():
     return [
         (('ATenOp', 'com.microsoft'), ['GO(0)', 'I(0)', 'I(1)', 'I(2)', 'I(3)', 'O(0)', 'O(1)', 'I(4)', 'I(5)'], [
