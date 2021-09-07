@@ -1,38 +1,26 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 
-namespace CSharpUsage
+namespace Microsoft.ML.OnnxRuntime.InferenceSample
 {
-    class Program
+    public static class InferenceSampleApi
     {
-        public static void Main(string[] args)
+        public static void Execute(SessionOptions options = null)
         {
-            Console.WriteLine("Using API");
-            UseApi();
-            Console.WriteLine("Done");
-        }
-
-
-        static void UseApi()
-        {
-            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
+            var model = LoadModelFromEmbeddedResource("TestData.squeezenet.onnx");
 
             // Optional : Create session options and set the graph optimization level for the session
-            SessionOptions options = new SessionOptions();
-            options.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_EXTENDED;
+            if (options == null)
+                options = new SessionOptions { GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_EXTENDED };
 
-            using (var session = new InferenceSession(modelPath, options))
+            using (var session = new InferenceSession(model, options))
             {
                 var inputMeta = session.InputMetadata;
                 var container = new List<NamedOnnxValue>();
 
-                float[] inputData = LoadTensorFromFile(@"bench.in"); // this is the data for only one input tensor for this model
+                float[] inputData = LoadTensorFromEmbeddedResource("TestData.bench.in"); // this is the data for only one input tensor for this model
 
                 foreach (var name in inputMeta.Keys)
                 {
@@ -53,12 +41,12 @@ namespace CSharpUsage
             }
         }
 
-        static float[] LoadTensorFromFile(string filename)
+        static float[] LoadTensorFromEmbeddedResource(string path)
         {
             var tensorData = new List<float>();
+            var assembly = typeof(InferenceSampleApi).Assembly;
 
-            // read data from file
-            using (var inputFile = new System.IO.StreamReader(filename))
+            using (StreamReader inputFile = new StreamReader(assembly.GetManifestResourceStream($"{assembly.GetName().Name}.{path}")))
             {
                 inputFile.ReadLine(); //skip the input name
                 string[] dataStr = inputFile.ReadLine().Split(new char[] { ',', '[', ']' }, StringSplitOptions.RemoveEmptyEntries);
@@ -71,6 +59,21 @@ namespace CSharpUsage
             return tensorData.ToArray();
         }
 
+        static byte[] LoadModelFromEmbeddedResource(string path)
+        {
+            var assembly = typeof(InferenceSampleApi).Assembly;
+            byte[] model = null;
 
+            using (Stream stream = assembly.GetManifestResourceStream($"{assembly.GetName().Name}.{path}"))
+            {
+                using (MemoryStream memoryStream = new MemoryStream())
+                {
+                    stream.CopyTo(memoryStream);
+                    model = memoryStream.ToArray();
+                }
+            }
+
+            return model;
+        }
     }
 }
