@@ -1,0 +1,45 @@
+jobs:
+- job: Linux_Build
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool: Linux-CPU-2019
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - task: CmdLine@2
+    displayName: 'Docker build'
+    inputs:
+      script: |
+        docker build --pull -t onnxruntime-ubuntu \
+        --build-arg BUILD_USER=onnxruntimedev \
+        --build-arg BUILD_UID=$(id -u) \
+        --build-arg OS_VERSION=20.04 \
+        --build-arg PYTHON_VERSION=3.8 -f Dockerfile.ubuntu_eager_mode .
+      workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
+
+  - task: CmdLine@2
+    displayName: 'eager mode testing'
+    inputs:
+      script: |
+        mkdir -p $HOME/.onnx
+        docker run --rm \
+          --volume /data/onnx:/data/onnx:ro \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntime-ubuntu \
+            /usr/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build \
+              --config Debug Release \
+              --skip_submodule_sync \
+              --build_shared_lib \
+              --parallel \
+              --build_eager_mode --enable_training --enable_pybind
+      workingDirectory: $(Build.SourcesDirectory)
+    condition: succeededOrFailed() # ensure all tests are run
