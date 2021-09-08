@@ -10,7 +10,7 @@ from torch.utils.dlpack import from_dlpack, to_dlpack
 
 from ._fallback import _FallbackManager, ORTModuleFallbackException, ORTModuleIOError, wrap_exception
 
-from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_interop_utils, _clear_grad_fns_for_next_edges
+from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_interop_utils
 
 def wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace_flag, training_mode_flag, arg):
     '''
@@ -81,6 +81,8 @@ def call_python_forward_function(
         def register_context(result):
             # Search for context among all outputs.
             ctx = None
+            # All forward outputs of torch.autograd.Function shared a same gradient function pointer,
+            # so here we just get the first tensor having grad_fn attribute.
             first_tensor_output = None
             for arg in result:
                 if not isinstance(arg, torch.Tensor) or not hasattr(arg, 'grad_fn'):
@@ -93,7 +95,19 @@ def call_python_forward_function(
             if training_mode_flag:
                 # Must extract one valid context from result tensors.
                 assert ctx is not None
-                _clear_grad_fns_for_next_edges(result)
+
+                #         FORWARD                                                    BACKWARD FUNCTION CONNECTIONS
+                # input_1 (leaf, constructed by from_dlpack)   <----reference----  AccumulateGrad gradient function
+                #             ↓                                                                 ↑
+                # autograd.Function apply()                        ------------>    autograd.Function backward()
+                #             ↓                                    |                            ↑
+                #    output_1, output_2   --- shared_ptr<PyNode> ---                            ↑
+                #             ↓                                                       previous gradient function
+
+                # We remove the edges starting between current autograd.Function's gradient function and 
+                # it's input's gradient function (e.g. AccumulateGrad gradient function), then
+                # AccumulateGrad gradient function will be destroyed, releasing the reference to input_1.
+                torch_interop_utils.clear_grad_fns_for_next_edges(first_tensor_output, ctx.saved_tensors)
                 torch_interop_utils.register_grad_fn(id(ctx), first_tensor_output)
             else:
                 # Context must not present under non-training mode.

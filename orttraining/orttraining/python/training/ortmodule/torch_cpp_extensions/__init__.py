@@ -54,18 +54,3 @@ def _load_aten_op_executor_cpp_extension_if_needed(onnx_model):
         if node.op_type == 'ATenOp' and node.domain == 'com.microsoft':
             _load_aten_op_executor_cpp_extension()
             break
-
-def _clear_grad_fns_for_next_edges(tensor_list):
-    from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_interop_utils
-    import torch
-    first_tensor = None
-    for arg in tensor_list:
-        if isinstance(arg, torch.Tensor) and hasattr(arg, 'grad_fn') and arg.grad_fn:
-            first_tensor = arg
-            break
-
-    if first_tensor is None:
-        return
-
-    # todo: find a way to filter those variables in saved_tensors (first_tensor.grad_fn.saved_tensors)
-    torch_interop_utils.clear_grad_fns_for_next_edges(first_tensor, [])

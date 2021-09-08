@@ -57,6 +57,10 @@ class PyNodeSharedPointerPool {
 
 
 void clear_grad_fns_for_next_edges(at::Tensor target, std::vector<at::Tensor> saved_tensors) {
+  // For leaf tensor, there will be a AccumulateGrad (gradident function) created, which owns a 
+  // reference to the tensor. 
+  // For any user saved tensors (with save_for_backward), if the tensor is leaf, we put the map
+  // {AccumulateGrad*, Tensor*} into grad_fn_to_tensor_map.
   std::unordered_map<torch::autograd::Node*, at::Tensor*> grad_fn_to_tensor_map; 
   for (auto& t: saved_tensors) {
     auto grad_fn = t.grad_fn();
@@ -73,6 +77,9 @@ void clear_grad_fns_for_next_edges(at::Tensor target, std::vector<at::Tensor> sa
   const auto& gradient_func_sptr = target.grad_fn();
   for (auto& edge : gradient_func_sptr->next_edges()) {
     torch::autograd::Node* node_func = edge.function.get();
+    // If we find the next gradient function is AccumulateGrad, we will check whether its owned
+    // tensors is in ctx.save_tensors or not. If yes, we skip it; otherwise, we clean the edge, which
+    // will release the AccumulateGrad function.
     if (dynamic_cast<torch::autograd::AccumulateGrad*>(node_func) != nullptr) {
       if (grad_fn_to_tensor_map.find(node_func) != grad_fn_to_tensor_map.end()) {
         // skip the edges that connect to saved_tensors. Because when unpack ctx.saved_tensors (using input, = ctx.saved_tensors) in backward,
