@@ -510,3 +510,31 @@ def test_ortmodule_fallback_onnx_model__missing_op(is_training, fallback_enabled
                 # Initialize with fallback policy because Exception will happen during __init__
                 _ = ort_model(x, y)
             assert "There was an error while exporting the PyTorch model to ONNX" in str(ex_info.value)
+
+@pytest.mark.parametrize("is_training,persist_fallback",
+                         list(itertools.product([True,False],repeat=2)))
+def test_ortmodule_fallback_warn_message(is_training, persist_fallback):
+    # is_training: True for torch.nn.Module training model, eval mode otherwise
+
+    policy = 'FALLBACK_UNSUPPORTED_DEVICE'
+    os.environ['ORTMODULE_FALLBACK_POLICY'] = policy
+    os.environ['ORTMODULE_FALLBACK_RETRY'] = str(not persist_fallback)
+
+    data_device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+
+    pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    pt_model.train(is_training)
+    ort_model.train(is_training)
+    # For initial model export, use same device for data and model so that PyTorch model can be traced during export
+    _ = ort_model(torch.randn(N, D_in))
+
+    # Use data in different device for testing
+    inputs = torch.randn(N, D_in, device=data_device)
+
+    for _ in range(3):
+        with pytest.raises(RuntimeError):
+            with pytest.warns(UserWarning) as warning_record:
+                ort_model(inputs)
+        assert "Fallback to PyTorch due to exception" in str(warning_record[0].message.args[0])

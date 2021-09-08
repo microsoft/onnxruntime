@@ -52,6 +52,7 @@ set_target_properties(onnxruntime_webassembly PROPERTIES LINK_FLAGS "           
                       -s VERBOSE=0                                                            \
                       -s NO_FILESYSTEM=1                                                      \
                       -s MALLOC=${onnxruntime_WEBASSEMBLY_MALLOC}                             \
+                      --closure 1                                                             \
                       --no-entry")
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")

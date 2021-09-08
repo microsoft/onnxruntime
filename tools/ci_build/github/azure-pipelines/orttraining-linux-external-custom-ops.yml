@@ -9,32 +9,38 @@ jobs:
     clean: true
     submodules: recursive
 
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      Repository: onnxruntimecpubuild
+
   - task: CmdLine@2
-    displayName: 'Docker build'
+    displayName: 'Create and start docker container'
     inputs:
       script: |
-        docker build --pull -t onnxruntime-ubuntu \
-        --build-arg BUILD_USER=onnxruntimedev \
-        --build-arg BUILD_UID=$(id -u) \
-        --build-arg OS_VERSION=20.04 \
-        --build-arg PYTHON_VERSION=3.8 -f Dockerfile.ubuntu .
-      workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
+        docker run -it -d \
+          --name external_custom_ops_container \
+          --volume /data/onnx:/data/onnx:ro \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+          onnxruntimecpubuild \
+          /bin/bash
+      workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
     displayName: 'ONNXRuntime build'
     inputs:
       script: |
         mkdir -p $HOME/.onnx
-        docker run --rm \
-          --volume /data/onnx:/data/onnx:ro \
-          --volume $(Build.SourcesDirectory):/onnxruntime_src \
-          --volume $(Build.BinariesDirectory):/build \
-          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+        docker exec -t \
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntime-ubuntu \
-            /usr/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+          external_custom_ops_container \
+            /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build \
               --config Debug Release \
               --parallel \
@@ -49,43 +55,73 @@ jobs:
     inputs:
       script: |
          rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
-         python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
+         docker exec -t external_custom_ops_container \
+            /bin/bash -c "/opt/python/cp38-cp38/bin/python3 -m pip install /build/Release/dist/*.whl" 
+      workingDirectory: $(Build.BinariesDirectory)
+
+  - task: CmdLine@2
+    displayName: 'Install Pybind11'
+    inputs:
+      script: |
+         docker exec -t \
+          -w  /build/Debug/external_custom_ops \
+          external_custom_ops_container \
+          /opt/python/cp38-cp38/bin/python3 -m pip install pybind11
+      workingDirectory: $(Build.BinariesDirectory)
 
   - task: CmdLine@2
     displayName: 'Build and Install custom ops python package'
     inputs:
       script: |
-         python3 -m pip install pybind11
-         python3 -m pip install .
-      workingDirectory: $(Build.BinariesDirectory)/Release/external_custom_ops
+         docker exec -t \
+          -w  /build/Debug/external_custom_ops \
+          external_custom_ops_container \
+          /opt/python/cp38-cp38/bin/python3 -m pip install .
+      workingDirectory: $(Build.BinariesDirectory)
 
   - task: CmdLine@2
     displayName: 'Test using external custom op module'
     inputs:
       script: |
-         python3 test.py
-      workingDirectory: $(Build.BinariesDirectory)/Release/external_custom_ops
+         docker exec -t \
+          -w  /build/Debug/external_custom_ops \
+          external_custom_ops_container \
+          /opt/python/cp38-cp38/bin/python3 test.py
+      workingDirectory: $(Build.BinariesDirectory)
+
 
   - task: CmdLine@2
     displayName: 'Install Debug python package'
     inputs:
       script: |
          rm -rf $(Build.BinariesDirectory)/Debug/onnxruntime $(Build.BinariesDirectory)/Debug/pybind11
-         python3 -m pip uninstall -y onnxruntime-traning
-         python3 -m pip install $(Build.BinariesDirectory)/Debug/dist/*.whl
+         docker exec -t external_custom_ops_container \
+            /bin/bash -c "/opt/python/cp38-cp38/bin/python3 -m pip install /build/Debug/dist/*.whl" 
+      workingDirectory: $(Build.BinariesDirectory)
 
   - task: CmdLine@2
     displayName: 'Build and Install custom ops python package'
     inputs:
       script: |
-         python3 -m pip uninstall -y orttraining_external_custom_ops
-         python3 -m pip install .
-      workingDirectory: $(Build.BinariesDirectory)/Debug/external_custom_ops
+         docker exec -t \
+          -w  /build/Debug/external_custom_ops \
+          external_custom_ops_container \
+          /opt/python/cp38-cp38/bin/python3 -m pip install .
+      workingDirectory: $(Build.BinariesDirectory)
 
   - task: CmdLine@2
     displayName: 'Test using external custom op module'
     inputs:
       script: |
-         python3 test.py
-      workingDirectory: $(Build.BinariesDirectory)/Debug/external_custom_ops
+         docker exec -t \
+          -w  /build/Debug/external_custom_ops \
+          external_custom_ops_container \
+          /opt/python/cp38-cp38/bin/python3 test.py
+      workingDirectory: $(Build.BinariesDirectory)
 
+  - task: CmdLine@2
+    displayName: 'Stop and remove docker container'
+    inputs:
+      script: |
+         docker stop external_custom_ops_container
+         docker rm external_custom_ops_container

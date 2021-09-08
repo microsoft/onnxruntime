@@ -12,6 +12,8 @@ cmake_policy(SET CMP0091 NEW)
 if (${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.20")
   cmake_policy(SET CMP0117 NEW)
 endif()
+# Don't let cmake set a default value for CMAKE_CUDA_ARCHITECTURES
+cmake_policy(SET CMP0104 OLD)
 
 # Project
 project(onnxruntime C CXX)
@@ -167,6 +169,14 @@ set(ONNX_CUSTOM_PROTOC_EXECUTABLE "" CACHE STRING "Specify custom protoc executa
 
 # pre-build python path
 option(onnxruntime_PREBUILT_PYTORCH_PATH "Path to pytorch installation dir")
+
+if(APPLE)
+    if(NOT CMAKE_OSX_ARCHITECTURES)
+        message("Building ONNX Runtime for ${CMAKE_HOST_SYSTEM_PROCESSOR}")
+    endif()
+elseif(NOT WIN32 AND NOT APPLE)
+    message("Building ONNX Runtime for ${CMAKE_SYSTEM_PROCESSOR}")
+endif()
 
 # Single output director for all binaries
 set (RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE PATH "Single output directory for all binaries.")
@@ -507,6 +517,30 @@ endmacro()
 #Set global compile flags for all the source code(including third_party code like protobuf)
 #This section must be before any add_subdirectory, otherwise build may fail because /MD,/MT mismatch
 if (MSVC)
+  enable_language(ASM_MASM)
+  if(CMAKE_GENERATOR_PLATFORM)
+    # Multi-platform generator
+    set(onnxruntime_target_platform ${CMAKE_GENERATOR_PLATFORM})
+  else()
+    set(onnxruntime_target_platform ${CMAKE_SYSTEM_PROCESSOR})
+  endif()
+  if(onnxruntime_target_platform STREQUAL "ARM64")
+    set(onnxruntime_target_platform "ARM64")
+  elseif(onnxruntime_target_platform STREQUAL "ARM64EC")
+    set(onnxruntime_target_platform "ARM64EC")
+  elseif(onnxruntime_target_platform STREQUAL "ARM" OR CMAKE_GENERATOR MATCHES "ARM")
+    set(onnxruntime_target_platform "ARM")
+  elseif(onnxruntime_target_platform STREQUAL "x64" OR onnxruntime_target_platform STREQUAL "x86_64" OR onnxruntime_target_platform STREQUAL "AMD64" OR CMAKE_GENERATOR MATCHES "Win64")
+    set(onnxruntime_target_platform "x64")
+  elseif(onnxruntime_target_platform STREQUAL "Win32" OR onnxruntime_target_platform STREQUAL "x86" OR onnxruntime_target_platform STREQUAL "i386" OR onnxruntime_target_platform STREQUAL "i686")
+    set(onnxruntime_target_platform "x86")
+    if(NOT onnxruntime_BUILD_WEBASSEMBLY)
+      message("Enabling SAFESEH for x86 build")
+      set(CMAKE_ASM_MASM_FLAGS "${CMAKE_ASM_MASM_FLAGS} /safeseh")
+    endif()
+  endif()
+  
+
   #Always enable exception handling, even for Windows ARM
   if(NOT onnxruntime_DISABLE_EXCEPTIONS)
     string(APPEND CMAKE_CXX_FLAGS " /EHsc")
@@ -555,6 +589,9 @@ if (MSVC)
     SET(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} /guard:cf")
   endif()
 else()
+  if(NOT APPLE)
+    set(onnxruntime_target_platform ${CMAKE_SYSTEM_PROCESSOR})
+  endif()
   if(onnxruntime_BUILD_FOR_NATIVE_MACHINE)
     string(APPEND CMAKE_CXX_FLAGS " -march=native -mtune=native")
     string(APPEND CMAKE_C_FLAGS " -march=native -mtune=native")
@@ -736,6 +773,17 @@ else()
   endif()
   if(TARGET protoc)
     set_target_properties(protoc PROPERTIES FOLDER "External/Protobuf")
+    get_target_property(PROTOC_OSX_ARCH protoc OSX_ARCHITECTURES)
+    if(PROTOC_OSX_ARCH)
+        if (${CMAKE_HOST_SYSTEM_PROCESSOR} IN_LIST PROTOC_OSX_ARCH)
+           message("protoc can run")
+        else()
+           list(APPEND PROTOC_OSX_ARCH ${CMAKE_HOST_SYSTEM_PROCESSOR})
+           set_target_properties(protoc PROPERTIES OSX_ARCHITECTURES "${CMAKE_HOST_SYSTEM_PROCESSOR}")
+           set_target_properties(libprotoc PROPERTIES OSX_ARCHITECTURES "${PROTOC_OSX_ARCH}")
+           set_target_properties(libprotobuf PROPERTIES OSX_ARCHITECTURES "${PROTOC_OSX_ARCH}")
+        endif()
+    endif()
   endif()
   if (onnxruntime_USE_FULL_PROTOBUF)
     set(PROTOBUF_LIB libprotobuf)
@@ -810,31 +858,39 @@ if(NOT TARGET re2::re2)
   set(RE2_INCLUDE_DIR ${REPO_ROOT}/cmake/external/re2)
 endif()
 
+
 # Adding pytorch CPU info library
 # TODO!! need a better way to find out the supported architectures
-set(TARGET_ARCH "${CMAKE_SYSTEM_PROCESSOR}")
-if (NOT DEFINED TARGET_ARCH OR  "${TARGET_ARCH}" STREQUAL "")
-    set(TARGET_ARCH "${CMAKE_OSX_ARCHITECTURES}")
-endif()
-
-set(CPUINFO_SUPPORTED TRUE)
-if (NOT DEFINED TARGET_ARCH OR  "${TARGET_ARCH}" STREQUAL "")
-    message(WARNING
-      "Target processor architecture is not specified. cpuinfo not included")
-    set(CPUINFO_SUPPORTED FALSE)
-elseif(NOT TARGET_ARCH MATCHES "^(i[3-6]86|AMD64|x86(_64)?|armv[5-8].*|aarch64|arm64)$")
-  message(WARNING
-    "Target processor architecture \"${CPUINFO_TARGET_PROCESSOR}\" is not supported in cpuinfo. "
-    "cpuinfo not included.")
-  set(CPUINFO_SUPPORTED FALSE)
-elseif(MSVC AND (( CMAKE_SYSTEM_PROCESSOR  MATCHES "^(ARM.*|arm.*)$" ) OR (CMAKE_GENERATOR_PLATFORM  MATCHES "^(ARM.*|arm.*)$" ) ))
-  message(WARNING
-    "Cpuinfo not included for compilation problems with Windows ARM.")
-  set(CPUINFO_SUPPORTED FALSE)
-elseif(WINDOWS_STORE)
-  message(WARNING
-    "Cpuinfo not included in Windows Store builds")
-  set(CPUINFO_SUPPORTED FALSE)
+list(LENGTH CMAKE_OSX_ARCHITECTURES CMAKE_OSX_ARCHITECTURES_LEN)
+if(APPLE)
+    if(CMAKE_OSX_ARCHITECTURES_LEN LESS_EQUAL 1)
+        set(CPUINFO_SUPPORTED TRUE)
+    elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
+        # We stitch multiple static libraries together when onnxruntime_BUILD_APPLE_FRAMEWORK is true,
+        # but that would not work for universal static libraries
+        message(FATAL_ERROR "universal binary is not supported for apple framework")
+    endif()
+else()
+    if(onnxruntime_BUILD_WEBASSEMBLY)
+      set(CPUINFO_SUPPORTED FALSE)
+    else()
+      set(CPUINFO_SUPPORTED TRUE)
+    endif()
+    if(WIN32)
+        # Exclude Windows ARM build and Windows Store
+        if(${onnxruntime_target_platform} MATCHES "^(ARM.*|arm.*)$" )
+            message(WARNING "Cpuinfo not included for compilation problems with Windows ARM.")
+            set(CPUINFO_SUPPORTED FALSE)
+        elseif(WINDOWS_STORE)
+            message(WARNING "Cpuinfo not included in Windows Store builds")
+            set(CPUINFO_SUPPORTED FALSE)
+        endif()     
+    elseif(NOT ${onnxruntime_target_platform} MATCHES "^(i[3-6]86|AMD64|x86(_64)?|armv[5-8].*|aarch64|arm64)$")
+        message(WARNING
+        "Target processor architecture \"${onnxruntime_target_platform}\" is not supported in cpuinfo. "
+        "cpuinfo not included.")
+        set(CPUINFO_SUPPORTED FALSE)    
+    endif()
 endif()
 
 # TODO  do we have to add target_include_directories to each project that uses this?
@@ -1102,9 +1158,6 @@ function(onnxruntime_set_compile_flags target_name)
       endif()
 
       target_compile_definitions(${target_name} PUBLIC -DNSYNC_ATOMIC_CPP11)
-      if(APPLE AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "iOSCross" AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "iOS")
-        target_compile_definitions(${target_name} PUBLIC -Doptional_CONFIG_SELECT_OPTIONAL=optional_OPTIONAL_NONSTD)
-      endif()
       target_include_directories(${target_name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
     endif()
     foreach(ORT_FLAG ${ORT_PROVIDER_FLAGS})
@@ -1165,6 +1218,9 @@ function(onnxruntime_add_shared_library_module target_name)
   endif()
 
   onnxruntime_configure_target(${target_name})
+  if (onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+    target_link_options(${target_name} PRIVATE /SAFESEH)
+  endif()
 endfunction()
 
 function(onnxruntime_add_executable target_name)
@@ -1173,6 +1229,9 @@ function(onnxruntime_add_executable target_name)
   endif()
   add_executable(${target_name} ${ARGN})
   onnxruntime_configure_target(${target_name})
+  if (onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+    target_link_options(${target_name} PRIVATE /SAFESEH)
+  endif()
 endfunction()
 
 function(onnxruntime_add_include_to_target dst_target)
@@ -1391,13 +1450,7 @@ if(onnxruntime_USE_OPENVINO)
   endif()
 
   # Check OpenVINO version for support
-  if (${VER} MATCHES "2020.3" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2020.3")
-    set(OPENVINO_VERSION "2020.3")
-    add_definitions(-DOPENVINO_2020_3=1)
-  elseif (${VER} MATCHES "2021.1" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.1")
-    set(OPENVINO_VERSION "2021.1")
-    add_definitions(-DOPENVINO_2021_1=1)
-  elseif (${VER} MATCHES "2021.2" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.2")
+  if (${VER} MATCHES "2021.2" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.2")
     set(OPENVINO_VERSION "2021.2")
     add_definitions(-DOPENVINO_2021_2=1)
   elseif (${VER} MATCHES "2021.3" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.3")
@@ -1822,7 +1875,7 @@ if (WINDOWS_STORE)
   target_link_options(onnxruntime PRIVATE /DYNAMICBASE /NXCOMPAT /APPCONTAINER)
   target_link_options(winml_dll PRIVATE /DYNAMICBASE /NXCOMPAT /APPCONTAINER)
 
-  if (onnxruntime_target_platform STREQUAL "x86")
+  if (onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_BUILD_WEBASSEMBLY)
     target_link_options(onnxruntime PRIVATE /SAFESEH)
     target_link_options(winml_dll PRIVATE /SAFESEH)
   endif()
@@ -1862,7 +1915,7 @@ if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
     message(FATAL_ERROR "External custom operator schemas is supported only with --enable-training option")
   endif()
 
-  add_custom_target(install_protobuf ALL DEPENDS protobuf::libprotobuf  protobuf::protoc)
+  add_custom_target(install_protobuf ALL DEPENDS ${PROTOBUF_LIB} protobuf::protoc)
   add_custom_command(
     TARGET install_protobuf
     COMMAND ${CMAKE_COMMAND} -DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR} -P cmake_install.cmake

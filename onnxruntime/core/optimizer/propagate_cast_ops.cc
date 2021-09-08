@@ -127,12 +127,16 @@ static bool IsFP16Allow(const std::string& op_type, size_t level) {
   return fp16_allow;
 }
 
-// Check whether the node is cast operation to the specified data type
+// Check whether the node is a cast operation from float16/float to the specified data_type.
 static bool IsCastTo(const Node* node, TensorProto_DataType data_type) {
   if (node->OpType() == "Cast") {
     const NodeAttributes& attributes = node->GetAttributes();
     ORT_ENFORCE(attributes.find("to") != attributes.end());
-    return attributes.at("to").i() == static_cast<int64_t>(data_type);
+    const NodeArg* input = node->InputDefs()[0];
+    auto input_data_type = static_cast<TensorProto_DataType>(input->TypeAsProto()->tensor_type().elem_type());
+    // Allow cast nodes with same input and output type float/float16 to eliminate such casts.
+    return (input_data_type == TensorProto::FLOAT16 || input_data_type == TensorProto::FLOAT) &&
+           attributes.at("to").i() == static_cast<int64_t>(data_type);
   }
   return false;
 }
@@ -1132,9 +1136,9 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
 *               V               V
 */
 static bool RemoveInputOutputUpDownCasts(Graph& graph, Node* node,
-                                      std::deque<NodeIndex>& removed_nodes,
-                                      size_t level,
-                                      const logging::Logger& logger) {
+                                         std::deque<NodeIndex>& removed_nodes,
+                                         size_t level,
+                                         const logging::Logger& logger) {
   bool modified = false;
   bool has_float_outputs = false;
   bool has_float_inputs = false;

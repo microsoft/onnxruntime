@@ -556,6 +556,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     engine_decryption_ = (int (*)(const char*, char*, size_t*))LIBFUNC(handle, "decrypt");
     engine_encryption_ = (int (*)(const char*, char*, size_t))LIBFUNC(handle, "encrypt");
   }
+
+  if (int8_enable_) {
+    int8_calibration_cache_available_ = !int8_calibration_cache_name_.empty();
+  }
+
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] TensorRT provider options: "
                         << "device_id: " << device_id_
                         << ", trt_max_partition_iterations: " << max_partition_iterations_
@@ -564,6 +569,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_fp16_enable: " << fp16_enable_
                         << ", trt_int8_enable: " << int8_enable_
                         << ", trt_int8_calibration_cache_name: " << int8_calibration_cache_name_
+                        << ", int8_calibration_cache_available: " << int8_calibration_cache_available_
                         << ", trt_int8_use_native_tensorrt_calibration_table: " << int8_use_native_tensorrt_calibration_table_
                         << ", trt_dla_enable: " << dla_enable_
                         << ", trt_dla_core: " << dla_core_
@@ -1206,7 +1212,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
 
     // Load INT8 calibration table
     std::unordered_map<std::string, float> dynamic_range_map;
-    if (int8_enable_) {
+    if (int8_enable_ && int8_calibration_cache_available_) {
       const std::string calibration_cache_path = GetCachePath(cache_path_, int8_calibration_cache_name_);
       if (!ReadDynamicRange(calibration_cache_path, int8_use_native_tensorrt_calibration_table_, dynamic_range_map)) {
         throw std::runtime_error("Failed to read INT8 calibration table " + calibration_cache_path);
@@ -1291,7 +1297,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
         }
       } else {
         // Set INT8 per tensor dynamic range
-        if (int8_enable_ && trt_builder->platformHasFastInt8()) {
+        if (int8_enable_ && trt_builder->platformHasFastInt8() && int8_calibration_cache_available_) {
           trt_config->setInt8Calibrator(nullptr);
           if (!SetDynamicRange(*trt_network, dynamic_range_map)) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
@@ -1375,9 +1381,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       *p = {context->allocate_func, context->release_func, context->allocator_handle, &parsers_[context->node_name],
             &engines_[context->node_name], &contexts_[context->node_name], &builders_[context->node_name],
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
-            input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, dla_enable_,
-            dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_, runtime_.get(), nullptr,
-            allocator_, dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_};
+            input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
+            dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
+            runtime_.get(), nullptr, allocator_, dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_};
       *state = p.release();
       return 0;
     };
@@ -1617,7 +1623,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
         trt_config->addOptimizationProfile(*trt_profile);
 
         // Set INT8 Per Tensor Dynamic range
-        if (trt_state->int8_enable && trt_builder->platformHasFastInt8()) {
+        if (trt_state->int8_enable && trt_builder->platformHasFastInt8() && trt_state->int8_calibration_cache_available) {
           trt_config->setInt8Calibrator(nullptr);
           if (!SetDynamicRange(*trt_state->network->get(), trt_state->dynamic_range_map)) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to set INT8 dynamic range.");
