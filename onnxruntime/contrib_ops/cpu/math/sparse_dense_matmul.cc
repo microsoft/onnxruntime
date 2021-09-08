@@ -51,6 +51,7 @@ struct ComputeCtx {
   float alpha;
 };
 
+#if !defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__) 
 template <typename T>
 inline void SparseDenseMatMulImpl(const ComputeCtx& ctx, const ConstSparseMatrixMap<T>& map_A,
                                   const ConstEigenMatrixMapRowMajor<T>& map_B, EigenMatrixMapRowMajor<T>& output_map) {
@@ -212,10 +213,6 @@ Status SparseToDenseMatMul::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-// Eigen has a bug in x86 where it calculates reallocation size as -1
-// and throws bad_alloc
-#if !defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
-
 namespace {
 using SparseGemmSupportedTypes = TypeList<float, int64_t>;
 }
@@ -249,6 +246,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T1", BuildKernelDefConstraintsFromTypeList<SparseGemmSupportedTypes>()),
     SparseToSparseMatMul);
 
+#if !defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
 namespace {
 
 struct SparseToSparseComputeCtx {
@@ -345,6 +343,8 @@ struct SparseToSparseCoo {
 };
 
 }  // namespace
+
+#endif // !defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
 
 Status SparseToSparseMatMul::Compute(OpKernelContext* ctx) const {
 #if defined(__i386__) || defined(_M_IX86) || defined(__wasm__) || defined(__ANDROID__)
