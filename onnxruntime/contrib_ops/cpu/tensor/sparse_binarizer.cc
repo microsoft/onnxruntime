@@ -8,6 +8,7 @@
 #include "core/framework/sparse_tensor.h"
 #include "core/framework/sparse_utils.h"
 #include "core/framework/tensor.h"
+#include <cmath>
 
 namespace onnxruntime {
 namespace contrib {
