@@ -1,0 +1,4 @@
+--pre
+-f https://onnxruntimepackages.blob.core.windows.net/$web/onnxruntime_eager_mode_cpu.html 
+torch>=1.9.0
+setuptools>=41.4.0
