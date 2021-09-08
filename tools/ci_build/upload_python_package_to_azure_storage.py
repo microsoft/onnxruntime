@@ -55,7 +55,6 @@ def upload_whl(python_wheel_path, account_name, account_key, container_name):
     else:
         warnings.warn("'{}' exists in {}. The html file is not updated.".format(new_line, download_path_to_html))
 
-
     content_settings = ContentSettings(content_type='text/html')
     block_blob_service.create_blob_from_path(
         container_name,
