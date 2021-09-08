@@ -8,7 +8,7 @@ jobs:
   steps:
     - script: |
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
-          --skip_submodule_sync \
+          --skip_submodule_sync --build_dir build/iOS \
           --ios \
           --ios_sysroot iphonesimulator  \
           --osx_arch x86_64 \
@@ -20,7 +20,7 @@ jobs:
       displayName: (CPU EP) Build onnxruntime for iOS x86_64 and run tests using simulator
     - script: |
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
-          --skip_submodule_sync \
+          --skip_submodule_sync --build_dir build/iOS \
           --use_coreml \
           --ios \
           --ios_sysroot iphonesimulator  \
