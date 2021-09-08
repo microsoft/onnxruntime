@@ -594,30 +594,6 @@ AllocatorPtr TensorrtExecutionProvider::GetAllocator(int id, OrtMemType mem_type
     return IExecutionProvider::GetAllocator(id, mem_type);
   }
 }
-/*//slx
-void TensorrtExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) {
-  allocator_ = allocator_manager->GetAllocator(device_id_, OrtMemTypeDefault);
-  if (nullptr == allocator_) {
-    AllocatorCreationInfo default_memory_info(
-        [](OrtDevice::DeviceId device_id) { return CreateCUDAAllocator(device_id, onnxruntime::CUDA); }, device_id_);
-    allocator_ = CreateAllocator(default_memory_info);
-    allocator_manager->InsertAllocator(allocator_);
-  }
-  TryInsertAllocator(allocator_);
-
-  auto cuda_pinned_alloc = allocator_manager->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUOutput);
-  if (nullptr == cuda_pinned_alloc) {
-    AllocatorCreationInfo pinned_allocator_info(
-        [](OrtDevice::DeviceId device_id) {
-          return CreateCUDAPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
-        },
-        DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
-    cuda_pinned_alloc = CreateAllocator(pinned_allocator_info);
-    allocator_manager->InsertAllocator(cuda_pinned_alloc);
-  }
-  TryInsertAllocator(cuda_pinned_alloc);
-}
-*/
 
 void TensorrtExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) {
   // Try to get a CUDA allocator from allocator manager first
@@ -641,7 +617,6 @@ void TensorrtExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManag
           return CreateCUDAPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
         },
         DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
-
     cuda_pinned_alloc = CreateAllocator(pinned_memory_info);
     allocator_manager->InsertAllocator(cuda_pinned_alloc);
   }
@@ -660,7 +635,6 @@ void TensorrtExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManag
                             OrtMemTypeCPUInput));
         },
         DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
-
     cuda_cpu_alloc = CreateAllocator(cpu_memory_info);
     allocator_manager->InsertAllocator(cuda_cpu_alloc);
   }
