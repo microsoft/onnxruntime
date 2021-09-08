@@ -4,4 +4,7 @@ parent: API Docs
 nav_order: 4
 ---
 
-Check out the API reference for Objective-C [here](./objectivec/index.html).
+# ORT Objective-C Docs
+{: .no_toc }
+
+<span class="fs-5"> [Go to the Objective-C Docs](./objectivec/index.html){: .btn  .mr-4} </span> 

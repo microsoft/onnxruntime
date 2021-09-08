@@ -4,6 +4,8 @@ parent: API Docs
 nav_order: 1
 ---
 
-# ONNX Runtime Python API
+# ORT Python API
+{: .no_toc }
 
-Check out the API reference for Python [here](./python/api_summary.html).
+
+ <span class="fs-5"> [Go to the ORT Python API Docs](./python/api_summary.html){: .btn  .mr-4} </span> 

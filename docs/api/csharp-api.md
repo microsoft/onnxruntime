@@ -5,6 +5,7 @@ nav_order: 2
 ---
 
 # C# API Reference
+{: .no_toc }
 
 ### OrtEnv
 ```cs
