@@ -39,7 +39,7 @@ jobs:
     inputs:
       script: |
         mkdir -p $HOME/.onnx
-        docker exec -it -d \
+        docker exec -t \
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
@@ -125,6 +125,19 @@ jobs:
           external_custom_ops_container \
           /opt/python/cp38-cp38/bin/python3 test.py
       workingDirectory: $(Build.BinariesDirectory)
+
+  - task: CmdLine@2
+    displayName: 'ONNXRuntime build'
+    inputs:
+      script: |
+        docker exec -t \
+          external_custom_ops_container \
+            /usr/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build \
+              --config Debug Release \
+              --test
+      workingDirectory: $(Build.SourcesDirectory)
+    condition: succeededOrFailed() # ensure all tests are run
 
   - task: CmdLine@2
     displayName: 'Stop and remove docker container'
