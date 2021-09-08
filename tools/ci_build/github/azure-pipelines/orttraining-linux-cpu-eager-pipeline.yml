@@ -13,7 +13,7 @@ jobs:
     displayName: 'Docker build'
     inputs:
       script: |
-        docker build --pull -t onnxruntime-ubuntu \
+        docker build --pull -t onnxruntime-ubuntu-eager \
         --build-arg BUILD_USER=onnxruntimedev \
         --build-arg BUILD_UID=$(id -u) \
         --build-arg OS_VERSION=20.04 \
@@ -30,7 +30,7 @@ jobs:
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-          onnxruntime-ubuntu \
+          onnxruntime-ubuntu-eager \
           /bin/bash
       workingDirectory: $(Build.SourcesDirectory)    
 
