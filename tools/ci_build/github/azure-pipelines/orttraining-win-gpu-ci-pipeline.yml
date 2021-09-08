@@ -18,6 +18,7 @@ jobs:
      --cuda_version 10.2
      --cuda_home "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.2"
      --cudnn_home "C:\local\cudnn-10.2-windows10-x64-v8.0.3.33\cuda"
+     --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52"
     BuildArch: 'x64'
     EnvSetupScript: 'setup_env_cuda.bat'
     sln_platform: 'x64'
