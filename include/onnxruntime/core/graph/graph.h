@@ -145,8 +145,8 @@ class Node {
 
   /**
   Gets the function body if applicable otherwise nullptr
-  @param try_init_func_body If not already intialized, initialize the function body
-  (only applicable to operators which are defined as function in ONNX spec).
+  @param try_init_func_body If not already initialized, initialize the function body
+  (This is not applicable for primitive operators.)
   Function body can be initialized in 3 cases :
   1. For nodes of type "Fused"
   2. For nodes which are defined as functions in the spec (example: DynamicQuantizeLinear)
@@ -157,13 +157,10 @@ class Node {
   initialization for such nodes also happens during node creation. Therefore,
   initialization of function body will happen via this method only in cases 2 and 3 mentioned above.
   */
-  const Function* GetFunctionBody(bool try_init_func_body = true);
+  Function* GetMutableFunctionBody(bool try_init_func_body = true);
 
   /** Gets the function body if applicable otherwise nullptr. */
   const Function* GetFunctionBody() const noexcept { return func_body_; }
-
-  /** Gets the mutable function body if applicable otherwise nullptr. */
-  Function* GetMutableFunctionBody(bool try_init_func_body = true);
 
 #endif
 
@@ -1211,7 +1208,7 @@ class Graph {
         const std::unordered_map<std::string, int>& domain_to_version,
         Version ir_version,
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
-        const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions,
+        const std::vector<const ONNX_NAMESPACE::FunctionProto*>& model_functions,
         const logging::Logger& logger);
 
   // internal use by the Graph class only
@@ -1222,7 +1219,7 @@ class Graph {
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
         Graph* parent_graph,
         const Node* parent_node,
-        const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions,
+        const std::vector<const ONNX_NAMESPACE::FunctionProto*>& model_functions,
         const logging::Logger& logger);
 
   void InitializeStateFromModelFileGraphProto();

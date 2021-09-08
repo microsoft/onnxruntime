@@ -189,7 +189,7 @@ TEST_F(ONNXModelsTest, TestModelsWithAnOpContainingAFunctionBody) {
   ASSERT_STATUS_OK(model->MainGraph().Resolve());
 }
 
-// The following tests  verify ORT can successfully load models which reference functions
+// The following tests verify ORT can successfully load models which reference functions
 // present in the ModelProto aka model local functions. This feature was added to ONNX standard starting IRv8
 
 void BuildFunction(FunctionProto& function_proto, 
@@ -261,9 +261,9 @@ void RunFunctionTests(ModelProto&& model_proto) {
 }
 
 // Tests:
-// Function initialization and inlining.
-// 1. Input\output name handling when intermediate function body node input\outputs have same names as outer graph.
-// 2. Input\output name handling when function body input output names don't match node input output names
+// 1. Function initialization and inlining.
+// 2. Input\output name handling when intermediate function body node input\outputs have same names as outer graph.
+// 3. Input\output name handling when function body input output names don't match node input output names
 TEST(FunctionVerification, TestModelLocalFunctions) {
   const char* code = R"ONNX(
 <

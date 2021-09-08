@@ -487,11 +487,6 @@ Function* Node::GetMutableFunctionBody(bool try_init_func_body) {
   return func_body_;
 }
 
-const Function* Node::GetFunctionBody(bool try_init_func_body) {
-  return GetMutableFunctionBody(try_init_func_body);
-}
-
-
 void Node::SetFunctionBody(Function& func) {
   func_body_ = &func;
   op_ = &func.OpSchema();
@@ -1000,19 +995,18 @@ Graph::Graph(const Model& owning_model,
              const std::unordered_map<std::string, int>& domain_to_version,
              Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
-             const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions,
+             const std::vector<const ONNX_NAMESPACE::FunctionProto*>& model_functions,
              const logging::Logger& logger)
     : Graph(owning_model, graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, model_functions, logger) {}
 
 Graph::Graph(const Model& owning_model,
              GraphProto* graph_proto, const std::unordered_map<std::string, int>& domain_to_version, Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry, Graph* parent_graph, const Node* parent_node,
-             const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions,
+             const std::vector<const ONNX_NAMESPACE::FunctionProto*>& model_functions,
              const logging::Logger& logger)
     : owning_model_(owning_model),
       graph_proto_(graph_proto),
       schema_registry_(schema_registry),
-      model_local_functions_(model_functions),
       graph_resolve_needed_(true),
       domain_to_version_(domain_to_version),
       ir_version_(ir_version),
@@ -1024,6 +1018,10 @@ Graph::Graph(const Model& owning_model,
   ORT_ENFORCE(graph_proto != nullptr, "graph_proto cannot be null");
   ArgNameToTypeMap name_to_type_map;
   const auto& model_path = ModelPath();
+
+  for (auto func : model_functions) {
+    model_local_functions_[function_utils::GetFunctionIdentifier(func->domain(), func->name())] = func;
+  }
 
   // Process 'Constant' nodes
   // Put the 'TensorProto' stored in the 'Constant' nodes attribute into the graphs initializer list
@@ -2510,7 +2508,7 @@ void Graph::InitFunctionBodyForNode(Node& node) {
       onnx_function_proto = *(node.op_->GetFunction());
     }
   } else {
-    std::string func_identifier = function_utils::GetFunctionIdentifier(node);
+    std::string func_identifier = function_utils::GetFunctionIdentifier(node.Domain(), node.OpType());
     const auto& model_local_functions = GetModelLocalFunctions();
     auto iter = model_local_functions.find(func_identifier);
     if (iter == model_local_functions.end()) {

@@ -82,18 +82,17 @@ Model::Model(const std::string& graph_name,
     opset_id_proto->set_version(domain.second);
   }
 
-  std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_local_funcs;
+  std::vector<const ONNX_NAMESPACE::FunctionProto*> model_functions;
   for (auto& func : model_local_functions) {
     auto func_ptr = model_proto_.add_functions();
     func_ptr->CopyFrom(func);
-    model_local_funcs[model_load_utils::GetModelLocalFuncId(*func_ptr)] = func_ptr;
+    model_functions.emplace_back(func_ptr);
   }
-
 
   // need to call private ctor so can't use make_shared
   GSL_SUPPRESS(r .11)
   graph_.reset(new Graph(*this, model_proto_.mutable_graph(), *p_domain_to_version, IrVersion(), schema_registry,
-                         model_local_funcs, logger));
+                         model_functions, logger));
 }
 
 Model::Model(const ModelProto& model_proto, const PathString& model_path,
@@ -184,9 +183,9 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
     }
   }
 
-  std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_local_functions;
+  std::vector<const ONNX_NAMESPACE::FunctionProto*> model_local_functions;
   for (auto& func : model_proto_.functions()) {
-    model_local_functions[func.domain() + ":" + func.name()] = &func;
+    model_local_functions.emplace_back(&func);
   }
 
   // create instance. need to call private ctor so can't use make_unique

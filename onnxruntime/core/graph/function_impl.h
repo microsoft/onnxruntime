@@ -75,11 +75,12 @@ class ViewerFunctionImpl final : public Function {
 namespace function_utils {
 /** Get the unique id for function. This is used as a key to find the 
 * relevant model local function from it's container.
+* @param function_domain Domain for the function.
+* @param function_name Name of the function. Name should match the OpType of the node which references the function.
 */
-inline std::string GetFunctionIdentifier(const Node& node) {
-  return node.Domain() + ":" + node.OpType();
+inline std::string GetFunctionIdentifier(const std::string& function_domain, const std::string& function_name) {
+  return function_domain + ":" + function_name;
 }
 }
-
 
 }  // namespace onnxruntime

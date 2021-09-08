@@ -17,7 +17,8 @@ void InferShapeForFunctionNode(
     const std::unordered_map<std::string, int>& func_opset_imports,
     const ShapeInferenceOptions& options,
     const ISchemaRegistry* schema_registry,
-    const std::unordered_map<std::string, const FunctionProto*>& in_model_functions) {
+    const std::unordered_map<std::string, const FunctionProto*>& in_model_functions,
+    std::function<std::string(const std::string& function_domain, const std::string& function_name)> get_func_id) {
   GraphProto g;
   // Get a temporary tensor-shape map
   const auto num_func_inputs = func_proto.input_size();
@@ -78,7 +79,7 @@ void InferShapeForFunctionNode(
       schema->GetTypeAndShapeInferenceFunction()(func_node_ctx);
     } else {
       // check model local functions for FunctionProto
-      auto iter = in_model_functions.find(n.domain() + ":" + n.op_type());
+      auto iter = in_model_functions.find(get_func_id(n.domain(), n.op_type()));
       if (iter == in_model_functions.end()) {
         return;
       }
@@ -90,7 +91,7 @@ void InferShapeForFunctionNode(
         func_node_opset_imports.insert({opset_import.domain(), static_cast<int>(opset_import.version())});
       }
 
-      InferShapeForFunctionNode(func_node_ctx, *iter->second, func_node_opset_imports, options, schema_registry, in_model_functions);
+      InferShapeForFunctionNode(func_node_ctx, *iter->second, func_node_opset_imports, options, schema_registry, in_model_functions, get_func_id);
     }
 
     for (int i = 0; i < copy_n.output_size(); ++i) {
@@ -204,7 +205,7 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_func_proto
         if (!type_constraint_map.count(type_str)) {
           // If schema is available for the node then get the allowed types from the schema
           // else add all types to allowed types list. It is OK to add all types. Any issues will be
-          // caught later if we try to inline the nodes and there is no kernl available for
+          // caught later if we try to inline the nodes and there is no kernel available for
           // the requested types.
           if (node_op_schema) {
             for (auto data_type : node_op_schema->outputs().at(i).GetTypes()) {
@@ -250,13 +251,13 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_func_proto
 }
 
 /** Utility function to initialize function body for nested model local function
-  @params graph Graph in which this node belongs too. For nested functions, graph is the parent function body graph
-  @params node_index index of the node in graph
-  @params onnx_function_proto FunctionProto for the function
+  @param graph Graph in which this node belongs too. For nested functions, graph is the parent function body graph
+  @param node_index index of the node in graph
+  @param onnx_function_proto FunctionProto for the function
   @param in_model_function_protos Model local functions. These are schema less functions which are defined in the ModelProto of the main/parent model.
-  @params function_container graph level function container which will own the initialized function body
-  @params logger instance of Logger
-  @params is_nested_function True if this is a nested function. For nested functions graph resolved is delayed until parent function body is fully initialized.
+  @param function_container graph level function container which will own the initialized function body
+  @param logger instance of Logger
+  @param is_nested_function True if this is a nested function. For nested functions graph resolved is delayed until parent function body is fully initialized.
 */
 static void InitNestedModelLocalFunction(onnxruntime::Graph& graph,
                                   const onnxruntime::NodeIndex& node_index,
@@ -535,7 +536,7 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
         [this, &model_local_functions](ONNX_NAMESPACE::InferenceContext& ctx) {
           auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
           ONNX_NAMESPACE::ShapeInferenceOptions options {true, 1, false};
-          InferShapeForFunctionNode(ctx, onnx_func_proto_, body_.MainGraph().DomainToVersionMap(), options, schema_registry, model_local_functions);
+          InferShapeForFunctionNode(ctx, onnx_func_proto_, body_.MainGraph().DomainToVersionMap(), options, schema_registry, model_local_functions, function_utils::GetFunctionIdentifier);
         });
   } else {
     op_schema_->TypeAndShapeInferenceFunction(cached_op_schema->GetTypeAndShapeInferenceFunction());
@@ -725,7 +726,7 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
   if (model_local_functions.size() > 0) {
     for (auto node = function_body_graph.Nodes().begin(); node != function_body_graph.Nodes().end(); ++node) {
       // Init nested functions
-      std::string func_identifier = function_utils::GetFunctionIdentifier(*node);
+      std::string func_identifier = function_utils::GetFunctionIdentifier(node->Domain(), node->OpType());
       auto iter = model_local_functions.find(func_identifier);
       if (iter == model_local_functions.end()) {
         continue;
