@@ -543,7 +543,7 @@ Status ConvertCooIndicesToCsrIndices(const TensorShape& dense_shape, size_t inpu
     const auto rows = dense_shape.GetDims()[0];
     const auto cols = dense_shape.GetDims()[1];
     inner_indices.reserve(input_indices.size());
-    outer_indices.reserve(rows + 1);
+    outer_indices.reserve(static_cast<size_t>(rows + 1));
     outer_indices.push_back(0);
     if (input_indices_ndims == 1) {
       int64_t row = 0;
@@ -589,7 +589,7 @@ Status ConvertCsrIndicesToCooIndices(int64_t cols, gsl::span<const int64_t> inpu
   size_t inner_ind = 0;
   for (size_t i = 1, limit = input_outer.size(); i < limit; ++i) {
     const int64_t row_offset = static_cast<int64_t>((i - 1) * cols);
-    for (size_t c = 0, c_limit = input_outer[i] - input_outer[i - 1]; c < c_limit; ++c, ++inner_ind) {
+    for (int64_t c = 0, c_limit = input_outer[i] - input_outer[i - 1]; c < c_limit; ++c, ++inner_ind) {
       int64_t coo_ind = row_offset + input_inner[inner_ind];
       output_indices[inner_ind] = coo_ind;
     }

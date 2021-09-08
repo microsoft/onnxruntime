@@ -14,7 +14,7 @@ namespace onnxruntime {
 namespace contrib {
 
 namespace {
-using SparseToDenseSupportedTypes = TypeList<float, int64_t>;
+using SparseToDenseSupportedTypes = TypeList<float, double, int32_t, int64_t, uint32_t, uint64_t>;
 }
 
 // Currently supports batching only for the dense argument
@@ -302,13 +302,13 @@ struct SparseToSparseCoo {
                                   ctx.values_A_.Shape().Size(),
                                   ctx.outer_a_.data(),
                                   ctx.inner_a_.data(),
-                                  ctx.values_A_.Data<T>());
+                                  ctx.values_A_.template Data<T>());
 
     ConstSparseMatrixMap<T> map_B(computed_b_dims[0], computed_b_dims[1],
                                   ctx.values_B_.Shape().Size(),
                                   ctx.outer_b_.data(),
                                   ctx.inner_b_.data(),
-                                  ctx.values_B_.Data<T>());
+                                  ctx.values_B_.template Data<T>());
 
     SparseMatrix<T> result = SparseToSparseMatMulImpl(ctx, map_A, map_B);
     SparseTensor& output_tensor = ctx.output_;
@@ -340,7 +340,7 @@ struct SparseToSparseCoo {
     gsl::span<const int64_t> inner_span = gsl::make_span(result.innerIndexPtr(), nnz);
     gsl::span<const int64_t> outer_span = gsl::make_span(result.outerIndexPtr(), rows + 1);
     ORT_RETURN_IF_ERROR(sparse_utils::ConvertCsrIndicesToCooIndices(result_cols, inner_span, outer_span,
-                                                                    coo_mutator.Indices().MutableDataAsSpan<int64_t>()));
+                                                                    coo_mutator.Indices().template MutableDataAsSpan<int64_t>()));
     return Status::OK();
   }
 };

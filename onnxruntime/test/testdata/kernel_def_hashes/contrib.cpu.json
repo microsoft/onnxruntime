@@ -48,6 +48,46 @@
       418129161279605176
     ],
     [
+        "Add com.microsoft CPUExecutionProvider",
+        14853648223650278464
+    ],
+    [
+        "Binarizer com.microsoft CPUExecutionProvider",
+        7992057411822317136
+    ],
+    [
+        "Gather com.microsoft CPUExecutionProvider",
+        14802312660047403544
+    ],
+    [
+        "Gemm com.microsoft CPUExecutionProvider",
+        5688252983911226000
+    ],
+    [
+        "MakeCooSparse com.microsoft CPUExecutionProvider",
+        168897405396907272
+    ],
+    [
+        "NonZero com.microsoft CPUExecutionProvider",
+        8330467498673212352
+    ],
+    [
+        "OneHotEncoder com.microsoft CPUExecutionProvider",
+        13985035339924513384
+    ],
+    [
+        "SparseDecomposeToDense com.microsoft CPUExecutionProvider",
+        12991751327335042784
+    ],
+    [
+        "Squeeze com.microsoft CPUExecutionProvider",
+        774765976073314472
+    ],
+    [
+        "Unsqueeze com.microsoft CPUExecutionProvider",
+        12032788972307295536
+    ],
+    [
         "SparseToDenseMatMul com.microsoft CPUExecutionProvider",
         1738555621134130312
     ],

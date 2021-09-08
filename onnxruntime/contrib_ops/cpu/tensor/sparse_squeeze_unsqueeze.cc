@@ -61,7 +61,6 @@ Status Squeeze::Compute(OpKernelContext* context) const {
   }
 
   ORT_RETURN_IF_NOT(input_ndims == 2, "Expecting 2-D sparse tensor on input");
-  const auto cols = X_shape.GetDims()[1];
 
   std::vector<int64_t> axes = ComputeAxes(context, axes_);
   ORT_RETURN_IF_NOT(axes.size() <= 1, "Axes can contain only a single axis for sparse tensors");

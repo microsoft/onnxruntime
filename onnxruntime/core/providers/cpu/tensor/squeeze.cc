@@ -39,9 +39,10 @@ std::vector<int64_t> SqueezeBase::ComputeAxes(OpKernelContext* context, const st
   if (num_inputs == 2) {  //axes is an input
     const Tensor* axes_tensor = context->Input<Tensor>(1);
     ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
-    ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1,
-                "An axes tensor must be a vector tensor.");
-    auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
+    const auto axes_ndims = axes_tensor->Shape().NumDimensions();
+    ORT_ENFORCE(axes_ndims == 1,
+                "An axes tensor must be a vector tensor. Received: axes_dims", axes_ndims);
+    const auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
     const auto* data = axes_tensor->template Data<int64_t>();
     axes.assign(data, data + nDims);
   } else {

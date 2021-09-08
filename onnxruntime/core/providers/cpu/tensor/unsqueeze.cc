@@ -39,7 +39,21 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, const TensorShape& input_shape, TensorShape& output_shape) const {
 
-  std::vector<int64_t> axes = SqueezeBase::ComputeAxes(ctx, axes_);
+  std::vector<int64_t> axes;
+  const size_t num_inputs = ctx->InputCount();
+  if (num_inputs == 2) {  //axes is an input
+    const Tensor* axes_tensor = ctx->Input<Tensor>(1);
+    ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
+    const auto axes_ndims = axes_tensor->Shape().NumDimensions();
+    ORT_ENFORCE(axes_ndims == 0 || axes_ndims == 1,
+                "An axes tensor must be a scalar or a 1-D tensor.");
+    const auto num_axes_elements = gsl::narrow<size_t>(axes_tensor->Shape().Size());
+    const auto* data = axes_tensor->template Data<int64_t>();
+    axes.assign(data, data + num_axes_elements);
+  } else {
+    axes.assign(axes_.begin(), axes_.end());
+  }
+
 #if !defined(DISABLE_SPARSE_TENSORS)
   if (ctx->InputType(0)->IsSparseTensorType()) {
     ORT_RETURN_IF_NOT(axes.size() <= 1, "Axes expected to have at most 1 element for sparse Unsqueeze");
