@@ -3,6 +3,14 @@ trigger: none
 name: 'orttraining_ci_$(Date:yyyyMMdd)_$(Rev:r)'
 pool: 'AMD-GPU'
 
+container: 
+  image: rocm/pytorch:rocm4.3.1_ubuntu18.04_py3.6_pytorch_1.9.0
+  options: --privileged \
+           --ipc=host \
+           --network=host \
+           --security-opt seccomp=unconfined \
+           -e HIP_VISIBLE_DEVICES
+
 steps:
 - checkout: self
   clean: true
@@ -15,7 +23,6 @@ steps:
     echo "Selecting GPU based on HIP_VISIBLE_DEVICES=$HIP_VISIBLE_DEVICES"
   displayName: 'Initialize environment'
 
-# update these if the E2E test data changes
 - script: |-
     sed -i 's|session_options.use_deterministic_compute = False|session_options.use_deterministic_compute = True|g' \
        orttraining/orttraining/python/training/ortmodule/_graph_execution_manager.py
@@ -26,9 +33,9 @@ steps:
     python tools/ci_build/build.py \
     --config RelWithDebInfo \
     --enable_training \
-    --mpi_home /home/ciagent/pkg/openmpi-4.0.5 \
+    --mpi_home /opt/ompi \
     --use_rocm \
-    --rocm_version=4.2 \
+    --rocm_version=4.3.1 \
     --rocm_home /opt/rocm \
     --nccl_home /opt/rocm \
     --update \
