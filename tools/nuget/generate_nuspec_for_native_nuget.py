@@ -515,20 +515,24 @@ def generate_files(list, args):
 
     if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package:
         # Process props file
-        source_props = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'props.xml')
-        target_props = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime',
-                                    args.package_name + '.props')
+        source_props = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'targets',
+                                    'netstandard', 'props.xml')
+        target_props = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'targets',
+                                    'netstandard', args.package_name + '.props')
         os.system(copy_command + ' ' + source_props + ' ' + target_props)
         files_list.append('<file src=' + '"' + target_props + '" target="build\\native" />')
         files_list.append('<file src=' + '"' + target_props + '" target="build\\netstandard1.1" />')
+        files_list.append('<file src=' + '"' + target_props + '" target="build\\netstandard2.0" />')
 
         # Process targets file
-        source_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'targets.xml')
-        target_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime',
-                                      args.package_name + '.targets')
+        source_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'targets',
+                                      'netstandard', 'targets.xml')
+        target_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'targets',
+                                      'netstandard', args.package_name + '.targets')
         os.system(copy_command + ' ' + source_targets + ' ' + target_targets)
         files_list.append('<file src=' + '"' + target_targets + '" target="build\\native" />')
         files_list.append('<file src=' + '"' + target_targets + '" target="build\\netstandard1.1" />')
+        files_list.append('<file src=' + '"' + target_targets + '" target="build\\netstandard2.0" />')
 
     # Process License, ThirdPartyNotices, Privacy
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'LICENSE.txt') + '" target="LICENSE.txt" />')

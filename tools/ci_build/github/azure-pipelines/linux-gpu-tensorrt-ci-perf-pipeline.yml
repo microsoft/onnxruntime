@@ -10,15 +10,15 @@ parameters:
   type: boolean
   default: true
 
-- name: RunTrtContainer
-  displayName: Run in TRT Container (or set trtContainer Variable)
+- name: RunNvidiaContainer
+  displayName: Run in Nvidia Container (or set trtContainer Variable)
   type: boolean
   default: true
 
-- name: RunMachine
-  displayName: Run on Machine
+- name: RunDocker
+  displayName: Run on Docker
   type: boolean
-  default: false
+  default: true
 
 - name: TrtVersion
   displayName: TensorRT Version
@@ -27,7 +27,6 @@ parameters:
   values:
   - 8.0.1.6
   - 7.2.3.4
-  - 7.1.3.4
 
 - name: ConfigureEPs
   displayName: Configure EPs (set epList variable - separate by spaces)
@@ -58,31 +57,41 @@ jobs:
     - Agent.Name -equals K8S-HVZD1T2CL-HVZD1T2
 
   variables:
+    - name: trt_dockerfile
+      ${{ if eq(parameters.TrtVersion, '8.0.1.6') }}:
+        value: Dockerfile.ubuntu_cuda11_4_tensorrt8_0
+      ${{ if eq(parameters.TrtVersion, '7.2.3.4') }}:
+        value: Dockerfile.ubuntu_cuda11_4_tensorrt7_2
+        
+    - name: build_args
+      ${{ if eq(parameters.RunNvidiaContainer, true) }}:
+        value: Dockerfile.tensorrt-perf -t $(trtContainer) -o $(Build.SourcesDirectory)/dockerfiles/Dockerfile.tensorrt
+      ${{ if ne(parameters.RunNvidiaContainer, true) }}:
+        value: Dockerfile.custom-trt-perf -t ${{ parameters.TrtVersion }} -o $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/$(trt_dockerfile)
+
     - name: anubis_image
       value: ort-master-py38
-    - name: build
-      ${{ if eq(parameters.RunTrtContainer, true) }}:
-        value: Dockerfile.tensorrt-perf -t $(trtContainer) -o $(Build.SourcesDirectory)/dockerfiles/Dockerfile.tensorrt
+      
     - name: environment
-      ${{ if ne(parameters.RunMachine, true) }}:
+      ${{ if eq(parameters.RunDocker, true) }}:
         value: docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf 
-      ${{ if eq(parameters.RunMachine, true) }}:
-        value: machine.sh 
+      ${{ if ne(parameters.RunDocker, true) }}:
+        value: machine.sh
+        
     - name: with_arguments
-      value: $(environment) -e "$(epList)" 
-   
+      value: $(environment) -e "$(epList)"
   timeoutInMinutes: 3000 
       
   steps:
   
     - ${{ if eq(parameters.BuildORT, true) }}:
 
-      - ${{ if ne(parameters.RunMachine, true) }}:
-        - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/$(build) -b $(branch) -i ort-$(branch)'
-          displayName: 'Build latest ORT Images'
+      - ${{ if eq(parameters.RunDocker, true) }}: 
+        - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/$(build_args) -b $(branch) -i ort-$(branch) -c 75'
+          displayName: 'Build latest ORT Image'
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
-          
-      - ${{ if eq(parameters.RunMachine, true) }}:
+
+      - ${{ if ne(parameters.RunDocker, true) }}:
         - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/ort_build_latest.py -b $(branch) -c /usr/local/cuda -o ~/repos/onnxruntime/ -t ${{ parameters.TrtVersion }}'
           displayName: 'Build latest ORT'
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
@@ -106,20 +115,28 @@ jobs:
           filePath: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/anubis/start_job.ps1'
           arguments: '-file_folder $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/dist -account_key $(account-key) -trt_container $(trtContainer)'
         displayName: 'Start Anubis Job'
+      
+    - ${{ if eq(parameters.MemTest, true) }}:
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/run_mem_test_docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/ -w /code/ -l false'
+        displayName: 'Run Memory Test'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
 
     - ${{ each option in parameters.ModelGroups }}:
       - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(with_arguments) -o ${{option}} -m $(${{option}})'
         displayName: '${{option}} perf'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
-  
+    
     - ${{ if eq(parameters.MemTest, true) }}:
       - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/run_mem_test_docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
         displayName: 'Run Memory Test'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
 
+    # Prepare and Publish Artifacts 
+    
     - script: 'mkdir $(Build.SourcesDirectory)/Artifact'
       displayName: 'Prepare Artifacts Directory'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+      condition: always() 
 
     - ${{ if not(eq(length(parameters.ModelGroups), 0)) }}:
       - script: 'cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact'
@@ -130,6 +147,7 @@ jobs:
       - script: 'cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/build/result $(Build.SourcesDirectory)/Artifact/result_mem_test'
         displayName: 'Copy Artifacts'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+        condition: always()
 
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
@@ -144,14 +162,14 @@ jobs:
       displayName: Clean build files (POSIX)
       condition: not(eq(variables['Agent.OS'], 'Windows_NT')) # and always()
       continueOnError: true  # continuing on error for this step, since linux build folder is somehow getting permission issue
-      
+
 - job: Linux_CI_GPU_TENSORRT_PERF_DASHBOARD
   dependsOn: Linux_CI_GPU_TENSORRT_PERF
   pool:
     name: Linux-GPU-TensorRT-Perf 
     demands:
     - Agent.Name -equals cus-cpu-52wc
-  
+
   steps: 
   - ${{ if eq(parameters.PostToDashboard, true) }}:
     - task: DownloadPipelineArtifact@2

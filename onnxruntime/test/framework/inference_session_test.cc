@@ -611,6 +611,8 @@ TEST(InferenceSessionTests, CheckRunLogger) {
 #endif
 }
 
+// WebAssembly will emit profiling data into console
+#if !defined(__wasm__)
 TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
   SessionOptions so;
 
@@ -695,6 +697,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
     count++;
   }
 }
+#endif  // __wasm__
 
 TEST(InferenceSessionTests, CheckRunProfilerStartTime) {
   // Test whether the InferenceSession can access the profiler's start time
