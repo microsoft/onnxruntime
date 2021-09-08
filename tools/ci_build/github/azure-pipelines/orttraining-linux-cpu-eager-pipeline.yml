@@ -51,6 +51,7 @@ jobs:
               --build_wheel \
               --skip_tests \
               --enable_training \
+              --build_eager_mode --enable_pybind \
               --enable_external_custom_op_schemas
       workingDirectory: $(Build.SourcesDirectory)
     condition: succeededOrFailed() # ensure all tests are run
