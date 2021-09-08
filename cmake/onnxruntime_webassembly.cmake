@@ -61,9 +61,8 @@ else()
   set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s ASSERTIONS=0 -s SAFE_HEAP=0 -s STACK_OVERFLOW_CHECK=0 -s DEMANGLE_SUPPORT=0")
 endif()
 
-# Set link flag for onnxruntime-extensions because now it contains submodules using exceptions
-# Would remove this link flag when all submodules have supported disabling c++ exceptions
-if (onnxruntime_USE_EXTENSIONS)
+# Set link flag to enable exceptions support, this will override default disabling exception throwing behavior when disable exceptions.
+if (onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_THROWING)
   set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s DISABLE_EXCEPTION_THROWING=0")
 endif()
 

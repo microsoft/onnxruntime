@@ -346,6 +346,10 @@ def parse_arguments():
         "--disable_wasm_exception_catching", action='store_true',
         help="Disable exception catching in WebAssembly.")
     parser.add_argument(
+        "--enable_wasm_exception_throwing_override", action='store_true',
+        help="Enable exception throwing in WebAssembly, this will override default disabling exception throwing "
+        "behavior when disable exceptions.")
+    parser.add_argument(
         "--enable_wasm_threads", action='store_true',
         help="Enable WebAssembly multi-threads support")
     parser.add_argument(
@@ -794,6 +798,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_WEBASSEMBLY_SIMD=" + ("ON" if args.enable_wasm_simd else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING=" + ("OFF" if args.disable_wasm_exception_catching
                                                                   else "ON"),
+        "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_THROWING=" + ("ON" if args.enable_wasm_exception_throwing_override
+                                                                  else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_WEBASSEMBLY_MALLOC=" + args.wasm_malloc,
