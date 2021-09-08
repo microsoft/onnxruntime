@@ -3,11 +3,13 @@
 Do not modify directly.*
 
 * com.microsoft
+  * <a href="#com.microsoft.Add">com.microsoft.Add</a>
   * <a href="#com.microsoft.Attention">com.microsoft.Attention</a>
   * <a href="#com.microsoft.AttnLSTM">com.microsoft.AttnLSTM</a>
   * <a href="#com.microsoft.BiasDropout">com.microsoft.BiasDropout</a>
   * <a href="#com.microsoft.BiasGelu">com.microsoft.BiasGelu</a>
   * <a href="#com.microsoft.BiasSoftmax">com.microsoft.BiasSoftmax</a>
+  * <a href="#com.microsoft.Binarizer">com.microsoft.Binarizer</a>
   * <a href="#com.microsoft.CDist">com.microsoft.CDist</a>
   * <a href="#com.microsoft.ComplexMul">com.microsoft.ComplexMul</a>
   * <a href="#com.microsoft.ComplexMulConj">com.microsoft.ComplexMulConj</a>
@@ -22,12 +24,15 @@ Do not modify directly.*
   * <a href="#com.microsoft.FusedConv">com.microsoft.FusedConv</a>
   * <a href="#com.microsoft.FusedGemm">com.microsoft.FusedGemm</a>
   * <a href="#com.microsoft.FusedMatMul">com.microsoft.FusedMatMul</a>
+  * <a href="#com.microsoft.Gather">com.microsoft.Gather</a>
   * <a href="#com.microsoft.GatherND">com.microsoft.GatherND</a>
   * <a href="#com.microsoft.Gelu">com.microsoft.Gelu</a>
+  * <a href="#com.microsoft.Gemm">com.microsoft.Gemm</a>
   * <a href="#com.microsoft.GridSample">com.microsoft.GridSample</a>
   * <a href="#com.microsoft.Inverse">com.microsoft.Inverse</a>
   * <a href="#com.microsoft.Irfft">com.microsoft.Irfft</a>
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
+  * <a href="#com.microsoft.MakeCooSparse">com.microsoft.MakeCooSparse</a>
   * <a href="#com.microsoft.MatMulInteger16">com.microsoft.MatMulInteger16</a>
   * <a href="#com.microsoft.MatMulIntegerToFloat">com.microsoft.MatMulIntegerToFloat</a>
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
@@ -35,6 +40,8 @@ Do not modify directly.*
   * <a href="#com.microsoft.MurmurHash3">com.microsoft.MurmurHash3</a>
   * <a href="#com.microsoft.NGramRepeatBlock">com.microsoft.NGramRepeatBlock</a>
   * <a href="#com.microsoft.NhwcMaxPool">com.microsoft.NhwcMaxPool</a>
+  * <a href="#com.microsoft.NonZero">com.microsoft.NonZero</a>
+  * <a href="#com.microsoft.OneHotEncoder">com.microsoft.OneHotEncoder</a>
   * <a href="#com.microsoft.Optional">com.microsoft.Optional</a>
   * <a href="#com.microsoft.OptionalGetElement">com.microsoft.OptionalGetElement</a>
   * <a href="#com.microsoft.OptionalHasElement">com.microsoft.OptionalHasElement</a>
@@ -56,17 +63,55 @@ Do not modify directly.*
   * <a href="#com.microsoft.Rfft">com.microsoft.Rfft</a>
   * <a href="#com.microsoft.SampleOp">com.microsoft.SampleOp</a>
   * <a href="#com.microsoft.SkipLayerNormalization">com.microsoft.SkipLayerNormalization</a>
+  * <a href="#com.microsoft.SparseDecomposeToDense">com.microsoft.SparseDecomposeToDense</a>
   * <a href="#com.microsoft.SparseToDenseMatMul">com.microsoft.SparseToDenseMatMul</a>
+  * <a href="#com.microsoft.Squeeze">com.microsoft.Squeeze</a>
   * <a href="#com.microsoft.Tokenizer">com.microsoft.Tokenizer</a>
   * <a href="#com.microsoft.TorchEmbedding">com.microsoft.TorchEmbedding</a>
   * <a href="#com.microsoft.TransposeMatMul">com.microsoft.TransposeMatMul</a>
   * <a href="#com.microsoft.Trilu">com.microsoft.Trilu</a>
   * <a href="#com.microsoft.Unique">com.microsoft.Unique</a>
+  * <a href="#com.microsoft.Unsqueeze">com.microsoft.Unsqueeze</a>
   * <a href="#com.microsoft.WordConvEmbedding">com.microsoft.WordConvEmbedding</a>
   * <sub>experimental</sub> <a href="#com.microsoft.IsAllFinite">com.microsoft.IsAllFinite</a>
   * <sub>experimental</sub> <a href="#com.microsoft.QEmbedLayerNormalization">com.microsoft.QEmbedLayerNormalization</a>
 
 ## com.microsoft
+### <a name="com.microsoft.Add"></a><a name="com.microsoft.add">**com.microsoft.Add**</a>
+
+  Behaves as to https://github.com/onnx/onnx/blob/master/docs/Operators.md#Add
+    The inputs may have different shapes. The output shape will have the max number of dimensions
+    over the input dense shapes and the dims will be max() over corresponding input dimensions.
+    We are not implementing broadcasting as this is not a requirement.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>1 or 2 - dimensional sparse matrix A COO format</dd>
+<dt><tt>B</tt> : T</dt>
+<dd>1 or 2 - dimensional sparse matrix B COO format</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Sum of the respective elements of A and B</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : sparse_tensor(uint8), sparse_tensor(uint16), sparse_tensor(uint32), sparse_tensor(uint64), sparse_tensor(int8), sparse_tensor(int16), sparse_tensor(int32), sparse_tensor(int64), sparse_tensor(float), sparse_tensor(double), sparse_tensor(string), sparse_tensor(bool)</dt>
+<dd>Constrain input and output float at this time</dd>
+</dl>
+
+
 ### <a name="com.microsoft.Attention"></a><a name="com.microsoft.attention">**com.microsoft.Attention**</a>
 
   Multi-Head Self Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
@@ -460,6 +505,49 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.Binarizer"></a><a name="com.microsoft.binarizer">**com.microsoft.Binarizer**</a>
+
+  This is similar to https://github.com/onnx/onnx/blob/master/docs/Operators-ml.md#ai.onnx.ml.Binarizer
+  The presence of NaN will cause it to return an error.
+  The operator will accept a single sparse tensor input and will output
+  a sparse tensor of the same shape and type. For each of the elements it
+  would compare the value of the 'threshold' attribute and for all values above the threshold
+  it would set the output value for the same index to T(1) and T(0) otherwise.
+  NaN 
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>threshold</tt> : float</dt>
+<dd>A boundary value</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>A sparse matrix of numeric type</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>A sparse tensor of the same type as input with 1 or 0 for each of the input values</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : sparse_tensor(float), sparse_tensor(double), sparse_tensor(int64), sparse_tensor(int32)</dt>
+<dd>The input must be a tensor of a numeric type. The output will be of the same tensor type.</dd>
 </dl>
 
 
@@ -1103,6 +1191,46 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.Gather"></a><a name="com.microsoft.gather">**com.microsoft.Gather**</a>
+
+  XXX: This is very different from the standard Gather. (I would call it a Filter).
+  XXX: Extra effort required to either merge the two or present a separate op.
+  This is a simplified version of ONNX Gather. No axis support.
+  The input 0 is a sparse tensor in COO format
+  The input 1 is a dense tensor containing COO 1-D sorted indices of elements to gather.
+  The output is a sparse tensor of the same shape as input that contains values
+  of the input sparse tensor that match the input 1 indices.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>data</tt> : T</dt>
+<dd>Sparse tensor in COO format</dd>
+<dt><tt>indices</tt> : T1</dt>
+<dd>Dense matrix containing sorted indices into A </dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Filtered data</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : sparse_tensor(uint8), sparse_tensor(uint16), sparse_tensor(uint32), sparse_tensor(uint64), sparse_tensor(int8), sparse_tensor(int16), sparse_tensor(int32), sparse_tensor(int64), sparse_tensor(bfloat16), sparse_tensor(float16), sparse_tensor(float), sparse_tensor(double), sparse_tensor(string), sparse_tensor(bool), sparse_tensor(complex64), sparse_tensor(complex128)</dt>
+<dd>All sparse tensor types</dd>
+<dt><tt>T1</tt> : tensor(int64)</dt>
+<dd>Index type</dd>
+</dl>
+
+
 ### <a name="com.microsoft.GatherND"></a><a name="com.microsoft.gathernd">**com.microsoft.GatherND**</a>
 
   Given `data` tensor of rank r >= 1, and `indices` tensor of rank q >= 1, gather
@@ -1185,6 +1313,50 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.Gemm"></a><a name="com.microsoft.gemm">**com.microsoft.Gemm**</a>
+
+  Behaves as to https://github.com/onnx/onnx/blob/master/docs/Operators.md#Matmul
+    No transpose supported
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>alpha</tt> : float</dt>
+<dd>Scalar multiplier for the product of the input tensors A * B.</dd>
+<dt><tt>transA</tt> : int</dt>
+<dd>Whether A should be transposed on the last two dimensions before doing multiplication</dd>
+<dt><tt>transB</tt> : int</dt>
+<dd>Whether B should be transposed on the last two dimensions before doing multiplication</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>Sparse tensor (M,K) COO format</dd>
+<dt><tt>B</tt> : T</dt>
+<dd>Sparse tensor (K,N) COO format</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Sparse tensor (M,N) multiply results</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : sparse_tensor(float)</dt>
+<dd>Constrain input and output float at this time</dd>
 </dl>
 
 
@@ -1364,6 +1536,46 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>G</tt> : tensor(int32)</dt>
 <dd>Constrain to integer types</dd>
+</dl>
+
+
+### <a name="com.microsoft.MakeCooSparse"></a><a name="com.microsoft.makecoosparse">**com.microsoft.MakeCooSparse**</a>
+
+  This is a utility op that helps migration from dense tensor ops.
+  It takes dense tensors that are assembled together into a sparse tensor in
+  COO format.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>DenseShape</tt> : T1</dt>
+<dd>A 1-D tensor that contains a dense shape of the original dense tensor</dd>
+<dt><tt>Values</tt> : T</dt>
+<dd>A dense tensor that contains values</dd>
+<dt><tt>Indices</tt> : T1</dt>
+<dd>Contains either 1-D or 2-D COO indices</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Output</tt> : T2</dt>
+<dd>Sparse Tensor in COO format</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(uint8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(int8), tensor(int16), tensor(int32), tensor(int64), tensor(bfloat16), tensor(float16), tensor(float), tensor(double), tensor(string), tensor(bool), tensor(complex64), tensor(complex128)</dt>
+<dd>All tensor types</dd>
+<dt><tt>T1</tt> : tensor(int64)</dt>
+<dd>Index type</dd>
+<dt><tt>T2</tt> : sparse_tensor(uint8), sparse_tensor(uint16), sparse_tensor(uint32), sparse_tensor(uint64), sparse_tensor(int8), sparse_tensor(int16), sparse_tensor(int32), sparse_tensor(int64), sparse_tensor(float), sparse_tensor(double), sparse_tensor(string), sparse_tensor(bool)</dt>
+<dd>Numeric sparse types</dd>
 </dl>
 
 
@@ -1664,6 +1876,106 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(int8), tensor(uint8)</dt>
 <dd></dd>
+</dl>
+
+
+### <a name="com.microsoft.NonZero"></a><a name="com.microsoft.nonzero">**com.microsoft.NonZero**</a>
+
+  Behaves similar to https://github.com/onnx/onnx/blob/master/docs/Operators.md#NonZero
+    returns a tensor that contains coordinates for non-zero entries. Even though the input
+    is a sparse tensor, that usually does not contain zeros, the model logic may construct
+    sparse tensor containing explicit zeros that convey model specific meaning.
+  
+    The output dense tensor would contain in a row-major order, by dimension, indices of non-zero elements
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>An up to 2 dimensional sparse tensor A. Either COO format either 1-D or 2-D index</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>B</tt> : T1</dt>
+<dd>An up to 2-dimensional dense matrix B</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : sparse_tensor(float)</dt>
+<dd>Constrain to float at this time</dd>
+<dt><tt>T1</tt> : tensor(int64)</dt>
+<dd>Index type</dd>
+</dl>
+
+
+### <a name="com.microsoft.OneHotEncoder"></a><a name="com.microsoft.onehotencoder">**com.microsoft.OneHotEncoder**</a>
+
+  The operator implements a simplified version of sklearn OneHotEncoder
+  https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.OneHotEncoder.html
+  `categories` attribute contains an array of category values.
+  
+  The input is a dense tensor of values.
+  
+  The operator produces a sparse output with a dense shape that has one more dimension than input.
+  That dimension contains sparsified version of 1-of-K category output.
+  
+  Example:
+  categories = [1021, 2002]
+  dense input = [1021, 2002, 1023] dense shape: {3}
+  
+  Output dense shape = {3, 2} // 2 is the number of categories, choices for the last dimension include
+  {0, 0}, {1, 0}, {0, 1}
+  
+  {0, 0} is a combination that would either match no categories or it is absent from the input.
+  It will, therefore, be absent in the sparse output.
+  
+  For the rest of the values, we places ones in the following 2-D indices:
+  (0, 0), (1, 1) and 1023 can not be categorized.
+  
+  The sparse output will have ones at the following flat COO indices: 0 and 4 (1 x 3 + 1)
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>cats_int64s</tt> : list of ints (required)</dt>
+<dd>List of categories, ints.</dd>
+<dt><tt>zeros</tt> : int</dt>
+<dd>If true and category is not present, will return all zeros; if false and a category if not found, the operator will fail.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>1-D dense tensor containing values to be categorized</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T1</dt>
+<dd>1-of-K 2-D sparse tensor output</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(int64)</dt>
+<dd>ints</dd>
+<dt><tt>T1</tt> : sparse_tensor(float)</dt>
+<dd>Only 1.f values are returned</dd>
 </dl>
 
 
@@ -2692,6 +3004,45 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.SparseDecomposeToDense"></a><a name="com.microsoft.sparsedecomposetodense">**com.microsoft.SparseDecomposeToDense**</a>
+
+  This is a utility op that decomposes a Sparse Tensor in COO format
+      to three dense tensors (dense_shape, values, 1-D indices).
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>SparseCooInput</tt> : T</dt>
+<dd>A Sparse Tensor in COO format.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>DenseShape</tt> : T2</dt>
+<dd>A 1-D tensor that contains a dense shape of the original dense tensor.</dd>
+<dt><tt>Values</tt> : T1</dt>
+<dd>A dense tensor that contains values.</dd>
+<dt><tt>Indices</tt> : T2</dt>
+<dd>A dense tensor that contains either 1-D (common case) or 2-D COO indices.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : sparse_tensor(uint8), sparse_tensor(uint16), sparse_tensor(uint32), sparse_tensor(uint64), sparse_tensor(int8), sparse_tensor(int16), sparse_tensor(int32), sparse_tensor(int64), sparse_tensor(bfloat16), sparse_tensor(float16), sparse_tensor(float), sparse_tensor(double), sparse_tensor(string), sparse_tensor(bool), sparse_tensor(complex64), sparse_tensor(complex128)</dt>
+<dd>All supported types</dd>
+<dt><tt>T1</tt> : tensor(uint8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(int8), tensor(int16), tensor(int32), tensor(int64), tensor(bfloat16), tensor(float16), tensor(float), tensor(double), tensor(string), tensor(bool), tensor(complex64), tensor(complex128)</dt>
+<dd>All supported types</dd>
+<dt><tt>T2</tt> : tensor(int64)</dt>
+<dd>Index type</dd>
+</dl>
+
+
 ### <a name="com.microsoft.SparseToDenseMatMul"></a><a name="com.microsoft.sparsetodensematmul">**com.microsoft.SparseToDenseMatMul**</a>
 
 #### Version
@@ -2729,9 +3080,46 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>T</tt> : sparse_tensor(float), sparse_tensor(double), sparse_tensor(int64), sparse_tensor(int32), sparse_tensor(uint64), sparse_tensor(uint32)</dt>
-<dd>Constrain input and output types to float tensors.</dd>
+<dd>Constrain input and output types to numeric tensors.</dd>
 <dt><tt>T1</tt> : tensor(float), tensor(double), tensor(int64), tensor(int32), tensor(uint64), tensor(uint32)</dt>
-<dd>Constrain input and output types to float tensors.</dd>
+<dd>Constrain input and output types to numeric tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.Squeeze"></a><a name="com.microsoft.squeeze">**com.microsoft.Squeeze**</a>
+
+  Similar to https://github.com/onnx/onnx/blob/master/docs/Operators.md#squeeze
+  Removes single dimensional entries designated by axes input.
+  For sparse tensors this means that the input must be 2-D and the output 1-D and
+  there could be only a single axes entry. This means that if the incoming tensor had
+  2-D COO indices, they would be converted to 1-D indices.
+  Output is a reshaped sparse tensor with the same data.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs (1 - 2)
+
+<dl>
+<dt><tt>data</tt> : T</dt>
+<dd>Sparse 2-D tensor in COO format</dd>
+<dt><tt>axes</tt> (optional) : tensor(int64)</dt>
+<dd>List of integers indicating the dimensions to squeeze. Negative value means counting dimensions from the back. Accepted range is [-r, r-1] where r = rank(data). For sparse inputs axes must have only one entry</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>squeezed</tt> : T</dt>
+<dd>Reshaped sparse tensor with same data as input.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : sparse_tensor(uint8), sparse_tensor(uint16), sparse_tensor(uint32), sparse_tensor(uint64), sparse_tensor(int8), sparse_tensor(int16), sparse_tensor(int32), sparse_tensor(int64), sparse_tensor(bfloat16), sparse_tensor(float16), sparse_tensor(float), sparse_tensor(double), sparse_tensor(string), sparse_tensor(bool), sparse_tensor(complex64), sparse_tensor(complex128)</dt>
+<dd>All sparse types</dd>
 </dl>
 
 
@@ -2983,6 +3371,54 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(uint8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(int8), tensor(int16), tensor(int32), tensor(int64), tensor(float16), tensor(float), tensor(double), tensor(string), tensor(bool), tensor(complex64), tensor(complex128)</dt>
 <dd>Input can be of any tensor type.</dd>
+</dl>
+
+
+### <a name="com.microsoft.Unsqueeze"></a><a name="com.microsoft.unsqueeze">**com.microsoft.Unsqueeze**</a>
+
+  Similar to https://github.com/onnx/onnx/blob/master/docs/Operators.md#unsqueeze
+  Insert single-dimensional entries to the shape of an input tensor (`data`).
+  Takes one required input `axes` - which contains a list of dimension indices and this operator will insert a dimension of value `1` into the corresponding index of the output tensor (`expanded`).
+  
+  For example:
+    Given an input tensor (`data`) of shape [3, 4, 5], then
+    Unsqueeze(data, axes=[0, 4]) outputs a tensor (`expanded`) containing same data as `data` but with shape [1, 3, 4, 5, 1].
+  
+  The input `axes` should not contain any duplicate entries. It is an error if it contains duplicates.
+  The rank of the output tensor (`output_rank`) is the rank of the input tensor (`data`) plus the number of values in `axes`.
+  Each value in `axes` should be within the (inclusive) range [-output_rank , output_rank - 1].
+  The order of values in `axes` does not matter and can come in any order.
+  
+  For sparse tensors this means that the input must be 1-D and the output is 2-D and
+  there could be only one axes entry.
+  
+  Output is a reshaped sparse tensor with the same data.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>data</tt> : T</dt>
+<dd>Sparse 1-D sparse in COO format</dd>
+<dt><tt>axes</tt> : tensor(int64)</dt>
+<dd>List of integers indicating the dimensions to be inserted. Negative value means counting dimensions from the back. Accepted range is [-r, r-1] where r = rank(expanded). For sparse inputs, axes can have only 1 entry</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>expanded</tt> : T</dt>
+<dd>Reshaped tensor with same data as input.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : sparse_tensor(uint8), sparse_tensor(uint16), sparse_tensor(uint32), sparse_tensor(uint64), sparse_tensor(int8), sparse_tensor(int16), sparse_tensor(int32), sparse_tensor(int64), sparse_tensor(bfloat16), sparse_tensor(float16), sparse_tensor(float), sparse_tensor(double), sparse_tensor(string), sparse_tensor(bool), sparse_tensor(complex64), sparse_tensor(complex128)</dt>
+<dd>All sparse types</dd>
 </dl>
 
 

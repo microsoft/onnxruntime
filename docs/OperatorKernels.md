@@ -369,9 +369,11 @@ Do not modify directly.*
 | |
 | |
 |**Operator Domain:** *com.microsoft*||||
+|Add|*in* A:**T**<br> *in* B:**T**<br> *out* Y:**T**|1+|**T** = sparse_tensor(bool), sparse_tensor(double), sparse_tensor(float), sparse_tensor(int16), sparse_tensor(int32), sparse_tensor(int64), sparse_tensor(int8), sparse_tensor(uint16), sparse_tensor(uint32), sparse_tensor(uint64), sparse_tensor(uint8)|
 |Attention|*in* input:**T**<br> *in* weight:**T**<br> *in* bias:**T**<br> *in* mask_index:**M**<br> *in* past:**T**<br> *in* extra_add:**T**<br> *out* output:**T**<br> *out* present:**T**|1+|**T** = tensor(float)|
 |AttnLSTM|*in* X:**T**<br> *in* W:**T**<br> *in* R:**T**<br> *in* B:**T**<br> *in* sequence_lens:**T1**<br> *in* initial_h:**T**<br> *in* initial_c:**T**<br> *in* P:**T**<br> *in* QW:**T**<br> *in* MW:**T**<br> *in* V:**T**<br> *in* M:**T**<br> *in* memory_seq_lens:**T1**<br> *in* AW:**T**<br> *out* Y:**T**<br> *out* Y_h:**T**<br> *out* Y_c:**T**|1+|**T** = tensor(double), tensor(float)<br/> **T1** = tensor(int32)|
 |BiasGelu|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T**|1+|**T** = tensor(float)|
+|Binarizer|*in* A:**T**<br> *out* Y:**T**|1+|**T** = sparse_tensor(double), sparse_tensor(float), sparse_tensor(int32), sparse_tensor(int64)|
 |CDist|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T**|1+|**T** = tensor(double), tensor(float)|
 |ConvTransposeWithDynamicPads|*in* X:**T**<br> *in* W:**T**<br> *in* Pads:**tensor(int64)**<br> *in* B:**T**<br> *out* Y:**T**|1+|**T** = tensor(float)|
 |CropAndResize|*in* X:**T1**<br> *in* rois:**T1**<br> *in* batch_indices:**T2**<br> *in* crop_size:**T2**<br> *out* Y:**T1**|1+|**T** = tensor(float)<br/> **T2** = tensor(int32)|
@@ -384,16 +386,21 @@ Do not modify directly.*
 |FusedConv|*in* X:**T**<br> *in* W:**T**<br> *in* B:**T**<br> *in* Z:**T**<br> *out* Y:**T**|1+|**T** = tensor(float)|
 |FusedGemm|*in* A:**T**<br> *in* B:**T**<br> *in* C:**T**<br> *out* Y:**T**|1+|**T** = tensor(float)|
 |FusedMatMul|*in* A:**T**<br> *in* B:**T**<br> *out* Y:**T**|1+|**T** = tensor(float)|
+|Gather|*in* data:**T**<br> *in* indices:**T1**<br> *out* output:**T**|1+|**T** = sparse_tensor(bfloat16), sparse_tensor(bool), sparse_tensor(double), sparse_tensor(float), sparse_tensor(float16), sparse_tensor(int16), sparse_tensor(int32), sparse_tensor(int64), sparse_tensor(int8), sparse_tensor(string), sparse_tensor(uint16), sparse_tensor(uint32), sparse_tensor(uint64), sparse_tensor(uint8)|
 |GatherND|*in* data:**T**<br> *in* indices:**Tind**<br> *out* output:**T**|1+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)<br/> **Tind** = tensor(int32), tensor(int64)|
 |Gelu|*in* X:**T**<br> *out* Y:**T**|1+|**T** = tensor(float)|
+|Gemm|*in* A:**T**<br> *in* B:**T**<br> *out* Y:**T**|1+|**T** = sparse_tensor(float), sparse_tensor(int64)<br/> **T1** = tensor(float), tensor(int64)|
 |GridSample|*in* X:**T1**<br> *in* Grid:**T1**<br> *out* Y:**T2**|1+|**T** = tensor(float)|
 |Inverse|*in* X:**T**<br> *out* Y:**T**|1+|**T** = tensor(double), tensor(float), tensor(float16)|
+|MakeCooSparse|*in* DenseShape:**T1**<br> *in* Values:**T**<br> *in* Indices:**T1**<br> *out* Output:**T2**|1+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)<br/> **T1** = tensor(int64)<br/> **T2** = sparse_tensor(bfloat16), sparse_tensor(bool), sparse_tensor(double), sparse_tensor(float), sparse_tensor(float16), sparse_tensor(int16), sparse_tensor(int32), sparse_tensor(int64), sparse_tensor(int8), sparse_tensor(string), sparse_tensor(uint16), sparse_tensor(uint32), sparse_tensor(uint64), sparse_tensor(uint8)|
 |MatMulInteger16|*in* A:**T1**<br> *in* B:**T2**<br> *out* Y:**T3**|1+|**T1** = tensor(int16)<br/> **T2** = tensor(int16)<br/> **T3** = tensor(int32)|
 |MatMulIntegerToFloat|*in* A:**T1**<br> *in* B:**T2**<br> *in* a_scale:**T3**<br> *in* b_scale:**T3**<br> *in* a_zero_point:**T1**<br> *in* b_zero_point:**T2**<br> *in* bias:**T3**<br> *out* Y:**T3**|1+|**T1** = tensor(uint8)<br/> **T2** = tensor(int8), tensor(uint8)<br/> **T3** = tensor(float)|
 |MaxpoolWithMask|*in* X:**T**<br> *in* M:**tensor(int32)**<br> *out* Y:**T**|1+|**X** = tensor(float)|
 |MurmurHash3|*in* X:**T1**<br> *out* Y:**T2**|1+|**T1** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(string), tensor(uint32), tensor(uint64)<br/> **T2** = tensor(int32), tensor(uint32)|
 |NGramRepeatBlock|*in* input_ids:**Tid**<br> *in* scores:**T**<br> *out* scores_out:**T**|1+|**T** = tensor(float)<br/> **Tid** = tensor(int64)|
 |NhwcMaxPool|*in* x:**T**<br> *out* y:**T**|1+|**T** = tensor(uint8)|
+|NonZero|*in* A:**T**<br> *out* B:**T1**|1+|**T** = sparse_tensor(double), sparse_tensor(float), sparse_tensor(int16), sparse_tensor(int32), sparse_tensor(int64), sparse_tensor(int8), sparse_tensor(uint16), sparse_tensor(uint32), sparse_tensor(uint64), sparse_tensor(uint8)<br/> **T1** = tensor(int64)|
+|OneHotEncoder|*in* A:**T**<br> *out* Y:**T1**|1+|**T** = tensor(int64)<br/> **T1** = sparse_tensor(float)|
 |Pad|*in* data:**T**<br> *in* pads:**tensor(int64)**<br> *in* value:**T**<br> *out* output:**T**|1+|**T** = tensor(float)|
 |QAttention|*in* input:**T1**<br> *in* weight:**T2**<br> *in* bias:**T3**<br> *in* input_scale:**T3**<br> *in* weight_scale:**T3**<br> *in* mask_index:**T4**<br> *in* input_zero_point:**T1**<br> *in* weight_zero_point:**T2**<br> *in* past:**T3**<br> *out* output:**T3**<br> *out* present:**T3**|1+|**T1** = tensor(uint8)<br/> **T2** = tensor(int8), tensor(uint8)<br/> **T3** = tensor(float)<br/> **T4** = tensor(int32)|
 |QEmbedLayerNormalization|*in* input_ids:**T1**<br> *in* segment_ids:**T1**<br> *in* word_embedding_quant:**T2**<br> *in* position_embedding_quant:**T2**<br> *in* segment_embedding:**T2**<br> *in* gamma_quant:**T2**<br> *in* beta_quant:**T2**<br> *in* mask:**T1**<br> *in* word_embedding_scale:**T**<br> *in* position_embedding_scale:**T**<br> *in* segment_embedding_scale:**T**<br> *in* gamma_scale:**T**<br> *in* beta_scale:**T**<br> *in* word_embedding_zero_point:**T2**<br> *in* position_embedding_zero_point:**T2**<br> *in* segment_embedding_zero_point:**T2**<br> *in* gamma_zero_point:**T2**<br> *in* beta_zero_point:**T2**<br> *out* layernorm_out:**T**<br> *out* mask_index_out:**T1**|1+|**T** = tensor(float)|
@@ -407,11 +414,14 @@ Do not modify directly.*
 |Range|*in* start:**T**<br> *in* limit:**T**<br> *in* delta:**T**<br> *out* Y:**T**|1+|**T** = tensor(double), tensor(float), tensor(int16), tensor(int32), tensor(int64)|
 |SampleOp|*in* X:**T**<br> *out* Y:**T**|1+|**T** = tensor(float)|
 |SkipLayerNormalization|*in* input:**T**<br> *in* skip:**T**<br> *in* gamma:**T**<br> *in* beta:**T**<br> *in* bias:**T**<br> *out* output:**T**<br> *out* mean:**U**<br> *out* inv_std_var:**U**|1+|**T** = tensor(double), tensor(float)|
+|SparseDecomposeToDense|*in* SparseCooInput:**T**<br> *out* DenseShape:**T2**<br> *out* Values:**T1**<br> *out* Indices:**T2**|1+|**T** = sparse_tensor(bfloat16), sparse_tensor(bool), sparse_tensor(double), sparse_tensor(float), sparse_tensor(float16), sparse_tensor(int16), sparse_tensor(int32), sparse_tensor(int64), sparse_tensor(int8), sparse_tensor(string), sparse_tensor(uint16), sparse_tensor(uint32), sparse_tensor(uint64), sparse_tensor(uint8)<br/> **T1** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)<br/> **T2** = tensor(int64)|
 |SparseToDenseMatMul|*in* A:**T**<br> *in* B:**T1**<br> *out* Y:**T1**|1+|**T** = sparse_tensor(double), sparse_tensor(float), sparse_tensor(int32), sparse_tensor(int64), sparse_tensor(uint32), sparse_tensor(uint64)<br/> **T1** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
+|Squeeze|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* squeezed:**T**|1+|**T** = sparse_tensor(bfloat16), sparse_tensor(bool), sparse_tensor(double), sparse_tensor(float), sparse_tensor(float16), sparse_tensor(int16), sparse_tensor(int32), sparse_tensor(int64), sparse_tensor(int8), sparse_tensor(string), sparse_tensor(uint16), sparse_tensor(uint32), sparse_tensor(uint64), sparse_tensor(uint8)|
 |Tokenizer|*in* X:**T**<br> *out* Y:**T**|1+|**T** = tensor(string)|
 |TransposeMatMul|*in* A:**T**<br> *in* B:**T**<br> *out* Y:**T**|1+|**T** = tensor(float)|
 |Trilu|*in* X:**T**<br> *in* k:**tensor(int64)**<br> *out* Y:**T**|1+|**T** = tensor(double), tensor(float), tensor(int64)|
 |Unique|*in* x:**T**<br> *out* y:**T**<br> *out* idx:**tensor(int64)**<br> *out* counts:**tensor(int64)**|1+|**T** = tensor(float)|
+|Unsqueeze|*in* data:**T**<br> *in* axes:**tensor(int64)**<br> *out* expanded:**T**|1+|**T** = sparse_tensor(bfloat16), sparse_tensor(bool), sparse_tensor(double), sparse_tensor(float), sparse_tensor(float16), sparse_tensor(int16), sparse_tensor(int32), sparse_tensor(int64), sparse_tensor(int8), sparse_tensor(string), sparse_tensor(uint16), sparse_tensor(uint32), sparse_tensor(uint64), sparse_tensor(uint8)|
 |WordConvEmbedding|*in* Sequence:**T**<br> *in* W:**T1**<br> *in* B:**T1**<br> *in* C:**T1**<br> *out* Y:**T1**|1+|**T** = tensor(int32)<br/> **T1** = tensor(float)|
 | |
 | |
