@@ -93,12 +93,13 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [n
       throw new Error(`log verbosity level is not valid: ${options.logVerbosityLevel}`);
     }
 
-    // TODO: Support profiling
-    sessionOptions.enableProfiling = false;
+    if (options?.enableProfiling === undefined) {
+      sessionOptions.enableProfiling = false;
+    }
 
     sessionOptionsHandle = wasm._OrtCreateSessionOptions(
         graphOptimizationLevel, !!sessionOptions.enableCpuMemArena!, !!sessionOptions.enableMemPattern!, executionMode,
-        sessionOptions.enableProfiling, 0, logIdDataOffset, sessionOptions.logSeverityLevel!,
+        !!sessionOptions.enableProfiling!, 0, logIdDataOffset, sessionOptions.logSeverityLevel!,
         sessionOptions.logVerbosityLevel!);
     if (sessionOptionsHandle === 0) {
       throw new Error('Can\'t create session options');
