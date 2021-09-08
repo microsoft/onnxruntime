@@ -740,7 +740,7 @@ struct MLAS_CONV_SYM_PARAMS {
     size_t KernelSize;
     const int32_t* Bias;
     const float* Scale;
-    bool PerColumnScale;
+    bool PerChannelScale;
     uint8_t OutputZeroPoint;
 };
 

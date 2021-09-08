@@ -573,7 +573,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
         conv_params.KernelSize = static_cast<size_t>(kernel_size);
         conv_params.Bias = column_sums_.data();
         conv_params.Scale = output_scales.data();
-        conv_params.PerColumnScale = output_scales.size() > 1;
+        conv_params.PerChannelScale = output_scales.size() > 1;
         conv_params.OutputZeroPoint = Y_zero_point_value;
 
         if (is_depthwise_conv) {
