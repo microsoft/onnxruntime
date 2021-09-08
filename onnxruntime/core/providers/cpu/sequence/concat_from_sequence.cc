@@ -14,7 +14,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     ConcatFromSequence,
     11,
     KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("S", DataTypeImpl::AllSequenceTensorTypes()),
     ConcatFromSequence);
 
