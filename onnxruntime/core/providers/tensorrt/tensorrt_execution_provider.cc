@@ -100,7 +100,7 @@ void SerializeProfile(const std::string& file_name, std::unordered_map<std::stri
 std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> DeserializeProfile(std::ifstream& infile) {
   // Load flexbuffer
   infile.seekg(0, std::ios::end);
-  int length = infile.tellg();
+  const size_t length = infile.tellg();
   infile.seekg(0, std::ios::beg);
   std::unique_ptr<char[]> data{new char[length]};
   infile.read((char*)data.get(), length);
@@ -194,7 +194,7 @@ bool ReadDynamicRange(const std::string file_name, const bool is_trt_calibration
   } else {
     // ORT generated calibration table
     infile.seekg(0, std::ios::end);
-    int length = infile.tellg();
+    const size_t length = infile.tellg();
     infile.seekg(0, std::ios::beg);
     std::unique_ptr<char[]> data{new char[length]};
     infile.read((char*)data.get(), length);
@@ -594,7 +594,7 @@ AllocatorPtr TensorrtExecutionProvider::GetAllocator(int id, OrtMemType mem_type
     return IExecutionProvider::GetAllocator(id, mem_type);
   }
 }
-
+/*//slx
 void TensorrtExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) {
   allocator_ = allocator_manager->GetAllocator(device_id_, OrtMemTypeDefault);
   if (nullptr == allocator_) {
@@ -616,6 +616,55 @@ void TensorrtExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManag
     allocator_manager->InsertAllocator(cuda_pinned_alloc);
   }
   TryInsertAllocator(cuda_pinned_alloc);
+}
+*/
+
+void TensorrtExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) {
+  // Try to get a CUDA allocator from allocator manager first
+  // Used to allocate CUDA device memory
+  allocator_ = allocator_manager->GetAllocator(device_id_, OrtMemTypeDefault);
+  if (nullptr == allocator_) {
+    AllocatorCreationInfo default_memory_info(
+        [](OrtDevice::DeviceId device_id) { return CreateCUDAAllocator(device_id, onnxruntime::CUDA); }, device_id_);
+    allocator_ = CreateAllocator(default_memory_info);
+    allocator_manager->InsertAllocator(allocator_);
+  }
+  TryInsertAllocator(allocator_);
+
+  // OrtMemTypeCPUOutput -- allocated by cudaMallocHost, used to copy CUDA device memory to CPU
+  // Use pinned memory instead of pageable memory make the data transfer faster
+  // Used by node MemcpyToHost only
+  auto cuda_pinned_alloc = allocator_manager->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUOutput);
+  if (nullptr == cuda_pinned_alloc) {
+    AllocatorCreationInfo pinned_memory_info(
+        [](OrtDevice::DeviceId device_id) {
+          return CreateCUDAPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
+        },
+        DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
+
+    cuda_pinned_alloc = CreateAllocator(pinned_memory_info);
+    allocator_manager->InsertAllocator(cuda_pinned_alloc);
+  }
+  TryInsertAllocator(cuda_pinned_alloc);
+
+  auto cuda_cpu_alloc = allocator_manager->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUInput);
+  if (nullptr == cuda_cpu_alloc) {
+    // TODO: this is actually used for the cuda kernels which explicitly ask for inputs from CPU.
+    // This will be refactored/removed when allocator and execution provider are decoupled.
+    // Need to move the OrtMemoryType out of Allocator, that's one thing blocking us to share it with CPU EP
+    // CPUAllocator is OrtMemTypeDefault for CPU EP
+    AllocatorCreationInfo cpu_memory_info(
+        [](int device_id) {
+          return std::make_unique<CPUAllocator>(
+              OrtMemoryInfo("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
+                            OrtMemTypeCPUInput));
+        },
+        DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
+
+    cuda_cpu_alloc = CreateAllocator(cpu_memory_info);
+    allocator_manager->InsertAllocator(cuda_cpu_alloc);
+  }
+  TryInsertAllocator(cuda_cpu_alloc);
 }
 
 std::unique_ptr<IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() const {
@@ -1266,7 +1315,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
       if (engine_cache_enable_ && engine_file) {
         engine_file.seekg(0, std::ios::end);
-        int engine_size = engine_file.tellg();
+        size_t engine_size = engine_file.tellg();
         engine_file.seekg(0, std::ios::beg);
         std::unique_ptr<char[]> engine_buf{new char[engine_size]};
         engine_file.read((char*)engine_buf.get(), engine_size);
@@ -1430,7 +1479,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           trt_state->context->reset();
           trt_state->engine->reset();
           engine_file.seekg(0, std::ios::end);
-          int engine_size = engine_file.tellg();
+          size_t engine_size = engine_file.tellg();
           engine_file.seekg(0, std::ios::beg);
           std::unique_ptr<char[]> engine_buf{new char[engine_size]};
           engine_file.read((char*)engine_buf.get(), engine_size);
