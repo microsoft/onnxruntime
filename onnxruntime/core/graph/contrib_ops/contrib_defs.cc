@@ -2341,7 +2341,6 @@ Output is a reshaped sparse tensor with the same data.
         updateOutputShape(ctx, 0, output_shape, (sparse_input) ? TypeProto::kSparseTensorType : TypeProto::kTensorType);
       });
 
-#if !defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
   static const char* SparseGemm_doc = R"DOC(
   Behaves as to https://github.com/onnx/onnx/blob/master/docs/Operators.md#Matmul
   No transpose supported
@@ -2382,7 +2381,6 @@ Output is a reshaped sparse tensor with the same data.
         // TODO: replace  with ONNX one when that one is fixed
         sparseCompatibleMatmulShapeInference(ctx, 0, 1);
       });
-#endif
 
   static const char* Add_doc = R"DOC(
   Behaves as to https://github.com/onnx/onnx/blob/master/docs/Operators.md#Add

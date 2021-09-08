@@ -51,7 +51,6 @@ struct ComputeCtx {
   float alpha;
 };
 
-#if !defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
 template <typename T>
 inline void SparseDenseMatMulImpl(const ComputeCtx& ctx, const ConstSparseMatrixMap<T>& map_A,
                                   const ConstEigenMatrixMapRowMajor<T>& map_B, EigenMatrixMapRowMajor<T>& output_map) {
@@ -348,6 +347,9 @@ struct SparseToSparseCoo {
 }  // namespace
 
 Status SparseToSparseMatMul::Compute(OpKernelContext* ctx) const {
+#if defined(__i386__) || defined(_M_IX86) || defined(__wasm__) || defined(__ANDROID__)
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Gemm sparse not supported on 32-bit builds");
+#else
   const SparseTensor& input_A = *ctx->Input<SparseTensor>(0);
   const SparseTensor& input_B = *ctx->Input<SparseTensor>(1);
 
@@ -410,9 +412,9 @@ Status SparseToSparseMatMul::Compute(OpKernelContext* ctx) const {
 
   utils::MLTypeCallDispatcherFromTypeList<SparseGemmSupportedTypes> t_disp(input_A.GetElementType());
   return t_disp.InvokeRet<Status, SparseToSparseCoo>(compute_ctx, a_dims, b_dims);
+#endif  //!defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
 }
 
-#endif  //!defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
 
 }  // namespace contrib
 }  // namespace onnxruntime
