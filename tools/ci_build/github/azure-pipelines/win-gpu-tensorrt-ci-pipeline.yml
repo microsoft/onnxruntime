@@ -1,12 +1,12 @@
 jobs:
 - job: 'build'
-  pool: 'onnxruntime-tensorrt8-winbuild'
+  pool: 'onnxruntime-tensorrt8-winbuild-trt'
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
-    EnvSetupScript: setup_env_trt.bat
+    EnvSetupScript: setup_env_gpu.bat
     buildArch: x64
     setVcvars: true
     BuildConfig: 'RelWithDebInfo'
