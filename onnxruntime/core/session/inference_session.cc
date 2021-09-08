@@ -1221,9 +1221,9 @@ Status AssignNodesToEpsFromHashesImpl(Graph& graph, const fbs::SessionState& fbs
   return Status::OK();
 }
 
-Status AssignNodesToEpsFromHashes(Graph& graph, const fbs::SessionState& fbs_session_state,
-                                  const KernelRegistryManager& kernel_registry_manager,
-                                  const logging::Logger& logger) {
+[[maybe_unused]] Status AssignNodesToEpsFromHashes(Graph& graph, const fbs::SessionState& fbs_session_state,
+                                                   const KernelRegistryManager& kernel_registry_manager,
+                                                   const logging::Logger& logger) {
   ORT_RETURN_IF_ERROR(AssignNodesToEpsFromHashesImpl(graph, fbs_session_state, kernel_registry_manager));
   ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph, logger));
   return Status::OK();
@@ -1389,8 +1389,8 @@ common::Status InferenceSession::Initialize() {
 #endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-      ORT_RETURN_IF_ERROR(AssignNodesToEpsFromHashes(graph, *serialized_session_state,
-                                                     kernel_registry_manager_, *session_logger_));
+      // ORT_RETURN_IF_ERROR(AssignNodesToEpsFromHashes(graph, *serialized_session_state,
+      //                                                kernel_registry_manager_, *session_logger_));
 #else  // defined(ENABLE_ORT_FORMAT_LOAD)
       ORT_NOT_IMPLEMENTED("ORT format loading not enabled.");
 #endif
