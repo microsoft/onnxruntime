@@ -198,6 +198,7 @@ struct ProviderHostImpl : ProviderHost {
   float math__halfToFloat(uint16_t h) override { return math::halfToFloat(h); }
 
   // sparse_utils
+#if !defined(DISABLE_SPARSE_TENSORS)
 #if !defined(ORT_MINIMAL_BUILD)
   Status sparse_utils__DenseTensorToSparseCsr(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
                                               const AllocatorPtr& dst_allocator, SparseTensor& dst) override {
@@ -213,11 +214,14 @@ struct ProviderHostImpl : ProviderHost {
                                               const AllocatorPtr& dst_allocator, Tensor& dst) override {
     return sparse_utils::SparseCooToDenseTensor(data_manager, src, cpu_allocator, dst_allocator, dst);
   }
+
 #endif  // ORT_MINIMAL_BUILD
   Status sparse_utils__DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
                                               const AllocatorPtr& dst_allocator, bool linear_indexs, SparseTensor& dst) override {
     return sparse_utils::DenseTensorToSparseCoo(data_manager, src, cpu_allocator, dst_allocator, linear_indexs, dst);
   }
+
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
   // IAllocator (direct)
   bool IAllocator__CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) override { return IAllocator::CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out); }
@@ -290,6 +294,7 @@ struct ProviderHostImpl : ProviderHost {
   int32_t TypeProto_Tensor__elem_type(const ONNX_NAMESPACE::TypeProto_Tensor* p) override { return p->elem_type(); }
 
   //TypeProto_SparseTensor (wrapped)
+#if !defined(DISABLE_SPARSE_TENSORS)
   bool TypeProto_SparseTensor__has_shape(const ONNX_NAMESPACE::TypeProto_SparseTensor* p) override { return p->has_shape(); }
   const ONNX_NAMESPACE::TensorShapeProto& TypeProto_SparseTensor__shape(const ONNX_NAMESPACE::TypeProto_SparseTensor* p) override {
     return p->shape();
@@ -300,17 +305,20 @@ struct ProviderHostImpl : ProviderHost {
   int32_t TypeProto_SparseTensor__elem_type(const ONNX_NAMESPACE::TypeProto_SparseTensor* p) override {
     return p->elem_type();
   }
+#endif
 
   // TypeProto (wrapped)
   const ONNX_NAMESPACE::TypeProto_Tensor& TypeProto__tensor_type(const ONNX_NAMESPACE::TypeProto* p) override { return p->tensor_type(); }
   ONNX_NAMESPACE::TypeProto_Tensor* TypeProto__mutable_tensor_type(ONNX_NAMESPACE::TypeProto* p) override { return p->mutable_tensor_type(); }
   int TypeProto__value_case(const ONNX_NAMESPACE::TypeProto* p) override { return p->value_case(); }
+#if !defined(DISABLE_SPARSE_TENSORS)
   const ONNX_NAMESPACE::TypeProto_SparseTensor& TypeProto__sparse_tensor_type(const ONNX_NAMESPACE::TypeProto* p) override {
     return p->sparse_tensor_type();
   }
   ONNX_NAMESPACE::TypeProto_SparseTensor* TypeProto__mutable_sparse_tensor_type(ONNX_NAMESPACE::TypeProto* p) override {
     return p->mutable_sparse_tensor_type();
   }
+#endif
 
   // AttributeProto (wrapped)
   std::unique_ptr<ONNX_NAMESPACE::AttributeProto> AttributeProto__construct() override { return std::make_unique<ONNX_NAMESPACE::AttributeProto>(); }
@@ -427,17 +435,21 @@ struct ProviderHostImpl : ProviderHost {
   // DataTransferManager (wrapped)
   Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst, int exec_queue_id) override { return p->CopyTensor(src, dst, exec_queue_id); }
   Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst) override { return p->CopyTensor(src, dst); }
+#if !defined(DISABLE_SPARSE_TENSORS)
   Status DataTransferManager__CopySparseTensor(const DataTransferManager* p, const SparseTensor& src, SparseTensor& dst) override { return p->CopySparseTensor(src, dst); }
   Status DataTransferManager__CopySparseTensor(const DataTransferManager* p, const SparseTensor& src, SparseTensor& dst, int exec_queue_id) override { return p->CopySparseTensor(src, dst, exec_queue_id); }
   Status DataTransferManager__CopySparseTensors(const DataTransferManager* p, const std::vector<IDataTransfer::SparseSrcDstPair>& src_dst_pairs) override { return p->CopySparseTensors(src_dst_pairs); };
+#endif
   const IDataTransfer* DataTransferManager__GetDataTransfer(const DataTransferManager* p, const OrtDevice& src_device, const OrtDevice& dst_device) override { return p->GetDataTransfer(src_device, dst_device); }
 
   // IDataTransfer (direct)
   Status IDataTransfer__CopyTensor(const IDataTransfer* p, const Tensor& src, Tensor& dst) override { return p->IDataTransfer::CopyTensor(src, dst); }
   Status IDataTransfer__CopyTensors(const IDataTransfer* p, const std::vector<IDataTransfer::SrcDstPair>& src_dst_pairs) override { return p->IDataTransfer::CopyTensors(src_dst_pairs); }
+#if !defined(DISABLE_SPARSE_TENSORS)
   Status IDataTransfer__CopySparseTensors(const IDataTransfer* p, const std::vector<IDataTransfer::SparseSrcDstPair>& src_dst_pairs) override {
     return p->CopySparseTensors(src_dst_pairs);
   }
+#endif
 
   // IndexedSubGraph_MetaDef (wrapped)
   std::unique_ptr<IndexedSubGraph_MetaDef> IndexedSubGraph_MetaDef__construct() override { return std::make_unique<IndexedSubGraph::MetaDef>(); }
@@ -506,7 +518,9 @@ struct ProviderHostImpl : ProviderHost {
 
   // DataTypeImpl (wrapped)
   MLDataType DataTypeImpl__GetType_Tensor() override { return DataTypeImpl::GetType<Tensor>(); }
+#if !defined(DISABLE_SPARSE_TENSORS)
   MLDataType DataTypeImpl__GetType_SparseTensor() override { return DataTypeImpl::GetType<SparseTensor>(); }
+#endif
   MLDataType DataTypeImpl__GetType_TensorSeq() override { return DataTypeImpl::GetType<TensorSeq>(); }
   MLDataType DataTypeImpl__GetTypeFromOnnxType(int onnx_type) override { return DataTypeImpl::TensorTypeFromONNXEnum(onnx_type)->GetElementType(); }
   MLDataType DataTypeImpl__GetType_bool() override { return DataTypeImpl::GetType<bool>(); }
@@ -537,6 +551,7 @@ struct ProviderHostImpl : ProviderHost {
   MLDataType DataTypeImpl__GetTensorType_BFloat16() override { return DataTypeImpl::GetTensorType<BFloat16>(); }
   MLDataType DataTypeImpl__GetTensorType_MLFloat16() override { return DataTypeImpl::GetTensorType<MLFloat16>(); }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   MLDataType DataTypeImpl__GetSparseTensorType_bool() override { return DataTypeImpl::GetSparseTensorType<bool>(); }
   MLDataType DataTypeImpl__GetSparseTensorType_int8() override { return DataTypeImpl::GetSparseTensorType<int8_t>(); }
   MLDataType DataTypeImpl__GetSparseTensorType_uint8() override { return DataTypeImpl::GetSparseTensorType<uint8_t>(); }
@@ -551,11 +566,14 @@ struct ProviderHostImpl : ProviderHost {
   MLDataType DataTypeImpl__GetSparseTensorType_string() override { return DataTypeImpl::GetSparseTensorType<std::string>(); }
   MLDataType DataTypeImpl__GetSparseTensorType_BFloat16() override { return DataTypeImpl::GetSparseTensorType<BFloat16>(); }
   MLDataType DataTypeImpl__GetSparseTensorType_MLFloat16() override { return DataTypeImpl::GetSparseTensorType<MLFloat16>(); }
+#endif
 
   const char* DataTypeImpl__ToString(MLDataType type) override { return DataTypeImpl::ToString(type); }
   bool DataTypeImpl__IsTensorType(const DataTypeImpl* p) override { return p->IsTensorType(); }
   bool DataTypeImpl__IsTensorSequenceType(const DataTypeImpl* p) override { return p->IsTensorSequenceType(); }
+#if !defined(DISABLE_SPARSE_TENSORS)
   bool DataTypeImpl__IsSparseTensorType(const DataTypeImpl* p) override { return p->IsSparseTensorType(); }
+#endif
   DeleteFunc DataTypeImpl__GetDeleteFunc(const DataTypeImpl* p) override { return p->GetDeleteFunc(); }
   const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypes() override { return DataTypeImpl::AllFixedSizeTensorTypes(); }
   const std::vector<MLDataType>& DataTypeImpl__AllTensorTypes() override { return DataTypeImpl::AllTensorTypes(); }
@@ -694,14 +712,18 @@ struct ProviderHostImpl : ProviderHost {
 
   // OpKernelContext (wrapped)
   const Tensor* OpKernelContext__Input_Tensor(const OpKernelContext* p, int index) override { return p->Input<Tensor>(index); }
+#if !defined(DISABLE_SPARSE_TENSORS)
   const SparseTensor* OpKernelContext__Input_SparseTensor(const OpKernelContext* p, int index) override { return p->Input<SparseTensor>(index); }
+#endif
   const TensorSeq* OpKernelContext__Input_TensorSeq(const OpKernelContext* p, int index) override { return p->Input<TensorSeq>(index); }
   const Tensor& OpKernelContext__RequiredInput_Tensor(const OpKernelContext* p, int index) override { return p->RequiredInput<Tensor>(index); }
   MLDataType OpKernelContext__InputType(const OpKernelContext* p, int index) override { return p->InputType(index); }
   Tensor* OpKernelContext__Output_Tensor(OpKernelContext* p, int index) override { return p->Output<Tensor>(index); }
   TensorSeq* OpKernelContext__Output_TensorSeq(OpKernelContext* p, int index) override { return p->Output<TensorSeq>(index); }
   Tensor* OpKernelContext__Output(OpKernelContext* p, int index, const TensorShape& shape) override { return p->Output(index, shape); }
+#if !defined(DISABLE_SPARSE_TENSORS)
   SparseTensor* OpKernelContext__OutputSparse(OpKernelContext* p, int index, const TensorShape& shape) override { return p->OutputSparse(index, shape); }
+#endif
   Tensor& OpKernelContext__RequiredOutput(OpKernelContext* p, int index, const TensorShape& shape) override { return p->RequiredOutput(index, shape); }
   int OpKernelContext__InputCount(const OpKernelContext* p) override { return p->InputCount(); }
   int OpKernelContext__OutputCount(const OpKernelContext* p) override { return p->OutputCount(); }
@@ -806,8 +828,10 @@ struct ProviderHostImpl : ProviderHost {
   MLDataType Tensor__DataType(const Tensor* p) override { return p->DataType(); }
 
   // SparseTensor(wrapped)
+#if !defined(DISABLE_SPARSE_TENSORS)
   const TensorShape& SparseTensor__DenseShape(const SparseTensor* p) override { return p->DenseShape(); }
   Status SparseTensor__Copy(const SparseTensor* p, const DataTransferManager& dtm, int exec_q_id, SparseTensor& dst) override { return p->Copy(dtm, exec_q_id, dst); }
+#endif
 
   // TensorSeq(wrapped)
   MLDataType TensorSeq__DataType(const TensorSeq* p) noexcept override { return p->DataType(); }

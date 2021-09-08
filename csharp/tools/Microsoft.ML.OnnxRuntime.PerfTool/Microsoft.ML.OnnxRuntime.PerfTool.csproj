@@ -70,12 +70,8 @@
   </ItemGroup>
 
   <!-- create OnnxMl.cs and add to project -->
-  <Target Name="ProtoGen" BeforeTargets="BeforeBuild">
+  <Target Name="ProtoGen" BeforeTargets="BeforeBuild" Condition="Exists('$(ProtocExe)')">
     <Exec Command="$(ProtocExe) -I=$(ProtoSrc) --csharp_out=. $(ProtoSrc)\onnx-ml.proto3" ContinueOnError="false"></Exec>
   </Target>
-  <ItemGroup>
-    <!-- manually include if we're going to generate in this build. otherwise it's automatically included. -->
-    <Compile Include="$(ProjectDir)\OnnxMl.cs" Condition="!Exists('$(ProjectDir)\OnnxMl.cs')"/>
-  </ItemGroup>
 
 </Project>

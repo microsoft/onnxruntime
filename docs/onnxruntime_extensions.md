@@ -6,7 +6,32 @@ ONNXRuntime Extensions is a comprehensive package to extend the capability of th
 onnxruntime-extensions supports many useful custom operators to enhance the text processing capability of ONNXRuntime, which include some widely used **string operators** and popular **tokenizers**. For custom operators supported and how to use them, please check the documentation [custom operators](https://github.com/microsoft/onnxruntime-extensions/blob/main/docs/custom_text_ops.md).
 
 ## Build ONNXRuntime with Extensions
-We have supported build onnxruntime-extensions as a static library and link it into ONNXRuntime. To enable custom operators in onnxruntime-extensions, you should add argument `--enable_onnxruntime_extensions` when build ONNXRuntime.
+We have supported build onnxruntime-extensions as a static library and link it into ONNXRuntime. To enable custom operators from onnxruntime-extensions, you should add argument `--use_extensions`, which will use onnxruntime-extensions from git submodule in path cmake/external/onnxruntime-extensions **by default**. 
+
+If you want to build ONNXRuntime with a pre-pulled onnxruntime-extensions, pass extra argument `--extensions_overridden_path <path-to-onnxruntime-extensions>`.
+
+Note: Please remember to use `--minimal_build custom_ops` when you build minimal runtime with custom operators from onnxruntime-extensions.
+
+### Build with Operators Config
+Also, you could pass the **required operators config** file by argument `--include_ops_by_config` to customize the operators you want to build in both onnxruntime and onnxruntime-extensions. Example content of **required_operators.config** are:
+```json
+# Generated from model/s
+# domain;opset;op1,op2...
+ai.onnx;12;Add,Cast,Concat,Squeeze
+ai.onnx.contrib;1;GPT2Tokenizer,
+```
+
+In above operators config, `ai.onnx.contrib` is the domain name of operators in onnxruntime-extensions. We would parse this line to generate required operators in onnxruntime-extensions for build.
+
+### Generate Operators Config
+To generate the **required_operators.config** file from model, please follow the guidance [Converting ONNX models to ORT format](https://onnxruntime.ai/docs/how-to/mobile/model-conversion.html).
+
+If your model contains operators from onnxruntime-extensions, please add argument `--custom_op_library` and pass the path to **ortcustomops** shared library built following guidance [share library](https://github.com/microsoft/onnxruntime-extensions#the-share-library-for-non-python).
+
+You could even manually edit the **required_operators.config** if you know the custom operators required and don't want to build the shared library.
+
+### Build and Disable Exceptions
+You could add argument `--disable_exceptions` to disable exceptions in both onnxruntime and onnxruntime-extensions. However, if the custom operators you used in onnxruntime-extensions (such as BlingFireTokenizer) use c++ exceptions, then you cannot disable it.
 
 ## E2E Example using Custom Operators
 A common NLP task would probably contain several steps, including pre-processing, DL model and post-processing. It would be very efficient and productive to convert the pre/post processing code snippets into ONNX model since ONNX graph is actually a computation graph, and it can represent the most programming code, theoretically.

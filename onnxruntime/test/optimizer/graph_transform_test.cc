@@ -732,7 +732,8 @@ TEST_F(GraphTransformationTests, FuseConvActivation) {
                                                                                  {ORT_TSTR("fusion/conv_clip.onnx"), "Clip"},
                                                                                  {ORT_TSTR("fusion/conv_sigmoid.onnx"), "Sigmoid"},
                                                                                  {ORT_TSTR("fusion/conv_tanh.onnx"), "Tanh"},
-                                                                                 {ORT_TSTR("fusion/conv_leakyrelu.onnx"), "LeakyRelu"}};
+                                                                                 {ORT_TSTR("fusion/conv_leakyrelu.onnx"), "LeakyRelu"},
+                                                                                 {ORT_TSTR("fusion/conv_hardsigmoid.onnx"), "HardSigmoid"}};
 #endif
   for (const auto& model : model_to_op_name) {
     auto model_uri = MODEL_FOLDER + model.first;
@@ -1216,6 +1217,91 @@ TEST_F(GraphTransformationTests, GemmTransposeFusion2Inputs) {
   auto new_input_defs = node.InputDefs();
   ASSERT_TRUE(new_input_defs[0]->Name() == "A");
   ASSERT_TRUE(new_input_defs[1]->Name() == "B");
+}
+
+// (A')'B' = AB' where transpose has multiple consumers
+TEST_F(GraphTransformationTests, GemmTransposeFusion2OutputsFromTranspose) {
+  auto model_uri = MODEL_FOLDER "fusion/gemm_transpose_2outputs_from_transpose.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], 2);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+  ASSERT_EQ(op_to_count["Identity"], 1);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(std::make_unique<GemmTransposeFusion>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], 1);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+  ASSERT_EQ(op_to_count["Identity"], 1);
+
+  auto gemm_node =
+      std::find_if(
+          graph.Nodes().cbegin(), graph.Nodes().cend(),
+          [](const Node& node) { return node.Name() == "Gemm_transformed"; });
+
+  auto& node = *gemm_node;
+  ASSERT_TRUE(node.OpType() == "Gemm");
+  ASSERT_TRUE(static_cast<bool>(node.GetAttributes().at("transA").i()));
+  ASSERT_TRUE(static_cast<bool>(node.GetAttributes().at("transB").i()));
+  auto new_input_defs = node.InputDefs();
+  ASSERT_TRUE(new_input_defs[0]->Name() == "tp0");
+  ASSERT_TRUE(new_input_defs[1]->Name() == "B");
+}
+
+// (A')'B' = AB' and  (B')'C = BC where transpose has multiple consumers
+TEST_F(GraphTransformationTests, GemmTransposeFusion2OutputsFromTransposeTo2Gemms) {
+  auto model_uri = MODEL_FOLDER "fusion/gemm_transpose_2outputs_from_transpose_to_2gemms.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], 2);
+  ASSERT_EQ(op_to_count["Gemm"], 2);
+  ASSERT_EQ(op_to_count["Identity"], 1);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(std::make_unique<GemmTransposeFusion>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], 1);
+  ASSERT_EQ(op_to_count["Gemm"], 2);
+  ASSERT_EQ(op_to_count["Identity"], 1);
+
+  auto gemm1_node =
+      std::find_if(
+          graph.Nodes().cbegin(), graph.Nodes().cend(),
+          [](const Node& node) { return node.Name() == "Gemm1_transformed"; });
+
+  auto& node1 = *gemm1_node;
+  ASSERT_TRUE(node1.OpType() == "Gemm");
+  ASSERT_TRUE(static_cast<bool>(node1.GetAttributes().at("transA").i()));
+  ASSERT_TRUE(static_cast<bool>(node1.GetAttributes().at("transB").i()));
+  auto new_input_defs1 = node1.InputDefs();
+  ASSERT_TRUE(new_input_defs1[0]->Name() == "tp0");
+  ASSERT_TRUE(new_input_defs1[1]->Name() == "B");
+
+  auto gemm2_node =
+      std::find_if(
+          graph.Nodes().cbegin(), graph.Nodes().cend(),
+          [](const Node& node) { return node.Name() == "Gemm2_transformed"; });
+
+  auto& node2 = *gemm2_node;
+  ASSERT_TRUE(node2.OpType() == "Gemm");
+  ASSERT_FALSE(static_cast<bool>(node2.GetAttributes().at("transA").i()));
+  ASSERT_FALSE(static_cast<bool>(node2.GetAttributes().at("transB").i()));
+  auto new_input_defs2 = node2.InputDefs();
+  ASSERT_TRUE(new_input_defs2[0]->Name() == "B");
+  ASSERT_TRUE(new_input_defs2[1]->Name() == "C");
 }
 
 // (A'B)' = B'A
@@ -4169,6 +4255,9 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
   std::vector<std::string> allow_matmul_transpose = {"MatMul", "Transpose"};
   std::vector<std::string> allow_matmul_transpose_add = {"Add", "MatMul", "Transpose"};
   const std::vector<PropagateCastOpsTestSpecs> test_cases = {
+      // Negative testcase to test that the transformer will not move cast bool to float/float16.
+      {MODEL_FOLDER "propagate_cast/negative_test_case_bool_fp_cast.onnx", {{insertAndReduce0, 2}, {floodFill1, 2}, {floodFill2, 2}}, {"Add"}},
+      {MODEL_FOLDER "propagate_cast/negative_test_case_bool_fp16_cast.onnx", {{insertAndReduce0, 2}, {floodFill1, 2}, {floodFill2, 2}}, {"Add"}},
       // Test fusing back to back casts functionality
       {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_float16_float16.onnx", {{insertAndReduce0, 1}, {floodFill1, 1}, {floodFill2, 1}}},
       {MODEL_FOLDER "propagate_cast/fuse_back2back_casts_float16_float.onnx", {{insertAndReduce0, 2}, {floodFill1, 2}, {floodFill2, 2}}},

@@ -272,7 +272,7 @@ def optimize_longformer(onnx_model_path, fp32_model_path, fp16_model_path=None):
         print(f"optimized fp32 model saved to {fp32_model_path}")
 
     if fp16_model_path:
-        optimizer.convert_model_float32_to_float16(cast_input_output=True)
+        optimizer.convert_float_to_float16(keep_io_types=True)
         optimizer.save_model_to_file(fp16_model_path, use_external_data_format)
         print(f"optimized fp16 model saved to {fp16_model_path}")
 

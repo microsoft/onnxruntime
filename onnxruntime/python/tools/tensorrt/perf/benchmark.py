@@ -834,6 +834,17 @@ def get_test_data(fp16, test_data_dir, all_inputs_shape):
 
     return inputs, ref_outputs
 
+def run_symbolic_shape_inference(model_path, new_model_path): 
+    import onnxruntime.tools.symbolic_shape_infer as symbolic_shape_infer
+    logger.info("run symbolic shape inference")
+    try:
+        out = symbolic_shape_infer.SymbolicShapeInference.infer_shapes(onnx.load(model_path), auto_merge=True)
+        onnx.save(out, new_model_path)
+        return True, None
+    except Exception as e:
+        logger.error(e)
+        return False, e
+
 def create_session(model_path, providers, session_options):
     logger.info(model_path)
     try:
@@ -842,14 +853,12 @@ def create_session(model_path, providers, session_options):
     except Exception as e:
         if "shape inference" in str(e):
             logger.info("Using model from symbolic_shape_infer.py")
-
             new_model_path = model_path[:].replace(".onnx", "_new_by_trt_perf.onnx")
-            exec = os.environ["SYMBOLIC_SHAPE_INFER"]
-
             if not os.path.exists(new_model_path):
-                p = subprocess.run("python3 " + exec + " --input " + model_path + " --output " + new_model_path + " --auto_merge", shell=True, check=True, )
-                logger.info(p) 
-            
+                status = run_symbolic_shape_inference(model_path, new_model_path)
+                if not status[0]: 
+                    e = status[1]
+                    raise Exception(e)
             session = onnxruntime.InferenceSession(new_model_path, providers=providers, sess_options=session_options)
             return session
         else:
@@ -1591,8 +1600,6 @@ def main():
 
     models = {}
     parse_models_helper(args, models)
-
-    os.environ["SYMBOLIC_SHAPE_INFER"] = os.path.join(os.getcwd(), "../../symbolic_shape_infer.py")
 
     perf_start_time = datetime.now()
     success_results, model_to_latency, model_to_fail_ep, model_to_metrics = run_onnxruntime(args, models)

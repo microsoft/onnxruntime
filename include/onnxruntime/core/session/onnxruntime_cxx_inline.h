@@ -755,6 +755,7 @@ inline Value Value::CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t
   return Value{out};
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 template <typename T>
 inline Value Value::CreateSparseTensor(const OrtMemoryInfo* info, T* p_data, const Shape& dense_shape,
                                        const Shape& values_shape) {
@@ -830,6 +831,7 @@ inline const T* Value::GetSparseTensorIndicesData(OrtSparseIndicesFormat indices
   ThrowOnError(GetApi().GetSparseTensorIndices(p_, indices_format, &num_indices, &out));
   return reinterpret_cast<const T*>(out);
 }
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 template <typename T>
 inline Value Value::CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len) {
@@ -842,6 +844,7 @@ inline Value Value::CreateTensor(OrtAllocator* allocator, const int64_t* shape, 
   return Value{out};
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 template <typename T>
 inline Value Value::CreateSparseTensor(OrtAllocator* allocator, const Shape& dense_shape) {
   return CreateSparseTensor(allocator, dense_shape, TypeToTensorType<T>::type);
@@ -853,6 +856,7 @@ inline Value Value::CreateSparseTensor(OrtAllocator* allocator, const Shape& den
   ThrowOnError(GetApi().CreateSparseTensorAsOrtValue(allocator, dense_shape.shape, dense_shape.shape_len, type, &out));
   return Value{out};
 }
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 inline Value Value::CreateMap(Value& keys, Value& values) {
   OrtValue* out;
@@ -886,11 +890,13 @@ inline bool Value::IsTensor() const {
   return out != 0;
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 inline bool Value::IsSparseTensor() const {
   int out;
   ThrowOnError(GetApi().IsSparseTensor(p_, &out));
   return out != 0;
 }
+#endif
 
 inline size_t Value::GetCount() const {
   size_t out;
@@ -946,12 +952,14 @@ const T* Value::GetTensorData() const {
   return out;
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 template <typename T>
 inline const T* Value::GetSparseTensorValues() const {
   const void* out;
   ThrowOnError(GetApi().GetSparseTensorValues(p_, &out));
   return reinterpret_cast<const T*>(out);
 }
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 template <typename T>
 inline T& Value::At(const std::vector<int64_t>& location) {

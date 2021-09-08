@@ -123,9 +123,7 @@ def main():
 
     run_ortmodule_torch_lightning(cwd, log, args.mnist)
 
-    # TODO: enable this once the PyTorch used for testing meets the requirements running
-    # auto grad testing.
-    #run_ortmodule_custom_autograd_tests(cwd, log)
+    run_ortmodule_custom_autograd_tests(cwd, log)
 
     run_ortmodule_experimental_json_config_tests(cwd, log)
 

@@ -7,9 +7,16 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
 
+#if defined(__APPLE__) || defined(ORT_MINIMAL_BUILD) || !defined(USE_ROCM)
 static OrtStatus* CreateNotEnabledStatus(const std::string& ep) {
   return OrtApis::CreateStatus(ORT_FAIL, (ep + " execution provider is not enabled in this build. ").c_str());
 }
+#endif
+
+// we need stubs for functions called from C# when building an iOS app using Xamarin.
+// in that case a static ORT library is used and the symbol needs to exist but doesn't need to be publicly exported.
+// TODO: Not sure if we need to purely limit to iOS builds, so limit to __APPLE__ for now
+#ifdef __APPLE__
 
 #ifdef __cplusplus
 extern "C" {
@@ -61,17 +68,11 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Nuphar,
 }
 #endif
 
-/* see provider_bridge_ort.cc for these:
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id);
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena);
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtSessionOptions* options,
-               _In_ const char* device_type);
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtSessionOptions* options, int device_id);
-*/
-
 #ifdef __cplusplus
 }
 #endif
+
+#endif  // __APPLE__
 
 /*
 OrtApis::SessionOptionsAppendExecutionProvider_<EP> stubs for EPs not included in this build.
