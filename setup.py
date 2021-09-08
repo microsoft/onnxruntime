@@ -118,18 +118,22 @@ try:
                 self.root_is_pure = False
 
         def _rewrite_ld_preload(self, to_preload):
-            with open('onnxruntime/capi/_ld_preload.py', 'rt') as f:
-                ld_preload = f.read().splitlines()
-            with open('onnxruntime/capi/_ld_preload.py', 'wt') as f:
-                for line in ld_preload:
-                    f.write(line)
-                    f.write('\n')
-                    if 'LD_PRELOAD_BEGIN_MARK' in line:
-                        break
+            with open('onnxruntime/capi/_ld_preload.py', 'a') as f:
                 if len(to_preload) > 0:
                     f.write('from ctypes import CDLL, RTLD_GLOBAL\n')
                     for library in to_preload:
                         f.write('_{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split('.')[0], library))
+
+        def _rewrite_ld_preload_cuda(self, to_preload):
+            with open('onnxruntime/capi/_ld_preload.py', 'a') as f:
+                if len(to_preload) > 0:
+                    f.write('from ctypes import CDLL, RTLD_GLOBAL\n')
+                    f.write('try:\n')
+                    for library in to_preload:
+                        f.write('    _{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split('.')[0], library))
+                    f.write('except OSError:\n')
+                    f.write('    import os\n')
+                    f.write('    os.environ["ORT_CUDA_UNAVAILABLE"] = "1"\n')
 
         def run(self):
             if is_manylinux:
@@ -142,6 +146,7 @@ try:
                 dependencies = ['librccl.so', 'libamdhip64.so', 'librocblas.so', 'libMIOpen.so',
                                 'libhsa-runtime64.so', 'libhsakmt.so']
                 to_preload = []
+                to_preload_cuda = []
                 args = ['patchelf', '--debug']
                 for line in result.stdout.split('\n'):
                     for dependency in dependencies:
@@ -163,13 +168,14 @@ try:
                         for dependency in cuda_dependencies:
                             if dependency in line:
                                 if dependency not in to_preload:
-                                    to_preload.append(line)
+                                    to_preload_cuda.append(line)
                                 args.extend(['--remove-needed', line])
                     args.append(dest)
                     if len(args) > 3:
                         subprocess.run(args, check=True, stdout=subprocess.PIPE)
 
                 self._rewrite_ld_preload(to_preload)
+                self._rewrite_ld_preload_cuda(to_preload_cuda)
             _bdist_wheel.run(self)
             if is_manylinux:
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
@@ -323,8 +329,10 @@ if enable_training:
                      'onnxruntime.training.ortmodule.experimental.json_config',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions.aten_op_executor',
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions.torch_interop_utils',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions.torch_gpu_allocator'])
     package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.aten_op_executor'] = ['*.cc']
+    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.torch_interop_utils'] = ['*.cc']
     package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.torch_gpu_allocator'] = ['*.cc']
     requirements_file = "requirements-training.txt"
     # with training, we want to follow this naming convention:
@@ -338,36 +346,12 @@ if enable_training:
 
     # we want put default training packages to pypi. pypi does not accept package with a local version.
     if not default_training_package_device or nightly_build:
-        def get_torch_version():
-            try:
-                import torch
-                torch_version = torch.__version__
-                torch_version_plus_pos = torch_version.find('+')
-                if torch_version_plus_pos != -1:
-                    torch_version = torch_version[:torch_version_plus_pos]
-                torch_version = torch_version.replace('.', '')
-                return torch_version
-            except ImportError as error:
-                print("Error importing torch to get torch version:")
-                print(error)
-                return None
-
-        torch_version = get_torch_version()
         if cuda_version:
-            # removing '.' to make local Cuda version number in the same form as Pytorch.
-            if torch_version:
-                local_version = '+torch' + torch_version + '.'\
-                    + 'cu' + cuda_version.replace('.', '')
-            else:
-                local_version = '+cu' + cuda_version.replace('.', '')
-        elif rocm_version:
             # removing '.' to make Cuda version number in the same form as Pytorch.
-            rocm_version = rocm_version.replace('.', '')
-            if torch_version:
-                local_version = '+torch' + torch_version + '.'\
-                    + 'rocm' + rocm_version
-            else:
-                local_version = '+rocm' + rocm_version
+            local_version = '+cu' + cuda_version.replace('.', '')
+        elif rocm_version:
+            # removing '.' to make Rocm version number in the same form as Pytorch.
+            local_version = '+rocm' + rocm_version.replace('.', '')
         else:
             # cpu version for documentation
             local_version = '+cpu'

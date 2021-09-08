@@ -121,6 +121,7 @@ jobs:
   pool: 'Win-CPU-2021'
   dependsOn:
   - Linux_C_API_Packaging_GPU_x64
+  - Linux_C_API_Packaging_GPU_TensorRT_x64
   - Windows_Packaging_gpu
   - Windows_Packaging_tensorrt
   condition: succeeded()
@@ -300,6 +301,15 @@ jobs:
       archiveFile: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
       replaceExistingArchive: true
 
+  - template: templates/validate-package.yml
+    parameters:
+      PackageType: 'tarball'
+      PackagePath: '$(Build.ArtifactStagingDirectory)'
+      PackageName: 'onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
+      PlatformsSupported: 'linux-x64'
+      VerifyNugetSigning: false
+      workingDirectory: '$(Build.ArtifactStagingDirectory)'
+
   - task: PublishPipelineArtifact@1
     inputs:
       targetPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
@@ -316,6 +326,7 @@ jobs:
   steps:
   - checkout: self
     submodules: false
+  - template: templates/set-version-number-variables-step.yml
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Combined GPU'
     inputs:
@@ -351,6 +362,15 @@ jobs:
       SourceFolder: '$(Build.BinariesDirectory)\zip-artifacts'
       Contents: 'onnxruntime-win-x64-gpu-*.zip'
       TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+  - template: templates/validate-package.yml
+    parameters:
+      PackageType: 'zip'
+      PackagePath: '$(Build.ArtifactStagingDirectory)'
+      PackageName: 'onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip'
+      PlatformsSupported: 'win-x64'
+      VerifyNugetSigning: false
+      workingDirectory: '$(Build.ArtifactStagingDirectory)'
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline Combined GPU Package Artifact'
@@ -459,15 +479,22 @@ jobs:
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - task: BatchScript@1
-    displayName: 'Bundle Native NuGet and other binaries'
+    displayName: 'Add TensorRT header file to the native nuGet package'
     inputs:
-      filename: $(Build.SourcesDirectory)\tools\ci_build\github\windows\bundle_dlls_gpu_nuget.bat
-      workingFolder: $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts
+      filename: $(Build.SourcesDirectory)\tools\ci_build\github\windows\bundle_nuget_with_native_headers.bat
+      workingFolder: $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo
 
   - task: CopyFiles@2
     displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
     inputs:
-      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts'
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+      Contents: '*.snupkg'
+      TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+  - task: CopyFiles@2
+    displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
       Contents: '*.nupkg'
       TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
@@ -484,10 +511,11 @@ jobs:
       FolderPath: '$(Build.ArtifactStagingDirectory)'
       DoEsrp: ${{ parameters.DoEsrp }}
 
-  - template: templates/validate-nuget.yml
+  - template: templates/validate-package.yml
     parameters:
-      NugetPath: '$(Build.ArtifactStagingDirectory)'
-      NugetPackage: 'Microsoft.ML.OnnxRuntime.*nupkg'
+      PackageType: 'nuget'
+      PackagePath: '$(Build.ArtifactStagingDirectory)'
+      PackageName: 'Microsoft.ML.OnnxRuntime.*nupkg'
       PlatformsSupported: 'win-x64,linux-x64'
       VerifyNugetSigning: false
 
@@ -496,12 +524,6 @@ jobs:
     inputs:
       artifactName: 'drop-signed-nuget-GPU'
       targetPath: '$(Build.ArtifactStagingDirectory)'
-
-  - powershell: |
-     $counter = 0
-     Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.nupkg | foreach {7z x -y -o$counter $_.fullname;$counter++}
-    workingDirectory: '$(Build.ArtifactStagingDirectory)'
-    displayName: 'Unzip files to sanitize the PE files'
 
   - task: DotNetCoreCLI@2
     displayName: 'Build C#'
@@ -512,10 +534,6 @@ jobs:
       configuration: RelWithDebInfo
       arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-  #TODO: enable binskim
-  #- task: BinSkim@4
-  #  displayName: 'Run BinSkim'
 
   - task: RoslynAnalyzers@2
     displayName: 'Run Roslyn Analyzers'

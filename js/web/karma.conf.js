@@ -77,7 +77,7 @@ module.exports = function (config) {
     browserSocketTimeout: 60000,
     hostname: getMachineIpAddress(),
     customLaunchers: {
-      ChromeTest: { base: 'Chrome', flags: ['--window-size=1,1', '--enable-features=SharedArrayBuffer'] },
+      ChromeTest: { base: 'ChromeHeadless', flags: ['--window-size=1,1', '--enable-features=SharedArrayBuffer'] },
       ChromeDebug: { debug: true, base: 'Chrome', flags: ['--remote-debugging-port=9333', '--enable-features=SharedArrayBuffer'] },
 
       //

@@ -117,7 +117,7 @@ def validate_build_package_info():
                 # collection cuda library info from current environment.
                 from onnxruntime.capi.onnxruntime_collect_build_info import find_cudart_versions
                 local_cudart_versions = find_cudart_versions(build_env=False, build_cuda_version=cuda_version)
-                if cudart_version and cudart_version not in local_cudart_versions:
+                if cudart_version and local_cudart_versions and cudart_version not in local_cudart_versions:
                     print_build_package_info()
                     warnings.warn('WARNING: failed to find cudart version that matches onnxruntime build info')
                     warnings.warn('WARNING: found cudart versions: %s' % local_cudart_versions)

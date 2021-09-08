@@ -20,6 +20,27 @@ using namespace onnxruntime::common;
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 
+namespace NestedSubgraphInfoDetails {
+
+// Used to compose a unique key to identify a nested subgraph
+// relative to a current graph level (which in turn is identified using a "base")
+std::string ComposeNestedSubgraphInfoKeyHelper(const std::string& base,
+                                               size_t graph_depth,
+                                               NodeIndex node_index,
+                                               const std::string& attr_name) {
+  std::ostringstream ss;
+
+  // key = base + graph depth + current graph node index + attr name corresponding to the subgraph
+  ss << base;
+  ss << graph_depth;
+  ss << node_index;
+  ss << attr_name;
+
+  return ss.str();
+}
+
+}  // namespace NestedSubgraphInfoDetails
+
 std::ostream& operator<<(std::ostream& out, AllocKind alloc_kind) {
   switch (alloc_kind) {
     case AllocKind::kAllocate:
@@ -107,7 +128,7 @@ std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionP
 }
 
 static const KernelCreateInfo& GetKernelCreateInfo(
-    const std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map,
+    const KernelCreateInfoMap& kernel_create_info_map,
     NodeIndex node_index) {
   auto entry = kernel_create_info_map.find(node_index);
   ORT_ENFORCE(entry != kernel_create_info_map.cend(),
@@ -120,7 +141,8 @@ class PlannerImpl {
  public:
   PlannerImpl(const Node* parent_node, const onnxruntime::GraphViewer& graph_viewer,
               const std::vector<const NodeArg*>& outer_scope_node_args, const ExecutionProviders& providers,
-              const std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map,
+              const KernelCreateInfoMap& kernel_create_info_map,
+              const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
               const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
               const OrtValueNameIdxMap& ort_value_name_idx_map,
               const ISequentialPlannerContext& context, SequentialExecutionPlan& plan)
@@ -131,6 +153,7 @@ class PlannerImpl {
         outer_scope_node_args_(outer_scope_node_args),
         execution_providers_(providers),
         kernel_create_info_map_(kernel_create_info_map),
+        subgraphs_kernel_create_info_maps_(subgraphs_kernel_create_info_maps),
         outer_scope_node_arg_to_location_map_(outer_scope_node_arg_to_location_map),
         ort_value_name_idx_map_(ort_value_name_idx_map) {}
 
@@ -145,7 +168,8 @@ class PlannerImpl {
   const std::vector<const NodeArg*>& outer_scope_node_args_;
   const ExecutionProviders& execution_providers_;
 
-  const std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map_;
+  const KernelCreateInfoMap& kernel_create_info_map_;
+  const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps_;
 
   const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map_;
 
@@ -609,11 +633,12 @@ class PlannerImpl {
     return Status::OK();
   }
 
-  OrtMemoryInfo GetLocationForNodeInput(size_t input_index, const Node& node) {
+  OrtMemoryInfo GetLocationForNodeInput(size_t input_index, const Node& node,
+                                        const KernelCreateInfoMap& kernel_create_info_map) {
     auto* p_provider = execution_providers_.Get(node);
     ORT_ENFORCE(p_provider);
 
-    const KernelCreateInfo& kernel_create_info = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
+    const KernelCreateInfo& kernel_create_info = GetKernelCreateInfo(kernel_create_info_map, node.Index());
 
     if (utils::IsInputOnCpu(node, &kernel_create_info, input_index))
       // weights are not output from any node, so it's OK to put its location on CPU provider
@@ -621,29 +646,95 @@ class PlannerImpl {
     return p_provider->GetAllocator(0, OrtMemTypeDefault)->Info();
   }
 
-  Status GeneratePlanForWeights() {
-    auto& weights = graph_viewer_.GetAllInitializedTensors();
-    std::vector<std::vector<OrtMemoryInfo>> locations(plan_.allocation_plan.size());
-    for (const auto& node : graph_viewer_.Nodes()) {
-      auto status = onnxruntime::Node::ForEachWithIndex(
-          node.InputDefs(), [this, &locations, &node, &weights](const onnxruntime::NodeArg& def, size_t index) {
-            auto sub_status = Status::OK();
-            ORT_TRY {
-              auto& def_name = def.Name();
-              if (!weights.count(def_name)) return Status::OK();
-              auto wt_index = Index(def_name);
-              locations[wt_index].emplace_back(GetLocationForNodeInput(index, node));
-            }
-            ORT_CATCH(const std::exception& ex) {
-              ORT_HANDLE_EXCEPTION([&]() {
-                sub_status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
-              });
-            }
-            return sub_status;
-          });
+  void GeneratePlanForWeightsHelper(const GraphViewer& graph_viewer,
+                                    const InitializedTensorSet& weights,
+                                    const KernelCreateInfoMap& kernel_create_info_map,
+                                    const std::string& subgraph_kernel_create_info_map_key_base,
+                                    size_t graph_depth,
+                                    /*out*/ std::vector<std::vector<OrtMemoryInfo>>& locations) {
+    for (const auto& node : graph_viewer.Nodes()) {
+      const auto& input_node_args = node.InputDefs();
+      size_t num_node_inputs = input_node_args.size();
 
-      ORT_RETURN_IF_ERROR(status);
+      for (size_t node_input_index = 0; node_input_index < num_node_inputs; ++node_input_index) {
+        auto input_node_arg = input_node_args[node_input_index];
+
+        // Skip processing missing optional inputs
+        if (!input_node_arg->Exists()) {
+          continue;
+        }
+
+        auto& def_name = input_node_arg->Name();
+
+        // This node input doesn't correspond to any of the weights
+        if (!weights.count(def_name)) {
+          continue;
+        }
+
+        // While processing subgraphs, if we don't see an entry in the implicit
+        // inputs of the node containing the subgraph, it is a shadow value.
+        auto is_shadow_value_in_subgraph = [](const Node& subgraph_parent_node,
+                                              const std::string& def_name) -> bool {
+          bool is_shadow_value_in_subgraph = true;
+          for (const auto& implicit_input : subgraph_parent_node.ImplicitInputDefs()) {
+            if (implicit_input->Name() == def_name) {
+              is_shadow_value_in_subgraph = false;
+              break;
+            }
+          }
+
+          return is_shadow_value_in_subgraph;
+        };
+
+        // Skip processing shadow values in subgraphs
+        if (graph_depth > 0) {
+          // We are processing a subgraph if we enter this
+          const auto* parent_node = graph_viewer.ParentNode();
+
+          // Skip processing if it is a shadow value
+          if (is_shadow_value_in_subgraph(*parent_node, def_name)) {
+            continue;
+          }
+        }
+
+        auto wt_index = Index(def_name);
+        locations[wt_index].emplace_back(
+            GetLocationForNodeInput(node_input_index, node, kernel_create_info_map));
+      }
+
+      // If the node has subgraphs (i.e.) control flow nodes,
+      // walk the nodes in those subgraphs as well to best determine
+      // the location for the OrtValue corresponding to the weights
+      // (i.e.) do a recursion
+      if (node.ContainsSubgraph()) {
+        // A node may contain multiple subgraphs - so iterate through all of them
+        for (auto& name_to_subgraph : node.GetAttributeNameToSubgraphMap()) {
+          GraphViewer subgraph_viewer(*name_to_subgraph.second);
+
+          const auto& local_subgraph_kernel_create_info_map_key =
+              NestedSubgraphInfoDetails::ComposeNestedSubgraphInfoKeyHelper(subgraph_kernel_create_info_map_key_base,
+                                                                            graph_depth, node.Index(), name_to_subgraph.first);
+
+          auto specific_subgraph_kernel_create_info_map = subgraphs_kernel_create_info_maps_.find(local_subgraph_kernel_create_info_map_key);
+          ORT_ENFORCE(specific_subgraph_kernel_create_info_map != subgraphs_kernel_create_info_maps_.end());
+
+          GeneratePlanForWeightsHelper(subgraph_viewer,
+                                       weights,
+                                       specific_subgraph_kernel_create_info_map->second,
+                                       local_subgraph_kernel_create_info_map_key,
+                                       graph_depth + 1,
+                                       locations);
+        }
+      }
     }
+  }
+
+  Status GeneratePlanForWeights() {
+    std::vector<std::vector<OrtMemoryInfo>> locations(plan_.allocation_plan.size());
+
+    GeneratePlanForWeightsHelper(graph_viewer_, graph_viewer_.GetAllInitializedTensors(),
+                                 kernel_create_info_map_, "", 0, locations);
+
     for (size_t i = 0; i != locations.size(); ++i) {
       const std::vector<OrtMemoryInfo>& loc = locations[i];
       if (loc.empty()) continue;
@@ -671,7 +762,7 @@ class PlannerImpl {
   // Should only be used after ProcessDef()
   Status ComputeReusePlan() {
     std::vector<SequentialExecutionPlan::NodeExecutionPlan>& execution_plan(plan_.execution_plan);
-    //copy the usecounts to an vector, before computing reuse
+    //copy the use counts to a vector, before computing reuse
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     std::vector<int> ort_value_usecount;
     for (auto ort_value_info : ort_value_info_) {
@@ -1049,7 +1140,7 @@ class PlannerImpl {
     }
   }
 #endif
-};  // namespace onnxruntime
+};
 
 Status PlannerImpl::CreatePlan() {
   auto& p_graph_nodes = graph_viewer_.GetNodesInTopologicalOrder(context_.GetExecutionOrder());
@@ -1098,7 +1189,8 @@ Status SequentialPlanner::CreatePlan(
     const onnxruntime::GraphViewer& graph_viewer,
     const std::vector<const NodeArg*>& outer_scope_node_args,
     const ExecutionProviders& providers,
-    const std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map,
+    const KernelCreateInfoMap& kernel_create_info_map,
+    const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
     const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
     const OrtValueNameIdxMap& ort_value_name_idx_map,
     const ISequentialPlannerContext& context,
@@ -1107,7 +1199,8 @@ Status SequentialPlanner::CreatePlan(
   plan = std::make_unique<SequentialExecutionPlan>();
 
   PlannerImpl planner(parent_node, graph_viewer, outer_scope_node_args, providers,
-                      kernel_create_info_map, outer_scope_node_arg_to_location_map,
+                      kernel_create_info_map, subgraphs_kernel_create_info_maps,
+                      outer_scope_node_arg_to_location_map,
                       ort_value_name_idx_map, context, *plan);
 
   return planner.CreatePlan();
