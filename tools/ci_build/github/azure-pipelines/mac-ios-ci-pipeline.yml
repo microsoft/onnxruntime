@@ -9,18 +9,6 @@ jobs:
     - script: |
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
           --skip_submodule_sync --build_dir build/iOS \
-          --ios \
-          --ios_sysroot iphonesimulator  \
-          --osx_arch x86_64 \
-          --apple_deploy_target 12.1 \
-          --use_xcode \
-          --config RelWithDebInfo \
-          --build_apple_framework \
-          --parallel
-      displayName: (CPU EP) Build onnxruntime for iOS x86_64 and run tests using simulator
-    - script: |
-        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
-          --skip_submodule_sync --build_dir build/iOS \
           --use_coreml \
           --ios \
           --ios_sysroot iphonesimulator  \
@@ -31,3 +19,15 @@ jobs:
           --build_apple_framework \
           --parallel
       displayName: (CoreML EP) Build onnxruntime for iOS x86_64 and run tests using simulator
+    - script: |
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
+          --skip_submodule_sync --build_dir build/iOS \
+          --ios \
+          --ios_sysroot iphonesimulator  \
+          --osx_arch x86_64 \
+          --apple_deploy_target 12.1 \
+          --use_xcode \
+          --config RelWithDebInfo \
+          --build_apple_framework \
+          --parallel
+      displayName: (CPU EP) Build onnxruntime for iOS x86_64 and run tests using simulator
