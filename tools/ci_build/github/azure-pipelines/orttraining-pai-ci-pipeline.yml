@@ -5,7 +5,7 @@ pool: 'AMD-GPU'
 
 container: 
   image: rocm/pytorch:rocm4.3.1_ubuntu18.04_py3.6_pytorch_1.9.0
-  options: --privileged -e HIP_VISIBLE_DEVICES --security-opt seccomp=unconfined
+  options: --privileged -e HIP_VISIBLE_DEVICES --security-opt seccomp=unconfined --device=/dev/kfd --device=/dev/dri --group-add 44 --group-add 109
 
 steps:
 - checkout: self
