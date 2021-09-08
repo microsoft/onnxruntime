@@ -66,10 +66,6 @@ class SequenceConstruct final : public CudaKernel {
 
     for (int input_idx = 0; input_idx < num_inputs; ++input_idx) {
       const auto* source_tensor = context->Input<Tensor>(input_idx);
-      if (input_idx > 0 && source_tensor->DataType() != first_dtype) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Violation of the requirment that all input tensors must have the same data type.");
-      }
 
       std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor->DataType(),
                                                              source_tensor->Shape(), alloc);
@@ -79,7 +75,7 @@ class SequenceConstruct final : public CudaKernel {
                                            source_tensor->SizeInBytes(),
                                            cudaMemcpyDeviceToDevice, Stream()));
 
-      Y->Add(std::move(*target_tensor));
+      Y->Add(std::move(*target_tensor));  // Add will check for type consistency
     }
 
     return Status::OK();
@@ -205,7 +201,7 @@ class SequenceErase final : public CudaKernel {
                                            source_tensor.DataRaw(),
                                            source_tensor.SizeInBytes(),
                                            cudaMemcpyDeviceToDevice, Stream()));
-      Y->Add(std::move(*target_tensor));
+      Y->Add(std::move(*target_tensor));  // Add will check for type consistency
     }
 
     return Status::OK();
@@ -239,18 +235,19 @@ class SequenceInsert final : public CudaKernel {
     ORT_ENFORCE(context->GetTempSpaceAllocator(&alloc).IsOK(),
                 "SequenceInsert GPU: Unable to get an allocator.");
 
+    std::unique_ptr<Tensor> tensor_to_be_inserted = Tensor::Create(X->DataType(),
+                                                                   X->Shape(), alloc);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(tensor_to_be_inserted->MutableDataRaw(),
+                                         X->DataRaw(), X->SizeInBytes(),
+                                         cudaMemcpyDeviceToDevice, Stream()));
+
     TensorSeq* Y = context->Output<TensorSeq>(0);
     Y->SetType(S->DataType());
     Y->Reserve(S_size + 1);
 
     for (int64_t i = 0; i < S_size; ++i) {
       if (i == idx) {
-        std::unique_ptr<Tensor> target_tensor = Tensor::Create(X->DataType(),
-                                                               X->Shape(), alloc);
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target_tensor->MutableDataRaw(),
-                                             X->DataRaw(), X->SizeInBytes(),
-                                             cudaMemcpyDeviceToDevice, Stream()));
-        Y->Add(std::move(*target_tensor));
+        Y->Add(std::move(*tensor_to_be_inserted));  // Add will check for type consistency
       }
       const Tensor& source_tensor = S->Get(i);
       std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(),
@@ -259,16 +256,11 @@ class SequenceInsert final : public CudaKernel {
                                            source_tensor.DataRaw(),
                                            source_tensor.SizeInBytes(),
                                            cudaMemcpyDeviceToDevice, Stream()));
-      Y->Add(std::move(*target_tensor));
+      Y->Add(std::move(*target_tensor));  // Add will check for type consistency
     }
 
     if (idx == S_size) {
-      std::unique_ptr<Tensor> target_tensor = Tensor::Create(X->DataType(),
-                                                             X->Shape(), alloc);
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target_tensor->MutableDataRaw(),
-                                           X->DataRaw(), X->SizeInBytes(),
-                                           cudaMemcpyDeviceToDevice, Stream()));
-      Y->Add(std::move(*target_tensor));
+      Y->Add(std::move(*tensor_to_be_inserted));  // Add will check for type consistency
     }
 
     return Status::OK();
