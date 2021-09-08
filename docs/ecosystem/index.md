@@ -1,7 +1,6 @@
 ---
 title: ORT Ecosystem
-parent: Tutorials
-nav_order: 3
+nav_order: 11
 ---
 # ORT Ecosystem
 {: .no_toc }
