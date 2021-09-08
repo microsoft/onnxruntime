@@ -12,7 +12,7 @@
 #include <string.h>
 
 // This value is used in structures passed to ORT so that a newer version of ORT will still work with them
-#define ORT_API_VERSION 9
+#define ORT_API_VERSION 10
 
 #ifdef __cplusplus
 extern "C" {
