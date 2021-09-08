@@ -63,7 +63,7 @@ jobs:
       script: |
          rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
          docker exec -t external_custom_ops_container \
-            /bin/bash -c "/opt/python/cp38-cp38/bin/python3 -m pip install /build/Release/dist/*.whl" 
+            /bin/bash -c "/usr/bin/python3 -m pip install /build/Release/dist/*.whl" 
       workingDirectory: $(Build.BinariesDirectory)
   
   - task: CmdLine@2
@@ -73,7 +73,7 @@ jobs:
          docker exec -t \
           -w  /build/Debug/external_custom_ops \
           external_custom_ops_container \
-          /opt/python/cp38-cp38/bin/python3 -m pip install pybind11
+          /usr/bin/python3 -m pip install pybind11
       workingDirectory: $(Build.BinariesDirectory)
 
   - task: CmdLine@2
@@ -83,7 +83,7 @@ jobs:
          docker exec -t \
           -w  /build/Debug/external_custom_ops \
           external_custom_ops_container \
-          /opt/python/cp38-cp38/bin/python3 -m pip install .
+          /usr/bin/python3 -m pip install .
       workingDirectory: $(Build.BinariesDirectory)
 
   - task: CmdLine@2
@@ -93,7 +93,7 @@ jobs:
          docker exec -t \
           -w  /build/Debug/external_custom_ops \
           external_custom_ops_container \
-          /opt/python/cp38-cp38/bin/python3 test.py
+          /usr/bin/python3 test.py
       workingDirectory: $(Build.BinariesDirectory)
 
 
@@ -103,7 +103,7 @@ jobs:
       script: |
          rm -rf $(Build.BinariesDirectory)/Debug/onnxruntime $(Build.BinariesDirectory)/Debug/pybind11
          docker exec -t external_custom_ops_container \
-            /bin/bash -c "/opt/python/cp38-cp38/bin/python3 -m pip install /build/Debug/dist/*.whl" 
+            /bin/bash -c "/usr/bin/python3 -m pip install /build/Debug/dist/*.whl" 
       workingDirectory: $(Build.BinariesDirectory)
 
   - task: CmdLine@2
@@ -113,7 +113,7 @@ jobs:
          docker exec -t \
           -w  /build/Debug/external_custom_ops \
           external_custom_ops_container \
-          /opt/python/cp38-cp38/bin/python3 -m pip install .
+          /usr/bin/python3 -m pip install .
       workingDirectory: $(Build.BinariesDirectory)
 
   - task: CmdLine@2
@@ -123,7 +123,7 @@ jobs:
          docker exec -t \
           -w  /build/Debug/external_custom_ops \
           external_custom_ops_container \
-          /opt/python/cp38-cp38/bin/python3 test.py
+          /usr/bin/python3 test.py
       workingDirectory: $(Build.BinariesDirectory)
 
   - task: CmdLine@2
