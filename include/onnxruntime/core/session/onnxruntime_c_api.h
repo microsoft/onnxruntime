@@ -452,7 +452,7 @@ struct OrtApi {
   * \brief Create an OrtStatus from a null terminated string
   *
   * \param[in] code
-  * \param[in] msg A null-terminated string. It's contents will be copied.
+  * \param[in] msg A null-terminated string. Its contents will be copied.
   * \return A new OrtStatus object, must be destroyed with OrtApi::ReleaseStatus
   */
   OrtStatus*(ORT_API_CALL* CreateStatus)(OrtErrorCode code, _In_ const char* msg)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
@@ -486,8 +486,6 @@ struct OrtApi {
   ORT_API2_STATUS(CreateEnv, OrtLoggingLevel logging_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
 
   /** \brief Create an OrtEnv
-  *
-  * Snippet is here
   *
   * \param[in] logging_function
   * \param[in] logger_param
@@ -1374,7 +1372,7 @@ struct OrtApi {
   * must be properly registered from within ORT at both compile/run time or by another API.
   *
   * To construct the OrtValue pass domain and type names, also a pointer to a data container
-  * the type of which must be know to both ORT and the client program. That data container may or may
+  * the type of which must be known to both ORT and the client program. That data container may or may
   * not match the internal representation of the Opaque type. The sizeof(data_container) is passed for
   * verification purposes.
   *
@@ -1389,7 +1387,7 @@ struct OrtApi {
   ORT_API2_STATUS(CreateOpaqueValue, _In_z_ const char* domain_name, _In_z_ const char* type_name,
                   _In_ const void* data_container, size_t data_container_size, _Outptr_ OrtValue** out);
 
-  /** \brief Get internal data from a opaque (custom user defined type) OrtVAlue
+  /** \brief Get internal data from an opaque (custom user defined type) OrtValue
   *
   * Copies internal data from an opaque value into a user provided buffer
   * 
@@ -1441,7 +1439,7 @@ struct OrtApi {
   * the value of `size` is set to the true size of the string attribute, the provided memory
   * is filled with the attribute's contents, and a success status is returned.
   *
-  * If the `size` parameter is lesser than the actual string attribute's size and `out`
+  * If the `size` parameter is less than the actual string attribute's size and `out`
   * is not nullptr, the value of `size` is set to the true size of the string attribute
   * and a failure status is returned.)
   *
@@ -1770,7 +1768,7 @@ struct OrtApi {
   *
   * \param[in] value A string tensor
   * \param[in] index Index of the string in the tensor
-  * \param[out] out Set to number of UTF-8 bytes of the string element
+  * \param[out] out Set to number of bytes of the string element
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
@@ -1886,7 +1884,7 @@ struct OrtApi {
 
   /** \brief Bind an ::OrtValue to an ::OrtIoBinding output
   *
-  * When using OrtApi::RunWithBinding this value is used for the named input
+  * When using OrtApi::RunWithBinding this value is used for the named output
   *
   * \param[in] binding_ptr
   * \param[in] name Null terminated string of the model output name
@@ -1898,9 +1896,9 @@ struct OrtApi {
 
   /** \brief Bind an ::OrtIoBinding output to a device
   *
-  * Binds the OrtValue to a device which specification is contained within ::OrtMemoryInfo.
+  * Binds the OrtValue to a device which specification is specified by ::OrtMemoryInfo.
   * You can either create an instance of OrtMemoryInfo with a device id or obtain one from the allocator that you are created/using
-  * This is useful when one or more outputs have dynamic shapes and, it is hard to pre-allocated and bind a chunk of
+  * This is useful when one or more outputs have dynamic shapes and, it is hard to pre-allocate and bind a chunk of
   * memory within ::OrtValue ahead of time.
   *
   * \see OrtApi::RunWithBinding
@@ -1921,7 +1919,7 @@ struct OrtApi {
   *
   * \param[in] binding_ptr
   * \param[in] allocator Allocator used to allocate continuous buffers for output strings and lengths.
-  * \param[out] buffer Returns an array of non-null terminated UTF-8 strings. The number of strings stored is returned count parameter.
+  * \param[out] buffer Returns an array of non-null terminated UTF-8 strings. The number of strings stored is returned in the count parameter.
   *   This buffer is allocated using `allocator` and must be freed using it.
   * \param[out] lengths Returns an array of `count` lengths of the strings returned in `buffer`
   *   This buffer is allocated using `allocator` and must be freed using it.
@@ -2089,7 +2087,7 @@ struct OrtApi {
   *
   * \param[in] options
   * \param[in] name Null terminated string of the initializer name
-  * \param[in] val OrtValue containing the initializer. It's lifetime and the underlying initializer buffer must be
+  * \param[in] val OrtValue containing the initializer. Its lifetime and the underlying initializer buffer must be
   *   managed by the user (created using the OrtApi::CreateTensorWithDataAsOrtValue) and it must outlive the session object
   *   to which it is added.
   *
@@ -2167,7 +2165,7 @@ struct OrtApi {
   *
   * Sets global thread pool options to be used in the call to OrtApi::CreateEnvWithGlobalThreadPools.
   * Flush-to-zero and denormal-as-zero are applied to threads in both intra and inter global thread pool.
-  * \note This option is not needed if the models used have no denormals. This is recommended as this option may hurt model accuracy.
+  * \note This option is not needed if the models used have no denormals. Having no denormals is recommended as this option may hurt model accuracy.
   *
   * \param[in] tp_options
   *
@@ -2319,7 +2317,8 @@ struct OrtApi {
   *
   * Create the configuration of an arena that can eventually be used to define an arena based allocator's behavior.
   *
-  * Supported keys are (See docs/C_API.md for details on what the following parameters mean and how to choose these values.):
+  * Supported keys are (See https://onnxruntime.ai/docs/reference/api/c-api.html for details on what the
+  * following parameters mean and how to choose these values.):
   * "max_mem": Maximum memory that can be allocated by the arena based allocator.
   *  Use 0 for ORT to pick the best value. Default is 0.
   * "arena_extend_strategy": 0 = kNextPowerOfTwo, 1 = kSameAsRequested.

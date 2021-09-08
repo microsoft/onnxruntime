@@ -104,6 +104,8 @@ ORT_DEFINE_RELEASE(ThreadingOptions);
 ORT_DEFINE_RELEASE(IoBinding);
 ORT_DEFINE_RELEASE(ArenaCfg);
 
+#undef ORT_DEFINE_RELEASE
+
 /** \brief IEEE 754 half-precision floating point data type
   * \details It is necessary for type dispatching to make use of C++ API
   * The type is implicitly convertible to/from uint16_t.
@@ -247,19 +249,9 @@ struct Env : Base<OrtEnv> {
   */
   Env(OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
 
-  /** \brief Creates and Env
-  *
-  * Wraps OrtApi::CreateEnvWithCustomLogger
-  *
-  * \param[in] tp_options
-  * \param[in] logging_level
-  * \param[in] logid
-  */
-  Env(const OrtThreadingOptions* tp_options, OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
-
   /** \brief Creates an Env
   *
-  * Wraps OrtApi::CreateEnvWithGlobalThreadPools
+  * Wraps OrtApi::CreateEnvWithCustomLogger
   * 
   * \param[in] logging_level
   * \param[in] logid
@@ -267,6 +259,16 @@ struct Env : Base<OrtEnv> {
   * \param[in] logger_param
   */
   Env(OrtLoggingLevel logging_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param);
+
+  /** \brief Creates an Env
+  *
+  * Wraps OrtApi::CreateEnvWithGlobalThreadPools
+  *
+  * \param[in] tp_options
+  * \param[in] logging_level
+  * \param[in] logid
+  */
+  Env(const OrtThreadingOptions* tp_options, OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
 
   /** \brief Creates an Env
   *
@@ -442,8 +444,6 @@ struct Session : Base<OrtSession> {
   size_t GetOutputCount() const; ///< Returns the number of model outputs
   size_t GetOverridableInitializerCount() const; ///< Returns the number of inputs that have defaults that can be overridden
 
-  /** 
-  */
   char* GetInputName(size_t index, OrtAllocator* allocator) const;
   char* GetOutputName(size_t index, OrtAllocator* allocator) const;
   char* GetOverridableInitializerName(size_t index, OrtAllocator* allocator) const;
@@ -765,7 +765,7 @@ struct Value : Base<OrtValue> {
   void GetStringTensorContent(void* buffer, size_t buffer_length, size_t* offsets, size_t offsets_count) const;
 
   template <typename T>
-  T* GetTensorMutableData(); ///< const wrapper around \ref OrtApi::GetTensorMutableData(OrtValue*, void**)
+  T* GetTensorMutableData(); ///< Wrapper around \ref OrtApi::GetTensorMutableData(OrtValue*, void**)
 
   template <typename T>
   const T* GetTensorData() const; ///< const wrapper around \ref OrtApi::GetTensorMutableData(OrtValue*, void**)
