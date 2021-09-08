@@ -100,7 +100,7 @@ void SerializeProfile(const std::string& file_name, std::unordered_map<std::stri
 std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> DeserializeProfile(std::ifstream& infile) {
   // Load flexbuffer
   infile.seekg(0, std::ios::end);
-  const size_t length = infile.tellg();
+  size_t length = infile.tellg();
   infile.seekg(0, std::ios::beg);
   std::unique_ptr<char[]> data{new char[length]};
   infile.read((char*)data.get(), length);
@@ -194,7 +194,7 @@ bool ReadDynamicRange(const std::string file_name, const bool is_trt_calibration
   } else {
     // ORT generated calibration table
     infile.seekg(0, std::ios::end);
-    const size_t length = infile.tellg();
+    size_t length = infile.tellg();
     infile.seekg(0, std::ios::beg);
     std::unique_ptr<char[]> data{new char[length]};
     infile.read((char*)data.get(), length);
@@ -612,12 +612,12 @@ void TensorrtExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManag
   // Used by node MemcpyToHost only
   auto cuda_pinned_alloc = allocator_manager->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUOutput);
   if (nullptr == cuda_pinned_alloc) {
-    AllocatorCreationInfo pinned_memory_info(
+    AllocatorCreationInfo pinned_allocator_info(
         [](OrtDevice::DeviceId device_id) {
           return CreateCUDAPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
         },
         DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
-    cuda_pinned_alloc = CreateAllocator(pinned_memory_info);
+    cuda_pinned_alloc = CreateAllocator(pinned_allocator_info);
     allocator_manager->InsertAllocator(cuda_pinned_alloc);
   }
   TryInsertAllocator(cuda_pinned_alloc);
@@ -1488,7 +1488,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           trt_state->context->reset();
           trt_state->engine->reset();
           *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
           if (trt_state->engine == nullptr) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                    "TensorRT EP could not deserialize engine from encrypted cache: " + engine_cache_path);
