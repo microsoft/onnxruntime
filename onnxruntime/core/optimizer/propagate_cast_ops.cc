@@ -390,14 +390,15 @@ static Status RemoveCastNodesChain(Graph& graph, std::vector<Node*> casts, std::
 *                         |__________|
 *                              |
 *                         _____V______                         ____________
-*                         | Cast FP16|                         | Opcode 1 |  
-*                         |__________|                         |__________|
-*                              |                                    |
+*                         | Cast     |                         | Opcode 1 |
+*                         |FP16->FP32|                         |__________|
+*                         |__________|                              |
 *                              |                                    |
 *                              |                  ---\         _____V______
 *                              |                  ---/         | Opcode2  |
 *                         _____V______                         |__________|
-*                         | Cast FP32|
+*                         | Cast     |
+                          |FP32->Fp16|
 *                         |__________|
 *                              |
 *                         _____V______
@@ -411,14 +412,15 @@ static Status RemoveCastNodesChain(Graph& graph, std::vector<Node*> casts, std::
 *                         |__________|
 *                              |
 *                         _____V______                         ____________
-*                         | Cast FP32|                         | Opcode 1 |  
-*                         |__________|                         |__________|
-*                              |                                    |
+*                         | Cast     |                         | Opcode 1 |
+*                         |FP16->FP32|                         |__________|
+*                         |__________|                              |
 *                              |                                    |
 *                              |                  ---\         _____V______
 *                              |                  ---/         | Cast FP32|
 *                         _____V______                         |__________|
-*                         | Cast FP32|                              |
+*                         | Cast     |                              |
+*                         |FP32->FP32|                              |
 *                         |__________|                         _____V______
 *                              |                               | Opcode2  |
 *                         _____V______                         |__________|
