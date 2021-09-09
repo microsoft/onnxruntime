@@ -26,7 +26,7 @@ class TrainingManager(GraphExecutionManager):
         self._export_mode = torch.onnx.TrainingMode.TRAINING
 
     @staticmethod
-    def execution_session_run_forward(execution_session, onnx_model, gradient_accumulation_manager, *inputs):
+    def execution_session_run_forward(execution_session, onnx_model, device, gradient_accumulation_manager, *inputs):
         """Runs the forward graph on execution_session with given model inputs and device"""
 
         # TODO: Try to reuse the output buffers as some of the output tensors are same sizes,
@@ -42,7 +42,6 @@ class TrainingManager(GraphExecutionManager):
         forward_outputs = C.OrtValueVector()
         # Run and return module outputs.
         execution_session.run_forward(forward_inputs, forward_outputs, state, gradient_accumulation_manager.cache)
-        device = _utils.get_device_from_inputs(inputs, None)
 
         user_outputs = gradient_accumulation_manager.extract_outputs_and_maybe_update_cache(forward_outputs, device)
 
@@ -145,6 +144,7 @@ class TrainingManager(GraphExecutionManager):
 
                     user_outputs, ctx.run_info = TrainingManager.execution_session_run_forward(self._execution_agent,
                                                                                                self._onnx_models.optimized_model,
+                                                                                               self._device,
                                                                                                self._gradient_accumulation_manager,
                                                                                                *inputs)
 
