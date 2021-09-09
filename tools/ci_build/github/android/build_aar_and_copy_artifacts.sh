@@ -1,22 +1,31 @@
 #!/bin/bash
 
 # This script will run build_aar_package.py to build Android AAR and copy all the artifacts
-# to a given folder for publishing to Maven Central
+# to a given folder for publishing to Maven Central, or building nuget package
 # This script is intended to be used in CI build only
 
 set -e
 set -x
 export PATH=/opt/python/cp37-cp37m/bin:$PATH
 
-# build the AAR package, using the build settings specified in
-# <repro root>/tools/ci_build/github/android/default_mobile_aar_build_settings.json
-python3 /onnxruntime_src/tools/ci_build/github/android/build_aar_package.py \
-    --build_dir /build \
-    --config $BUILD_CONFIG \
-    --android_sdk_path /android_home \
-    --android_ndk_path /ndk_home \
-    --include_ops_by_config /onnxruntime_src/tools/ci_build/github/android/mobile_package.required_operators.config \
-    /onnxruntime_src/tools/ci_build/github/android/default_mobile_aar_build_settings.json
+# build the AAR package, using the build settings under /home/onnxruntimedev/.build_settings/
+# if there is also include_ops_and_types.config exists in the same folder, use it to build with included ops/types
+if [ -f "/home/onnxruntimedev/.build_settings/include_ops_and_types.config" ]; then
+    python3 /onnxruntime_src/tools/ci_build/github/android/build_aar_package.py \
+        --build_dir /build \
+        --config $BUILD_CONFIG \
+        --android_sdk_path /android_home \
+        --android_ndk_path /ndk_home \
+        --include_ops_by_config /home/onnxruntimedev/.build_settings/include_ops_and_types.config \
+        /home/onnxruntimedev/.build_settings/build_settings.json
+else
+    python3 /onnxruntime_src/tools/ci_build/github/android/build_aar_package.py \
+        --build_dir /build \
+        --config $BUILD_CONFIG \
+        --android_sdk_path /android_home \
+        --android_ndk_path /ndk_home \
+        /home/onnxruntimedev/.build_settings/build_settings.json
+fi
 
 # Copy the built artifacts to give folder for publishing
 PACKAGE_NAME=onnxruntime-mobile
