@@ -17,7 +17,7 @@ parameters:
 - name: artifactName
   displayName: Artifact Name
   type: string
-  default: 'onnxruntime-android-aar'
+  default: ''
 
 - name: job_name_suffix
   displayName: job name
