@@ -17,7 +17,7 @@ jobs:
         --build-arg BUILD_USER=onnxruntimedev \
         --build-arg BUILD_UID=$(id -u) \
         --build-arg OS_VERSION=20.04 \
-        --build-arg PYTHON_VERSION=3.8 -f Dockerfile.ubuntu .
+        --build-arg PYTHON_VERSION=3.8 -f Dockerfile.ubuntu_eager_mode .
       workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
 
   - task: CmdLine@2
@@ -41,6 +41,7 @@ jobs:
               --build_wheel \
               --skip_tests \
               --enable_training \
+              --build_eager_mode --enable_pybind \
               --enable_external_custom_op_schemas
       workingDirectory: $(Build.SourcesDirectory)
 
