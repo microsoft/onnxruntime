@@ -83,6 +83,7 @@ def call_python_forward_function(
             ctx = None
             # All forward outputs of torch.autograd.Function shared a same gradient function pointer,
             # so here we just get the first tensor having grad_fn attribute.
+            # (https://github.com/pytorch/pytorch/blob/15532595209d2daf34d35e10f8d3d3b64966aea2/torch/csrc/autograd/custom_function.cpp#L267)
             first_tensor_output = None
             for arg in result:
                 if not isinstance(arg, torch.Tensor) or not hasattr(arg, 'grad_fn'):
@@ -106,7 +107,10 @@ def call_python_forward_function(
 
                 # We remove the edges starting between current autograd.Function's gradient function and 
                 # it's input's gradient function (e.g. AccumulateGrad gradient function), then
-                # AccumulateGrad gradient function will be destroyed, releasing the reference to input_1.
+                # AccumulateGrad gradient function will be destroyed, releasing the reference to input_1
+                # (https://github.com/pytorch/pytorch/blob/15532595209d2daf34d35e10f8d3d3b64966aea2/torch/csrc/autograd/functions/accumulate_grad.cpp#L21).
+                # The next edges are stored in Node, with which we can get next gradient function.
+                # https://github.com/pytorch/pytorch/blob/15532595209d2daf34d35e10f8d3d3b64966aea2/torch/csrc/autograd/function.h#L527
                 torch_interop_utils.clear_grad_fns_for_next_edges(first_tensor_output, ctx.saved_tensors)
                 torch_interop_utils.register_grad_fn(id(ctx), first_tensor_output)
             else:
