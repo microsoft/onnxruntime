@@ -1238,6 +1238,23 @@ TEST(ReductionOpTest, ReduceMin_int32) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceMin_int64) {
+  OpTester test("ReduceMin");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<int64_t>("data", {3, 2, 2},
+                         {1, 2,
+                          3, 4,
+
+                          5, 6,
+                          7, 8,
+
+                          9, 10,
+                          11, 12});
+  test.AddOutput<int64_t>("reduced", {1, 2, 1}, {1, 3});
+  test.Run();
+}
+
 TEST(ReductionOpTest, ReduceMin_int8) {
   OpTester test("ReduceMin", 12);
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});

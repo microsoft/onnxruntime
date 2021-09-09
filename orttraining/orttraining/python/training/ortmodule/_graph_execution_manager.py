@@ -22,6 +22,7 @@ from onnxruntime.capi import _pybind_state as C
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 from abc import ABC, abstractmethod
 import copy
+from functools import reduce
 import io
 import inspect
 import os
@@ -94,7 +95,10 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._execution_agent = None
 
         # indicators of some logic have been executed previously thus could be skipped for faster training
-        self._skip_check = _SkipCheck.SKIP_CHECK_DISABLED
+        self._skip_check = reduce(lambda x, y: x | y,
+                                  [_SkipCheck[name] for name in
+                                    _utils.parse_os_env_skip_check_flags('ORTMODULE_SKIPCHECK_POLICY',
+                                                                         _SkipCheck.SKIP_CHECK_DISABLED.name)])
         self._first_skip_check_warning = True
 
         # Graph transformer config
@@ -157,6 +161,10 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # Memory aware gradient builder.
         self._use_memory_efficient_gradient = False
+
+        # Flag to re-export the model due to attribute change on original module.
+        # Re-export will be avoided if _skip_check is enabled.
+        self._original_model_has_changed = False
 
     def _get_torch_gpu_allocator_function_addresses(self):
         if self._use_external_gpu_allocator and torch.cuda.is_available():
@@ -278,7 +286,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         schema = _io._extract_schema(
             {'args': copy.copy(inputs), 'kwargs': copy.copy(kwargs)})
-        if self._onnx_models.exported_model and schema == self._input_info.schema:
+        if self._onnx_models.exported_model and schema == self._input_info.schema and not self._original_model_has_changed:
             # All required models have already been exported previously
             return False
 
@@ -421,3 +429,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # between forward calls.
         self._graph_initializers = [param for name, param in self._flattened_module.named_parameters()
                                     if name in self._graph_initializer_names]
+
+    def signal_model_changed(self):
+        """Signals the execution manager to re-export the model on the next forward call"""
+        self._original_model_has_changed = True

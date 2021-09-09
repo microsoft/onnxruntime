@@ -1,6 +1,6 @@
 {
   "name": "onnxruntime-react-native",
-  "version": "1.8.2",
+  "version": "1.9.0",
   "description": "Onnxruntime bridge for react native",
   "main": "dist/commonjs/index",
   "module": "dist/module/index",

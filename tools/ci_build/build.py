@@ -1722,7 +1722,7 @@ def build_python_wheel(
         elif use_armnn:
             args.append('--use_armnn')
         elif use_dml:
-            args.append('--use_dml')
+            args.append('--wheel_name_suffix=directml')
 
         run_subprocess(args, cwd=cwd)
 
