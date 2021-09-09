@@ -2504,11 +2504,13 @@ The sparse output will have ones at the following flat COO indices: 0 and 4 (1 x
           fail_shape_inference("Can't get categories attribute");
         }
         const auto& shape0 = getInputShape(ctx, 0);
-        if (shape0.dim_size() != 1) {
-          fail_shape_inference("Expecting a 1-D input");
+        if (shape0.dim_size() != 0 && shape0.dim_size() != 1) {
+          fail_shape_inference("Expecting a scalar or 1-D input");
         }
         TensorShapeProto output_shape;
-        *output_shape.add_dim() = shape0.dim(0);
+        if (shape0.dim_size() == 1) {
+          *output_shape.add_dim() = shape0.dim(0);
+        }
         output_shape.add_dim()->set_dim_value(cat_len);
         updateOutputShape(ctx, 0, output_shape, TypeProto::kSparseTensorType);
       });

@@ -24,6 +24,23 @@ TEST(SparseOneHotEncoderTest, Integers) {
   test.AddSparseCooOutput("Y", expected_dense_shape, expected_values, expected_indices);
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
+
+TEST(SparseOneHotEncoderTest, ScalarInput) {
+  const std::vector<int64_t> categories{0, 1, 2, 3, 4, 5, 6, 7};
+  const std::vector<int64_t> input_shape;
+  const std::vector<int64_t> input{4};
+
+  const std::vector<int64_t> expected_dense_shape{8};
+  const std::vector<float> expected_values{1.0f};
+  const std::vector<int64_t> expected_indices{4};
+
+  OpTester test("OneHotEncoder", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("cats_int64s", categories);
+  test.AddInput("X", input_shape, input);
+  test.AddSparseCooOutput("Y", expected_dense_shape, expected_values, expected_indices);
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
 }
 }  // namespace onnxruntime
 

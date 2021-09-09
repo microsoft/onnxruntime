@@ -16,8 +16,8 @@ class OneHotEncoder final : public OpKernel {
  public:
   explicit OneHotEncoder(const OpKernelInfo& info)
       : OpKernel(info),
+        zeros_(info.GetAttrOrDefault<int64_t>("zeros", 1) != 0),
         cats_int64s_(),
-        zeros_(info.GetAttrOrDefault<int64_t>("zeros", 1)),
         num_categories_(0) {
     std::vector<int64_t> cats_int64s = info.GetAttrsOrDefault<int64_t>("cats_int64s");
     ORT_ENFORCE(!cats_int64s.empty(), "'cats_int64' attribute must be defined");
@@ -31,8 +31,8 @@ class OneHotEncoder final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
  private:
+  bool zeros_;
   std::unordered_map<int64_t, int64_t> cats_int64s_;
-  int64_t zeros_;
   int64_t num_categories_;
 };
 
@@ -49,7 +49,8 @@ ONNX_OPERATOR_KERNEL_EX(
 Status OneHotEncoder::Compute(OpKernelContext* ctx) const {
   const auto& input_tensor = *ctx->Input<Tensor>(0);
   const TensorShape& input_shape = input_tensor.Shape();
-  ORT_RETURN_IF_NOT(input_shape.NumDimensions() == 1, "Expecting 1-D input");
+  ORT_RETURN_IF_NOT(input_shape.NumDimensions() == 0 || input_shape.NumDimensions() == 1,
+                    "Expecting a Scalar or 1-D input");
 
   std::vector<int64_t> output_dims(input_shape.GetDims());
   output_dims.push_back(num_categories_);
@@ -59,23 +60,13 @@ Status OneHotEncoder::Compute(OpKernelContext* ctx) const {
   auto input_span = input_tensor.DataAsSpan<int64_t>();
   std::vector<int64_t> collected_indices;
   auto const cat_end = cats_int64s_.cend();
-  if (zeros_ == 1) {
-    for (size_t i = 0, input_size = input_span.size(); i < input_size; ++i) {
-      auto v = input_span[i];
-      auto hit = cats_int64s_.find(v);
-      if (hit != cat_end) {
-        auto index = i * num_categories_ + hit->second;
-        collected_indices.push_back(index);
-      }
-    }
-  } else {
-    for (size_t i = 0, input_size = input_span.size(); i < input_size; ++i) {
-      auto v = input_span[i];
-      auto hit = cats_int64s_.find(v);
-      ORT_RETURN_IF(hit == cat_end, "Input element: ", v, " at pos: ", i, " could not categorized");
-      auto index = i * num_categories_ + hit->second;
-      collected_indices.push_back(index);
-    }
+
+  for (size_t i = 0, input_size = input_span.size(); i < input_size; ++i) {
+    auto v = input_span[i];
+    auto hit = cats_int64s_.find(v);
+    ORT_RETURN_IF(!zeros_ && hit == cat_end, "Input element: ", v, " at [", i, "] could not categorized");
+    auto index = i * num_categories_ + hit->second;
+    collected_indices.push_back(index);
   }
 
   if (collected_indices.empty()) {
