@@ -17,7 +17,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests.Droid
             AddExecutionAssembly(typeof(ExtensibilityPointFactory).Assembly);
             // or in any reference assemblies			
 
-            AddTestAssembly(typeof(InferenceTest).Assembly);
+            //AddTestAssembly(typeof(InferenceTest).Assembly);
             // or in any assembly that you load (since JIT is available)
 
 #if false

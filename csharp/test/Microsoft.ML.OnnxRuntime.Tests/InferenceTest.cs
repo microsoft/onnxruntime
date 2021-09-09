@@ -15,7 +15,7 @@ using Xunit.Abstractions;
 // of Onnxruntime package
 namespace Microsoft.ML.OnnxRuntime.Tests
 {
-    public class InferenceTest
+    public partial class InferenceTest
     {
         private readonly ITestOutputHelper output;
 
@@ -338,7 +338,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         TensorElementType.Float, longShape, byteSize));
 
                     session.Run(inputNames, pinnedInputs, outputNames, pinnedOutputs);
-                    Assert.Equal(expectedOutput, outputBuffer, new floatComparer());
+                    Assert.Equal(expectedOutput, outputBuffer, new FloatComparer());
                 }
 
                 // Run inference with named inputs and named outputs
@@ -527,7 +527,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             var resultArray = resultTensor.ToArray();
             Assert.Equal(expectedOutput.Length, resultArray.Length);
-            Assert.Equal(expectedOutput, resultArray, new floatComparer());
+            Assert.Equal(expectedOutput, resultArray, new FloatComparer());
         }
 
         [Fact(DisplayName = "ThrowWrongInputName")]
@@ -692,15 +692,29 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var tasks = new Task[numThreads];
             for (int i = 0; i < numThreads; i++)
             {
-                tasks[i] = Task.Factory.StartNew(() =>
+                tasks[i] = Task.Factory.StartNew((Action)(() =>
                 {
                     for (int j = 0; j < loop; j++)
                     {
                         var resnov = session.Run(container);
-                        var res = resnov.ToArray()[0].AsTensor<float>().ToArray<float>();
+                        var res = resnov.ToArray()[0].AsTensor<float>().ToArray();
+
+/* Unmerged change from project 'Microsoft.ML.OnnxRuntime.Tests.iOS'
+Before:
                         Assert.Equal(res, expectedOut, new floatComparer());
+After:
+                        Assert.Equal(res, expectedOut, new InferenceTest.floatComparer());
+*/
+
+/* Unmerged change from project 'Microsoft.ML.OnnxRuntime.Tests.Droid'
+Before:
+                        Assert.Equal(res, expectedOut, new floatComparer());
+After:
+                        Assert.Equal(res, expectedOut, new InferenceTest.floatComparer());
+*/
+                        Assert.Equal(res, expectedOut, (IEqualityComparer<float>)new FloatComparer());
                     }
-                });
+                }));
             };
             Task.WaitAll(tasks);
             session.Dispose();
@@ -1581,7 +1595,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         Assert.Equal(outputName, output.Name);
                         var tensor = output.AsTensor<float>();
                         Assert.True(tensor.IsFixedSize);
-                        Assert.Equal(outputData, tensor.ToArray<float>(), new floatComparer());
+                        Assert.Equal(outputData, tensor.ToArray<float>(), new FloatComparer());
                     }
                 }
 
@@ -1599,7 +1613,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         Assert.Equal(outputName, output.Name);
                         var tensor = output.AsTensor<float>();
                         Assert.True(tensor.IsFixedSize);
-                        Assert.Equal(outputData, tensor.ToArray<float>(), new floatComparer());
+                        Assert.Equal(outputData, tensor.ToArray<float>(), new FloatComparer());
                     }
                 }
 
@@ -1831,7 +1845,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        internal class floatComparer : IEqualityComparer<float>
+        internal class FloatComparer : IEqualityComparer<float>
         {
             private float atol = 1e-3f;
             private float rtol = 1.7e-2f;

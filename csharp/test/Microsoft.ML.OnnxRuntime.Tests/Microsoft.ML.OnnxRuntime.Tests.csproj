@@ -46,6 +46,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="InferenceTest.cs" />
+    <Compile Remove="OrtIoBindingAllocationTest.cs" />
+    <Compile Remove="Tensors\TensorTests.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <Compile Update="Tensors\TensorArithmetic.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>
@@ -62,6 +67,11 @@
     <Compile Update="Tensors\TensorOperations.cs">
       <DependentUpon>TensorOperations.tt</DependentUpon>
     </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="InferenceTest.cs" Condition=" '$(EnableDefaultCompileItems)' == 'true' " />
+    <None Include="OrtIoBindingAllocationTest.cs" Condition=" '$(EnableDefaultCompileItems)' == 'true' " />
+    <None Include="Tensors\TensorTests.cs" Condition=" '$(EnableDefaultCompileItems)' == 'true' " />
   </ItemGroup>
   <ItemGroup>
     <None Update="Tensors\TensorArithmetic.tt">

@@ -17,6 +17,7 @@
     <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
     <Configurations>Debug;Release;RelWithDebInfo</Configurations>
     <!-- end -->
+    <DefineConstants>__NET_CORE_APP__</DefineConstants>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(IsLinuxBuild)'=='true'">

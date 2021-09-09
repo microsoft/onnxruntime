@@ -10,7 +10,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
     {
         internal static byte[] LoadModelFromEmbeddedResource(string path)
         {
-            var assembly = typeof(InferenceTest).Assembly;
+            var assembly = typeof(TestDataLoader).Assembly;
             byte[] model = null;
 
             using (Stream stream = assembly.GetManifestResourceStream($"{assembly.GetName().Name}.TestData.{path}"))
@@ -29,7 +29,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         internal static float[] LoadTensorFromEmbeddedResource(string path)
         {
             var tensorData = new List<float>();
-            var assembly = typeof(InferenceTest).Assembly;
+            var assembly = typeof(TestDataLoader).Assembly;
 
             using (StreamReader inputFile = new StreamReader(assembly.GetManifestResourceStream($"{assembly.GetName().Name}.TestData.{path}")))
             {
@@ -44,7 +44,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             return tensorData.ToArray();
         }
 
-        static void GetTypeAndWidth(Tensors.TensorElementType elemType, out Type type, out int width)
+        internal static void GetTypeAndWidth(Tensors.TensorElementType elemType, out Type type, out int width)
         {
             TensorElementTypeInfo result = TensorBase.GetElementTypeInfo(elemType);
             if (result != null)
@@ -59,17 +59,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        internal static NamedOnnxValue LoadTensorFromEmbeddedResourcePb(string path, IReadOnlyDictionary<string, NodeMetadata> nodeMetaDict)
+        static NamedOnnxValue LoadTensorPb(Onnx.TensorProto tensor, IReadOnlyDictionary<string, NodeMetadata> nodeMetaDict)
         {
-            Onnx.TensorProto tensor = null;
-
-            var assembly = typeof(InferenceTest).Assembly;
-
-            using (Stream stream = assembly.GetManifestResourceStream($"{assembly.GetName().Name}.TestData.{path}"))
-            {
-                tensor = Onnx.TensorProto.Parser.ParseFrom(stream);
-            }
-
             Type tensorElemType = null;
             int width = 0;
             GetTypeAndWidth((Tensors.TensorElementType)tensor.DataType, out tensorElemType, out width);
@@ -124,14 +115,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     if (!matchfound)
                     {
                         // throw error
-                        throw new Exception($"No Matching Tensor found in InputOutputMetadata corresponding to the serliazed tensor loaded from {assembly.GetName().Name}.{path}");
+                        throw new Exception($"No Matching Tensor found in InputOutputMetadata corresponding to the serliazed tensor specified");
                     }
                 }
             }
             else
             {
                 // throw error
-                throw new Exception($"While reading the serliazed tensor loaded from {assembly.GetName().Name}.{path}, metaDataDict has 0 elements");
+                throw new Exception($"While reading the serliazed tensor specified, metaDataDict has 0 elements");
             }
 
             if (!nodeMeta.IsTensor)
@@ -204,7 +195,34 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        static NamedOnnxValue CreateNamedOnnxValueFromRawData<T>(string name, byte[] rawData, int elemWidth, int[] dimensions)
+        internal static NamedOnnxValue LoadTensorFromEmbeddedResourcePb(string path, IReadOnlyDictionary<string, NodeMetadata> nodeMetaDict)
+        {
+            Onnx.TensorProto tensor = null;
+
+            var assembly = typeof(TestDataLoader).Assembly;
+
+            using (Stream stream = assembly.GetManifestResourceStream($"{assembly.GetName().Name}.TestData.{path}"))
+            {
+                tensor = Onnx.TensorProto.Parser.ParseFrom(stream);
+            }
+
+            return LoadTensorPb(tensor, nodeMetaDict);
+        }
+
+        internal static NamedOnnxValue LoadTensorFromFilePb(string filename, IReadOnlyDictionary<string, NodeMetadata> nodeMetaDict)
+        {
+            //Set buffer size to 4MB
+            int readBufferSize = 4194304;
+            Onnx.TensorProto tensor = null;
+            using (var file = new FileStream(filename, FileMode.Open, FileAccess.Read, FileShare.Read, readBufferSize))
+            {
+                tensor = Onnx.TensorProto.Parser.ParseFrom(file);
+            }
+
+            return LoadTensorPb(tensor, nodeMetaDict);
+        }
+
+        internal static NamedOnnxValue CreateNamedOnnxValueFromRawData<T>(string name, byte[] rawData, int elemWidth, int[] dimensions)
         {
             T[] typedArr = new T[rawData.Length / elemWidth];
             var typeOf = typeof(T);
@@ -225,6 +243,25 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
             var dt = new DenseTensor<T>(typedArr, dimensions);
             return NamedOnnxValue.CreateFromTensor<T>(name, dt);
+        }
+
+        internal static float[] LoadTensorFromFile(string filename, bool skipheader = true)
+        {
+            var tensorData = new List<float>();
+
+            // read data from file
+            using (var inputFile = new System.IO.StreamReader(filename))
+            {
+                if (skipheader)
+                    inputFile.ReadLine(); //skip the input name
+                string[] dataStr = inputFile.ReadLine().Split(new char[] { ',', '[', ']', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                for (int i = 0; i < dataStr.Length; i++)
+                {
+                    tensorData.Add(Single.Parse(dataStr[i]));
+                }
+            }
+
+            return tensorData.ToArray();
         }
     }
 }

@@ -80,7 +80,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         Assert.Equal(outputName, output.Name);
                         var tensor = output.AsTensor<float>();
                         Assert.True(tensor.IsFixedSize);
-                        Assert.Equal(outputData, tensor.ToArray<float>(), new floatComparer());
+                        Assert.Equal(outputData, tensor.ToArray<float>(), new FloatComparer());
                     }
                 }
 
@@ -95,7 +95,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         Assert.Equal(outputName, output.Name);
                         var tensor = output.AsTensor<float>();
                         Assert.True(tensor.IsFixedSize);
-                        Assert.Equal(outputData, tensor.ToArray<float>(), new floatComparer());
+                        Assert.Equal(outputData, tensor.ToArray<float>(), new FloatComparer());
                     }
                 }
             }
