@@ -274,7 +274,7 @@ class SymbolicShapeInference:
             dict([(i.name, helper.make_tensor_value_info(i.name, i.data_type, list(i.dims)))
                   for i in self.out_mp_.graph.initializer]))
 
-    def _merge_symbols(self, dims):
+    def _merge_symbols(self, dims, add_suggested_merge=True):
         if not all([type(d) == str for d in dims]):
             if self.auto_merge_:
                 unique_dims = list(set(dims))
@@ -285,7 +285,7 @@ class SymbolicShapeInference:
                     if self.verbose_ > 0:
                         print('dim {} has been merged with value {}'.format(
                             unique_dims[:int_dim] + unique_dims[int_dim + 1:], unique_dims[int_dim]))
-                    self._check_merged_dims(unique_dims, allow_broadcast=False)
+                    self._check_merged_dims(unique_dims, allow_broadcast=False, add_suggested_merge=add_suggested_merge)
                     return unique_dims[int_dim]
                 else:
                     if self.verbose_ > 0:
@@ -303,7 +303,7 @@ class SymbolicShapeInference:
             return None
 
     # broadcast from right to left, and merge symbolic dims if needed
-    def _broadcast_shapes(self, shape1, shape2):
+    def _broadcast_shapes(self, shape1, shape2, add_suggested_merge=True):
         new_shape = []
         rank1 = len(shape1)
         rank2 = len(shape2)
@@ -316,7 +316,7 @@ class SymbolicShapeInference:
             elif dim2 == 1:
                 new_dim = dim1
             else:
-                new_dim = self._merge_symbols([dim1, dim2])
+                new_dim = self._merge_symbols([dim1, dim2], add_suggested_merge=add_suggested_merge)
                 if not new_dim:
                     # warning about unsupported broadcast when not auto merge
                     # note that auto merge has the risk of incorrectly merge symbols while one of them being 1
@@ -605,10 +605,10 @@ class SymbolicShapeInference:
             sympy_shape[-rank + i] = strided_kernel_positions + 1
         return sympy_shape
 
-    def _check_merged_dims(self, dims, allow_broadcast=True):
+    def _check_merged_dims(self, dims, allow_broadcast=True, add_suggested_merge=True):
         if allow_broadcast:
             dims = [d for d in dims if not (is_literal(d) and int(d) <= 1)]
-        if not all([d == dims[0] for d in dims]):
+        if add_suggested_merge and not all([d == dims[0] for d in dims]):
             self._add_suggested_merge(dims, apply=True)
 
     def _compute_matmul_shape(self, node, output_dtype=None):
@@ -877,7 +877,9 @@ class SymbolicShapeInference:
             # new_shape's dim can come from shape value
             self._update_computed_dims(expand_to_shape)
             shape = self._get_shape(node, 0)
-            new_shape = self._broadcast_shapes(shape, get_shape_from_sympy_shape(expand_to_shape))
+            # we should not update Expand's input's symbolic dims according to the inferred output dims.
+            # because there is a broadcast rule applied on the two inputs.
+            new_shape = self._broadcast_shapes(shape, get_shape_from_sympy_shape(expand_to_shape), add_suggested_merge=False)
             vi = self.known_vi_[node.output[0]]
             vi.CopyFrom(
                 helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type,
@@ -1863,7 +1865,10 @@ class SymbolicShapeInference:
                 for d in range(out_rank - (2 if node.op_type in ['MatMul', 'MatMulInteger', 'MatMulInteger16'] else 0)):
                     in_dims = [s[len(s) - out_rank + d] for s in in_shapes if len(s) + d >= out_rank]
                     if len(in_dims) > 1:
-                        self._check_merged_dims(in_dims, allow_broadcast=True)
+                        # we should not update the symbolic dims for broadcasting inputs node, according to the inferred
+                        # output shape.
+                        add_suggested_merge = node.op_type not in ['Add', 'Sub', 'Mul', 'Div', 'Where', 'Sum']
+                        self._check_merged_dims(in_dims, allow_broadcast=True, add_suggested_merge=add_suggested_merge)
 
             for i_o in range(len(node.output)):
                 vi = self.known_vi_[node.output[i_o]]
