@@ -346,7 +346,7 @@ struct RunOptions : Base<OrtRunOptions> {
 struct SessionOptions : Base<OrtSessionOptions> {
   explicit SessionOptions(std::nullptr_t) {} ///< \brief Create an empty SessionOptions object, must be assigned a valid one to be used
   SessionOptions(); ///< \brief Create a new SessionOptions object
-  explicit SessionOptions(OrtSessionOptions* p) : Base<OrtSessionOptions>{p} {} /// Used for interop with the C API
+  explicit SessionOptions(OrtSessionOptions* p) : Base<OrtSessionOptions>{p} {} ///< Used for interop with the C API
 
   SessionOptions Clone() const; ///< Creates and returns a copy of this SessionOptions object 
 
