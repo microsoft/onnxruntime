@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Guid} from 'guid-typescript';
 import {Logger, Profiler} from '../../instrument';
 import {Tensor} from '../../tensor';
 
@@ -28,7 +27,7 @@ export class TextureManager {
   private readonly inUseTextures: Map<string, WebGLTexture[]>;
   private readonly idleTextures: Map<string, WebGLTexture[]>;
   private readonly textureLookup: Map<WebGLTexture, string>;
-  private readonly pendingRead: Map<Guid, Array<(arr: Tensor.NumberType) => void>>;
+  private readonly pendingRead: Map<Tensor.Id, Array<(arr: Tensor.NumberType) => void>> = new Map();
 
   constructor(
       public glContext: WebGLContext, public layoutStrategy: TextureLayoutStrategy, public profiler: Readonly<Profiler>,
