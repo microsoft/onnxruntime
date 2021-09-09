@@ -128,6 +128,8 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
     size_t tokens = 0;  // length in utf8 chars
     if (!utf8_validate(reinterpret_cast<const unsigned char*>(s.data()), s.size(),
                        tokens)) {
+      // Please do not include the input text in the error message as it could
+      // be deemed as a compliance violation by teams using this operator
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                     "Input string contains invalid utf8 chars");
     }
