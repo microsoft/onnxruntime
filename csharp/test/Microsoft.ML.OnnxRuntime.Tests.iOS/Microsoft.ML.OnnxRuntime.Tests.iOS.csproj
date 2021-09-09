@@ -179,6 +179,7 @@
         <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests\Tensors\TensorTests.cs">
           <Link>TensorTests.cs</Link>
         </Compile>
+        <Compile Include="InferenceTest.ios.cs" />
     </ItemGroup>
 
     <ItemGroup Condition="('$(Platform)' == 'iPhoneSimulator' AND Exists('$(OnnxNativeFrameworkPathSimulator)')) OR ('$(Platform)' == 'iPhone' AND Exists('$(OnnxNativeFrameworkPathPhone)'))">

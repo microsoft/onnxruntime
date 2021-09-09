@@ -20,7 +20,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [return: MarshalAs(UnmanagedType.Bool)]
         static extern bool SetDllDirectory(string lpPathName);
 
-        [Fact]
+        [Fact(DisplayName = "CanCreateAndDisposeSessionWithModelPath")]
         public void CanCreateAndDisposeSessionWithModelPath()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
@@ -54,7 +54,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
 #if USE_TENSORRT
-        [Fact]
+        [Fact(DisplayName = "CanRunInferenceOnAModelWithTensorRT")]
         private void CanRunInferenceOnAModelWithTensorRT()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
@@ -86,7 +86,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact]
+        [Fact(DisplayName = "TestTensorRTProviderOptions")]
         private void TestTensorRTProviderOptions()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
@@ -374,7 +374,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Theory]
+        [Theory(DisplayName = "TestPreTrainedModels")]
         [MemberData(nameof(GetModelsForTest))]
         [MemberData(nameof(GetSkippedModelForTest), Skip = "Skipped due to Error, please fix the error and enable the test")]
         private void TestPreTrainedModels(string opset, string modelName)
@@ -529,7 +529,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact]
+        [Fact(DisplayName = "TestOverridableInitializerMetadata")]
         private void TestOverridableInitializerMetadata()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "overridable_initializer.onnx");
@@ -597,7 +597,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [SkipNonPackageTests]
+        [SkipNonPackageTests(DisplayName = "TestRegisterCustomOpLibrary")]
         private void TestRegisterCustomOpLibrary()
         {
             using (var option = new SessionOptions())
@@ -681,7 +681,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact]
+        [Fact(DisplayName = "TestSymbolicDimsMetadata")]
         private void TestSymbolicDimsMetadata()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "capi_symbolic_dims.onnx");
@@ -714,7 +714,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact]
+        [Fact(DisplayName = "TestModelSerialization")]
         private void TestModelSerialization()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
@@ -734,7 +734,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
         // TestGpu() will test the CUDA EP on CUDA enabled builds and
         // the DML EP on DML enabled builds
-        [GpuFact]
+        [GpuFact(DisplayName = "TestGpu")]
         private void TestGpu()
         {
             var tuple = OpenSessionSqueezeNet(0); // run on deviceID 0
@@ -762,7 +762,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [DllImport("kernel32.dll", CharSet = CharSet.Ansi)]
         private static extern bool FreeLibrary(IntPtr hModule);
 
-        [Fact]
+        [Fact(DisplayName = "VerifyNativeMethodsExist")]
         private void VerifyNativeMethodsExist()
         {
             // Check for  external API changes

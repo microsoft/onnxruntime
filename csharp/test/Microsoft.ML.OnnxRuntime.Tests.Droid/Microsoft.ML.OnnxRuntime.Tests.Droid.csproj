@@ -79,6 +79,7 @@
     <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests\Tensors\TensorTests.cs">
       <Link>TensorTests.cs</Link>
     </Compile>
+    <Compile Include="InferenceTest.android.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Resources\AboutResources.txt" />
