@@ -163,7 +163,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._use_memory_efficient_gradient = False
 
         # Let ORT accumulate gradients instead of PyTorch.
-        self._accumulate_gradients_within_ort = False
+        self._accumulate_gradients_within_ort = True
         # Flag to re-export the model due to attribute change on original module.
         # Re-export will be avoided if _skip_check is enabled.
         self._original_model_has_changed = False
