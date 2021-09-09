@@ -4,6 +4,7 @@
 #include "gradient_control.h"
 
 #include "core/framework/op_kernel.h"
+#include "core/framework/op_kernel_context_internal.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 
@@ -23,9 +24,16 @@ template <typename T>
 Status InPlaceAccumulator<T>::Compute(OpKernelContext* context) const {
   const Tensor* gradient_buffer = context->Input<Tensor>(0);
   const Tensor* do_update_tensor = context->Input<Tensor>(2);
-  Tensor* accumulated_gradient = context->Output(0, gradient_buffer->Shape());
+  // Tensor* accumulated_gradient = context->Output(0, gradient_buffer->Shape());
   const void* input_data = gradient_buffer->template Data<T>();
-  void* output_data = accumulated_gradient->template MutableData<T>();
+  
+  // todo: use some attribute to limit the force inplace update???
+  auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
+  const OrtValue* input_ortvalue = ctx_internal->GetInputMLValue(static_cast<int>(0));
+  ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(0, *input_ortvalue));
+  Tensor& accumulation_output = *context->Output<Tensor>(0);
+  void* output_data = accumulation_output.template MutableData<T>();
+
   if (do_update_tensor) {
     const bool do_update = *(do_update_tensor->template Data<bool>());
     if (!do_update) {
