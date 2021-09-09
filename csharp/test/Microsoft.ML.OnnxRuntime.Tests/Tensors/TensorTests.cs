@@ -21,7 +21,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
 {
     public class TensorTests : TensorTestsBase
     {
-        [Theory()]
+        [Theory(DisplayName = "ConstructTensorFromArrayRank1")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void ConstructTensorFromArrayRank1(TensorConstructor tensorConstructor)
         {
@@ -33,7 +33,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(2, tensor[2]);
         }
 
-        [Theory()]
+        [Theory(DisplayName = "ConstructTensorFromArrayRank2")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void ConstructTensorFromArrayRank2(TensorConstructor tensorConstructor)
         {
@@ -52,7 +52,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(5, tensor[1, 2]);
         }
 
-        [Theory()]
+        [Theory(DisplayName = "ConstructTensorFromArrayRank3")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void ConstructTensorFromArrayRank3(TensorConstructor tensorConstructor)
         {
@@ -107,7 +107,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(23, tensor[3, 1, 2]);
         }
 
-        [Fact]
+        [Fact(DisplayName = "ConstructDenseTensorFromPointer")]
         public void ConstructDenseTensorFromPointer()
         {
             using (var nativeMemory = NativeMemoryFromArray(Enumerable.Range(0, 24).ToArray()))
@@ -146,7 +146,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
         }
 
 
-        [Theory()]
+        [Theory(DisplayName = "ConstructFromDimensions")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void ConstructFromDimensions(TensorConstructor tensorConstructor)
         {
@@ -171,7 +171,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(3, tensor.Dimensions[2]);
         }
 
-        [Theory()]
+        [Theory(DisplayName = "ConstructEmptyTensors")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void ConstructEmptyTensors(TensorConstructor tensorConstructor)
         {
@@ -240,7 +240,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
 
         }
 
-        [Theory()]
+        [Theory(DisplayName = "ConstructScalarTensors")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void ConstructScalarTensors(TensorConstructor tensorConstructor)
         {
@@ -306,7 +306,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(1, scalarDenseTensor2.GetValue(0));
         }
 
-        [Theory()]
+        [Theory(DisplayName = "ConstructTensorFromArrayRank3WithLowerBounds")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void ConstructTensorFromArrayRank3WithLowerBounds(TensorConstructor tensorConstructor)
         {
@@ -346,7 +346,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(tensorConstructor.IsReversedStride, tensor.IsReversedStride);
         }
 
-        [Theory()]
+        [Theory(DisplayName = "StructurallyEqualTensor")]
         [MemberData(nameof(GetDualTensorConstructors))]
         public void StructurallyEqualTensor(TensorConstructor leftConstructor, TensorConstructor rightConstructor)
         {
@@ -383,7 +383,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             }
         }
 
-        [Theory()]
+        [Theory(DisplayName = "StructurallyEqualArray")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void StructurallyEqualArray(TensorConstructor tensorConstructor)
         {
@@ -413,7 +413,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
 
         }
 
-        [Theory()]
+        [Theory(DisplayName = "GetDiagonalSquare")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void GetDiagonalSquare(TensorConstructor tensorConstructor)
         {
@@ -440,7 +440,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Throws<ArgumentException>("offset", () => tensor.GetDiagonal(-3));
         }
 
-        [Theory()]
+        [Theory(DisplayName = "GetDiagonalRectangle")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void GetDiagonalRectangle(TensorConstructor tensorConstructor)
         {
@@ -474,7 +474,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
         }
 
 
-        [Theory()]
+        [Theory(DisplayName = "GetDiagonalCube")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void GetDiagonalCube(TensorConstructor tensorConstructor)
         {
@@ -510,7 +510,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(tensorConstructor.IsReversedStride, diag.IsReversedStride);
         }
 
-        [Theory()]
+        [Theory(DisplayName = "GetTriangleSquare")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void GetTriangleSquare(TensorConstructor tensorConstructor)
         {
@@ -589,7 +589,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.True(StructuralComparisons.StructuralEqualityComparer.Equals(tri, expected));
         }
 
-        [Theory()]
+        [Theory(DisplayName = "GetTriangleRectangle")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void GetTriangleRectangle(TensorConstructor tensorConstructor)
         {
@@ -686,7 +686,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.True(StructuralComparisons.StructuralEqualityComparer.Equals(tri, expected));
         }
 
-        [Theory()]
+        [Theory(DisplayName = "GetTriangleCube")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void GetTriangleCube(TensorConstructor tensorConstructor)
         {
@@ -735,7 +735,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(tensorConstructor.IsReversedStride, tri.IsReversedStride);
         }
 
-        [Theory()]
+        [Theory(DisplayName = "GetUpperTriangleSquare")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void GetUpperTriangleSquare(TensorConstructor tensorConstructor)
         {
@@ -812,7 +812,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.True(StructuralComparisons.StructuralEqualityComparer.Equals(tri, expected));
         }
 
-        [Theory()]
+        [Theory(DisplayName = "GetUpperTriangleRectangle")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void GetUpperTriangleRectangle(TensorConstructor tensorConstructor)
         {
@@ -906,7 +906,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.True(StructuralComparisons.StructuralEqualityComparer.Equals(tri, expected));
         }
 
-        [Theory()]
+        [Theory(DisplayName = "GetUpperTriangleCube")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void GetUpperTriangleCube(TensorConstructor tensorConstructor)
         {
@@ -955,7 +955,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(tensorConstructor.IsReversedStride, tri.IsReversedStride);
         }
 
-        [Theory()]
+        [Theory(DisplayName = "Reshape")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void Reshape(TensorConstructor tensorConstructor)
         {
@@ -985,7 +985,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(tensorConstructor.IsReversedStride, actual.IsReversedStride);
         }
 
-        [Fact]
+        [Fact(DisplayName = "Identity")]
         public void Identity()
         {
             var actual = Tensor.CreateIdentity<double>(3);
@@ -1000,7 +1000,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.True(StructuralComparisons.StructuralEqualityComparer.Equals(actual, expected));
         }
 
-        [Theory]
+        [Theory(DisplayName = "CreateWithDiagonal")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void CreateWithDiagonal(TensorConstructor tensorConstructor)
         {
@@ -1019,7 +1019,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.True(StructuralComparisons.StructuralEqualityComparer.Equals(actual, expected));
         }
 
-        [Theory]
+        [Theory(DisplayName = "CreateWithDiagonal3D")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void CreateWithDiagonal3D(TensorConstructor tensorConstructor)
         {
@@ -1052,7 +1052,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.True(StructuralComparisons.StructuralEqualityComparer.Equals(actual, expected));
         }
 
-        [Theory]
+        [Theory(DisplayName = "CreateWithDiagonalAndOffset")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void CreateWithDiagonalAndOffset(TensorConstructor tensorConstructor)
         {
@@ -1109,7 +1109,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.True(StructuralComparisons.StructuralEqualityComparer.Equals(actual, expected));
         }
 
-        [Theory]
+        [Theory(DisplayName = "CreateWithDiagonalAndOffset3D")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void CreateWithDiagonalAndOffset3D(TensorConstructor tensorConstructor)
         {
@@ -1262,7 +1262,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.True(StructuralComparisons.StructuralEqualityComparer.Equals(actual, expected));
         }
 
-        [Theory()]
+        [Theory(DisplayName = "Add")]
         [MemberData(nameof(GetDualTensorConstructors))]
         public void Add(TensorConstructor leftConstructor, TensorConstructor rightConstructor)
         {
@@ -1292,7 +1292,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
 
         }
 
-        [Theory()]
+        [Theory(DisplayName = "AddScalar")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void AddScalar(TensorConstructor tensorConstructor)
         {
@@ -1316,7 +1316,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
 
         }
 
-        [Theory()]
+        [Theory(DisplayName = "UnaryPlus")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void UnaryPlus(TensorConstructor tensorConstructor)
         {
@@ -1335,8 +1335,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(tensorConstructor.IsReversedStride, actual.IsReversedStride);
         }
 
-
-        [Theory()]
+        [Theory(DisplayName = "Subtract")]
         [MemberData(nameof(GetDualTensorConstructors))]
         public void Subtract(TensorConstructor leftConstructor, TensorConstructor rightConstructor)
         {
@@ -1365,7 +1364,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(leftConstructor.IsReversedStride, actual.IsReversedStride);
         }
 
-        [Theory()]
+        [Theory(DisplayName = "SubtractScalar")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void SubtractScalar(TensorConstructor tensorConstructor)
         {
@@ -1387,7 +1386,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(tensorConstructor.IsReversedStride, actual.IsReversedStride);
         }
 
-        [Theory()]
+        [Theory(DisplayName = "UnaryMinus")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void UnaryMinus(TensorConstructor tensorConstructor)
         {
@@ -1411,7 +1410,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(tensorConstructor.IsReversedStride, actual.IsReversedStride);
         }
 
-        [Theory()]
+        [Theory(DisplayName = "PrefixIncrement")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void PrefixIncrement(TensorConstructor tensorConstructor)
         {
@@ -1439,8 +1438,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(tensorConstructor.IsReversedStride, actual.IsReversedStride);
         }
 
-
-        [Theory()]
+        [Theory(DisplayName = "PostfixIncrement")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void PostfixIncrement(TensorConstructor tensorConstructor)
         {
@@ -1475,8 +1473,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(tensorConstructor.IsReversedStride, actual.IsReversedStride);
         }
 
-
-        [Theory()]
+        [Theory(DisplayName = "PrefixDecrement")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void PrefixDecrement(TensorConstructor tensorConstructor)
         {
@@ -1504,7 +1501,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(tensorConstructor.IsReversedStride, actual.IsReversedStride);
         }
 
-        [Theory()]
+        [Theory(DisplayName = "PostfixDecrement")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void PostfixDecrement(TensorConstructor tensorConstructor)
         {
@@ -1539,7 +1536,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(tensorConstructor.IsReversedStride, actual.IsReversedStride);
         }
 
-        [Theory()]
+        [Theory(DisplayName = "Multiply")]
         [MemberData(nameof(GetDualTensorConstructors))]
         public void Multiply(TensorConstructor leftConstructor, TensorConstructor rightConstructor)
         {
@@ -1568,7 +1565,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(leftConstructor.IsReversedStride, actual.IsReversedStride);
         }
 
-        [Theory()]
+        [Theory(DisplayName = "MultiplyScalar")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void MultiplyScalar(TensorConstructor tensorConstructor)
         {
@@ -1591,7 +1588,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(tensorConstructor.IsReversedStride, actual.IsReversedStride);
         }
 
-        [Theory()]
+        [Theory(DisplayName = "Divide")]
         [MemberData(nameof(GetDualTensorConstructors))]
         public void Divide(TensorConstructor dividendConstructor, TensorConstructor divisorConstructor)
         {
@@ -1621,7 +1618,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(dividendConstructor.IsReversedStride, actual.IsReversedStride);
         }
 
-        [Theory()]
+        [Theory(DisplayName = "DivideScalar")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void DivideScalar(TensorConstructor tensorConstructor)
         {
@@ -1644,7 +1641,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(tensorConstructor.IsReversedStride, actual.IsReversedStride);
         }
 
-        [Theory()]
+        [Theory(DisplayName = "Modulo")]
         [MemberData(nameof(GetDualTensorConstructors))]
         public void Modulo(TensorConstructor dividendConstructor, TensorConstructor divisorConstructor)
         {
@@ -1674,7 +1671,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(dividendConstructor.IsReversedStride, actual.IsReversedStride);
         }
 
-        [Theory()]
+        [Theory(DisplayName = "ModuloScalar")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void ModuloScalar(TensorConstructor tensorConstructor)
         {
@@ -1697,7 +1694,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(tensorConstructor.IsReversedStride, actual.IsReversedStride);
         }
 
-        [Theory()]
+        [Theory(DisplayName = "And")]
         [MemberData(nameof(GetDualTensorConstructors))]
         public void And(TensorConstructor leftConstructor, TensorConstructor rightConstructor)
         {
@@ -1727,7 +1724,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(leftConstructor.IsReversedStride, actual.IsReversedStride);
         }
 
-        [Theory()]
+        [Theory(DisplayName = "AndScalar")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void AndScalar(TensorConstructor tensorConstructor)
         {
@@ -1750,7 +1747,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(tensorConstructor.IsReversedStride, actual.IsReversedStride);
         }
 
-        [Theory()]
+        [Theory(DisplayName = "Or")]
         [MemberData(nameof(GetDualTensorConstructors))]
         public void Or(TensorConstructor leftConstructor, TensorConstructor rightConstructor)
         {
@@ -1780,7 +1777,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(leftConstructor.IsReversedStride, actual.IsReversedStride);
         }
 
-        [Theory()]
+        [Theory(DisplayName = "OrScalar")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void OrScalar(TensorConstructor tensorConstructor)
         {
@@ -1803,7 +1800,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(tensorConstructor.IsReversedStride, actual.IsReversedStride);
         }
 
-        [Theory()]
+        [Theory(DisplayName = "Xor")]
         [MemberData(nameof(GetDualTensorConstructors))]
         public void Xor(TensorConstructor leftConstructor, TensorConstructor rightConstructor)
         {
@@ -1833,7 +1830,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(leftConstructor.IsReversedStride, actual.IsReversedStride);
         }
 
-        [Theory()]
+        [Theory(DisplayName = "XorScalar")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void XorScalar(TensorConstructor tensorConstructor)
         {
@@ -1856,7 +1853,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(tensorConstructor.IsReversedStride, actual.IsReversedStride);
         }
 
-        [Theory()]
+        [Theory(DisplayName = "LeftShift")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void LeftShift(TensorConstructor tensorConstructor)
         {
@@ -1879,7 +1876,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(tensorConstructor.IsReversedStride, actual.IsReversedStride);
         }
 
-        [Theory()]
+        [Theory(DisplayName = "RightShift")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void RightShift(TensorConstructor tensorConstructor)
         {
@@ -1902,7 +1899,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(tensorConstructor.IsReversedStride, actual.IsReversedStride);
         }
 
-        [Theory()]
+        [Theory(DisplayName = "ElementWiseEquals")]
         [MemberData(nameof(GetDualTensorConstructors))]
         public void ElementWiseEquals(TensorConstructor leftConstructor, TensorConstructor rightConstructor)
         {
@@ -1930,7 +1927,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(leftConstructor.IsReversedStride, actual.IsReversedStride);
         }
 
-        [Theory()]
+        [Theory(DisplayName = "ElementWiseNotEquals")]
         [MemberData(nameof(GetDualTensorConstructors))]
         public void ElementWiseNotEquals(TensorConstructor leftConstructor, TensorConstructor rightConstructor)
         {
@@ -1958,7 +1955,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(leftConstructor.IsReversedStride, actual.IsReversedStride);
         }
 
-        [Theory]
+        [Theory(DisplayName = "MatrixMultiply")]
         [MemberData(nameof(GetDualTensorConstructors))]
         public void MatrixMultiply(TensorConstructor leftConstructor, TensorConstructor rightConstructor)
         {
@@ -1988,8 +1985,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.True(StructuralComparisons.StructuralEqualityComparer.Equals(actual, expected));
         }
 
-
-        [Theory]
+        [Theory(DisplayName = "Contract")]
         [MemberData(nameof(GetDualTensorConstructors))]
         public void Contract(TensorConstructor leftConstructor, TensorConstructor rightConstructor)
         {
@@ -2056,8 +2052,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.True(StructuralComparisons.StructuralEqualityComparer.Equals(actual, expected));
         }
 
-
-        [Theory]
+        [Theory(DisplayName = "ContractWithSingleLengthDimension")]
         [MemberData(nameof(GetDualTensorConstructors))]
         public void ContractWithSingleLengthDimension(TensorConstructor leftConstructor, TensorConstructor rightConstructor)
         {
@@ -2095,7 +2090,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
 
         }
 
-        [Theory]
+        [Theory(DisplayName = "ContractMismatchedDimensions")]
         [MemberData(nameof(GetDualTensorConstructors))]
         public void ContractMismatchedDimensions(TensorConstructor leftConstructor, TensorConstructor rightConstructor)
         {
@@ -2128,7 +2123,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.True(StructuralComparisons.StructuralEqualityComparer.Equals(actual, expected));
         }
 
-        [Theory]
+        [Theory(DisplayName = "GetArrayString")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void GetArrayString(TensorConstructor constructor)
         {
@@ -2187,8 +2182,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(expectedNoSpace, tensor.GetArrayString(false));
         }
 
-
-        [Theory]
+        [Theory(DisplayName = "TestICollectionMembers")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void TestICollectionMembers(TensorConstructor constructor)
         {
@@ -2227,7 +2221,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Throws<ArgumentException>(() => tensorCollection.CopyTo(new int[6], 1));
         }
 
-        [Theory]
+        [Theory(DisplayName = "TestIListMembers")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void TestIListMembers(TensorConstructor constructor)
         {
@@ -2274,7 +2268,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(new[] { 0, 0, 0, 0, 0, 0 }, tensor);
         }
 
-        [Theory]
+        [Theory(DisplayName = "TestICollectionTMembers")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void TestICollectionTMembers(TensorConstructor constructor)
         {
@@ -2320,7 +2314,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(new[] { 0, 0, 0, 0, 0, 0 }, tensor);
         }
 
-        [Theory]
+        [Theory(DisplayName = "TestIListTMembers")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void TestIListTMembers(TensorConstructor constructor)
         {
@@ -2352,7 +2346,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Throws<InvalidOperationException>(() => (tensorList).RemoveAt(0));
         }
 
-        [Theory]
+        [Theory(DisplayName = "TestIReadOnlyTMembers")]
         [MemberData(nameof(GetSingleTensorConstructors))]
         public void TestIReadOnlyTMembers(TensorConstructor constructor)
         {

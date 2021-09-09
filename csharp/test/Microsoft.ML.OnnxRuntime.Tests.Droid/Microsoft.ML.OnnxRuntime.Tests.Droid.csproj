@@ -113,18 +113,19 @@
     <PackageReference Include="Xamarin.Forms">
       <Version>5.0.0.2083</Version>
     </PackageReference>
-    <PackageReference Include="System.Runtime.CompilerServices.Unsafe">
+    <PackageReference Include="Google.Protobuf" Version="3.17.3" />
+<!--    <PackageReference Include="System.Runtime.CompilerServices.Unsafe">
       <Version>5.0.0</Version>
-    </PackageReference>
+    </PackageReference>-->
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Microsoft.ML.OnnxRuntime.Tests.Common.csproj">
-      <Project>{04FA49F0-AA23-4EE5-B455-6E12FFAD29E6}</Project>
-      <Name>Microsoft.ML.OnnxRuntime.Tests.Common</Name>
-    </ProjectReference>
     <ProjectReference Include="..\..\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj">
       <Project>{584B53B3-359D-4DC2-BCD8-530B5D4685AD}</Project>
       <Name>Microsoft.ML.OnnxRuntime</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj">
+      <Project>{04FA49F0-AA23-4EE5-B455-6E12FFAD29E6}</Project>
+      <Name>Microsoft.ML.OnnxRuntime.Tests</Name>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>

@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netcoreapp2.1</TargetFramework>
+    <TargetFramework>netstandard2.0</TargetFramework>
     <IsPackable>false</IsPackable>
     <OnnxRuntimeCsharpRoot>$(ProjectDir)..\..</OnnxRuntimeCsharpRoot>
     <Platforms>AnyCPU;x86</Platforms>
@@ -18,6 +18,7 @@
     <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
     <Configurations>Debug;Release;RelWithDebInfo</Configurations>
     <!-- end -->
+    <RootNamespace>Microsoft.ML.OnnxRuntime.Tests</RootNamespace>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(IsLinuxBuild)'=='true'">
@@ -55,25 +56,27 @@
       <DesignTime>True</DesignTime>
       <DependentUpon>Tensors\TensorOperations.tt</DependentUpon>
     </Compile>
+    <Compile Update="Tensors\TensorArithmetic.cs">
+      <DependentUpon>TensorArithmetic.tt</DependentUpon>
+    </Compile>
+    <Compile Update="Tensors\TensorOperations.cs">
+      <DependentUpon>TensorOperations.tt</DependentUpon>
+    </Compile>
   </ItemGroup>
   <ItemGroup>
     <None Update="Tensors\TensorArithmetic.tt">
       <Generator>TextTemplatingFileGenerator</Generator>
-      <LastGenOutput>Tensors\TensorArithmetic.cs</LastGenOutput>
+      <LastGenOutput>TensorArithmetic.cs</LastGenOutput>
     </None>
     <None Update="Tensors\TensorOperations.tt">
       <Generator>TextTemplatingFileGenerator</Generator>
-      <LastGenOutput>Tensors\TensorOperations.cs</LastGenOutput>
+      <LastGenOutput>TensorOperations.cs</LastGenOutput>
     </None>
   </ItemGroup> 
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.NETCore.Targets" Version="2.1.0" />
-    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="4.5.2" />
-    <PackageReference Include="Google.Protobuf" Version="3.16.0" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.2.0" />
+    <PackageReference Include="Google.Protobuf" Version="3.17.3" />
     <PackageReference Include="xunit" Version="2.4.1" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.4.1" />  
   </ItemGroup>
 
   <ItemGroup>
@@ -86,33 +89,18 @@
   </Target>
 
   <ItemGroup>
-    <None Include="$(NativeBuildOutputDir)\*.dll;$(NativeBuildOutputDir)\*.pdb;$(NativeBuildOutputDir)\*.dylib;$(NativeBuildOutputDir)\libcustom*.so;$(NativeBuildOutputDir)\libcustom*.dylib">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Visible>false</Visible>
-    </None>
-
-    <None Include="$(OnnxRuntimeCSharpRoot)\testdata\*">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Visible>false</Visible>
-    </None>
-    <None Include="$(OnnxRuntimeCSharpRoot)\..\onnxruntime\test\testdata\overridable_initializer.onnx">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Visible>false</Visible>
-    </None>
-    <None Include="$(OnnxRuntimeCSharpRoot)\..\onnxruntime\test\testdata\capi_symbolic_dims.onnx">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Visible>false</Visible>
-    </None>
-    <None Include="$(OnnxRuntimeCSharpRoot)\..\onnxruntime\test\testdata\custom_op_library\custom_op_test.onnx">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Visible>false</Visible>
-    </None>
     <BuildEnvVars Include="OnnxRuntimeBuildDirectory=$(OnnxRuntimeBuildDirectory)" />
   </ItemGroup>
 
   <Target Name="DefineBuildEnvironmentVariables" BeforeTargets="Build">
     <WriteLinesToFile File="$(OutputPath)\Properties.txt" Lines="@(BuildEnvVars)" Overwrite="true" />
   </Target>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\testdata\*">
+        <Link>TestData\%(Filename)%(Extension)</Link>
+    </EmbeddedResource>
+  </ItemGroup>
 
   <ItemGroup>
     <Service Include="{508349b6-6b84-4df5-91f0-309beebad82d}" />

@@ -33,7 +33,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact]
+        [Fact(DisplayName = "TestIOBindingWithOrtAllocation")]
         public void TestIOBindingWithOrtAllocation()
         {
             var inputName = "data_0";

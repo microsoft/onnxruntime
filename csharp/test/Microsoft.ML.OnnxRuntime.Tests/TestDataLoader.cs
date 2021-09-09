@@ -4,7 +4,7 @@ using System.IO;
 using System.Linq;
 using Microsoft.ML.OnnxRuntime.Tensors;
 
-namespace Microsoft.ML.OnnxRuntime.Tests.Common
+namespace Microsoft.ML.OnnxRuntime.Tests
 {
     internal static class TestDataLoader
     {
