@@ -80,7 +80,7 @@ void clear_grad_fns_for_next_edges(at::Tensor target, std::vector<at::Tensor> sa
     // If we find the next gradient function is AccumulateGrad, we will check whether its owned
     // tensors is in ctx.save_tensors or not. If yes, we skip it; otherwise, we clean the edge, which
     // will release the AccumulateGrad function.
-    if (dynamic_cast<torch::autograd::AccumulateGrad*>(node_func) != nullptr) {
+    if (dynamic_cast<torch::autograd::AccumulateGrad*>(node_func)) {
       if (grad_fn_to_tensor_map.find(node_func) != grad_fn_to_tensor_map.end()) {
         // skip the edges that connect to saved_tensors. Because when unpack ctx.saved_tensors (using input, = ctx.saved_tensors) in backward,
         // there is such a check : if the saved tensor is a leaf and requires grad, it it should have grad accumulator.
