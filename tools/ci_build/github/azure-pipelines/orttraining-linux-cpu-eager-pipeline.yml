@@ -42,6 +42,7 @@ jobs:
               --skip_tests \
               --enable_training \
               --build_eager_mode \
+              --build_shared_lib \
               --enable_external_custom_op_schemas
       workingDirectory: $(Build.SourcesDirectory)
 
