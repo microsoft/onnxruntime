@@ -171,6 +171,17 @@ jobs:
 - template: android-java-api-aar.yml
   parameters:
     buildConfig: 'Release'
+    buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/android/default_mobile_aar_build_settings.json'
+    includedOpsConfig: '$(Build.SourcesDirectory)/tools/ci_build/github/android/mobile_package.required_operators.config'
+    artifactName: 'onnxruntime-android-mobile-aar'
+    job_name_suffix: 'Mobile'
+
+- template: android-java-api-aar.yml
+  parameters:
+    buildConfig: 'Release'
+    buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/android/default_full_aar_build_settings.json'
+    artifactName: 'onnxruntime-android-full-aar'
+    job_name_suffix: 'Full'
 
 - template: win-ci.yml
   parameters:
@@ -405,7 +416,7 @@ jobs:
       configuration: RelWithDebInfo
       arguments: '--configuration RelWithDebInfo -t:CreatePackage -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
-  
+
   - task: CopyFiles@2
     displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
     inputs:
@@ -535,23 +546,23 @@ jobs:
           echo changing directory to artifact download path
           cd $(Build.BinariesDirectory)/nuget-artifact/final-package
           echo processing nupkg
-          SETLOCAL EnableDelayedExpansion   
+          SETLOCAL EnableDelayedExpansion
           FOR /R %%i IN (*.nupkg) do (
            set filename=%%~ni
            IF NOT "!filename:~25,7!"=="Managed" (
             echo processing %%~ni.nupkg
             copy %%~ni.nupkg %%~ni.zip
             echo copied to zip
-            echo listing lib files in the zip 
-            REM use a single .csv file to put the data 
+            echo listing lib files in the zip
+            REM use a single .csv file to put the data
             echo os,arch,build_config,size > $(Build.BinariesDirectory)\binary_size_data.txt
             7z.exe l -slt %%~ni.zip runtimes\linux-x64\native\libonnxruntime.so | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo linux,x64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
             7z.exe l -slt %%~ni.zip runtimes\linux-aarch64\native\libonnxruntime.so | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo linux,aarch64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
             7z.exe l -slt %%~ni.zip runtimes\osx.10.14-x64\native\libonnxruntime.dylib | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo osx,x64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
             7z.exe l -slt %%~ni.zip runtimes\win-x64\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
-            7z.exe l -slt %%~ni.zip runtimes\win-x86\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x86,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt            
+            7z.exe l -slt %%~ni.zip runtimes\win-x86\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x86,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
              )
-           ) 
+           )
   - task: AzureCLI@2
     displayName: 'Azure CLI'
     inputs:
@@ -749,61 +760,9 @@ jobs:
     displayName: 'Clean Agent Directories'
     condition: always()
 
-- job: Final_AAR_Testing_Android
-  workspace:
-    clean: all
-  pool:
-    vmImage: 'macOS-10.15'
-  variables:
-  - name: runCodesignValidationInjection
-    value: false
-  timeoutInMinutes: 60
-  dependsOn:
-    - Android_Java_API_AAR_Packaging_Pipeline
-  steps:
-  - template: set-version-number-variables-step.yml
+- template: android-java-api-aar-test.yml
+  parameters:
+    artifactName: 'onnxruntime-android-mobile-aar'
+    job_name_suffix: 'Mobile'
 
-  - task: DownloadPipelineArtifact@2
-    displayName: 'Download Final Android AAR'
-    inputs:
-      buildType: 'current'
-      artifactName: 'onnxruntime-android-aar'
-      targetPath: '$(Build.BinariesDirectory)/final-android-aar'
 
-  - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(Build.SourcesDirectory)
-    displayName: Setup gradle wrapper to use gradle 6.8.3
-
-  - script: |
-      python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
-        --android-sdk-root ${ANDROID_SDK_ROOT} \
-        --create-avd --system-image "system-images;android-30;google_apis;x86_64" \
-        --start --emulator-extra-args="-partition-size 4096" \
-        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-    displayName: Start Android emulator
-
-  - script: |
-      set -e -x
-      mkdir android_test
-      cd android_test
-      cp -av $(Build.SourcesDirectory)/java/src/test/android ./
-      cd ./android
-      mkdir -p app/libs
-      cp $(Build.BinariesDirectory)/final-android-aar/onnxruntime-mobile-$(OnnxRuntimeVersion).aar app/libs/onnxruntime-mobile.aar
-      $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest
-    displayName: Run E2E test for Android
-    workingDirectory: $(Build.BinariesDirectory)
-
-  - script: |
-      python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
-        --android-sdk-root ${ANDROID_SDK_ROOT} \
-        --stop \
-        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-    displayName: Stop Android emulator
-    condition: always()
-
-  - template: component-governance-component-detection-steps.yml
-    parameters :
-      condition : 'succeeded'
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()
