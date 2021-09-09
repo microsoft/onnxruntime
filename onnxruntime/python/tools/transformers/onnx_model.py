@@ -877,15 +877,16 @@ class OnnxModel:
             # Save model to external data, which is needed for model size > 2GB
             if use_external_data_format:
                 output_dir = Path(output_path).parent
-                if os.path.exists(output_dir):
-                    try:
-                        import shutil
-                        shutil.rmtree(output_dir)
-                        logger.info(f"Clear the existed directory for external data: {output_dir}")
-                    except OSError as e:
-                        logger.info(f"Failed to remove the directory {output_dir}: {e.strerror}")
-                Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                output_dir.mkdir(parents=True, exist_ok=True)
                 location = Path(output_path).name + ".data" if all_tensors_to_one_file else None
+
+                # Show warnings of potential confliction of existing external data file.
+                if all_tensors_to_one_file:
+                    if os.path.exists(location):
+                        logger.warning(f"External data file ({location}) existed. Please remove the file and try again.")
+                else:
+                    if os.listdir(output_dir):
+                        logger.warning(f"Output directory ({output_dir}) for external data is not empty. Please try again with a new directory.")
 
                 external_data_helper.convert_model_to_external_data(self.model,
                                                                     all_tensors_to_one_file=all_tensors_to_one_file,
