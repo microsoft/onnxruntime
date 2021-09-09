@@ -102,8 +102,6 @@ export class TextureManager {
     return this.profiler.event('backend', 'TextureManager.readTextureAsync', async () => {
       this.pendingRead.set(dataId, []);
       const dataSize = td.shape.reduce((a, b) => a * b) * channels!;
-      // eslint-disable-next-line no-console
-      console.log('reading texture async...');
       // add a fence waiting for the data to be ready
       await this.glContext.createAndWaitForFence();
       const data = this.glContext.readTexture(

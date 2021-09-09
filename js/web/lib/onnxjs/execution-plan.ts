@@ -134,7 +134,8 @@ export class ExecutionPlan {
       }
 
       const output: Tensor[] = [];
-      for (let outputIndex = 0; outputIndex < this.graph.getOutputIndices().length; outputIndex++) {
+      for (let i = 0; i < this.graph.getOutputIndices().length; i++) {
+        const outputIndex = this.graph.getOutputIndices()[i];
         const outputTensor = this._values[outputIndex];
         if (outputTensor === undefined) {
           throw new Error(`required output [${outputIndex}] does not have value`);
