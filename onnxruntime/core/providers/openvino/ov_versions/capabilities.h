@@ -18,10 +18,5 @@ class GetCapability {
         virtual std::vector<std::unique_ptr<ComputeCapability>> Execute();
 };
 
-#if defined OPENVINO_2020_3
-std::vector<std::unique_ptr<ComputeCapability>>
-GetCapability_2020_3(const GraphViewer& graph_viewer, const std::string device_type);
-#endif
-
 }  //namespace openvino_ep
 }  //namespace onnxruntime

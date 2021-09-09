@@ -121,6 +121,7 @@ enum MLAS_ACTIVATION_KIND {
     MlasTanhActivation,
     MlasLogisticActivation,
     MlasClipActivation,
+    MlasHardSigmoidActivation,
 };
 
 struct MLAS_ACTIVATION {
@@ -133,6 +134,10 @@ struct MLAS_ACTIVATION {
             float minimum;
             float maximum;
         } Clip;
+        struct {
+            float alpha;
+            float beta;
+        } HardSigmoid;
         float Values[2];
     } Parameters;
 };

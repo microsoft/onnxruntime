@@ -94,9 +94,11 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   std::function<bool(const std::string&)> is_sparse_initializer_check = [&graph](const std::string& name) -> bool {
     return graph.IsSparseInitializer(name);
   };
+#endif
 
   for (NodeIndex i : order) {
     auto* node = graph.GetNode(i);
@@ -146,9 +148,15 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         continue;
       }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
       // Create execution frame for executing constant nodes.
       OptimizerExecutionFrame::Info info({node}, constant_inputs, graph.ModelPath(), execution_provider_,
                                          is_sparse_initializer_check);
+#else
+      // Create execution frame for executing constant nodes.
+      OptimizerExecutionFrame::Info info({node}, constant_inputs, graph.ModelPath(), execution_provider_,
+                                         [](std::string const&) { return false; });
+#endif
 
       std::vector<int> fetch_mlvalue_idxs;
       for (const auto* node_out : node->OutputDefs()) {

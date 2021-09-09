@@ -28,9 +28,7 @@ extern "C" {
  * IDXGIFactory::EnumAdapters. A device_id of 0 always corresponds to the default adapter, which is typically the 
  * primary display GPU installed on the system. A negative device_id is invalid.
 */
-// declared in include/onnxruntime/core/session/onnxruntime_c_api.h for convenience and so we can provide a graceful
-// error message if not enabled.
-// ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_DML, _In_ OrtSessionOptions* options, int device_id);
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_DML, _In_ OrtSessionOptions* options, int device_id);
 
 /**
  * Creates a DirectML Execution Provider using the given DirectML device, and which executes work on the supplied D3D12

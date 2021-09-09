@@ -309,6 +309,7 @@ TEST(CApiTest, TypeInfoSequence) {
             ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 TEST(CApiTest, SparseTensorUsingAPI) {
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
@@ -922,3 +923,4 @@ TEST(CApiTest, SparseTensorFillSparseFormatStringsAPI) {
     }
   }
 }
+#endif  // !defined(DISABLE_SPARSE_TENSORS)

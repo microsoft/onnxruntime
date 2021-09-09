@@ -52,15 +52,6 @@ void addObjectMethodsForEager(py::module& m){
     return ORTTensor_FromDLPack(dlpack_tensor);
   });
 
-  m.def("_register_provider_lib", [](const std::string& name, 
-                                     const std::string& provider_shared_lib_path,
-                                     const std::string& provider_factory_entry) {
-    torch_ort::eager::GetORTBackendsManager().RegisterProviderLib(name, provider_shared_lib_path, provider_factory_entry);
-  },
-  py::arg("name"),
-  py::arg("provider_shared_lib_path"),
-  py::arg("provider_factory_entry") = kDefaultExecutionProviderEntry);
-
   m.def("set_device", [](size_t device_index, 
                                           const std::string& provider_type,
                                           const std::unordered_map<std::string, std::string>& arguments){

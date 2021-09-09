@@ -324,7 +324,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "4e50dbca6615635c6ace6105bbff449da5a567c4",
+          "commitHash": "1f416bb462689f3ef9e3f1057a113d9c6aba6972",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "git submodule at cmake/external/onnx-tensorrt"
@@ -374,7 +374,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "b708aeaaf44416bba84b87206fb550196fc60d5a",
+          "commitHash": "97ec95075187b3e6bfbe2820572f9edc93e6ac5b",
           "repositoryUrl": "https://github.com/microsoft/onnxruntime-extensions.git"
         },
         "comments": "git submodule at cmake/external/onnxruntime-extensions"

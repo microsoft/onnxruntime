@@ -40,12 +40,17 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 ## CPU
 **Ubuntu 18.04, CPU, Python Bindings**
 
-1. Build the docker image from the Dockerfile in this repository.
+1. Update submodules
+```
+git submodule update --init
+```
+
+2. Build the docker image from the Dockerfile in this repository.
   ```
   docker build -t onnxruntime-source -f Dockerfile.source ..
   ```
 
-2. Run the Docker image
+3. Run the Docker image
 
   ```
   docker run -it onnxruntime-source
@@ -54,12 +59,17 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 ## CUDA
 **Ubuntu 18.04, CUDA 10.2, CuDNN 8**
 
-1. Build the docker image from the Dockerfile in this repository.
+1. Update submodules
+```
+git submodule update --init
+```
+
+2. Build the docker image from the Dockerfile in this repository.
   ```
   docker build -t onnxruntime-cuda -f Dockerfile.cuda ..
   ```
 
-2. Run the Docker image
+3. Run the Docker image
 
   ```
   docker run --gpus all -it onnxruntime-cuda
@@ -71,12 +81,17 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 ## TensorRT
 **Ubuntu 18.04, CUDA 11.0, TensorRT 7.1.3.4**
 
-1. Build the docker image from the Dockerfile in this repository.
+1. Update submodules
+```
+git submodule update --init
+```
+
+2. Build the docker image from the Dockerfile in this repository.
   ```
   docker build -t onnxruntime-trt -f Dockerfile.tensorrt .
   ```
 
-2. Run the Docker image
+3. Run the Docker image
 
   ```
   docker run -it onnxruntime-trt
@@ -213,12 +228,17 @@ If the `device_type` runtime config option is not explicitly specified, CPU will
 
 The build instructions are similar to x86 CPU. But if you want to build them on a x86 machine, you need to install qemu-user-static system package (outside of docker instances) first. Then
 	
-1. Build the docker image from the Dockerfile in this repository.
+1. Update submodules
+```
+git submodule update --init
+```
+
+2. Build the docker image from the Dockerfile in this repository.
   ```bash
   docker build -t onnxruntime-source -f Dockerfile.arm64 ..
   ```
 
-2. Run the Docker image
+3. Run the Docker image
 
   ```bash
   docker run -it onnxruntime-source
@@ -267,12 +287,17 @@ Note: When running the container you built in Docker, please either use 'nvidia-
 
 **Ubuntu 16.04, Python Bindings**
 
-1. Build the docker image from the Dockerfile in this repository.
+1. Update submodules
+```
+git submodule update --init
+```
+
+2. Build the docker image from the Dockerfile in this repository.
   ```
   docker build -t onnxruntime-nuphar -f Dockerfile.nuphar .
   ```
 
-2. Run the Docker image
+3. Run the Docker image
 
   ```
   docker run -it onnxruntime-nuphar
