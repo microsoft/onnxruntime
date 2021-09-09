@@ -11,7 +11,7 @@ from onnxruntime.capi import _pybind_state as C
 
 
 def get_ort_device_type(device):
-    device_type = device.type.lower()
+    device_type = device if type(device) is str else device.type.lower()
     if device_type == 'cuda':
         return C.OrtDevice.cuda()
     elif device_type == 'cpu':
