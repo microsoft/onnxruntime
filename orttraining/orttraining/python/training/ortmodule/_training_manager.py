@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+from contextlib import redirect_stdout
 from . import _utils, _io, _logger
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo, _SkipCheck
 from ._execution_agent import TrainingAgent
@@ -280,13 +281,24 @@ class TrainingManager(GraphExecutionManager):
                                                      self._device)))
 
             if self._accumulate_gradients_within_ort:
-                from onnxruntime.training.ortmodule.torch_cpp_extensions import _clear_grad_fns_for_next_edges
-                ret = []
+                from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_interop_utils
+                rets = []
                 if isinstance(forward_outputs, tuple):
                     rets = list(forward_outputs)
                 else:
                     rets = [forward_outputs]
-                _clear_grad_fns_for_next_edges(rets)
+                first_tensor_output = None
+                ctx = None
+                for arg in rets:
+                    if not isinstance(arg, torch.Tensor) or not hasattr(arg, 'grad_fn'):
+                        continue
+                    # Use the first context we see because all of arg's
+                    # share the same one.
+                    ctx = arg.grad_fn
+                    first_tensor_output = arg
+                    break
+                if first_tensor_output is not None and ctx is not None:
+                    torch_interop_utils.clear_grad_fns_for_next_edges(first_tensor_output, ctx.saved_tensors)
 
             return forward_outputs
         except ORTModuleFallbackException as e:
