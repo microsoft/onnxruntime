@@ -120,18 +120,9 @@ bool CanDoTranspose4DParallelizeMultipleElementsPerThreadInInnermostDim(const cu
   if (rank == 4 &&
       // the permutations is not on the last dimension.
       permutations[3] == 3) {
-    // The block size will be set based on the outer-most two dimensions of 4D tensor.
-    // the number threads per block will be calculated as below.
     unsigned int num_elements_per_thread = 4 * sizeof(int) / static_cast<unsigned int>(element_size);  // int4 is used in the kernel to access data.
-    int64_t num_elements_in_last_two_dimensions = input_dims[2] * input_dims[3];
-    int64_t num_threads_per_block = num_elements_in_last_two_dimensions / num_elements_per_thread;
 
-    if (((num_elements_in_last_two_dimensions & (num_elements_per_thread - 1)) == 0) &&
-        input_dims[3] / num_elements_per_thread <= prop.maxThreadsPerBlock &&
-        num_threads_per_block >= prop.warpSize &&
-        // num_threads_per_block must be a multiple of warp size (32)
-        ((num_threads_per_block & (prop.warpSize - 1)) == 0) &&
-        // input_dims[3] must be a multiple of `num_elements_per_thread`
+    if (input_dims[3] / num_elements_per_thread <= prop.maxThreadsPerBlock &&
         ((input_dims[3] % num_elements_per_thread) == 0)) {
       return true;
     }
@@ -145,17 +136,15 @@ Status Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim(
     const void* input_data, const TArray<int64_t>& output_strides,
     void* output_data, int N) {
   unsigned int num_elements_per_thread = 4 * sizeof(int) / static_cast<unsigned int>(element_size);  // int4 is used in the kernel to access data.
-  int64_t num_block_ext;
+  // There are 2 constrains when luanching the kernels
+  // 1. block_size_x * block_size_y <= prop.maxThreadsPerBlock
+  // 2. block_size_y * num_block_ext >= input_shape[2]
+  int64_t block_size_x = input_shape[3] / num_elements_per_thread;
+  int64_t max_block_size_y = prop.maxThreadsPerBlock / block_size_x;
+  int64_t block_size_y = min(input_shape[2], max_block_size_y);
+  int64_t num_block_ext = CeilDiv(input_shape[2], block_size_y);
 
-  if (input_shape[3] / num_elements_per_thread * 2 > prop.maxThreadsPerBlock) {
-    num_block_ext = input_shape[2];
-  } else {
-    int64_t num_elements_in_last_two_dimensions = input_shape[2] * input_shape[3];
-    num_block_ext = CeilDiv(num_elements_in_last_two_dimensions / num_elements_per_thread, prop.maxThreadsPerBlock);
-  }
-
-  dim3 block_size(static_cast<unsigned int>(input_shape[3] / num_elements_per_thread),
-                  static_cast<unsigned int>(CeilDiv(input_shape[2], num_block_ext)));
+  dim3 block_size(static_cast<unsigned int>(block_size_x), static_cast<unsigned int>(block_size_y));
   dim3 grid_size(static_cast<unsigned int>(num_block_ext),
                  static_cast<unsigned int>(input_shape[1]),
                  static_cast<unsigned int>(input_shape[0]));
@@ -244,14 +233,7 @@ bool CanDoTranspose4DParallelizeOneElementPerThread(const cudaDeviceProp& prop,
                                                     const std::vector<int64_t>& input_dims,
                                                     const std::vector<size_t>& permutations) {
   if (rank == 4) {
-    // The block size will be set based on the outer-most two dimensions of 4D tensor.
-    // the number threads per block will be calculated as below.
-    int64_t number_of_threads_per_block = input_dims[2] * input_dims[3];
-
-    if (input_dims[3] <= prop.maxThreadsPerBlock &&
-        number_of_threads_per_block >= prop.warpSize &&
-        // num_threads_per_block must be a multiple of warp size (32)
-        ((number_of_threads_per_block & (prop.warpSize - 1)) == 0)) {
+    if (input_dims[3] <= prop.maxThreadsPerBlock) {
       return true;
     }
   }
@@ -271,17 +253,16 @@ Status Transpose4DParallelizeOneElementPerThread(
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for transpose on CUDA. Element size was ",
                            element_size);
   }
+  
+  // There are 2 constrains when luanching the kernels
+  // 1. block_size_x * block_size_y <= prop.maxThreadsPerBlock
+  // 2. block_size_y * num_block_ext >= input_shape[2]
+  int64_t block_size_x = input_shape[3];
+  int64_t max_block_size_y = prop.maxThreadsPerBlock / block_size_x;
+  int64_t block_size_y = min(input_shape[2], max_block_size_y);
+  int64_t num_block_ext = CeilDiv(input_shape[2], block_size_y);
 
-  int64_t num_block_ext;
-  if (input_shape[3] * 2 > prop.maxThreadsPerBlock) {
-    num_block_ext = input_shape[2];
-  } else {
-    int64_t num_elements_in_last_two_dimensions = input_shape[2] * input_shape[3];
-    num_block_ext = CeilDiv(num_elements_in_last_two_dimensions, prop.maxThreadsPerBlock);
-  }
-
-  dim3 block_size(static_cast<unsigned int>(input_shape[3]),
-                  static_cast<unsigned int>(CeilDiv(input_shape[2], num_block_ext)));
+  dim3 block_size(static_cast<unsigned int>(block_size_x), static_cast<unsigned int>(block_size_y));
   dim3 grid_size(static_cast<unsigned int>(num_block_ext),
                  static_cast<unsigned int>(input_shape[1]),
                  static_cast<unsigned int>(input_shape[0]));
