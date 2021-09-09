@@ -12,6 +12,7 @@
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cuda/reduction/reduction_utils.cuh"
+#include "core/providers/cuda/cu_inc/unary_elementwise_impl.cuh"
 
 namespace onnxruntime {
 namespace cuda {
@@ -457,6 +458,32 @@ Status call_reduce_matrix_rows(cudaStream_t stream, const TIn* input, TOut* outp
   return Status::OK();
 }
 }  // namespace detail
+
+template <typename T>
+struct OP_Div {
+  __device__ __inline__ T operator()(const T& a) const {
+    return a / v_;
+  }
+
+  OP_Div(T v) : v_(v) {}
+
+  T v_;
+};
+
+template <typename T>
+void UnaryDiv(cudaStream_t stream, const T* input, T* output, T denominator, size_t count) {
+  UnaryElementWiseImpl(stream, input, output, OP_Div<T>(denominator), count);
+}
+
+#define INSTANTIATE_UNARY_DIV(T) \
+  template void UnaryDiv<T>(cudaStream_t stream, const T* input, T* output, T denominator, size_t count)
+INSTANTIATE_UNARY_DIV(half);
+INSTANTIATE_UNARY_DIV(float);
+INSTANTIATE_UNARY_DIV(double);
+#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+INSTANTIATE_UNARY_DIV(nv_bfloat16);
+#endif
+#undef INSTANTIATE_UNARY_DIV
 
 template <typename TIn, typename TOut>
 Status reduce_matrix_rows(cudaStream_t stream, const TIn* input, TOut* output, int m, int n, bool reset_initial_output) {
