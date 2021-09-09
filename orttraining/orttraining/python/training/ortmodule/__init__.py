@@ -45,11 +45,11 @@ except ImportError as e:
 
 # Verify whether PyTorch C++ extensions are already compiled
 
-#if not is_torch_cpp_extensions_installed(TORCH_CPP_DIR) and '-m' not in sys.argv:
-#    _FALLBACK_INIT_EXCEPTION = wrap_exception(ORTModuleInitException,
-#                                                        EnvironmentError(
-#                                                            f"ORTModule's extensions were not detected at '{TORCH_CPP_DIR}' folder. "
-#                                                            "Run `python -m torch_ort.configure` before using `ORTModule` frontend."))
+if not is_torch_cpp_extensions_installed(TORCH_CPP_DIR) and '-m' not in sys.argv:
+    _FALLBACK_INIT_EXCEPTION = wrap_exception(ORTModuleInitException,
+                                                        EnvironmentError(
+                                                            f"ORTModule's extensions were not detected at '{TORCH_CPP_DIR}' folder. "
+                                                            "Run `python -m torch_ort.configure` before using `ORTModule` frontend."))
 
 # Initalized ORT's random seed with pytorch's initial seed
 # in case user has set pytorch seed before importing ORTModule

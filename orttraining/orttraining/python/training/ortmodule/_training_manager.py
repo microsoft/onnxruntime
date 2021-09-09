@@ -14,7 +14,6 @@ from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_typ
 
 import torch
 import warnings
-from torch.utils.dlpack import from_dlpack, to_dlpack
 
 class TrainingManager(GraphExecutionManager):
     """Concrete instance of GraphExecutionManager that is able to manage the training model
@@ -44,8 +43,6 @@ class TrainingManager(GraphExecutionManager):
         # Run and return module outputs.
         execution_session.run_forward(forward_inputs, forward_outputs, state, gradient_accumulation_manager.cache)
         device = _utils.get_device_from_inputs(inputs, None)
-        if len(inputs) > 0:
-            _utils._check_same_device(device, "Input argument to forward", *inputs)
 
         user_outputs = gradient_accumulation_manager.extract_outputs_and_maybe_update_cache(forward_outputs, device)
 
