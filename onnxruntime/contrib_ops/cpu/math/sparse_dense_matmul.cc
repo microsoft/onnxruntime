@@ -346,10 +346,11 @@ struct SparseToSparseCoo {
 
 #endif // !defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
 
-Status SparseToSparseMatMul::Compute(OpKernelContext* ctx) const {
 #if defined(__i386__) || defined(_M_IX86) || defined(__wasm__) || defined(__ANDROID__)
+Status SparseToSparseMatMul::Compute(OpKernelContext*) const {
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Gemm sparse not supported on 32-bit builds");
 #else
+  Status SparseToSparseMatMul::Compute(OpKernelContext * ctx) const {
   const SparseTensor& input_A = *ctx->Input<SparseTensor>(0);
   const SparseTensor& input_B = *ctx->Input<SparseTensor>(1);
 
