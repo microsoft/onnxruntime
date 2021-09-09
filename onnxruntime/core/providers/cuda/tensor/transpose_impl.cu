@@ -153,6 +153,11 @@ Status Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim(
                   static_cast<unsigned int>(CeilDiv(input_shape[2], num_block_ext)));
   dim3 grid_size(static_cast<unsigned int>(input_shape[1] * num_block_ext), static_cast<unsigned int>(input_shape[0]));
 
+  std::cout << "Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim\n";
+  std::cout << "shape: [" << input_shape[0] << "," << input_shape[1] << "," << input_shape[2] << "," << input_shape[3] << "]\n";
+  std::cout << "block_size.x: " << block_size.x << " block_size.y: " << block_size.y
+            << " grid_size.x: " << grid_size.x << " grid_size.y: " << grid_size.y << "\n";
+
   switch (element_size) {
     case sizeof(int8_t):
       Transpose4DKernelParallelizeMultipleElementsPerThreadInInnermostDim<sizeof(int8_t)>
@@ -265,6 +270,11 @@ Status Transpose4DParallelizeOneElementPerThread(
 
   dim3 block_size(static_cast<unsigned int>(input_shape[3]), static_cast<unsigned int>(CeilDiv(input_shape[2], num_block_ext)));
   dim3 grid_size(static_cast<unsigned int>(input_shape[1] * num_block_ext), static_cast<unsigned int>(input_shape[0]));
+
+  std::cout << "Transpose4DKernelParallelizeOneElementPerThread\n";
+  std::cout << "shape: [" << input_shape[0] << "," << input_shape[1] << "," << input_shape[2] << "," << input_shape[3] << "]\n";
+  std::cout << "block_size.x: " << block_size.x << " block_size.y: " << block_size.y
+            << " grid_size.x: " << grid_size.x << " grid_size.y: " << grid_size.y << "\n";
 
   Transpose4DKernelParallelizeOneElementPerThread<<<grid_size, block_size, 0, stream>>>(
       input_strides, reinterpret_cast<const int8_t*>(input_data),
