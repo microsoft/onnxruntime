@@ -48,6 +48,16 @@ using TimePoint = std::chrono::high_resolution_clock::time_point;
 // TODO(Task:137) Remove 'using' statements from header files
 using common::Status;
 
+#define ORT_REMOVE_FILE_LOCATION
+
+#if defined(ORT_REMOVE_FILE_LOCATION)
+#define ORT_CURRENT_FILE ""
+#define ORT_CURRENT_LINE 0
+#else
+#define ORT_CURRENT_FILE __FILE__
+#define ORT_CURRENT_LINE __LINE__
+#endif
+
 #ifdef _WIN32
 #define ORT_UNUSED_PARAMETER(x) (x)
 #else
@@ -98,10 +108,10 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 
 // Capture where a message is coming from. Use __FUNCTION__ rather than the much longer __PRETTY_FUNCTION__
 #define ORT_WHERE \
-  ::onnxruntime::CodeLocation(__FILE__, __LINE__, __FUNCTION__)
+  ::onnxruntime::CodeLocation(ORT_CURRENT_FILE, ORT_CURRENT_LINE, __FUNCTION__)
 
 #define ORT_WHERE_WITH_STACK \
-  ::onnxruntime::CodeLocation(__FILE__, __LINE__, __PRETTY_FUNCTION__, ::onnxruntime::GetStackTrace())
+  ::onnxruntime::CodeLocation(ORT_CURRENT_FILE, ORT_CURRENT_LINE, __PRETTY_FUNCTION__, ::onnxruntime::GetStackTrace())
 
 #ifdef ORT_NO_EXCEPTIONS
 
@@ -228,25 +238,25 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(TypeName);           \
   ORT_DISALLOW_MOVE(TypeName)
 
-#define ORT_RETURN_IF_ERROR_SESSIONID(expr, session_id)                                      \
-  do {                                                                                       \
-    auto _status = (expr);                                                                   \
-    if ((!_status.IsOK())) {                                                                 \
-      ::onnxruntime::LogRuntimeError(session_id, _status, __FILE__, __FUNCTION__, __LINE__); \
-      return _status;                                                                        \
-    }                                                                                        \
+#define ORT_RETURN_IF_ERROR_SESSIONID(expr, session_id)                                                      \
+  do {                                                                                                       \
+    auto _status = (expr);                                                                                   \
+    if ((!_status.IsOK())) {                                                                                 \
+      ::onnxruntime::LogRuntimeError(session_id, _status, ORT_CURRENT_FILE, __FUNCTION__, ORT_CURRENT_LINE); \
+      return _status;                                                                                        \
+    }                                                                                                        \
   } while (0)
 
 #define ORT_RETURN_IF_ERROR_SESSIONID_(expr) ORT_RETURN_IF_ERROR_SESSIONID(expr, session_id_)
 #define ORT_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR_SESSIONID(expr, 0)
 
-#define ORT_THROW_IF_ERROR(expr)                                                    \
-  do {                                                                              \
-    auto _status = (expr);                                                          \
-    if ((!_status.IsOK())) {                                                        \
-      ::onnxruntime::LogRuntimeError(0, _status, __FILE__, __FUNCTION__, __LINE__); \
-      ORT_THROW(_status);                                                           \
-    }                                                                               \
+#define ORT_THROW_IF_ERROR(expr)                                                                    \
+  do {                                                                                              \
+    auto _status = (expr);                                                                          \
+    if ((!_status.IsOK())) {                                                                        \
+      ::onnxruntime::LogRuntimeError(0, _status, ORT_CURRENT_FILE, __FUNCTION__, ORT_CURRENT_LINE); \
+      ORT_THROW(_status);                                                                           \
+    }                                                                                               \
   } while (0)
 
 // use this macro when cannot early return
