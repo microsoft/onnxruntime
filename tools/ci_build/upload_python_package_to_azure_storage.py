@@ -4,6 +4,7 @@
 
 import os
 import argparse
+import warnings
 from azure.storage.blob import BlockBlobService, ContentSettings
 
 
@@ -44,12 +45,15 @@ def upload_whl(python_wheel_path, account_name, account_key, container_name):
         lines = f.read().splitlines()
 
     new_line = '<a href="{blobname}">{blobname}</a><br>'.format(blobname=blob_name_plus_replaced)
-    lines.append(new_line)
-    lines.sort()
+    if new_line not in lines:
+        lines.append(new_line)
+        lines.sort()
 
-    with open(download_path_to_html, 'w') as f:
-        for item in lines:
-            f.write("%s\n" % item)
+        with open(download_path_to_html, 'w') as f:
+            for item in lines:
+                f.write("%s\n" % item)
+    else:
+        warnings.warn("'{}' exists in {}. The html file is not updated.".format(new_line, download_path_to_html))
 
     content_settings = ContentSettings(content_type='text/html')
     block_blob_service.create_blob_from_path(
