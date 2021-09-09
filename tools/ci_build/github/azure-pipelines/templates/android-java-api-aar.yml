@@ -4,8 +4,28 @@ parameters:
   type: string
   default: 'Release'
 
+- name: buildSettings
+  displayName: Path to the build setting file
+  type: string
+  default: ''
+
+- name: includedOpsConfig
+  displayName: Path to the included ops config file
+  type: string
+  default: ''
+
+- name: artifactName
+  displayName: Artifact Name
+  type: string
+  default: ''
+
+- name: job_name_suffix
+  displayName: job name
+  type: string
+  default: ''
+
 jobs:
-- job: Android_Java_API_AAR_Packaging_Pipeline
+- job: Android_Java_API_AAR_Packaging_${{ parameters.job_name_suffix }}
   timeoutInMinutes: 120
   workspace:
     clean: all
@@ -39,13 +59,19 @@ jobs:
     displayName: Build Android AAR Packages
     inputs:
       script: |
+        set -e -x
         NDK_HOME=$(realpath $ANDROID_NDK_HOME)
+        mkdir $(Build.BinariesDirectory)/.build_settings
+        cp ${{parameters.buildSettings}} $(Build.BinariesDirectory)/.build_settings/build_settings.json
+        [ -f "${{parameters.includedOpsConfig}}" ] && \
+          cp ${{parameters.includedOpsConfig}} $(Build.BinariesDirectory)/.build_settings/include_ops_and_types.config
         docker run --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $ANDROID_HOME:/android_home \
           --volume $NDK_HOME:/ndk_home \
           --volume $(artifacts_directory):/home/onnxruntimedev/.artifacts \
+          --volume $(Build.BinariesDirectory)/.build_settings:/home/onnxruntimedev/.build_settings \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           -e BUILD_CONFIG=${{parameters.buildConfig}} \
@@ -57,4 +83,4 @@ jobs:
   - task: PublishBuildArtifacts@1
     inputs:
       pathtoPublish: '$(artifacts_directory)'
-      artifactName: 'onnxruntime-android-aar'
+      artifactName: '${{parameters.artifactName}}'
