@@ -425,7 +425,7 @@ static void CloseSession()
                               });
 }
 
-#if !defined(BUILD_INBOX)
+#if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
 static void WindowFunction(const wchar_t* window_operator_name, TensorKind kind) {
   std::vector<int64_t> scalar_shape = {};
   std::vector<int64_t> output_shape = {32};
@@ -475,7 +475,7 @@ static void WindowFunction(const wchar_t* window_operator_name, TensorKind kind)
 }
 #endif
 
-#if !defined(BUILD_INBOX)
+#if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
 static void DiscreteFourierTransform(bool is_onesided = false) {
   std::vector<int64_t> shape = {1, 5};
   std::vector<int64_t> output_shape = {1, 5, 2};
@@ -556,7 +556,7 @@ static auto MakeThreeTones(size_t signal_size, size_t sample_rate) {
   return middle_c;
 }
 
-#if !defined(BUILD_INBOX)
+#if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
 static void STFT(size_t batch_size, size_t signal_size, size_t dft_size,
     size_t hop_size, size_t sample_rate, bool is_onesided = false) {
   auto n_dfts = static_cast<size_t>(1 + floor((signal_size - dft_size) / hop_size));
@@ -630,7 +630,7 @@ static void STFT(size_t batch_size, size_t signal_size, size_t dft_size,
 #endif
 
 static void ModelBuilding_MelWeightMatrix() {
-#if !defined(BUILD_INBOX)
+#if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
   std::vector<int64_t> output_shape = {INT64(9), INT64(8)};
   auto builder =
     LearningModelBuilder::Create(13)
@@ -663,7 +663,7 @@ static void ModelBuilding_MelWeightMatrix() {
 #endif
 }
 
-#if !defined(BUILD_INBOX)
+#if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
 static void MelSpectrogramOnThreeToneSignal(
     size_t batch_size, size_t signal_size, size_t window_size, size_t dft_size,
     size_t hop_size, size_t n_mel_bins, size_t sampling_rate) {
@@ -873,14 +873,14 @@ static void ModelBuilding_ConstantMatmul() {
 }
 
 static void ModelBuilding_DiscreteFourierTransform() {
-#if !defined(BUILD_INBOX)
+#if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
   DiscreteFourierTransform(false /*onesided*/);
   DiscreteFourierTransform(true /*onesided*/);
 #endif
 }
 
 static void ModelBuilding_DiscreteFourierTransformInverseIdentity() {
-#if !defined(BUILD_INBOX)
+#if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
   std::vector<int64_t> shape = {1, 5};
   std::vector<int64_t> output_shape = {1, shape[1], 2};
 
@@ -917,28 +917,28 @@ static void ModelBuilding_DiscreteFourierTransformInverseIdentity() {
 }
 
 static void ModelBuilding_HannWindow() {
-#if !defined(BUILD_INBOX)
+#if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
   WindowFunction(L"HannWindow", TensorKind::Float);
   WindowFunction(L"HannWindow", TensorKind::Double);
 #endif
 }
 
 static void ModelBuilding_HammingWindow() {
-#if !defined(BUILD_INBOX)
+#if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
   WindowFunction(L"HammingWindow", TensorKind::Float);
   WindowFunction(L"HammingWindow", TensorKind::Double);
 #endif
 }
 
 static void ModelBuilding_BlackmanWindow() {
-#if !defined(BUILD_INBOX)
+#if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
   WindowFunction(L"BlackmanWindow", TensorKind::Float);
   WindowFunction(L"BlackmanWindow", TensorKind::Double);
 #endif
 }
 
 static void ModelBuilding_STFT() {
-#if !defined(BUILD_INBOX)
+#if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
   size_t batch_size = 1;
   size_t sample_rate = 8192;
   float signal_duration_in_seconds = 5.f;
@@ -953,7 +953,7 @@ static void ModelBuilding_STFT() {
 }
 
 static void ModelBuilding_MelSpectrogramOnThreeToneSignal() {
-#if !defined(BUILD_INBOX)
+#if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
   size_t batch_size = 1;
   size_t sample_rate = 8192;
   float signal_duration_in_seconds = 5.f;

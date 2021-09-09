@@ -14,6 +14,7 @@ jobs:
       --build_nodejs
       --build_objc
       --enable_language_interop_ops
+      --ms_experimental
     # Enable unreleased onnx opsets in CI builds
     # This facilitates testing the implementation for the new opsets
     AllowReleasedOpsetOnly: '0'
