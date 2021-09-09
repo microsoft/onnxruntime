@@ -121,6 +121,9 @@ Status SequenceConstructionFusion::ApplyImpl(Graph& graph, bool& modified, int g
                                              {loop_node.MutableOutputDefs()},
                                              nullptr,
                                              onnxruntime::kMSDomain);
+
+    sequence_construct.SetExecutionProviderType(sequence_empty_node.GetExecutionProviderType());
+
     // Adjust input and output edges
 
       auto target_idx = sequence_construct.Index();

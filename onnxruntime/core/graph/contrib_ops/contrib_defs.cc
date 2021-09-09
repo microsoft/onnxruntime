@@ -3210,5 +3210,98 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
 
   RegisterQuantizationSchemas();
 }
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(FusedConv)
+    .SetDomain(kMSDomain)
+    .SinceVersion(1)
+    .SetDoc(R"DOC(
+The fused convolution operator schema is the same as Conv besides it includes an attribute
+activation.)DOC")
+    .Attr(
+        "auto_pad",
+        "",
+        AttributeProto::STRING,
+        std::string("NOTSET"))
+    .Attr(
+        "kernel_shape",
+        "",
+        AttributeProto::INTS,
+        OPTIONAL_VALUE)
+    .Attr(
+        "dilations",
+        "",
+        AttributeProto::INTS,
+        OPTIONAL_VALUE)
+    .Attr(
+        "strides",
+        "",
+        AttributeProto::INTS,
+        OPTIONAL_VALUE)
+    .Attr(
+        "pads",
+        "",
+        AttributeProto::INTS,
+        OPTIONAL_VALUE)
+    .Attr(
+        "group",
+        "",
+        AttributeProto::INT,
+        static_cast<int64_t>(1))
+    .Attr(
+        "activation",
+        "",
+        AttributeProto::STRING,
+        OPTIONAL_VALUE)
+    .Attr(
+        "activation_params",
+        "",
+        AttributeProto::FLOATS,
+        OPTIONAL_VALUE)
+    .Input(
+        0,
+        "X",
+        "",
+        "T")
+    .Input(
+        1,
+        "W",
+        "",
+        "T")
+    .Input(
+        2,
+        "B",
+        "",
+        "T",
+        OpSchema::Optional)
+    .Input(
+        3,
+        "Z",
+        "",
+        "T",
+        OpSchema::Optional)
+    .Output(
+        0,
+        "Y",
+        "",
+        "T")
+    .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors")
+        .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+  const auto* attr_proto = ctx.getAttribute("dtype");
+  auto elem_type = TensorProto::FLOAT;
+  if (nullptr != attr_proto) {
+    if (!attr_proto->has_i()) {
+      fail_type_inference(
+          "Attribute dtype should be of integer type and specify a type.");
+    }
+    auto attr_value = attr_proto->i();
+    elem_type = static_cast<TensorProto_DataType>(attr_value);
+  }
+  ctx.getOutputType(0)
+      ->mutable_sequence_type()
+      ->mutable_elem_type()
+      ->mutable_tensor_type()
+      ->set_elem_type(elem_type);
+        }));
+
 }  // namespace contrib
 }  // namespace onnxruntime
