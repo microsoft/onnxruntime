@@ -124,7 +124,7 @@ async function initializeSession(
           preloadModelData ? ` [preloaded(${preloadModelData.byteLength})]` : ''}`);
 
   const profilerConfig = profile ? {maxNumberEvents: 65536} : undefined;
-  const sessionConfig = {executionProviders: [backendHint], profiler: profilerConfig};
+  const sessionConfig = {executionProviders: [backendHint], profiler: profilerConfig, enableProfiling: profile};
   let session: ort.InferenceSession;
 
   try {

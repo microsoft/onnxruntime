@@ -131,7 +131,7 @@ Status SelectorActionTransformer::ApplySaved(Graph& graph, bool& modified, const
   const auto& actions_map = selectors_and_actions_.ActionsMap();
   const auto actions_map_end = actions_map.cend();
 
-  for (const auto entry : saved_actions) {
+  for (const auto& entry : saved_actions) {
     auto action_iter = actions_map.find(entry.action_name);
     if (action_iter == actions_map_end) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Missing action ", entry.action_name, " for transformer ", Name());

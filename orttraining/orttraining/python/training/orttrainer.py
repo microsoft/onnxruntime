@@ -120,8 +120,8 @@ class ORTTrainer(object):
             ort_trainer = ORTTrainer(model, model_desc, optim_config, loss_fn)
     """
 
-    def __init__(self, model, model_desc, optim_config, 
-                 loss_fn=None, 
+    def __init__(self, model, model_desc, optim_config,
+                 loss_fn=None,
                  options=None):
         assert model is not None, "'model' is required and must be either a 'torch.nn.Module' or ONNX model"
         assert isinstance(model_desc, dict), "'model_desc' must be a 'dict'"
@@ -532,13 +532,12 @@ class ORTTrainer(object):
         sample_inputs_copy = copy.deepcopy(sample_inputs)
 
         # Handle contrib OPs support
-        from onnxruntime.training import register_custom_ops_pytorch_exporter
+        from onnxruntime.tools import pytorch_export_contrib_ops
         if self.options._internal_use.enable_onnx_contrib_ops:
-            # Enable contrib ops export from PyTorch
-            register_custom_ops_pytorch_exporter.register_custom_op()
+            pytorch_export_contrib_ops.register()
         else:
-            # Unregister contrib ops, if they were registered in previous calls
-            register_custom_ops_pytorch_exporter.unregister_custom_op()
+            # Unregister in case they were registered in previous calls.
+            pytorch_export_contrib_ops.unregister()
 
         # Export torch.nn.Module to ONNX
         torch.onnx._export(model, tuple(sample_inputs_copy), f,
@@ -566,9 +565,9 @@ class ORTTrainer(object):
 
         return onnx_model
 
-    def _create_ort_training_session(self, 
-                                     optimizer_state_dict={}, 
-                                     session_options=None, 
+    def _create_ort_training_session(self,
+                                     optimizer_state_dict={},
+                                     session_options=None,
                                      provider_options=None):
         # Validating frozen_weights names
         unused_frozen_weights = [n for n in self.options.utils.frozen_weights\
@@ -622,7 +621,7 @@ class ORTTrainer(object):
 
         self.options.distributed.horizontal_parallel_size = max(self.options.distributed.horizontal_parallel_size, 1)
         self.options.distributed.data_parallel_size = self.options.distributed.world_size // self.options.distributed.horizontal_parallel_size
-        
+
         # TrainingParameters
         ort_parameters = ort.TrainingParameters()
         ort_parameters.loss_output_name = loss_name
@@ -753,7 +752,7 @@ class ORTTrainer(object):
         # Create training session used by train_step
         # pass all optimizer states to the backend
         self._create_ort_training_session(optimizer_state_dict,
-                                          session_options=session_options, 
+                                          session_options=session_options,
                                           provider_options=provider_options)
 
         # Update model description to update dtype when mixed precision is enabled
@@ -880,8 +879,8 @@ class ORTTrainer(object):
                 # This prevents CPU -> GPU -> CPU copies between frontend and backend
                 target_device = 'cpu'
             # the self.options.device may be a device that pytorch does not recognize.
-            # in that case, we temporary prefer to leave the input/output on CPU and let ORT session 
-            # to move the data between device and host. 
+            # in that case, we temporary prefer to leave the input/output on CPU and let ORT session
+            # to move the data between device and host.
             # so output will be on the same device as input.
             try:
                 test_pt_device = torch.device(target_device)
@@ -889,7 +888,7 @@ class ORTTrainer(object):
                 #in this case, input/output must on CPU
                 assert(input.device.type == 'cpu')
                 target_device = 'cpu'
-            
+
             torch_tensor = torch.zeros(output_desc.shape, device=target_device,
                                        dtype=output_desc.dtype_amp if output_desc.dtype_amp else output_desc.dtype)
             iobinding.bind_output(output_desc.name, torch_tensor.device.type, _utils.get_device_index(target_device),
@@ -1282,7 +1281,7 @@ class ORTTrainer(object):
         if self._training_session:
             current_state_dict = self.state_dict()
             if strict:
-                # for Zero enabled, the current trainer might not have the complete state, and we must allow 
+                # for Zero enabled, the current trainer might not have the complete state, and we must allow
                 # extra keys to be present in the state dict
                 allow_unexpected = True if self.options.distributed.deepspeed_zero_optimization.stage > 0 else False
                 _check_key_mismatch(current_state_dict, state_dict, allow_unexpected)
@@ -1360,7 +1359,7 @@ class ORTTrainer(object):
     def _aggregation_required(self, loaded_trainer_options):
         """Checks if aggregation is required for the loading the state_dict into the ORTTrainer"""
 
-        # To load states in the backend, aggregation is required for every ZeRO 
+        # To load states in the backend, aggregation is required for every ZeRO
         # or Megatron checkpoint
         return loaded_trainer_options[_utils.state_dict_trainer_options_zero_stage_key()] > 0 or \
                 loaded_trainer_options[_utils.state_dict_trainer_options_horizontal_parallel_size_key()] > 1

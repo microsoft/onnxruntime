@@ -23,6 +23,19 @@ except Exception as e:
         pass
     raise
 
+def is_all_or_nothing_fallback_enabled(model, policy=None):
+    from onnxruntime.training.ortmodule import ORTMODULE_FALLBACK_POLICY
+    from onnxruntime.training.ortmodule._fallback import _FallbackPolicy
+
+    if not policy:
+        policy = _FallbackPolicy.FALLBACK_DISABLE
+
+    fallback_on_env = policy in ORTMODULE_FALLBACK_POLICY
+    fallback_on_model = False
+    if model:
+        fallback_on_model = policy in model._torch_module._execution_manager(is_training=True)._fallback_manager.policy or\
+                            policy in model._torch_module._execution_manager(is_training=False)._fallback_manager.policy
+    return fallback_on_env or fallback_on_model
 
 def assert_model_outputs(output_a, output_b, verbose=False, rtol=1e-7, atol=0):
     r"""Asserts whether output_a and output_b difference is within specified tolerance

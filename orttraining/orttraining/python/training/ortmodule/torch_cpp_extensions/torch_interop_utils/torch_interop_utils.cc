@@ -3,17 +3,16 @@
 #include <torch/extension.h>
 #include <torch/csrc/autograd/function.h>
 #include <torch/csrc/autograd/variable.h>
-#include <torch/csrc/autograd/functions/accumulate_grad.h>
 
-// In Torch forward run (e.g. THPFunction_apply), ctx of type THPFunction* (which is also a PyObject*)
+// In Torch forward run (e.g. THPVariable_apply), ctx of type THPFunction* (which is also a PyObject*)
 // is created. The ctx is used to run user-defined forward function and backward function as the first
 // parameter. The same time, a cdata of type std::shared_ptr<PyNode> is created, cdata is owned by:
-//    a). forward run output tensors as grad_fn_ property. (The full hierarchy is: Tensor owns 
+//    a). forward run output tensors as grad_fn_ property. (The full hierarchy is: Tensor own 
 //        shared_pointer<TensorImpl>; TensorImpl owns std::unique_ptr<AutogradMeta>; AutogradMeta
 //        manages grad_/grad_fn_/grad_accumulator_. Among them, grad_fn_ is std::shared_ptr<PyNode>,
-//        e.g, the so called gradient function.)
-//    b). the consumer operator of forward run outputs, will let its own PyNode/Node (gradident function)
-//        owns the grad_fn_ (of type std::shared_ptr<PyNode>) of all inputs that require grad.
+// the so called gradient function.)
+//    b). the consumer operator of forward run outputs, will let its own PyNode/Node own the grad_fn_
+//        (of type std::shared_ptr<PyNode>) of all inputs that require grad.
 // BUT, if we run torch computation within PythonOp, b) is lost. SO, for some cases, where forward outputs
 // are not used and freed before backward function runs, the grad_fn_ (std::shared_ptr<PyNode>) references
 // in a) will be released. Without b)'s reference, grad_fn_ release PyNode as reference count reach 0;

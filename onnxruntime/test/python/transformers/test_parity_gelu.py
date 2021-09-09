@@ -74,7 +74,15 @@ def get_output_names():
     return outputs
 
 
-def run(batch_size, float16, optimized, hidden_size, device, test_cases, formula=0, sequence_length=2, fp32_gelu_op=True):
+def run(batch_size,
+        float16,
+        optimized,
+        hidden_size,
+        device,
+        test_cases,
+        formula=0,
+        sequence_length=2,
+        fp32_gelu_op=True):
     test_name = f"device={device}, float16={float16}, optimized={optimized}, batch_size={batch_size}, sequence_length={sequence_length}, hidden_size={hidden_size}, formula={formula}, fp32_gelu_op={fp32_gelu_op}"
     print(f"\nTesting: {test_name}")
 
@@ -91,13 +99,25 @@ def run(batch_size, float16, optimized, hidden_size, device, test_cases, formula
     if optimized:
         optimized_onnx_path = './temp/gelu_{}_opt_{}.onnx'.format(formula, "fp16" if float16 else "fp32")
         use_gpu = float16 and not fp32_gelu_op
-        optimize_onnx(onnx_model_path, optimized_onnx_path, Gelu.get_fused_op(formula), use_gpu=use_gpu, opt_level=2 if use_gpu else None)
+        optimize_onnx(onnx_model_path,
+                      optimized_onnx_path,
+                      Gelu.get_fused_op(formula),
+                      use_gpu=use_gpu,
+                      opt_level=2 if use_gpu else None)
         onnx_path = optimized_onnx_path
     else:
         onnx_path = onnx_model_path
 
-    num_failure = run_parity(model, onnx_path, batch_size, hidden_size, sequence_length, float16, device, optimized,
-                             test_cases, verbose=False)
+    num_failure = run_parity(model,
+                             onnx_path,
+                             batch_size,
+                             hidden_size,
+                             sequence_length,
+                             float16,
+                             device,
+                             optimized,
+                             test_cases,
+                             verbose=False)
 
     # clean up onnx file
     os.remove(onnx_model_path)
@@ -116,7 +136,15 @@ class TestGeluParity(unittest.TestCase):
         self.formula_to_test = [0, 1, 2, 3, 4, 5]
         self.formula_must_pass = [0, 1, 3, 4, 5]  # formula 2 cannot pass precision test.
 
-    def run_test(self, batch_size, float16, optimized, hidden_size, device, formula, enable_assert=True, fp32_gelu_op=True):
+    def run_test(self,
+                 batch_size,
+                 float16,
+                 optimized,
+                 hidden_size,
+                 device,
+                 formula,
+                 enable_assert=True,
+                 fp32_gelu_op=True):
         if float16 and device.type == 'cpu':  # CPU does not support FP16
             return
         num_failure, test_name = run(batch_size, float16, optimized, hidden_size, device, self.test_cases, formula,
@@ -151,7 +179,6 @@ class TestGeluParity(unittest.TestCase):
                           formula=formula,
                           enable_assert=formula in self.formula_must_pass,
                           fp32_gelu_op=False)
-
 
     def test_cpu(self):
         cpu = torch.device('cpu')

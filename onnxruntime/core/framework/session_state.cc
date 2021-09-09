@@ -878,7 +878,7 @@ static Status GetSubGraphSessionStatesOrtFormat(
     for (const auto& name_to_subgraph_session_state : session_states) {
       const std::string& attr_name = name_to_subgraph_session_state.first;
       SessionState& subgraph_session_state = *name_to_subgraph_session_state.second;
-      auto graph_id = builder.CreateString(experimental::utils::GetSubGraphId(node_idx, attr_name));
+      auto graph_id = builder.CreateString(experimental::utils::GetSubgraphId(node_idx, attr_name));
       flatbuffers::Offset<fbs::SessionState> session_state;
       ORT_RETURN_IF_ERROR(
           subgraph_session_state.SaveToOrtFormat(builder, session_state));
@@ -952,15 +952,9 @@ Status SessionState::CreateSubgraphSessionState() {
 #if defined(ENABLE_ORT_FORMAT_LOAD)
 Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_state,
                                        const KernelRegistryManager& kernel_registry_manager) {
-  const auto* const fbs_kcis = fbs_session_state.kernels();
-  ORT_RETURN_IF(nullptr == fbs_kcis, "Kernel create info is null. Invalid ORT format model.");
-  const auto* const node_indices = fbs_kcis->node_indices();
-  const auto* const kernel_def_hashes = fbs_kcis->kernel_def_hashes();
-  ORT_RETURN_IF(nullptr == node_indices, "Kernel create info node indices are null. Invalid ORT format model.");
-  ORT_RETURN_IF(nullptr == kernel_def_hashes, "Kernel create info hashes are null. Invalid ORT format model.");
-  ORT_RETURN_IF_NOT(node_indices->size() == kernel_def_hashes->size(),
-                    "Size mismatch for kernel create info node indexes and hashes. Invalid ORT format model.",
-                    node_indices->size(), " != ", kernel_def_hashes->size());
+  using experimental::utils::FbsSessionStateViewer;
+  const FbsSessionStateViewer fbs_session_state_viewer{fbs_session_state};
+  ORT_RETURN_IF_ERROR(fbs_session_state_viewer.Validate());
 
   auto add_kernel_by_hash =
       [&kernel_registry_manager, this](const Node& node, uint64_t hash) {
@@ -976,19 +970,18 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
   const auto& compiled_kernel_hashes = GetCompiledKernelHashes();
 
   // process the nodes that existed when the model was created
-  for (flatbuffers::uoffset_t i = 0; i < node_indices->size(); i++) {
-    const auto node_idx = node_indices->Get(i);
-    const auto kernel_hash = kernel_def_hashes->Get(i);
+  for (FbsSessionStateViewer::Index i = 0, end = fbs_session_state_viewer.GetNumNodeKernelInfos(); i < end; ++i) {
+    const auto node_kernel_info = fbs_session_state_viewer.GetNodeKernelInfo(i);
 
-    Node* const node = graph_.GetNode(node_idx);
+    Node* const node = graph_.GetNode(node_kernel_info.node_index);
     if (node == nullptr) {
       // this is OK if we have compiled kernels and the original node was replaced. if not the model is invalid.
       ORT_RETURN_IF(compiled_kernel_hashes.empty(),
-                    "Can't find node with index ", node_idx, ". Invalid ORT format model.");
+                    "Can't find node with index ", node_kernel_info.node_index, ". Invalid ORT format model.");
       continue;
     }
 
-    ORT_RETURN_IF_ERROR(add_kernel_by_hash(*node, kernel_hash));
+    ORT_RETURN_IF_ERROR(add_kernel_by_hash(*node, node_kernel_info.kernel_def_hash));
   }
 
   // lookup the hashes for any nodes we compiled. the nodes indexes for compiled nodes are not in node_indices
@@ -1006,27 +999,12 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
   }
 
   if (!subgraph_session_states_.empty()) {
-    const auto* const fbs_sub_graph_session_states = fbs_session_state.sub_graph_session_states();
-    ORT_RETURN_IF(nullptr == fbs_sub_graph_session_states,
-                  "SessionState for subgraphs is null. Invalid ORT format model.");
+    for (const auto& [node_idx, session_states] : subgraph_session_states_) {
+      for (const auto& [attr_name, subgraph_session_state] : session_states) {
+        const fbs::SessionState* fbs_subgraph_session_state;
+        ORT_RETURN_IF_ERROR(fbs_session_state_viewer.GetSubgraphSessionState(node_idx, attr_name, fbs_subgraph_session_state));
 
-    for (const auto& pair : subgraph_session_states_) {
-      const auto node_idx = pair.first;
-      const auto& session_states = pair.second;
-      for (const auto& name_to_subgraph_session_state : session_states) {
-        const std::string& attr_name = name_to_subgraph_session_state.first;
-        SessionState& subgraph_session_state = *name_to_subgraph_session_state.second;
-
-        // Use the graphid as the key to search the for the fbs::SubGraphSessionState
-        const std::string key = experimental::utils::GetSubGraphId(node_idx, attr_name);
-        const auto* const fbs_sub_graph_ss = fbs_sub_graph_session_states->LookupByKey(key.c_str());
-        ORT_RETURN_IF(nullptr == fbs_sub_graph_ss,
-                      "Subgraph SessionState entry for ", key, " is missing. Invalid ORT format model.");
-
-        const auto* const fbs_sub_session_state = fbs_sub_graph_ss->session_state();
-        ORT_RETURN_IF(nullptr == fbs_sub_session_state,
-                      "Subgraph SessionState for ", key, " is null. Invalid ORT format model.");
-        ORT_RETURN_IF_ERROR(subgraph_session_state.LoadFromOrtFormat(*fbs_sub_session_state, kernel_registry_manager));
+        ORT_RETURN_IF_ERROR(subgraph_session_state->LoadFromOrtFormat(*fbs_subgraph_session_state, kernel_registry_manager));
       }
     }
   }
@@ -1101,13 +1079,141 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
                                   remove_initializers, constant_initializers_use_count);
 }
 
+static Status Index(const OrtValueNameIdxMap& ort_value_name_idx_map,
+                    const OrtValueName& name,
+                    /*out*/ OrtValueIndex& value) {
+  return ort_value_name_idx_map.GetIdx(name, value);
+}
+
+static bool IsNodeWhereNodeInputsAreSameAsExplicitSubgraphInputs(const Node& node) {
+  const auto& op_type = node.OpType();
+  int since_version = node.SinceVersion();
+
+  // TODO: Re-visit this method if more subgraph ops get accepted into ONNX
+
+  // At the time of writing, there are only 3 ops in ONNX that have subgraphs
+  // 1) If
+  // 2) Loop
+  // 3) Scan
+
+  // `If` - The op doesn't have explicit subgraph inputs (return false)
+  // `Loop`- In all opset versions of Loop (at the time of writing) the node inputs
+  // have a one-to-one mapping between them and the explicit subgraph inputs
+  // of the subgraph held in the Loop (return true)
+  // `Scan` - Except opset 8 version of Scan (at the time of writing), all other
+  // versions have the same one-to-one mapping as Loop (return true for opset > 8)
+
+  return (op_type == "Loop" || (op_type == "Scan" && since_version >= 9));
+}
+
+// The following method accumulates the locations of all inputs (implicit and explicit)
+// to a control flow node at the current graph level. This information will be used in
+// the allocation planner while determining the location of such inputs in the subgraph.
+// This method will not be called for the main graph (there is no concept of "outer scope" for the main graph).
+static Status OuterScopeNodeArgLocationAccumulator(const SequentialExecutionPlan& plan,
+                                                   const OrtValueNameIdxMap& ort_value_name_to_idx_map,
+                                                   const Node& parent_node,
+                                                   const GraphViewer& subgraph,
+                                                   /*out*/ std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_arg_to_location_map) {
+  // Process implicit inputs to the node
+  auto process_implicit_input = [&plan, &ort_value_name_to_idx_map,
+                                 &outer_scope_arg_to_location_map](const NodeArg& input, size_t /*arg_idx*/) {
+    const auto& name = input.Name();
+    OrtValueIndex index = -1;
+    ORT_RETURN_IF_ERROR(Index(ort_value_name_to_idx_map, name, index));
+    outer_scope_arg_to_location_map.insert({name, plan.GetLocation(index)});
+    return Status::OK();
+  };
+
+  ORT_RETURN_IF_ERROR(Node::ForEachWithIndex(parent_node.ImplicitInputDefs(), process_implicit_input));
+
+  // Process explicit inputs to the node
+  // (they are passed through as explicit subgraph inputs and hence requires a re-mapping of names
+  // to their corresponding names in the inner nested subgraph(s) held by the node)
+  const auto& subgraph_inputs = subgraph.GetInputs();
+
+  auto process_input = [&plan, &ort_value_name_to_idx_map, &outer_scope_arg_to_location_map,
+                        &subgraph_inputs](const NodeArg& input, size_t arg_idx) {
+    const auto& name = input.Name();
+    OrtValueIndex index = -1;
+    ORT_RETURN_IF_ERROR(Index(ort_value_name_to_idx_map, name, index));
+
+    // Store the location of the outer scope value in the map using the subgraph input as the key
+    // as that will be the referenced name in the subgraph (i.e.) re-mapping of names is required
+    outer_scope_arg_to_location_map.insert({subgraph_inputs[arg_idx]->Name(), plan.GetLocation(index)});
+
+    return Status::OK();
+  };
+
+  if (IsNodeWhereNodeInputsAreSameAsExplicitSubgraphInputs(parent_node)) {
+    return Node::ForEachWithIndex(parent_node.InputDefs(), process_input);
+  }
+
+  return Status::OK();
+}
+
+// We accumulate all nested subgraph(s) kernel create info maps relative to the current depth
+// (i.e.) if we were on the first nested subgraph, we accumulate information from ALL the
+// nested subgraphs within it.
+// This information is necessary to plan the right location for initializers
+// in a given level because they could be used in one of the nested subgraphs relative to the
+// current level (not just within the same level or even one level deep).
+// Since we need to package up information from multiple levels of nested subgraphs, the key we use
+// is "{key_for_node_containing_subgraph} + current_depth + node_index_containing_the_subgraph + attribute_name".
+// {key_for_node_containing_subgraph} is empty for the main graph.
+
+// For example, if we want to store information corresponding to a nested subgraph wrt to the main graph and
+// the node index  of the node in the main graph was 2 and the attribute containing the specific
+// subgraph was "then_branch", the key would be depth + node_index + attribute = 0 + 2 + then_branch
+// = "02then_branch".
+
+// If that subgraph contained another subgraph at node index 1, then the key would be,
+// {02then_branch} + 1 + 1 + "then_branch" = "02then_branch11then_branch".
+
+static void AccumulateAllNestedSubgraphsInfo(
+    const SessionState& session_state,
+    const std::string& subgraph_kernel_create_info_map_key_base,
+    size_t graph_depth,
+    /*out*/ SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps) {
+  for (const auto& entry : session_state.GetSubgraphSessionStateMap()) {
+    auto node_index = entry.first;
+
+    for (const auto& name_to_subgraph_session_state : entry.second) {
+      const auto& subgraph_attr_name = name_to_subgraph_session_state.first;
+
+      SessionState& subgraph_session_state = *name_to_subgraph_session_state.second;
+
+      const auto& local_subgraph_kernel_create_info_map_key =
+          NestedSubgraphInfoDetails::ComposeNestedSubgraphInfoKeyHelper(subgraph_kernel_create_info_map_key_base,
+                                                                        graph_depth, node_index, subgraph_attr_name);
+
+      // The end user is never likely to see an error with the following line.
+      // Points to an internal processing error if we hit this.
+      ORT_ENFORCE(subgraphs_kernel_create_info_maps.find(local_subgraph_kernel_create_info_map_key) ==
+                  subgraphs_kernel_create_info_maps.end());
+
+      subgraphs_kernel_create_info_maps.insert({local_subgraph_kernel_create_info_map_key,
+                                                subgraph_session_state.GetKernelCreateInfoMap()});
+
+      // Recurse into the subgraph session state
+      AccumulateAllNestedSubgraphsInfo(subgraph_session_state,
+                                       local_subgraph_kernel_create_info_map_key,
+                                       graph_depth + 1, subgraphs_kernel_create_info_maps);
+    }
+  }
+}
+
 Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                                               KernelRegistryManager& kernel_registry_manager,
                                               _In_opt_ const Node* parent_node,
                                               const SessionOptions& session_options,
                                               bool remove_initializers,
-                                              std::unordered_map<std::string, size_t>& constant_initializers_use_count) {
-  CreateGraphInfo();
+                                              std::unordered_map<std::string, size_t>& constant_initializers_use_count,
+                                              const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
+                                              bool graph_info_already_created) {
+  if (!graph_info_already_created) {
+    CreateGraphInfo();
+  }
 
   // ignore any outer scope args we don't know about. this can happen if a node contains multiple subgraphs.
   std::vector<const NodeArg*> valid_outer_scope_node_args;
@@ -1124,9 +1230,14 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                   });
   }
 
+  SubgraphsKernelCreateInfoMaps subgraphs_kernel_create_info_maps;
+  AccumulateAllNestedSubgraphsInfo(*this, "", 0, subgraphs_kernel_create_info_maps);
+
   SequentialPlannerContext context(session_options.execution_mode, session_options.execution_order, session_options.enable_mem_reuse);
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
                                                     execution_providers_, kernel_create_info_map_,
+                                                    subgraphs_kernel_create_info_maps,
+                                                    outer_scope_node_arg_to_location_map,
                                                     ort_value_name_idx_map_, context, p_seq_exec_plan_));
   //Record the allocation plan
 
@@ -1218,8 +1329,19 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       SessionState& subgraph_session_state = *entry->second;
 
       // recurse
+
+      // We need to create graph info for the subgraphs because information accumulated there
+      // is used in OuterScopeNodeArgLocationAccumulator()
+      subgraph_session_state.CreateGraphInfo();
+
+      std::unordered_map<OrtValueName, OrtMemoryInfo> subgraph_outer_scope_node_arg_to_location_map;
+      ORT_RETURN_IF_ERROR(OuterScopeNodeArgLocationAccumulator(*p_seq_exec_plan_, GetOrtValueNameIdxMap(),
+                                                               node,
+                                                               subgraph_session_state.GetGraphViewer(),
+                                                               subgraph_outer_scope_node_arg_to_location_map));
       ORT_RETURN_IF_ERROR(subgraph_session_state.FinalizeSessionStateImpl(
-          graph_location, kernel_registry_manager, &node, subgraph_session_options, remove_initializers, constant_initializers_use_count));
+          graph_location, kernel_registry_manager, &node, subgraph_session_options, remove_initializers,
+          constant_initializers_use_count, subgraph_outer_scope_node_arg_to_location_map, true));
 
       // setup all the info for handling the feeds and fetches used in subgraph execution
       auto* p_op_kernel = GetMutableKernel(node.Index());

@@ -588,11 +588,6 @@ def is_ubuntu_1604():
     return dist == 'Ubuntu' and ver.startswith('16.04')
 
 
-def is_ubuntu():
-    dist, _ = get_linux_distro()
-    return dist == 'Ubuntu'
-
-
 def get_config_build_dir(build_dir, config):
     # build directory per configuration
     return os.path.join(build_dir, config)
@@ -1441,6 +1436,9 @@ def run_training_python_frontend_tests(cwd):
 
     run_subprocess([
         sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_checkpoint_functions.py'], cwd=cwd)
+    # Not technically training related, but it needs torch to be installed.
+    run_subprocess([
+        sys.executable, '-m', 'pytest', '-sv', 'test_pytorch_export_contrib_ops.py'], cwd=cwd)
 
 
 def run_training_python_frontend_e2e_tests(cwd):
@@ -1724,7 +1722,7 @@ def build_python_wheel(
         elif use_armnn:
             args.append('--use_armnn')
         elif use_dml:
-            args.append('--use_dml')
+            args.append('--wheel_name_suffix=directml')
 
         run_subprocess(args, cwd=cwd)
 
@@ -2020,6 +2018,10 @@ def main():
     if args.use_openvino == "VAD-F_FP32":
         args.test = False
 
+    # Disabling unit tests for GPU and MYRIAD on nuget creation
+    if args.use_openvino != "CPU_FP32" and args.build_nuget:
+        args.test = False
+
     configs = set(args.config)
 
     # setup paths and directories
@@ -2215,8 +2217,8 @@ def main():
                         args.eager_customop_header, args.eager_customop_module, True)
 
             gen_ort_ops()
-        if args.enable_external_custom_op_schemas and not is_ubuntu():
-            raise BuildError("Registering external custom op schemas is only supported on Ubuntu.")
+        if args.enable_external_custom_op_schemas and not is_linux():
+            raise BuildError("Registering external custom op schemas is only supported on Linux.")
 
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home, mpi_home, nccl_home,

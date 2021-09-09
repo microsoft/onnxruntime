@@ -77,6 +77,12 @@ class MemoryInfo;
  * Then you can use:
  *   s.GetKernel(...);
  */
+
+// subgraph SessionState. entry for node containing subgraph, with value containing attribute:SessionState pair
+// as a node may contain multiple subgraphs (e.g. 'If' has one for both the 'then' and 'else' branches).
+using SubgraphSessionStateMap =
+    std::unordered_map<onnxruntime::NodeIndex, std::unordered_map<std::string, std::unique_ptr<SessionState>>>;
+
 class SessionState {
  public:
   SessionState(Graph& graph,
@@ -101,7 +107,6 @@ class SessionState {
         use_deterministic_compute_(use_deterministic_compute),
         enable_mem_reuse_(enable_mem_reuse),
         prepacked_weights_container_(prepacked_weights_container) {
-
     SetupAllocators();
   }
 
@@ -268,7 +273,7 @@ class SessionState {
   const KernelCreateInfo& GetNodeKernelCreateInfo(NodeIndex node_index) const;
 
   /// Return SessionState for the given Node index and attribute name if found.
-  const SessionState* GetSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name) const;
+  const SessionState* GetSubgraphSessionState(NodeIndex index, const std::string& attribute_name) const;
 
   concurrency::ThreadPool* GetThreadPool() const noexcept { return thread_pool_; }
   concurrency::ThreadPool* GetInterOpThreadPool() const noexcept { return inter_op_thread_pool_; }
@@ -320,6 +325,14 @@ class SessionState {
     return used_shared_pre_packed_weights_counter_;
   }
 
+  const KernelCreateInfoMap& GetKernelCreateInfoMap() const {
+    return kernel_create_info_map_;
+  }
+
+  const SubgraphSessionStateMap& GetSubgraphSessionStateMap() const {
+    return subgraph_session_states_;
+  }
+
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
   void IncrementGraphExecutionCounter() {
     ++graph_executions_counter_;
@@ -368,7 +381,9 @@ class SessionState {
                                   _In_opt_ const Node* parent_node,
                                   const SessionOptions& session_options,
                                   bool remove_initializers,
-                                  std::unordered_map<std::string, size_t>& constant_initializers_use_count);
+                                  std::unordered_map<std::string, size_t>& constant_initializers_use_count,
+                                  const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map = {},
+                                  bool graph_info_already_created = false);
 
 #ifdef ENABLE_TRAINING
   Status GeneratePatternGroupCache(
@@ -384,7 +399,7 @@ class SessionState {
   }
 
   // KernelCreateInfo for each node so we do kernel lookup once
-  std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>> kernel_create_info_map_;
+  KernelCreateInfoMap kernel_create_info_map_;
 
   // If we compile kernels in a minimal build we need a way to find the kernel using the hash.
   // We populate this map when doing the kernel compilation in GraphPartitioner, and use it in LoadFromOrtFormat.
@@ -468,10 +483,6 @@ class SessionState {
   NameNodeInfoMapType input_names_to_nodeinfo_mapping_;
   NameNodeInfoMapType output_names_to_nodeinfo_mapping_;
 
-  // subgraph SessionState. entry for node containing subgraph, with value containing attribute:SessionState pair
-  // as a node may contain multiple subgraphs (e.g. 'If' has one for both the 'then' and 'else' branches).
-  using SubgraphSessionStateMap =
-      std::unordered_map<onnxruntime::NodeIndex, std::unordered_map<std::string, std::unique_ptr<SessionState>>>;
   SubgraphSessionStateMap subgraph_session_states_;
 
   // either threadpool could be nullptr
