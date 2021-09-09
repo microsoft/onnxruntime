@@ -16,12 +16,6 @@ import torch
 import warnings
 from torch.utils.dlpack import from_dlpack, to_dlpack
 
-def torch_tensor_to_dlpack(tensor):
-    if tensor.device.type == 'ort':
-        return C.ort_to_dlpack(tensor)
-    else:
-        return to_dlpack(tensor)
-
 class TrainingManager(GraphExecutionManager):
     """Concrete instance of GraphExecutionManager that is able to manage the training model
 
@@ -44,12 +38,12 @@ class TrainingManager(GraphExecutionManager):
         forward_inputs = C.OrtValueVector()
         forward_inputs.reserve(len(inputs))
         for input in inputs:
-            forward_inputs.push_back(torch_tensor_to_dlpack(input), input.dtype == torch.bool)
+            forward_inputs.push_back(_utils._torch_tensor_to_dlpack(input), input.dtype == torch.bool)
 
         forward_outputs = C.OrtValueVector()
         # Run and return module outputs.
         execution_session.run_forward(forward_inputs, forward_outputs, state, gradient_accumulation_manager.cache)
-        device = torch.cpu() if len(inputs) == 0 else inputs[0].device
+        device = _utils.get_device_from_inputs(inputs, None)
         if len(inputs) > 0:
             _utils._check_same_device(device, "Input argument to forward", *inputs)
 
@@ -213,7 +207,7 @@ class TrainingManager(GraphExecutionManager):
                                 grad_output = torch.tensor(0., device=device, dtype=dtype)
                         elif not grad_output.is_contiguous():
                             grad_output = grad_output.contiguous()
-                        backward_inputs.push_back(torch_tensor_to_dlpack(grad_output), grad_output.dtype == torch.bool)
+                        backward_inputs.push_back(_utils._torch_tensor_to_dlpack(grad_output), grad_output.dtype == torch.bool)
                     backward_inputs.shrink_to_fit()
 
                     # Run and get results
