@@ -37,7 +37,7 @@ constexpr inline std::pair<size_t, size_t> BasenameBeginAndEnd(const char* path)
 }  // namespace onnxruntime::current_file_basename_detail
 
 #define ORT_CURRENT_FILE_BASENAME()                                                              \
-  []() {                                                                                         \
+  []() constexpr {                                                                               \
     struct PathCStrAccessor {                                                                    \
       static constexpr const char* Get() { return __FILE__; }                                    \
     };                                                                                           \
@@ -52,4 +52,5 @@ constexpr inline std::pair<size_t, size_t> BasenameBeginAndEnd(const char* path)
             basename_begin_and_end.second - basename_begin_and_end.first>::type;                 \
                                                                                                  \
     return FileBasenameCharSeq::value;                                                           \
-  }()
+  }                                                                                              \
+  ()
