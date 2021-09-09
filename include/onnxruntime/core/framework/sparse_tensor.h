@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(DISABLE_SPARSE_TENSORS)
+
 #pragma once
 
 #include "core/framework/data_types.h"
@@ -528,3 +530,5 @@ class SparseTensor final {
 };
 
 }  // namespace onnxruntime
+
+#endif

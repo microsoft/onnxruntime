@@ -28,3 +28,4 @@ rm $ARTIFACT_DIR/onnxruntime-linux-x64-cuda-*.tgz
 cp onnxruntime-linux-x64-tensorrt/*/lib/libonnxruntime.so* onnxruntime-linux-x64-gpu/*/lib
 cp onnxruntime-linux-x64-tensorrt/*/lib/libonnxruntime_providers_tensorrt.so onnxruntime-linux-x64-gpu/*/lib
 cp onnxruntime-linux-x64-tensorrt/*/lib/libonnxruntime_providers_shared.so onnxruntime-linux-x64-gpu/*/lib
+cp onnxruntime-linux-x64-tensorrt/*/include/*tensorrt* onnxruntime-linux-x64-gpu/*/include

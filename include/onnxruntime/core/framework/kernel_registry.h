@@ -96,7 +96,7 @@ class KernelRegistry {
   // key is opname+domain_name+provider_name
   KernelCreateMap kernel_creator_fn_map_;
 
-  // map from kernel def hash to entry in kernel_creator_fn_map_;
+  // map from kernel def hash to entry in kernel_creator_fn_map_
   std::unordered_map<uint64_t, KernelCreateMap::iterator> kernel_def_hash_lookup_;
 };
 }  // namespace onnxruntime

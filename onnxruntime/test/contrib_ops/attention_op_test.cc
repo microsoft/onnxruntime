@@ -1644,6 +1644,8 @@ TEST(AttentionTest, AttentionMaskIndexOutOfRange) {
                    use_float16, is_unidirectional, use_past_state, past_sequence_length, past_data, present_data, kMaskIndexEndAndStart);
 }
 
+#if !defined(__wasm__)
+// TODO: fix in web assembly
 TEST(AttentionTest, AttentionPastState_dynamic) {
   // create rand inputs
   RandomValueGenerator random{};
@@ -1672,6 +1674,7 @@ TEST(AttentionTest, AttentionPastState_dynamic) {
   test.AddReferenceOutputs("testdata/attention_past_state.onnx");
   test.Run();
 }
+#endif //!defined(__wasm__)
 
 TEST(AttentionTest, AttentionPrunedModel) {
   int batch_size = 2;

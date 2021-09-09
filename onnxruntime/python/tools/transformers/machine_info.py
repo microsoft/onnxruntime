@@ -47,10 +47,8 @@ class MachineInfo():
             "memory": self.get_memory_info(),
             "os": platform.platform(),
             "python": self._try_get(cpu_info, ["python_version"]),
-            "onnx": self.get_onnx_info(),
-            "onnxconverter_common": self.get_onnxconverter_common_info(),
+            "packages": self.get_related_packages(),
             "onnxruntime": self.get_onnxruntime_info(),
-            "transformers": self.get_transformers_info(),
             "pytorch": self.get_pytorch_info(),
             "tensorflow": self.get_tensorflow_info()
         }
@@ -66,7 +64,7 @@ class MachineInfo():
             if name in cpu_info:
                 value = cpu_info[name]
                 if isinstance(value, (list, tuple)):
-                    return ",".join(value)
+                    return ",".join([str(i) for i in value])
                 return value
         return ""
 
@@ -112,23 +110,15 @@ class MachineInfo():
             result["cuda_visible"] = environ['CUDA_VISIBLE_DEVICES']
         return result
 
-    def get_onnx_info(self) -> Dict:
-        try:
-            import onnx
-            return {"version": onnx.__version__}
-        except ImportError as error:
-            if not self.silent:
-                self.logger.exception(error)
-            return None
-
-    def get_onnxconverter_common_info(self) -> Dict:
-        try:
-            import onnxconverter_common
-            return {"version": onnxconverter_common.__version__}
-        except ImportError as error:
-            if not self.silent:
-                self.logger.exception(error)
-            return None
+    def get_related_packages(self) -> List[str]:
+        import pkg_resources
+        installed_packages = pkg_resources.working_set
+        related_packages = [
+            'onnxruntime-gpu', 'onnxruntime', 'ort-nightly-gpu', 'ort-nightly', 'onnx', 'transformers', 'protobuf',
+            'sympy', 'torch', 'tensorflow', 'flatbuffers', 'numpy', 'onnxconverter-common'
+        ]
+        related_packages_list = {i.key: i.version for i in installed_packages if i.key in related_packages}
+        return related_packages_list
 
     def get_onnxruntime_info(self) -> Dict:
         try:
@@ -137,19 +127,6 @@ class MachineInfo():
                 "version": onnxruntime.__version__,
                 "support_gpu": 'CUDAExecutionProvider' in onnxruntime.get_available_providers()
             }
-        except ImportError as error:
-            if not self.silent:
-                self.logger.exception(error)
-            return None
-        except Exception as exception:
-            if not self.silent:
-                self.logger.exception(exception, False)
-            return None
-
-    def get_transformers_info(self) -> Dict:
-        try:
-            import transformers
-            return {"version": transformers.__version__}
         except ImportError as error:
             if not self.silent:
                 self.logger.exception(error)

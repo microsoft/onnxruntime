@@ -97,5 +97,9 @@ void AllocateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, OrtVa
 // Helper function to check that the graph transformations have been successfully applied.
 std::map<std::string, int> CountOpsInGraph(const Graph& graph, bool recurse_into_subgraphs = true);
 
+#if !defined(DISABLE_SPARSE_TENSORS)
+void SparseIndicesChecker(const ONNX_NAMESPACE::TensorProto& indices_proto, gsl::span<const int64_t> expected_indicies);
+#endif // DISABLE_SPARSE_TENSORS
+
 }  // namespace test
 }  // namespace onnxruntime

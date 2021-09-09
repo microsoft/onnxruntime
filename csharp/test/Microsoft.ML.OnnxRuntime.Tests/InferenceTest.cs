@@ -92,19 +92,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AddSessionConfigEntry("", "invalid key"); });
                 Assert.Contains("[ErrorCode:InvalidArgument] Config key is empty", ex.Message);
 
-                opt.AppendExecutionProvider_CPU(1);
-
 #if USE_CUDA
                 opt.AppendExecutionProvider_CUDA(0);
-#else
-                try
-                {
-                    opt.AppendExecutionProvider_CUDA(0);
-                }
-                catch (OnnxRuntimeException ortEx)
-                {
-                    Assert.Contains("Failed to load shared library", ortEx.Message);
-                }
 #endif
 
 #if USE_DML
@@ -118,113 +107,37 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 // Restore the default dll search order
                 SetDllDirectory(null);
-#else
-                try
-                {
-                    opt.AppendExecutionProvider_DML(0);
-                }
-                catch (OnnxRuntimeException ortEx)
-                {
-                    Assert.Contains("is not enabled in this build", ortEx.Message);
-                }
 #endif
 
 #if USE_DNNL
                 opt.AppendExecutionProvider_Dnnl(0);
-#else
-                try
-                {
-                    opt.AppendExecutionProvider_Dnnl(0);
-                }
-                catch (OnnxRuntimeException ortEx)
-                {
-                    Assert.Contains("Failed to load shared library", ortEx.Message);
-                }
 #endif
 
 #if USE_MIGRAPHX
                 opt.AppendExecutionProvider_MIGraphX(0);
-#else
-                try
-                {
-                    opt.AppendExecutionProvider_MIGraphX(0);
-                }
-                catch (OnnxRuntimeException ortEx)
-                {
-                    Assert.Contains("is not enabled in this build", ortEx.Message);
-                }
-
 #endif
 
 #if USE_NNAPI
                 opt.AppendExecutionProvider_Nnapi(0);
-#else
-                try
-                {
-                    opt.AppendExecutionProvider_Nnapi(0);
-                }
-                catch (OnnxRuntimeException ortEx)
-                {
-                    Assert.Contains("is not enabled in this build", ortEx.Message);
-                }
-
 #endif
 
 #if USE_NUPHAR
                 opt.AppendExecutionProvider_Nuphar();
-#else
-                try
-                {
-                    opt.AppendExecutionProvider_Nnapi();
-                }
-                catch (OnnxRuntimeException ortEx)
-                {
-                    Assert.Contains("is not enabled in this build", ortEx.Message);
-                }
-
 #endif
 
 #if USE_OPENVINO
                 opt.AppendExecutionProvider_OpenVINO();
-#else
-                try
-                {
-                    opt.AppendExecutionProvider_OpenVINO();
-                }
-                catch (OnnxRuntimeException ortEx)
-                {
-                    Assert.Contains("Failed to load shared library", ortEx.Message);
-                }
-
 #endif
 
 #if USE_ROCM
                 opt.AppendExecutionProvider_ROCM(0);
-#else
-                try
-                {
-                    var gpuMemLimit = new UIntPtr(10*1024);
-                    opt.AppendExecutionProvider_ROCM(0, gpuMemLimit);
-                }
-                catch (OnnxRuntimeException ortEx)
-                {
-                    Assert.Contains("is not enabled in this build", ortEx.Message);
-                }
-
 #endif
 
 #if USE_TENSORRT
                 opt.AppendExecutionProvider_Tensorrt(0);
-#else
-                try
-                {
-                    opt.AppendExecutionProvider_Dnnl(0);
-                }
-                catch (OnnxRuntimeException ortEx)
-                {
-                    Assert.Contains("Failed to load shared library", ortEx.Message);
-                }
 #endif
+
+                opt.AppendExecutionProvider_CPU(1);
             }
         }
 

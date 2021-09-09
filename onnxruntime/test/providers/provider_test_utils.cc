@@ -548,6 +548,7 @@ void OpTester::AddShapeToTensorData(NodeArg& node_arg, const std::vector<int64_t
   }
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 static std::unique_ptr<SparseTensor> MakeSparseTensor(MLDataType data_type, const std::vector<int64_t>& dims) {
   TensorShape shape{dims};
   auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
@@ -673,7 +674,7 @@ void OpTester::AddSparseCsrTensorStrings(std::vector<Data>& data,
   NodeArg node_arg = MakeSparseNodeArg(dtype, name, dims, dim_params);
   AddSparseTensorData(data, std::move(node_arg), std::move(p_tensor), CheckParams());
 }
-
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 void OpTester::AddInitializers(onnxruntime::Graph& graph) {
   for (auto index : initializer_index_) {

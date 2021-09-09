@@ -445,27 +445,52 @@ Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, Pr
   // Block of fast matrix reduction.
   if (fast_reduction) {
     int m{}, n{};
-    const auto applicable_matrix_reduction = get_applicable_matrix_reduction(
-        miopen_reduce_op, input_shape.GetDims(), axes, m, n);
-    switch (applicable_matrix_reduction) {
-      case ApplicableMatrixReduction::Rows: {
-        return reduce_matrix_rows(
-            stream,
-            reinterpret_cast<const HipT*>(input.template Data<T>()),
-            reinterpret_cast<HipT*>(output.template MutableData<T>()),
-            m, n);
+    const auto applicable_matrix_reduction =
+        get_applicable_matrix_reduction(miopen_reduce_op, input_shape.GetDims(), axes, m, n);
+    if (applicable_matrix_reduction != ApplicableMatrixReduction::None) {
+      IAllocatorUniquePtr<T> input_data_buffer(nullptr, [](T*) {});
+      const HipT* input_data = reinterpret_cast<const HipT*>(input.template Data<T>());
+      if (calculate_sqt) {
+        input_data_buffer = rocm_ep.GetScratchBuffer<T>(input_count);
+        input_data = reinterpret_cast<HipT*>(input_data_buffer.get());
+        fast_divmod tmp_div;
+        Impl_Mul<HipT>(stream, static_cast<int32_t>(SimpleBroadcast::NoBroadcast), nullptr,
+                        reinterpret_cast<const HipT*>(input.template Data<T>()), nullptr,
+                        reinterpret_cast<const HipT*>(input.template Data<T>()), nullptr, tmp_div, tmp_div,
+                        reinterpret_cast<HipT*>(input_data_buffer.get()), input_count);
+        input_data = reinterpret_cast<const HipT*>(input_data_buffer.get());
       }
-      case ApplicableMatrixReduction::Columns: {
-        const auto buffer_size_bytes = compute_reduce_matrix_columns_buffer_size<HipT>(m, n);
-        auto buffer = rocm_ep.GetScratchBuffer<void>(buffer_size_bytes);
-        return reduce_matrix_columns(
-            stream,
-            reinterpret_cast<const HipT*>(input.template Data<T>()),
-            reinterpret_cast<HipT*>(output.template MutableData<T>()),
-            m, n, buffer.get(), buffer_size_bytes);
+
+      switch (applicable_matrix_reduction) {
+        case ApplicableMatrixReduction::Rows: {
+          ORT_RETURN_IF_ERROR(reduce_matrix_rows(
+              stream, input_data, reinterpret_cast<HipT*>(output.template MutableData<T>()), m, n));
+        } break;
+        case ApplicableMatrixReduction::Columns: {
+          const auto buffer_size_bytes = compute_reduce_matrix_columns_buffer_size<HipT>(m, n);
+          auto buffer = rocm_ep.GetScratchBuffer<void>(buffer_size_bytes);
+          ORT_RETURN_IF_ERROR(reduce_matrix_columns(stream, input_data,
+                                                    reinterpret_cast<HipT*>(output.template MutableData<T>()), m, n,
+                                                    buffer.get(), buffer_size_bytes));
+        } break;
+        default: {
+          ORT_ENFORCE(false, "Invild matrix reduction type.");
+        }
       }
-      default:
-        break;
+
+      if (calculate_log) {
+        Impl_Log<HipT>(stream, reinterpret_cast<const HipT*>(output.template Data<T>()),
+                        reinterpret_cast<HipT*>(output.template MutableData<T>()), output_count);
+      } else if (miopen_reduce_op == MIOPEN_REDUCE_TENSOR_AVG) {
+        float denominator_float = applicable_matrix_reduction == ApplicableMatrixReduction::Rows
+                                      ? static_cast<float>(m)
+                                      : static_cast<float>(n);
+        HipT denominator = ToHipType<T>::FromFloat(denominator_float);
+        UnaryDiv(stream, reinterpret_cast<const HipT*>(output.template Data<T>()),
+                 reinterpret_cast<HipT*>(output.template MutableData<T>()), denominator, output_count);
+      }
+
+      return Status::OK();
     }
   }
 
