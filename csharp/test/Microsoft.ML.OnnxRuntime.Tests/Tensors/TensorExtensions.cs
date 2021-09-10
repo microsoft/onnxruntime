@@ -31,9 +31,9 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
                 throw new ArgumentException($"{nameof(Tensor<T>)} {nameof(right)} must have {nameof(left.Rank)} 2.", nameof(right));
             }
 
-            if (left.dimensions[1] != right.dimensions[0])
+            if (left.Dimensions[1] != right.Dimensions[0])
             {
-                throw new ArgumentException($"{nameof(Tensor<T>)} {nameof(right)} must have first dimension of {left.dimensions[1]}.", nameof(right));
+                throw new ArgumentException($"{nameof(Tensor<T>)} {nameof(right)} must have first dimension of {left.Dimensions[1]}.", nameof(right));
             }
 
             return TensorOperations.Contract(left, right, s_oneArray, s_zeroArray);
