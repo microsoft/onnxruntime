@@ -4,7 +4,7 @@ parent: Get Started
 toc: true
 nav_order: 1
 ---
-# Python ORT Quickstart
+# Get started with ORT for Python
 {: .no_toc }
 
 Below is a quick guide to get the packages installed to use ONNX for model serialization and infernece with ORT.
@@ -240,6 +240,6 @@ For Python compiler version notes, see [this page](https://github.com/microsoft/
 Python 3.6 - 3.9
 
 ## Learn More
-- [Python Tutorials](../tutorials/inferencing/api-basics.md#python)
+- [Python Tutorials](../tutorials/inferencing/api-basics)
 - [Python Github Quickstart Templates](https://github.com/onnxruntime)
  

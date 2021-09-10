@@ -4,7 +4,7 @@ parent: Get Started
 nav_exclude: true
 ---
 
-# ONNX Runtime C API
+# Get started with ORT for C
 {: .no_toc }
 
 ## Contents
@@ -110,4 +110,4 @@ To turn on/off telemetry collection on official Windows builds, please use Enabl
 
 ## Samples
 
-See [Tutorials: API Basics - C](../../tutorials/inferencing/api-basics.md#c-1)
+See [Tutorials: API Basics - C](../tutorials/inferencing/api-basics)

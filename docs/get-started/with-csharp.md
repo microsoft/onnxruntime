@@ -4,7 +4,7 @@ parent: Get Started
 toc: true
 nav_order: 2
 ---
-# C# ORT Quickstart
+# Get started with ORT for C#
 {: .no_toc }
 
 ## Contents
@@ -12,7 +12,6 @@ nav_order: 2
 
 * TOC placeholder
 {:toc}
-
 
 ## Install the Nuget Packages with the .NET CLI
 
@@ -67,34 +66,6 @@ This is an Azure Function example:
             return new JsonResult(inferenceResult);
         }
 ```
-
-# ONNX Runtime C# API
-{: .no_toc }
-
-The ONNX runtime provides a C# .NET binding for running inference on ONNX models in any of the .NET standard platforms.
-
-## Contents
-{: .no_toc }
-
-* TOC placeholder
-{:toc}
-
-## Supported Versions
-.NET standard 1.1
-
-## Builds
-
-| Artifact | Description | Supported Platforms |
-|-----------|-------------|---------------------|
-| [Microsoft.ML.OnnxRuntime](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime) | CPU (Release) |Windows, Linux,  Mac, X64, X86 (Windows-only), ARM64 (Windows-only)...more details: [compatibility](../../resources/compatibility.md) |
-| [Microsoft.ML.OnnxRuntime.Gpu](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.gpu) | GPU - CUDA (Release) | Windows, Linux, Mac, X64...more details: [compatibility](../../resources/compatibility.md) |
-| [Microsoft.ML.OnnxRuntime.DirectML](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.directml) | GPU - DirectML (Release) | Windows 10 1709+ |
-| [ort-nightly](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly) | CPU, GPU (Dev) | Same as Release versions |
-
-
-## API Reference
-[C# API Reference](./csharp-api.html)
-
 ## Reuse input/output tensor buffers
 
 In some scenarios, you may want to reuse input/output tensors. This often happens when you want to chain 2 models (ie. feed one's output as input to another), or want to accelerate inference speed during multiple inference runs.
@@ -128,7 +99,6 @@ using (var outputs1 = session1.Run(inputs1))
     }
 }
 ```
-
 ### Multiple inference runs with fixed sized input(s) and output(s)
 
 If the model have fixed sized inputs and outputs of numeric tensors, you can use "FixedBufferOnnxValue" to accelerate the inference speed. By using "FixedBufferOnnxValue", the container objects only need to be allocated/disposed one time during multiple InferenceSession.Run() calls. This avoids some overhead which may be beneficial for smaller models where the time is noticeable in the overall running time.
@@ -143,12 +113,32 @@ If using the GPU package, simply use the appropriate SessionOptions when creatin
 int gpuDeviceId = 0; // The GPU device ID to execute on
 var session = new InferenceSession("model.onnx", SessionOptions.MakeSessionOptionWithCudaProvider(gpuDeviceId));
 ```
+# ONNX Runtime C# API
+{: .no_toc }
+
+The ONNX runtime provides a C# .NET binding for running inference on ONNX models in any of the .NET standard platforms.
+
+## Supported Versions
+.NET standard 1.1
+
+## Builds
+
+| Artifact | Description | Supported Platforms |
+|-----------|-------------|---------------------|
+| [Microsoft.ML.OnnxRuntime](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime) | CPU (Release) |Windows, Linux,  Mac, X64, X86 (Windows-only), ARM64 (Windows-only)...more details: [compatibility](../../resources/compatibility.md) |
+| [Microsoft.ML.OnnxRuntime.Gpu](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.gpu) | GPU - CUDA (Release) | Windows, Linux, Mac, X64...more details: [compatibility](../../resources/compatibility.md) |
+| [Microsoft.ML.OnnxRuntime.DirectML](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.directml) | GPU - DirectML (Release) | Windows 10 1709+ |
+| [ort-nightly](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly) | CPU, GPU (Dev) | Same as Release versions |
+
+
+## API Reference
+[C# API Reference](../api/csharp-api)
+
 ## Samples
 
-See [Tutorials: Basics - C#](../../tutorials/inferencing/api-basics.md#c-2)
+See [Tutorials: Basics - C#](../tutorials/inferencing/api-basics)
 
 
 ## Learn More
-- [C# Tutorials](./Tutorials/)
-- [C# Github Quickstart Templates](https://github.com/onnxruntime)
+- [C# Tutorials](./tutorials/)
 - [C# API Reference](./api/csharp-api.html)

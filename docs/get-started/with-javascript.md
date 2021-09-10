@@ -5,7 +5,7 @@ toc: true
 nav_order: 3
 ---
 
-# ONNX Runtime JavaScript API
+# Get started with ORT for JavaScript
 {: .no_toc }
 
 ONNX Runtime JavaScript API is the unified interface used by [ONNX Runtime Node.js binding](https://github.com/microsoft/onnxruntime/tree/master/js/node), [ONNX Runtime Web](https://github.com/microsoft/onnxruntime/tree/master/js/web) and [ONNX Runtime for React Native](https://github.com/microsoft/onnxruntime/tree/master/js/react_native).

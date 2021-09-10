@@ -4,7 +4,7 @@ parent: Get Started
 toc: true
 nav_order: 4
 --- 
-# Get Started  ONNX Runtime Java API
+# Get Started with ORT for Java
 {: .no_toc }
 
 The ONNX runtime provides a Java binding for running inference on ONNX models on a JVM.

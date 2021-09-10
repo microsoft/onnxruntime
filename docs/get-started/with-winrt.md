@@ -6,7 +6,7 @@ nav_order: 10
 ---
 
 
-# Windows Machine Learning WinRT API
+# Get started with ORT for Windows Machine Learning WinRT
 {: .no_toc }
 
 The ONNX Runtime Nuget package provides the ability to use the full [WinML API](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference).

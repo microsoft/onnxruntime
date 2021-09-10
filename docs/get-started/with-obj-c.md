@@ -3,7 +3,7 @@ title: Objective-C
 parent: Get Started
 nav_exclude: true
 ---
-# ONNX Runtime Objective-C API
+# Get started with ORT for Objective-C
 {: .no_toc }
 
 ONNX Runtime provides an Objective-C API for running ONNX models on iOS devices.

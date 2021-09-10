@@ -4,7 +4,7 @@ parent: Get Started
 nav_order: 2
 ---
 
-# ONNX Runtime C++
+# Get started with ORT for C++
 {: .no_toc }
 
 ## Contents
@@ -28,4 +28,4 @@ nav_order: 2
 The C++ API is a thin wrapper of the C API. Please refer to [C API](./with-c.html) for more details.
 
 ## Samples
-See [Tutorials: API Basics - C++](../../tutorials/inferencing/api-basics.md#c)
+See [Tutorials: API Basics - C++](../tutorials/inferencing/api-basics)
