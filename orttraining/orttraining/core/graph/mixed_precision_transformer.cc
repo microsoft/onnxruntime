@@ -33,7 +33,7 @@ namespace training {
 // continue to use 32-bit precision. Others will used reduced precision.
 // Loss Ops and loss grad Ops are now handled by LossSubgraph, so currently this set is empty.
 // If in the future there is new FP32 Op, we can add it here without changing code on other place.
-static const std::unordered_set<std::string> FP32_Nodes = {"Sigmoid", "Softmax"};
+static const std::unordered_set<std::string> FP32_Nodes = {"Sigmoid", "Softmax", "SoftmaxCrossEntropyLoss", "SoftmaxCrossEntropyLossGrad"};
 
 bool IsFP32Node(const Node* node) {
   return FP32_Nodes.find(node->OpType()) != FP32_Nodes.cend();
@@ -43,6 +43,8 @@ bool IsFP32Node(const Node* node) {
 static const std::unordered_map<std::string, std::vector<int>> stage1_fp32_node_args = {
     {"Dropout", {1}},
     {"DropoutGrad", {2}},
+    {"SoftmaxCrossEntropyLoss", {0}},
+    {"SoftmaxCrossEntropyLossGrad", {0, 1}},
 };
 
 // Currently the list here is same as stage1 above due to empty FP32_Nodes.
@@ -52,6 +54,8 @@ static const std::unordered_map<std::string, std::vector<int>> stage2_fp32_node_
     {"DropoutGrad", {2}},
     {"Sigmoid", {0}},
     {"Softmax", {0}},
+    {"SoftmaxCrossEntropyLoss", {0}},
+    {"SoftmaxCrossEntropyLossGrad", {0, 1}},
 };
 
 bool IsFP32(const std::unordered_map<std::string, std::vector<int>>& map, std::string opname, int argnum) {
@@ -67,9 +71,7 @@ bool IsFP32(const std::unordered_map<std::string, std::vector<int>>& map, std::s
 static const std::string loss_scale_input = "loss_scale";
 
 static const std::unordered_set<std::string> loss_subgraph_entry_nodes = {
-    "SparseSoftmaxCrossEntropy",
-    "SoftmaxCrossEntropyLoss",
-    "SoftmaxCrossEntropy"};
+    };
 
 static bool IsLossSubgraphEntryNode(const Node* node) {
   return loss_subgraph_entry_nodes.find(node->OpType()) != loss_subgraph_entry_nodes.cend();
