@@ -42,11 +42,11 @@ module.exports = function (config) {
     browsers: [],
     customLaunchers: {
       Chrome_default: {
-        base: 'Chrome',
+        base: 'ChromeHeadless',
         chromeDataDir: USER_DATA
       },
       Chrome_no_threads: {
-        base: 'Chrome',
+        base: 'ChromeHeadless',
         chromeDataDir: USER_DATA,
         // TODO: no-thread flags
       }
