@@ -311,7 +311,7 @@ typedef enum OrtAllocatorType {
 
 /** \brief Memory types for allocated memory, execution provider specific types should be extended in each provider.
 */
-// Whenever this struct is updated, please also update the MakeKey function in onnxruntime / core / framework / execution_provider.cc 
+// Whenever this struct is updated, please also update the MakeKey function in onnxruntime / core / framework / execution_provider.cc
 typedef enum OrtMemType {
   OrtMemTypeCPUInput = -2,              ///< Any CPU memory used by non-CPU execution provider
   OrtMemTypeCPUOutput = -1,             ///< CPU accessible memory outputted by non-CPU execution provider, i.e. CUDA_PINNED
@@ -332,14 +332,14 @@ typedef enum OrtCudnnConvAlgoSearch {
 * \see OrtApi::SessionOptionsAppendExecutionProvider_CUDA
 */
 typedef struct OrtCUDAProviderOptions {
-  int device_id; ///< CUDA device id (0 = default device)
+  int device_id;  ///< CUDA device id (0 = default device)
   OrtCudnnConvAlgoSearch cudnn_conv_algo_search;
 
   /** \brief CUDA memory limit (To use all possible memory pass in maximum size_t)
   *
   * \note If a ::OrtArenaCfg has been applied, it will override this field
-  */s
-  size_t gpu_mem_limit;
+  */
+      size_t gpu_mem_limit;
 
   /** \brief Strategy used to grow the memory arena
   *
@@ -418,7 +418,6 @@ typedef struct OrtApi OrtApi;
 * Get a pointer to this structure through ::OrtGetApiBase
 */
 struct OrtApiBase {
-
   /** \brief Get a pointer to the requested version of the ::OrtApi
   *
   * \param[in] version Must be ::ORT_API_VERSION
@@ -426,7 +425,7 @@ struct OrtApiBase {
   *   older than the version created with this header file.
   */
   const OrtApi*(ORT_API_CALL* GetApi)(uint32_t version)NO_EXCEPTION;
-  const char*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION; ///< Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
+  const char*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;  ///< Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
 };
 typedef struct OrtApiBase OrtApiBase;
 
@@ -444,7 +443,6 @@ ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION;
 * \nosubgrouping
 */
 struct OrtApi {
-
   /// \name OrtStatus
   /// @{
 
@@ -466,7 +464,7 @@ struct OrtApi {
 
   /** \brief Get error string from OrtStatus
   *
-  * \param[in] status Must not be nullptr
+  * \param[in] status
   * \return The error message inside the `status`. Do not free the returned value.
   */
   const char*(ORT_API_CALL* GetErrorMessage)(_In_ const OrtStatus* status)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
@@ -873,7 +871,7 @@ struct OrtApi {
   /** \brief Get input name
   *
   * \param[in] session
-  * \param[in] index Must be between 0 (inclusive0 and what OrtApi::SessionGetInputCount returns (exclusive)
+  * \param[in] index Must be between 0 (inclusive) and what OrtApi::SessionGetInputCount returns (exclusive)
   * \param[in] allocator
   * \param[out] value Set to a null terminated UTF-8 encoded string allocated using `allocator`. Must be freed using `allocator`.
   *
@@ -1050,7 +1048,7 @@ struct OrtApi {
   /// \name OrtTypeInfo
   /// @{
 
-  /** \brief Get OrtTensorTypeAndShapeInfo from an OrtTypeInfo
+  /** \brief Get ::OrtTensorTypeAndShapeInfo from an ::OrtTypeInfo
   *
   * \param[in] type_info
   * \param[out] out Do not free this value, it will be valid until type_info is freed.
@@ -1060,7 +1058,7 @@ struct OrtApi {
   ORT_API2_STATUS(CastTypeInfoToTensorInfo, _In_ const OrtTypeInfo* type_info,
                   _Outptr_result_maybenull_ const OrtTensorTypeAndShapeInfo** out);
 
-  /** \brief Get OnnxType from OrtTypeInfo
+  /** \brief Get ::ONNXType from ::OrtTypeInfo
   *
   * \param[in] type_info
   * \param[out] out
@@ -1362,7 +1360,7 @@ struct OrtApi {
   ORT_API2_STATUS(CreateValue, _In_reads_(num_values) const OrtValue* const* in, size_t num_values,
                   enum ONNXType value_type, _Outptr_ OrtValue** out);
 
-  /** \brief Create a opaque (custom user defined type) ::OrtValue
+  /** \brief Create an opaque (custom user defined type) ::OrtValue
   *
   * Constructs an ::OrtValue that contains a value of non-standard type created for
   * experiments or while awaiting standardization. ::OrtValue in this case would contain
@@ -1507,12 +1505,12 @@ struct OrtApi {
 
   /** \brief Get denotation from type information
   *
-  * Augments OrtTypeInfo to return denotations on the type.
+  * Augments ::OrtTypeInfo to return denotations on the type.
   *
   * This is used by WinML to determine if an input/output is intended to be an Image or a Tensor.
   *
   * \param[in] type_info
-  * \param[out] denotation Pointer to the null terminated denotation string is written to this pointer
+  * \param[out] denotation Pointer to the null terminated denotation string is written to this pointer. This pointer is valid until the object is destroyed or the name is changed, do not free.
   * \param[out] len Length in bytes of the string returned in `denotation`
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -1520,25 +1518,25 @@ struct OrtApi {
   ORT_API2_STATUS(GetDenotationFromTypeInfo, _In_ const OrtTypeInfo* type_info, _Out_ const char** const denotation,
                   _Out_ size_t* len);
 
-  /** \brief Get detailed map information from an OrtTypeInfo
+  /** \brief Get detailed map information from an ::OrtTypeInfo
   *
-  * This augments OrtTypeInfo to return an OrtMapTypeInfo when the type is a map.
+  * This augments ::OrtTypeInfo to return an ::OrtMapTypeInfo when the type is a map.
   * The OrtMapTypeInfo has additional information about the map's key type and value type.
   *
   * This is used by WinML to support model reflection APIs.
   *
   * \param[out] type_info
-  * \param[out] out A pointer to the OrtMapTypeInfo. Do not free this value
+  * \param[out] out A pointer to the ::OrtMapTypeInfo. Do not free this value
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(CastTypeInfoToMapTypeInfo, _In_ const OrtTypeInfo* type_info,
                   _Outptr_result_maybenull_ const OrtMapTypeInfo** out);
 
-  /** \brief Cast OrtTypeInfo to an OrtSequenceTypeInfo
+  /** \brief Cast ::OrtTypeInfo to an ::OrtSequenceTypeInfo
   *
-  * This api augments OrtTypeInfo to return an OrtSequenceTypeInfo when the type is a sequence.
-	* The OrtSequenceTypeInfo has additional information about the sequence's element type.
+  * This api augments ::OrtTypeInfo to return an ::OrtSequenceTypeInfo when the type is a sequence.
+	* The ::OrtSequenceTypeInfo has additional information about the sequence's element type.
   * 
   * This is used by WinML to support model reflection APIs.
 	*
@@ -1554,7 +1552,7 @@ struct OrtApi {
   /// \name OrtMapTypeInfo
   /// @{
 
-  /** \brief Get key type from an OrtMapTypeInfo
+  /** \brief Get key type from an ::OrtMapTypeInfo
   *
   * Key types are restricted to being scalar types.
   *
@@ -1581,8 +1579,6 @@ struct OrtApi {
   /// @{
 
   /** \brief Get element type from an ::OrtSequenceTypeInfo
-  *
-  * This api augments get the element type of a sequence.
   *
   * This is used by WinML to support model reflection APIs.
   *
@@ -1671,7 +1667,7 @@ struct OrtApi {
 
   /** \brief Create an OrtEnv
   *
-  * Creates an environment with global threadpools that will be shared across sessions.
+  * Create an environment with global threadpools that will be shared across sessions.
   * Use this in conjunction with OrtApi::DisablePerSessionThreads or else the session will use
   * its own thread pools.
   *
@@ -1896,8 +1892,8 @@ struct OrtApi {
 
   /** \brief Bind an ::OrtIoBinding output to a device
   *
-  * Binds the ::OrtValue to a device which specification is specified by ::OrtMemoryInfo.
-  * You can either create an instance of OrtMemoryInfo with a device id or obtain one from the allocator that you are created/using
+  * Binds the ::OrtValue to a device which is specified by ::OrtMemoryInfo.
+  * You can either create an instance of ::OrtMemoryInfo with a device id or obtain one from the allocator that you have created/are using
   * This is useful when one or more outputs have dynamic shapes and, it is hard to pre-allocate and bind a chunk of
   * memory within ::OrtValue ahead of time.
   *
@@ -1985,12 +1981,12 @@ struct OrtApi {
 
   /**
   *
-  * Creates an allocator instance and registers it with the env to enable
+  * Create an allocator instance and registers it with the env to enable
   * sharing between multiple sessions that use the same env instance.
   * Lifetime of the created allocator will be valid for the duration of the environment.
   * Returns an error if an allocator with the same OrtMemoryInfo is already registered.
   *
-  * See docs/C_API.md for details.
+  * See https://onnxruntime.ai/docs/reference/api/c-api.html for details.
   *
   * \param[in] env OrtEnv instance (must be non-null).
   * \param[in] mem_info (must be non-null).
@@ -2100,7 +2096,7 @@ struct OrtApi {
   /// @{
 
   /**
-  * Creates a custom environment with global threadpools and logger that will be shared across sessions.
+  * Create a custom environment with global threadpools and logger that will be shared across sessions.
   * Use this in conjunction with OrtApi::DisablePerSessionThreads or else the session will use
   * its own thread pools.
   *
@@ -2366,7 +2362,7 @@ struct OrtApi {
   /// \name OrtPrepackedWeightsContainer
   /// @{
 
-  /** \brief Creates an ::OrtPrepackedWeightsContainer
+  /** \brief Create an ::OrtPrepackedWeightsContainer
   *
   * This container will hold pre-packed buffers of shared initializers for sharing between sessions
   * (i.e.) if there are shared initializers that can be shared between sessions, the pre-packed buffers
@@ -2507,7 +2503,7 @@ struct OrtApi {
   *
   * \note This is an exception in the naming convention of other Release* functions, as the name of the method does not have the V2 suffix, but the type does
   */
-  void(ORT_API_CALL * ReleaseTensorRTProviderOptions)(_Frees_ptr_opt_ OrtTensorRTProviderOptionsV2* input);
+  void(ORT_API_CALL* ReleaseTensorRTProviderOptions)(_Frees_ptr_opt_ OrtTensorRTProviderOptionsV2* input);
 
   /// @}
   /// \name OrtSessionOptions
@@ -2533,7 +2529,7 @@ struct OrtApi {
   * The behavior of this is exactly the same as OrtApi::CreateAndRegisterAllocator except
   * instead of ORT creating an allocator based on provided info, in this case 
   * ORT uses the user-provided custom allocator.
-  * See docs/C_API.md for details.
+  * See https://onnxruntime.ai/docs/reference/api/c-api.html for details.
   *
   * \param[in] env
   * \param[in] allocator User provided allocator
