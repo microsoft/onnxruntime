@@ -542,30 +542,32 @@ Status ConvertCooIndicesToCsrIndices(const TensorShape& dense_shape, size_t inpu
   } else if (dense_shape.NumDimensions() == 2) {
     const auto rows = dense_shape.GetDims()[0];
     const auto cols = dense_shape.GetDims()[1];
-    inner_indices.reserve(input_indices.size());
     outer_indices.reserve(static_cast<size_t>(rows + 1));
     outer_indices.push_back(0);
+    int64_t row = 0;
     if (input_indices_ndims == 1) {
-      int64_t row = 0;
+      inner_indices.reserve(input_indices.size());
       for (auto idx : input_indices) {
         auto cur_row = idx / cols;
         auto cur_col = idx - cur_row * cols;
-        if (cur_row != row) {
-          outer_indices.push_back(static_cast<int64_t>(inner_indices.size()));
-          row = cur_row;
+        for (int64_t sz = static_cast<int64_t>(inner_indices.size()); row < cur_row; ++row) {
+          outer_indices.push_back(sz);
         }
         inner_indices.push_back(cur_col);
       }
     } else if (input_indices_ndims == 2) {
-      int64_t row = 0;
+      inner_indices.reserve(input_indices.size() / 2);
       for (size_t i = 0, limit = input_indices.size(); i < limit; i += 2) {
         auto cur_row = input_indices[i];
         auto cur_col = input_indices[i + 1];
-        if (cur_row != row) {
-          outer_indices.push_back(static_cast<int64_t>(inner_indices.size()));
-          row = cur_row;
+        for (int64_t sz = static_cast<int64_t>(inner_indices.size()); row < cur_row; ++row) {
+          outer_indices.push_back(sz);
         }
         inner_indices.push_back(cur_col);
+      }
+      // Need to add entries for all the rows that are still missing
+      for (int64_t sz = static_cast<int64_t>(inner_indices.size()); row < rows; ++row) {
+        outer_indices.push_back(sz);
       }
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid COO indices shape with ndim: ", input_indices_ndims);

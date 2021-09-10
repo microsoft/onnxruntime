@@ -330,7 +330,8 @@ struct SparseToSparseCoo {
     ORT_RETURN_IF_NOT(output_cols == result_cols, "Result cols does not match output tensor cols");
 
     auto coo_mutator = output_tensor.MakeCooData(nnz, nnz);
-    Tensor result_values(output_tensor.DataType(), output_tensor.DenseShape(), result.valuePtr(), output_tensor.Location());
+    TensorShape result_values_shape{result.nonZeros()};
+    Tensor result_values(output_tensor.DataType(), result_values_shape, result.valuePtr(), output_tensor.Location());
     sparse_utils::CopyCpuTensor(result_values, coo_mutator.Values());
 
     const auto rows = gsl::narrow<size_t>(result_rows);

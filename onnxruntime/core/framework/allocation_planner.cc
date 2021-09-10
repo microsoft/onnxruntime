@@ -1135,7 +1135,7 @@ class PlannerImpl {
     // TODO: unclear why we should go through a string-representation of type
     auto ptype = nodearg.Type();
     auto& type_proto = ONNX_NAMESPACE::Utils::DataTypeUtils::ToTypeProto(ptype);
-    return !utils::HasTensorType(type_proto) || utils::HasSparseTensorType(type_proto);
+    return !utils::HasTensorType(type_proto);
   }
 
   //For in-place reuse tensors, the lifetime is the union of all the tensors that tensors that use that buffer
