@@ -35,6 +35,9 @@ class OnnxruntimeEngineBuilder : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(SetIntraOpThreadSpinning)
   (bool allow_spinning);
 
+  STDMETHOD(SetGraphOptimizationLevel)
+  (uint32_t level);
+
   STDMETHOD(CreateEngine)
   (_Outptr_ IEngine** out);
 
@@ -47,6 +50,7 @@ class OnnxruntimeEngineBuilder : public Microsoft::WRL::RuntimeClass<
   wfc::IMapView<winrt::hstring, uint32_t> named_dimension_overrides_;
   uint32_t intra_op_num_threads_override_ = 0;
   bool allow_thread_spinning_ = true;
+  uint32_t graph_optimization_level_ = 3;
 };
 
 }  // namespace _winml

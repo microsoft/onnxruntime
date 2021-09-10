@@ -16,6 +16,7 @@ class OnnxruntimeDmlSessionBuilder : public Microsoft::WRL::RuntimeClass<
   HRESULT RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory, ID3D12Device* device, ID3D12CommandQueue* queue, bool metacommands_enabled_);
 
   HRESULT STDMETHODCALLTYPE CreateSessionOptions(
+      uint32_t graph_optimization_level,
       OrtSessionOptions** options) override;
 
   HRESULT STDMETHODCALLTYPE CreateSession(

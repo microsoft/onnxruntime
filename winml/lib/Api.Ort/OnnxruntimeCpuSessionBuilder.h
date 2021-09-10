@@ -16,6 +16,7 @@ class OnnxruntimeCpuSessionBuilder : public Microsoft::WRL::RuntimeClass<
   HRESULT RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory);
 
   HRESULT STDMETHODCALLTYPE CreateSessionOptions(
+      uint32_t graph_optimization_level,
       OrtSessionOptions** options) override;
 
   HRESULT STDMETHODCALLTYPE CreateSession(

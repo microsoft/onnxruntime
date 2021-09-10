@@ -24,10 +24,22 @@ import "Microsoft.AI.MachineLearning.idl";
 namespace ROOT_NS.AI.MachineLearning.Experimental {
   runtimeclass LearningModelBuilder;
 
+  enum GraphOptimizationLevel
+  {
+      Disabled = 0,
+      All,
+      Basic,
+      Extended
+  };
+
   [marshaling_behavior(agile)]
   [dualapipartition(1)]
   runtimeclass LearningModelSessionOptionsExperimental {
+    LearningModelSessionOptionsExperimental(ROOT_NS.AI.MachineLearning.LearningModelSessionOptions options);
+
     Windows.Foundation.Collections.IMapView<String, UINT32> GetNamedDimensionOverrides();
+
+    GraphOptimizationLevel OptimizationLevel { get; set; };
   }
 
   [threading(both)]

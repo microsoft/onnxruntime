@@ -10,6 +10,7 @@ namespace _winml {
 MIDL_INTERFACE("2746f03a-7e08-4564-b5d0-c670fef116ee")
 IOrtSessionBuilder : IUnknown {
   virtual HRESULT STDMETHODCALLTYPE CreateSessionOptions(
+      uint32_t graph_optimization_level,
       OrtSessionOptions * *options) = 0;
 
   virtual HRESULT STDMETHODCALLTYPE CreateSession(

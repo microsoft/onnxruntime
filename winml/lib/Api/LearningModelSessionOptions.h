@@ -29,7 +29,14 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
   STDMETHOD(SetIntraOpThreadSpinning)
   (boolean allowSpinning);
 
-  bool GetIntraOpThreadSpinning();
+  bool
+  GetIntraOpThreadSpinning();
+
+  uint32_t
+  OptimizationLevel();
+
+  void
+  OptimizationLevel(uint32_t level);
 
  private:
   // The batch size override property is used to inform the engine when the developer
@@ -68,6 +75,8 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
   uint32_t intra_op_num_threads_override_ = std::thread::hardware_concurrency();
 
   bool allow_thread_spinning_ = true;
+
+  uint32_t graph_optimization_level_ = 3;
 };
 
 }  // namespace WINMLP

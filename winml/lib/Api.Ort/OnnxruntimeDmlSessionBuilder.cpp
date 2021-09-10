@@ -22,6 +22,7 @@ HRESULT OnnxruntimeDmlSessionBuilder::RuntimeClassInitialize(OnnxruntimeEngineFa
 
 HRESULT
 OnnxruntimeDmlSessionBuilder::CreateSessionOptions(
+    uint32_t graph_optimization_level,
     OrtSessionOptions** options) {
   RETURN_HR_IF_NULL(E_POINTER, options);
 
@@ -35,7 +36,7 @@ OnnxruntimeDmlSessionBuilder::CreateSessionOptions(
   auto session_options = UniqueOrtSessionOptions(ort_options, ort_api->ReleaseSessionOptions);
 
   // set the graph optimization level to all (used to be called level 3)
-  RETURN_HR_IF_NOT_OK_MSG(ort_api->SetSessionGraphOptimizationLevel(session_options.get(), GraphOptimizationLevel::ORT_ENABLE_ALL),
+  RETURN_HR_IF_NOT_OK_MSG(ort_api->SetSessionGraphOptimizationLevel(session_options.get(), static_cast<GraphOptimizationLevel>(graph_optimization_level)),
                           ort_api);
 
   // Disable the mem pattern session option for DML. It will cause problems with how memory is allocated.

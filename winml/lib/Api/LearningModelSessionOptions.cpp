@@ -52,4 +52,13 @@ STDMETHODIMP LearningModelSessionOptions::SetIntraOpThreadSpinning(boolean allow
   telemetry_helper.SetIntraOpThreadSpinning(allowSpinning);
   return S_OK;
 }
+
+uint32_t LearningModelSessionOptions::OptimizationLevel() {
+  return graph_optimization_level_;
+}
+
+void LearningModelSessionOptions::OptimizationLevel(uint32_t level) {
+  graph_optimization_level_ = level;
+}
+
 }  // namespace WINMLP

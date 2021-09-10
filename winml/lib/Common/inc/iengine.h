@@ -220,6 +220,9 @@ IEngineBuilder : IUnknown {
   STDMETHOD(SetIntraOpThreadSpinning)
   (bool allow_spinning) PURE;
 
+  STDMETHOD(SetGraphOptimizationLevel)
+  (uint32_t level) PURE;
+
   STDMETHOD(CreateEngine)
   (IEngine **out) PURE;
 };

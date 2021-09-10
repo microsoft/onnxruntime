@@ -119,7 +119,6 @@ void LearningModelSession::Initialize() {
     WINML_THROW_IF_FAILED(engine_builder->SetMetacommandsEnabled(device_impl->MetacommandsEnabled()));
   }
 
-
   // Make onnxruntime apply the batch size override, if any
   if (session_options_) {
     if (session_options_.BatchSizeOverride() != 0) {
@@ -127,6 +126,8 @@ void LearningModelSession::Initialize() {
     }
 
     com_ptr<winmlp::LearningModelSessionOptions> session_options_impl = session_options_.as<winmlp::LearningModelSessionOptions>();
+
+    engine_builder->SetGraphOptimizationLevel(session_options_impl->OptimizationLevel());
 
     // Make Onnxruntime apply the number of intra op threads
     uint32_t numIntraOpThreads = session_options_impl->GetIntraOpNumThreads();
@@ -455,6 +456,10 @@ STDMETHODIMP LearningModelSession::GetIntraOpThreadSpinning(boolean* allowSpinni
 
 winml::LearningModelSession LearningModelSession::CreateInertSession(_winml::IEngine* engine) {
   return winrt::make<winmlp::LearningModelSession>(engine);
+}
+
+winml::LearningModelSessionOptions LearningModelSession::Options() {
+  return session_options_;
 }
 
 }  // namespace WINMLP

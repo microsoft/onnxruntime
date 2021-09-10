@@ -33,7 +33,7 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_Outptr_ _winml::IEngine** o
   }
 
   OrtSessionOptions* ort_options;
-  RETURN_IF_FAILED(onnxruntime_session_builder->CreateSessionOptions(&ort_options));
+  RETURN_IF_FAILED(onnxruntime_session_builder->CreateSessionOptions(graph_optimization_level_, &ort_options));
   auto session_options = UniqueOrtSessionOptions(ort_options, ort_api->ReleaseSessionOptions);
 
   if (batch_size_override_.has_value()) {
@@ -104,5 +104,10 @@ STDMETHODIMP OnnxruntimeEngineBuilder::SetIntraOpNumThreadsOverride(uint32_t int
 
 STDMETHODIMP OnnxruntimeEngineBuilder::SetIntraOpThreadSpinning(bool allow_spinning) {
   allow_thread_spinning_ = allow_spinning;
+  return S_OK;
+}
+
+STDMETHODIMP OnnxruntimeEngineBuilder::SetGraphOptimizationLevel(uint32_t level) {
+  graph_optimization_level_ = level;
   return S_OK;
 }

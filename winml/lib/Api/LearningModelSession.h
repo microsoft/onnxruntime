@@ -87,6 +87,9 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession, ILearn
     return &dml_ep_lock_;
   }
 
+  winml::LearningModelSessionOptions
+  Options();
+
   static winml::LearningModelSession CreateInertSession(_winml::IEngine* engine);
 
  private:
