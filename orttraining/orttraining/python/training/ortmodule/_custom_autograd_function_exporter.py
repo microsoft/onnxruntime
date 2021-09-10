@@ -12,6 +12,9 @@ from onnxruntime.capi._pybind_state import register_torch_autograd_function
 from ._fallback import _FallbackManager, ORTModuleONNXModelException, ORTModuleTorchModelException, wrap_exception
 from . import _logger
 
+_banned_autograd_function_names = ['CheckpointFunction']
+
+
 def _export(g, n, *args, **kwargs):
     '''
     This function exports PythonOp (input: "n") into a graph
@@ -20,6 +23,10 @@ def _export(g, n, *args, **kwargs):
     '''
     try:
         name = kwargs['name']
+        if name in _banned_autograd_function_names:
+            raise Exception(f'The autograd.Function {name} is not exportable to ONNX. '
+                            'Please replace ORTModule with HierarchalORTModule to only'
+                            'wrap exportable sub-nn.Module''s as ORTModule.')
         inplace = kwargs['inplace']
         training_mode = symbolic_helper._training_mode
         cconv = n.cconv()
