@@ -239,22 +239,6 @@ ComputeBlockBy1Loop:
         ENDM
 
 ;
-;
-;
-
-RequantizeVector MACRO VecReg, ScaleReg, BiasReg
-
-        vpaddd  VecReg,VecReg,BiasReg
-        vcvtdq2ps VecReg,VecReg
-        vmulps VecReg,VecReg,ScaleReg
-        vmaxps VecReg,VecReg,zmm5
-        vminps VecReg,VecReg,zmm6
-        vcvtps2dq VecReg,VecReg
-        vpaddd  VecReg,VecReg,zmm7
-
-        ENDM
-
-;
 ; Macro Description:
 ;
 ;   This macro generates code for the inner kernel to compute a convolution
