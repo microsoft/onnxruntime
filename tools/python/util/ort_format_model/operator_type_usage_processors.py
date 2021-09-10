@@ -344,6 +344,7 @@ def _create_operator_type_usage_processors():
 
     # ops that are used to manipulate shapes or indices so require int32_t and int64_t to be available
     default_processor_onnx_ops_requiring_ints_for_input_0 = ['Add',
+                                                             'Concat',
                                                              'Div',
                                                              'Equal',
                                                              'Greater',

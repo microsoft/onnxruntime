@@ -87,6 +87,7 @@ struct TensorrtFuncState {
   OrtMutex* tensorrt_mu_ptr = nullptr;
   bool fp16_enable;
   bool int8_enable;
+  bool int8_calibration_cache_available;
   bool dla_enable;
   int dla_core;
   size_t* max_workspace_size_ptr = nullptr;
@@ -146,7 +147,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool dla_enable_ = false;
   int dla_core_ = 0;
   bool force_sequential_engine_build_ = false;
-  std::string int8_calibration_cache_name_ = "INT8_calibration_table";
+  std::string int8_calibration_cache_name_;
+  bool int8_calibration_cache_available_ = false;
   bool int8_use_native_tensorrt_calibration_table_ = false;
   bool dump_subgraphs_ = false;
   bool engine_cache_enable_ = false;

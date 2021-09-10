@@ -351,6 +351,32 @@ def gen_matmul_two_products(model_path, transpose, transpose_before_cast, second
     model_path += "_add_products" if add_products else ""
     save(model_path, nodes, inputs, outputs, [])
 
+def gen_bool_to_float16_cast(model_path):
+    X1 = helper.make_tensor_value_info('x1', TensorProto.INT64, [1, 1])
+    X2 = helper.make_tensor_value_info('x2', TensorProto.INT64, [1, 1])
+    X3 = helper.make_tensor_value_info('x3', TensorProto.FLOAT, [1, 1])
+    Y = helper.make_tensor_value_info('output', TensorProto.FLOAT16, [1, 1])
+
+    less1 = helper.make_node('Less', ['x1', 'x2'], ['less1'], name='less1')
+    cast1 = helper.make_node('Cast', ['less1'], ['cast1'], name='cast1', to=TensorProto.FLOAT16)
+    cast2 = helper.make_node('Cast', ['x3'], ['cast2'], name='cast2', to=TensorProto.FLOAT16)
+    add1 = helper.make_node('Add', ['cast1', 'cast2'], ['output'])
+
+    save(model_path, [less1, cast1, cast2, add1], [X1, X2, X3], [Y], [])
+
+def gen_bool_to_float_cast(model_path):
+    X1 = helper.make_tensor_value_info('x1', TensorProto.INT64, [1, 1])
+    X2 = helper.make_tensor_value_info('x2', TensorProto.INT64, [1, 1])
+    X3 = helper.make_tensor_value_info('x3', TensorProto.FLOAT16, [1, 1])
+    Y = helper.make_tensor_value_info('output', TensorProto.FLOAT16, [1, 1])
+
+    less1 = helper.make_node('Less', ['x1', 'x2'], ['less1'], name='less1')
+    cast1 = helper.make_node('Cast', ['less1'], ['cast1'], name='cast1', to=TensorProto.FLOAT)
+    cast2 = helper.make_node('Cast', ['x3'], ['cast2'], name='cast2', to=TensorProto.FLOAT)
+    add1 = helper.make_node('Add', ['cast1', 'cast2'], ['add1'])
+    cast3 = helper.make_node('Cast', ['add1'], ['output'], name='cast3', to=TensorProto.FLOAT16)
+
+    save(model_path, [less1, cast1, cast2, cast3, add1], [X1, X2, X3], [Y], [])
 
 for (transpose_inputs, transpose_product, cast_inputs, cast_product, insert_add, cast_sum, cast_input2) in list(itertools.product([False, True], repeat=7)):
     if not insert_add and (cast_sum or cast_input2):
@@ -369,3 +395,7 @@ for (transpose, transpose_before_cast, second_matmul, add_products, cast_inputs)
         continue
     gen_matmul_two_products("matmul_two_outputs", transpose,
                             transpose_before_cast, second_matmul, cast_inputs)
+            
+
+gen_bool_to_float16_cast("negative_test_case_bool_fp16_cast")
+gen_bool_to_float_cast("negative_test_case_bool_fp_cast")

@@ -355,8 +355,8 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
     sample_inputs_copy = copy.deepcopy(sample_inputs)
 
     # Enable contrib ops export from PyTorch
-    from onnxruntime.training import register_custom_ops_pytorch_exporter
-    register_custom_ops_pytorch_exporter.register_custom_op()
+    from onnxruntime.tools import pytorch_export_contrib_ops
+    pytorch_export_contrib_ops.register()
 
     torch.onnx._export(model, tuple(sample_inputs_copy), f,
                        input_names=input_names,

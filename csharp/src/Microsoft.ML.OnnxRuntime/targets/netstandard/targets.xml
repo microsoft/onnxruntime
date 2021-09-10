@@ -12,5 +12,4 @@
                       '$(SuppressOnnxRuntimePlatformCompatibilityError)' != 'true'"
            Text="Microsoft.ML.OnnxRuntime only supports the AnyCPU, x64, and x86 platforms at this time."/>
   </Target>
-
 </Project>
