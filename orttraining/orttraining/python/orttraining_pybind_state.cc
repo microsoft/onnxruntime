@@ -104,8 +104,9 @@ struct PyGradientGraphBuilder {
   std::unique_ptr<GradientGraphBuilder> builder;
   std::shared_ptr<Model> model;
   std::unique_ptr<logging::Logger> logger;
-  PyGradientGraphBuilder(std::unique_ptr<GradientGraphBuilder> builder_, std::shared_ptr<Model> model_, std::unique_ptr<logging::Logger> logger_)
-      : builder(std::move(builder_)), model(std::move(model_)), logger(std::move(logger_)) {}
+  std::unique_ptr<GradientGraphConfiguration> gradient_graph_config;
+  PyGradientGraphBuilder(std::unique_ptr<GradientGraphBuilder> builder_, std::shared_ptr<Model> model_, std::unique_ptr<logging::Logger> logger_, std::unique_ptr<GradientGraphConfiguration> gradient_graph_config_)
+      : builder(std::move(builder_)), model(std::move(model_)), logger(std::move(logger_)), gradient_graph_config(std::move(gradient_graph_config_)) {}
 };
 
 // TODO: this method does not handle parallel optimization.
@@ -744,35 +745,30 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
                                           const std::unordered_set<std::string>& y_node_arg_names,
                                           const std::unordered_set<std::string>& x_node_arg_names,
                                           const std::string loss_node_arg_name) {
-                          std::cout << "init: y_node_arg_names:" << std::endl;
-                          for (const auto& v : y_node_arg_names)
-                          std::cout << "  v: " << v << std::endl;
-                          std::cout << std::endl;
-                          std::cout << "init: x_node_arg_names:" << std::endl;
-                          for (const auto& v : x_node_arg_names)
-                          std::cout << "  v: " << v << std::endl;
-                          std::cout << std::endl;
-                          std::cout << "init: loss_node_arg_name: " << loss_node_arg_name << std::endl;
-                          std::cout << "init: loss_node_arg_name: " << loss_node_arg_name << std::endl;
+        auto file_path = ToPathString(model_path);
+        std::shared_ptr<Model> model;
+        auto logger = logging::LoggingManager::DefaultLogger();
+        ORT_THROW_IF_ERROR(Model::Load(file_path, model, nullptr, logger));
+        GradientGraphConfiguration gradient_graph_config{};
+        // FIXME Even with this, gradients do not get output.
+        gradient_graph_config.set_gradients_as_graph_outputs = true;
 
-                          auto file_path = ToPathString(model_path);
-                          std::shared_ptr<Model> model;
-                          auto logger = logging::LoggingManager::DefaultLogger();
-                          ORT_THROW_IF_ERROR(Model::Load(file_path, model, nullptr, logger));
-                          GradientGraphConfiguration gradient_graph_config{};
-                          // FIXME Even with this, gradients do not get output.
-                          gradient_graph_config.set_gradients_as_graph_outputs = true;
+        std::cout << "gradient_graph_config.set_gradients_as_graph_outputs: " << gradient_graph_config.set_gradients_as_graph_outputs << std::endl;
 
-                          auto builder = std::make_unique<GradientGraphBuilder>(
-                              &model->MainGraph(),
-                              y_node_arg_names,
-                              x_node_arg_names,
-                              loss_node_arg_name,
-                              gradient_graph_config,
-                              logger);
-                          auto logger_ptr = std::make_unique<logging::Logger>(logger);
-                          return std::make_unique<PyGradientGraphBuilder>(std::move(builder), std::move(model), std::move(logger_ptr));
-                        }))
+        auto builder = std::make_unique<GradientGraphBuilder>(
+            &model->MainGraph(),
+            y_node_arg_names,
+            x_node_arg_names,
+            loss_node_arg_name,
+            gradient_graph_config,
+            logger);
+
+        // Save some objects, otherwise they get lost.
+        auto logger_ptr = std::make_unique<logging::Logger>(logger);
+        auto gradient_graph_config_ptr = std::make_unique<GradientGraphConfiguration>(gradient_graph_config);
+
+        return std::make_unique<PyGradientGraphBuilder>(std::move(builder), std::move(model), std::move(logger_ptr), std::move(gradient_graph_config_ptr));
+      }))
       .def("build", [](PyGradientGraphBuilder* gradient_graph_builder) {
         ORT_THROW_IF_ERROR(gradient_graph_builder->builder->Build());
       })
