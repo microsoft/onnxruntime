@@ -54,7 +54,7 @@ RUN apt update -y && \
     cd /etc/apt/sources.list.d && \
     echo "deb https://apt.repos.intel.com/openvino/2021 all main">intel-openvino-2021.list && \ 
     apt update -y && \
-    apt -y install intel-openvino-dev-ubuntu18-2021.4.582 && \
+    apt -y install intel-openvino-dev-ubuntu18-2021.4.689 && \
     cd ${INTEL_OPENVINO_DIR}/install_dependencies && ./install_openvino_dependencies.sh -y && \
     cd ${INTEL_OPENVINO_DIR} && rm -rf documentation data_processing && \
     cd deployment_tools/ && rm -rf model_optimizer open_model_zoo demo tools && \
