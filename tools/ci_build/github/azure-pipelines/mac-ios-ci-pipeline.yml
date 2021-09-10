@@ -4,7 +4,7 @@ jobs:
     vmImage: 'macOS-10.15'
   variables:
     MACOSX_DEPLOYMENT_TARGET: '10.14'
-  timeoutInMinutes: 120
+  timeoutInMinutes: 150
   steps:
     - script: |
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
