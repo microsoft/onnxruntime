@@ -840,7 +840,7 @@ namespace Microsoft.ML.OnnxRuntime
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_CPU(IntPtr /*(OrtSessionOptions*) */ options, int use_arena);
 
-#if __NETCOREAPP__
+#if __NETCOREAPP_NETFRAMEWORK__
 
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Dnnl(IntPtr /*(OrtSessionOptions*) */ options, int use_arena);
