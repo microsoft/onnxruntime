@@ -16,6 +16,8 @@ struct GradientGraphConfiguration {
   // If set to true, all gradients will be exposed as graph output.
   // This should only be used for unit test or  debugging purpose.
   bool set_gradients_as_graph_outputs{false};
+
+  bool accumulate_gradients_within_ort{false};
 };
 
 }  // namespace training

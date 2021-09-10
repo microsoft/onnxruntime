@@ -185,19 +185,20 @@ class TrainingManager(GraphExecutionManager):
                     # Unpack saved_tensor to trigger version detection that catches inplace corruption
                     _ = ctx.saved_tensors
 
-                    if self._accumulate_gradients_within_ort and self._grad_already_initialized is False:
-                        self.graph_initializer_param_to_training = [param for name, param in self._flattened_module.named_parameters()
-                                                                    if param.requires_grad and name in self._graph_initializer_names_to_train]
+                    if self._accumulate_gradients_within_ort:
+                        if not self.graph_initializer_param_to_training:
+                            self.graph_initializer_param_to_training = [param for name, param in self._flattened_module.named_parameters()
+                                                                        if param.requires_grad and name in self._graph_initializer_names_to_train]
 
-                        # The param's grad attribute is None by default and becomes a Tensor the first time a call to loss.backward(), 
-                        # which triggers gradient computation and store calculated gradients into param.grad. Then the subsquent
-                        # iterations will always reuse the created param.grad for accumulating grad.
-                        # Following https://github.com/pytorch/pytorch/blame/b95ce1591d56d545391ad5651f17ceb3b398a666/docs/source/autograd.rst#L113,
-                        # we explicitly initialze it here to make sure the .grad is a valid tensor, then pass it as backward inputs.
-                        for param in self.graph_initializer_param_to_training:
-                            assert param.grad is None
-                            param.grad = torch.zeros_like(param)
-                        self._grad_already_initialized = True
+                        if not all([param.grad for param in self.graph_initializer_param_to_training]):
+                            # The param's grad attribute is None by default and becomes a Tensor the first time a call to loss.backward(), 
+                            # which triggers gradient computation and store calculated gradients into param.grad. Then the subsquent
+                            # iterations will always reuse the created param.grad for accumulating grad.
+                            # Following https://github.com/pytorch/pytorch/blame/b95ce1591d56d545391ad5651f17ceb3b398a666/docs/source/autograd.rst#L113,
+                            # we explicitly initialze it here to make sure the .grad is a valid tensor, then pass it as backward inputs.
+                            for param in self.graph_initializer_param_to_training:
+                                if param.grad is None:
+                                    param.grad = torch.zeros_like(param)
 
                     # Use IO binding
                     # Push user output grads to ONNX backend.

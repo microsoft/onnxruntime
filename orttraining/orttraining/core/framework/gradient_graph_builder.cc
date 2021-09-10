@@ -327,8 +327,15 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
   // during graph to graph_proto conversion. Skip the graph outputs as they are already in the output section in
   // graph_proto. Or maybe no need to skip as duplicate value_info and output is fine?
   // Also skip those already in the value_info.
-  std::unordered_set<std::string> skip_names(gradient_graph_defs.GraphOutputs().begin(),
-                                             gradient_graph_defs.GraphOutputs().end());
+  std::unordered_set<std::string> skip_names; 
+  
+  if (gradient_graph_config_.accumulate_gradients_within_ort) {
+
+  } else {
+    for (auto it = gradient_graph_defs.GraphOutputs().begin(); it != gradient_graph_defs.GraphOutputs().end(); ++it) {
+      skip_names.emplace(static_cast<std::string>(*it));
+    }
+  }
   for (const NodeArg* node_arg : graph_->GetValueInfo()) {
     if (node_arg) {
       skip_names.insert(node_arg->Name());
