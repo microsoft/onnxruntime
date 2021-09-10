@@ -81,6 +81,9 @@ def call_python_forward_function(
         def register_context(result):
             # Search for context among all outputs.
             ctx = None
+            # All forward outputs of torch.autograd.Function shared a same gradient function pointer,
+            # so here we just get the first tensor having grad_fn attribute.
+            # (https://github.com/pytorch/pytorch/blob/15532595209d2daf34d35e10f8d3d3b64966aea2/torch/csrc/autograd/custom_function.cpp#L267)
             first_tensor_output = None
             for arg in result:
                 if not isinstance(arg, torch.Tensor) or not hasattr(arg, 'grad_fn'):
@@ -93,6 +96,22 @@ def call_python_forward_function(
             if training_mode_flag:
                 # Must extract one valid context from result tensors.
                 assert ctx is not None
+
+                #         FORWARD                                                    BACKWARD FUNCTION CONNECTIONS
+                # input_1 (leaf, constructed by from_dlpack)   <----reference----  AccumulateGrad gradient function
+                #             ↓                                                                 ↑
+                # autograd.Function apply()                        ------------>    autograd.Function backward()
+                #             ↓                                    |                            ↑
+                #    output_1, output_2   --- shared_ptr<PyNode> ---                            ↑
+                #             ↓                                                       previous gradient function
+
+                # We remove the edges starting between current autograd.Function's gradient function and 
+                # it's input's gradient function (e.g. AccumulateGrad gradient function), then
+                # AccumulateGrad gradient function will be destroyed, releasing the reference to input_1
+                # (https://github.com/pytorch/pytorch/blob/15532595209d2daf34d35e10f8d3d3b64966aea2/torch/csrc/autograd/functions/accumulate_grad.cpp#L21).
+                # The next edges are stored in Node, with which we can get next gradient function.
+                # https://github.com/pytorch/pytorch/blob/15532595209d2daf34d35e10f8d3d3b64966aea2/torch/csrc/autograd/function.h#L527
+                torch_interop_utils.clear_grad_fns_for_next_edges(first_tensor_output, ctx.saved_tensors)
                 torch_interop_utils.register_grad_fn(id(ctx), first_tensor_output)
             else:
                 # Context must not present under non-training mode.
@@ -158,36 +177,37 @@ def call_python_backward_function(
         inplace: indicates if args can be modified inside the custom function.
         args: inputs to "backward_function".
     '''
-    def wrap_all_outputs(result):
-        if isinstance(result, torch.Tensor):
-            return [to_dlpack(result)]
-        elif isinstance(result, tuple) or isinstance(result, list):
-            return [to_dlpack(value) if value is not None else None for value in result]
-        else:
-            raise wrap_exception(ORTModuleIOError,
-                                 TypeError(f'ORTModule does not support the following model output type {type(result)}.'))
+    with torch.no_grad():
+        def wrap_all_outputs(result):
+            if isinstance(result, torch.Tensor):
+                return [to_dlpack(result)]
+            elif isinstance(result, tuple) or isinstance(result, list):
+                return [to_dlpack(value) if value is not None else None for value in result]
+            else:
+                raise wrap_exception(ORTModuleIOError,
+                                    TypeError(f'ORTModule does not support the following model output type {type(result)}.'))
 
-    try:
-        # Backward inputs should not require gradients.
-        assert all(grad_flag == 0 for grad_flag in requires_grad_flags)
+        try:
+            # Backward inputs should not require gradients.
+            assert all(grad_flag == 0 for grad_flag in requires_grad_flags)
 
-        # Prepare inputs for calling Python function.
-        wrapped_args = list(wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace, is_training_mode, arg)
-                            for grad_flag, tensor_flag, arg in zip(requires_grad_flags, tensor_type_flags, args))
+            # Prepare inputs for calling Python function.
+            wrapped_args = list(wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace, is_training_mode, arg)
+                                for grad_flag, tensor_flag, arg in zip(requires_grad_flags, tensor_type_flags, args))
 
-        # Call Python function.
-        result = backward_function(*wrapped_args)
+            # Call Python function.
+            result = backward_function(*wrapped_args)
 
-        # Extract results as DLPack tensor list.
-        wrapped_returned_args = wrap_all_outputs(result)
+            # Extract results as DLPack tensor list.
+            wrapped_returned_args = wrap_all_outputs(result)
 
-        ctx = wrapped_args[0]
-        torch_interop_utils.unregister_grad_fn(id(ctx))
+            ctx = wrapped_args[0]
+            torch_interop_utils.unregister_grad_fn(id(ctx))
 
-        return tuple(wrapped_returned_args)
-    except Exception as e:
-        # Flush buffers. Otherwise, calling this from C++ may lose them.
-        print('Exception happens when running ', backward_function)
-        sys.stdout.flush()
-        sys.stderr.flush()
-        raise wrap_exception(ORTModuleFallbackException, e)
+            return tuple(wrapped_returned_args)
+        except Exception as e:
+            # Flush buffers. Otherwise, calling this from C++ may lose them.
+            print('Exception happens when running ', backward_function)
+            sys.stdout.flush()
+            sys.stderr.flush()
+            raise wrap_exception(ORTModuleFallbackException, e)

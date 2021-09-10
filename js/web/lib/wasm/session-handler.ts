@@ -3,7 +3,7 @@
 
 import {env, InferenceSession, SessionHandler, Tensor} from 'onnxruntime-common';
 
-import {createSession, initOrt, releaseSession, run} from './proxy-wrapper';
+import {createSession, endProfiling, initOrt, releaseSession, run} from './proxy-wrapper';
 
 let ortInit: boolean;
 
@@ -85,6 +85,6 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
   }
 
   endProfiling(): void {
-    // TODO: implement profiling
+    void endProfiling(this.sessionId);
   }
 }

@@ -20,6 +20,7 @@ let initOrtCallbacks: PromiseCallbacks;
 const createSessionCallbacks: Array<PromiseCallbacks<SerializableSessionMetadata>> = [];
 const releaseSessionCallbacks: Array<PromiseCallbacks<void>> = [];
 const runCallbacks: Array<PromiseCallbacks<SerializableTensor[]>> = [];
+const endProfilingCallbacks: Array<PromiseCallbacks<void>> = [];
 
 const ensureWorker = (): void => {
   if (initializing || !initialized || aborted || !proxyWorker) {
@@ -65,6 +66,13 @@ const onProxyWorkerMessage = (ev: MessageEvent<OrtWasmMessage>): void => {
         runCallbacks.shift()![1](ev.data.err);
       } else {
         runCallbacks.shift()![0](ev.data.out!);
+      }
+      break;
+    case 'end-profiling':
+      if (ev.data.err) {
+        endProfilingCallbacks.shift()![1](ev.data.err);
+      } else {
+        endProfilingCallbacks.shift()![0]();
       }
       break;
     default:
@@ -161,5 +169,18 @@ export const run = async(
     });
   } else {
     return core.run(sessionId, inputIndices, inputs, outputIndices, options);
+  }
+};
+
+export const endProfiling = async(sessionId: number): Promise<void> => {
+  if (isProxy()) {
+    ensureWorker();
+    return new Promise<void>((resolve, reject) => {
+      endProfilingCallbacks.push([resolve, reject]);
+      const message: OrtWasmMessage = {type: 'end-profiling', in : sessionId};
+      proxyWorker!.postMessage(message);
+    });
+  } else {
+    core.endProfiling(sessionId);
   }
 };

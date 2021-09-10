@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 import numpy as np
 from collections import deque
-from onnx import onnx_pb, AttributeProto, ModelProto, TensorProto, numpy_helper, helper, external_data_helper, save_model
+from onnx import onnx_pb, AttributeProto, ModelProto, TensorProto, NodeProto, numpy_helper, helper, external_data_helper, save_model
 from shape_infer_helper import SymbolicShapeInferenceHelper
 
 logger = logging.getLogger(__name__)
@@ -484,8 +484,16 @@ class OnnxModel:
 
         return None
 
+    @staticmethod
+    def get_node_attribute(node: NodeProto, attribute_name: str):
+        for attr in node.attribute:
+            if attr.name == attribute_name:
+                value = helper.get_attribute_value(attr)
+                return value
+        return None
+
     def convert_model_float32_to_float16(self, cast_input_output=True):
-        logger.warn(
+        logger.warning(
             'The function convert_model_float32_to_float16 is deprecated. Use convert_float_to_float16 instead!')
         self.convert_float_to_float16(use_symbolic_shape_infer=True, keep_io_types=cast_input_output)
 
@@ -544,13 +552,6 @@ class OnnxModel:
         fp16_model = convert_float_to_float16(model, **parameters)
         self.initialize(fp16_model)
 
-        def get_node_attribute(node, attribute_name: str):
-            for attr in node.attribute:
-                if attr.name == attribute_name:
-                    value = helper.get_attribute_value(attr)
-                    return value
-            return None
-
         # Convert_float_to_float16 might add Cast(to=10) --> Cast(to=1) when two consequent nodes are computed in FP32.
         # Below are post-processing that removes those Cast nodes.
         # Remove first Cast nodes in path like  --> Cast --> Cast -->
@@ -565,7 +566,7 @@ class OnnxModel:
 
         # Remove the second cast node.
         for node in self.nodes():
-            if node.op_type == "Cast" and get_node_attribute(node, "to") == int(TensorProto.FLOAT) and \
+            if node.op_type == "Cast" and OnnxModel.get_node_attribute(node, "to") == int(TensorProto.FLOAT) and \
                 self.get_dtype(node.input[0])  == int(TensorProto.FLOAT):
 
                 if self.find_graph_output(node.output[0]):
@@ -697,13 +698,9 @@ class OnnxModel:
         Args:
             outputs (list): a list of graph outputs to retain. If it is None, all graph outputs will be kept.
         """
-
-        for node in self.model.graph.node:
-            # Some operators with inner graph in attributes like 'body' 'else_branch' or 'then_branch'
-            if node.op_type in ['Loop', 'Scan', 'If']:
-                # TODO: handle inner graph
-                logger.debug(f"Skip prune_graph since graph has operator: {node.op_type}")
-                return
+        if len(self.graphs()) > 1:
+            logger.debug(f"Skip prune_graph since graph has subgraph")
+            return
 
         if outputs is None:
             outputs = [output.name for output in self.model.graph.output]
@@ -866,11 +863,9 @@ class OnnxModel:
         #    self.graph_topological_sort(graph)
         OnnxModel.graph_topological_sort(self.model.graph)
 
-    def save_model_to_file(self, output_path, use_external_data_format=False):
+    def save_model_to_file(self, output_path, use_external_data_format=False, all_tensors_to_one_file=True):
         logger.info(f"Sort graphs in topological order")
         self.topological_sort()
-
-        logger.info(f"Output model to {output_path}")
 
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
@@ -881,13 +876,24 @@ class OnnxModel:
         else:
             # Save model to external data, which is needed for model size > 2GB
             if use_external_data_format:
-                data_file = str(Path(output_path).name + ".data")
-                if os.path.isfile(data_file):
-                    os.remove(data_file)
+                output_dir = Path(output_path).parent
+                output_dir.mkdir(parents=True, exist_ok=True)
+                location = Path(output_path).name + ".data" if all_tensors_to_one_file else None
+
+                # Show warnings of potential confliction of existing external data file.
+                if all_tensors_to_one_file:
+                    if os.path.exists(location):
+                        logger.warning(f"External data file ({location}) existed. Please remove the file and try again.")
+                else:
+                    if os.listdir(output_dir):
+                        logger.warning(f"Output directory ({output_dir}) for external data is not empty. Please try again with a new directory.")
+
                 external_data_helper.convert_model_to_external_data(self.model,
-                                                                    all_tensors_to_one_file=True,
-                                                                    location=data_file)
+                                                                    all_tensors_to_one_file=all_tensors_to_one_file,
+                                                                    location=location)
             save_model(self.model, output_path)
+
+        logger.info(f"Model saved to {output_path}")
 
     def get_graph_inputs_excluding_initializers(self):
         """
