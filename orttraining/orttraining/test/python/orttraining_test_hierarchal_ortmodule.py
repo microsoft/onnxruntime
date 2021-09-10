@@ -84,6 +84,7 @@ def test_hierarchal_ortmodule():
     y_ref.sum().backward()
     g_ref = x.grad.detach()
 
+    x.grad = None
     m = HierarchalORTModule(m)
 
     y = m(x,)
@@ -105,4 +106,5 @@ def test_hierarchal_ortmodule():
 
 
 if __name__ == '__main__':
-    test_hierarchal_ortmodule()
+    for i in range(20):
+        test_hierarchal_ortmodule()
