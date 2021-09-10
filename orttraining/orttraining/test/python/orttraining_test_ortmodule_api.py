@@ -2,6 +2,8 @@
 # Licensed under the MIT License.
 # orttraining_test_ortmodule_api.py
 
+from functools import reduce
+import itertools
 import math
 import random
 import copy
@@ -18,7 +20,7 @@ from inspect import signature
 import tempfile
 import os
 
-from onnxruntime.training.ortmodule import ORTModule, _utils, _io, DebugOptions, LogLevel, _fallback
+from onnxruntime.training.ortmodule import ORTModule, _utils, _io, DebugOptions, LogLevel, _fallback, _graph_execution_manager
 import _test_helpers
 
 # Import autocasting libs
@@ -3469,3 +3471,232 @@ def test_ortmodule_list_dict_input_with_kwargs_and_registered_buffer():
     kwargs_input_copy = copy.deepcopy(kwargs_input)
 
     _test_helpers.assert_values_are_close(pt_model(x, **kwargs_input), ort_model(x_copy, **kwargs_input_copy))
+
+def test_ortmodule_user_defined_method():
+    class UserDefinedMethodsNet(torch.nn.Module):
+        def __init__(self):
+            super(UserDefinedMethodsNet, self).__init__()
+            self.dummy = torch.nn.Parameter(torch.FloatTensor([12]))
+
+        def forward(self, a):
+            return self.dummy + a
+
+        def custom_method_returns_input(self, user_input):
+            return user_input
+
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model = UserDefinedMethodsNet().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    x = torch.randn(N, D_in, device=device)
+    y = copy.deepcopy(x)
+
+    out = ort_model.custom_method_returns_input(x)
+    assert x is out
+
+    pt_out = pt_model(x)
+    ort_out = ort_model(y)
+    _test_helpers.assert_values_are_close(pt_out, ort_out)
+
+def test_ortmodule_user_getattr_gets_successfully():
+    class UserDefinedMethodsNet(torch.nn.Module):
+        def __init__(self):
+            super(UserDefinedMethodsNet, self).__init__()
+            self.dummy = torch.nn.Parameter(torch.FloatTensor([12]))
+
+        def forward(self, a):
+            return self.dummy + a
+
+        def custom_method_returns_input(self, user_input):
+            return user_input
+
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model = UserDefinedMethodsNet().to(device)
+    ort_model = ORTModule(pt_model)
+
+    assert ort_model.custom_method_returns_input != pt_model.custom_method_returns_input
+    assert ort_model.custom_method_returns_input.__func__ == pt_model.custom_method_returns_input.__func__
+    assert ort_model.dummy is pt_model.dummy
+
+@pytest.mark.parametrize("attribute", ['True', 'lambda x : x'])
+def test_ortmodule_setattr_new_attribute(attribute):
+    class UserNet(torch.nn.Module):
+        def __init__(self):
+            super(UserNet, self).__init__()
+            self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
+
+        def forward(self, a):
+            return self.dummy + a
+
+    device = 'cuda'
+    pt_model = UserNet().to(device)
+    ort_model = ORTModule(pt_model)
+    ort_model.a_new_attribute = attribute
+
+    assert hasattr(pt_model, 'a_new_attribute')
+    assert pt_model.a_new_attribute == attribute
+    assert 'a_new_attribute' not in ort_model.__dict__
+
+def test_ortmodule_setattr_on_ortmodule_copied_user_model_attribute():
+    class UserNet(torch.nn.Module):
+        def __init__(self):
+            super(UserNet, self).__init__()
+            self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
+
+        def forward(self, a):
+            return self.dummy + a
+
+        def custom_method(self, a):
+            return a
+
+    def my_new_custom_method(self, a, b, c):
+        return a + b + c
+
+    device = 'cuda'
+    pt_model = UserNet().to(device)
+    ort_model = ORTModule(pt_model)
+    # custom_method is copied by ORTModule from the users model
+    # and bound to itself
+    ort_model.custom_method = my_new_custom_method
+    # dummy is defined on pt model
+    ort_model.dummy = torch.nn.Parameter(torch.FloatTensor([12]))
+
+    assert hasattr(pt_model, 'dummy')
+    assert torch.eq(pt_model.dummy, torch.nn.Parameter(torch.FloatTensor([12])))
+    assert 'dummy' not in ort_model.__dict__
+
+    assert hasattr(pt_model, 'custom_method')
+    assert pt_model.custom_method is not my_new_custom_method
+    assert ort_model.custom_method is my_new_custom_method
+
+def test_ortmodule_setattr_ortmodule_attribute():
+    class UserNet(torch.nn.Module):
+        def __init__(self):
+            super(UserNet, self).__init__()
+            self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
+
+        def forward(self, a):
+            return self.dummy + a
+
+    device = 'cuda'
+    pt_model = UserNet().to(device)
+    ort_model = ORTModule(pt_model)
+    ort_model._torch_module = True
+
+    assert not hasattr(pt_model, '_torch_module')
+    assert '_torch_module' in ort_model.__dict__
+    assert ort_model._torch_module == True
+
+def test_ortmodule_setattr_signals_model_changed():
+    class UserNet(torch.nn.Module):
+        def __init__(self, input_flag):
+            super(UserNet, self).__init__()
+            self.dummy = torch.nn.Parameter(torch.FloatTensor([10]))
+            self.input_flag = input_flag
+
+        def forward(self, a):
+            if self.input_flag:
+                return self.dummy + a
+            else:
+                return a
+
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model = UserNet(True).to(device)
+    ort_model = ORTModule(pt_model)
+
+    _ = ort_model(torch.randn(N, D_in, device=device))
+    exported_model1 = ort_model._torch_module._execution_manager(True)._onnx_models.exported_model
+
+    for training_mode in [False, True]:
+        assert ort_model._torch_module._execution_manager(training_mode)._original_model_has_changed == False
+    ort_model.input_flag = False
+
+    for training_mode in [False, True]:
+        assert ort_model._torch_module._execution_manager(training_mode)._original_model_has_changed == True
+
+    _ = ort_model(torch.randn(N, D_in, device=device))
+    exported_model2 = ort_model._torch_module._execution_manager(True)._onnx_models.exported_model
+
+    assert exported_model1 != exported_model2
+
+def test_ortmodule_attribute_name_collision_warning():
+    class UserNet(torch.nn.Module):
+        def __init__(self):
+            super(UserNet, self).__init__()
+            self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
+            self._torch_module = True
+
+        def forward(self, a):
+            return self.dummy + a
+
+        def load_state_dict(self):
+            pass
+
+    device = 'cuda'
+    pt_model = UserNet().to(device)
+    with pytest.warns(UserWarning) as warning_record:
+        ort_model = ORTModule(pt_model)
+
+    assert len(warning_record) == 2
+    assert "_torch_module collides with ORTModule's attribute name." in warning_record[0].message.args[0]
+    assert "load_state_dict collides with ORTModule's attribute name." in warning_record[1].message.args[0]
+
+def test_ortmodule_ortmodule_method_attribute_copy():
+    class UserNetWithSelfCallingForward(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(UserNetWithSelfCallingForward, self).__init__()
+
+            self.fc1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu = torch.nn.ReLU()
+            self.fc2 = torch.nn.Linear(hidden_size, num_classes)
+
+        def forward(self, input1):
+            out = self.fc1(input1)
+            out = self.relu(out)
+            out = self.fc2(out)
+            return out
+
+        def run_forward(self, *args, **kwargs):
+            return self(*args, **kwargs)
+
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model = UserNetWithSelfCallingForward(D_in, H, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    x_1 = torch.randn(N, D_in, device=device)
+    x_2 = copy.deepcopy(x_1)
+    x_3 = copy.deepcopy(x_1)
+    # Executed on ORTModule
+    out1 = ort_model(x_1)
+    # Executed on ORTModule even though run_forward is not defined on ORTModule
+    out2 = ort_model.run_forward(x_2)
+    # Executed on pytorch module since it is directly invoked from there
+    out3 = pt_model.run_forward(x_3)
+
+    assert torch.equal(out1, out2)
+    _test_helpers.assert_values_are_close(out2, out3)
+
+    assert type(out1.grad_fn).__name__ == '_ORTModuleFunctionBackward'
+    assert type(out2.grad_fn).__name__ == '_ORTModuleFunctionBackward'
+    assert type(out3.grad_fn).__name__ == 'AddmmBackward'
+
+@pytest.mark.parametrize("policy_str, policy",[
+    ('SKIP_CHECK_DISABLED', _graph_execution_manager._SkipCheck.SKIP_CHECK_DISABLED),
+    ('SKIP_CHECK_DEVICE', _graph_execution_manager._SkipCheck.SKIP_CHECK_DEVICE),
+    ('SKIP_CHECK_BUILD_GRADIENT', _graph_execution_manager._SkipCheck.SKIP_CHECK_BUILD_GRADIENT),
+    ('SKIP_CHECK_EXECUTION_AGENT', _graph_execution_manager._SkipCheck.SKIP_CHECK_EXECUTION_AGENT),
+])
+def test_ortmodule_skip_check_load_from_os_env(policy_str, policy):
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    os.environ['ORTMODULE_SKIPCHECK_POLICY'] = policy_str
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    ort_model = ORTModule(model)
+
+    for training_mode in [False, True]:
+        assert ort_model._torch_module._execution_manager(training_mode)._skip_check == policy
+
+    del os.environ['ORTMODULE_SKIPCHECK_POLICY']

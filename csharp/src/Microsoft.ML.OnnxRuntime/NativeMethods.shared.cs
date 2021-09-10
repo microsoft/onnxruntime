@@ -508,6 +508,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                 byte[] modelPath,
                                                 IntPtr /* (OrtSessionOptions*) */sessopnOptions,
                                                 out IntPtr /**/ session);
+        
         public static DOrtCreateSession OrtCreateSession;
 
         /// <summary>
@@ -527,6 +528,7 @@ namespace Microsoft.ML.OnnxRuntime
                                         IntPtr /* (OrtSessionOptions*) */sessionOptions,
                                         IntPtr /* (OrtPrepackedWeightsContainer*) */prepackedWeightsContainer,
                                         out IntPtr /* (OrtSession**) */ session);
+        
         public static DOrtCreateSessionWithPrepackedWeightsContainer OrtCreateSessionWithPrepackedWeightsContainer;
 
 #if __MOBILE__
@@ -574,7 +576,8 @@ namespace Microsoft.ML.OnnxRuntime
                                                 UIntPtr outputCount,
                                                 IntPtr[] outputValues /* An array of output value pointers. Array must be allocated by the caller */
                                                 );
-        public static DOrtRun OrtRun;
+        
+      public static DOrtRun OrtRun;
 
 #if __MOBILE__
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -584,6 +587,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                 IntPtr /*(OrtSessionRunOptions*)*/ runOptions, // can not be null
                                                 IntPtr /*(const OrtIoBinding*)*/ io_binding
                                                 );
+        
         public static DOrtRunWithBinding OrtRunWithBinding;
 
 #if __MOBILE__
@@ -592,6 +596,7 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSessionGetInputCount(
                                                 IntPtr /*(OrtSession*)*/ session,
                                                 out UIntPtr count);
+        
         public static DOrtSessionGetInputCount OrtSessionGetInputCount;
 
 #if __MOBILE__
@@ -600,6 +605,7 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSessionGetOutputCount(
                                                 IntPtr /*(OrtSession*)*/ session,
                                                 out UIntPtr count);
+        
         public static DOrtSessionGetOutputCount OrtSessionGetOutputCount;
 
 #if __MOBILE__
@@ -608,6 +614,7 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSessionGetOverridableInitializerCount(
                                                 IntPtr /*(OrtSession*)*/ session,
                                                 out UIntPtr count);
+        
         public static DOrtSessionGetOverridableInitializerCount OrtSessionGetOverridableInitializerCount;
 
 #if __MOBILE__
@@ -618,6 +625,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                 UIntPtr index,
                                                 IntPtr /*(OrtAllocator*)*/ allocator,
                                                 out IntPtr /*(char**)*/name);
+        
         public static DOrtSessionGetInputName OrtSessionGetInputName;
 
 #if __MOBILE__
@@ -628,6 +636,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                 UIntPtr index,
                                                 IntPtr /*(OrtAllocator*)*/ allocator,
                                                 out IntPtr /*(char**)*/name);
+        
         public static DOrtSessionGetOutputName OrtSessionGetOutputName;
 
 #if __MOBILE__
@@ -637,6 +646,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                 IntPtr /*(const OrtSession*)*/ session,
                                                 IntPtr /*(OrtAllocator*)*/ allocator,
                                                 out IntPtr /*(char**)*/profile_file);
+        
         public static DOrtSessionEndProfiling OrtSessionEndProfiling;
 
 #if __MOBILE__
@@ -647,6 +657,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                 UIntPtr index,
                                                 IntPtr /*(OrtAllocator*)*/ allocator,
                                                 out IntPtr /*(char**)*/name);
+        
         public static DOrtSessionGetOverridableInitializerName OrtSessionGetOverridableInitializerName;
 
 #if __MOBILE__
@@ -656,6 +667,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                 IntPtr /*(const OrtSession*)*/ session,
                                                 UIntPtr index,
                                                 out IntPtr /*(struct OrtTypeInfo**)*/ typeInfo);
+        
         public static DOrtSessionGetInputTypeInfo OrtSessionGetInputTypeInfo;
 
 #if __MOBILE__
@@ -665,6 +677,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                 IntPtr /*(const OrtSession*)*/ session,
                                                 UIntPtr index,
                                                 out IntPtr /* (struct OrtTypeInfo**)*/ typeInfo);
+        
         public static DOrtSessionGetOutputTypeInfo OrtSessionGetOutputTypeInfo;
 
 #if __MOBILE__
@@ -674,6 +687,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                 IntPtr /*(const OrtSession*)*/ session,
                                                 UIntPtr index,
                                                 out IntPtr /* (struct OrtTypeInfo**)*/ typeInfo);
+        
         public static DOrtSessionGetOverridableInitializerTypeInfo OrtSessionGetOverridableInitializerTypeInfo;
 
         // release the typeinfo using OrtReleaseTypeInfo
@@ -1445,7 +1459,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="modelMetadata">instance of OrtModelMetadata</param>
         /// <param name="allocator">instance of OrtAllocator</param>
         /// <param name="value">(output) description from the ModelMetadata instance</param>
-
 #if __MOBILE__
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
 #endif
@@ -1503,7 +1516,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="allocator">instance of OrtAllocator</param>
         /// <param name="key">key in the custom metadata map</param>
         /// <param name="value">(output) value for the key in the custom metadata map</param>
-
 #if __MOBILE__
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
 #endif
@@ -1537,7 +1549,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                                  out IntPtr /*(OrtValue**)*/ outputValue);
 
         public static DOrtGetValue OrtGetValue;
-
+      
 #if __MOBILE__
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
 #endif
@@ -1648,7 +1660,6 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static DOrtGetTensorTypeAndShape OrtGetTensorTypeAndShape;
 
-
 #if __MOBILE__
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
 #endif
@@ -1733,7 +1744,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="providers">(output) all execution providers (strings) supported in the native onnxruntime shared library</param>
         /// <param name="numProviders">(output) number of execution providers (strings)</param>
-
 #if __MOBILE__
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
 #endif
@@ -1746,7 +1756,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="providers">all execution providers (strings) returned by OrtGetAvailableProviders</param>
         /// <param name="numProviders">number of execution providers (strings)</param>
-
 #if __MOBILE__
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
 #endif

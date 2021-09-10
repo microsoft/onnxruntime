@@ -103,5 +103,9 @@ Status reduce_matrix_rows(cudaStream_t stream, const TIn* input, TOut* output, i
 template <typename TIn, typename TOut>
 Status reduce_matrix_columns(cudaStream_t stream, const TIn* input, TOut* output, int m, int n, void* buffer, size_t buffer_size);
 
+/** Apply unary elementwise division. */
+template <typename T>
+void UnaryDiv(cudaStream_t stream, const T* input, T* output, T denominator, size_t count);
+
 }  // namespace cuda
 }  // namespace onnxruntime

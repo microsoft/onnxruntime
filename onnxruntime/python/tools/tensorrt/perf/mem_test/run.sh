@@ -28,7 +28,7 @@ fi
 
 if [ -z ${ORT_SOURCE} ]
 then
-    ORT_SOURCE="/workspace/onnxruntime/"
+    ORT_SOURCE="/code/onnxruntime/"
 fi
 
 if [ ${BUILD_ORT_LATEST} == "true" ]

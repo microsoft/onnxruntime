@@ -5,8 +5,10 @@
 
 from ._torch_module_factory import TorchModuleFactory
 from ._torch_module_pytorch import TorchModulePytorch
+from ._torch_module_ort import TorchModuleORT
 from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 from ._custom_gradient_registry import CustomGradientRegistry
+from . import _utils
 from .debug_options import DebugOptions
 from ._fallback import _FallbackManager, _FallbackPolicy, ORTModuleFallbackException, ORTModuleTorchModelException, wrap_exception
 from . import _FALLBACK_INIT_EXCEPTION, MINIMUM_RUNTIME_PYTORCH_VERSION_STR, ORTMODULE_FALLBACK_POLICY, ORTMODULE_FALLBACK_RETRY
@@ -15,6 +17,7 @@ from onnxruntime.tools import pytorch_export_contrib_ops
 import functools
 import torch
 from typing import Iterator, Optional, Tuple, TypeVar, Set, Callable
+import warnings
 
 # Needed to override PyTorch methods
 T = TypeVar('T', bound='Module')
@@ -32,6 +35,18 @@ class ORTModule(torch.nn.Module):
     """
 
     def __init__(self, module, debug_options=None):
+
+        # NOTE: torch.nn.Modules that call setattr on their internal attributes regularly
+        #       (for example PyTorch Lightning), will trigger regular re-exports. This is
+        #       because ORTModule auto detects such setattrs on the original module and
+        #       marks the model as stale. This is a known limitation. To disable repeated
+        #       re-export checks when not required, please set the environment variable
+        #       ORTMODULE_SKIPCHECK_POLICY to SKIP_CHECK_BUILD_GRADIENT|SKIP_CHECK_EXECUTION_AGENT
+
+        # Set _is_initialized attribute first which starts off as False.
+        # This variable will be used for comparing strings in __setattr__ and __getattr__
+        # NOTE: Do not rename/move.
+        self._is_initialized = False
         # Python default arguments are evaluated on function definition
         # and not on function invocation. So, if debug_options is not provided,
         # instantiate it inside the function.
@@ -41,11 +56,14 @@ class ORTModule(torch.nn.Module):
         # Fallback settings
         self._fallback_manager = _FallbackManager(policy=ORTMODULE_FALLBACK_POLICY,
                                                   retry=ORTMODULE_FALLBACK_RETRY)
+
         try:
             # Read ORTModule module initialization status
             global _FALLBACK_INIT_EXCEPTION
             if _FALLBACK_INIT_EXCEPTION:
                 raise _FALLBACK_INIT_EXCEPTION
+
+            super(ORTModule, self).__init__()
 
             self._torch_module = TorchModuleFactory()(module, debug_options, self._fallback_manager)
 
@@ -68,16 +86,19 @@ class ORTModule(torch.nn.Module):
             functools.update_wrapper(
                 self.forward.__func__, self._torch_module.forward.__func__)
 
-            super(ORTModule, self).__init__()
-
             # Support contrib OPs
             pytorch_export_contrib_ops.register()
             CustomOpSymbolicRegistry.register_all()
             CustomGradientRegistry.register_all()
 
+            # Warn user if there are name collisions between user model's and ORTModule attributes
+            # And if there are custom methods defined on the user's model, copy and bind them to
+            # ORTModule.
+            _utils.check_for_name_collisions_and_bind_methods_to_ortmodule(self, module)
+
         except ORTModuleFallbackException as e:
             self._torch_module = TorchModulePytorch(module)
-            # TODO: Rework after "custom methods" task is designed
+            # TODO: Rework by implementing the "__getattribute__" method.
             #       Assigning all default attributes from user's original torch.nn.Module into ORTModule
             self._backward_hooks = module._backward_hooks
             self._forward_hooks = module._forward_hooks
@@ -92,7 +113,6 @@ class ORTModule(torch.nn.Module):
             self.forward = module.forward
 
             # Exceptions subject to fallback are handled here
-            # import pdb; pdb.set_trace()
             self._fallback_manager.handle_exception(exception=e,
                                                     log_level=debug_options.logging.log_level)
         except Exception as e:
@@ -101,6 +121,11 @@ class ORTModule(torch.nn.Module):
             self._fallback_manager.handle_exception(exception=e,
                                                     log_level=debug_options.logging.log_level,
                                                     override_policy=_FallbackPolicy.FALLBACK_FORCE_TORCH_FORWARD)
+
+        # Finally, ORTModule initialization is complete.
+        # Assign self._is_initialized to True after all the ORTModule class attributes have been assigned
+        # else, they will be assigned to self._torch_module.original_module instead.
+        self._is_initialized = True
 
     # IMPORTANT: DO NOT add code here
     # This declaration is for automatic document generation purposes only
@@ -269,3 +294,36 @@ class ORTModule(torch.nn.Module):
         """Override :meth:`~torch.nn.Module.named_modules`"""
 
         yield from self._torch_module.named_modules(*args, **kwargs)
+
+    def __getattr__(self, name: str):
+        if '_is_initialized' in self.__dict__ and self.__dict__['_is_initialized'] == True:
+            # If ORTModule is intitialized and attribute is not found in ORTModule,
+            # it must be present in the user's torch.nn.Module. Forward the call to
+            # the user's model.
+            assert '_torch_module' in self.__dict__, "ORTModule does not have a reference to the user's model"
+            return getattr(self.module, name)
+        else:
+            return super(ORTModule, self).__getattr__(name)
+
+    def __setattr__(self, name: str, value) -> None:
+
+        if name in self.__dict__:
+            # If the name is an attribute of ORTModule, update only ORTModule
+            self.__dict__[name] = value
+
+        elif '_is_initialized' in self.__dict__ and self.__dict__['_is_initialized'] == True:
+
+            assert '_torch_module' in self.__dict__, "ORTModule does not have a reference to the user's model"
+
+            # If the name is an attribute of user model, or is a new attribute, update there.
+            # Set the attribute on the user's original module
+            setattr(self.module, name, value)
+            # Signal to execution manager to re-export the model.
+            # Re-export will be avoided if _skip_check is enabled.
+            if isinstance(self._torch_module, TorchModuleORT):
+                for training_mode in [False, True]:
+                    self._torch_module._execution_manager(training_mode).signal_model_changed()
+
+        else:
+            # Setting any new attributes should be done on ORTModule only when 'torch_module' is not defined
+            self.__dict__[name] = value

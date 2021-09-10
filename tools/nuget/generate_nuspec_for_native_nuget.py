@@ -71,6 +71,11 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list):
                     if child_file.suffix == '.so' and is_this_file_needed(ep, child_file.name):
                         files_list.append('<file src="' + str(child_file) +
                                           '" target="runtimes/linux-%s/native"/>' % cpu_arch)
+        if child.name == 'onnxruntime-android-full':
+            for child_file in child.iterdir():
+                if child_file.suffix in ['.aar']:
+                    files_list.append('<file src="' + str(child_file) +
+                                      '" target="runtimes/android/native"/>')
 
 
 def parse_arguments():
@@ -402,17 +407,19 @@ def generate_files(list, args):
             if os.path.exists(os.path.join(args.native_build_path, 'onnxruntime.pdb')):
                 files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.pdb') +
                                   runtimes + ' />')
-    elif is_macos_build: # TODO: Validate this is correct as it has Android and iOS stuff. Is this based on where the package is built?
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'libs/armeabi-v7a',
-                    'libonnxruntime.so') + '" target="runtimes\\android\\native\\armeabi-v7a" />')
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'libs/arm64-v8a',
-                    'libonnxruntime.so') + '" target="runtimes\\android\\native\\arm64-v8a" />')
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'libs/x86',
-                    'libonnxruntime.so') + '" target="runtimes\\android\\native\\x86" />')
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'libs/x86_64',
-                    'libonnxruntime.so') + '" target="runtimes\\android\\native\\x86_64" />')
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'libs',
-                    'onnxruntime.framework') + '" target="runtimes\\ios\\native\\onnxruntime.framework" />')
+    # elif is_macos_build:
+    # TODO: Not sure we need this unless we want to locally test a build on a mac machine (vs. getting artifact from
+    # packaging pipeline). would need to check path that the ORT macos build produces the xcframework on.
+    #     files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'libs/armeabi-v7a',
+    #                 'libonnxruntime.so') + '" target="runtimes\\android\\native\\armeabi-v7a" />')
+    #     files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'libs/arm64-v8a',
+    #                 'libonnxruntime.so') + '" target="runtimes\\android\\native\\arm64-v8a" />')
+    #     files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'libs/x86',
+    #                 'libonnxruntime.so') + '" target="runtimes\\android\\native\\x86" />')
+    #     files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'libs/x86_64',
+    #                 'libonnxruntime.so') + '" target="runtimes\\android\\native\\x86_64" />')
+    #     files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'libs',
+    #                 'onnxruntime.framework') + '" target="runtimes\\ios\\native\\onnxruntime.framework" />')
     else:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'nuget-staging/usr/local/lib',
                           'libonnxruntime.so') + '" target="runtimes\\linux-' + args.target_architecture +
@@ -535,32 +542,36 @@ def generate_files(list, args):
 
     if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package:
         # Process props file
-        source_props = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'targets', 'netstandard', 'props.xml')
-        target_props = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'targets', 'netstandard', 
-                                    args.package_name + '.props')
+        source_props = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'targets',
+                                    'netstandard', 'props.xml')
+        target_props = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'targets',
+                                    'netstandard', args.package_name + '.props')
         os.system(copy_command + ' ' + source_props + ' ' + target_props)
         files_list.append('<file src=' + '"' + target_props + '" target="build\\native" />')
         files_list.append('<file src=' + '"' + target_props + '" target="build\\netstandard1.1" />')
         files_list.append('<file src=' + '"' + target_props + '" target="build\\netstandard2.0" />')
 
         # Process targets file
-        source_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'targets', 'netstandard', 'targets.xml')
-        target_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'targets', 'netstandard', 
-                                      args.package_name + '.targets')
+        source_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'targets',
+                                      'netstandard', 'targets.xml')
+        target_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'targets',
+                                      'netstandard', args.package_name + '.targets')
         os.system(copy_command + ' ' + source_targets + ' ' + target_targets)
         files_list.append('<file src=' + '"' + target_targets + '" target="build\\native" />')
         files_list.append('<file src=' + '"' + target_targets + '" target="build\\netstandard1.1" />')
         files_list.append('<file src=' + '"' + target_targets + '" target="build\\netstandard2.0" />')
 
         # Process xamarin targets files
-        monoandroid_source_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'targets', 'monoandroid11.0', 'targets.xml')
-        monoandroid_target_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'targets', 'monoandroid11.0',
-                                                  args.package_name + '.targets')
+        monoandroid_source_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime',
+                                                  'targets', 'monoandroid11.0', 'targets.xml')
+        monoandroid_target_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime',
+                                                  'targets', 'monoandroid11.0', args.package_name + '.targets')
         os.system(copy_command + ' ' + monoandroid_source_targets + ' ' + monoandroid_target_targets)
 
-        xamarinios_source_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'targets', 'xamarinios10', 'targets.xml')
-        xamarinios_target_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'targets', 'xamarinios10',
-                                                 args.package_name + '.targets')
+        xamarinios_source_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime',
+                                                 'targets', 'xamarinios10', 'targets.xml')
+        xamarinios_target_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime',
+                                                 'targets', 'xamarinios10', args.package_name + '.targets')
         os.system(copy_command + ' ' + xamarinios_source_targets + ' ' + xamarinios_target_targets)
 
         files_list.append('<file src=' + '"' + monoandroid_target_targets + '" target="build\\monoandroid11.0" />')
@@ -594,6 +605,7 @@ def is_windows():
 
 def is_linux():
     return sys.platform.startswith("linux")
+
 
 def is_macos():
     return sys.platform.startswith("darwin")

@@ -1219,6 +1219,91 @@ TEST_F(GraphTransformationTests, GemmTransposeFusion2Inputs) {
   ASSERT_TRUE(new_input_defs[1]->Name() == "B");
 }
 
+// (A')'B' = AB' where transpose has multiple consumers
+TEST_F(GraphTransformationTests, GemmTransposeFusion2OutputsFromTranspose) {
+  auto model_uri = MODEL_FOLDER "fusion/gemm_transpose_2outputs_from_transpose.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], 2);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+  ASSERT_EQ(op_to_count["Identity"], 1);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(std::make_unique<GemmTransposeFusion>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], 1);
+  ASSERT_EQ(op_to_count["Gemm"], 1);
+  ASSERT_EQ(op_to_count["Identity"], 1);
+
+  auto gemm_node =
+      std::find_if(
+          graph.Nodes().cbegin(), graph.Nodes().cend(),
+          [](const Node& node) { return node.Name() == "Gemm_transformed"; });
+
+  auto& node = *gemm_node;
+  ASSERT_TRUE(node.OpType() == "Gemm");
+  ASSERT_TRUE(static_cast<bool>(node.GetAttributes().at("transA").i()));
+  ASSERT_TRUE(static_cast<bool>(node.GetAttributes().at("transB").i()));
+  auto new_input_defs = node.InputDefs();
+  ASSERT_TRUE(new_input_defs[0]->Name() == "tp0");
+  ASSERT_TRUE(new_input_defs[1]->Name() == "B");
+}
+
+// (A')'B' = AB' and  (B')'C = BC where transpose has multiple consumers
+TEST_F(GraphTransformationTests, GemmTransposeFusion2OutputsFromTransposeTo2Gemms) {
+  auto model_uri = MODEL_FOLDER "fusion/gemm_transpose_2outputs_from_transpose_to_2gemms.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], 2);
+  ASSERT_EQ(op_to_count["Gemm"], 2);
+  ASSERT_EQ(op_to_count["Identity"], 1);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  rule_transformer_L1->Register(std::make_unique<GemmTransposeFusion>());
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], 1);
+  ASSERT_EQ(op_to_count["Gemm"], 2);
+  ASSERT_EQ(op_to_count["Identity"], 1);
+
+  auto gemm1_node =
+      std::find_if(
+          graph.Nodes().cbegin(), graph.Nodes().cend(),
+          [](const Node& node) { return node.Name() == "Gemm1_transformed"; });
+
+  auto& node1 = *gemm1_node;
+  ASSERT_TRUE(node1.OpType() == "Gemm");
+  ASSERT_TRUE(static_cast<bool>(node1.GetAttributes().at("transA").i()));
+  ASSERT_TRUE(static_cast<bool>(node1.GetAttributes().at("transB").i()));
+  auto new_input_defs1 = node1.InputDefs();
+  ASSERT_TRUE(new_input_defs1[0]->Name() == "tp0");
+  ASSERT_TRUE(new_input_defs1[1]->Name() == "B");
+
+  auto gemm2_node =
+      std::find_if(
+          graph.Nodes().cbegin(), graph.Nodes().cend(),
+          [](const Node& node) { return node.Name() == "Gemm2_transformed"; });
+
+  auto& node2 = *gemm2_node;
+  ASSERT_TRUE(node2.OpType() == "Gemm");
+  ASSERT_FALSE(static_cast<bool>(node2.GetAttributes().at("transA").i()));
+  ASSERT_FALSE(static_cast<bool>(node2.GetAttributes().at("transB").i()));
+  auto new_input_defs2 = node2.InputDefs();
+  ASSERT_TRUE(new_input_defs2[0]->Name() == "B");
+  ASSERT_TRUE(new_input_defs2[1]->Name() == "C");
+}
+
 // (A'B)' = B'A
 TEST_F(GraphTransformationTests, GemmTransposeFusionOutput) {
   auto model_uri = MODEL_FOLDER "fusion/gemm_transpose_output_transposed.onnx";
