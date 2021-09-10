@@ -35,11 +35,11 @@ ONNX Runtime supports many different execution providers today. Some of the EPs 
 
 ### Add an Execution Provider
 
-Developers of specialized HW acceleration solutions can integrate with ONNX Runtime to execute ONNX models on their stack. To create an EP to interface with ONNX Runtime you must first identify a unique name for the EP. Follow the steps outlined [here](../../how-to/add-execution-provider.md) to integrate your code in the repo.
+Developers of specialized HW acceleration solutions can integrate with ONNX Runtime to execute ONNX models on their stack. To create an EP to interface with ONNX Runtime you must first identify a unique name for the EP. Follow the steps outlined [here](../execution-provider/add-execution-provider.md) to integrate your code in the repo.
 
 ### Build ONNX Runtime package with EPs
 
-The ONNX Runtime package can be built with any combination of the EPs along with the default CPU execution provider. **Note** that if multiple EPs are combined into the same ONNX Runtime package then all the dependent libraries must be present in the execution environment. The steps for producing the ONNX Runtime package with different EPs is documented [here](../../how-to/build/inferencing.md#execution-providers).
+The ONNX Runtime package can be built with any combination of the EPs along with the default CPU execution provider. **Note** that if multiple EPs are combined into the same ONNX Runtime package then all the dependent libraries must be present in the execution environment. The steps for producing the ONNX Runtime package with different EPs is documented [here](../build/inferencing.md#execution-providers).
 
 ### APIs for Execution Provider
 

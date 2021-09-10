@@ -16,7 +16,7 @@ The [MIGraphX](https://github.com/ROCmSoftwarePlatform/AMDMIGraphX/) execution p
 {:toc}
 
 ## Build
-For build instructions, please see the [BUILD page](../../how-to/build/eps.md#amd-migraphx). 
+For build instructions, please see the [BUILD page](../build/eps.md#amd-migraphx). 
 
 ## Usage
 
@@ -31,7 +31,7 @@ Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MiGraphX(sf, device_i
 
 You can check [here](https://github.com/scxiao/ort_test/tree/master/char_rnn) for a specific c/c++ program.
 
-The C API details are [here](../api/c-api.md).
+The C API details are [here](../get-started/with-c.html.md).
 
 ### Python
 When using the Python wheel from the ONNX Runtime build with MIGraphX execution provider, it will be automatically
@@ -45,6 +45,6 @@ model on either the CPU or MIGraphX Execution Provider.
 MIGraphX providers an environment variable ORT_MIGRAPHX_FP16_ENABLE to enable the FP16 mode.
 
 ## Performance Tuning
-For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../../how-to/tune-performance.md)
+For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../performance/tune-performance.md)
 
 When/if using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/test/perftest#onnxruntime-performance-test), use the flag `-e migraphx` 

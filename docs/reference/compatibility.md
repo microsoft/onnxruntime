@@ -64,7 +64,7 @@ ONNX Runtime supports all opsets from the latest released version of the [ONNX](
 
 * [Supported Operator Data Types](https://github.com/microsoft/onnxruntime/blob/master/docs/OperatorKernels.md)
   * *Operators not supported in the current ONNX spec may be available as a [Contrib Operator](https://github.com/microsoft/onnxruntime/blob/master/docs/ContribOperators.md)*
-  * [How to add a custom operator/kernel](../how-to/add-custom-op.md)
+  * [How to add a custom operator/kernel](tutorials/mobile/add-custom-op.md)
 
 | ONNX Runtime version | [ONNX version](https://github.com/onnx/onnx/blob/master/docs/Versioning.md) | ONNX opset version | ONNX ML opset version | ONNX IR version | [Windows ML Availability](https://docs.microsoft.com/en-us/windows/ai/windows-ml/release-notes/)|
 |------------------------------|--------------------|--------------------|----------------------|------------------|------------------|

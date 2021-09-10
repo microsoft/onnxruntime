@@ -28,12 +28,12 @@ Pre-built packages and Docker images are published for  ONNX Runtime with OpenVI
 |1.8.0|2021.3|[Details](https://github.com/intel/onnxruntime/releases/tag/2021.3)|
 
 ## Build
-For build instructions, please see the [BUILD page](../../how-to/build/eps.md#openvino).
+For build instructions, please see the [BUILD page](../build/eps.md#openvino).
 
 ## Usage
 **C#**
 
-To use csharp api for openvino execution provider create a custom nuget package. Follow the instructions [here](../../how-to/build/inferencing.md#build-nuget-packages) to install prerequisites for nuget creation. Once prerequisites are installed follow the instructions to [build openvino](../../how-to/build/eps.md#openvino) and add an extra flag `--build_nuget` to create nuget packages. Two nuget packages will be created Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino.
+To use csharp api for openvino execution provider create a custom nuget package. Follow the instructions [here](../build/inferencing.md#build-nuget-packages) to install prerequisites for nuget creation. Once prerequisites are installed follow the instructions to [build openvino](../build/eps.md#openvino) and add an extra flag `--build_nuget` to create nuget packages. Two nuget packages will be created Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino.
 
 ### Multi-threading for OpenVINO EP
 

@@ -22,7 +22,7 @@ The DirectML Execution Provider currently uses DirectML version 1.4.2.
 {:toc}
 
 ## Install
-Pre-built packages of ORT with the DirectML EP is published on Nuget.org. See [How to: Install ORT](https://faxu.github.io/onnxruntime/docs/how-to/install.html).
+Pre-built packages of ORT with the DirectML EP is published on Nuget.org. See [How to: Install ORT](./install).
 
 ## Requirements
 
@@ -37,7 +37,7 @@ DirectML is compatible with Windows 10, version 1709 (10.0.16299; RS3, "Fall Cre
 ## Build
 
 Requirements for building the DirectML execution provider:
-1. Visual Studio 2017 toolchain (see [cmake configuration instructions](../../how-to/build-inferencing.md))
+1. Visual Studio 2017 toolchain 
 2. [The Windows 10 SDK (10.0.18362.0) for Windows 10, version 1903](https://developer.microsoft.com/en-us/windows/downloads/windows-10-sdk) (or newer)
 
 To build onnxruntime with the DML EP included, supply the `--use_dml` parameter to `build.bat`. e.g.
@@ -52,7 +52,7 @@ Note that building onnxruntime with the DirectML execution provider enabled caus
 
 ## Usage
 
-When using the [C API](../api/c-api.md) with a DML-enabled build of onnxruntime, the DirectML execution provider can be enabled using one of the two factory functions included in `include/onnxruntime/core/providers/dml/dml_provider_factory.h`.
+When using the [C API](../get-started/with-c.html.md) with a DML-enabled build of onnxruntime, the DirectML execution provider can be enabled using one of the two factory functions included in `include/onnxruntime/core/providers/dml/dml_provider_factory.h`.
 
 ### `OrtSessionOptionsAppendExecutionProvider_DML` function
 {: .no_toc }

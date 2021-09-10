@@ -17,7 +17,7 @@ RKNPU DDK is an advanced interface to access Rockchip NPU. The RKNPU Execution P
 
 
 ## Build 
-For build instructions, please see the [BUILD page](../../how-to/build/eps.md#rknpu).
+For build instructions, please see the [BUILD page](../build/eps.md#rknpu).
 
 ## Usage
 **C/C++**
@@ -29,7 +29,7 @@ Ort::SessionOptions sf;
 Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_RKNPU(sf));
 Ort::Session session(env, model_path, sf);
 ```
-The C API details are [here](../api/c-api.md).
+The C API details are [here](../get-started/with-c.html.md).
 
 
 ## Support Coverage

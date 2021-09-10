@@ -47,7 +47,7 @@ Refer to [onnxruntime_c_api.h](https://github.com/microsoft/onnxruntime/blob/mas
 * Converting an in-memory ONNX Tensor encoded in protobuf format to a pointer that can be used as model input.
 * Setting the thread pool size for each session.
 * Setting graph optimization level for each session.
-* Dynamically loading custom ops. [Instructions](../../how-to/add-custom-op.md)
+* Dynamically loading custom ops. [Instructions](../tutorials/mobile/add-custom-op.md)
 * Ability to load a model from a byte array. See ```OrtCreateSessionFromArray``` in [onnxruntime_c_api.h](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_c_api.h).
 * **Global/shared threadpools:** By default each session creates its own set of threadpools. In situations where multiple
 sessions need to be created (to infer different models) in the same process, you end up with several threadpools created

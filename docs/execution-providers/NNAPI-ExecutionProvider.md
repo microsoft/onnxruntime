@@ -24,7 +24,7 @@ Pre-built packages of ONNX Runtime Mobile with NNAPI EP for Android are publishe
 
 ## Build
 
-Please see the [ONNX Runtime Mobile](../../how-to/mobile) deployment information for instructions on building or using a pre-built package that includes the NNAPI EP.
+Please see the [ONNX Runtime Mobile](../tutorials/mobile/) deployment information for instructions on building or using a pre-built package that includes the NNAPI EP.
 
 ## Usage
 

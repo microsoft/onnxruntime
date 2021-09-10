@@ -23,7 +23,7 @@ Pre-built packages and Docker images are available for Jetpack in the [Jetson Zo
 
 ## Build
 
-See [Build instructions](../../how-to/build/eps.md#tensorrt).
+See [Build instructions](../build/eps.md#tensorrt).
 
 The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 7.2.2.
 
@@ -38,7 +38,7 @@ Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, device_id));
 Ort::Session session(env, model_path, sf);
 ```
 
-The C API details are [here](../api/c-api.md).
+The C API details are [here](../get-started/with-c.html.md).
 
 #### Shape Inference for TensorRT Subgraphs
 If some operators in the model are not supported by TensorRT, ONNX Runtime will partition the graph and only send supported subgraphs to TensorRT execution provider. Because TensorRT requires that all inputs of the subgraphs have shape specified, ONNX Runtime will throw error if there is no input shape info. In this case please run shape inference for the entire model first by running script [here](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/symbolic_shape_infer.py).
@@ -173,7 +173,7 @@ sess.set_providers(["TensorrtExecutionProvider"],[{'device_id': '1', 'trt_max_wo
 ```
 
 ## Performance Tuning
-For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../../how-to/tune-performance.md)
+For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../tutorials/mobile/tune-performance.md)
 
 When/if using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/test/perftest#onnxruntime-performance-test), use the flag `-e tensorrt` 
 

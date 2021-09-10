@@ -22,8 +22,8 @@ This is an community-contributed project and not officially supported by the cor
 
 ### API Reference
 {: .no_toc }
-[https://github.com/ankane/onnxruntime](https://github.com/ankane/onnxruntime)
+[https://github.com/ankane/onnxruntime](https://github.com/ankane/onnxruntime){:target="_blank"}
 
 ### Samples
 {: .no_toc }
-[Ruby Samples](https://ankane.org/tensorflow-ruby)
+[Ruby Samples](https://ankane.org/tensorflow-ruby){:target="_blank"}

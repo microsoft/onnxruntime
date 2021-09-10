@@ -21,7 +21,7 @@ Intel and Microsoft have developed the DNNL Execution Provider (EP) for ONNX Run
 
 ## Build
 
-For build instructions, please see the [BUILD page](../../how-to/build/eps.md#onednn).
+For build instructions, please see the [BUILD page](../build/eps.md#onednn).
 
 
 ## Usage
@@ -37,7 +37,7 @@ bool enable_cpu_mem_arena = true;
 Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(sf, enable_cpu_mem_arena));
 ```
 
-The C API details are [here](../api/c-api.md).
+The C API details are [here](../get-started/with-c.html.md).
 
 ### Python
 
@@ -45,7 +45,7 @@ When using the python wheel from the ONNX Runtime built with DNNL execution prov
 
 ## Performance Tuning
 
-For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../../how-to/tune-performance.md)
+For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../performance/tune-performance.md)
 
 ### Subgraph Optimization
 

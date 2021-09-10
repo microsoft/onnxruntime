@@ -29,7 +29,7 @@ Pre-built binaries of ONNX Runtime Mobile with CoreML EP for iOS are published t
 
 ## Build
 
-For build instructions for iOS devices, please see [How to: Build for Android/iOS](../../how-to/build/android-ios.md#coreml-execution-provider).
+For build instructions for iOS devices, please see [How to: Build for Android/iOS](../build/android-ios.md#coreml-execution-provider).
 
 ## Usage
 

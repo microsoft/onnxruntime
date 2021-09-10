@@ -13,15 +13,16 @@ ONNX Runtime is an accelerator for machine learning models with multi platform s
 ## How to use ONNX Runtime (ORT)
 
 |:----------------------------------------------------------------------------------|:-----------------------------------------------------------------------------------|
-|  <span class="fs-5"> [Get started with ORT](./get-started){: .btn  .mr-4} </span> | <span class="fs-5"> [GitHub Quick Start Templates]("./templates"){: .btn} </span>  |
-| <span class="fs-5"> [Tutorials]("/tutorials"){: .btn} </span>                     |  <span class="fs-5"> [API Docs]("./api"){: .btn} </span>                           |
+|  <span class="fs-5"> [Get started with ORT](./get-started){: .btn  .mr-4 target="_blank"} </span> |  <span class="fs-5"> [API Docs](./api){: .btn target="_blank"} </span>      |
+| <span class="fs-5"> [Tutorials](./tutorials){: .btn target="_blank"} </span>                     |   <span class="fs-5"> [Ecosystem](./ecosystem){: .btn target="_blank"} </span>                          |
 
 ## Contribute and Customize
 
 |:----------------------------------------------------------------------------------|:-----------------------------------------------------------------------------------|
-|  <span class="fs-5"> [Build ORT Packages](./build){: .btn  .mr-4} </span>         | <span class="fs-5"> [GitHub Community]("./templates"){: .btn} </span>  |
+|  <span class="fs-5"> [Build ORT Packages](./build){: .btn  .mr-4 target="_blank"} </span>         | <span class="fs-5"> [ORT GitHub](https://github.com/microsoft/onnxruntime){: .btn target="_blank"} </span>  |
 
 
+---
 
 ## ONNX Runtime for Inferencing
 

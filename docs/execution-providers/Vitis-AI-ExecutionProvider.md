@@ -37,7 +37,7 @@ The following table lists system requirements for running docker containers as w
 | Docker Version                                      | 19\.03\.1                                                  |
 
 ## Build
-See [Build instructions](../../how-to/build/eps.md#vitis-ai).
+See [Build instructions](../build/eps.md#vitis-ai).
 
 **Hardware setup and docker build**
 
