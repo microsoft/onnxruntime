@@ -12,44 +12,14 @@ from fusion_utils import FusionUtils
 logger = getLogger(__name__)
 
 
-class FusionGptAttention(Fusion):
-    """
-    Fuse GPT-2 Attention with past state subgraph into one Attention node.
-    This does not support attention_mask graph input right now.
+class FusionGptAttentionPastBase(Fusion):
+    """Base class for GPT Attention Fusion with past state
     """
     def __init__(self, model: OnnxModel, num_heads: int):
         super().__init__(model, "Attention", "LayerNormalization", "with past")
-        # TODO: detect num_heads from graph like FusionAttention
         self.num_heads = num_heads
         self.utils = FusionUtils(model)
         self.casted_attention_mask = {}  # map from name of attention mask to the name that casted to int32
-
-    def create_attention_node(self, fc_weight, fc_bias, gemm_qkv, past, present, input, output, mask,
-                              is_unidirectional):
-        attention_node_name = self.model.create_node_name('GptAttention')
-        attention_node = helper.make_node('Attention',
-                                          inputs=[input, fc_weight, fc_bias, mask, past],
-                                          outputs=[attention_node_name + "_output", present],
-                                          name=attention_node_name)
-        attention_node.domain = "com.microsoft"
-        attention_node.attribute.extend([
-            helper.make_attribute("num_heads", self.num_heads),
-            helper.make_attribute("unidirectional", 1 if is_unidirectional else 0)
-        ])
-
-        matmul_node = helper.make_node('MatMul',
-                                       inputs=[attention_node_name + "_output", gemm_qkv.input[1]],
-                                       outputs=[attention_node_name + "_matmul_output"],
-                                       name=attention_node_name + "_matmul")
-
-        add_node = helper.make_node('Add',
-                                    inputs=[attention_node_name + "_matmul_output", gemm_qkv.input[2]],
-                                    outputs=[output],
-                                    name=attention_node_name + "_add")
-        self.nodes_to_add.extend([attention_node, matmul_node, add_node])
-        self.node_name_to_graph_name[attention_node.name] = self.this_graph_name
-        self.node_name_to_graph_name[matmul_node.name] = self.this_graph_name
-        self.node_name_to_graph_name[add_node.name] = self.this_graph_name
 
     def match_past_pattern_1(self, concat_k, concat_v, output_name_to_node):
         # Pattern 1:
@@ -181,6 +151,52 @@ class FusionGptAttention(Fusion):
 
         present = concat_present.output[0]
         return present
+
+    def cast_attention_mask(self, input_name):
+        if input_name in self.casted_attention_mask:
+            attention_mask_input_name = self.casted_attention_mask[input_name]
+        elif self.model.find_graph_input(input_name):
+            casted, attention_mask_input_name = self.utils.cast_graph_input_to_int32(input_name)
+            self.casted_attention_mask[input_name] = attention_mask_input_name
+        else:
+            attention_mask_input_name, cast_node = self.utils.cast_input_to_int32(input_name)
+            self.casted_attention_mask[input_name] = attention_mask_input_name
+        return attention_mask_input_name
+
+
+class FusionGptAttention(FusionGptAttentionPastBase):
+    """
+    Fuse GPT-2 Attention with past state subgraph into one Attention node.
+    """
+    def __init__(self, model: OnnxModel, num_heads: int):
+        super().__init__(model, num_heads)
+
+    def create_attention_node(self, fc_weight, fc_bias, gemm_qkv, past, present, input, output, mask,
+                              is_unidirectional):
+        attention_node_name = self.model.create_node_name('GptAttention')
+        attention_node = helper.make_node('Attention',
+                                          inputs=[input, fc_weight, fc_bias, mask, past],
+                                          outputs=[attention_node_name + "_output", present],
+                                          name=attention_node_name)
+        attention_node.domain = "com.microsoft"
+        attention_node.attribute.extend([
+            helper.make_attribute("num_heads", self.num_heads),
+            helper.make_attribute("unidirectional", 1 if is_unidirectional else 0)
+        ])
+
+        matmul_node = helper.make_node('MatMul',
+                                       inputs=[attention_node_name + "_output", gemm_qkv.input[1]],
+                                       outputs=[attention_node_name + "_matmul_output"],
+                                       name=attention_node_name + "_matmul")
+
+        add_node = helper.make_node('Add',
+                                    inputs=[attention_node_name + "_matmul_output", gemm_qkv.input[2]],
+                                    outputs=[output],
+                                    name=attention_node_name + "_add")
+        self.nodes_to_add.extend([attention_node, matmul_node, add_node])
+        self.node_name_to_graph_name[attention_node.name] = self.this_graph_name
+        self.node_name_to_graph_name[matmul_node.name] = self.this_graph_name
+        self.node_name_to_graph_name[add_node.name] = self.this_graph_name
 
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
         past = None
@@ -340,14 +356,7 @@ class FusionGptAttention(Fusion):
         attention_mask_input_name = ''
         if input_mask_nodes is not None:
             input_name = input_mask_nodes[-1].input[0]
-            if input_name in self.casted_attention_mask:
-                attention_mask_input_name = self.casted_attention_mask[input_name]
-            elif self.model.find_graph_input(input_name):
-                casted, attention_mask_input_name = self.utils.cast_graph_input_to_int32(input_name)
-                self.casted_attention_mask[input_name] = attention_mask_input_name
-            else:
-                attention_mask_input_name, cast_node = self.utils.cast_input_to_int32(input_name)
-                self.casted_attention_mask[input_name] = attention_mask_input_name
+            attention_mask_input_name = self.cast_attention_mask(input_name)
 
         # Match past and present paths
         past = self.match_past_pattern_1(concat_k, concat_v, output_name_to_node) or \
