@@ -60,7 +60,7 @@ Status TransposeWithCublas(cudaStream_t stream, cublasHandle_t cublas_handle, co
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
   const CudaT* input_data = reinterpret_cast<const CudaT*>(input.Data<T>());
   CudaT* output_data = reinterpret_cast<CudaT*>(output.MutableData<T>());
-  
+
   CUBLAS_RETURN_IF_ERROR(
       cublasTransposeHelper(stream,
                             cublas_handle,
@@ -180,22 +180,22 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
                  prop, element_size, new_rank, new_input_dims, new_permutations)) {
     TArray<int64_t> tmp_output_strides(new_rank);
     for (auto i = 0; i < new_rank; i++) {
-      tmp_output_strides[i] = new_output_strides[new_permutations[i]];
+      tmp_output_strides[new_permutations[i]] = new_output_strides[i];
     }
     return Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim(
         prop, stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
-        tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()));
+        tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()), new_permutations);
   } else if (CanDoTranspose4DParallelizeOneElementPerThread(
                  prop, element_size, new_rank, new_input_dims, new_permutations)) {
     // Trying to see if we can still do (best effort) more optimized transposing
     // for the 4-D case before falling back to the generic case
     TArray<int64_t> tmp_output_strides(new_rank);
     for (auto i = 0; i < new_rank; i++) {
-      tmp_output_strides[i] = new_output_strides[new_permutations[i]];
+      tmp_output_strides[new_permutations[i]] = new_output_strides[i];
     }
     return Transpose4DParallelizeOneElementPerThread(
         prop, stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
-        tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()));
+        tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()), new_permutations);
   }
 
   // General cases

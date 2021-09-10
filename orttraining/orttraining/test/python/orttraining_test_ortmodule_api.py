@@ -652,7 +652,7 @@ def test_gradient_correctness_conv1d(use_fp16, input_requires_grad):
             _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=5e-3, atol=4e-3)
 
 @pytest.mark.parametrize("perm, shape", (
-    # Cases for Transpose4DKernelParallelizeOneElementPerThread
+    # # Cases for Transpose4DKernelParallelizeOneElementPerThread
     [[1,0,2], [1024,245,32]],
     [[1,0,2], [2080,246,32]],
     [[1,0,2], [1024,254,32]],
@@ -662,6 +662,16 @@ def test_gradient_correctness_conv1d(use_fp16, input_requires_grad):
     [[0,2,1,3], [260,8,246,32]],
     [[0,2,1,3], [284,8,255,32]],
     [[3,2,1,0], [1,3,224,224]],
+    [[2,0,3,1], [4,1,2,1]],
+    [[2,1,3,0], [1,1,2,2]],
+    [[1,3,0,2], [1,2,1,2]],
+    [[0,2,1,3], [1,2,2,1]],
+    [[0,2,1,3], [1,2,2,2]],
+    [[0,2,1,3], [4,1,2,1]],
+    [[0,2,1,3], [2,1,4,1]],
+    [[0,2,1,3], [2,2,2,1]],
+    [[0,2,1,3], [2,1,2,1]],
+    [[0,2,1,3], [1,4,2,1]],
     # Cases for Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim
     [[1,0,2], [245,1024,32]],
     [[1,0,2], [255,2272,32]],

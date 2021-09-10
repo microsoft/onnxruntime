@@ -134,7 +134,7 @@ Status Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim(
     const cudaDeviceProp& prop, cudaStream_t stream, size_t element_size,
     const TArray<int64_t>& input_shape, const TArray<int64_t>& input_strides,
     const void* input_data, const TArray<int64_t>& output_strides,
-    void* output_data, int N) {
+    void* output_data, int N, const std::vector<size_t>& permutations) {
   unsigned int num_elements_per_thread = 4 * sizeof(int) / static_cast<unsigned int>(element_size);  // int4 is used in the kernel to access data.
   // There are 2 constrains when luanching the kernels
   // 1. block_size_x * block_size_y <= prop.maxThreadsPerBlock
@@ -151,6 +151,7 @@ Status Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim(
 
   std::cout << "Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim\n";
   std::cout << "shape: [" << input_shape[0] << "," << input_shape[1] << "," << input_shape[2] << "," << input_shape[3] << "]\n";
+  std::cout << "permutations: [" << permutations[0] << "," << permutations[1] << "," << permutations[2] << "," << permutations[3] << "]\n";
   std::cout << "block_size.x: " << block_size.x << " block_size.y: " << block_size.y
             << " grid_size.x: " << grid_size.x << " grid_size.y: " << grid_size.y << " grid_size.z: " << grid_size.z << "\n";
 
@@ -244,7 +245,7 @@ Status Transpose4DParallelizeOneElementPerThread(
     const cudaDeviceProp& prop, cudaStream_t stream, size_t element_size,
     const TArray<int64_t>& input_shape, const TArray<int64_t>& input_strides,
     const void* input_data, const TArray<int64_t>& output_strides,
-    void* output_data, int N) {
+    void* output_data, int N, const std::vector<size_t>& permutations) {
   if (element_size != sizeof(int8_t) &&
       element_size != sizeof(int16_t) &&
       element_size != sizeof(int32_t) &&
@@ -253,7 +254,7 @@ Status Transpose4DParallelizeOneElementPerThread(
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for transpose on CUDA. Element size was ",
                            element_size);
   }
-  
+
   // There are 2 constrains when luanching the kernels
   // 1. block_size_x * block_size_y <= prop.maxThreadsPerBlock
   // 2. block_size_y * num_block_ext >= input_shape[2]
@@ -269,6 +270,9 @@ Status Transpose4DParallelizeOneElementPerThread(
 
   std::cout << "Transpose4DKernelParallelizeOneElementPerThread\n";
   std::cout << "shape: [" << input_shape[0] << "," << input_shape[1] << "," << input_shape[2] << "," << input_shape[3] << "]\n";
+  std::cout << "permutations: [" << permutations[0] << "," << permutations[1] << "," << permutations[2] << "," << permutations[3] << "]\n";
+  std::cout << "input_strides: [" << input_strides[0] << "," << input_strides[1] << "," << input_strides[2] << "," << input_strides[3] << "]\n";
+  std::cout << "output_strides: [" << output_strides[0] << "," << output_strides[1] << "," << output_strides[2] << "," << output_strides[3] << "]\n";
   std::cout << "block_size.x: " << block_size.x << " block_size.y: " << block_size.y
             << " grid_size.x: " << grid_size.x << " grid_size.y: " << grid_size.y << " grid_size.z: " << grid_size.z << "\n";
 

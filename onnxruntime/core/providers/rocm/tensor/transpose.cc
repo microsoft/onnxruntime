@@ -170,7 +170,7 @@ Status Transpose::DoTranspose(const hipDeviceProp_t& prop,
                  prop, element_size, new_rank, new_input_dims, new_permutations)) {
     TArray<int64_t> tmp_output_strides(new_rank);
     for (auto i = 0; i < new_rank; i++) {
-      tmp_output_strides[i] = new_output_strides[new_permutations[i]];
+      tmp_output_strides[new_permutations[i]] = new_output_strides[i];
     }
     return Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim(
         prop, stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
@@ -181,7 +181,7 @@ Status Transpose::DoTranspose(const hipDeviceProp_t& prop,
     // for the 4-D case before falling back to the generic case
     TArray<int64_t> tmp_output_strides(new_rank);
     for (auto i = 0; i < new_rank; i++) {
-      tmp_output_strides[i] = new_output_strides[new_permutations[i]];
+      tmp_output_strides[new_permutations[i]] = new_output_strides[i];
     }
     return Transpose4DParallelizeOneElementPerThread(
         prop, stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
