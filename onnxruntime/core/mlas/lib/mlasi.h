@@ -1850,3 +1850,10 @@ MlasReadTimeStampCounter(void)
 #endif
 #endif
 }
+
+MLAS_FORCEINLINE
+size_t
+MlasDivRndup(size_t up, size_t down)
+{
+    return (up + down - 1) / down;
+}

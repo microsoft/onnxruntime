@@ -529,7 +529,7 @@ struct MLAS_GEMM_S8S8_KERNEL_NEON {
 
     static constexpr size_t PackedK = 16;
     static constexpr MLAS_GEMM_U8X8_STRIDES Strides{24, 128, 256};
-    static constexpr MLAS_GEMM_U8X8_STRIDES PackedStrides{24, 128, 384};
+    static constexpr MLAS_GEMM_U8X8_STRIDES PackedStrides{16, 1024, 2048};
 };
 
 constexpr size_t MLAS_GEMM_S8S8_KERNEL_NEON::PackedK;

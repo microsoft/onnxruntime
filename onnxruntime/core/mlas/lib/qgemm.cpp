@@ -173,10 +173,51 @@ MlasGemmBatch(
         TargetThreadCount = MaximumThreadCount;
     }
 
-    ptrdiff_t ThreadsPerGemm = TargetThreadCount / BatchN;
-    if (ThreadsPerGemm < 1) {
-        ThreadsPerGemm = 1;
-    }
+    ptrdiff_t ThreadsPerGemm = MlasDivRndup(TargetThreadCount, BatchN);
+
+    if (DataParams->BIsPacked) {
+        // TODO!! forbid mixed B packing in the same batch
+
+        // TODO!! This fits neon s8 kernel, need generalization!!
+        constexpr size_t KernelStrideM = 4;
+        const size_t StrideM = KernelStrideM;
+
+        size_t nc = N;
+        if (ThreadsPerGemm > 1) {
+            const size_t BlockedM = MlasDivRndup(M, KernelStrideM);
+            const size_t max_nc = MlasDivRndup(N * BlockedM, ThreadsPerGemm);
+            if (max_nc < nc) {
+                nc = std::min(nc, MlasDivRndup(nc, max_nc * MLAS_QGEMM_STRIDEN_THREAD_ALIGN) *
+                                      MLAS_QGEMM_STRIDEN_THREAD_ALIGN);
+            }
+        }
+        const size_t StrideN = nc;
+
+        const size_t ThreadCountM = MlasDivRndup(M, StrideM);
+        const size_t ThreadCountN = MlasDivRndup(N, StrideN);
+        ThreadsPerGemm = ThreadCountM * ThreadCountN;
+
+        const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(Shape.BIsSigned);
+        MLAS_GEMM_U8X8_OPERATION* GemmU8X8Operation = GemmU8X8Dispatch->PackedOperation;
+
+        MlasTrySimpleParallel(ThreadPool, ThreadsPerGemm * BatchN, [&](ptrdiff_t tid) {
+            const auto gemm_i = tid / ThreadsPerGemm;
+            const auto blk_i = tid % ThreadsPerGemm;
+            auto Data = &DataParams[gemm_i];
+
+            const ptrdiff_t ThreadIdN = blk_i / ThreadCountM;
+            const ptrdiff_t ThreadIdM = blk_i % ThreadCountM;
+
+            const size_t RangeStartM = ThreadIdM * StrideM;
+            const size_t RangeCountM = std::min(Shape.M - RangeStartM, (size_t)StrideM);
+
+            const size_t RangeStartN = ThreadIdN * StrideN;
+            const size_t RangeCountN = std::min(Shape.N - RangeStartN, (size_t)StrideN);
+
+            GemmU8X8Operation(&Shape, Data, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
+        });
+        return;
+    } 
 
     //
     // Segment the operation across multiple threads.

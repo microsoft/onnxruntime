@@ -522,80 +522,81 @@ Return Value:
         }
 
         //
-        // Step through each slice of matrix B along the N dimension.
+        // Step through each slice of matrix A along the M dimension.
         //
 
-        size_t CountN;
+        size_t CountM;
 
-        for (size_t n = 0; n < RangeCountN; n += CountN) {
+        for (size_t m = 0; m < RangeCountM; m += CountM) {
 
-            CountN = std::min(RangeCountN - n, Strides.N);
+            CountM = std::min(RangeCountM - m, Strides.M);
 
-            if (k == 0) {
-                MlasGemmU8X8ScaleSumBuffer(ColumnSumBuffer, PackedColumnSumBuffer + n,
-                    CountN, -ZeroPointA);
+            //
+            // Copy a panel of matrix A to a local packed buffer.
+            //
+
+            MlasGemmU8X8CopyPackA<KernelType>(
+                PanelA,
+                A + m * lda,
+                lda,
+                CountM,
+                CountK,
+                RowSumBuffer);
+
+            //
+            // Apply the global depth value constant without the ZeroPointB scaling from:
+            //
+            //     (A[i] - ZeroPointA) * (B[i] - ZeroPointB)
+            //              ==>
+            //     A[i] * B[i] - A[i] * ZeroPointB - B[i] * ZeroPointA + ZeroPointA * ZeroPointB
+            //
+            // The ZeroPointB term is factored out and either applied below for per-matrix
+            // quantization or inside the kernel for per-column quantization.
+            //
+
+            for (size_t mm = 0; mm < CountM; mm++) {
+                RowSumBuffer[mm] -= int32_t(CountK) * ZeroPointA;
             }
 
             //
-            // Fixup the sign bit of the per-column zero point offsets of matrix B
-            // if the data is the opposite format of the kernel implementation.
+            // Scale the row sums by the per-matrix zero point offset of matrix B.
             //
 
-            if (PackedZeroPointB != nullptr) {
-                MlasGemmU8X8FixupZeroPointB<KernelType>(
-                    PackedZeroPointB + n,
-                    ZeroPointBBuffer,
-                    CountN,
-                    Shape->BIsSigned);
+            if (PackedZeroPointB == nullptr) {
+                MlasGemmU8X8ScaleSumBuffer(RowSumBuffer, CountM, -ZeroPointB);
             }
 
             //
-            // Step through each slice of matrix A along the M dimension.
+            // Step through each slice of matrix B along the N dimension.
             //
 
-            const uint8_t* b = PackedB + (RangeStartN + n) *
-                KernelType::PackedK * PackedCountK;
-            int32_t* c = C + n;
-            size_t CountM;
+            size_t CountN;
 
-            for (size_t m = 0; m < RangeCountM; m += CountM) {
+            for (size_t n = 0; n < RangeCountN; n += CountN) {
 
-                CountM = std::min(RangeCountM - m, Strides.M);
+                CountN = std::min(RangeCountN - n, Strides.N);
 
-                //
-                // Copy a panel of matrix A to a local packed buffer.
-                //
-
-                MlasGemmU8X8CopyPackA<KernelType>(
-                    PanelA,
-                    A + m * lda,
-                    lda,
-                    CountM,
-                    CountK,
-                    RowSumBuffer);
-
-                //
-                // Apply the global depth value constant without the ZeroPointB scaling from:
-                //
-                //     (A[i] - ZeroPointA) * (B[i] - ZeroPointB)
-                //              ==>
-                //     A[i] * B[i] - A[i] * ZeroPointB - B[i] * ZeroPointA + ZeroPointA * ZeroPointB
-                //
-                // The ZeroPointB term is factored out and either applied below for per-matrix
-                // quantization or inside the kernel for per-column quantization.
-                //
-
-                for (size_t mm = 0; mm < CountM; mm++) {
-                    RowSumBuffer[mm] -= int32_t(CountK) * ZeroPointA;
+                if (k == 0) {
+                    MlasGemmU8X8ScaleSumBuffer(ColumnSumBuffer, PackedColumnSumBuffer + n,
+                        CountN, -ZeroPointA);
                 }
 
                 //
-                // Scale the row sums by the per-matrix zero point offset of matrix B.
+                // Fixup the sign bit of the per-column zero point offsets of matrix B
+                // if the data is the opposite format of the kernel implementation.
                 //
 
-                if (PackedZeroPointB == nullptr) {
-                    MlasGemmU8X8ScaleSumBuffer(RowSumBuffer, CountM, -ZeroPointB);
+                if (PackedZeroPointB != nullptr) {
+                    MlasGemmU8X8FixupZeroPointB<KernelType>(
+                        PackedZeroPointB + n,
+                        ZeroPointBBuffer,
+                        CountN,
+                        Shape->BIsSigned);
                 }
+
+                const uint8_t* b = PackedB + (RangeStartN + n) *
+                    KernelType::PackedK * PackedCountK;
+                int32_t* c = C + n;
 
                 //
                 // Step through the rows of the local packed buffer.

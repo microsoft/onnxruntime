@@ -81,6 +81,9 @@ void QGEMM(benchmark::State& state, bool pack_b) {
 static void QGemmSize(benchmark::internal::Benchmark* b) {
   b->ArgNames(qgemm_arg_names);
   // Args for  "M", "N", "K", "Batch",
+  b->Args({1, 1001, 1280, 1, 1});
+  b->Args({12, 192, 1280, 1, 1});
+  b->Args({16384, 32, 27, 1, 1});
 
   b->Args({512, 32128, 768, 1, 1});
   b->Args({512, 32128, 768, 1, 4});
