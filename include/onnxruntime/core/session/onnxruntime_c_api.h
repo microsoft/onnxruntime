@@ -426,7 +426,7 @@ struct OrtApiBase {
   *   older than the version created with this header file.
   */
   const OrtApi*(ORT_API_CALL* GetApi)(uint32_t version)NO_EXCEPTION;
-  const char*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION; ///< Returns a string of the version of the Onnxruntime library (eg: "1.8.1")
+  const char*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION; ///< Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
 };
 typedef struct OrtApiBase OrtApiBase;
 
@@ -1748,7 +1748,7 @@ struct OrtApi {
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
-  ORT_API2_STATUS(GetAvailableProviders, _Outptr_ char*** out_ptr, _In_ int* provider_length);
+  ORT_API2_STATUS(GetAvailableProviders, _Outptr_ char*** out_ptr, _Out_ int* provider_length);
 
   /** \brief Release data from OrtApi::GetAvailableProviders
   *
