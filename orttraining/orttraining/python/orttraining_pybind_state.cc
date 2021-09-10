@@ -760,6 +760,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
                           auto logger = logging::LoggingManager::DefaultLogger();
                           ORT_THROW_IF_ERROR(Model::Load(file_path, model, nullptr, logger));
                           GradientGraphConfiguration gradient_graph_config{};
+                          // FIXME Even with this, gradients do not get output.
                           gradient_graph_config.set_gradients_as_graph_outputs = true;
 
                           auto builder = std::make_unique<GradientGraphBuilder>(

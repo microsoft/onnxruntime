@@ -30,8 +30,6 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
       loss_node_arg_name_(loss_node_arg_name),
       gradient_graph_config_(gradient_graph_config),
       logger_(logger) {
-  std::cout << "GradientGraphBuilder::GradientGraphBuilder: loss_node_arg_name: " << loss_node_arg_name << std::endl;
-  std::cout << "GradientGraphBuilder::GradientGraphBuilder: loss_node_arg_name_: " << loss_node_arg_name_ << std::endl;
   auto rule_based_graph_transformer =
       std::make_unique<RuleBasedGraphTransformer>("pre_training_rule_based_graph_transformer");
   rule_based_graph_transformer->Register(std::make_unique<InsertMaxPoolOutput>());
@@ -91,7 +89,6 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
   std::string unreachable_nodes;
   // building x_nodes_
   for (const auto& name : x_node_arg_names) {
-    std::cout << "Adding x_node_arg_names: name: " << name << std::endl;
     const NodeArg* node_arg = graph->GetNodeArg(name);
     if (!node_arg) {
       ORT_THROW("Node arg ", name, " is not found in the graph.");
@@ -184,9 +181,7 @@ NodeSet GradientGraphBuilder::ReverseBFSWithStopGradient(const NodeSet& nodes) c
 }
 
 Status GradientGraphBuilder::CheckNodeArgsReachable() const {
-  std::cout << "GradientGraphBuilder::CheckNodeArgsReachable" << std::endl;
   for (const NodeArg* node_arg : x_node_args_) {
-    std::cout << "GradientGraphBuilder::CheckNodeArgsReachable checking node " << node_arg->Name() << std::endl;
     auto nodes = graph_->GetConsumerNodes(node_arg->Name());
 
     bool reachable = false;
@@ -206,31 +201,21 @@ Status GradientGraphBuilder::CheckNodeArgsReachable() const {
 }
 
 Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_initializer_names_to_preserve) {
-  std::cout << "GradientGraphBuilder::Build " << std::endl;
   auto opt_ret = graph_transformation_mgr_.ApplyTransformers(*graph_, TransformerLevel::Level2, logger_);
   ORT_RETURN_IF_ERROR(opt_ret);
 
-  std::cout << "GradientGraphBuilder::Build: ApplyTransformers done " << opt_ret << std::endl;
   GraphAugmenter::GraphDefs gradient_graph_defs;
   // add "gradient of the loss" node, always 1.
-  std::cout << "GradientGraphBuilder::Build: loss_node_arg_name_: " << loss_node_arg_name_ << std::endl;
-  std::cerr << "GradientGraphBuilder::Build: loss_node_arg_name_: " << loss_node_arg_name_ << std::endl;
   if (loss_node_arg_name_ != "") {
-    std::cerr << "GradientGraphBuilder::Build: loss_node_arg_name_ not empty." << std::endl;
     ONNX_NAMESPACE::TensorProto tensor_proto;
-    std::cerr << "GradientGraphBuilder::Build: before set_data_type" << std::endl;
     tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-    std::cerr << "GradientGraphBuilder::Build: before add_float_data" << std::endl;
     tensor_proto.add_float_data(1.f);
-    std::cerr << "GradientGraphBuilder::Build: before set_name" << std::endl;
     tensor_proto.set_name(GradientBuilderBase::GradientName(loss_node_arg_name_));
-    std::cerr << "GradientGraphBuilder::Build: before AddInitializers" << std::endl;
 
     gradient_graph_defs.AddInitializers({tensor_proto});
   }
 
   ORT_RETURN_IF_ERROR(CheckNodeArgsReachable());
-  std::cout << "Done CheckNodeArgsReachable" << std::endl;
 
   // Going forward to figure out which node_args need backprop-ed.
   std::deque<const Node*> queue(x_nodes_.begin(), x_nodes_.end());
@@ -256,7 +241,6 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
       }
 
       const NodeArg* node_arg = node->OutputDefs()[edge_it->GetSrcArgIndex()];
-      std::cout << "GradientGraphBuilder::Build: node_arg->Name(): " << node_arg->Name() << std::endl;
       std::string grad_node_arg_name = GradientBuilderBase::GradientName(node_arg->Name());
 
       pending_[grad_node_arg_name] += 1;

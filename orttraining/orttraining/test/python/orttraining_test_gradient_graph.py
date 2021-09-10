@@ -9,7 +9,7 @@ from torch.onnx import TrainingMode
 
 import onnxruntime
 from onnxruntime.training import GradientGraphBuilder
-
+from onnxruntime.training.ortmodule._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 
 class NeuralNet(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes, loss_fn):
@@ -30,6 +30,8 @@ class NeuralNet(torch.nn.Module):
 
 class GradientGraphBuilderTest(unittest.TestCase):
     def test_save(self):
+        # Make sure that loss nodes that expect multiple outputs are set up.
+        CustomOpSymbolicRegistry.register_all()
         loss_fn = nn.CrossEntropyLoss()
         model = NeuralNet(input_size=10, hidden_size=5,
                           num_classes=2, loss_fn=loss_fn)
@@ -54,7 +56,7 @@ class GradientGraphBuilderTest(unittest.TestCase):
                 'output': {0: 'batch_size', },
             })
         builder = GradientGraphBuilder(str(path),
-                                       {'output'},
+                                       {'loss'},
                                        {'fc1.weight', 'fc1.bias',
                                            'fc2.weight', 'fc2.bias'},
                                        'loss')
@@ -63,13 +65,12 @@ class GradientGraphBuilderTest(unittest.TestCase):
         builder.save(str(gradient_graph_path))
 
         onnx_model = onnx.load(str(gradient_graph_path))
-        # Fails because onnx.onnx_cpp2py_export.checker.ValidationError: Nodes in a graph must be topologically sorted, however input 'output_grad' of node: name: Gemm_2_Grad/ReduceSum_2 OpType: ReduceSum is not output of any previous nodes.
-        # checker_result = onnx.checker.check_model(onnx_model)
-        # print(f"checker_result: {checker_result}")
+        onnx.checker.check_model(onnx_model)
 
         ort_session = onnxruntime.InferenceSession(
             str(gradient_graph_path))
         # TODO See https://pytorch.org/tutorials/advanced/super_resolution_with_onnxruntime.html
+        # TODO Test that gradients exist.
 
 
 if __name__ == '__main__':
