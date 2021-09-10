@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "pch.h"
+#include "dll/pch.h"
 #include <windows.h>
 #include <Hstring.h>
 #include "LearningModelDevice.h"
@@ -137,5 +137,9 @@ STDAPI DllGetActivationFactory(HSTRING classId, void** factory) {
 
 // LoadLibraryW isn't support on Windows 8.1. This is a workaround so that CppWinRT calls this function for loading libraries
 void* __stdcall WINRT_IMPL_LoadLibraryW(wchar_t const* name) noexcept {
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
   return LoadLibraryExW(name, nullptr, 0);
+#else
+  return LoadPackagedLibrary(name, 0);
+#endif
 }

@@ -12,9 +12,9 @@ class QLinearConcat(QuantOperatorBase):
 
         data_found, output_scale_name, output_zp_name, _, _ = \
             self.quantizer._get_quantization_params(node.output[0])
-        if not data_found:
-            raise ValueError("Quantization parameters for :\"{}\" of node:\"{}\" not specified".format(node.output[0], node.name))
         (q_input_names, zero_point_names, scale_names, nodes) = self.quantizer.quantize_inputs(node, [*range(0, len(node.input))])
+        if not data_found or q_input_names is None:
+            return super().quantize()
 
         # Create an entry for output quantized value
         quantized_input_value = self.quantizer.quantized_value_map[node.input[0]]

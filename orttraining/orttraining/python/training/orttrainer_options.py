@@ -229,7 +229,7 @@ class ORTTrainerOptions(object):
                             'type' : 'boolean',
                             'default' : True
                         },
-                        'invertible_layer_norm_gradient' : {
+                        'memory_efficient_gradient' : {
                             'type' : 'boolean',
                             'default' : False
                         },
@@ -406,8 +406,8 @@ class ORTTrainerOptions(object):
             list of model parameter names to skip training (weights don't change)
         utils.grad_norm_clip (bool, default is True):
             enables gradient norm clipping for 'AdamOptimizer' and 'LambOptimizer'
-        utils.invertible_layer_norm_gradient (bool, default is False):
-            enables use of invertible layer norm gradients
+        utils.memory_efficient_gradient (bool, default is False):
+            enables use of memory aware gradient builder.
         utils.run_symbolic_shape_infer (bool, default is False):
             runs symbolic shape inference on the model
         debug (dict):
@@ -755,7 +755,7 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'type': 'boolean',
                 'default': True
             },
-            'invertible_layer_norm_gradient': {
+            'memory_efficient_gradient': {
                 'type': 'boolean',
                 'default': False
             },

@@ -84,6 +84,179 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_UDOT>(
     uint8_t PaddedMatrixAData[16];
 
     //
+    // Process 8 rows of matrix A.
+    // 
+    // DOT kernels load 8x4 block of A with two vector registers. So A is packed
+    // a series of 16 byte vectors where four rows are interleaved with the
+    // following pattern:
+    //
+    //      [ A0 A1 A2 A3 B0 B1 B2 B3 C0 C1 C2 C3 D0 D1 D2 D3 ]
+    //      [ E0 E1 E2 E3 F0 F1 F2 F3 G0 G1 G2 G3 H0 H1 H2 H3 ]
+    // 
+    //      [ A4 A5 A6 A7 B4 B5 B6 B7 C4 C5 C6 C7 D4 D5 D6 D7 ]
+    //      [ E4 E5 E6 E7 F4 F5 F6 F7 G4 G5 G6 G7 H4 H5 H6 H7 ]
+    // 
+    //      ...
+    //
+    // This pattern is repeated (CountK / 8) times.
+    //
+    // If CountK is not aligned to a multiple of eight, then the vector is padded
+    // with zeroes.
+    //
+
+    while (CountM >= 8) {
+        const uint8_t* a0 = A;
+        const uint8_t* a1 = a0 + lda;
+        const uint8_t* a2 = a0 + lda * 2;
+        const uint8_t* a3 = a0 + lda * 3;
+        const uint8_t* a4 = a0 + lda * 4;
+        const uint8_t* a5 = a0 + lda * 5;
+        const uint8_t* a6 = a0 + lda * 6;
+        const uint8_t* a7 = a0 + lda * 7;
+
+        size_t k = CountK;
+        uint32x4_t RowSums0 = vmovq_n_u32(0);
+        uint32x4_t RowSums1 = vmovq_n_u32(0);
+
+        while (k >= 16) {
+            uint32x4_t v0 = vld1q_u32(reinterpret_cast<const uint32_t*>(a0));
+            a0 += 16;
+            uint32x4_t v1 = vld1q_u32(reinterpret_cast<const uint32_t*>(a1));
+            a1 += 16;
+            uint32x4_t v2 = vld1q_u32(reinterpret_cast<const uint32_t*>(a2));
+            a2 += 16;
+            uint32x4_t v3 = vld1q_u32(reinterpret_cast<const uint32_t*>(a3));
+            a3 += 16;
+            uint32x4_t v4 = vld1q_u32(reinterpret_cast<const uint32_t*>(a4));
+            a4 += 16;
+            uint32x4_t v5 = vld1q_u32(reinterpret_cast<const uint32_t*>(a5));
+            a5 += 16;
+            uint32x4_t v6 = vld1q_u32(reinterpret_cast<const uint32_t*>(a6));
+            a6 += 16;
+            uint32x4_t v7 = vld1q_u32(reinterpret_cast<const uint32_t*>(a7));
+            a7 += 16;
+
+            uint32x4_t z0 = vzip1q_u32(v0, v2);
+            uint32x4_t z1 = vzip2q_u32(v0, v2);
+            uint32x4_t z2 = vzip1q_u32(v1, v3);
+            uint32x4_t z3 = vzip2q_u32(v1, v3);
+
+            uint32x4_t z4 = vzip1q_u32(v4, v6);
+            uint32x4_t z5 = vzip2q_u32(v4, v6);
+            uint32x4_t z6 = vzip1q_u32(v5, v7);
+            uint32x4_t z7 = vzip2q_u32(v5, v7);
+
+            v0 = vzip1q_u32(z0, z2);
+            v1 = vzip2q_u32(z0, z2);
+            v2 = vzip1q_u32(z1, z3);
+            v3 = vzip2q_u32(z1, z3);
+
+            v4 = vzip1q_u32(z4, z6);
+            v5 = vzip2q_u32(z4, z6);
+            v6 = vzip1q_u32(z5, z7);
+            v7 = vzip2q_u32(z5, z7);
+
+            vst1q_u8(&D[0], vreinterpretq_u8_u32(v0));
+            vst1q_u8(&D[16], vreinterpretq_u8_u32(v4));
+            vst1q_u8(&D[32], vreinterpretq_u8_u32(v1));
+            vst1q_u8(&D[48], vreinterpretq_u8_u32(v5));
+            vst1q_u8(&D[64], vreinterpretq_u8_u32(v2));
+            vst1q_u8(&D[80], vreinterpretq_u8_u32(v6));
+            vst1q_u8(&D[96], vreinterpretq_u8_u32(v3));
+            vst1q_u8(&D[112], vreinterpretq_u8_u32(v7));
+
+            RowSums0 = vpadalq_u16(RowSums0, vpaddlq_u8(vreinterpretq_u8_u32(v0)));
+            RowSums0 = vpadalq_u16(RowSums0, vpaddlq_u8(vreinterpretq_u8_u32(v1)));
+            RowSums0 = vpadalq_u16(RowSums0, vpaddlq_u8(vreinterpretq_u8_u32(v2)));
+            RowSums0 = vpadalq_u16(RowSums0, vpaddlq_u8(vreinterpretq_u8_u32(v3)));
+
+            RowSums1 = vpadalq_u16(RowSums1, vpaddlq_u8(vreinterpretq_u8_u32(v4)));
+            RowSums1 = vpadalq_u16(RowSums1, vpaddlq_u8(vreinterpretq_u8_u32(v5)));
+            RowSums1 = vpadalq_u16(RowSums1, vpaddlq_u8(vreinterpretq_u8_u32(v6)));
+            RowSums1 = vpadalq_u16(RowSums1, vpaddlq_u8(vreinterpretq_u8_u32(v7)));
+
+            D += 128;
+            k -= 16;
+        }
+
+        while (k >= 4) {
+            uint32_t v0 = *reinterpret_cast<const uint32_t*>(a0);
+            a0 += 4;
+            uint32_t v1 = *reinterpret_cast<const uint32_t*>(a1);
+            a1 += 4;
+            uint32_t v2 = *reinterpret_cast<const uint32_t*>(a2);
+            a2 += 4;
+            uint32_t v3 = *reinterpret_cast<const uint32_t*>(a3);
+            a3 += 4;
+            uint32_t v4 = *reinterpret_cast<const uint32_t*>(a4);
+            a4 += 4;
+            uint32_t v5 = *reinterpret_cast<const uint32_t*>(a5);
+            a5 += 4;
+            uint32_t v6 = *reinterpret_cast<const uint32_t*>(a6);
+            a6 += 4;
+            uint32_t v7 = *reinterpret_cast<const uint32_t*>(a7);
+            a7 += 4;
+
+            *reinterpret_cast<uint32_t*>(&D[0]) = v0;
+            *reinterpret_cast<uint32_t*>(&D[4]) = v1;
+            *reinterpret_cast<uint32_t*>(&D[8]) = v2;
+            *reinterpret_cast<uint32_t*>(&D[12]) = v3;
+            *reinterpret_cast<uint32_t*>(&D[16]) = v4;
+            *reinterpret_cast<uint32_t*>(&D[20]) = v5;
+            *reinterpret_cast<uint32_t*>(&D[24]) = v6;
+            *reinterpret_cast<uint32_t*>(&D[28]) = v7;
+
+            RowSums0 = vpadalq_u16(RowSums0, vpaddlq_u8(vld1q_u8(D)));
+            RowSums1 = vpadalq_u16(RowSums1, vpaddlq_u8(vld1q_u8(&D[16])));
+
+            D += 32;
+            k -= 4;
+        }
+
+        if (k > 0) {
+            //
+            // Copy the remaining bytes to the zero padded stack buffer.
+            //
+            uint8_t* d = D;
+
+            vst1q_u8(d, vmovq_n_u8(0));
+            vst1q_u8(&d[16], vmovq_n_u8(0));
+
+            while (k > 0) {
+                d[0] = *a0++;
+                d[4] = *a1++;
+                d[8] = *a2++;
+                d[12] = *a3++;
+                d[16] = *a4++;
+                d[20] = *a5++;
+                d[24] = *a6++;
+                d[28] = *a7++;
+                d += 1;
+                k -= 1;
+            }
+
+            RowSums0 = vpadalq_u16(RowSums0, vpaddlq_u8(vld1q_u8(D)));
+            RowSums1 = vpadalq_u16(RowSums1, vpaddlq_u8(vld1q_u8(&D[16])));
+
+            D += 32;
+        }
+
+        if (((CountK - 1) & 7) < 4) {
+            vst1q_u8(D, vmovq_n_u8(0));
+            vst1q_u8(&D[16], vmovq_n_u8(0));
+            D += 32;
+        }
+
+        vst1q_s32(RowSumBuffer, vreinterpretq_s32_u32(RowSums0));
+        vst1q_s32(&RowSumBuffer[4], vreinterpretq_s32_u32(RowSums1));
+
+        RowSumBuffer += 8;
+
+        A = A + lda * 8;
+        CountM -= 8;
+    }
+
+    //
     // Process four rows of matrix A.
     //
     // The buffer is packed as a series of 16 byte vectors where four rows are
@@ -98,7 +271,7 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_UDOT>(
     // with zeroes.
     //
 
-    while (CountM >= 4) {
+    if (CountM >= 4) {
 
         const uint8_t* a0 = A;
         const uint8_t* a1 = a0 + lda;

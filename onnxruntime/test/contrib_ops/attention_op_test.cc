@@ -1644,6 +1644,8 @@ TEST(AttentionTest, AttentionMaskIndexOutOfRange) {
                    use_float16, is_unidirectional, use_past_state, past_sequence_length, past_data, present_data, kMaskIndexEndAndStart);
 }
 
+#if !defined(__wasm__)
+// TODO: fix in web assembly
 TEST(AttentionTest, AttentionPastState_dynamic) {
   // create rand inputs
   RandomValueGenerator random{};
@@ -1672,6 +1674,7 @@ TEST(AttentionTest, AttentionPastState_dynamic) {
   test.AddReferenceOutputs("testdata/attention_past_state.onnx");
   test.Run();
 }
+#endif //!defined(__wasm__)
 
 TEST(AttentionTest, AttentionPrunedModel) {
   int batch_size = 2;
@@ -1832,12 +1835,9 @@ TEST(AttentionTest, SharedPrepackedWeights) {
   tester.AddOutput<float>("output", output_dims, output_data);
   tester.AddInput<int32_t>("mask_index", mask_index_dims, mask_index_data);
 
-  auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape(weights_dims),
-                                           weight_data.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
   OrtValue weight;
-
-  weight.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape(weights_dims),
+                       weight_data.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), weight);
 
   SessionOptions so;
 

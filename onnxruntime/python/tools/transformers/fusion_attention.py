@@ -12,16 +12,10 @@ from onnx import helper, numpy_helper, TensorProto, NodeProto
 from onnx_model import OnnxModel
 from fusion_base import Fusion
 from fusion_utils import FusionUtils, NumpyHelper
+from fusion_options import AttentionMaskFormat
 from shape_infer_helper import SymbolicShapeInferenceHelper, get_shape_from_type_proto
 
 logger = getLogger(__name__)
-
-
-class AttentionMaskFormat:
-    MaskIndexEnd = 0
-    MaskIndexEndAndStart = 1
-    AttentionMask = 2
-    NoMask = 3
 
 
 class AttentionMask():
@@ -358,7 +352,7 @@ class FusionAttention(Fusion):
             logger.debug("fuse_attention: failed to match v path")
             return
         (_, _, add_v, matmul_v) = v_nodes
- 
+
         is_distill = False
         is_distill_add = False
         qk_paths = {

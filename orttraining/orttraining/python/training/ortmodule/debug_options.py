@@ -6,6 +6,7 @@ import os
 
 from ._logger import LogLevel
 
+
 class _SaveOnnxOptions:
     """Configurable option to save ORTModule intermediate onnx models."""
 
@@ -60,7 +61,7 @@ class _LoggingOptions:
 
     def _extract_info(self, log_level):
         # get the log_level from os env variable
-        # os env variable log level supercededs the locally provided one
+        # OS environment variable log level superseeds the locally provided one
         self._validate(log_level)
         log_level = LogLevel[os.getenv(_LoggingOptions._log_level_environment_key, log_level.name)]
         return log_level
@@ -76,8 +77,6 @@ class _LoggingOptions:
 
 class DebugOptions:
     """Configurable debugging options for ORTModule.
-
-    DebugOptions provides a way to configure ORTModule debug flags.
 
     Args:
         log_level (:obj:`LogLevel`, optional): Configure ORTModule log level. Defaults to LogLevel.WARNING.
@@ -99,18 +98,21 @@ class DebugOptions:
 
     """
 
-    def __init__(self, log_level=LogLevel.WARNING, save_onnx=False, onnx_prefix=''):
+    def __init__(self,
+                 log_level=LogLevel.WARNING,
+                 save_onnx=False,
+                 onnx_prefix=''):
         self._save_onnx_models = _SaveOnnxOptions(save_onnx, onnx_prefix)
         self._logging = _LoggingOptions(log_level)
 
     @property
     def save_onnx_models(self):
-        """Accessor for the save_onnx_models debug flag."""
+        """Accessor for the ONNX saving configuration."""
 
         return self._save_onnx_models
 
     @property
     def logging(self):
-        """Accessor for the logging debug flag."""
+        """Accessor for the logging configuration."""
 
         return self._logging

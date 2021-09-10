@@ -1,4 +1,4 @@
-#include "pch.h"
+#include "lib/Api.Image/pch.h"
 #include "inc/NominalRangeConverter.h"
 
 namespace _winml {

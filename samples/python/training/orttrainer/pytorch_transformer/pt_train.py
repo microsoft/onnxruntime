@@ -1,8 +1,6 @@
 import argparse
-import math
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from utils import prepare_data, get_batch
 from pt_model import TransformerModel

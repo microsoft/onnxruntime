@@ -14,7 +14,7 @@
 #include "core/common/logging/sinks/cerr_sink.h"
 #include "core/framework/allocatormgr.h"
 #include "core/session/environment.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/session/inference_session.h"
 
 namespace onnxruntime {

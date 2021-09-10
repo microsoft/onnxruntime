@@ -1,13 +1,11 @@
-ARG OS_VERSION=18.04
-FROM ubuntu:${OS_VERSION}
+FROM ubuntu:20.04
 
-ARG PYTHON_VERSION=3.5
 ARG OPENVINO_VERSION=2021.4
 
 ADD scripts /tmp/scripts
-RUN /tmp/scripts/install_ubuntu.sh -p $PYTHON_VERSION -d EdgeDevice && \
+RUN /tmp/scripts/install_ubuntu.sh -p 3.8 -d EdgeDevice && \
     /tmp/scripts/install_os_deps.sh -d EdgeDevice && \
-    /tmp/scripts/install_python_deps.sh -p $PYTHON_VERSION -d EdgeDevice
+    /tmp/scripts/install_python_deps.sh -p 3.8 -d EdgeDevice
 
 RUN apt update && apt install -y libnuma1 ocl-icd-libopencl1 && \
     rm -rf /var/lib/apt/lists/* /tmp/scripts

@@ -15,15 +15,18 @@ namespace onnxruntime {
 struct CUDAExecutionProviderExternalAllocatorInfo {
   void* alloc{nullptr};
   void* free{nullptr};
+  void* empty_cache{nullptr};
 
   CUDAExecutionProviderExternalAllocatorInfo() {
     alloc = nullptr;
     free = nullptr;
+    empty_cache = nullptr;
   }
 
-  CUDAExecutionProviderExternalAllocatorInfo(void* a, void* f) {
+  CUDAExecutionProviderExternalAllocatorInfo(void* a, void* f, void* e) {
     alloc = a;
     free = f;
+    empty_cache = e;
   }
 
   bool UseExternalAllocator() const {
@@ -45,6 +48,9 @@ struct CUDAExecutionProviderInfo {
   // arena config.
   OrtArenaCfg* default_memory_arena_cfg{nullptr};
   CUDAExecutionProviderExternalAllocatorInfo external_allocator_info{};
+  // By default use fix workspace size (32M) for Conv algo search, the final algo might not be the best.
+  // If set to true, try to use as much as possible memory for algo search.
+  bool cudnn_conv_use_max_workspace{false};
 
   static CUDAExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const CUDAExecutionProviderInfo& info);

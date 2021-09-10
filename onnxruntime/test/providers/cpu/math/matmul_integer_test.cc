@@ -396,12 +396,9 @@ TEST(MatmulIntegerOpTest, SharedPrepackedWeights) {
 
   std::vector<uint8_t> t2_init_values(1, 13);
 
-  auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<uint8_t>(), TensorShape({1, 1}),
-                                           t2_init_values.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
   OrtValue t2;
-
-  t2.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-          DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  Tensor::InitOrtValue(DataTypeImpl::GetType<uint8_t>(), TensorShape({1, 1}),
+                       t2_init_values.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), t2);
 
   SessionOptions so;
   // Set up T2 as a shared initializer to be shared between sessions

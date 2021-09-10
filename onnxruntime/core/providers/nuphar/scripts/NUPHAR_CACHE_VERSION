@@ -5,5 +5,5 @@
 // NOTE this version needs to be updated when generated code may change
 
 #ifndef __NUPHAR_CACHE_VERSION__
-#define __NUPHAR_CACHE_VERSION__ "2.3.0"
+#define __NUPHAR_CACHE_VERSION__ "2.5.0"
 #endif

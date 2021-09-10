@@ -25,6 +25,8 @@ class Fusion:
         self.prune_graph: bool = False
         self.node_name_to_graph_name: dict = {}
         self.this_graph_name: str = None
+        # It is optional that subclass updates fused_count since we will also check nodes_to_add to get counter.
+        self.fused_count: int = 0
 
     def apply(self):
         logger.debug(f"start {self.description} fusion...")
@@ -41,7 +43,7 @@ class Fusion:
                 self.fuse(node, input_name_to_nodes, output_name_to_node)
 
         op_list = [node.op_type for node in self.nodes_to_add]
-        count = op_list.count(self.fused_op_type)
+        count = max(self.fused_count, op_list.count(self.fused_op_type))
         if count > 0:
             logger.info(f"Fused {self.description} count: {count}")
 

@@ -262,9 +262,13 @@ class FusionGptAttention(Fusion):
             if i == 1:
                 add_qk = qk_nodes[1]
                 _, input_mask_nodes, _ = self.model.match_parent_paths(
-                    add_qk, [(['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze', 'Reshape'], [None, 0, 1, 0, 0, 0]),
-                             (['Mul', 'Sub', 'Unsqueeze', 'Unsqueeze', 'Reshape'], [None, 0, 1, 0, 0])],
-                    output_name_to_node)
+                    add_qk,
+                    [
+                        (['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze', 'Reshape'], [None, 0, 1, 0, 0, 0]),
+                        (['Mul', 'Sub', 'Unsqueeze', 'Unsqueeze', 'Reshape'], [None, 0, 1, 0, 0]),
+                        (['Mul', 'Sub', 'Unsqueeze', 'Unsqueeze'], [None, 0, 1, 0]),  # useless cast and reshape are removed.
+                    ],
+                    output_name_to_node)  # yapf: disable
                 if input_mask_nodes is None:
                     logger.debug("fuse_attention: failed to match input attention mask path")
                     return

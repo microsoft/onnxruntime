@@ -9,12 +9,13 @@ import numpy
 import os
 import torch
 from pathlib import Path
-from transformers import AutoConfig, AutoTokenizer, AutoModel, LxmertConfig, TransfoXLConfig
+from transformers import AutoConfig, AutoTokenizer, LxmertConfig, TransfoXLConfig
 from affinity_helper import AffinitySetting
 from benchmark_helper import create_onnxruntime_session, Precision
 from gpt2_helper import GPT2ModelNoPastState, PRETRAINED_GPT2_MODELS, TFGPT2ModelNoPastState
 from quantize_helper import QuantizeHelper
 from huggingface_models import MODEL_CLASSES
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 logger = logging.getLogger(__name__)
@@ -188,8 +189,8 @@ def optimize_onnx_model(model_name, onnx_model_path, optimized_model_path, model
         Path(optimized_model_path).parent.mkdir(parents=True, exist_ok=True)
 
         from optimizer import optimize_model
-        from onnx_model_bert import BertOptimizationOptions
-        optimization_options = BertOptimizationOptions(model_type)
+        from fusion_options import FusionOptions
+        optimization_options = FusionOptions(model_type)
         optimization_options.use_raw_attention_mask(use_raw_attention_mask)
         if Precision.FLOAT16 == precision:
             optimization_options.enable_gelu_approximation = True
@@ -213,7 +214,7 @@ def optimize_onnx_model(model_name, onnx_model_path, optimized_model_path, model
         model_fusion_statistics[optimized_model_path] = opt_model.get_fused_operator_statistics()
 
         if Precision.FLOAT16 == precision:
-            opt_model.convert_model_float32_to_float16()
+            opt_model.convert_float_to_float16(keep_io_types=True)
 
         opt_model.save_model_to_file(optimized_model_path, use_external_data_format)
     else:

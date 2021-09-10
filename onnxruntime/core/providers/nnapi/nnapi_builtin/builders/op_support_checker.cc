@@ -3,7 +3,7 @@
 
 #include <core/common/logging/logging.h>
 #include <core/common/safeint.h>
-
+#include <core/framework/tensorprotoutils.h>
 #include <core/graph/graph.h>
 
 #include "core/providers/common.h"
@@ -392,7 +392,13 @@ bool ReshapeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& init
   }
 
   const auto& perm_tensor = *initializers.at(perm_name);
-  const int64_t* raw_perm = GetTensorInt64Data(perm_tensor);
+  std::vector<uint8_t> unpacked_tensor;
+  auto status = onnxruntime::utils::UnpackInitializerData(perm_tensor, unpacked_tensor);
+  if (!status.IsOK()) {
+    LOGS_DEFAULT(ERROR) << "Error while unpacking perm_tensor: " << status.ErrorMessage();
+    return false;
+  }
+  const int64_t* raw_perm = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
   const auto perm_size = SafeInt<uint32_t>(perm_tensor.dims()[0]);
 
   NodeAttrHelper helper(node);
@@ -590,8 +596,24 @@ bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
     }
 
     // NNAPI requires Quantized Average Pool has same scale and zero point for both input and output
-    auto input_scale = GetQuantizationScale(initializers, node, 1);
-    auto output_scale = GetQuantizationScale(initializers, node, 3);
+    float input_scale = 0.0f;
+    auto status = GetQuantizationScale(initializers, node, 1, input_scale);
+    if (!status.IsOK()) {
+      LOGS_DEFAULT(ERROR) << "Op [" << op_type << "] name [" << op_name
+                          << "] GetQuantizationScale for input_scale failed, message: "
+                          << status.ErrorMessage();
+      return false;
+    }
+
+    float output_scale = 0.0f;
+    status = GetQuantizationScale(initializers, node, 3, output_scale);
+    if (!status.IsOK()) {
+      LOGS_DEFAULT(ERROR) << "Op [" << op_type << "] name [" << op_name
+                          << "] GetQuantizationScale for output_scale failed, message: "
+                          << status.ErrorMessage();
+      return false;
+    }
+
     if (input_scale != output_scale) {
       LOGS_DEFAULT(VERBOSE) << "Op [" << op_type << "] name [" << op_name
                             << "] has different input_scale: " << input_scale
@@ -601,7 +623,7 @@ bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
 
     int32_t input_zp = 0;
     int32_t output_zp = 0;
-    auto status = GetQuantizationZeroPoint(initializers, node, 2, input_zp);
+    status = GetQuantizationZeroPoint(initializers, node, 2, input_zp);
     if (!status.IsOK()) {
       LOGS_DEFAULT(ERROR) << "Op [" << op_type << "] name [" << op_name
                           << "] GetQuantizationZeroPoint for input_zp failed, message: "
@@ -1144,7 +1166,14 @@ int UnaryOpSupportChecker::GetMinSupportedOpSet(const Node& node) const {
 
   // NNAPI requires the scale be 1.f/256 and zero point to be 0
   // See https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/android10-c2f2-release/nn/common/operations/Activation.cpp#180
-  auto output_scale = GetQuantizationScale(initializers, node, 3);
+  float output_scale = 0.0f;
+  auto status = GetQuantizationScale(initializers, node, 3, output_scale);
+  if (!status.IsOK()) {
+    LOGS_DEFAULT(ERROR) << "Op [" << op_type << "] name [" << op_name
+                        << "] GetQuantizationScale failed, message: " << status.ErrorMessage();
+    return false;
+  }
+
   if (output_scale != 1.f / 256) {
     LOGS_DEFAULT(VERBOSE) << "Op [" << op_type << "] name [" << op_name
                           << "] output scale can only be 1.f/256, actual scale: " << output_scale;
@@ -1153,7 +1182,7 @@ int UnaryOpSupportChecker::GetMinSupportedOpSet(const Node& node) const {
 
   int32_t output_zp;
   if (has_output_zp) {
-    auto status = GetQuantizationZeroPoint(initializers, node, 4, output_zp);
+    status = GetQuantizationZeroPoint(initializers, node, 4, output_zp);
     if (!status.IsOK()) {
       LOGS_DEFAULT(ERROR) << "Op [" << op_type << "] name [" << op_name
                           << "] GetQuantizationZeroPoint failed, message: " << status.ErrorMessage();
@@ -1500,7 +1529,13 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
     // We want to check if the scales or sizes are not trying to resize on N/C channels here
     if (input_defs.size() == 3) {  // we are using scales
       const auto& scales_tensor = *initializers.at(input_defs[2]->Name());
-      const float* scales_data = GetTensorFloatData(scales_tensor);
+      std::vector<uint8_t> unpacked_tensor;
+      auto status = onnxruntime::utils::UnpackInitializerData(scales_tensor, unpacked_tensor);
+      if (!status.IsOK()) {
+        LOGS_DEFAULT(ERROR) << "Error while unpacking scales_tensor: " << status.ErrorMessage();
+        return false;
+      }
+      const float* scales_data = reinterpret_cast<const float*>(unpacked_tensor.data());
       float scale_n = scales_data[0];
       float scale_c = scales_data[1];
       if (scale_n != 1.0f || scale_c != 1.0f) {
@@ -1513,7 +1548,13 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
       // we are using sizes
       const auto& sizes_name = input_defs[3]->Name();
       const auto& sizes_tensor = *initializers.at(sizes_name);
-      const int64_t* sizes_data = GetTensorInt64Data(sizes_tensor);
+      std::vector<uint8_t> unpacked_tensor;
+      auto status = onnxruntime::utils::UnpackInitializerData(sizes_tensor, unpacked_tensor);
+      if (!status.IsOK()) {
+        LOGS_DEFAULT(ERROR) << "Error while unpacking sizes_tensor: " << status.ErrorMessage();
+        return false;
+      }
+      const int64_t* sizes_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
       uint32_t size_n = SafeInt<uint32_t>(sizes_data[0]);
       uint32_t size_c = SafeInt<uint32_t>(sizes_data[1]);
       if (size_n != input_shape[0] || size_c != input_shape[1]) {

@@ -141,7 +141,7 @@ void resize(Index size, double reserveSizeFactor = 0) {
   m_size = size;
 }
 */
-
+#if !defined(DISABLE_SPARSE_TENSORS)
 #if !defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
 TEST(SparseToDenseMatMul, TestCsr) {
   constexpr int64_t rows = 9;
@@ -383,6 +383,7 @@ TEST(SparseToDenseMatMul, TestCoo) {
     tester.Run(OpTester::ExpectResult::kExpectSuccess);
   }
 }
+#endif // !defined(DISABLE_SPARSE_TENSORS)
 
 }  // namespace test
 }  // namespace onnxruntime

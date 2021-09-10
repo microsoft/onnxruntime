@@ -291,7 +291,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     double per_sample_tolerance = 1e-3;
     // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
     // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
-    double relative_per_sample_tolerance = enable_cuda ? 0.017 : enable_openvino ? 0.009 : 1e-3;
+    double relative_per_sample_tolerance = enable_cuda ? 0.017 : enable_openvino ? 0.009
+                                                                                 : 1e-3;
 
     Ort::SessionOptions sf;
 
@@ -480,8 +481,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             ORT_TSTR("operator_pow"),
             ORT_TSTR("bernoulli"),
             ORT_TSTR("bernoulli_double"),
-            ORT_TSTR("bernoulli_seed")
-        };
+            ORT_TSTR("bernoulli_seed")};
 
     static const ORTCHAR_T* cuda_flaky_tests[] = {
         ORT_TSTR("fp16_inception_v1"),
@@ -583,11 +583,28 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"momentum", "not a registered function/op", {}},                 // Op not registered.
       {"momentum_multiple", "not a registered function/op", {}},        // Op not registered.
       {"nesterov_momentum", "not a registered function/op", {}},        // Op not registered.
-      {"cast_FLOAT_to_BFLOAT16", "onnx generate bfloat tensor as uint16 type", {}},
-      {"cast_BFLOAT16_to_FLOAT", "onnx generate bfloat tensor as uint16 type", {}},
       {"sequence_insert_at_back", "onnx currently not supporting loading segment", {}},
       {"sequence_insert_at_front", "onnx currently not supporting loading segment", {}},
       {"loop13_seq", "ORT api does not currently support creating empty sequences (needed for this test)", {}},
+      {"cast_FLOAT_to_BFLOAT16", "onnx generate bfloat tensor as uint16 type", {}},
+      {"cast_BFLOAT16_to_FLOAT", "onnx generate bfloat tensor as uint16 type", {}},
+      {"castlike_FLOAT_to_BFLOAT16", "Depends on cast.", {}},
+      {"castlike_BFLOAT16_to_FLOAT", "Depends on cast", {}},
+      {"castlike_FLOAT_to_BFLOAT16_expanded", "Depends on cast.", {}},
+      {"castlike_BFLOAT16_to_FLOAT_expanded", "Depends on cast", {}},
+      {"castlike_FLOAT_to_STRING", "Numpy float to string has unexpected rounding for some results.", {}},
+      {"castlike_FLOAT_to_STRING_expanded", "Numpy float to string has unexpected rounding for some results.", {}},
+      {"bernoulli", "By design. Test data is for informational purpose because the generator is non deterministic."},
+      {"bernoulli_double", "By design. Test data is for informational purpose because the generator is non deterministic."},
+      {"bernoulli_double_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
+      {"bernoulli_seed", "By design. Test data is for informational purpose because the generator is non deterministic."},
+      {"bernoulli_seed_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
+      {"bernoulli_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
+      {"test_optional_get_element", "opset15 updates not supported yet."},
+      {"test_optional_get_element_sequence", "opset15 updates not supported yet."},
+      {"test_optional_has_element", "opset15 updates not supported yet."},
+      {"test_optional_has_element_empty", "opset15 updates not supported yet."},
+
   };
 
 #ifdef DISABLE_ML_OPS
