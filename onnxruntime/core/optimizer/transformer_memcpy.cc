@@ -22,6 +22,7 @@ class TransformerMemcpyImpl {
   void ProcessDefs(onnxruntime::Node& node, const KernelRegistryManager& kernel_registries, InitializedTensorSet& initializers_consumed);
   void BuildDefsMapping(const onnxruntime::NodeArg* arg, const KernelRegistryManager& kernel_registries);
   void AddCopyNode(onnxruntime::NodeArg* arg, bool is_input);
+  void AddCopyNodeForGraphInput(onnxruntime::NodeArg* arg);
   bool ProcessInitializers(const KernelRegistryManager& kernel_registries, const InitializedTensorSet& initializers_consumed);
 
  private:
@@ -134,10 +135,8 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
     BuildDefsMapping(arg, kernel_registries);
 
   for (auto arg : graph_.GetInputs())
-    // For inputs we need to create a copy node only when the input is connected to both provider
-    // and non-provider nodes. Otherwise utils::CopyInputsAcrossDevices() will do the job.
-    if (provider_input_defs_.count(arg) && non_provider_input_defs_.count(arg)) {
-      AddCopyNode(const_cast<onnxruntime::NodeArg*>(arg), true);
+    if (non_provider_input_defs_.count(arg)) {
+      AddCopyNodeForGraphInput(const_cast<onnxruntime::NodeArg*>(arg));
       modified = true;
     }
 
@@ -286,6 +285,29 @@ void TransformerMemcpyImpl::AddCopyNode(onnxruntime::NodeArg* arg, bool is_input
   if (it != provider_output_nodes_.end()) {
     for (auto* node : it->second)
       node->ReplaceDefs(map);
+  }
+}
+
+void TransformerMemcpyImpl::AddCopyNodeForGraphInput(onnxruntime::NodeArg* arg) {
+  // create unique name for new def
+  std::string new_def_name = graph_.GenerateNodeArgName(arg->Name() + "_CPUExecutionProvider");
+
+  auto* new_arg = &graph_.GetOrCreateNodeArg(new_def_name, arg->TypeAsProto());
+  auto* src_arg = arg;
+  auto* dst_arg = new_arg;
+
+  // create unique name for copy node
+  std::string new_node_name = graph_.GenerateNodeName("Memcpy");
+  auto& new_node = graph_.AddNode(new_node_name, "MemcpyToHost", "Copy from/to host memory",
+                                  std::vector<onnxruntime::NodeArg*>{src_arg},
+                                  std::vector<onnxruntime::NodeArg*>{dst_arg});
+  new_node.SetExecutionProviderType(provider_);
+  std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> map = {{arg, new_arg}};
+  auto it = provider_input_nodes_.find(arg);
+  for (onnxruntime::Node* consumer_node : graph_.GetMutableConsumerNodes(arg->Name())) {
+    if (it == provider_input_nodes_.end() || it->second.find(consumer_node) == it->second.end()) {
+      consumer_node->ReplaceDefs(map);
+    }
   }
 }
 
