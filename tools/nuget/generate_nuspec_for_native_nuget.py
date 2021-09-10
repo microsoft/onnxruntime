@@ -71,7 +71,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list):
                     if child_file.suffix == '.so' and is_this_file_needed(ep, child_file.name):
                         files_list.append('<file src="' + str(child_file) +
                                           '" target="runtimes/linux-%s/native"/>' % cpu_arch)
-        if child.name == 'onnxruntime-android-full':
+        if child.name == 'onnxruntime-android':
             for child_file in child.iterdir():
                 if child_file.suffix in ['.aar']:
                     files_list.append('<file src="' + str(child_file) +
