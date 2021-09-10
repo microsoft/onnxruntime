@@ -89,10 +89,10 @@ Status LayerNorm<T, U, simplified>::ComputeInternal(OpKernelContext* ctx) const 
     }
   }
 
-  Tensor* std = ctx->Output(output_index, TensorShape(mean_inv_std_dim));
+  Tensor* inv_std = ctx->Output(output_index, TensorShape(mean_inv_std_dim));
   CudaU* inv_std_data = nullptr;
-  if (std != nullptr) {
-    inv_std_data = reinterpret_cast<CudaU*>(std->template MutableData<U>());
+  if (inv_std != nullptr) {
+    inv_std_data = reinterpret_cast<CudaU*>(inv_std->template MutableData<U>());
   }
 
   if (x_shape.Size() == 0) {

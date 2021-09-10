@@ -341,7 +341,7 @@ __global__ void cuComputeGradInput(
         sum_loss1 += c_loss * U( gamma_idx );
         if (use_mean) {
           const U c_h = static_cast<U>( (idx<n2)?k_input[ idx ]:T(0) );
-          sum_loss2 += c_loss * U(gamma_idx) * (c_h - c_mean) * c_invvar;
+          sum_loss2 += c_loss * U(gamma_idx) * (c_h - c_mean) * c_inv_std;
         } else {
           const U c_output = static_cast<U>( (idx<n2)?k_output[idx]:T(0) );
           sum_loss2 += c_loss * (c_output - U( (idx<n2)?beta[idx]:T(0) ));
@@ -383,7 +383,7 @@ __global__ void cuComputeGradInput(
           sum_loss1 += c_loss;
           if (use_mean) {
             const U c_h = static_cast<U>((idx<n2)?k_input[idx]:T(0));
-            sum_loss2 += c_loss * (c_h - c_mean) * c_invvar;
+            sum_loss2 += c_loss * (c_h - c_mean) * c_inv_std;
           } else {
             const U c_output = static_cast<U>((idx<n2)?k_output[idx]:T(0));
             sum_loss2 += c_loss * c_output;
