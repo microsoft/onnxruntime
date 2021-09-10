@@ -385,6 +385,25 @@ export const run =
       }
     };
 
+/**
+ * end profiling
+ */
+export const endProfiling = (sessionId: number): void => {
+  const wasm = getInstance();
+  const session = activeSessions[sessionId];
+  if (!session) {
+    throw new Error('invalid session id');
+  }
+  const sessionHandle = session[0];
+
+  // profile file name is not used yet, but it must be freed.
+  const profileFileName = wasm._OrtEndProfiling(sessionHandle);
+  if (profileFileName === 0) {
+    throw new Error('Can\'t get an profile file name');
+  }
+  wasm._OrtFree(profileFileName);
+};
+
 export const extractTransferableBuffers = (tensors: readonly SerializableTensor[]): ArrayBufferLike[] => {
   const buffers: ArrayBufferLike[] = [];
   for (const tensor of tensors) {

@@ -28,6 +28,9 @@ class Function {
 
   /** Gets the Graph instance for the Function body subgraph. */
   virtual const onnxruntime::Graph& Body() const = 0;
+
+  /** Gets the Mutable Graph instance for the Function body subgraph. */
+  virtual onnxruntime::Graph& MutableBody() = 0;
 };
 
 /** 

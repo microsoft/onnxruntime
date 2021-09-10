@@ -12,6 +12,8 @@ cmake_policy(SET CMP0091 NEW)
 if (${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.20")
   cmake_policy(SET CMP0117 NEW)
 endif()
+# Don't let cmake set a default value for CMAKE_CUDA_ARCHITECTURES
+cmake_policy(SET CMP0104 OLD)
 
 # Project
 project(onnxruntime C CXX)
@@ -146,6 +148,7 @@ option(onnxruntime_USE_MPI "Build with MPI support" OFF)
 option(onnxruntime_BUILD_WEBASSEMBLY "Enable this option to create WebAssembly byte codes" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_THREADS "Enable this option to create WebAssembly byte codes with multi-threads support" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING "Enable this option to turn on exception catching" OFF)
+option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_THROWING "Enable this option to turn on exception throwing even if the build disabled exceptions support" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO "Enable this option to turn on DWARF format debug info" OFF)
 
 # Enable bitcode for iOS
