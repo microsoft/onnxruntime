@@ -55,7 +55,8 @@ class DnnlSubgraphPrimitive {
   dnnl::memory GetMemory(std::string memory_name);
   dnnl::memory GetMemory(std::string memory_name, dnnl::memory::desc mem_desc, dnnl::engine eng);
   //set memory to a tensor (output)
-  void SetMemory(DnnlTensor tensor, dnnl::memory mem);
+  // if always_copy_output is true a copy of the memory will be made when the output is leaving the subgraph.
+  void SetMemory(DnnlTensor tensor, dnnl::memory mem, bool always_copy_output = false);
   void SetMemory(std::string memory_name, dnnl::memory mem);
   void SetInitializer(std::string memory_name, dnnl::memory mem);
   dnnl::memory::desc GetOutputInfo(std::string name);
@@ -72,6 +73,7 @@ class DnnlSubgraphPrimitive {
 
   std::unordered_map<std::string, dnnl::memory> outputs_;
   std::unordered_map<std::string, dnnl::memory::desc> outputs_md_;
+  std::unordered_set<std::string> outputs_are_always_copied_;
 
   //initializer should not be dynamic
   std::unordered_map<std::string, std::vector<dnnl::memory>> initializers_;

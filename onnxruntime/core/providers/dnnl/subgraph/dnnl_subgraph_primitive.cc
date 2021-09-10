@@ -16,6 +16,7 @@
 #include "dnnl_softmax.h"
 #include "dnnl_softmaxgrad.h"
 #include "dnnl_sum.h"
+#include "dnnl_transpose.h"
 
 #if defined(ENABLE_TRAINING)
 #include "dnnl_convgrad.h"
@@ -67,6 +68,8 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlSoftmax().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Sum") {
       DnnlSum().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Transpose") {
+      DnnlTranspose().CreatePrimitive(*this, node);
 #if defined(ENABLE_TRAINING)
     } else if (node.OpType() == "AveragePoolGrad" || node.OpType() == "MaxPoolGrad") {
       DnnlPoolGrad().CreatePrimitive(*this, node);
@@ -129,6 +132,7 @@ void DnnlSubgraphPrimitive::Compile(const std::unordered_map<std::string, OnnxTe
   inputs_.clear();
   intermediates_.clear();
   outputs_.clear();
+  outputs_are_always_copied_.clear();
   inputs_md_.clear();
   outputs_md_.clear();
   net_.clear();
@@ -248,7 +252,8 @@ void DnnlSubgraphPrimitive::AddOutputs() {
     auto output_mem_dnnl = GetMemory(dnnl_tensor_name);
     auto output_md = dnnl::memory::desc(output_mem_dnnl.get_desc().dims(), dnnl_data_type, GetDnnlFormat(output_mem_dnnl.get_desc().dims().size()));
     // if output already in correct memory format, just place it to outputs instead of reorder
-    if (output_mem_dnnl.get_desc() == output_md && output_mem_dnnl.get_engine() == engine) {
+    bool copy_output = outputs_are_always_copied_.find(dnnl_tensor_name) != outputs_are_always_copied_.end();
+    if (output_mem_dnnl.get_desc() == output_md && output_mem_dnnl.get_engine() == engine && !copy_output) {
       outputs_.emplace(dnnl_tensor_name, output_mem_dnnl);
     } else {
       auto output_mem = dnnl::memory(output_md, engine, nullptr);
@@ -286,7 +291,10 @@ bool DnnlSubgraphPrimitive::HasMemory(std::string memory_name, dnnl::memory::des
   return false;
 }
 
-void DnnlSubgraphPrimitive::SetMemory(DnnlTensor tensor, dnnl::memory mem) {
+void DnnlSubgraphPrimitive::SetMemory(DnnlTensor tensor, dnnl::memory mem, bool always_copy_output) {
+  if (always_copy_output) {
+    outputs_are_always_copied_.insert(tensor.Name());
+  }
   SetMemory(tensor.Name(), mem);
 }
 
