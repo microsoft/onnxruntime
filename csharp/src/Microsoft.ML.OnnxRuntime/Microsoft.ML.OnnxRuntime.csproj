@@ -1,12 +1,11 @@
 <Project Sdk="MSBuild.Sdk.Extras/3.0.22">
 
   <PropertyGroup>
-    <TargetFrameworks>netstandard1.1;netstandard2.0;xamarinios10;monoandroid11.0;</TargetFrameworks>
+    <TargetFrameworks>netstandard1.1;netstandard2.0;xamarinios10;monoandroid11.0;net5.0;netcoreapp2.1;netcoreapp3.1;net48;net472;net471;</TargetFrameworks>
     <Platforms>AnyCPU;x86</Platforms>
     <LangVersion>7.2</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <SignAssembly>true</SignAssembly>
-    <DelaySign>false</DelaySign>
     <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
 
     <!--internal build related properties-->
@@ -27,6 +26,7 @@
     <!--- The parameter OrtPackageId is only used for some conditional logic below -->    
     <PackageId>Microsoft.ML.OnnxRuntime.Managed</PackageId>
     <Authors>Microsoft</Authors>
+    <PackageVersion Condition=" '$(PackageVersion)' == '' And '$(Configuration)' == 'Debug' ">1.0.0</PackageVersion>
     <PackageVersion Condition=" '$(PackageVersion)' == '' ">0.0.0</PackageVersion>
     <Version>$(PackageVersion)</Version>
     <Description>This package contains ONNX Runtime for .Net platforms</Description>
@@ -47,9 +47,6 @@
     <!-- Optional: Embed source files that are not tracked by the source control manager in the PDB -->
     <!--EmbedUntrackedSources>true</EmbedUntrackedSources-->
 
-    <!-- TEMP
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    -->
     <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <AllowedOutputExtensionsInPackageBuildOutputFolder>$(AllowedOutputExtensionsInPackageBuildOutputFolder);.pdb</AllowedOutputExtensionsInPackageBuildOutputFolder>
@@ -59,14 +56,6 @@
     <IsWindowsBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">true</IsWindowsBuild> 
     <IsMacOSBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))' == 'true'">true</IsMacOSBuild>
   </PropertyGroup>
-
-    <!-- TEMP 
-    <PropertyGroup Condition=" '$(Version)' == '' ">
-        <VersionPrefix Condition=" '$(VersionPrefix)' == '' ">1.0.0</VersionPrefix>
-        <Version Condition=" '$(VersionSuffix)' != '' ">$(VersionPrefix)-$(VersionSuffix)</Version>
-        <Version Condition=" '$(Version)' == '' ">$(VersionPrefix)</Version>
-    </PropertyGroup>
-    -->
 
     <PropertyGroup Condition="'$(IsLinuxBuild)'=='true'">
         <!--internal build related properties for Linux -->
@@ -85,114 +74,37 @@
         <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\MacOS</OnnxRuntimeBuildDirectory>
         <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)</NativeBuildOutputDir>
     </PropertyGroup>
+
     <PropertyGroup Condition="$(TargetFramework.StartsWith('xamarinios'))">
-      <DefineConstants>__IOS__;</DefineConstants>
+      <DefineConstants>__IOS__;__MOBILE__;</DefineConstants>
     </PropertyGroup>
+
     <PropertyGroup Condition="$(TargetFramework.StartsWith('monoandroid'))">
-      <DefineConstants>__ANDROID__;</DefineConstants>
+      <DefineConstants>__ANDROID__;__MOBILE__;</DefineConstants>
+    </PropertyGroup>
+
+    <PropertyGroup Condition=" $(TargetFramework.StartsWith('net')) AND !$(TargetFramework.StartsWith('netstandard')) ">
+      <DefineConstants>__NETCOREAPP_NETFRAMEWORK__;</DefineConstants>
     </PropertyGroup>
 
   <ItemGroup>
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\session\onnxruntime_*.h"
-          PackagePath="\build\native\include"
-          Pack="false"
-          CopyToOutputDirectory="Never"
-          Visible="false"
-    />
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\cpu\cpu_provider_factory.h"
-          PackagePath="\build\native\include"
-          Pack="false"
-          CopyToOutputDirectory="Never"
-          Visible="false"
-    />
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\dml\dml_provider_factory.h"
-          Condition="'$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'"
-          PackagePath="\build\native\include"
-          Pack="false"
-          CopyToOutputDirectory="Never"
-          Visible="false"
-    />
-    <None Include="$(NativeBuildOutputDir)\libonnxruntime.so"
-          Condition="Exists('$(NativeBuildOutputDir)\libonnxruntime.so')"
-          PackagePath="\runtimes\linux-$(TargetArchitecture)\native"
-          Pack="false"
-          CopyToOutputDirectory="Never"
-          Visible="false"
-    />
-    <None Include="$(NativeBuildOutputDir)\onnxruntime.lib"
-          Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.lib')"
-          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="false"
-          CopyToOutputDirectory="Never"
-          Visible="false"
-    />
-    <None Include="$(NativeBuildOutputDir)\onnxruntime.dll"
-          Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.dll')"
-          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="false"
-          CopyToOutputDirectory="Always"
-          Visible="false"
-    />
-    <None Include="$(NativeBuildOutputDir)\onnxruntime.pdb"
-          Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.pdb')"
-          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="false"
-          CopyToOutputDirectory="Always"
-          Visible="false"
-    />
-    <None Include="$(NativeBuildOutputDir)\dnnl.dll"
-          Condition="Exists('$(NativeBuildOutputDir)\dnnl.dll')"
-          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="false"
-          CopyToOutputDirectory="Always"
-          Visible="false"
-    />
-    <None Include="$(NativeBuildOutputDir)\mklml.dll"
-          Condition="Exists('$(NativeBuildOutputDir)\mklml.dll')"
-          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="false"
-          CopyToOutputDirectory="Always"
-          Visible="false"
-    />
-    <None Include="$(NativeBuildOutputDir)\libiomp5md.dll"
-          Condition="Exists('$(NativeBuildOutputDir)\libiomp5md.dll')"
-          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="false"
-          CopyToOutputDirectory="Always"
-          Visible="false"
-    />
-    <None Include="$(NativeBuildOutputDir)\tvm.dll"
-          Condition="Exists('$(NativeBuildOutputDir)\tvm.dll')"
-          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="false"
-          CopyToOutputDirectory="Always"
-          Visible="false"
-    />
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\LICENSE.txt;$(OnnxRuntimeCsharpRoot)\..\ThirdPartyNotices.txt;$(OnnxRuntimeCsharpRoot)\..\docs\Privacy.md"
-          PackagePath="\"
-          Pack="true"
-          Visible="false"
-    />
-    <None Include="targets\netstandard\$(PackageId).targets"
-          PackagePath="build\netstandard1.1\$(PackageId).targets;build\netstandard2.0\$(PackageId).targets"
-          Pack="true"
-          Visible="false" 
-    />
+    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\session\onnxruntime_*.h" PackagePath="\build\native\include" Pack="false" CopyToOutputDirectory="Never" Visible="false" />
+    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\cpu\cpu_provider_factory.h" PackagePath="\build\native\include" Pack="false" CopyToOutputDirectory="Never" Visible="false" />
+    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\dml\dml_provider_factory.h" Condition="'$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'" PackagePath="\build\native\include" Pack="false" CopyToOutputDirectory="Never" Visible="false" />
+    <None Include="$(NativeBuildOutputDir)\libonnxruntime.so" Condition="Exists('$(NativeBuildOutputDir)\libonnxruntime.so')" PackagePath="\runtimes\linux-$(TargetArchitecture)\native" Pack="false" CopyToOutputDirectory="Never" Visible="false" />
+    <None Include="$(NativeBuildOutputDir)\onnxruntime.lib" Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.lib')" PackagePath="\runtimes\win-$(TargetArchitecture)\native" Pack="false" CopyToOutputDirectory="Never" Visible="false" />
+    <None Include="$(NativeBuildOutputDir)\onnxruntime.dll" Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.dll')" PackagePath="\runtimes\win-$(TargetArchitecture)\native" Pack="false" CopyToOutputDirectory="Always" Visible="false" />
+    <None Include="$(NativeBuildOutputDir)\onnxruntime.pdb" Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.pdb')" PackagePath="\runtimes\win-$(TargetArchitecture)\native" Pack="false" CopyToOutputDirectory="Always" Visible="false" />
+    <None Include="$(NativeBuildOutputDir)\dnnl.dll" Condition="Exists('$(NativeBuildOutputDir)\dnnl.dll')" PackagePath="\runtimes\win-$(TargetArchitecture)\native" Pack="false" CopyToOutputDirectory="Always" Visible="false" />
+    <None Include="$(NativeBuildOutputDir)\mklml.dll" Condition="Exists('$(NativeBuildOutputDir)\mklml.dll')" PackagePath="\runtimes\win-$(TargetArchitecture)\native" Pack="false" CopyToOutputDirectory="Always" Visible="false" />
+    <None Include="$(NativeBuildOutputDir)\libiomp5md.dll" Condition="Exists('$(NativeBuildOutputDir)\libiomp5md.dll')" PackagePath="\runtimes\win-$(TargetArchitecture)\native" Pack="false" CopyToOutputDirectory="Always" Visible="false" />
+    <None Include="$(NativeBuildOutputDir)\tvm.dll" Condition="Exists('$(NativeBuildOutputDir)\tvm.dll')" PackagePath="\runtimes\win-$(TargetArchitecture)\native" Pack="false" CopyToOutputDirectory="Always" Visible="false" />
+    <None Include="$(OnnxRuntimeCsharpRoot)\..\LICENSE.txt;$(OnnxRuntimeCsharpRoot)\..\ThirdPartyNotices.txt;$(OnnxRuntimeCsharpRoot)\..\docs\Privacy.md" PackagePath="\" Pack="true" Visible="false" />
 
     <!-- Some tools to be packaged in nightly build only, should not be released -->
     <!-- These are copied to the runtimes folder for convenience of loading with the dlls -->
-    <None Include="$(NativeBuildOutputDir)\onnxruntime_perf_test.exe"
-          Condition="('$(IsReleaseBuild)' != 'true') And ($(TargetArchitecture)=='x64') And Exists('$(NativeBuildOutputDir)\onnxruntime_perf_test.exe')"
-          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="false"
-          Visible="false"
-    />
-    <None Include="$(NativeBuildOutputDir)\onnx_test_runner.exe"
-          Condition="('$(IsReleaseBuild)' != 'true') And ($(TargetArchitecture)=='x64') And Exists('$(NativeBuildOutputDir)\onnx_test_runner.exe')"
-          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="false"
-          Visible="false"
-    />
+    <None Include="$(NativeBuildOutputDir)\onnxruntime_perf_test.exe" Condition="('$(IsReleaseBuild)' != 'true') And ($(TargetArchitecture)=='x64') And Exists('$(NativeBuildOutputDir)\onnxruntime_perf_test.exe')" PackagePath="\runtimes\win-$(TargetArchitecture)\native" Pack="false" Visible="false" />
+    <None Include="$(NativeBuildOutputDir)\onnx_test_runner.exe" Condition="('$(IsReleaseBuild)' != 'true') And ($(TargetArchitecture)=='x64') And Exists('$(NativeBuildOutputDir)\onnx_test_runner.exe')" PackagePath="\runtimes\win-$(TargetArchitecture)\native" Pack="false" Visible="false" />
   </ItemGroup>
 
   <ItemGroup>
@@ -204,7 +116,14 @@
     <PackageReference Include="System.Memory" Version="4.5.4" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
     <Compile Include="**\*.netstandard.cs" Link="platform\netstandard\%(Filename)%(Extension)" />
-   <Compile Include="**\*.netstandard.*.cs" Link="platform\netstandard\%(Filename)%(Extension)" />
+    <Compile Include="**\*.netstandard.*.cs" Link="platform\netstandard\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup Condition=" $(TargetFramework.StartsWith('net')) AND !$(TargetFramework.StartsWith('netstandard')) ">
+    <PackageReference Include="System.Memory" Version="4.5.4" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
+    <Compile Include="**\*.net.cs" Link="platform\net\%(Filename)%(Extension)" />
+    <Compile Include="**\*.net.*.cs" Link="platform\net\%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup Condition="$(TargetFramework.StartsWith('monoandroid'))">
@@ -223,15 +142,12 @@
   </ItemGroup>
 
   <Target Name="CopyMiscFiles" BeforeTargets="PreBuildEvent">
-    <Copy SourceFiles="@(LicenseFile)" DestinationFiles="@(LicenseFile->'$(OnnxRuntimeCsharpRoot)\..\%(Filename).txt')" />
-    <Copy SourceFiles="@(TargetsFile)" DestinationFiles="@(TargetsFile->'$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime\targets\netstandard\$(PackageId).targets')" />
+    <Copy SourceFiles="@(LicenseFile)" DestinationFiles="@(LicenseFile-&gt;'$(OnnxRuntimeCsharpRoot)\..\%(Filename).txt')" />
+    <Copy SourceFiles="@(TargetsFile)" DestinationFiles="@(TargetsFile-&gt;'$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime\targets\netstandard\$(PackageId).targets')" />
   </Target>
 
     <Target Name="CopyPackage" AfterTargets="Pack">
-      <Copy
-        SourceFiles="$(OutputPath)\$(PackageId).$(PackageVersion).nupkg"
-        DestinationFolder="$(NativeBuildOutputDir)\nuget-artifacts"
-      />
+      <Copy SourceFiles="$(OutputPath)\$(PackageId).$(PackageVersion).nupkg" DestinationFolder="$(NativeBuildOutputDir)\nuget-artifacts" />
     </Target>
   
 </Project>
