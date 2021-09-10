@@ -110,6 +110,12 @@
     <EmbeddedResource Include="..\..\testdata\*">
         <Link>TestData\%(Filename)%(Extension)</Link>
     </EmbeddedResource>
+    <EmbeddedResource Include="$(OnnxRuntimeCSharpRoot)\..\onnxruntime\test\testdata\overridable_initializer.onnx">
+        <Link>TestData\overridable_initializer.onnx</Link>
+    </EmbeddedResource>
+    <EmbeddedResource Include="$(OnnxRuntimeCSharpRoot)\..\onnxruntime\test\testdata\capi_symbolic_dims.onnx">
+        <Link>TestData\capi_symbolic_dims.onnx</Link>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>

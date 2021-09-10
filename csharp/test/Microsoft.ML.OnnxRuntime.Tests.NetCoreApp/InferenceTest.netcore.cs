@@ -529,54 +529,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact(DisplayName = "TestOverridableInitializerMetadata")]
-        private void TestOverridableInitializerMetadata()
-        {
-            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "overridable_initializer.onnx");
-            using (var session = new InferenceSession(modelPath))
-            {
-                Assert.Equal(2, session.InputMetadata.Count);
-                Assert.True(session.InputMetadata.ContainsKey("Label"));
-                Assert.True(session.InputMetadata.ContainsKey("F2"));
-
-                Assert.Equal(1, session.OverridableInitializerMetadata.Count);
-                Assert.True(session.OverridableInitializerMetadata.ContainsKey("F1"));
-                Assert.True(session.OverridableInitializerMetadata["F1"].IsTensor);
-                Assert.Equal(typeof(float), session.OverridableInitializerMetadata["F1"].ElementType);
-                Assert.Equal(2, session.OverridableInitializerMetadata["F1"].Dimensions.Length);
-                Assert.Equal(1, session.OverridableInitializerMetadata["F1"].Dimensions[0]);
-                Assert.Equal(1, session.OverridableInitializerMetadata["F1"].Dimensions[1]);
-
-                var container = new List<NamedOnnxValue>();
-                var Label_input = new DenseTensor<bool>(new bool[] { true }, new int[] { 1, 1 });
-                container.Add(NamedOnnxValue.CreateFromTensor("Label", Label_input));
-
-                var F2_input = new DenseTensor<string>(new string[] { "f2_string" }, new int[] { 1, 1 });
-                container.Add(NamedOnnxValue.CreateFromTensor("F2", F2_input));
-
-                var F1_initializer = new DenseTensor<float>(new float[] { 2.0f }, new int[] { 1, 1 });
-                container.Add(NamedOnnxValue.CreateFromTensor("F1", F1_initializer));
-
-                using (var result = session.Run(container))
-                {
-                    var resultMap = new Dictionary<string, NamedOnnxValue>();
-
-                    foreach (var output in result)
-                    {
-                        resultMap[output.Name] = output;
-                    }
-
-                    Assert.True(resultMap.ContainsKey("Label0"));
-                    Assert.True(resultMap.ContainsKey("F20"));
-                    Assert.True(resultMap.ContainsKey("F11"));
-
-                    var overriddenInitializer = resultMap["F11"].AsTensor<float>();
-                    Assert.NotNull(overriddenInitializer);
-                    Assert.True(overriddenInitializer.SequenceEqual(F1_initializer));
-                }
-            }
-        }
-
         // Hint: .NET Core 3.1 has a 'NativeLibrary' class that can be used to free the library handle
         private void UnloadLibrary(IntPtr libraryHandle)
         {
@@ -678,39 +630,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 // Safe to unload the custom op shared library now
                 UnloadLibrary(libraryHandle);
-            }
-        }
-
-        [Fact(DisplayName = "TestSymbolicDimsMetadata")]
-        private void TestSymbolicDimsMetadata()
-        {
-            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "capi_symbolic_dims.onnx");
-            using (var session = new InferenceSession(modelPath))
-            {
-                var inputs = session.InputMetadata;
-                var outputs = session.OutputMetadata;
-
-                Assert.Equal(2, inputs.Count);
-                Assert.Equal(1, session.OutputMetadata.Count);
-                Assert.True(inputs.ContainsKey("A"));
-                Assert.True(inputs.ContainsKey("B"));
-                Assert.True(outputs.ContainsKey("C"));
-
-                var inputA = inputs["A"];
-                var inputB = inputs["B"];
-                var outputC = outputs["C"];
-
-                // dimension values and any symbolic dimension info should have the same length
-                Assert.Equal(inputA.Dimensions.Length, inputA.SymbolicDimensions.Length);
-                Assert.Equal(inputB.Dimensions.Length, inputB.SymbolicDimensions.Length);
-                Assert.Equal(outputC.Dimensions.Length, outputC.SymbolicDimensions.Length);
-
-                Assert.Equal(inputA.Dimensions, new int[] { -1, 2 });
-                Assert.Equal(inputA.SymbolicDimensions, new string[] { "n", "" });
-                Assert.Equal(inputB.Dimensions, new int[] { -1 });
-                Assert.Equal(inputB.SymbolicDimensions, new string[] { "m" });
-                Assert.Equal(outputC.Dimensions, new int[] { -1 });
-                Assert.Equal(outputC.SymbolicDimensions, new string[] { "" }); // unnamed symbolic dim
             }
         }
 
