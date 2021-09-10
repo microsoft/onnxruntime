@@ -1,7 +1,6 @@
 ---
 title: Accelerate PyTorch training
-grand_parent: Tutorials
-parent: Training
+parent: Tutorials
 nav_order: 1
 ---
 # ORTModule Examples

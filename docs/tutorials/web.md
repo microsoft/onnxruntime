@@ -1,7 +1,6 @@
 ---
 title: Deploy on web
-grand_parent: Tutorials
-parent: Inferencing
+parent: Tutorials
 has_children: false
 nav_order: 7
 ---

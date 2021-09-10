@@ -240,6 +240,9 @@ For Python compiler version notes, see [this page](https://github.com/microsoft/
 Python 3.6 - 3.9
 
 ## Learn More
-- [Python Tutorials](../tutorials/inferencing/api-basics)
+- [Python Tutorials](../tutorials/api-basics)
 - [Python Github Quickstart Templates](https://github.com/onnxruntime)
+* [TensorFlow with ONNX Runtime](../tutorials/tf-get-started.md)
+* [PyTorch with ONNX Runtime](https://pytorch.org/tutorials/advanced/super_resolution_with_onnxruntime.html)
+* [scikit-learn with ONNX Runtime](https://www.onnxruntime.ai/python/tutorial.html)
  

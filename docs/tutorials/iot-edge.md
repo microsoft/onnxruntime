@@ -1,7 +1,6 @@
 ---
 title: Deploy on IoT and edge
-grand_parent: Tutorials
-parent: Inferencing
+parent: Tutorials
 has_children: false
 nav_order: 6
 ---

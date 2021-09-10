@@ -1,7 +1,6 @@
 ---
 title: Accelerate PyTorch
-grand_parent: Tutorials
-parent: Inferencing
+parent: Tutorials
 nav_order: 2
 ---
 # Accelerate PyTorch model inferencing

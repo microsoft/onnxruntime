@@ -28,4 +28,4 @@ nav_order: 2
 The C++ API is a thin wrapper of the C API. Please refer to [C API](./with-c.html) for more details.
 
 ## Samples
-See [Tutorials: API Basics - C++](../tutorials/inferencing/api-basics)
+See [Tutorials: API Basics - C++](../tutorials/api-basics)

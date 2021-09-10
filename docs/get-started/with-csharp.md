@@ -136,7 +136,7 @@ The ONNX runtime provides a C# .NET binding for running inference on ONNX models
 
 ## Samples
 
-See [Tutorials: Basics - C#](../tutorials/inferencing/api-basics)
+See [Tutorials: Basics - C#](../tutorials/api-basics)
 
 
 ## Learn More

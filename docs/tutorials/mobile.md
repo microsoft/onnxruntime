@@ -1,7 +1,6 @@
 ---
 title: Deploy on mobile
-grand_parent: Tutorials
-parent: Inferencing
+parent: Tutorials
 nav_order: 5
 ---
 # Deploy ML models on mobile devices

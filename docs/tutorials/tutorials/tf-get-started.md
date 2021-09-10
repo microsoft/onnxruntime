@@ -100,4 +100,4 @@ If your model fails to convert please read our [README](https://github.com/onnx/
 
 ## Next Steps
 
-- [More tutorials: accelerate Tensorflow models](../inferencing/tensorflow.md#accelerate-tensorflow-model-inferencing-1)
+- [More tutorials: accelerate Tensorflow models](../tensorflow)

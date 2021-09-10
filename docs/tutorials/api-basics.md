@@ -1,7 +1,6 @@
 ---
 title: API Basics
-grand_parent: Tutorials
-parent: Inferencing
+parent: Tutorials
 nav_order: 1
 ---
 # ONNX Runtime Inferencing: API Basics

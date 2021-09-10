@@ -1,7 +1,6 @@
 ---
 title: Accelerate Hugging Face
-grand_parent: Tutorials
-parent: Inferencing
+parent: Tutorials
 nav_order: 4
 ---
 # Accelerate Hugging Face models

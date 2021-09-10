@@ -1,8 +1,7 @@
 ---
 title: Accelerate TensorFlow
 nav_order: 3
-grand_parent: Tutorials
-parent: Inferencing
+parent: Tutorials
 ---
 # Accelerate TensorFlow model inferencing
 {: .no_toc }

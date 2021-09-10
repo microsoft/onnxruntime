@@ -1,7 +1,6 @@
 ---
 title: Deploy traditional ML
-grand_parent: Tutorials
-parent: Inferencing
+parent: Tutorials
 has_children: false
 nav_order: 8
 ---
