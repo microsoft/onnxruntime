@@ -40,7 +40,7 @@ Examples use cases for ONNX Runtime Inferencing include:
 
 The premise is simple. 
 1. **Get a model.** This can be trained from any framework that supports export/conversion to ONNX format. See the [tutorials](../tutorials/inferencing) for some of the popular frameworks/libraries. 
-2. **Load and run the model with ONNX Runtime.** See the [basic tutorials](../tutorials/inferencing/api-basics) for running models in different languages.
+2. **Load and run the model with ONNX Runtime.** See the [basic tutorials](../tutorials/api-basics) for running models in different languages.
 3. ***(Optional)* Tune performance using various runtime configurations or hardware accelerators.** There are lots of options here - see [How to: Tune Performance](../performance/tune-performance.md) as a starting point.
 
 Even without step 3, ONNX Runtime will often provide performance improvements compared to the original framework. 

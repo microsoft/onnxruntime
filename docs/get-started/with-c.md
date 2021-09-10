@@ -110,4 +110,4 @@ To turn on/off telemetry collection on official Windows builds, please use Enabl
 
 ## Samples
 
-See [Tutorials: API Basics - C](../tutorials/inferencing/api-basics)
+See [Tutorials: API Basics - C](../tutorials/api-basics)
