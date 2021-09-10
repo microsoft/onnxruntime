@@ -19,6 +19,7 @@ class BatchNormInternal final : public RocmKernel {
         momentum_(0.9) {
     float tmp_epsilon;
     ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &tmp_epsilon).IsOK());
+    epsilon_ = ClampMiopenBatchNormEpsilon(static_cast<double>(tmp_epsilon));
 
     // spatial or not
     int64_t tmp_spatial;
@@ -39,7 +40,7 @@ class BatchNormInternal final : public RocmKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  double epsilon_ = 1e-5;
+  double epsilon_;
   int64_t spatial_ = 1;  // default as per spec
   miopenBatchNormMode_t miopen_batch_norm_mode_;
   double momentum_;

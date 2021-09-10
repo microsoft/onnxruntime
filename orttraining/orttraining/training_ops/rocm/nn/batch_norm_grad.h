@@ -4,7 +4,6 @@
 #pragma once
 
 #include "gsl/gsl"
-
 #include "core/providers/rocm/rocm_kernel.h"
 #include "core/providers/rocm/miopen_common.h"
 
@@ -19,6 +18,7 @@ class BatchNormalizationGrad final : public RocmKernel {
         miopen_batch_norm_mode_(miopenBNSpatial) {
     float tmp_epsilon;
     ORT_ENFORCE(info.GetAttr<float>("epsilon", &tmp_epsilon).IsOK());
+    epsilon_ = ClampMiopenBatchNormEpsilon(static_cast<double>(tmp_epsilon));
 
     // spatial or not
     int64_t tmp_spatial;
@@ -34,8 +34,8 @@ class BatchNormalizationGrad final : public RocmKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  double epsilon_ = 1e-5;
-  int64_t spatial_ = 1;
+  double epsilon_;
+  int64_t spatial_ = 1;  // default as per spec
   miopenBatchNormMode_t miopen_batch_norm_mode_;
 };
 
