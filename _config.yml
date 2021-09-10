@@ -19,10 +19,6 @@ aux_links:
     - "/docs/tutorials/"
   "Install":
     - "/docs/install/"
-  "Reference":
-    - "/docs/reference/"
-  "Performance":
-    - "/docs/performance/"
   "Execution Providers":
     - "/docs/execution-providers/"
   "GitHub":

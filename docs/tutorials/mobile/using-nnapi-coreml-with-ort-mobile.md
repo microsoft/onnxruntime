@@ -8,9 +8,9 @@ nav_order: 6
 ## Using NNAPI and CoreML with ONNX Runtime Mobile
 
 - Usage of NNAPI on Android platforms is via the NNAPI Execution Provider (EP). 
-  - See the [NNAPI Execution Provider](../../reference/execution-providers/NNAPI-ExecutionProvider) documentation for more details.
+  - See the [NNAPI Execution Provider](../execution-providers/NNAPI-ExecutionProvider) documentation for more details.
 - Usage of CoreML on iOS and macOS platforms is via the CoreML EP. 
-  - See the [CoreML Execution Provider](../../reference/execution-providers/CoreML-ExecutionProvider) documentation for more details.
+  - See the [CoreML Execution Provider](../execution-providers/CoreML-ExecutionProvider) documentation for more details.
 
 The pre-built ONNX Runtime Mobile package includes the NNAPI EP on Android, and the CoreML EP on iOS.
 

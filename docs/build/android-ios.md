@@ -121,7 +121,7 @@ To build on Windows with `--build_java` enabled you must also:
 
 ### Android NNAPI Execution Provider
 
-If you want to use NNAPI Execution Provider on Android, see [NNAPI Execution Provider](../../reference/execution-providers/NNAPI-ExecutionProvider).
+If you want to use NNAPI Execution Provider on Android, see [NNAPI Execution Provider](../execution-providers/NNAPI-ExecutionProvider).
 
 #### Build Instructions
 
@@ -201,7 +201,7 @@ Run one of the following build scripts from the ONNX Runtime repository root:
 
 ### CoreML Execution Provider
 
-If you want to use CoreML Execution Provider on iOS or macOS, see [CoreML Execution Provider](../../reference/execution-providers/CoreML-ExecutionProvider).
+If you want to use CoreML Execution Provider on iOS or macOS, see [CoreML Execution Provider](../execution-providers/CoreML-ExecutionProvider).
 
 #### Build Instructions
 

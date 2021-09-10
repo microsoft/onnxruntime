@@ -7,7 +7,7 @@ nav_order: 3
 # ONNX Runtime Performance Tuning
 {: .no_toc }
 
-ONNX Runtime provides high performance across a range of hardware options through its [Execution Providers interface](../reference/execution-providers) for different execution environments.
+ONNX Runtime provides high performance across a range of hardware options through its [Execution Providers interface](../execution-providers) for different execution environments.
 
 Along with this flexibility comes decisions for tuning and usage. For each model running with each execution provider, there are settings that can be tuned (e.g. thread number, wait policy, etc) to improve performance.
 
@@ -52,7 +52,7 @@ In both cases, you will get a JSON file which contains the detailed performance 
 
 ## Using different Execution Providers
 
-To learn more about different Execution Providers, see [Reference: Execution Providers](../reference/execution-providers).
+To learn more about different Execution Providers, see [Reference: Execution Providers](../execution-providers).
 
 ### Build the EP
 {: .no_toc }
@@ -132,7 +132,7 @@ TensorRT and CUDA are separate execution providers for ONNX Runtime. On the same
 
 ### TensorRT/CUDA or DirectML? 
 {: .no_toc }
-DirectML is the hardware-accelerated DirectX 12 library for machine learning on Windows and supports all DirectX 12 capable devices (Nvidia, Intel, AMD). This means that if you are targeting Windows GPUs, using the DirectML Execution Provider is likely your best bet. This can be used with both the ONNX Runtime as well as [WinML APIs](../reference/api/winrt-api.md).
+DirectML is the hardware-accelerated DirectX 12 library for machine learning on Windows and supports all DirectX 12 capable devices (Nvidia, Intel, AMD). This means that if you are targeting Windows GPUs, using the DirectML Execution Provider is likely your best bet. This can be used with both the ONNX Runtime as well as [WinML APIs](../api/winrt-api.md).
 
 ## Tuning performance
 Below are some suggestions for things to try for various EPs for tuning performance. 

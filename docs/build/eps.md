@@ -86,7 +86,7 @@ If you want to build with an earlier version, you must temporarily remove the 'C
 
 ## TensorRT
 
-See more information on the TensorRT Execution Provider [here](../../reference/execution-providers/TensorRT-ExecutionProvider.md).
+See more information on the TensorRT Execution Provider [here](../execution-providers/TensorRT-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
@@ -188,7 +188,7 @@ These instructions are for JetPack SDK 4.6.
 
 ## oneDNN
 
-See more information on ondDNN (formerly DNNL) [here](../../reference/execution-providers/DNNL-ExecutionProvider.md).
+See more information on ondDNN (formerly DNNL) [here](../execution-providers/DNNL-ExecutionProvider.md).
 
 ### Build Instructions
 {: .no_toc }
@@ -222,7 +222,7 @@ OneDNN EP build supports building Python wheel for both Windows and linux using 
 
 ## OpenVINO
 
-See more information on the OpenVINO Execution Provider [here](../../reference/execution-providers/OpenVINO-ExecutionProvider.md).
+See more information on the OpenVINO Execution Provider [here](../execution-providers/OpenVINO-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
@@ -278,7 +278,7 @@ See more information on the OpenVINO Execution Provider [here](../../reference/e
 ```
 
 * `--use_openvino` builds the OpenVINO Execution Provider in ONNX Runtime.
-* `<hardware_option>`: Specifies the default hardware target for building OpenVINO Execution Provider. This can be overriden dynamically at runtime with another option (refer to [OpenVINO-ExecutionProvider](../../reference/execution-providers/OpenVINO-ExecutionProvider.md#summary-of-options) for more details on dynamic device selection). Below are the options for different Intel target devices.
+* `<hardware_option>`: Specifies the default hardware target for building OpenVINO Execution Provider. This can be overriden dynamically at runtime with another option (refer to [OpenVINO-ExecutionProvider](../execution-providers/OpenVINO-ExecutionProvider.md#summary-of-options) for more details on dynamic device selection). Below are the options for different Intel target devices.
 
 | Hardware Option | Target Device |
 | --------------- | ------------------------|
@@ -302,12 +302,12 @@ A minimum of two device's should be specified for a valid HETERO or Multi-Device
 Example's: HETERO:MYRIAD,CPU or HETERO:HDDL,GPU,CPU or MULTI:MYRIAD,GPU,CPU
 ```
 
-For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document [OpenVINO-ExecutionProvider](../../reference/execution-providers/OpenVINO-ExecutionProvider.md)
+For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document [OpenVINO-ExecutionProvider](../execution-providers/OpenVINO-ExecutionProvider.md)
 
 ---
 
 ## NUPHAR
-See more information on the Nuphar Execution Provider [here](../../reference/execution-providers/Nuphar-ExecutionProvider.md).
+See more information on the Nuphar Execution Provider [here](../execution-providers/Nuphar-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
@@ -387,7 +387,7 @@ Dockerfile instructions are available [here](https://github.com/microsoft/onnxru
 ---
 
 ## DirectML
-See more information on the DirectML execution provider [here](../../reference/execution-providers/DirectML-ExecutionProvider.md).
+See more information on the DirectML execution provider [here](../execution-providers/DirectML-ExecutionProvider.md).
 ### Windows
 {: .no_toc }
 
@@ -402,7 +402,7 @@ The DirectML execution provider supports building for both x64 and x86 architect
 ---
 
 ## ARM Compute Library
-See more information on the ACL Execution Provider [here](../../reference/execution-providers/ACL-ExecutionProvider.md).
+See more information on the ACL Execution Provider [here](../execution-providers/ACL-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
@@ -469,7 +469,7 @@ onnxruntime_test_all
 
 ## ArmNN
 
-See more information on the ArmNN Execution Provider [here](../../reference/execution-providers/ArmNN-ExecutionProvider.md).
+See more information on the ArmNN Execution Provider [here](../execution-providers/ArmNN-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
@@ -517,7 +517,7 @@ The ARM Compute Library home directory and build directory must also be availabl
 ---
 
 ## RKNPU
-See more information on the RKNPU Execution Provider [here](../../reference/execution-providers/RKNPU-ExecutionProvider.md).
+See more information on the RKNPU Execution Provider [here](../execution-providers/RKNPU-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
@@ -556,9 +556,9 @@ set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
 ---
 
 ## Vitis-AI
-See more information on the Xilinx Vitis-AI execution provider [here](../../reference/execution-providers/Vitis-AI-ExecutionProvider.md).
+See more information on the Xilinx Vitis-AI execution provider [here](../execution-providers/Vitis-AI-ExecutionProvider.md).
 
-For instructions to setup the hardware environment: [Hardware setup](../../reference/execution-providers/Vitis-AI-ExecutionProvider.md#Hardware-setup)
+For instructions to setup the hardware environment: [Hardware setup](../execution-providers/Vitis-AI-ExecutionProvider.md#Hardware-setup)
 
 ### Linux
 {: .no_toc }
@@ -577,7 +577,7 @@ The Vitis-AI execution provider is only supported on Linux.
 
 ## AMD MIGraphX
 
-See more information on the MIGraphX Execution Provider [here](../../reference/execution-providers/MIGraphX-ExecutionProvider.md).
+See more information on the MIGraphX Execution Provider [here](../execution-providers/MIGraphX-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }

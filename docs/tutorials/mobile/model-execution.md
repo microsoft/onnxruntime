@@ -11,7 +11,7 @@ nav_order: 5
 
 The API for executing ORT format models is the same as for ONNX models. 
 
-See the [ONNX Runtime API documentation](../../reference/api) for details on individual API usage.
+See the [ONNX Runtime API documentation](../api) for details on individual API usage.
 
 ## APIs by platform
 
