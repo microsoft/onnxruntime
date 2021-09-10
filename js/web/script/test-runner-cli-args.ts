@@ -294,7 +294,10 @@ function parseWebglFlags(args: minimist.ParsedArgs): Env.WebGLFlags {
   if (pack !== undefined && typeof pack !== 'boolean') {
     throw new Error('Flag "webgl-texture-pack-mode" is invalid');
   }
-
+  const async = args['webgl-async'];
+  if (async !== undefined && typeof async !== 'boolean') {
+    throw new Error('Flag "webgl-async" is invalid');
+  }
   return {contextId, matmulMaxBatchSize, textureCacheMode, pack};
 }
 

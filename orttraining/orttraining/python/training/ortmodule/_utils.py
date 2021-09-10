@@ -16,22 +16,27 @@ from typing import List
 import types
 import warnings
 
-
-def _ortvalue_to_torch_tensor(ortvalue):
-    # PyTorch's to_dlpack() uses same config for both torch.bool and torch.uint8,
-    # and convert the config to torch.uint8 tensor duing from_dlpack().
-    # So we need to convert the torch tensor to torch.bool type if OrtValue is bool tensor.
-    torch_tensor = from_dlpack(ortvalue.to_dlpack())
-    return torch_tensor.to(torch.bool) if ortvalue.data_type() == 'tensor(bool)' else torch_tensor
-
-
 def _ortvalue_from_torch_tensor(torch_tensor):
     return C.OrtValue.from_dlpack(to_dlpack(torch_tensor), torch_tensor.dtype == torch.bool)
 
 
-def _torch_tensor_from_dl_pack(dlpack, ortvalue):
-    torch_tensor = from_dlpack(dlpack)
+def _torch_tensor_from_dl_pack(dlpack, ortvalue, device):
+    torch_tensor = from_dlpack(dlpack) if device.type != 'ort' else C.ort_from_dlpack(dlpack)
     return torch_tensor.to(torch.bool) if ortvalue.data_type() == 'tensor(bool)' else torch_tensor
+
+
+def _ortvalue_to_torch_tensor(ortvalue, device):
+    # PyTorch's to_dlpack() uses same config for both torch.bool and torch.uint8,
+    # and convert the config to torch.uint8 tensor duing from_dlpack().
+    # So we need to convert the torch tensor to torch.bool type if OrtValue is bool tensor.
+    dlpack_tensor = ortvalue.to_dlpack()
+    return _torch_tensor_from_dl_pack(dlpack_tensor, ortvalue, device)
+
+def _torch_tensor_to_dlpack(tensor):
+    if tensor.device.type == 'ort':
+        return C.ort_to_dlpack(tensor)
+    else:
+        return to_dlpack(tensor)
 
 
 def _check_same_device(device, argument_str, *args):

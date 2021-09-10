@@ -95,7 +95,7 @@ CPUIDInfo::CPUIDInfo() {
     }
 #endif
 
-#if defined(CPUIDINFO_ARCH_ARM) && defined(CPUINFO_INCLUDED)
+#if defined(CPUIDINFO_ARCH_ARM) && defined(CPUINFO_SUPPORTED)
 
     // only works on ARM linux or android, does not work on Windows
     is_hybrid_ = cpuinfo_get_uarchs_count() > 1;
