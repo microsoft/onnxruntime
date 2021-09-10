@@ -447,6 +447,9 @@ class PlannerImpl {
         // TODO this should be an error case, needs more investigation
         continue;
       }
+      if (IsNonDenseTensor(*p_node_arg)) {
+        continue;
+      }
       auto& available_memory_info = AllocPlan(p_node_arg->Name()).location;
       if (!(available_memory_info == required_memory_info)) continue;
       auto p_available_buffer_shape = context_.GetShape(*p_node_arg);
@@ -843,7 +846,7 @@ class PlannerImpl {
         // The the OrtValue indexed by current may reuse the memory in the OrtValue indexed by reused.
         OrtValueIndex reused;
         if (has_external_outputs) {
-          ORT_ENFORCE(!IsNonTensor(*node_output), "Only tensors are supported for external outputs for now.");
+          ORT_ENFORCE(!IsNonDenseTensor(*node_output), "Only tensors are supported for external outputs for now.");
           AllocPlan(current).alloc_kind = AllocKind::kAllocatedExternally;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
           AllocPlan(current).life_interval.second = execution_plan.size();
@@ -887,7 +890,7 @@ class PlannerImpl {
               }
             }
           }
-        } else if (IsNonTensor(*node_output)) {
+        } else if (IsNonDenseTensor(*node_output)) {
           // we do not try sharing-optimization for non-tensors
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
           AllocPlan(current).program_counter.AddStart(program_counter);
@@ -1128,11 +1131,11 @@ class PlannerImpl {
     }
   }
 
-  static bool IsNonTensor(const onnxruntime::NodeArg& nodearg) {
+  static bool IsNonDenseTensor(const onnxruntime::NodeArg& nodearg) {
     // TODO: unclear why we should go through a string-representation of type
     auto ptype = nodearg.Type();
     auto& type_proto = ONNX_NAMESPACE::Utils::DataTypeUtils::ToTypeProto(ptype);
-    return !utils::HasTensorType(type_proto);
+    return !utils::HasTensorType(type_proto) || utils::HasSparseTensorType(type_proto);
   }
 
   //For in-place reuse tensors, the lifetime is the union of all the tensors that tensors that use that buffer
