@@ -219,8 +219,7 @@ python -m torch_ort.configure
 
 ## Python API Reference Docs
 
- <span class="fs-5"> [Go to the ORT Python API Docs](./python/api_summary.html){: .btn  .mr-4} </span> 
-
+ <span class="fs-5"> [Go to the ORT Python API Docs](../api/python/api_summary.html){: .btn  .mr-4 target="_blank"} </span> 
 
 ## Builds
 If using pip, run pip install `--upgrade pip` prior to downloading.	 
