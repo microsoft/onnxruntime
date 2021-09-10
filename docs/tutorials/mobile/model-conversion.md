@@ -86,7 +86,7 @@ For earlier versions, *extended* is recommended, as the *all* level previously i
 
 If the model will potentially be run with the NNAPI EP or CoreML EP, it is recommended to create an ORT format model using the *basic* optimization level. Performance testing should be done to compare running this model with the NNAPI or CoreML EP enabled vs. running the model optimized to a higher level using the CPU EP to determine the optimal setup. 
 
-See the documentation on [performance tuning mobile scenarios](../../resources/mobile-performance-tuning) for in-depth information.
+See the documentation on [performance tuning mobile scenarios](../references/mobile-performance-tuning) for in-depth information.
 
 ##### Enable type reduction
 
