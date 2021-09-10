@@ -91,6 +91,26 @@ npm install onnxruntime-node
 npm install onnxruntime-react-native
 ```
 
+### ORT Training package
+
+```
+pip install torch-ort
+python -m torch_ort.configure
+```
+
+**Note**: This installs the default version of the `torch-ort` and `onnxruntime-training` packages that are mapped to specific versions of the CUDA libraries. Refer to the install options in [ONNXRUNTIME.ai](https://onnxruntime.ai).
+
+### Add ORTModule in the `train.py`
+
+```python
+   from torch_ort import ORTModule
+   .
+   .
+   .
+   model = ORTModule(model)
+```
+
+**Note**: the `model` where ORTModule is wrapped needs to be a derived from the `torch.nn.Module` class.
 
 ## Inference install table for all languages
 

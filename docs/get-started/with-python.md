@@ -4,7 +4,7 @@ parent: Get Started
 toc: true
 nav_order: 1
 ---
-# Python ORT Inference Quickstart
+# Python ORT Quickstart
 {: .no_toc }
 
 Below is a quick guide to get the packages installed to use ONNX for model serialization and infernece with ORT.
@@ -42,23 +42,91 @@ pip install skl2onnx
 Train a model using your favorite framework, export to ONNX format and inference in any supported ONNX Runtime language!
 
 ### PyTorch CV
-{: .no_toc }
-TODO
+In this example we will go over how to export the model into onnx format and then inference with ORT. The code to create the model is from the [PyTorch Fundamentals learning path on Microsoft Learn](aka.ms/learnpytorch).
+
+- Export model
+
+```python
+torch.onnx.export(model,                                # model being run
+                  torch.randn(1, 28, 28).to(device),    # model input (or a tuple for multiple inputs)
+                  "fashion_mnist_model.onnx",           # where to save the model (can be a file or file-like object)
+                  input_names = ['input'],              # the model's input names
+                  output_names = ['output'])            # the model's output names
+```
+- Load model
+```python
+import onnx
+onnx_model = onnx.load("fashion_mnist_model.onnx")
+onnx.checker.check_model(onnx_model)
+```
+- Create inference session
+
+```python
+import onnxruntime as ort
+import numpy as np
+x, y = test_data[0][0], test_data[0][1]
+ort_sess = ort.InferenceSession('fashion_mnist_model.onnx')
+outputs = ort_sess.run(None, {'input': x.numpy()})
+```
+- Print result
+
+```python
+predicted, actual = classes[outputs[0][0].argmax(0)], classes[y]
+print(f'Predicted: "{predicted}", Actual: "{actual}"')
+```
 
 ### PyTorch NLP
-{: .no_toc }
-TODO
+In this example we will go over how to export the model into onnx format and then inference with ORT. The code to create the AG News model is from [this PyTorch tutorial](https://pytorch.org/tutorials/beginner/text_sentiment_ngrams_tutorial.html).
+
+- Process text
+```python
+import torch
+text = "Text from the news article"
+text = torch.tensor(text_pipeline(text))
+offsets = torch.tensor([0])
+```
+- Export Model
+```python
+# Export the model
+torch.onnx.export(model,                     # model being run
+                  (text, offsets),           # model input (or a tuple for multiple inputs)
+                  "ag_news_model.onnx",      # where to save the model (can be a file or file-like object)
+                  export_params=True,        # store the trained parameter weights inside the model file
+                  opset_version=10,          # the ONNX version to export the model to
+                  do_constant_folding=True,  # whether to execute constant folding for optimization
+                  input_names = ['input', 'offsets'],   # the model's input names
+                  output_names = ['output'], # the model's output names
+                  dynamic_axes={'input' : {0 : 'batch_size'},    # variable length axes
+                                'output' : {0 : 'batch_size'}})
+```
+- Load Model
+```python
+import onnx
+onnx_model = onnx.load("ag_news_model.onnx")
+onnx.checker.check_model(onnx_model)
+```
+
+- Create inference session
+```python
+import onnxruntime as ort
+import numpy as np
+ort_sess = ort.InferenceSession('ag_news_model.onnx')
+outputs = ort_sess.run(None, {'input': text.numpy(),
+                              'offsets':  torch.tensor([0]).numpy()})
+```
+- Print result
+```python
+result = outputs[0].argmax(axis=1)+1
+print("This is a %s news" %ag_news_label[result[0]])
+```
 
 ### TensorFlow CV
-{: .no_toc }
 TODO
 
 ### Tensorflow NLP
-{: .no_toc }
 TODO
 
 ### SciKit Learn CV
-{: .no_toc }
 
 We’ll use the famous iris datasets.
 
@@ -128,18 +196,31 @@ print(pred_onx)
 ```
 
 ### SciKit Learn NLP
-{: .no_toc }
 TODO
 
+### ORT Training package
 
-## API Reference Docs
+```
+pip install torch-ort
+python -m torch_ort.configure
+```
 
-[Go to the Python API Reference](./api/python-api.html)
+**Note**: This installs the default version of the `torch-ort` and `onnxruntime-training` packages that are mapped to specific versions of the CUDA libraries. Refer to the install options in [ONNXRUNTIME.ai](https://onnxruntime.ai).
 
+### Add ORTModule in the `train.py`
 
-## Tutorials
+```python
+   from torch_ort import ORTModule
+   .
+   .
+   .
+   model = ORTModule(model)
+```
 
-[Tutorials](./python/tutorial.html)
+## Python API Reference Docs
+
+ <span class="fs-5"> [Go to the ORT Python API Docs](./python/api_summary.html){: .btn  .mr-4} </span> 
+
 
 ## Builds
 If using pip, run pip install `--upgrade pip` prior to downloading.	 
@@ -155,14 +236,10 @@ If using pip, run pip install `--upgrade pip` prior to downloading.
 For Python compiler version notes, see [this page](https://github.com/microsoft/onnxruntime/tree/master/docs/Python_Dev_Notes.md)
 
 
-## Samples
-See [Tutorials: API Basics - Python](../tutorials/inferencing/api-basics.md#python)
-
 ## Supported Versions
 Python 3.6 - 3.9
 
 ## Learn More
-- [Python Tutorials](./Tutorials/)
+- [Python Tutorials](../tutorials/inferencing/api-basics.md#python)
 - [Python Github Quickstart Templates](https://github.com/onnxruntime)
-- [Python API Reference](./api/csharp-api.html)
  

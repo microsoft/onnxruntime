@@ -20,3 +20,44 @@ ONNX Runtime is an accelerator for machine learning models with multi platform s
 
 |:----------------------------------------------------------------------------------|:-----------------------------------------------------------------------------------|
 |  <span class="fs-5"> [Build ORT Packages](./build){: .btn  .mr-4} </span>         | <span class="fs-5"> [GitHub Community]("./templates"){: .btn} </span>  |
+
+
+
+## ONNX Runtime for Inferencing
+
+ONNX Runtime Inference powers machine learning models in key Microsoft products and services across Office, Azure, Bing, as well as dozens of community projects.
+
+Examples use cases for ONNX Runtime Inferencing include:
+
+* Improve inference performance for a wide variety of ML models
+* Run on different hardware and operating systems
+* Train in Python but deploy into a C#/C++/Java app
+* Train and perform inference with models created in different frameworks
+
+### How it works
+{: .no_toc }
+
+The premise is simple. 
+1. **Get a model.** This can be trained from any framework that supports export/conversion to ONNX format. See the [tutorials](../tutorials/inferencing) for some of the popular frameworks/libraries. 
+2. **Load and run the model with ONNX Runtime.** See the [basic tutorials](../tutorials/inferencing/api-basics.md) for running models in different languages.
+3. ***(Optional)* Tune performance using various runtime configurations or hardware accelerators.** There are lots of options here - see [How to: Tune Performance](../performance/tune-performance.md) as a starting point.
+
+Even without step 3, ONNX Runtime will often provide performance improvements compared to the original framework. 
+
+ONNX Runtime applies a number of graph optimizations on the model graph then partitions it into subgraphs based on available hardware-specific accelerators. Optimized computation kernels in core ONNX Runtime provide performance improvements and assigned subgraphs benefit from further acceleration from each [Execution Provider](../execution-providers).
+
+
+
+---
+
+## ONNX Runtime for Training
+
+Released in April 2021, ONNX Runtime Training provides a one-line addition for existing PyTorch training scripts to accelerate training times. The current support is focused on large transformer models on multi-node NVIDIA GPUs, with more to come. 
+
+### How it works
+{: .no_toc }
+
+Using the ORTModule class wrapper, ONNX Runtime for PyTorch runs the forward and backward passes of the training script using an optimized automatically-exported ONNX computation graph. ORT Training uses the same graph optimizations as ORT Inferencing, allowing for model training acceleration. 
+
+The ORTModule is instantiated from [`torch-ort`](https://github.com/pytorch/ort) backend in PyTorch. This new interface enables a seamless integration for ONNX Runtime training in a PyTorch training code with minimal changes to the existing code.
+
