@@ -1,14 +1,14 @@
 import copy
 import io
 import os
+import onnx
+import torch
 import shutil
 import tempfile
-import warnings
 from inspect import signature
+import warnings
 
-import onnx
 import onnxruntime as ort
-import torch
 
 from . import _utils, amp, checkpoint, optim, postprocess, ORTTrainerOptions
 from .model_desc_validation import _ORTTrainerModelDesc
@@ -43,15 +43,15 @@ class TrainStepInfo(object):
     """
 
     def __init__(self, optimizer_config, all_finite=True, fetches=[], optimization_step=0, step=0):
-        assert isinstance(optimizer_config, optim._OptimizerConfig), \
+        assert isinstance(optimizer_config, optim._OptimizerConfig),\
             "optimizer_config must be a optim._OptimizerConfig"
-        assert isinstance(all_finite, bool), \
+        assert isinstance(all_finite, bool),\
             "all_finite must be a bool"
-        assert isinstance(fetches, list) and all([isinstance(item, str) for item in fetches]), \
+        assert isinstance(fetches, list) and all([isinstance(item, str) for item in fetches]),\
             "fetches must be a list of str"
-        assert isinstance(optimization_step, int) and optimization_step >= 0, \
+        assert isinstance(optimization_step, int) and optimization_step >= 0,\
             "optimization_step must be a positive int"
-        assert (isinstance(step, int) and step >= 0), \
+        assert (isinstance(step, int) and step >= 0),\
             "step must be a positive int"
 
         self.optimizer_config = optimizer_config
@@ -125,11 +125,11 @@ class ORTTrainer(object):
         # Basic validation
         assert model is not None, "'model' is required and must be either a 'torch.nn.Module' or ONNX model"
         assert isinstance(model_desc, dict), "'model_desc' must be a 'dict'"
-        assert isinstance(optim_config, optim._OptimizerConfig), \
+        assert isinstance(optim_config, optim._OptimizerConfig),\
             "'optim_config' is required and must be any of 'AdamConfig', 'LambConfig' or 'SGDConfig'"
-        assert loss_fn is None or (callable(loss_fn) and len(signature(loss_fn).parameters) == 2), \
+        assert loss_fn is None or (callable(loss_fn) and len(signature(loss_fn).parameters) == 2),\
             "'loss_fn' must be either 'None' or a callable with two parameters"
-        assert options is None or isinstance(options, ORTTrainerOptions), \
+        assert options is None or isinstance(options, ORTTrainerOptions),\
             "'options' must be either 'None' or 'ORTTrainerOptions'"
 
         #            Model + Loss validation
@@ -144,7 +144,7 @@ class ORTTrainer(object):
         self._torch_model = None
         self._onnx_model = None
         if isinstance(model, torch.nn.Module):
-            assert loss_fn is None or isinstance(model, torch.nn.Module), \
+            assert loss_fn is None or isinstance(model, torch.nn.Module),\
                 "'loss_fn' must be either 'None' or 'torch.nn.Module'"
             self._torch_model = model
             self.loss_fn = loss_fn
@@ -179,13 +179,13 @@ class ORTTrainer(object):
             # When input model is already ONNX (and not exported from Pytorch within ORTTrainer),
             # append 'dtype' from ONNX into model description's
             for idx_i, i_desc in enumerate(self.model_desc.inputs):
-                dtype = None
-                for onnx_input in self._onnx_model.graph.input:
-                    if onnx_input.name == i_desc.name:
-                        dtype = _utils.dtype_onnx_to_torch(onnx_input.type.tensor_type.elem_type)
-                        self.model_desc.add_type_to_input_description(idx_i, dtype)
-                        break
-                assert dtype is not None, f"ONNX model with unknown input type ({i_desc.name})"
+               dtype = None
+               for onnx_input in self._onnx_model.graph.input:
+                  if onnx_input.name == i_desc.name:
+                     dtype = _utils.dtype_onnx_to_torch(onnx_input.type.tensor_type.elem_type)
+                     self.model_desc.add_type_to_input_description(idx_i, dtype)
+                     break
+               assert dtype is not None, f"ONNX model with unknown input type ({i_desc.name})"
             for idx_o, o_desc in enumerate(self.model_desc.outputs):
                 dtype = None
                 for onnx_output in self._onnx_model.graph.output:
@@ -198,7 +198,7 @@ class ORTTrainer(object):
         # Set GPU device and memory limit
         if 'cuda' in self.options.device.id.lower():
             mem_limit = self.options.device.mem_limit
-            if mem_limit > 0:
+            if  mem_limit > 0:
                 ort.set_cuda_mem_limit(self.options.device.mem_limit)
             ort.set_cuda_device_id(_utils.get_device_index(self.options.device.id))
 
@@ -256,7 +256,8 @@ class ORTTrainer(object):
 
         # Output must be returned in the same order as defined in the model description
         results = [session_run_results[o_desc.name] for o_desc in outputs_desc]
-        return results[0] if len(results) == 1 else results
+        return results[0] if len (results) == 1 else results
+
 
     def save_as_onnx(self, path):
         r"""Persists ONNX model into :py:attr:`path`
@@ -273,7 +274,7 @@ class ORTTrainer(object):
         """
         if not self._training_session:
             warnings.warn("Training session is not initialized yet. "
-                          "'train_step' or 'eval_step' methods must be executed at least once before calling 'save_as_onnx()'.")
+                                 "'train_step' or 'eval_step' methods must be executed at least once before calling 'save_as_onnx()'.")
             return
         state_tensors = self._training_session.get_state()
         self._update_onnx_model_initializers(state_tensors)
@@ -292,9 +293,10 @@ class ORTTrainer(object):
                 f.write(self._onnx_model.SerializeToString())
 
     def _check_model_export(self, input):
-        from onnx import numpy_helper
+        from onnx import helper, TensorProto, numpy_helper
         import numpy as np
         from numpy.testing import assert_allclose
+        import _test_helpers
         onnx_model_copy = copy.deepcopy(self._onnx_model)
 
         # Mute the dropout nodes
@@ -351,6 +353,7 @@ class ORTTrainer(object):
             # Debug Model Export if indicated
             if self.options.debug.check_model_export:
                 self._check_model_export(sample_input)
+
 
         # Prepare inputs+lr and output descriptions
         inputs_desc = self._model_desc_inputs_with_lr
@@ -423,7 +426,7 @@ class ORTTrainer(object):
             results = [session_run_results[o_desc] for o_desc in self._train_step_info.fetches]
         else:
             results = [session_run_results[o_desc.name] for o_desc in self.model_desc.outputs]
-        return results[0] if len(results) == 1 else results
+        return results[0] if len (results) == 1 else results
 
     def _convert_torch_model_loss_fn_to_onnx(self, inputs, device):
         # Dynamic axes
@@ -448,11 +451,9 @@ class ORTTrainer(object):
         if isinstance(inputs, dict):
             sample_inputs = [inputs[k.name_][:1].to(device=device) for k in self.model_desc.inputs]
         elif isinstance(inputs, (list, tuple)):
-            sample_inputs = [input[:1].to(device=device) for i, input in enumerate(inputs) if
-                             i < len(self.model_desc.inputs)]
+            sample_inputs = [input[:1].to(device=device) for i, input in enumerate(inputs) if i < len(self.model_desc.inputs)]
         else:
-            raise RuntimeError(
-                "Unexpected input type. Only torch.Tensor, or dict/list/tuple of torch.Tensor is supported.")
+            raise RuntimeError("Unexpected input type. Only torch.Tensor, or dict/list/tuple of torch.Tensor is supported.")
 
         # PyTorch ONNX exporter does not match argument names
         # This is an issue because the ONNX graph depends on all inputs to be specified
@@ -471,7 +472,7 @@ class ORTTrainer(object):
         # Label from loss_fn goes after model input
         if self.loss_fn:
             ordered_input_list = [*ordered_input_list,
-                                  list(sig_loss.parameters.keys())[1]]
+                                list(sig_loss.parameters.keys())[1]]
 
         class CombineTorchModelLossFnWrapInput(torch.nn.Module):
             def __init__(self, model, loss_fn, input_names):
@@ -510,9 +511,8 @@ class ORTTrainer(object):
                 model_copy = copy.deepcopy(model)
             except Exception:
                 model_copy = model
-                warnings.warn(
-                    "This model cannot be deep copied (or pickled), which is a required step for stateful models to be properly exported to ONNX."
-                    " Compute will continue, but unexpected results may occur!")
+                warnings.warn("This model cannot be deep copied (or pickled), which is a required step for stateful models to be properly exported to ONNX."
+                              " Compute will continue, but unexpected results may occur!")
             sample_outputs = model_copy(*sample_inputs_copy)
             self.torch_sample_outputs = sample_outputs
         model.train()
@@ -567,7 +567,9 @@ class ORTTrainer(object):
             onnx_model = onnx.load_model(f, load_external_data=True)
             shutil.rmtree(tmp_dir)
         else:
+
             onnx_model = onnx.load_model_from_string(f.getvalue())
+
         # Remove 'model.' prefix introduced by CombineTorchModelLossFn class
         if isinstance(model, CombineTorchModelLossFnWrapInput):
             replace_name_dict = {}
@@ -584,8 +586,8 @@ class ORTTrainer(object):
 
     def _create_ort_training_session(self):
         # Validating frozen_weights names
-        unused_frozen_weights = [n for n in self.options.utils.frozen_weights \
-                                 if n not in [i.name for i in self._onnx_model.graph.initializer]]
+        unused_frozen_weights = [n for n in self.options.utils.frozen_weights\
+            if n not in [i.name for i in self._onnx_model.graph.initializer]]
         if unused_frozen_weights:
             raise RuntimeError("{} params from 'frozen_weights' not found in the ONNX model.".format(
                 unused_frozen_weights))
@@ -651,22 +653,9 @@ class ORTTrainer(object):
         ort_parameters.optimizer_attributes_map = optimizer_attributes_map
         ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map
 
-        '''
-        ort_parameters.attn_dropout_recompute = self.options.graph_transformer.attn_dropout_recompute
-        ort_parameters.gelu_recompute = self.options.graph_transformer.gelu_recompute
-        ort_parameters.transformer_layer_recompute = self.options.graph_transformer.transformer_layer_recompute
-        ort_parameters.number_recompute_layers = self.options.graph_transformer.number_recompute_layers
-        '''
-
         # SessionOptions
         session_options = ort.SessionOptions()
         session_options.use_deterministic_compute = self.options.debug.deterministic_compute
-        '''
-        if (self.options.graph_transformer.attn_dropout_recompute or
-                self.options.graph_transformer.gelu_recompute or
-                self.options.graph_transformer.transformer_layer_recompute):
-            session_options.execution_order = ort.ExecutionOrder.PRIORITY_BASED
-        '''
 
         # TrainingSession
         # old ort session may already exists and occupies GPU memory when creating new session, this may cause OOM error.
@@ -683,8 +672,9 @@ class ORTTrainer(object):
             self._training_session = ort.TrainingSession(f, ort_parameters, session_options)
             shutil.rmtree(tmp_dir)
         else:
-            self._training_session = ort.TrainingSession(self._onnx_model.SerializeToString(), ort_parameters,
-                                                         session_options)
+            self._training_session = ort.TrainingSession(self._onnx_model.SerializeToString(),
+                                                        ort_parameters,
+                                                        session_options)
 
         # I/O bindings
         self._train_io_binding = self._training_session.io_binding()
@@ -714,12 +704,6 @@ class ORTTrainer(object):
     def _init_session(self):
         if self._onnx_model is None:
             return
-
-        '''
-        if self.options.utils.run_symbolic_shape_infer:
-            self._onnx_model = SymbolicShapeInference.infer_shapes(self._onnx_model, auto_merge=True,
-                                                                   guess_output_rank=True)
-        '''
 
         # Create training session used by train_step
         self._create_ort_training_session()
@@ -753,8 +737,7 @@ class ORTTrainer(object):
 
         # Update Gradient Accumulation, if applicable
         if self.options.batch.gradient_accumulation_steps > 1:
-            self.model_desc.gradient_accumulation = _utils.get_gradient_accumulation_name_from_session(
-                self._training_session)
+            self.model_desc.gradient_accumulation = _utils.get_gradient_accumulation_name_from_session(self._training_session)
             self._model_desc_outputs_with_gradient_accumulation = [
                 *self.model_desc.outputs, self.model_desc.gradient_accumulation]
 
@@ -803,7 +786,7 @@ class ORTTrainer(object):
                     if i_axis not in resolved_dims:
                         resolved_dims[i_axis] = input.size()[i_idx]
                     else:
-                        assert resolved_dims[i_axis] == input.size()[i_idx], \
+                        assert resolved_dims[i_axis] == input.size()[i_idx],\
                             f"Mismatch in dynamic shape {i_axis}"
 
         for o_desc in outputs:
@@ -838,15 +821,9 @@ class ORTTrainer(object):
         outputs_desc_resolved = self._resolve_symbolic_dimensions(inputs, inputs_desc, outputs_desc)
         result = {}
         for output_desc in outputs_desc_resolved:
-            target_device = self.options.device.id
-            if self.options.mixed_precision.enabled and output_desc.name == self.model_desc.all_finite.name:
-                # Keep all finite flag on CPU to match backend implementation
-                # This prevents CPU -> GPU -> CPU copies between frontend and backend
-                target_device = 'cpu'
-            torch_tensor = torch.zeros(output_desc.shape, device=target_device,
+            torch_tensor = torch.zeros(output_desc.shape, device=self.options.device.id,
                                        dtype=output_desc.dtype_amp if output_desc.dtype_amp else output_desc.dtype)
-            iobinding.bind_output(output_desc.name, torch_tensor.device.type,
-                                  _utils.get_device_index(self.options.device.id),
+            iobinding.bind_output(output_desc.name, torch_tensor.device.type, _utils.get_device_index(self.options.device.id),
                                   _utils.dtype_torch_to_numpy(torch_tensor.dtype),
                                   list(torch_tensor.size()), torch_tensor.data_ptr())
             result[output_desc.name] = torch_tensor
@@ -904,4 +881,5 @@ class ORTTrainer(object):
             print(f"convert model to use external_data_format")
             convert_model_to_external_data(self._onnx_model)
             return
+
 
