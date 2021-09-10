@@ -103,8 +103,9 @@ struct TrainingConfigurationResult {
 struct PyGradientGraphBuilder {
   std::unique_ptr<GradientGraphBuilder> builder;
   std::shared_ptr<Model> model;
-  PyGradientGraphBuilder(std::unique_ptr<GradientGraphBuilder> builder, std::shared_ptr<Model> model)
-      : builder(std::move(builder)), model(std::move(model)) {}
+  std::unique_ptr<logging::Logger> logger;
+  PyGradientGraphBuilder(std::unique_ptr<GradientGraphBuilder> builder_, std::shared_ptr<Model> model_, std::unique_ptr<logging::Logger> logger_)
+      : builder(std::move(builder_)), model(std::move(model_)), logger(std::move(logger_)) {}
 };
 
 // TODO: this method does not handle parallel optimization.
@@ -768,7 +769,8 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
                               loss_node_arg_name,
                               gradient_graph_config,
                               logger);
-                          return std::make_unique<PyGradientGraphBuilder>(std::move(builder), std::move(model));
+                          auto logger_ptr = std::make_unique<logging::Logger>(logger);
+                          return std::make_unique<PyGradientGraphBuilder>(std::move(builder), std::move(model), std::move(logger_ptr));
                         }))
       .def("build", [](PyGradientGraphBuilder* gradient_graph_builder) {
         ORT_THROW_IF_ERROR(gradient_graph_builder->builder->Build());

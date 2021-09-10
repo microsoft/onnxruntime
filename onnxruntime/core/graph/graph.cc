@@ -3391,7 +3391,8 @@ void Graph::CleanUnusedInitializers(const std::unordered_set<std::string>* initi
         LOGS(logger_, WARNING) << "Removing initializer '"
                                << name << "'. It is not used by any node and should be removed from the model.";
       } else {
-        LOGS(logger_, INFO) << "Removing initializer '" << name << "'. It is no longer used by any node.";
+        std::cout << "CleanUnusedInitializers: Removing initializer name: " << name << std::endl;
+        // LOGS(logger_, INFO) << "Removing initializer '" << name << "'. It is no longer used by any node.";
       }
 
       erase_list.push_back(name);
