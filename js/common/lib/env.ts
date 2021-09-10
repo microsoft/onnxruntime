@@ -55,6 +55,10 @@ export declare namespace Env {
      * Set or get the packed texture mode
      */
     pack?: boolean;
+    /**
+     * Set or get whether enable async download.
+     */
+    async?: boolean;
   }
 }
 

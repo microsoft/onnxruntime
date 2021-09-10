@@ -39,6 +39,9 @@ if (options.globalEnvFlags) {
   if (flags.webgl?.pack !== undefined) {
     ort.env.webgl.pack = flags.webgl.pack;
   }
+  if (flags.webgl?.async !== undefined) {
+    ort.env.webgl.async = flags.webgl.async;
+  }
   if (flags.wasm?.numThreads !== undefined) {
     ort.env.wasm.numThreads = flags.wasm.numThreads;
   }
