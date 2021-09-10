@@ -190,7 +190,7 @@ class TrainingManager(GraphExecutionManager):
                             self.graph_initializer_param_to_training = [param for name, param in self._flattened_module.named_parameters()
                                                                         if param.requires_grad and name in self._graph_initializer_names_to_train]
 
-                        if not all([param.grad for param in self.graph_initializer_param_to_training]):
+                        if any(param.grad is None for param in self.graph_initializer_param_to_training):
                             # The param's grad attribute is None by default and becomes a Tensor the first time a call to loss.backward(), 
                             # which triggers gradient computation and store calculated gradients into param.grad. Then the subsquent
                             # iterations will always reuse the created param.grad for accumulating grad.
