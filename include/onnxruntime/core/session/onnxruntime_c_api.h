@@ -914,12 +914,18 @@ struct OrtApi {
   */
   ORT_API2_STATUS(CreateRunOptions, _Outptr_ OrtRunOptions** out);
 
+  // TODO document
   ORT_API2_STATUS(RunOptionsSetRunLogVerbosityLevel, _Inout_ OrtRunOptions* options, int value);
+  // TODO document
   ORT_API2_STATUS(RunOptionsSetRunLogSeverityLevel, _Inout_ OrtRunOptions* options, int value);
+  // TODO document
   ORT_API2_STATUS(RunOptionsSetRunTag, _Inout_ OrtRunOptions*, _In_ const char* run_tag);
 
+  // TODO document
   ORT_API2_STATUS(RunOptionsGetRunLogVerbosityLevel, _In_ const OrtRunOptions* options, _Out_ int* out);
+  // TODO document
   ORT_API2_STATUS(RunOptionsGetRunLogSeverityLevel, _In_ const OrtRunOptions* options, _Out_ int* out);
+  // TODO document
   ORT_API2_STATUS(RunOptionsGetRunTag, _In_ const OrtRunOptions*, _Out_ const char** out);
 
   /** \brief Set terminate flag
