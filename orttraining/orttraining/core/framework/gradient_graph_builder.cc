@@ -30,7 +30,6 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
       loss_node_arg_name_(loss_node_arg_name),
       gradient_graph_config_(gradient_graph_config),
       logger_(logger) {
-  std::cout << "constructor: gradient_graph_config_.set_gradients_as_graph_outputs: " << gradient_graph_config_.set_gradients_as_graph_outputs << std::endl;
   auto rule_based_graph_transformer =
       std::make_unique<RuleBasedGraphTransformer>("pre_training_rule_based_graph_transformer");
   rule_based_graph_transformer->Register(std::make_unique<InsertMaxPoolOutput>());
@@ -315,7 +314,6 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
                  "AccumulateGrad_" + gradient_pair.first.name)});
   }
 
-  std::cout << "gradient_graph_config_.set_gradients_as_graph_outputs: " << gradient_graph_config_.set_gradients_as_graph_outputs << std::endl;
   if (gradient_graph_config_.set_gradients_as_graph_outputs) {
     for (auto x_node_arg : x_node_args_) {
       gradient_graph_defs.AddGraphOutputs({GradientBuilderBase::GradientName(x_node_arg->Name())});

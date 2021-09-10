@@ -750,22 +750,20 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         auto logger = logging::LoggingManager::DefaultLogger();
         ORT_THROW_IF_ERROR(Model::Load(file_path, model, nullptr, logger));
         GradientGraphConfiguration gradient_graph_config{};
-        // FIXME Even with this, gradients do not get output.
         gradient_graph_config.set_gradients_as_graph_outputs = true;
-
-        std::cout << "gradient_graph_config.set_gradients_as_graph_outputs: " << gradient_graph_config.set_gradients_as_graph_outputs << std::endl;
+        // Save some objects, otherwise they get lost.
+        auto gradient_graph_config_ptr = std::make_unique<GradientGraphConfiguration>(gradient_graph_config);
 
         auto builder = std::make_unique<GradientGraphBuilder>(
             &model->MainGraph(),
             y_node_arg_names,
             x_node_arg_names,
             loss_node_arg_name,
-            gradient_graph_config,
+            *gradient_graph_config_ptr,
             logger);
 
         // Save some objects, otherwise they get lost.
         auto logger_ptr = std::make_unique<logging::Logger>(logger);
-        auto gradient_graph_config_ptr = std::make_unique<GradientGraphConfiguration>(gradient_graph_config);
 
         return std::make_unique<PyGradientGraphBuilder>(std::move(builder), std::move(model), std::move(logger_ptr), std::move(gradient_graph_config_ptr));
       }))
