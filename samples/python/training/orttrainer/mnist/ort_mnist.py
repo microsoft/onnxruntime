@@ -20,10 +20,11 @@ class NeuralNet(nn.Module):
         self.relu = nn.ReLU()
         self.fc2 = nn.Linear(hidden_size, num_classes)
 
-    def forward(self, input1):
+    def forward(self, input1, target):
         out = self.fc1(input1)
         out = self.relu(out)
         out = self.fc2(out)
+        F.nll_loss(F.log_softmax(out, dim=1), target)
         return out
 
 
@@ -31,8 +32,7 @@ class NeuralNet(nn.Module):
 def mnist_model_description():
     return {'inputs': [('input1', ['batch', 784]),
                        ('label', ['batch'])],
-            'outputs': [('loss', [], True),
-                        ('probability', ['batch', 10])]}
+            'outputs': [('loss', [], True),]}
 
 
 def my_loss(x, target):
@@ -140,7 +140,6 @@ def main():
     trainer = ORTTrainer(model,
                          model_desc,
                          optim_config,
-                         loss_fn=my_loss,
                          options=opts)
 
     # Train loop
