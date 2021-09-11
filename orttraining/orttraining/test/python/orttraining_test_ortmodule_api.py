@@ -675,20 +675,16 @@ def _run_gradient_correctness_transpose(perm, shape):
     pt_prediction = run_step(pt_model, x)
     ort_prediction = run_step(ort_model, x)
 
-    # print(x)
-    # print(pt_prediction)
-    # print(ort_prediction)
-
     _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
     _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
 @pytest.mark.parametrize("perm", [
-    [0,1,2],
-    [0,2,1],
-    [1,0,2],
-    [1,2,0],
-    [2,0,1],
-    [2,1,0],
+    [0,1,2],      # no-op
+    [0,2,1],      # special handle by Transpose021
+    [1,0,2],      # handled as [0,2,1,3]
+    [1,2,0],      # coalesced to [1,0]
+    [2,0,1],      # coalesced to [1,0]
+    [2,1,0],      # handled as [0,3,2,1]
 ])
 @pytest.mark.parametrize("shape", [
     [245,1024,32],

@@ -138,7 +138,24 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
   new_input_dims.resize(new_rank);
   new_output_dims.resize(new_rank);
 
+  std::cout << "new_permutations: [";
+  for (auto dim : new_permutations) {
+    std::cout << dim << ",";
+  }
+  std::cout << "]\n";
+  std::cout << "new_input_dims: [";
+  for (auto p : new_input_dims) {
+    std::cout << p << ",";
+  }
+  std::cout << "]\n";
+  std::cout << "new_output_dims: [";
+  for (auto p : new_output_dims) {
+    std::cout << p << ",";
+  }
+  std::cout << "]\n";
+
   auto element_type = input.GetElementType();
+  size_t element_size = input.DataType()->Size();
   if (element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ||
       element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE ||
       element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
@@ -156,13 +173,19 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
     }
   }
 
-
-  // Most 3D-Transpose can treated as a special case of 4D-Transpose with first dimension being 1.
   // Transpose021 has a specialized Transpose3DImpl kernel
-  if (new_rank == 3 && new_permutations != std::vector<size_t>{0, 2, 1}) {
+  dim3 grid_size, block_size;
+  if (CanDoTranspose3D(prop, new_rank, new_input_dims, new_permutations, grid_size, block_size)) {
+    TensorPitches new_input_strides(new_input_dims);
+    return Transpose3DImpl(stream, element_size, new_input_dims, new_input_strides,
+                           input.DataRaw(), output.MutableDataRaw(), output.Shape().Size(), grid_size, block_size);
+  }
+
+  // 3D-Transpose can treated as a special case of 4D-Transpose with first dimension being 1.
+  if (new_rank == 3) {
     new_permutations[0]++;
     new_permutations[1]++;
-    new_permutations[2]++; 
+    new_permutations[2]++;
     new_permutations.insert(new_permutations.begin(), 0);
     new_input_dims.insert(new_input_dims.begin(), 1);
     new_output_dims.insert(new_output_dims.begin(), 1);
@@ -171,19 +194,12 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
 
   TensorPitches new_input_strides(new_input_dims);
   TensorPitches new_output_strides(new_output_dims);
-
-  // Optimize the permutation of 3D/4D tensor
   TArray<int64_t> input_shape(new_input_dims);
   TArray<int64_t> tmp_input_strides(new_input_strides);
 
-  size_t element_size = input.DataType()->Size();
-  dim3 grid_size, block_size;
-  if (CanDoTranspose3D(prop, new_rank, new_input_dims, new_permutations, grid_size, block_size)) {
-    return Transpose3DImpl(stream, element_size, input_shape, tmp_input_strides,
-                           input.DataRaw(), output.MutableDataRaw(), output.Shape().Size(), grid_size, block_size);
-  } else if (CanDoTranspose4DParallelizeMultipleElementsPerThreadInInnermostDim(
-                 prop, element_size, new_rank, new_input_dims, new_permutations,
-                 grid_size, block_size)) {
+  if (CanDoTranspose4DParallelizeMultipleElementsPerThreadInInnermostDim(
+          prop, element_size, new_rank, new_input_dims, new_permutations,
+          grid_size, block_size)) {
     TArray<int64_t> tmp_output_strides(new_rank);
     for (auto i = 0; i < new_rank; i++) {
       tmp_output_strides[static_cast<int32_t>(new_permutations[i])] = new_output_strides[i];
@@ -216,6 +232,18 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
   for (auto i = 0; i < new_rank; i++) {
     output_strides[i] = fast_divmod(gsl::narrow_cast<int>(new_output_strides[i]));
   }
+
+  std::cout << "TransposeImpl\n";
+  std::cout << "shape: [";
+  for (auto dim : new_input_dims) {
+    std::cout << dim << ",";
+  }
+  std::cout << "]\n";
+  std::cout << "permutations: [";
+  for (auto p : new_permutations) {
+    std::cout << p << ",";
+  }
+  std::cout << "]\n";
 
   auto status = TransposeImpl(stream, element_size, new_rank, input_strides, input.DataRaw(),
                               output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()));
