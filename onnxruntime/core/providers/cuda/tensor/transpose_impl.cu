@@ -37,9 +37,9 @@ bool CanDoTranspose3D(const cudaDeviceProp& prop,
       permutations[rank - 2] == (rank - 1) && permutations[rank - 1] == (rank - 2) &&
       // the last two dimensions are aligned with TILE_DIM.
       input_dims[rank - 2] % TILE_DIM == 0 && input_dims[rank - 1] % TILE_DIM == 0) {
-    int grid_size_x = input_dims[2] / TILE_DIM;
-    int grid_size_y = input_dims[1] / TILE_DIM;
-    int grid_size_z = input_dims[0];
+    int grid_size_x = static_cast<int>(input_dims[2] / TILE_DIM);
+    int grid_size_y = static_cast<int>(input_dims[1] / TILE_DIM);
+    int grid_size_z = static_cast<int>(input_dims[0]);
 
     if (grid_size_x <= prop.maxGridSize[0] && grid_size_y <= prop.maxGridSize[1] && grid_size_z <= prop.maxGridSize[2]) {
       block_size = dim3(TILE_DIM, TILE_DIM);
