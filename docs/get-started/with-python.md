@@ -130,7 +130,13 @@ print("This is a %s news" %ag_news_label[result[0]])
 [Full code for this example](https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/keras-resnet50.ipynb)
 
 - Get the pretrained model
+
 ```python
+import os
+import tensorflow as tf
+from tensorflow.keras.applications.resnet50 import ResNet50
+import onnxruntime
+
 model = ResNet50(weights='imagenet')
 
 preds = model.predict(x)
@@ -138,6 +144,7 @@ print('Keras Predicted:', decode_predictions(preds, top=3)[0])
 model.save(os.path.join("/tmp", model.name))
 ``` 
 - Convert
+
 ```python
 import tf2onnx
 import onnxruntime as rt
@@ -149,6 +156,7 @@ model_proto, _ = tf2onnx.convert.from_keras(model, input_signature=spec, opset=1
 output_names = [n.name for n in model_proto.graph.output]
 ```
 - Run
+
 ```python
 providers = ['CPUExecutionProvider']
 m = rt.InferenceSession(output_path, providers=providers)
@@ -226,7 +234,7 @@ print(pred_onx)
 
 ```
 
-### ORT Training package
+## ORT Training Example
 
 ```
 pip install torch-ort

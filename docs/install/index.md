@@ -37,9 +37,11 @@ pip install onnxruntime-gpu
 ## pytorch
 pip install onnx-pytorch
 ```
-```bash
+```python
 ## tensorflow
 pip install onnx-tf
+pip install tf2onnx
+```
 ```
 ```bash
 ## sklearn
