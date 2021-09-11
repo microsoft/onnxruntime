@@ -46,7 +46,6 @@ bool CanDoTranspose3D(const cudaDeviceProp& prop,
       grid_size = dim3(static_cast<unsigned int>(grid_size_x),
                        static_cast<unsigned int>(grid_size_y),
                        static_cast<unsigned int>(grid_size_z));
-
       return true;
     } else {
       return false;
@@ -58,11 +57,6 @@ bool CanDoTranspose3D(const cudaDeviceProp& prop,
 Status Transpose3DImpl(cudaStream_t stream, size_t element_size,
                        const TArray<int64_t>& input_shape, const TArray<int64_t>& input_strides,
                        const void* input_data, void* output_data, int64_t N, const dim3& grid_size, const dim3& block_size) {
-  std::cout << "Transpose3DImpl\n";
-  std::cout << "shape: [" << input_shape[0] << "," << input_shape[1] << "," << input_shape[2] << "," << input_shape[3] << "]\n";
-  std::cout << "block_size.x: " << block_size.x << " block_size.y: " << block_size.y
-            << " grid_size.x: " << grid_size.x << " grid_size.y: " << grid_size.y << " grid_size.z: " << grid_size.z << "\n";
-
   switch (element_size) {
     case sizeof(int8_t):
       Transpose3DKernel<int8_t><<<grid_size, block_size, 0, stream>>>(
@@ -159,13 +153,6 @@ bool CanDoTranspose4DParallelizeMultipleElementsPerThreadInInnermostDim(const cu
         grid_size = dim3(static_cast<unsigned int>(num_block_ext),
                          static_cast<unsigned int>(input_dims[1]),
                          static_cast<unsigned int>(input_dims[0]));
-
-        std::cout << "Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim\n";
-        std::cout << "shape: [" << input_dims[0] << "," << input_dims[1] << "," << input_dims[2] << "," << input_dims[3] << "]\n";
-        std::cout << "permutations: [" << permutations[0] << "," << permutations[1] << "," << permutations[2] << "," << permutations[3] << "]\n";
-        std::cout << "block_size.x: " << block_size.x << " block_size.y: " << block_size.y
-                  << " grid_size.x: " << grid_size.x << " grid_size.y: " << grid_size.y << " grid_size.z: " << grid_size.z << "\n";
-
         return true;
       } else {
         return false;
@@ -282,13 +269,6 @@ bool CanDoTranspose4DParallelizeOneElementPerThread(const cudaDeviceProp& prop,
         grid_size = dim3(static_cast<unsigned int>(num_block_ext),
                          static_cast<unsigned int>(input_dims[1]),
                          static_cast<unsigned int>(input_dims[0]));
-
-        std::cout << "Transpose4DKernelParallelizeOneElementPerThread\n";
-        std::cout << "shape: [" << input_dims[0] << "," << input_dims[1] << "," << input_dims[2] << "," << input_dims[3] << "]\n";
-        std::cout << "permutations: [" << permutations[0] << "," << permutations[1] << "," << permutations[2] << "," << permutations[3] << "]\n";
-        std::cout << "block_size.x: " << block_size.x << " block_size.y: " << block_size.y
-                  << " grid_size.x: " << grid_size.x << " grid_size.y: " << grid_size.y << " grid_size.z: " << grid_size.z << "\n";
-
         return true;
       } else {
         return false;

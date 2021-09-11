@@ -138,22 +138,6 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
   new_input_dims.resize(new_rank);
   new_output_dims.resize(new_rank);
 
-  std::cout << "new_permutations: [";
-  for (auto dim : new_permutations) {
-    std::cout << dim << ",";
-  }
-  std::cout << "]\n";
-  std::cout << "new_input_dims: [";
-  for (auto p : new_input_dims) {
-    std::cout << p << ",";
-  }
-  std::cout << "]\n";
-  std::cout << "new_output_dims: [";
-  for (auto p : new_output_dims) {
-    std::cout << p << ",";
-  }
-  std::cout << "]\n";
-
   auto element_type = input.GetElementType();
   size_t element_size = input.DataType()->Size();
   if (element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ||
@@ -232,18 +216,6 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
   for (auto i = 0; i < new_rank; i++) {
     output_strides[i] = fast_divmod(gsl::narrow_cast<int>(new_output_strides[i]));
   }
-
-  std::cout << "TransposeImpl\n";
-  std::cout << "shape: [";
-  for (auto dim : new_input_dims) {
-    std::cout << dim << ",";
-  }
-  std::cout << "]\n";
-  std::cout << "permutations: [";
-  for (auto p : new_permutations) {
-    std::cout << p << ",";
-  }
-  std::cout << "]\n";
 
   auto status = TransposeImpl(stream, element_size, new_rank, input_strides, input.DataRaw(),
                               output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()));
