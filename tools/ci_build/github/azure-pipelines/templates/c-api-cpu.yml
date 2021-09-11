@@ -195,6 +195,11 @@ jobs:
         python3 tools/ci_build/github/apple/build_ios_framework.py \
           --build_dir "$(Build.BinariesDirectory)/ios_framework" \
           tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
+        mkdir $(Build.BinariesDirectory)/artifacts
+        pushd $(Build.BinariesDirectory)/ios_framework/framework_out/
+        zip -vr $(Build.BinariesDirectory)/artifacts/onnxruntime_xcframework.zip onnxruntime.xcframework
+        popd
+      displayName: "Build iOS xcframework"
 
     - script: |
         python3 tools/ci_build/github/apple/test_ios_packages.py \
@@ -205,7 +210,7 @@ jobs:
 
     - task: PublishBuildArtifacts@1
       inputs:
-        pathtoPublish: '$(Build.BinariesDirectory)/ios_framework/framework_out'
+        pathtoPublish: '$(Build.BinariesDirectory)/artifacts'
         artifactName: 'onnxruntime-ios-full-xcframework'
 
 - template: win-ci.yml
