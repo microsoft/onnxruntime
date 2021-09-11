@@ -224,8 +224,10 @@ Status CopyCaseAction(ForwardIter first, ForwardIter end, OpKernelContext* ctx,
     if (caseaction == StringNormalizer::LOWER || caseaction == StringNormalizer::UPPER) {
       std::wstring wstr = converter.from_bytes(s);
       if (wstr == wconv_error) {
+        // Please do not include the input text in the error message as it could
+        // be deemed as a compliance violation by teams using this operator
         return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                      "Input contains invalid utf8 chars at: " + static_cast<const std::string&>(s));
+                      "Input contains invalid utf8 chars");
       }
       // In place transform
       loc.ChangeCase(caseaction, wstr);
@@ -357,8 +359,10 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
         const std::string& s = *first;
         std::wstring wstr = converter.from_bytes(s);
         if (wstr == wconv_error) {
+          // Please do not include the input text in the error message as it could
+          // be deemed as a compliance violation by teams using this operator
           return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                        "Input contains invalid utf8 chars at: " + s);
+                        "Input contains invalid utf8 chars");
         }
         locale.ChangeCase(compare_caseaction_, wstr);
         if (0 == wstopwords_.count(wstr)) {
