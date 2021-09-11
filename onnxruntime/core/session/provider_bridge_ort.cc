@@ -33,6 +33,9 @@
 #include "orttraining/core/framework/torch/refcount_tracker.h"
 #endif
 #endif
+#ifdef ENABLE_NVTX_PROFILE
+#include "core/providers/cuda/nvtx_profile.h"
+#endif
 #if defined(ORT_USE_NCCL)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include "orttraining/core/framework/distributed_run_context.h"
@@ -1068,6 +1071,21 @@ void cudaMemcpy_HostToDevice(void* dst, const void* src, size_t count) {
     return info->cudaMemcpy_HostToDevice(dst, src, count);
   ORT_THROW("cudaMemcpy_HostToDevice is not implemented.");
 }
+
+#ifdef ENABLE_NVTX_PROFILE
+namespace profile
+{
+void NvtxRangeCreator::BeginImpl()
+{
+  GetProviderInfo_CUDA().NvtxRangeCreator__BeginImpl(this);
+}
+
+void NvtxRangeCreator::EndImpl()
+{
+  GetProviderInfo_CUDA().NvtxRangeCreator__EndImpl(this);
+}
+}
+#endif
 
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 namespace cuda {
