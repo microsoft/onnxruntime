@@ -41,10 +41,11 @@ pip install tf2onnx
 pip install skl2onnx
 ```
 
-## Examples
+## Quickstart Examples for PyTorch, TensorFlow, and SciKit Learn
 Train a model using your favorite framework, export to ONNX format and inference in any supported ONNX Runtime language!
 
 ### PyTorch CV
+{: .no_toc }
 In this example we will go over how to export the model into onnx format and then inference with ORT. The code to create the model is from the [PyTorch Fundamentals learning path on Microsoft Learn](aka.ms/learnpytorch).
 
 - Export model
@@ -79,6 +80,7 @@ print(f'Predicted: "{predicted}", Actual: "{actual}"')
 ```
 
 ### PyTorch NLP
+{: .no_toc }
 In this example we will go over how to export the model into onnx format and then inference with ORT. The code to create the AG News model is from [this PyTorch tutorial](https://pytorch.org/tutorials/beginner/text_sentiment_ngrams_tutorial.html).
 
 - Process text
@@ -124,6 +126,7 @@ print("This is a %s news" %ag_news_label[result[0]])
 ```
 
 ### TensorFlow CV
+{: .no_toc }
 [Full code for this example](https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/keras-resnet50.ipynb)
 
 - Get the pretrained model
@@ -154,11 +157,8 @@ onnx_pred = m.run(output_names, {"input": x})
 print('ONNX Predicted:', decode_predictions(onnx_pred[0], top=3)[0])
 ```
 
-### Tensorflow NLP
-TODO
-
 ### SciKit Learn CV
-
+{: .no_toc }
 We’ll use the famous iris datasets.
 
 ```python
@@ -235,8 +235,7 @@ python -m torch_ort.configure
 
 **Note**: This installs the default version of the `torch-ort` and `onnxruntime-training` packages that are mapped to specific versions of the CUDA libraries. Refer to the install options in [ONNXRUNTIME.ai](https://onnxruntime.ai).
 
-### Add ORTModule in the `train.py`
-
+ - Add ORTModule in the `train.py`
 ```python
    from torch_ort import ORTModule
    .
