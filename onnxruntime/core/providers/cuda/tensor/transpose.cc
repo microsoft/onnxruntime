@@ -156,10 +156,14 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
     }
   }
 
-  // Transpose102 can be treated as a speacial case of Trasnpose0213 with first dimension being 1.
-  // This will handled by optimized Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim kernel
-  if (new_permutations == std::vector<size_t>{1, 0, 2}) {
-    new_permutations.assign({0, 2, 1, 3});
+
+  // Most 3D-Transpose can treated as a special case of 4D-Transpose with first dimension being 1.
+  // Transpose021 has a specialized Transpose3DImpl kernel
+  if (new_rank == 3 && new_permutations != std::vector<size_t>{0, 2, 1}) {
+    new_permutations[0]++;
+    new_permutations[1]++;
+    new_permutations[2]++; 
+    new_permutations.insert(new_permutations.begin(), 0);
     new_input_dims.insert(new_input_dims.begin(), 1);
     new_output_dims.insert(new_output_dims.begin(), 1);
     new_rank = 4;
@@ -185,8 +189,8 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
       tmp_output_strides[static_cast<int32_t>(new_permutations[i])] = new_output_strides[i];
     }
     return Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim(
-        prop, stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
-        tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()), new_permutations,
+        stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
+        tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()),
         grid_size, block_size);
   } else if (CanDoTranspose4DParallelizeOneElementPerThread(
                  prop, element_size, new_rank, new_input_dims, new_permutations, grid_size, block_size)) {
@@ -197,8 +201,8 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
       tmp_output_strides[static_cast<int32_t>(new_permutations[i])] = new_output_strides[i];
     }
     return Transpose4DParallelizeOneElementPerThread(
-        prop, stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
-        tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()), new_permutations,
+        stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
+        tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()),
         grid_size, block_size);
   }
 

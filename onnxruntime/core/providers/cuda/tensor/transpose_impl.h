@@ -21,11 +21,10 @@ bool CanDoTranspose4DParallelizeMultipleElementsPerThreadInInnermostDim(const cu
                                                                         const std::vector<int64_t>& input_dims,
                                                                         const std::vector<size_t>& permutations,
                                                                         dim3& grid_size, dim3& block_size);
-Status Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim(const cudaDeviceProp& prop, cudaStream_t stream,
+Status Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim(cudaStream_t stream,
                                                                      size_t element_size, const TArray<int64_t>& input_shape,
                                                                      const TArray<int64_t>& input_strides, const void* input_data,
                                                                      const TArray<int64_t>& output_strides, void* output_data, int N,
-                                                                     const std::vector<size_t>& permutations,
                                                                      const dim3& grid_size, const dim3& block_size);
 
 bool CanDoTranspose4DParallelizeOneElementPerThread(const cudaDeviceProp& prop,
@@ -34,11 +33,10 @@ bool CanDoTranspose4DParallelizeOneElementPerThread(const cudaDeviceProp& prop,
                                                     const std::vector<int64_t>& input_dims,
                                                     const std::vector<size_t>& permutations,
                                                     dim3& grid_size, dim3& block_size);
-Status Transpose4DParallelizeOneElementPerThread(const cudaDeviceProp& prop, cudaStream_t stream,
+Status Transpose4DParallelizeOneElementPerThread(cudaStream_t stream,
                                                  size_t element_size, const TArray<int64_t>& input_shape,
                                                  const TArray<int64_t>& input_strides, const void* input_data,
                                                  const TArray<int64_t>& output_strides, void* output_data, int N,
-                                                 const std::vector<size_t>& permutations,
                                                  const dim3& grid_size, const dim3& block_size);
 
 Status TransposeImpl(cudaStream_t stream, size_t element_size, int32_t shape_rank, const TArray<int64_t>& input_strides,

@@ -37,11 +37,16 @@ bool CanDoTranspose3D(const cudaDeviceProp& prop,
       permutations[rank - 2] == (rank - 1) && permutations[rank - 1] == (rank - 2) &&
       // the last two dimensions are aligned with TILE_DIM.
       input_dims[rank - 2] % TILE_DIM == 0 && input_dims[rank - 1] % TILE_DIM == 0) {
-    block_size = dim3(TILE_DIM, TILE_DIM);
-    grid_size = dim3(static_cast<unsigned int>(input_dims[2] / TILE_DIM),
-                     static_cast<unsigned int>(input_dims[1] / TILE_DIM),
-                     static_cast<unsigned int>(input_dims[0]));
-    if (grid_size.x <= prop.maxGridSize[0] && grid_size.y <= prop.maxGridSize[1] && grid_size.z <= prop.maxGridSize[2]) {
+    int grid_size_x = input_dims[2] / TILE_DIM;
+    int grid_size_y = input_dims[1] / TILE_DIM;
+    int grid_size_z = input_dims[0];
+
+    if (grid_size_x <= prop.maxGridSize[0] && grid_size_y <= prop.maxGridSize[1] && grid_size_z <= prop.maxGridSize[2]) {
+      block_size = dim3(TILE_DIM, TILE_DIM);
+      grid_size = dim3(static_cast<unsigned int>(grid_size_x),
+                       static_cast<unsigned int>(grid_size_y),
+                       static_cast<unsigned int>(grid_size_z));
+
       return true;
     } else {
       return false;
@@ -53,15 +58,10 @@ bool CanDoTranspose3D(const cudaDeviceProp& prop,
 Status Transpose3DImpl(cudaStream_t stream, size_t element_size,
                        const TArray<int64_t>& input_shape, const TArray<int64_t>& input_strides,
                        const void* input_data, void* output_data, int64_t N, const dim3& grid_size, const dim3& block_size) {
-  // dim3 block_size(TILE_DIM, TILE_DIM);
-  // dim3 grid_size(static_cast<unsigned int>(input_shape[2] / TILE_DIM),
-  //                static_cast<unsigned int>(input_shape[1] / TILE_DIM),
-  //                static_cast<unsigned int>(input_shape[0]));
-
-  std::cout << "Transpose3DImpl\n";
-  std::cout << "shape: [" << input_shape[0] << "," << input_shape[1] << "," << input_shape[2] << "," << input_shape[3] << "]\n";
-  std::cout << "block_size.x: " << block_size.x << " block_size.y: " << block_size.y
-            << " grid_size.x: " << grid_size.x << " grid_size.y: " << grid_size.y << " grid_size.z: " << grid_size.z << "\n";
+  // std::cout << "Transpose3DImpl\n";
+  // std::cout << "shape: [" << input_shape[0] << "," << input_shape[1] << "," << input_shape[2] << "," << input_shape[3] << "]\n";
+  // std::cout << "block_size.x: " << block_size.x << " block_size.y: " << block_size.y
+  //           << " grid_size.x: " << grid_size.x << " grid_size.y: " << grid_size.y << " grid_size.z: " << grid_size.z << "\n";
 
   switch (element_size) {
     case sizeof(int8_t):
@@ -138,8 +138,14 @@ bool CanDoTranspose4DParallelizeMultipleElementsPerThreadInInnermostDim(const cu
       permutations[3] == 3) {
     unsigned int num_elements_per_thread = 4 * sizeof(int) / static_cast<unsigned int>(element_size);  // int4 is used in the kernel to access data.
 
+    // dims[3]: block.x
+    // dims[2]: block.y + grid.x
+    // dims[1]: grid.y
+    // dims[0]: grid.z
     if (input_dims[3] / num_elements_per_thread <= prop.maxThreadsPerBlock &&
-        ((input_dims[3] % num_elements_per_thread) == 0)) {
+        (input_dims[3] % num_elements_per_thread) == 0 &&
+        input_dims[1] <= prop.maxGridSize[1] &&
+        input_dims[0] <= prop.maxGridSize[2]) {
       // There are 2 constrains when luanching the kernels
       // 1. block_size_x * block_size_y <= prop.maxThreadsPerBlock
       // 2. block_size_y * num_block_ext >= input_dims[2]
@@ -148,13 +154,18 @@ bool CanDoTranspose4DParallelizeMultipleElementsPerThreadInInnermostDim(const cu
       int64_t block_size_y = min(input_dims[2], max_block_size_y);
       int64_t num_block_ext = CeilDiv(input_dims[2], block_size_y);
 
-      std::cout << "prop.maxGridSize: " << prop.maxGridSize[0] << " " << prop.maxGridSize[1] << " " << prop.maxGridSize[2] << "\n";
-
-      if (num_block_ext <= prop.maxGridSize[0] && input_dims[1] <= prop.maxGridSize[1] && input_dims[0] <= prop.maxGridSize[2]) {
+      if (num_block_ext <= prop.maxGridSize[0]) {
         block_size = dim3(static_cast<unsigned int>(block_size_x), static_cast<unsigned int>(block_size_y));
         grid_size = dim3(static_cast<unsigned int>(num_block_ext),
                          static_cast<unsigned int>(input_dims[1]),
                          static_cast<unsigned int>(input_dims[0]));
+
+        // std::cout << "Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim\n";
+        // std::cout << "shape: [" << input_dims[0] << "," << input_dims[1] << "," << input_dims[2] << "," << input_dims[3] << "]\n";
+        // std::cout << "permutations: [" << permutations[0] << "," << permutations[1] << "," << permutations[2] << "," << permutations[3] << "]\n";
+        // std::cout << "block_size.x: " << block_size.x << " block_size.y: " << block_size.y
+        //           << " grid_size.x: " << grid_size.x << " grid_size.y: " << grid_size.y << " grid_size.z: " << grid_size.z << "\n";
+
         return true;
       } else {
         return false;
@@ -165,18 +176,11 @@ bool CanDoTranspose4DParallelizeMultipleElementsPerThreadInInnermostDim(const cu
 }
 
 Status Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim(
-    const cudaDeviceProp& prop, cudaStream_t stream, size_t element_size,
+    cudaStream_t stream, size_t element_size,
     const TArray<int64_t>& input_shape, const TArray<int64_t>& input_strides,
     const void* input_data, const TArray<int64_t>& output_strides,
-    void* output_data, int N, const std::vector<size_t>& permutations,
-    const dim3& grid_size, const dim3& block_size) {
+    void* output_data, int N, const dim3& grid_size, const dim3& block_size) {
   unsigned int num_elements_per_thread = 4 * sizeof(int) / static_cast<unsigned int>(element_size);  // int4 is used in the kernel to access data.
-
-  std::cout << "Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim\n";
-  std::cout << "shape: [" << input_shape[0] << "," << input_shape[1] << "," << input_shape[2] << "," << input_shape[3] << "]\n";
-  std::cout << "permutations: [" << permutations[0] << "," << permutations[1] << "," << permutations[2] << "," << permutations[3] << "]\n";
-  std::cout << "block_size.x: " << block_size.x << " block_size.y: " << block_size.y
-            << " grid_size.x: " << grid_size.x << " grid_size.y: " << grid_size.y << " grid_size.z: " << grid_size.z << "\n";
 
   switch (element_size) {
     case sizeof(int8_t):
@@ -258,7 +262,13 @@ bool CanDoTranspose4DParallelizeOneElementPerThread(const cudaDeviceProp& prop,
                                                     const std::vector<size_t>& permutations,
                                                     dim3& grid_size, dim3& block_size) {
   if (rank == 4) {
-    if (input_dims[3] <= prop.maxThreadsPerBlock) {
+    // dims[3]: block.x
+    // dims[2]: block.y + grid.x
+    // dims[1]: grid.y
+    // dims[0]: grid.z
+    if (input_dims[3] <= prop.maxThreadsPerBlock &&
+        input_dims[1] <= prop.maxGridSize[1] &&
+        input_dims[0] <= prop.maxGridSize[2]) {
       // There are 2 constrains when luanching the kernels
       // 1. block_size_x * block_size_y <= prop.maxThreadsPerBlock
       // 2. block_size_y * num_block_ext >= input_dims[2]
@@ -267,11 +277,17 @@ bool CanDoTranspose4DParallelizeOneElementPerThread(const cudaDeviceProp& prop,
       int64_t block_size_y = min(input_dims[2], max_block_size_y);
       int64_t num_block_ext = CeilDiv(input_dims[2], block_size_y);
 
-      if (num_block_ext <= prop.maxGridSize[0] && input_dims[1] <= prop.maxGridSize[1] && input_dims[0] <= prop.maxGridSize[2]) {
+      if (num_block_ext <= prop.maxGridSize[0]) {
         block_size = dim3(static_cast<unsigned int>(block_size_x), static_cast<unsigned int>(block_size_y));
         grid_size = dim3(static_cast<unsigned int>(num_block_ext),
                          static_cast<unsigned int>(input_dims[1]),
                          static_cast<unsigned int>(input_dims[0]));
+
+        // std::cout << "Transpose4DKernelParallelizeOneElementPerThread\n";
+        // std::cout << "shape: [" << input_dims[0] << "," << input_dims[1] << "," << input_dims[2] << "," << input_dims[3] << "]\n";
+        // std::cout << "permutations: [" << permutations[0] << "," << permutations[1] << "," << permutations[2] << "," << permutations[3] << "]\n";
+        // std::cout << "block_size.x: " << block_size.x << " block_size.y: " << block_size.y
+        //           << " grid_size.x: " << grid_size.x << " grid_size.y: " << grid_size.y << " grid_size.z: " << grid_size.z << "\n";
 
         return true;
       } else {
@@ -283,11 +299,10 @@ bool CanDoTranspose4DParallelizeOneElementPerThread(const cudaDeviceProp& prop,
 }
 
 Status Transpose4DParallelizeOneElementPerThread(
-    const cudaDeviceProp& prop, cudaStream_t stream, size_t element_size,
+    cudaStream_t stream, size_t element_size,
     const TArray<int64_t>& input_shape, const TArray<int64_t>& input_strides,
     const void* input_data, const TArray<int64_t>& output_strides,
-    void* output_data, int N, const std::vector<size_t>& permutations,
-    const dim3& grid_size, const dim3& block_size) {
+    void* output_data, int N, const dim3& grid_size, const dim3& block_size) {
   if (element_size != sizeof(int8_t) &&
       element_size != sizeof(int16_t) &&
       element_size != sizeof(int32_t) &&
@@ -296,14 +311,6 @@ Status Transpose4DParallelizeOneElementPerThread(
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for transpose on CUDA. Element size was ",
                            element_size);
   }
-
-  std::cout << "Transpose4DKernelParallelizeOneElementPerThread\n";
-  std::cout << "shape: [" << input_shape[0] << "," << input_shape[1] << "," << input_shape[2] << "," << input_shape[3] << "]\n";
-  std::cout << "permutations: [" << permutations[0] << "," << permutations[1] << "," << permutations[2] << "," << permutations[3] << "]\n";
-  std::cout << "input_strides: [" << input_strides[0] << "," << input_strides[1] << "," << input_strides[2] << "," << input_strides[3] << "]\n";
-  std::cout << "output_strides: [" << output_strides[0] << "," << output_strides[1] << "," << output_strides[2] << "," << output_strides[3] << "]\n";
-  std::cout << "block_size.x: " << block_size.x << " block_size.y: " << block_size.y
-            << " grid_size.x: " << grid_size.x << " grid_size.y: " << grid_size.y << " grid_size.z: " << grid_size.z << "\n";
 
   Transpose4DKernelParallelizeOneElementPerThread<<<grid_size, block_size, 0, stream>>>(
       input_strides, reinterpret_cast<const int8_t*>(input_data),
