@@ -214,9 +214,7 @@ if(onnxruntime_USE_VALGRIND AND NOT WIN32)
 endif()
 
 if (onnxruntime_ENABLE_NVTX_PROFILE)
-  message(WARNING "NTVX profile temporarily disabled, will be fixed soon")
-# TODO: This doesn't work with the shared cuda provider. Disabling temporarily to do a clean fix later as it wasn't trivial
-#  add_definitions(-DENABLE_NVTX_PROFILE=1)
+  add_definitions(-DENABLE_NVTX_PROFILE=1)
 endif()
 
 if (onnxruntime_ENABLE_BITCODE)
@@ -1537,13 +1535,6 @@ if (onnxruntime_USE_CUDA)
     set(CMAKE_CUDA_STANDARD 14)
   endif()
   file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
-  set(ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_LIBRARIES})
-
-  if (onnxruntime_ENABLE_NVTX_PROFILE)
-    list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand cufft nvToolsExt)
-  else()
-    list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand cufft)
-  endif()
 
   if(NOT CMAKE_CUDA_ARCHITECTURES)
     if(CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")
