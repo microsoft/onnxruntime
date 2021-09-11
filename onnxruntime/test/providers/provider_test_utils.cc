@@ -117,13 +117,13 @@ struct TensorCheck<uint8_t> {
     // For any other EPs, we still expect an exact match for the results
     if (provider_type == kNnapiExecutionProvider && (has_abs_err || has_rel_err)) {
       double threshold = has_abs_err
-                             ? params.absolute_error_.value()
+                             ? *(params.absolute_error_)
                              : 0.0;
 
       for (int i = 0; i < size; ++i) {
         if (has_rel_err) {
           EXPECT_NEAR(expected[i], output[i],
-                      params.relative_error_.value() * expected[i])  // expected[i] is unsigned, can't be negative
+                      *(params.relative_error_) * expected[i])  // expected[i] is unsigned, can't be negative
               << "i:" << i << ", provider_type: " << provider_type;
         } else {  // has_abs_err
           EXPECT_NEAR(expected[i], output[i], threshold)
@@ -184,12 +184,12 @@ struct TensorCheck<double> {
         } else {
           if (has_abs_err) {
             ASSERT_NEAR(expected[i], output[i],
-                        params.absolute_error_.value())
+                        *(params.absolute_error_))
                 << "i:" << i << ", provider_type: " << provider_type;
           }
           if (has_rel_err) {
             ASSERT_NEAR(expected[i], output[i],
-                        params.relative_error_.value() *
+                        *(params.relative_error_) *
                             std::abs(expected[i]))
                 << "i:" << i << ", provider_type: " << provider_type;
           }
@@ -243,12 +243,12 @@ void InternalNumericalCheck(const Tensor& expected_tensor,
       } else {
         if (has_abs_err) {
           ASSERT_NEAR(expected[i], output[i],
-                      params.absolute_error_.value())
+                      *(params.absolute_error_))
               << "i:" << i << ", provider_type: " << provider_type;
         }
         if (has_rel_err) {
           ASSERT_NEAR(expected[i], output[i],
-                      params.relative_error_.value() *
+                      *(params.relative_error_) *
                           std::abs(expected[i]))
               << "i:" << i << ", provider_type: " << provider_type;
         }
