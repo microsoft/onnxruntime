@@ -466,10 +466,7 @@ struct EnabledTypes {
  * using Dispatcher = onnxruntime::utils::MLTypeCallDispatcherFromTypeList<MyOpFirstInputEnabledTypes>;
  */
 
-// includes for types that might be used in type specifications
-#include <cstdint>
-#include <string>
-#include "core/framework/float16.h"
+#include "core/framework/data_types.h"  // for types that might be used in type specifications
 
 // all allowed type specifications should be contained in the following file
 #include "core/providers/op_kernel_type_control_overrides.inc"
