@@ -3,15 +3,10 @@
 
 #pragma once
 
-#include <cstdint>
-#include <tuple>
-
 #include "boost/mp11.hpp"
 
 #include "core/common/type_list.h"
 #include "core/common/type_set_utils.h"
-
-#include "core/framework/data_types.h"
 
 /**
  * These utilities provide a way to control what types are enabled for an Op kernel implementation.
@@ -470,6 +465,11 @@ struct EnabledTypes {
  * // use MLTypeCallDispatcher to dispatch to implementations for enabled types
  * using Dispatcher = onnxruntime::utils::MLTypeCallDispatcherFromTypeList<MyOpFirstInputEnabledTypes>;
  */
+
+// includes for types that might be used in type specifications
+#include <cstdint>
+#include <string>
+#include "core/framework/float16.h"
 
 // all allowed type specifications should be contained in the following file
 #include "core/providers/op_kernel_type_control_overrides.inc"
