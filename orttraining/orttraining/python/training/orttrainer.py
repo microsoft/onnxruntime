@@ -3,6 +3,8 @@ import io
 import os
 import onnx
 import torch
+import shutil
+import tempfile
 from inspect import signature
 import warnings
 from functools import partial
@@ -122,7 +124,8 @@ class ORTTrainer(object):
 
     def __init__(self, model, model_desc, optim_config, 
                  loss_fn=None, 
-                 options=None):
+                 options=None,
+                current_optimization_step=0):
         assert model is not None, "'model' is required and must be either a 'torch.nn.Module' or ONNX model"
         assert isinstance(model_desc, dict), "'model_desc' must be a 'dict'"
         assert isinstance(optim_config, optim._OptimizerConfig),\
@@ -203,7 +206,7 @@ class ORTTrainer(object):
         # TODO: Remove when experimental checkpoint functions are removed.
         self._state_dict = {}
 
-        self._train_step_info = TrainStepInfo(self.optim_config)
+        self._train_step_info = TrainStepInfo(self.optim_config, optimization_step=current_optimization_step)
         self._training_session = None
         self._load_state_dict = None
         self._init_session(provider_options=self.options._validated_opts['provider_options'],
@@ -286,8 +289,11 @@ class ORTTrainer(object):
             warnings.warn("'path' is not valid or does not exist")
             return
 
-        with open(path, "wb") as f:
-            f.write(self._onnx_model.SerializeToString())
+        if "MODEL_LT_2GB" in os.environ:
+            onnx.save_model(self._onnx_model, path)
+        else:
+            with open(path, "wb") as f:
+                f.write(self._onnx_model.SerializeToString())
 
     def _check_model_export(self, input):
         from onnx import helper, TensorProto, numpy_helper
@@ -446,9 +452,9 @@ class ORTTrainer(object):
         if isinstance(inputs, torch.Tensor):
             inputs = [inputs]
         if isinstance(inputs, dict):
-            sample_inputs = [inputs[k.name_].to(device=device) for k in self.model_desc.inputs]
+            sample_inputs = [inputs[k.name_][:1].to(device=device) for k in self.model_desc.inputs]
         elif isinstance(inputs, (list, tuple)):
-            sample_inputs = [input.to(device=device) for i, input in enumerate(inputs) if i < len(self.model_desc.inputs)]
+            sample_inputs = [input[:1].to(device=device) for i, input in enumerate(inputs) if i < len(self.model_desc.inputs)]
         else:
             raise RuntimeError("Unexpected input type. Only torch.Tensor, or dict/list/tuple of torch.Tensor is supported.")
 
@@ -481,12 +487,16 @@ class ORTTrainer(object):
             def forward(self, *inputs):
                 sig = signature(self.model.forward)
 
+                '''
                 input_dict = {}
                 for key in sig.parameters.keys():
                     if key in self.input_names:
                         input_dict[key] = inputs[self.input_names.index(key)]
 
                 model_out = self.model(**input_dict)
+
+                '''
+                model_out = self.model(*inputs)
                 if self.loss_fn is None:
                     return model_out
 
@@ -498,6 +508,7 @@ class ORTTrainer(object):
 
         # Do an inference to grab output types
         model.eval()
+        model.to(device)
         with torch.no_grad():
             # Deepcopy inputs, since input values may change after model run.
             sample_inputs_copy = copy.deepcopy(sample_inputs)
@@ -525,9 +536,6 @@ class ORTTrainer(object):
                 self.model_desc.add_type_to_output_description(
                     idx_o, sample_output.dtype)
 
-        # Export the model to ONNX
-        f = io.BytesIO()
-
         # Deepcopy inputs, since input values may change after model run.
         sample_inputs_copy = copy.deepcopy(sample_inputs)
 
@@ -540,6 +548,14 @@ class ORTTrainer(object):
             # Unregister contrib ops, if they were registered in previous calls
             register_custom_ops_pytorch_exporter.unregister_custom_op()
 
+        if "MODEL_LT_2GB" in os.environ:
+            tmp_dir = tempfile.mkdtemp()
+            f = os.path.join(tmp_dir, "tmp.onnx")
+            print(f"tmp onnx file is saved in {f}")
+            use_external_data_format = True
+        else:
+            f = io.BytesIO()
+            use_external_data_format = False
         # Export torch.nn.Module to ONNX
         torch.onnx._export(model, tuple(sample_inputs_copy), f,
                            input_names=[input.name for input in self.model_desc.inputs],
@@ -549,8 +565,13 @@ class ORTTrainer(object):
                            _retain_param_name=True,
                            example_outputs=tuple(sample_outputs),
                            do_constant_folding=False,
-                           training=torch.onnx.TrainingMode.TRAINING)
-        onnx_model = onnx.load_model_from_string(f.getvalue())
+                           training=torch.onnx.TrainingMode.TRAINING,
+                           use_external_data_format=use_external_data_format)
+        if "MODEL_LT_2GB" in os.environ:
+            onnx_model = onnx.load_model(f, load_external_data=True)
+            shutil.rmtree(tmp_dir)
+        else:
+            onnx_model = onnx.load_model_from_string(f.getvalue())
 
         # Remove 'model.' prefix introduced by CombineTorchModelLossFn class
         if isinstance(model, CombineTorchModelLossFnWrapInput):
@@ -705,8 +726,20 @@ class ORTTrainer(object):
             return providers
 
         # TrainingSession
-        self._training_session = ort.TrainingSession(self._onnx_model.SerializeToString(), ort_parameters,
-                                                     session_options, get_providers(provider_options))
+        # old ort session may already exists and occupies GPU memory when creating new session, this may cause OOM error.
+        # for example, load_state_dict will be called before returing the function, and it calls _init_session again
+        del self._training_session
+        torch.cuda.empty_cache()
+        if "MODEL_LT_2GB" in os.environ:
+            tmp_dir = tempfile.mkdtemp()
+            f = os.path.join(tmp_dir, "model_to_train.onnx")
+            print(f"model_to_train file for ort is saved in {f}")
+            onnx.save_model(self._onnx_model, f)
+            self._training_session = ort.TrainingSession(f, ort_parameters, session_options)
+            shutil.rmtree(tmp_dir)
+        else:
+            self._training_session = ort.TrainingSession(self._onnx_model.SerializeToString(), ort_parameters,
+                                                        session_options, get_providers(provider_options))
 
         # I/O bindings
         self._train_io_binding = self._training_session.io_binding()
@@ -717,15 +750,13 @@ class ORTTrainer(object):
             return
 
         if self._torch_model is not None:
-            # PyTorch model is moved to cpu to save GPU memory
-            self._torch_model.cpu()
 
             # PyTorch buffers (created using 'register_buffer') shouldn't be trained
             torch_buffers = list(dict(self._torch_model.named_buffers()).keys())
             self.options.utils.frozen_weights.extend(torch_buffers)
 
             # Export to ONNX
-            self._onnx_model = self._convert_torch_model_loss_fn_to_onnx(inputs, 'cpu')
+            self._onnx_model = self._convert_torch_model_loss_fn_to_onnx(inputs, torch.cuda.current_device())
 
             # Post processing for ONNX models expported from PyTorch
             if self.options._internal_use.enable_internal_postprocess:
@@ -921,6 +952,34 @@ class ORTTrainer(object):
         for w_i in replace_indices:
             del self._onnx_model.graph.initializer[w_i]
         self._onnx_model.graph.initializer.extend(new_weights)
+        if "MODEL_LT_2GB" in os.environ:
+            from onnx.external_data_helper import set_external_data, _get_all_tensors
+            from typing import Text
+            import uuid
+            def set_tensor_to_external(tensor):
+                if tensor.name.startswith("bert"):
+                    return True
+                return False
+
+            def convert_model_to_external_data(model, all_tensors_to_one_file=True, location=None):
+                ## function copied from onnx.external_data_helper,
+                ## and add some workaround fro ort bug
+                ## which failed at load onnx model file saying that transpose mismatch perms and input shape
+                if all_tensors_to_one_file:
+                    file_name = Text(uuid.uuid1())
+                    if location:
+                        file_name = location
+                    for tensor in _get_all_tensors(model):
+                        if set_tensor_to_external(tensor):
+                            set_external_data(tensor, file_name)
+                else:
+                    for tensor in _get_all_tensors(model):
+                        if set_tensor_to_external(tensor):
+                            set_external_data(tensor, file_name)
+
+            print(f"convert model to use external_data_format")
+            convert_model_to_external_data(self._onnx_model)
+            return
 
     def _extract_model_states(self, state_dict, pytorch_format):
         """Extract model states from the training session and load into the state_dict"""
