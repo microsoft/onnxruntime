@@ -173,29 +173,33 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
   TArray<int64_t> tmp_input_strides(new_input_strides);
 
   size_t element_size = input.DataType()->Size();
-  if (CanDoTranspose3D(new_rank, new_input_dims, new_permutations)) {
+  dim3 grid_size, block_size;
+  if (CanDoTranspose3D(prop, new_rank, new_input_dims, new_permutations, grid_size, block_size)) {
     return Transpose3DImpl(stream, element_size, input_shape, tmp_input_strides,
-                           input.DataRaw(), output.MutableDataRaw(), output.Shape().Size());
+                           input.DataRaw(), output.MutableDataRaw(), output.Shape().Size(), grid_size, block_size);
   } else if (CanDoTranspose4DParallelizeMultipleElementsPerThreadInInnermostDim(
-                 prop, element_size, new_rank, new_input_dims, new_permutations)) {
+                 prop, element_size, new_rank, new_input_dims, new_permutations,
+                 grid_size, block_size)) {
     TArray<int64_t> tmp_output_strides(new_rank);
     for (auto i = 0; i < new_rank; i++) {
-      tmp_output_strides[new_permutations[i]] = new_output_strides[i];
+      tmp_output_strides[static_cast<int32_t>(new_permutations[i])] = new_output_strides[i];
     }
     return Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim(
         prop, stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
-        tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()), new_permutations);
+        tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()), new_permutations,
+        grid_size, block_size);
   } else if (CanDoTranspose4DParallelizeOneElementPerThread(
-                 prop, element_size, new_rank, new_input_dims, new_permutations)) {
+                 prop, element_size, new_rank, new_input_dims, new_permutations, grid_size, block_size)) {
     // Trying to see if we can still do (best effort) more optimized transposing
     // for the 4-D case before falling back to the generic case
     TArray<int64_t> tmp_output_strides(new_rank);
     for (auto i = 0; i < new_rank; i++) {
-      tmp_output_strides[new_permutations[i]] = new_output_strides[i];
+      tmp_output_strides[static_cast<int32_t>(new_permutations[i])] = new_output_strides[i];
     }
     return Transpose4DParallelizeOneElementPerThread(
         prop, stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
-        tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()), new_permutations);
+        tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()), new_permutations,
+        grid_size, block_size);
   }
 
   // General cases

@@ -8,31 +8,38 @@
 namespace onnxruntime {
 namespace cuda {
 
-bool CanDoTranspose3D(int32_t rank, const std::vector<int64_t>& input_dims, const std::vector<size_t>& permutations);
+bool CanDoTranspose3D(const cudaDeviceProp& prop,
+                      int32_t rank, const std::vector<int64_t>& input_dims, const std::vector<size_t>& permutations,
+                      dim3& grid_size, dim3& block_size);
 Status Transpose3DImpl(cudaStream_t stream, size_t element_size, const TArray<int64_t>& input_shape, const TArray<int64_t>& input_strides, const void* input_data,
-                       void* output_data, int64_t N);
+                       void* output_data, int64_t N,
+                       const dim3& grid_size, const dim3& block_size);
 
 bool CanDoTranspose4DParallelizeMultipleElementsPerThreadInInnermostDim(const cudaDeviceProp& prop,
                                                                         size_t element_size,
                                                                         int32_t rank,
                                                                         const std::vector<int64_t>& input_dims,
-                                                                        const std::vector<size_t>& permutations);
+                                                                        const std::vector<size_t>& permutations,
+                                                                        dim3& grid_size, dim3& block_size);
 Status Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim(const cudaDeviceProp& prop, cudaStream_t stream,
                                                                      size_t element_size, const TArray<int64_t>& input_shape,
                                                                      const TArray<int64_t>& input_strides, const void* input_data,
                                                                      const TArray<int64_t>& output_strides, void* output_data, int N,
-                                                                     const std::vector<size_t>& permutations);
+                                                                     const std::vector<size_t>& permutations,
+                                                                     const dim3& grid_size, const dim3& block_size);
 
 bool CanDoTranspose4DParallelizeOneElementPerThread(const cudaDeviceProp& prop,
                                                     size_t element_size,
                                                     int32_t rank,
                                                     const std::vector<int64_t>& input_dims,
-                                                    const std::vector<size_t>& permutations);
+                                                    const std::vector<size_t>& permutations,
+                                                    dim3& grid_size, dim3& block_size);
 Status Transpose4DParallelizeOneElementPerThread(const cudaDeviceProp& prop, cudaStream_t stream,
                                                  size_t element_size, const TArray<int64_t>& input_shape,
                                                  const TArray<int64_t>& input_strides, const void* input_data,
                                                  const TArray<int64_t>& output_strides, void* output_data, int N,
-                                                 const std::vector<size_t>& permutations);
+                                                 const std::vector<size_t>& permutations,
+                                                 const dim3& grid_size, const dim3& block_size);
 
 Status TransposeImpl(cudaStream_t stream, size_t element_size, int32_t shape_rank, const TArray<int64_t>& input_strides,
                      const void* input_data, const TArray<fast_divmod>& fdm_output_strides, void* output_data, int N);
