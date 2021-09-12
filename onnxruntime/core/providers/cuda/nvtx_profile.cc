@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #ifdef ENABLE_NVTX_PROFILE
-#include "core/profile/profile.h"
+#include "nvtx_profile.h"
 #include "core/common/common.h"
 #include <nvToolsExt.h>
 #include <nvToolsExtCuda.h>

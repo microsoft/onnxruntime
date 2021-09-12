@@ -11,13 +11,15 @@ from onnxruntime.capi import _pybind_state as C
 
 
 def get_ort_device_type(device):
-    device = device.lower()
-    if device == 'cuda':
+    device_type = device if type(device) is str else device.type.lower()
+    if device_type == 'cuda':
         return C.OrtDevice.cuda()
-    elif device == 'cpu':
+    elif device_type == 'cpu':
         return C.OrtDevice.cpu()
+    elif device_type == 'ort':
+        return C.get_ort_device(device.index).device_type()
     else:
-        raise Exception('Unsupported device type: ' + device)
+        raise Exception('Unsupported device type: ' + device_type)
 
 
 def check_and_normalize_provider_args(providers, provider_options, available_provider_names):
