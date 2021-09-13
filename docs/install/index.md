@@ -9,7 +9,7 @@ nav_order: 1
 
 See the [installation matrix](https://onnxruntime.ai) for recommended instructions for desired combinations of target operating system, hardware, accelerator, and language. 
 
-Details on OS versions, compilers, language versions, dependent libraries, etc can be found under [Compatibility](../resources/compatibility.md#Environment-compatibility).
+Details on OS versions, compilers, language versions, dependent libraries, etc can be found under [Compatibility](../reference/compatibility).
 
 
 ## Contents
@@ -116,7 +116,7 @@ python -m torch_ort.configure
 
 ## Inference install table for all languages
 
-The table below lists the build variants available as officially supported packages. Others can be [built from source](build/inferencing.md) from each release branch.
+The table below lists the build variants available as officially supported packages. Others can be [built from source](../build/inferencing) from each release branch.
 
 ### Requirements
 {: .no_toc }
@@ -136,14 +136,14 @@ by running `locale-gen en_US.UTF-8` and `update-locale LANG=en_US.UTF-8`
 ||OpenVINO: [**intel/onnxruntime**](https://github.com/intel/onnxruntime/releases/latest) - *Intel managed*||[View](build/eps.md#openvino)|
 ||TensorRT (Jetson): [**Jetson Zoo**](https://elinux.org/Jetson_Zoo#ONNX_Runtime) - *NVIDIA managed*|||
 |C#/C/C++|CPU: [**Microsoft.ML.OnnxRuntime**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime) |[ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)||
-||GPU - CUDA: [**Microsoft.ML.OnnxRuntime.Gpu**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.gpu)|[ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)|[View](../execution-providers/CUDA-ExecutionProvider.md#requirements)|
-||GPU - DirectML: [**Microsoft.ML.OnnxRuntime.DirectML**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML)|[ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)|[View](../execution-providers/DirectML-ExecutionProvider.md#requirements)|
+||GPU - CUDA: [**Microsoft.ML.OnnxRuntime.Gpu**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.gpu)|[ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)|[View](../execution-providers/CUDA-ExecutionProvider)|
+||GPU - DirectML: [**Microsoft.ML.OnnxRuntime.DirectML**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML)|[ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)|[View](../execution-providers/DirectML-ExecutionProvider)|
 |WinML|[**Microsoft.AI.MachineLearning**](https://www.nuget.org/packages/Microsoft.AI.MachineLearning)||[View](https://docs.microsoft.com/en-us/windows/ai/windows-ml/port-app-to-nuget#prerequisites)|
 |Java|CPU: [**com.microsoft.onnxruntime:onnxruntime**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime)||[View](../api/java-api.md)|
 ||GPU - CUDA: [**com.microsoft.onnxruntime:onnxruntime_gpu**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu)||[View](../api/java-api.md)|
-|Android|[**com.microsoft.onnxruntime:onnxruntime-mobile**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime-mobile) ||[View](tutorials/mobile/mobile/initial-setup.md#android)|
-|iOS (C/C++)|CocoaPods: **onnxruntime-mobile-c**||[View](tutorials/mobile/mobile/initial-setup.md#ios)|
-|Objective-C|CocoaPods: **onnxruntime-mobile-objc**||[View](tutorials/mobile/mobile/initial-setup.md#ios)|
+|Android|[**com.microsoft.onnxruntime:onnxruntime-mobile**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime-mobile) ||[View](tutorials/mobile/mobile/initial-setup)|
+|iOS (C/C++)|CocoaPods: **onnxruntime-mobile-c**||[View](tutorials/mobile/mobile/initial-setup)|
+|Objective-C|CocoaPods: **onnxruntime-mobile-objc**||[View](tutorials/mobile/mobile/initial-setup)|
 |React Native|[**onnxruntime-react-native**](https://www.npmjs.com/package/onnxruntime-react-native)||[View](../api/js-api.md)|
 |Node.js|[**onnxruntime-node**](https://www.npmjs.com/package/onnxruntime-node)||[View](../api/js-api.md)|
 |Web|[**onnxruntime-web**](https://www.npmjs.com/package/onnxruntime-web)||[View](../api/js-api.md)|

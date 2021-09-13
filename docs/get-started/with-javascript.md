@@ -21,7 +21,7 @@ ONNX Runtime JavaScript API is the unified interface used by [ONNX Runtime Node.
 
 - ONNX Runtime Node.js binding: Node.js v12.x+ or Electron v5.x+
 - ONNX Runtime Web: mainstream modern browsers on Windows, macOS, Android and iOS.
-- ONNX Runtime for React Native: same as [ORT Mobile](../mobile/prebuilt-package) (Android/iOS)
+- ONNX Runtime for React Native: same as [ORT Mobile](./with-mobile) (Android/iOS)
 
 ## Builds
 

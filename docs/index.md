@@ -39,13 +39,13 @@ Examples use cases for ONNX Runtime Inferencing include:
 {: .no_toc }
 
 The premise is simple. 
-1. **Get a model.** This can be trained from any framework that supports export/conversion to ONNX format. See the [tutorials](../tutorials/inferencing) for some of the popular frameworks/libraries. 
-2. **Load and run the model with ONNX Runtime.** See the [basic tutorials](../tutorials/api-basics) for running models in different languages.
-3. ***(Optional)* Tune performance using various runtime configurations or hardware accelerators.** There are lots of options here - see [How to: Tune Performance](../performance/tune-performance.md) as a starting point.
+1. **Get a model.** This can be trained from any framework that supports export/conversion to ONNX format. See the [tutorials](./tutorials) for some of the popular frameworks/libraries. 
+2. **Load and run the model with ONNX Runtime.** See the [basic tutorials](./tutorials/api-basics) for running models in different languages.
+3. ***(Optional)* Tune performance using various runtime configurations or hardware accelerators.** There are lots of options here - see [How to: Tune Performance](./performance/tune-performance.md) as a starting point.
 
 Even without step 3, ONNX Runtime will often provide performance improvements compared to the original framework. 
 
-ONNX Runtime applies a number of graph optimizations on the model graph then partitions it into subgraphs based on available hardware-specific accelerators. Optimized computation kernels in core ONNX Runtime provide performance improvements and assigned subgraphs benefit from further acceleration from each [Execution Provider](../execution-providers).
+ONNX Runtime applies a number of graph optimizations on the model graph then partitions it into subgraphs based on available hardware-specific accelerators. Optimized computation kernels in core ONNX Runtime provide performance improvements and assigned subgraphs benefit from further acceleration from each [Execution Provider](./execution-providers).
 
 
 

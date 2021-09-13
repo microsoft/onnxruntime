@@ -140,5 +140,5 @@ See [Tutorials: Basics - C#](../tutorials/api-basics)
 
 
 ## Learn More
-- [C# Tutorials](./tutorials/)
-- [C# API Reference](./api/csharp-api.html)
+- [C# Tutorials](../tutorials/)
+- [C# API Reference](../api/csharp-api.html)

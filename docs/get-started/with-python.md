@@ -46,7 +46,7 @@ Train a model using your favorite framework, export to ONNX format and inference
 
 ### PyTorch CV
 {: .no_toc }
-In this example we will go over how to export the model into onnx format and then inference with ORT. The code to create the model is from the [PyTorch Fundamentals learning path on Microsoft Learn](aka.ms/learnpytorch).
+In this example we will go over how to export the model into onnx format and then inference with ORT. The code to create the model is from the [PyTorch Fundamentals learning path on Microsoft Learn](https://aka.ms/learnpytorch).
 
 - Export model
 
@@ -275,7 +275,6 @@ Python 3.6 - 3.9
 
 ## Learn More
 - [Python Tutorials](../tutorials/api-basics)
-- [Python Github Quickstart Templates](https://github.com/onnxruntime)
 * [TensorFlow with ONNX Runtime](../tutorials/tf-get-started.md)
 * [PyTorch with ONNX Runtime](https://pytorch.org/tutorials/advanced/super_resolution_with_onnxruntime.html)
 * [scikit-learn with ONNX Runtime](https://www.onnxruntime.ai/python/tutorial.html)
