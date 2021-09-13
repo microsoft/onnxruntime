@@ -29,10 +29,12 @@ strip_ /manylinux-rootfs
 cp -rlf /manylinux-rootfs/* /
 
 # debugging
-ls -R /usr
+ls -R /usr/local
 
 # Remove temporary rootfs
 rm -rf /manylinux-rootfs
 
 hash -r
+which protoc
+ldd protoc
 protoc --version
