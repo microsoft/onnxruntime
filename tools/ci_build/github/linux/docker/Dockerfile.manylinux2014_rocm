@@ -18,10 +18,10 @@ RUN yum remove -y devtoolset\* git\* && conda remove -y cmake
 
 # remove protobuf 2.6.1 from rocm/pytorch:rocm4.2_centos7_py3.6_pytorch
 # it's too old to compile onnx 1.10
-rm /usr/local/bin/protoc \
-   /usr/local/libproto* \
-   /usr/local/include/google \
-   /usr/local/lib/pkgconfig/protobuf*
+RUN rm /usr/local/bin/protoc \
+       /usr/local/libproto* \
+       /usr/local/include/google \
+       /usr/local/lib/pkgconfig/protobuf*
 
 ENV AUDITWHEEL_POLICY=${POLICY} AUDITWHEEL_ARCH=${PLATFORM} AUDITWHEEL_PLAT=${POLICY}_${PLATFORM}
 ENV LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 LANGUAGE=en_US.UTF-8
