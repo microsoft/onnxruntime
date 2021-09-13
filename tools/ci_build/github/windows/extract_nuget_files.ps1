@@ -35,23 +35,21 @@ Foreach-Object {
 }
 
 # copy android AAR. 
-$android_aar_dir = "$Env:BUILD_BINARIESDIRECTORY\nuget-artifact\onnxruntime-android-full-aar"
-if (Test-Path -Path $android_aar_dir) {
-  # should only be one .aar file called onnxruntime-mobile-x.y.z.aar but sanity check that
-  $aars = Get-ChildItem $android_aar_dir -Filter onnxruntime-mobile-*.aar 
-  if ($aars.Count -eq 1) {
-    $aar = $aars[0]
-    $target_dir = "$nuget_artifacts_dir\onnxruntime-android-aar"
-    $target_file = "$target_dir\onnxruntime.aar"  # use name without '-mobile' and version in it when copying
-    New-Item -Path $target_dir -ItemType directory
+# should only be one .aar file called onnxruntime-mobile-x.y.z.aar but sanity check that
+$aars = Get-ChildItem $Env:BUILD_BINARIESDIRECTORY\nuget-artifact -Filter onnxruntime-mobile-*.aar 
+if ($aars.Count -eq 1) {
+  $aar = $aars[0]
+  $target_dir = "$nuget_artifacts_dir\onnxruntime-android-aar"
+  $target_file = "$target_dir\onnxruntime.aar"  # remove '-mobile' and version info from filename
+  New-Item -Path $target_dir -ItemType directory
 
-    Write-Output "Copy-Item $($aar.FullName) $target_file"
-    Copy-Item $aar.FullName $target_file
-  }
-  else{
-    Write-Error "Expected one Android .aar file but got: [$aars]"
-  }
+  Write-Output "Copy-Item $($aar.FullName) $target_file"
+  Copy-Item $aar.FullName $target_file
 }
+else{
+  Write-Error "Expected one Android .aar file but got: [$aars]"
+}
+
 
 New-Item -Path $Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo\external\protobuf\cmake\RelWithDebInfo -ItemType directory
 
