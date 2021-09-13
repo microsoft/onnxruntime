@@ -479,26 +479,27 @@ struct OrtApi {
 
   /** \brief Create an OrtEnv
   *
-  * \param[in] logging_level The log severity level.
-  * \param[in] logid The top-level log identifier.
+  * \param[in] log_severity_level The log severity level.
+  * \param[in] logid The log identifier.
   * \param[out] out Returned newly created OrtEnv. Must be freed with OrtApi::ReleaseEnv
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
-  ORT_API2_STATUS(CreateEnv, OrtLoggingLevel logging_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
+  ORT_API2_STATUS(CreateEnv, OrtLoggingLevel log_severity_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
 
   /** \brief Create an OrtEnv
   *
-  * \param[in] logging_function A user-provided logging function.
-  * \param[in] logger_param Arbitrary user-provided parameter to pass to `logging_function`.
-  * \param[in] logging_level The log severity level.
-  * \param[in] logid The top-level log identifier.
+  * \param[in] logging_function A pointer to a logging function.
+  * \param[in] logger_param A pointer to arbitrary data passed as the ::OrtLoggingFunction `param` parameter to
+  *                         `logging_function`.
+  * \param[in] log_severity_level The log severity level.
+  * \param[in] logid The log identifier.
   * \param[out] out Returned newly created OrtEnv. Must be freed with OrtApi::ReleaseEnv
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(CreateEnvWithCustomLogger, OrtLoggingFunction logging_function, _In_opt_ void* logger_param,
-                  OrtLoggingLevel logging_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
+                  OrtLoggingLevel log_severity_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
 
   /** \brief Enable Telemetry
   *
@@ -674,7 +675,7 @@ struct OrtApi {
   /** \brief Set session log id
   *
   * \param[in] options
-  * \param[in] logid
+  * \param[in] logid The log identifier.
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
@@ -917,20 +918,20 @@ struct OrtApi {
    * \see OrtApi::RunOptionsGetRunLogVerbosityLevel
    *
    * \param[in] options
-   * \param[in] value \snippet{doc} snippets.dox Log Verbosity Level
+   * \param[in] log_verbosity_level \snippet{doc} snippets.dox Log Verbosity Level
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
-  ORT_API2_STATUS(RunOptionsSetRunLogVerbosityLevel, _Inout_ OrtRunOptions* options, int value);
+  ORT_API2_STATUS(RunOptionsSetRunLogVerbosityLevel, _Inout_ OrtRunOptions* options, int log_verbosity_level);
 
   /** \brief Set per-run log severity level
    *
    * \see OrtApi::RunOptionsGetRunLogSeverityLevel
    *
    * \param[in] options
-   * \param[in] value The log severity level (refer to ::OrtLoggingLevel for possible values).
+   * \param[in] log_severity_level The log severity level (refer to ::OrtLoggingLevel for possible values).
    */
-  ORT_API2_STATUS(RunOptionsSetRunLogSeverityLevel, _Inout_ OrtRunOptions* options, int value);
+  ORT_API2_STATUS(RunOptionsSetRunLogSeverityLevel, _Inout_ OrtRunOptions* options, int log_severity_level);
 
   /** \brief Set per-run tag
    *
@@ -948,20 +949,21 @@ struct OrtApi {
    * \see OrtApi::RunOptionsSetRunLogVerbosityLevel
    *
    * \param[in] options
-   * \param[out] out \snippet{doc} snippets.dox Log Verbosity Level
+   * \param[out] log_verbosity_level \snippet{doc} snippets.dox Log Verbosity Level
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
-  ORT_API2_STATUS(RunOptionsGetRunLogVerbosityLevel, _In_ const OrtRunOptions* options, _Out_ int* out);
+  ORT_API2_STATUS(RunOptionsGetRunLogVerbosityLevel, _In_ const OrtRunOptions* options,
+                  _Out_ int* log_verbosity_level);
 
   /** \brief Get per-run log severity level
    *
    * \see OrtApi::RunOptionsSetRunLogSeverityLevel
    *
    * \param[in] options
-   * \param[out] out The log severity level (refer to ::OrtLoggingLevel for possible values).
+   * \param[out] log_severity_level The log severity level (refer to ::OrtLoggingLevel for possible values).
    */
-  ORT_API2_STATUS(RunOptionsGetRunLogSeverityLevel, _In_ const OrtRunOptions* options, _Out_ int* out);
+  ORT_API2_STATUS(RunOptionsGetRunLogSeverityLevel, _In_ const OrtRunOptions* options, _Out_ int* log_severity_level);
 
   /** \brief Get per-run tag
    *
@@ -970,11 +972,11 @@ struct OrtApi {
    * \see OrtApi::RunOptionsSetRunTag
    *
    * \param[in] options
-   * \param[out] out The run tag.
-   *                 Do not free this value, it is owned by `options`. It will be invalidated if the run tag changes
-   *                 (i.e., with OrtApi::RunOptionsSetRunTag) or `options` is freed.
+   * \param[out] run_tag The run tag.
+   *                     Do not free this value, it is owned by `options`. It will be invalidated if the run tag
+   *                     changes (i.e., with OrtApi::RunOptionsSetRunTag) or `options` is freed.
    */
-  ORT_API2_STATUS(RunOptionsGetRunTag, _In_ const OrtRunOptions* options, _Out_ const char** out);
+  ORT_API2_STATUS(RunOptionsGetRunTag, _In_ const OrtRunOptions* options, _Out_ const char** run_tag);
 
   /** \brief Set terminate flag
   *
@@ -1725,14 +1727,14 @@ struct OrtApi {
   * Use this in conjunction with OrtApi::DisablePerSessionThreads or else the session will use
   * its own thread pools.
   *
-  * \param[in] logging_level The log severity level.
-  * \param[in] logid The top-level log identifier.
+  * \param[in] log_severity_level The log severity level.
+  * \param[in] logid The log identifier.
   * \param[in] tp_options
   * \param[out] out Returned newly created OrtEnv. Must be freed with OrtApi::ReleaseEnv
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
-  ORT_API2_STATUS(CreateEnvWithGlobalThreadPools, OrtLoggingLevel logging_level, _In_ const char* logid,
+  ORT_API2_STATUS(CreateEnvWithGlobalThreadPools, OrtLoggingLevel log_severity_level, _In_ const char* logid,
                   _In_ const OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out);
 
   /// @}
@@ -2159,16 +2161,17 @@ struct OrtApi {
   * Use this in conjunction with OrtApi::DisablePerSessionThreads or else the session will use
   * its own thread pools.
   *
-  * \param[in] logging_function A user-provided logging function.
-  * \param[in] logger_param Arbitrary user-provided parameter to pass to `logging_function`.
-  * \param[in] logging_level The log severity level.
-  * \param[in] logid The top-level log identifier.
+  * \param[in] logging_function A pointer to a logging function.
+  * \param[in] logger_param A pointer to arbitrary data passed as the ::OrtLoggingFunction `param` parameter to
+  *                         `logging_function`.
+  * \param[in] log_severity_level The log severity level.
+  * \param[in] logid The log identifier.
   * \param[in] tp_options
   * \param[out] out Newly created OrtEnv. Must be freed with OrtApi::ReleaseEnv
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
-  ORT_API2_STATUS(CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel logging_level,
+  ORT_API2_STATUS(CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel log_severity_level,
                   _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out);
 
   /// @}
