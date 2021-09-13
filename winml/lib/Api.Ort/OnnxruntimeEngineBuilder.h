@@ -50,7 +50,7 @@ class OnnxruntimeEngineBuilder : public Microsoft::WRL::RuntimeClass<
   wfc::IMapView<winrt::hstring, uint32_t> named_dimension_overrides_;
   uint32_t intra_op_num_threads_override_ = 0;
   bool allow_thread_spinning_ = true;
-  uint32_t graph_optimization_level_ = 3;
+  uint32_t graph_optimization_level_ = ORT_ENABLE_ALL;
 };
 
 }  // namespace _winml

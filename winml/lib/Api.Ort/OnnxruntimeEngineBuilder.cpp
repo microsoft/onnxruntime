@@ -108,6 +108,19 @@ STDMETHODIMP OnnxruntimeEngineBuilder::SetIntraOpThreadSpinning(bool allow_spinn
 }
 
 STDMETHODIMP OnnxruntimeEngineBuilder::SetGraphOptimizationLevel(uint32_t level) {
-  graph_optimization_level_ = level;
+  switch (level) {
+    case 0:
+      __fallthrough;
+    case 1:
+      __fallthrough;
+    case 2:
+      graph_optimization_level_ = level;
+      break;
+    case 3:
+      graph_optimization_level_ = ORT_ENABLE_ALL;
+      break;
+    default:
+      return E_FAIL;
+  }
   return S_OK;
 }
