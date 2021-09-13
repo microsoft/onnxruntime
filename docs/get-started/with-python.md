@@ -46,9 +46,9 @@ Train a model using your favorite framework, export to ONNX format and inference
 
 ### PyTorch CV
 {: .no_toc }
-In this example we will go over how to export the model into onnx format and then inference with ORT. The code to create the model is from the [PyTorch Fundamentals learning path on Microsoft Learn](https://aka.ms/learnpytorch).
+In this example we will go over how to export a PyTorch CV model into ONNX format and then inference with ORT. The code to create the model is from the [PyTorch Fundamentals learning path on Microsoft Learn](https://aka.ms/learnpytorch).
 
-- Export model
+- Export the model using `torch.onnx.export`
 
 ```python
 torch.onnx.export(model,                                # model being run
@@ -57,13 +57,13 @@ torch.onnx.export(model,                                # model being run
                   input_names = ['input'],              # the model's input names
                   output_names = ['output'])            # the model's output names
 ```
-- Load model
+- Load the onnx model with `onnx.load`
 ```python
 import onnx
 onnx_model = onnx.load("fashion_mnist_model.onnx")
 onnx.checker.check_model(onnx_model)
 ```
-- Create inference session
+- Create inference session using `ort.InferenceSession`
 
 ```python
 import onnxruntime as ort
@@ -71,19 +71,17 @@ import numpy as np
 x, y = test_data[0][0], test_data[0][1]
 ort_sess = ort.InferenceSession('fashion_mnist_model.onnx')
 outputs = ort_sess.run(None, {'input': x.numpy()})
-```
-- Print result
 
-```python
+# Print Result 
 predicted, actual = classes[outputs[0][0].argmax(0)], classes[y]
 print(f'Predicted: "{predicted}", Actual: "{actual}"')
 ```
 
 ### PyTorch NLP
 {: .no_toc }
-In this example we will go over how to export the model into onnx format and then inference with ORT. The code to create the AG News model is from [this PyTorch tutorial](https://pytorch.org/tutorials/beginner/text_sentiment_ngrams_tutorial.html).
+In this example we will go over how to export a PyTorch NLP model into ONNX format and then inference with ORT. The code to create the AG News model is from [this PyTorch tutorial](https://pytorch.org/tutorials/beginner/text_sentiment_ngrams_tutorial.html).
 
-- Process text
+- Process text and create the sample data input and offsets for export.
 ```python
 import torch
 text = "Text from the news article"
@@ -104,30 +102,28 @@ torch.onnx.export(model,                     # model being run
                   dynamic_axes={'input' : {0 : 'batch_size'},    # variable length axes
                                 'output' : {0 : 'batch_size'}})
 ```
-- Load Model
+- Load the model using `onnx.load`
 ```python
 import onnx
 onnx_model = onnx.load("ag_news_model.onnx")
 onnx.checker.check_model(onnx_model)
 ```
 
-- Create inference session
+- Create inference session with `ort.infernnce`
 ```python
 import onnxruntime as ort
 import numpy as np
 ort_sess = ort.InferenceSession('ag_news_model.onnx')
 outputs = ort_sess.run(None, {'input': text.numpy(),
                               'offsets':  torch.tensor([0]).numpy()})
-```
-- Print result
-```python
+# Print Result
 result = outputs[0].argmax(axis=1)+1
 print("This is a %s news" %ag_news_label[result[0]])
 ```
 
 ### TensorFlow CV
 {: .no_toc }
-[Full code for this example](https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/keras-resnet50.ipynb)
+In this example we will go over how to export a TensorFlow CV model into ONNX format and then inference with ORT. The model used is from this [GitHub Notebook for Keras resnet50](https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/keras-resnet50.ipynb).
 
 - Get the pretrained model
 
@@ -143,7 +139,7 @@ preds = model.predict(x)
 print('Keras Predicted:', decode_predictions(preds, top=3)[0])
 model.save(os.path.join("/tmp", model.name))
 ``` 
-- Convert
+- Convert the model to onnx and export
 
 ```python
 import tf2onnx
@@ -155,7 +151,7 @@ output_path = model.name + ".onnx"
 model_proto, _ = tf2onnx.convert.from_keras(model, input_signature=spec, opset=13, output_path=output_path)
 output_names = [n.name for n in model_proto.graph.output]
 ```
-- Run
+- Create inference session with `rt.infernnce`
 
 ```python
 providers = ['CPUExecutionProvider']
@@ -167,7 +163,7 @@ print('ONNX Predicted:', decode_predictions(onnx_pred[0], top=3)[0])
 
 ### SciKit Learn CV
 {: .no_toc }
-We’ll use the famous iris datasets.
+In this example we will go over how to export a SciKit Learn CV model into ONNX format and then inference with ORT. We’ll use the famous iris datasets.
 
 ```python
 from sklearn.datasets import load_iris
@@ -185,7 +181,6 @@ LogisticRegression()
 ```
 
 - Convert or export the model into ONNX format
-ONNX is a format to describe the machine learned model. It defines a set of commonly used operators to compose models. There are tools to convert other model formats into ONNX. Here we will use ONNXMLTools.
 
 ```python
 
@@ -235,6 +230,7 @@ print(pred_onx)
 ```
 
 ## ORT Training Example
+In this example we will go over how to use ORT for Training a model with PyTorch.
 
 ```
 pip install torch-ort

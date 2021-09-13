@@ -1,5 +1,5 @@
 ---
-title: ONNX Runtime
+title: ONNX Runtime (ORT)
 has_children: false
 nav_order: 0
 ---
