@@ -34,3 +34,10 @@ cp ${BASE_PATH}/${PACKAGE_NAME}-${ORT_VERSION}-javadoc.jar  /home/onnxruntimedev
 cp ${BASE_PATH}/${PACKAGE_NAME}-${ORT_VERSION}-sources.jar  /home/onnxruntimedev/.artifacts
 cp ${BASE_PATH}/${PACKAGE_NAME}-${ORT_VERSION}.aar          /home/onnxruntimedev/.artifacts
 cp ${BASE_PATH}/${PACKAGE_NAME}-${ORT_VERSION}.pom          /home/onnxruntimedev/.artifacts
+
+# copy executable if necessary
+if [ "$PUBLISH_EXECUTABLES" = true ]; then
+    pushd /build/intermediates/executables/${BUILD_CONFIG}
+    zip -vr /home/onnxruntimedev/.artifacts/${PACKAGE_NAME}-${ORT_VERSION}-exetables.zip .
+    popd
+fi
