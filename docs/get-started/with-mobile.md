@@ -7,8 +7,6 @@ nav_order: 7
 # Get Started with ORT for Mobile
 {: .no_toc }
 
-# Executing an ORT format model
-
 The API for executing ORT format models is the same as for ONNX models. 
 
 See the [ONNX Runtime API documentation](../api) for details on individual API usage.
