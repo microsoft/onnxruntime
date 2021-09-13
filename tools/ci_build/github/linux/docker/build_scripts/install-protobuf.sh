@@ -25,11 +25,11 @@ rm -rf ${PROTOBUF_ROOT} ${PROTOBUF_ROOT}.tar.gz
 # Strip what we can
 strip_ /manylinux-rootfs
 
-# debugging
-ls -R /manylinux-rootfs/
-
 # Install
 cp -rlf /manylinux-rootfs/* /
+
+# debugging
+ls -R /usr
 
 # Remove temporary rootfs
 rm -rf /manylinux-rootfs
