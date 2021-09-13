@@ -69,6 +69,7 @@ Please refer to [quantize.py](https://github.com/microsoft/onnxruntime/blob/mast
 {: .no_toc }
 
 - Dynamic quantization
+
 ```python
 import onnx
 from onnxruntime.quantization import quantize_dynamic, QuantType
@@ -79,6 +80,7 @@ quantized_model = quantize_dynamic(model_fp32, model_quant, weight_type=QuantTyp
 ```
 
 - QAT quantization
+
 ```python
 import onnx
 from onnxruntime.quantization import quantize_qat, QuantType
