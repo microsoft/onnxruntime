@@ -96,7 +96,6 @@ ApplicableMatrixReduction get_applicable_matrix_reduction(
     return ApplicableMatrixReduction::None;
   }
 
-
   // Remove all dims with value 1. This can help to optimize case like:
   // dims=[2,3,1,4,1,5] and axes=[0,2,4], which is same as dims=[2,3,4,5] and axes=[0].
   std::vector<int64_t> new_dims;
@@ -136,8 +135,8 @@ ApplicableMatrixReduction get_applicable_matrix_reduction(
     return ApplicableMatrixReduction::None;
   }
 
-  const auto& min_axis = min_and_max_axes.value().first;
-  const auto& max_axis = min_and_max_axes.value().second;
+  const auto& min_axis = min_and_max_axes->first;
+  const auto& max_axis = min_and_max_axes->second;
 
   // axes from beginning means row reduction, axes to end means column reduction
   // for axes from beginning to end, either works and we do row reduction

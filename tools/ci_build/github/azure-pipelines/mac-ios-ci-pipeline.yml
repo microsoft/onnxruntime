@@ -12,7 +12,7 @@ jobs:
           --ios \
           --ios_sysroot iphonesimulator  \
           --osx_arch x86_64 \
-          --apple_deploy_target 12.1 \
+          --apple_deploy_target 11.0 \
           --use_xcode \
           --config RelWithDebInfo \
           --build_apple_framework \
@@ -25,7 +25,7 @@ jobs:
           --ios \
           --ios_sysroot iphonesimulator  \
           --osx_arch x86_64 \
-          --apple_deploy_target 12.1 \
+          --apple_deploy_target 11.0 \
           --use_xcode \
           --config RelWithDebInfo \
           --build_apple_framework \
