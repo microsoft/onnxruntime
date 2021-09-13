@@ -15,7 +15,7 @@ RandomSeedType GetTestRandomSeed() {
       ParseEnvironmentVariable<RandomSeedType>(test_random_seed_env_vars::kValue);
   if (fixed_random_seed.has_value()) {
     // use fixed value
-    return fixed_random_seed.value();
+    return *fixed_random_seed;
   }
 
   auto generate_from_time = []() {
