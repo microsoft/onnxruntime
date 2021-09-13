@@ -23,10 +23,10 @@ popd
 rm -rf ${PROTOBUF_ROOT} ${PROTOBUF_ROOT}.tar.gz
 
 # Strip what we can
-strip_ /manylinux-rootfs
+# strip_ /manylinux-rootfs
 
 # Install
-cp -rlf /manylinux-rootfs/* /
+# cp -rlf /manylinux-rootfs/* /
 
 # Remove temporary rootfs
 rm -rf /manylinux-rootfs
