@@ -28,14 +28,8 @@ strip_ /manylinux-rootfs
 # Install
 cp -rlf /manylinux-rootfs/* /
 
-# debugging
-ls -R /usr/local
-
 # Remove temporary rootfs
 rm -rf /manylinux-rootfs
 
 hash -r
-which protoc
-ldd /usr/local/bin/protoc
-echo $LD_LIBRARY_PATH
 protoc --version
