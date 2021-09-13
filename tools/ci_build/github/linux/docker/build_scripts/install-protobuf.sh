@@ -36,5 +36,6 @@ rm -rf /manylinux-rootfs
 
 hash -r
 which protoc
-ldd protoc
+ldd /usr/local/bin/protoc
+echo $LD_LIBRARY_PATH
 protoc --version
