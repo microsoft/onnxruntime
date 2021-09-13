@@ -324,8 +324,8 @@ class PlannerImpl {
 
     const optional<std::pair<int, int>>& variadic_alias_offsets = ci.kernel_def->VariadicAlias();
     if (variadic_alias_offsets.has_value()) {
-      int input_offset = variadic_alias_offsets.value().first;
-      int output_offset = variadic_alias_offsets.value().second;
+      int input_offset = variadic_alias_offsets->first;
+      int output_offset = variadic_alias_offsets->second;
       // we _must_ reuse this input to satisfy aliasing requirement: (e.g., for AllReduce)
       int alias_input_index = output_arg_num - output_offset + input_offset;
       if (alias_input_index >= 0 && static_cast<size_t>(alias_input_index) < input_args.size()) {
