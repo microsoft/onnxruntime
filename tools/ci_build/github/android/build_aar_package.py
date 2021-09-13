@@ -104,7 +104,7 @@ def _build_aar(args):
         if args.include_ops_by_config is not None:
             abi_build_command += ['--include_ops_by_config=' + args.include_ops_by_config]
 
-        # subprocess.run(abi_build_command, env=temp_env, shell=False, check=True, cwd=REPO_DIR)
+        subprocess.run(abi_build_command, env=temp_env, shell=False, check=True, cwd=REPO_DIR)
 
         # create symbolic links for libonnxruntime.so and libonnxruntime4j_jni.so
         # to jnilibs/[abi] for later compiling the aar package
