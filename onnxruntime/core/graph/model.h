@@ -50,7 +50,7 @@ class Model {
                  const PathString& model_path,
                  const IOnnxRuntimeOpSchemaRegistryList& local_registries,
                  const std::unordered_map<std::string, int>& domain_to_version,
-                 const std::vector<ONNX_NAMESPACE::FunctionProto>& model_specific_functions,
+                 const std::vector<ONNX_NAMESPACE::FunctionProto>& model_local_functions,
                  const logging::Logger& logger);
 
   // NOTE: after calling this constructor, <*this> model will
