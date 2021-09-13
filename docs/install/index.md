@@ -4,7 +4,7 @@ has_children: false
 nav_order: 1
 ---
 
-# Install ONNX Runtime
+# Install ONNX Runtime (ORT)
 {: .no_toc }
 
 See the [installation matrix](https://onnxruntime.ai) for recommended instructions for desired combinations of target operating system, hardware, accelerator, and language. 
