@@ -10,7 +10,7 @@
 # pvalue < 0.05 means two experiments have significant difference on top 1 match rate.
 # User could use this script to select the best mixed precision model according to these metrics.
 
-from convert_to_onnx import main
+from convert_to_onnx import main, get_latency_name
 import os
 import argparse
 import logging
@@ -40,11 +40,7 @@ def parse_arguments(argv=None):
                         default='gpt2_parity_results.csv',
                         help='path of csv file to save the result')
 
-    parser.add_argument('--runs',
-                        required=False,
-                        type=int,
-                        default=20,
-                        help="number of repeated runs")
+    parser.add_argument('--runs', required=False, type=int, default=20, help="number of repeated runs")
 
     parser.add_argument('--use_gpu', required=False, action='store_true', help="use GPU for inference")
     parser.set_defaults(use_gpu=False)
@@ -57,6 +53,12 @@ def parse_arguments(argv=None):
 
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
+
+    parser.add_argument('--skip_test',
+                        required=False,
+                        action='store_true',
+                        help="do not run test, and only rank experiments based on existing csv file")
+    parser.set_defaults(skip_test=False)
 
     args = parser.parse_args(argv)
 
@@ -98,9 +100,56 @@ def load_results_from_csv(csv_path):
     return rows
 
 
+def score(row):
+    """Scoring function based on 3 metrics. The larger score is better."""
+    latency_in_ms = float(row[get_latency_name()])
+    top1_match_rate = float(row["top1_match_rate"])
+    onnx_size_in_MB = float(row["onnx_size_in_MB"])
+    # A simple scoring function: cost of 0.1ms latency ~ 0.1% match rate ~ 100MB size
+    return (top1_match_rate * 1000 - latency_in_ms * 10 - onnx_size_in_MB / 100)
+
+
+def print_wins(wins, rows, test_name):
+    print()
+    print("*" * 10)
+
+    row_map = {}
+    for row in rows:
+        row_map[row["run_id"]] = row
+
+    sorted_wins = dict(sorted(wins.items(), key=lambda item: (item[1], score(row_map[item[0]])), reverse=True))
+    logger.debug(f"{test_name} Wins:{sorted_wins}")
+    logger.info(f"Based on {test_name} wins and a scoring function, the ranking:")
+
+    rank = 0
+    previous_value = -1
+    count = 0
+    for key, value in sorted_wins.items():
+        if value != previous_value:
+            rank = count
+        previous_value = value
+        count += 1
+
+        for row in rows:
+            if row["run_id"] == key:
+                logger.info(
+                    "{:02d}: WINs={:02d}, run_id={}, latency={:5.2f} top1_match={:.4f} size={}_MB experiment={}{}".
+                    format(rank, value, key, float(row[get_latency_name()]), float(row["top1_match_rate"]),
+                           row["onnx_size_in_MB"], row["experiment"],
+                           " (Half2 Disabled)" if row["ORT_CUDA_GEMM_OPTIONS"] == '4' else ""))
+                break
+
+
 def run_significance_test(rows, output_csv_path):
     """Run U test and T test.
     """
+    utest_wins = {}
+    ttest_wins = {}
+    for row in rows:
+        run_id = row["run_id"]
+        utest_wins[run_id] = 0
+        ttest_wins[run_id] = 0
+
     with open(output_csv_path, 'w', newline='') as csvfile:
         column_names = [
             'model_name', 'run_id_1', 'experiment_1', 'top1_match_rate_1', 'run_id_2', 'experiment_2',
@@ -114,6 +163,7 @@ def run_significance_test(rows, output_csv_path):
         num_results = len(rows)
         for i in range(num_results - 1):
             result1 = rows[i]
+
             for j in range(i + 1, num_results, 1):
                 result2 = rows[j]
 
@@ -142,6 +192,18 @@ def run_significance_test(rows, output_csv_path):
                     utest_pvalue = None
                 ttest_statistic, ttest_pvalue = scipy.stats.ttest_ind(a, b, axis=None, equal_var=True)
 
+                if utest_pvalue < 0.05:
+                    if float(result1["top1_match_rate"]) > float(result2["top1_match_rate"]):
+                        utest_wins[result1["run_id"]] += 1
+                    else:
+                        utest_wins[result2["run_id"]] += 1
+
+                if ttest_pvalue < 0.05:
+                    if float(result1["top1_match_rate"]) > float(result2["top1_match_rate"]):
+                        ttest_wins[result1["run_id"]] += 1
+                    else:
+                        ttest_wins[result2["run_id"]] += 1
+
                 row = {
                     'model_name': result1["model_name"],
                     'run_id_1': result1["run_id"],
@@ -156,9 +218,10 @@ def run_significance_test(rows, output_csv_path):
                     'T_pvalue': ttest_pvalue
                 }
 
-                print(row)
-
                 writer.writerow(row)
+    logger.info(f"U-Test and T-Test results are output to {output_csv_path}")
+    print_wins(utest_wins, rows, "U-Test")
+    print_wins(ttest_wins, rows, "T-Test")
 
 
 def get_last_matmul_node_name(raw_onnx_model: str):
@@ -192,7 +255,8 @@ def get_mixed_precision_parameters(args, last_matmul_node_name, op_block_list):
 def run_candidate(task: ParityTask, args, last_matmul_node_name, op_block_list=["FastGelu", "LayerNormalization"]):
     model = args.model_name_or_path
     parameters = get_mixed_precision_parameters(args, last_matmul_node_name, op_block_list)
-    name = f"Mixed precision baseline plus {op_block_list} in FP32" if op_block_list else "Mixed precision baseline"
+    name = "Mixed precision baseline + {} in FP32".format(','.join(
+        sorted(op_block_list))) if op_block_list else "Mixed precision baseline"
     task.run(parameters, name)
 
 
@@ -310,10 +374,11 @@ if __name__ == '__main__':
     setup_logger(args.verbose)
     task = ParityTask(args.runs, args.csv)
 
-    if (os.getenv('ORT_CUDA_GEMM_OPTIONS') == "4" and args.use_gpu):
-        run_parity_disable_half2(task, args)
-    else:
-        run_parity(task, args)
+    if not args.skip_test:
+        if (os.getenv('ORT_CUDA_GEMM_OPTIONS') == "4" and args.use_gpu):
+            run_parity_disable_half2(task, args)
+        else:
+            run_parity(task, args)
 
     try:
         rows = load_results_from_csv(task.csv_path)

@@ -195,6 +195,10 @@ def get_onnx_model_size(onnx_path: str, use_external_data_format: bool):
         return sum([f.stat().st_size for f in Path(onnx_path).parent.rglob('*')])
 
 
+def get_latency_name():
+    return "average_latency(batch_size=8,sequence_length=1,past_sequence_length=32)"
+
+
 def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_results.csv"):
     result = {}
     from transformers import __version__ as transformers_version
@@ -364,7 +368,7 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
         # Write results to file
         import csv
         from onnxruntime import __version__ as ort_version
-        latency_name = "average_latency(batch_size=8,sequence_length=1,past_sequence_length=32)"
+        latency_name = get_latency_name()
         csv_file_existed = os.path.exists(csv_filename)
         with open(csv_filename, mode="a", newline='') as csv_file:
             column_names = [
