@@ -17,7 +17,7 @@ check_var ${PROTOBUF_DOWNLOAD_URL}
 fetch_source ${PROTOBUF_ROOT}.tar.gz ${PROTOBUF_DOWNLOAD_URL}
 check_sha256sum ${PROTOBUF_ROOT}.tar.gz ${PROTOBUF_HASH}
 tar -zxf ${PROTOBUF_ROOT}.tar.gz
-pushd ${PROTOBUF_ROOT}
+pushd protobuf-${PROTOBUF_VERSION}
 DESTDIR=/manylinux-rootfs do_standard_install
 popd
 rm -rf ${PROTOBUF_ROOT} ${PROTOBUF_ROOT}.tar.gz
