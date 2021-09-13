@@ -29,7 +29,7 @@ using System.Numerics.Tensors;
 
 ## Create method for inference
 
-This is an Azure Function example:
+This is an [Azure Function](https://azure.microsoft.com/services/functions/) example that uses ORT with C# for inference on an NLP model created with SciKit Learn.
 
 ```csharp
  public static async Task<IActionResult> Run(
@@ -56,7 +56,7 @@ This is an Azure Function example:
             // Create an InferenceSession from the Model Path.
             var session = new InferenceSession(modelPath);
 
-            // Run session and send input data in to get inference output. The run is returned as an object but it is a list. Call ToList then get the Last item. Then use the AsEnumerable extension method to return the Value result as an Enumerable of NamedOnnxValue.
+            // Run session and send input data in to get inference output. Call ToList then get the Last item. Then use the AsEnumerable extension method to return the Value result as an Enumerable of NamedOnnxValue.
             var output = session.Run(input).ToList().Last().AsEnumerable<NamedOnnxValue>();
 
             // From the Enumerable output create the inferenceResult by getting the First value and using the AsDictionary extension method of the NamedOnnxValue.
