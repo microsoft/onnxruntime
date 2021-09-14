@@ -21,6 +21,7 @@ import onnx
 import csv
 import datetime
 import scipy.stats
+import torch
 
 logger = logging.getLogger('')
 
@@ -40,7 +41,9 @@ def parse_arguments(argv=None):
                         default='gpt2_parity_results.csv',
                         help='path of csv file to save the result')
 
-    parser.add_argument('--runs', required=False, type=int, default=20, help="number of repeated runs")
+    parser.add_argument('--test_cases', required=False, type=int, default=500, help="number of test cases per run")
+
+    parser.add_argument('--runs', required=False, type=int, default=40, help="number of repeated runs")
 
     parser.add_argument('--use_gpu', required=False, action='store_true', help="use GPU for inference")
     parser.set_defaults(use_gpu=False)
@@ -66,9 +69,9 @@ def parse_arguments(argv=None):
 
 
 class ParityTask:
-    def __init__(self, total_runs, csv_path):
+    def __init__(self, test_cases, total_runs, csv_path):
         self.total_runs = total_runs
-        self.test_cases = 1000
+        self.test_cases = test_cases
         self.csv_path = csv_path
         self.results = []
         self.run_id = 0
@@ -133,10 +136,9 @@ def print_wins(wins, rows, test_name):
         for row in rows:
             if row["run_id"] == key:
                 logger.info(
-                    "{:02d}: WINs={:02d}, run_id={}, latency={:5.2f} top1_match={:.4f} size={}_MB experiment={}{}".
-                    format(rank, value, key, float(row[get_latency_name()]), float(row["top1_match_rate"]),
-                           row["onnx_size_in_MB"], row["experiment"],
-                           " (Half2 Disabled)" if row["ORT_CUDA_GEMM_OPTIONS"] == '4' else ""))
+                    "{:02d}: WINs={:02d}, run_id={}, latency={:5.2f} top1_match={:.4f} size={}_MB experiment={}".format(
+                        rank, value, key, float(row[get_latency_name()]), float(row["top1_match_rate"]),
+                        row["onnx_size_in_MB"], row["experiment"]))
                 break
 
 
@@ -253,10 +255,13 @@ def get_mixed_precision_parameters(args, last_matmul_node_name, op_block_list):
 
 
 def run_candidate(task: ParityTask, args, last_matmul_node_name, op_block_list=["FastGelu", "LayerNormalization"]):
-    model = args.model_name_or_path
     parameters = get_mixed_precision_parameters(args, last_matmul_node_name, op_block_list)
-    name = "Mixed precision baseline + {} in FP32".format(','.join(
-        sorted(op_block_list))) if op_block_list else "Mixed precision baseline"
+    op_block_list_str = ','.join(sorted(op_block_list))
+    name_suffix = " (Half2 Disabled)" if os.getenv('ORT_CUDA_GEMM_OPTIONS') == "4" else ""
+    if op_block_list:
+        name = f"Mixed precision baseline + {op_block_list_str} in FP32{name_suffix}"
+    else:
+        name = f"Mixed precision baseline (logits output and last MatMul node {last_matmul_node_name} in FP32){name_suffix}"
     task.run(parameters, name)
 
 
@@ -283,7 +288,7 @@ def get_all_operators():
 def run_tuning_step0(task, fp16_baseline):
     """Step 0 is to check which operator in FP16 causes most loss"""
     fp32_logits = ["--io_block_list", "logits"]
-    task.run(fp16_baseline + fp32_logits, "fp16 except logits")
+    task.run(fp16_baseline + fp32_logits, "FP16 except logits")
 
     fp32_io = ["--keep_io_types"]
     task.run(fp16_baseline + fp32_io, "Graph I/O FP32, Other FP16")
@@ -297,14 +302,14 @@ def run_tuning_step0(task, fp16_baseline):
 
     for op in op_list:
         op_block_list = ["--op_block_list"] + [o for o in op_list if o != op]
-        task.run(fp16_baseline + fp32_io + op_block_list, f"FP32 except {op} in fp16")
+        task.run(fp16_baseline + fp32_io + op_block_list, f"FP32 except {op} in FP16")
 
 
 def run_tuning_step1(task, mixed_precision_baseline):
     """Step 1 is to figure out which operator in FP32 could benefit most"""
     for op in get_all_operators():
         op_block_list = ["--op_block_list", op]
-        task.run(mixed_precision_baseline + op_block_list, f"Mixed precison baseline + {op} in fp32")
+        task.run(mixed_precision_baseline + op_block_list, f"Mixed precision baseline + {op} in FP32")
 
 
 def run_tuning_step2(task, mixed_precision_baseline):
@@ -314,7 +319,7 @@ def run_tuning_step2(task, mixed_precision_baseline):
     for op in get_all_operators():
         if op not in ['Add']:
             op_block_list = ["--op_block_list", 'Add', op]
-            task.run(mixed_precision_baseline + op_block_list, f"Mixed precison baseline + Add, {op} in fp32")
+            task.run(mixed_precision_baseline + op_block_list, f"Mixed precision baseline + Add,{op} in FP32")
 
 
 def run_parity_disable_half2(task: ParityTask, args):
@@ -336,14 +341,14 @@ def run_parity(task: ParityTask, args):
 
     fp32_baseline, fp16_baseline = get_baselines(args)
 
-    task.run(fp32_baseline, "fp32 baseline")
+    task.run(fp32_baseline, "FP32 baseline")
 
     # The following tests for fp16 requires GPU
     if not args.use_gpu:
         logger.info("skip mixed precision since --use_gpu is not specified")
         return
 
-    task.run(fp16_baseline, "fp16 baseline")
+    task.run(fp16_baseline, "FP16 baseline")
 
     last_matmul_node_name = get_last_matmul_node_name(onnx_model_paths["raw"])
 
@@ -372,10 +377,18 @@ def run_parity(task: ParityTask, args):
 if __name__ == '__main__':
     args = parse_arguments()
     setup_logger(args.verbose)
-    task = ParityTask(args.runs, args.csv)
+
+    if args.test_cases < 100 or args.runs < 20 or args.test_cases * args.runs < 10000:
+        logger.warning(
+            "Not enough test cases or runs to get stable results or test significance. Recommend test_cases >= 100, runs >= 20, test_cases * runs >= 10000."
+        )
+
+    task = ParityTask(args.test_cases, args.runs, args.csv)
 
     if not args.skip_test:
         if (os.getenv('ORT_CUDA_GEMM_OPTIONS') == "4" and args.use_gpu):
+            assert torch.cuda.get_device_capability(
+            )[0] >= 7, "half2 kernel is not avaiable in current GPU device. Please set environment variable ORT_CUDA_GEMM_OPTIONS=0 or use supported GPU like V100 or T4"
             run_parity_disable_half2(task, args)
         else:
             run_parity(task, args)
@@ -386,5 +399,6 @@ if __name__ == '__main__':
         logger.exception(f"Failed to load csv {task.csv_path}")
         rows = task.results
 
+    logger.info("Start running significance tests...")
     summary_csv = task.csv_path.replace('.csv', ".stats.csv")
     run_significance_test(rows, summary_csv)
