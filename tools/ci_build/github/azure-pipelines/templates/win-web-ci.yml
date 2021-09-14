@@ -35,6 +35,11 @@ jobs:
     displayName: 'Read commit SHA and checkout'
     condition: eq('${{ parameters.CommitOverride }}', 'true')
   - script: |
+     echo.$(Build.SourceVersion)>$(Pipeline.Workspace)\__commit.txt
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'Write commit SHA to __commit.txt'
+    condition: ne('${{ parameters.CommitOverride }}', 'true')
+  - script: |
      git submodule sync -- cmake\external\onnx
      git submodule update --init -- cmake\external\onnx
     workingDirectory: '$(Build.SourcesDirectory)'

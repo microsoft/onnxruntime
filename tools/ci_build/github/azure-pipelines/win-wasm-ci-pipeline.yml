@@ -25,9 +25,6 @@ stages:
       fetchDepth: 1
       submodules: false
     - script: |
-        echo.$(DoPublish)
-        echo.$(VersionSuffix)
-        echo.$(NpmTag)
         echo.$(Build.SourceVersion)
         echo.$(Build.SourceVersion)>$(Build.ArtifactStagingDirectory)\__commit.txt
     - task: PublishPipelineArtifact@0
@@ -71,8 +68,25 @@ stages:
       CommitOverride: true
       BuildConfig: 'Release'
 
+- stage: Build_web_Release_BrowserStack
+  dependsOn: Build_wasm_Release
+  jobs:
+  - template: templates/web-browserstack-ci.yml
+    parameters:
+      CommitOverride: true
+
+- stage: Build_web_Release_MultiBrowsers
+  dependsOn: Build_wasm_Release
+  jobs:
+  - template: templates/win-web-multi-browsers.yml
+    parameters:
+      CommitOverride: true
+
 - stage: Publish_package
-  dependsOn: Build_web_Release
+  dependsOn:
+  - Build_web_Release
+  - Build_web_Release_BrowserStack
+  - Build_web_Release_MultiBrowsers
   condition:
     and(succeeded(), or(and(eq(variables['Build.Reason'], 'Scheduled'),
                             eq(variables['Build.SourceBranch'], 'refs/heads/master')
