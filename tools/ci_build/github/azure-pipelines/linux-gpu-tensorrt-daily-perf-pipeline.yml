@@ -1,15 +1,9 @@
-  
-parameters:
-  AgentPool: 'Onnxruntime-Linux-GPU-TensorRT-Perf'
-  ArtifactSuffix: ''
-  NugetPackageName : ''
-
 jobs:
 - job: build
   workspace:
     clean: all
   timeoutInMinutes:  120
-  pool: ${{ parameters.AgentPool }}
+  pool: 'Onnxruntime-Linux-GPU-TensorRT-Perf'
   dependsOn:
   - NuGet_Packaging_${{ parameters.ArtifactSuffix }}
   condition: succeeded()
@@ -17,11 +11,7 @@ jobs:
   - name: PoolName
     value: 'Testing on Pool'
   steps:
-   - script: 'echo $(PoolName)'
+    - script: 'echo $(PoolName)'
       displayName: 'sample test'
-    
-#   - template: ../../templates/component-governance-component-detection-steps.yml
-#     parameters :
-#       condition : 'always'
-
-  - template: ../templates/clean-agent-build-directory-step.yml
+      
+    - template: ../templates/clean-agent-build-directory-step.yml
