@@ -21,18 +21,20 @@ stages:
 
 - stage: Build_Debug
   dependsOn: Extract_commit
-  template: templates/win-wasm-ci-pipeline.yml
-  parameters:
-    NpmVersionSuffix: "-dev.${YYYYMMDD}.${I}"
-    CommitOverride: true
-    BuildConfig: 'Debug'
-    CmdParams: ''
+  jobs:
+  - template: templates/win-wasm-ci-pipeline.yml
+    parameters:
+      NpmVersionSuffix: "-dev.${YYYYMMDD}.${I}"
+      CommitOverride: true
+      BuildConfig: 'Debug'
+      CmdParams: ''
 
 - stage: Build_Release
   dependsOn: Extract_commit
-  template: templates/win-wasm-ci-pipeline.yml
-  parameters:
-    NpmVersionSuffix: "-dev.${YYYYMMDD}.${I}"
-    CommitOverride: true
-    BuildConfig: 'Release'
-    CmdParams: '--skip_tests --disable_wasm_exception_catching --disable_rtti'
+  jobs:
+  - template: templates/win-wasm-ci-pipeline.yml
+    parameters:
+      NpmVersionSuffix: "-dev.${YYYYMMDD}.${I}"
+      CommitOverride: true
+      BuildConfig: 'Release'
+      CmdParams: '--skip_tests --disable_wasm_exception_catching --disable_rtti'
