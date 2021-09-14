@@ -136,7 +136,7 @@ jobs:
      git checkout --force %__commit__%
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'Read commit SHA override and checkout'
-    condition: ne('${{ parameters.CommitOverride }}', ''))
+    condition: ne('${{ parameters.CommitOverride }}', '')
   - script: |
      git submodule sync -- cmake\external\onnx
      git submodule update --init -- cmake\external\onnx
@@ -172,7 +172,7 @@ jobs:
      python .\tools\python\update_version.py
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'update package version'
-    condition: ne('${{ parameters.NpmVersionSuffix }}', ''))
+    condition: ne('${{ parameters.NpmVersionSuffix }}', '')
   - script: |
      npm ci
     workingDirectory: '$(Build.SourcesDirectory)\js'
