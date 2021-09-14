@@ -34,7 +34,7 @@ using namespace ONNX_NAMESPACE;
 template <typename T>
 FastGelu<T>::FastGelu(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
   const TransformerOptions* options = TransformerOptions::GetInstance();
-  use_half2_ = options->EnableHalf2();
+  use_half2_ = !options->DisableHalf2();
 }
 
 template <typename T>
