@@ -11,4 +11,4 @@ jobs:
     - script: 'echo $(PoolName)'
       displayName: 'sample test'
       
-    - template: ../templates/clean-agent-build-directory-step.yml
+    - template: templates/clean-agent-build-directory-step.yml
