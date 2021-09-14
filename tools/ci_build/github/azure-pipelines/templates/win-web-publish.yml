@@ -23,9 +23,19 @@ jobs:
     inputs:
       versionSpec: '14.x'
   - script: |
-     npm publish ... TBD
+     dir /b onnxruntime-common* > ort-common_filename.txt
+     set /p __ort_common_pkg_filename__=<ort-common_filename.txt
+     echo.Publishing package %__ort_common_pkg_filename__% ...
+     npm publish %__ort_common_pkg_filename__% --tag ${{ parameters.NpmTag }} --dry-run
     workingDirectory: '$(Pipeline.Workspace)\NPM_packages'
-    displayName: 'npm publish ... TBD'
+    displayName: 'publish onnxruntime-common ...'
+  - script: |
+     dir /b onnxruntime-web* > ort-web_filename.txt
+     set /p __ort_web_pkg_filename__=<ort-web_filename.txt
+     echo.Publishing package %__ort_web_pkg_filename__% ...
+     npm publish %__ort_web_pkg_filename__% --tag ${{ parameters.NpmTag }} --dry-run
+    workingDirectory: '$(Pipeline.Workspace)\NPM_packages'
+    displayName: 'publish onnxruntime-web ...'
   - template: component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
