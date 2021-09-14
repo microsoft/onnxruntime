@@ -37,6 +37,7 @@ The C API details are [here](../get-started/with-c.html.md).
 When using the Python wheel from the ONNX Runtime build with MIGraphX execution provider, it will be automatically
 prioritized over the default GPU or CPU execution providers. There is no need to separately register the execution
 provider. Python APIs details are [here](/python/api_summary).
+*Note that next release (ORT 1.10) will require explicitly setting the providers parameter (as opposed to the current behavior of providers getting set/registered by default based on the build flags) when instantiating InferenceSession.*
 
 You can check [here](https://github.com/scxiao/ort_test/tree/master/python/run_onnx) for a python script to run an
 model on either the CPU or MIGraphX Execution Provider.

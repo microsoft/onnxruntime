@@ -46,6 +46,7 @@ If some operators in the model are not supported by TensorRT, ONNX Runtime will 
 
 ### Python
 When using the Python wheel from the ONNX Runtime build with TensorRT execution provider, it will be automatically prioritized over the default GPU or CPU execution providers. There is no need to separately register the execution provider.
+*Note that next release (ORT 1.10) will require explicitly setting the providers parameter (as opposed to the current behavior of providers getting set/registered by default based on the build flags) when instantiating InferenceSession.*
 
 
 ## Configurations
@@ -195,4 +196,3 @@ This example shows how to run the Faster R-CNN model on TensorRT execution provi
     ```
 
 Please see [this Notebook](https://github.com/microsoft/onnxruntime/blob/master/docs/python/inference/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb) for an example of running a model on GPU using ONNX Runtime through Azure Machine Learning Services.
-
