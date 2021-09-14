@@ -37,6 +37,7 @@ cp ${BASE_PATH}/${PACKAGE_NAME}-${ORT_VERSION}.pom          /home/onnxruntimedev
 
 # Copy executables if necessary
 if [ "$PUBLISH_EXECUTABLES" == "1" ]; then
-    tar -czvf /home/onnxruntimedev/.artifacts/${PACKAGE_NAME}-${ORT_VERSION}-exetables.tgz \
-        -C /build/intermediates/executables/${BUILD_CONFIG} .
+    pushd /build/intermediates/executables/${BUILD_CONFIG}
+    tar -czvf /home/onnxruntimedev/.artifacts/${PACKAGE_NAME}-${ORT_VERSION}-executables.tgz *
+    popd
 fi
