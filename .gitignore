@@ -3,3 +3,7 @@ _site
 .jekyll-metadata
 *.out
 .venv
+
+# direnv, posh-direnv
+.envrc
+.psenvrc
