@@ -262,6 +262,34 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="coreml_flags">CoreML specific flags</param>
+        public void AppendExecutionProvider_CoreML(COREMLFlags coreml_flags = COREMLFlags.COREML_FLAG_USE_NONE)
+             => throw new NotSupportedException($"The {nameof(AppendExecutionProvider_CoreML)} method is not supported in this build");
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="coreml_flags">CoreML specific flag mask</param>
+        public void AppendExecutionProvider_CoreML(uint coreml_flags = 0)
+            => throw new NotSupportedException($"The {nameof(AppendExecutionProvider_CoreML)} method is not supported in this build");
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="nnapi_flags">nnapi specific flags</param>
+        public void AppendExecutionProvider_Nnapi(NNAPIFlags nnapi_flags = NNAPIFlags.NNAPI_FLAG_USE_NONE)
+            => throw new NotSupportedException($"The {nameof(AppendExecutionProvider_Nnapi)} method is not supported in this build");
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="nnapi_flags">nnapi specific flag mask</param>
+        public void AppendExecutionProvider_Nnapi(uint nnapi_flags = 0)
+            => throw new NotSupportedException($"The {nameof(AppendExecutionProvider_Nnapi)} method is not supported in this build");
+
         #endregion
 
         #region Private Methods
