@@ -36,7 +36,7 @@ jobs:
       versionSpec: '14.x'
   - task: DownloadPipelineArtifact@2
     inputs:
-      patterns: '$Release_*/**/*'
+      patterns: 'Release_*/**/*'
       path: $(Pipeline.Workspace)\artifacts
     displayName: 'Download WebAssembly artifacts'
   - task: CopyFiles@2
