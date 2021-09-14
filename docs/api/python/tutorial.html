@@ -104,11 +104,13 @@ to convert other model formats into ONNX. Here we will use
 <h2>Step 3: Load and run the model using ONNX Runtime<a class="headerlink" href="#step-3-load-and-run-the-model-using-onnx-runtime" title="Permalink to this headline">¶</a></h2>
 <p>We will use <em>ONNX Runtime</em> to compute the predictions
 for this machine learning model.</p>
-<p>Note: The next release (ORT 1.10) will require explicitly setting 
+<p>Note: The next release (ORT 1.10) will require explicitly setting
 the providers parameter if you want to use execution providers other
-than the default CPU provider (as opposed to the current behavior of 
-providers getting set/registered by default based on the build flags) when 
-instantiating InferenceSession. Following code assumes NVIDIA GPU is available.</p>
+than the default CPU provider (as opposed to the current behavior of
+providers getting set/registered by default based on the build flags) when
+instantiating InferenceSession. Following code assumes NVIDIA GPU is available,
+you can specify other execution providers or don't include providers parameter
+to use default CPU provider.</p>
 <p>&lt;&lt;&lt;</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">numpy</span>
 <span class="kn">import</span> <span class="nn">onnxruntime</span> <span class="k">as</span> <span class="nn">rt</span>
