@@ -113,7 +113,7 @@ jobs:
       searchFolder: '$(Build.BinariesDirectory)'
       testRunTitle: 'Unit Test Run'
     condition: and(succeededOrFailed(), eq('${{ parameters.BuildConfig }}', 'Debug'))
-  - template: templates/component-governance-component-detection-steps.yml
+  - template: component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
@@ -256,7 +256,7 @@ jobs:
       targetPath: '$(Build.ArtifactStagingDirectory)'
     displayName: 'Publish Pipeline Artifact'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
-  - template: templates/component-governance-component-detection-steps.yml
+  - template: component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
