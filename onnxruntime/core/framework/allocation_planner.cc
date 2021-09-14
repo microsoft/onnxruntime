@@ -338,7 +338,6 @@ class PlannerImpl {
       }
     }
 
-    /*
     const optional<std::pair<int, int>>& sequence_tensor_to_tensor_alias_map = ci.kernel_def->SequenceTensorToTensorAlias();
     if (sequence_tensor_to_tensor_alias_map.has_value()) {
       if (sequence_tensor_to_tensor_alias_map.value().second <= output_arg_num) {
@@ -353,7 +352,6 @@ class PlannerImpl {
         }
       }
     }
-    */
 
     const std::vector<std::pair<int, int>>& inplace_map = ci.kernel_def->MayInplace();
     for (auto pair : inplace_map) {

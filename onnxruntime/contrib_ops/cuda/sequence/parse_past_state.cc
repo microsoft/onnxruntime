@@ -58,7 +58,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .OutputMemoryType(OrtMemTypeCPUInput, 0)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("T1", std::vector<MLDataType>{DataTypeImpl::GetTensorType<bool>()})
-        .TypeConstraint("S", DataTypeImpl::AllFixedSizeSequenceTensorTypes()),
+        .TypeConstraint("S", DataTypeImpl::AllFixedSizeSequenceTensorTypes())
         .SequenceTensorToTensorAlias(0, 1),
     ParsePastState);
 
