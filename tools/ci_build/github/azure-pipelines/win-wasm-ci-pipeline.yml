@@ -40,7 +40,7 @@ stages:
 - stage: Build_wasm_Release
   dependsOn: Extract_commit
   jobs:
-  - template: templates/win-wasm-ci-pipeline.yml
+  - template: templates/win-wasm-ci.yml
     parameters:
       CommitOverride: true
       BuildConfig: 'Release'
