@@ -24,17 +24,112 @@ parameters:
   default: ''
 
 jobs:
-- job: build_WASM
+# - job: build_WASM
+#   pool: 'Win-CPU-2019'
+
+#   variables:
+#     EnvSetupScript: setup_env.bat
+#     buildArch: x64
+#   timeoutInMinutes: 120
+#   workspace:
+#     clean: all
+#   steps:
+#   - checkout: self
+#   - task: DownloadPipelineArtifact@2
+#     inputs:
+#       artifact: '__commit'
+#       path: $(Pipeline.Workspace)
+#     displayName: 'Get commit SHA'
+#     condition: eq('${{ parameters.CommitOverride }}', 'true')
+#   - script: |
+#      set /p __commit__=<$(Pipeline.Workspace)\__commit.txt
+#      git fetch origin +%__commit__%:refs/remotes/origin/%__commit__%
+#      git checkout --force %__commit__%
+#     workingDirectory: '$(Build.SourcesDirectory)'
+#     displayName: 'Read commit SHA and checkout'
+#     condition: eq('${{ parameters.CommitOverride }}', 'true')
+#   - script: |
+#      git submodule sync --recursive
+#      git submodule update --init --recursive
+#     workingDirectory: '$(Build.SourcesDirectory)'
+#     displayName: 'Checkout submodules'
+#   - task: UsePythonVersion@0
+#     inputs:
+#       versionSpec: '3.7'
+#       addToPath: true
+#       architecture: $(buildArch)
+#   - task: NodeTool@0
+#     inputs:
+#       versionSpec: '14.x'
+#   - task: BatchScript@1
+#     displayName: 'setup env'
+#     inputs:
+#       filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+#       modifyEnvironment: true
+#       workingFolder: '$(Build.BinariesDirectory)'
+#   - script: |
+#      python -m pip install -q setuptools wheel numpy ninja
+#     workingDirectory: '$(Build.BinariesDirectory)'
+#     displayName: 'Install python modules'
+#   - task: PythonScript@0
+#     displayName: 'Build and test'
+#     inputs:
+#       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+#       arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory)\wasm --skip_submodule_sync --build_wasm --emsdk_version releases-upstream-823d37b15d1ab61bc9ac0665ceef6951d3703842-64bit --cmake_generator "Visual Studio 16 2019" ${{ parameters.CmdParams }}'
+#       workingDirectory: '$(Build.BinariesDirectory)'
+#   - task: PythonScript@0
+#     displayName: 'Build and test (threads)'
+#     inputs:
+#       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+#       arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory)\wasm_threads --skip_submodule_sync --build_wasm --emsdk_version releases-upstream-823d37b15d1ab61bc9ac0665ceef6951d3703842-64bit --path_to_protoc_exe $(Build.BinariesDirectory)\wasm\host_protoc\Release\protoc.exe --cmake_generator "Visual Studio 16 2019" --enable_wasm_threads ${{ parameters.CmdParams }}'
+#       workingDirectory: '$(Build.BinariesDirectory)'
+#   - task: PythonScript@0
+#     displayName: 'Build and test (simd + threads)'
+#     inputs:
+#       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+#       arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory)\wasm_simd_threads --skip_submodule_sync --build_wasm --emsdk_version releases-upstream-823d37b15d1ab61bc9ac0665ceef6951d3703842-64bit --path_to_protoc_exe $(Build.BinariesDirectory)\wasm\host_protoc\Release\protoc.exe --cmake_generator "Visual Studio 16 2019" --enable_wasm_simd --enable_wasm_threads ${{ parameters.CmdParams }}'
+#       workingDirectory: '$(Build.BinariesDirectory)'
+#   - task: PythonScript@0
+#     displayName: 'Build and test (simd)'
+#     inputs:
+#       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+#       arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory)\wasm_simd --skip_submodule_sync --build_wasm --emsdk_version releases-upstream-823d37b15d1ab61bc9ac0665ceef6951d3703842-64bit --path_to_protoc_exe $(Build.BinariesDirectory)\wasm\host_protoc\Release\protoc.exe --cmake_generator "Visual Studio 16 2019" --enable_wasm_simd ${{ parameters.CmdParams }}'
+#       workingDirectory: '$(Build.BinariesDirectory)'
+#   - script: |
+#       copy $(Build.BinariesDirectory)\wasm\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
+#       copy $(Build.BinariesDirectory)\wasm_threads\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
+#       copy $(Build.BinariesDirectory)\wasm_simd_threads\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
+#       copy $(Build.BinariesDirectory)\wasm_simd\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
+#     displayName: 'Create Artifacts'
+#   - task: PublishPipelineArtifact@0
+#     displayName: 'Publish Pipeline Artifact'
+#     inputs:
+#       artifactName: '${{ parameters.BuildConfig }}_wasm'
+#       targetPath: '$(Build.ArtifactStagingDirectory)'
+#   - task: PublishTestResults@2
+#     displayName: 'Publish unit test results'
+#     inputs:
+#       testResultsFiles: '**/*.results.xml'
+#       searchFolder: '$(Build.BinariesDirectory)'
+#       testRunTitle: 'Unit Test Run'
+#     condition: and(succeededOrFailed(), eq('${{ parameters.BuildConfig }}', 'Debug'))
+#   - template: component-governance-component-detection-steps.yml
+#     parameters :
+#       condition : 'succeeded'
+#   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+#     displayName: 'Clean Agent Directories'
+#     condition: always()
+
+- job: build_onnxruntime_web
+  dependsOn: build_WASM
   pool: 'Win-CPU-2019'
 
-  variables:
-    EnvSetupScript: setup_env.bat
-    buildArch: x64
-  timeoutInMinutes: 120
+  timeoutInMinutes: 30
   workspace:
     clean: all
   steps:
   - checkout: self
+    submodules: false
   - task: DownloadPipelineArtifact@2
     inputs:
       artifact: '__commit'
@@ -49,95 +144,6 @@ jobs:
     displayName: 'Read commit SHA and checkout'
     condition: eq('${{ parameters.CommitOverride }}', 'true')
   - script: |
-     git submodule sync --recursive
-     git submodule update --init --recursive
-    workingDirectory: '$(Build.SourcesDirectory)'
-    displayName: 'Checkout submodules'
-  - task: UsePythonVersion@0
-    inputs:
-      versionSpec: '3.7'
-      addToPath: true
-      architecture: $(buildArch)
-  - task: NodeTool@0
-    inputs:
-      versionSpec: '14.x'
-  - task: BatchScript@1
-    displayName: 'setup env'
-    inputs:
-      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
-      modifyEnvironment: true
-      workingFolder: '$(Build.BinariesDirectory)'
-  - script: |
-     python -m pip install -q setuptools wheel numpy ninja
-    workingDirectory: '$(Build.BinariesDirectory)'
-    displayName: 'Install python modules'
-  - task: PythonScript@0
-    displayName: 'Build and test'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory)\wasm --skip_submodule_sync --build_wasm --emsdk_version releases-upstream-823d37b15d1ab61bc9ac0665ceef6951d3703842-64bit --cmake_generator "Visual Studio 16 2019" ${{ parameters.CmdParams }}'
-      workingDirectory: '$(Build.BinariesDirectory)'
-  - task: PythonScript@0
-    displayName: 'Build and test (threads)'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory)\wasm_threads --skip_submodule_sync --build_wasm --emsdk_version releases-upstream-823d37b15d1ab61bc9ac0665ceef6951d3703842-64bit --path_to_protoc_exe $(Build.BinariesDirectory)\wasm\host_protoc\Release\protoc.exe --cmake_generator "Visual Studio 16 2019" --enable_wasm_threads ${{ parameters.CmdParams }}'
-      workingDirectory: '$(Build.BinariesDirectory)'
-  - task: PythonScript@0
-    displayName: 'Build and test (simd + threads)'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory)\wasm_simd_threads --skip_submodule_sync --build_wasm --emsdk_version releases-upstream-823d37b15d1ab61bc9ac0665ceef6951d3703842-64bit --path_to_protoc_exe $(Build.BinariesDirectory)\wasm\host_protoc\Release\protoc.exe --cmake_generator "Visual Studio 16 2019" --enable_wasm_simd --enable_wasm_threads ${{ parameters.CmdParams }}'
-      workingDirectory: '$(Build.BinariesDirectory)'
-  - task: PythonScript@0
-    displayName: 'Build and test (simd)'
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory)\wasm_simd --skip_submodule_sync --build_wasm --emsdk_version releases-upstream-823d37b15d1ab61bc9ac0665ceef6951d3703842-64bit --path_to_protoc_exe $(Build.BinariesDirectory)\wasm\host_protoc\Release\protoc.exe --cmake_generator "Visual Studio 16 2019" --enable_wasm_simd ${{ parameters.CmdParams }}'
-      workingDirectory: '$(Build.BinariesDirectory)'
-  - script: |
-      copy $(Build.BinariesDirectory)\wasm\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
-      copy $(Build.BinariesDirectory)\wasm_threads\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
-      copy $(Build.BinariesDirectory)\wasm_simd_threads\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
-      copy $(Build.BinariesDirectory)\wasm_simd\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
-    displayName: 'Create Artifacts'
-  - task: PublishPipelineArtifact@0
-    displayName: 'Publish Pipeline Artifact'
-    inputs:
-      artifactName: '${{ parameters.BuildConfig }}_wasm'
-      targetPath: '$(Build.ArtifactStagingDirectory)'
-  - task: PublishTestResults@2
-    displayName: 'Publish unit test results'
-    inputs:
-      testResultsFiles: '**/*.results.xml'
-      searchFolder: '$(Build.BinariesDirectory)'
-      testRunTitle: 'Unit Test Run'
-    condition: and(succeededOrFailed(), eq('${{ parameters.BuildConfig }}', 'Debug'))
-  - template: component-governance-component-detection-steps.yml
-    parameters :
-      condition : 'succeeded'
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()
-
-- job: build_onnxruntime_web
-  dependsOn: build_WASM
-  pool: 'Win-CPU-2019'
-
-  timeoutInMinutes: 30
-  workspace:
-    clean: all
-  steps:
-  - checkout: self
-    submodules: false
-  - script: |
-     set __commit__=${{ parameters.CommitOverride }}
-     git fetch origin +%__commit__%:refs/remotes/origin/%__commit__%
-     git checkout --force %__commit__%
-    workingDirectory: '$(Build.SourcesDirectory)'
-    displayName: 'Read commit SHA override and checkout'
-    condition: ne('${{ parameters.CommitOverride }}', '')
-  - script: |
      git submodule sync -- cmake\external\onnx
      git submodule update --init -- cmake\external\onnx
     workingDirectory: '$(Build.SourcesDirectory)'
@@ -145,27 +151,27 @@ jobs:
   - task: NodeTool@0
     inputs:
       versionSpec: '14.x'
-  - task: DownloadPipelineArtifact@2
-    inputs:
-      patterns: '${{ parameters.BuildConfig }}_*/**/*'
-      path: $(Pipeline.Workspace)\artifacts
-    displayName: 'Download WebAssembly artifacts'
-  - task: CopyFiles@2
-    inputs:
-      sourceFolder: $(Pipeline.Workspace)\artifacts
-      contents: |
-        **\*.wasm
-      targetFolder: $(Build.SourcesDirectory)\js\web\dist
-      flattenFolders: true
-    displayName: 'Binplace dist files'
-  - task: CopyFiles@2
-    inputs:
-      sourceFolder: $(Pipeline.Workspace)\artifacts
-      contents: |
-        **\*.js
-      targetFolder: $(Build.SourcesDirectory)\js\web\lib\wasm\binding
-      flattenFolders: true
-    displayName: 'Binplace js files'
+  # - task: DownloadPipelineArtifact@2
+  #   inputs:
+  #     patterns: '${{ parameters.BuildConfig }}_*/**/*'
+  #     path: $(Pipeline.Workspace)\artifacts
+  #   displayName: 'Download WebAssembly artifacts'
+  # - task: CopyFiles@2
+  #   inputs:
+  #     sourceFolder: $(Pipeline.Workspace)\artifacts
+  #     contents: |
+  #       **\*.wasm
+  #     targetFolder: $(Build.SourcesDirectory)\js\web\dist
+  #     flattenFolders: true
+  #   displayName: 'Binplace dist files'
+  # - task: CopyFiles@2
+  #   inputs:
+  #     sourceFolder: $(Pipeline.Workspace)\artifacts
+  #     contents: |
+  #       **\*.js
+  #     targetFolder: $(Build.SourcesDirectory)\js\web\lib\wasm\binding
+  #     flattenFolders: true
+  #   displayName: 'Binplace js files'
   - script: |
      set /p __ort_current_version__=<$(Build.SourcesDirectory)\VERSION_NUMBER
      node -p "a=new Date().toISOString();YYYYMMDD=a.slice(0,4)+a.slice(5,7)+a.slice(8,10);I=0;`${process.env.__ort_current_version__}${{ parameters.NpmVersionSuffix }}`" >$(Build.SourcesDirectory)\VERSION_NUMBER
@@ -197,6 +203,10 @@ jobs:
      node -e "a=require('child_process').execSync('git ls-files -m').toString();if(a)throw new Error('Following source files are not formatted: (did you run \"npm run format\"?)\n'+a)"
     workingDirectory: '$(Build.SourcesDirectory)\js'
     displayName: 'Check unformatted files'
+  - script: |
+     npm run pull:wasm
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'PULL (for CI debug)'
   - script: |
      npm run build:doc
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
