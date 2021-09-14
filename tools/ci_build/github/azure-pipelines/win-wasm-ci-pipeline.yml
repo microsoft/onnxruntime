@@ -16,6 +16,9 @@ stages:
       fetchDepth: 1
       submodules: false
     - script: |
+        echo.$(DoPublish)
+        echo.$(VersionSuffix)
+        echo.$(NpmTag)
         echo.$(Build.SourceVersion)
         echo.$(Build.SourceVersion)>$(Build.ArtifactStagingDirectory)\__commit.txt
     - task: PublishPipelineArtifact@0
