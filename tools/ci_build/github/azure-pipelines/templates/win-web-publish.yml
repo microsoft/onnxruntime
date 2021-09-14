@@ -5,6 +5,7 @@ parameters:
 
 jobs:
 - job: publish_onnxruntime_web
+  continueOnError: true
   pool: 'Win-CPU-2019'
 
   timeoutInMinutes: 30

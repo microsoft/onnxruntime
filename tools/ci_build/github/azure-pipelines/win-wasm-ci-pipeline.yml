@@ -70,7 +70,6 @@ stages:
                            )
                        )
        )
-  continueOnError: true
   jobs:
   - template: templates/win-web-publish.yml
     parameters:
