@@ -109,7 +109,7 @@ jobs:
     displayName: 'Copy commit ID to js/web'
   - script: |
      set /p __ort_current_version__=<$(Build.SourcesDirectory)\VERSION_NUMBER
-     node -p "a=new Date().toISOString();YYYYMMDD=a.slice(0,4)+a.slice(5,7)+a.slice(8,10);I=0;`${process.env.__ort_current_version__}${{ parameters.NpmVersionSuffix }}`" >$(Build.SourcesDirectory)\VERSION_NUMBER
+     node -p "a=new Date().toISOString();YYYYMMDD=a.slice(0,4)+a.slice(5,7)+a.slice(8,10);REV=0;`${process.env.__ort_current_version__}${{ parameters.NpmVersionSuffix }}`" >$(Build.SourcesDirectory)\VERSION_NUMBER
      python .\tools\python\update_version.py
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'update package version'

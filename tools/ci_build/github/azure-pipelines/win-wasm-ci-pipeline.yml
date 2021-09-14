@@ -1,7 +1,16 @@
-variables:
-  DoPublish: false
-  VersionSuffix: '-dev.${YYYYMMDD}.${I}'
-  NpmTag: 'dev'
+parameters:
+- name: DoPublish
+  displayName: 'Publish ONNX Runtime Web NPM packages'
+  type: boolean
+  default: false
+- name: VersionSuffix
+  displayName: 'version suffix of the NPM package'
+  type: string
+  default: '-dev.${YYYYMMDD}.${REV}'
+- name: NpmTag
+  displayName: 'npm publish tag'
+  type: string
+  default: 'dev'
 
 stages:
 - stage: Extract_commit
@@ -58,7 +67,7 @@ stages:
   jobs:
   - template: templates/win-web-ci.yml
     parameters:
-      NpmVersionSuffix: '$(VersionSuffix)'
+      NpmVersionSuffix: '${{ parameters.VersionSuffix }}'
       CommitOverride: true
       BuildConfig: 'Release'
 
@@ -69,11 +78,11 @@ stages:
                             eq(variables['Build.SourceBranch'], 'refs/heads/master')
                            ),
                         and(in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'),
-                            eq('$(DoPublish)', true)
+                            eq('${{ parameters.DoPublish }}', true)
                            )
                        )
        )
   jobs:
   - template: templates/win-web-publish.yml
     parameters:
-      NpmTag: '$(NpmTag)'
+      NpmTag: '${{ parameters.NpmTag }}'
