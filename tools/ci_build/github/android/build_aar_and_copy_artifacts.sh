@@ -35,9 +35,8 @@ cp ${BASE_PATH}/${PACKAGE_NAME}-${ORT_VERSION}-sources.jar  /home/onnxruntimedev
 cp ${BASE_PATH}/${PACKAGE_NAME}-${ORT_VERSION}.aar          /home/onnxruntimedev/.artifacts
 cp ${BASE_PATH}/${PACKAGE_NAME}-${ORT_VERSION}.pom          /home/onnxruntimedev/.artifacts
 
-# copy executable if necessary
+# Copy executables if necessary
 if [ "$PUBLISH_EXECUTABLES" == "1" ]; then
-    pushd /build/intermediates/executables/${BUILD_CONFIG}
-    zip -vr /home/onnxruntimedev/.artifacts/${PACKAGE_NAME}-${ORT_VERSION}-exetables.zip .
-    popd
+    tar -czvf /home/onnxruntimedev/.artifacts/${PACKAGE_NAME}-${ORT_VERSION}-exetables.tgz \
+        -C /build/intermediates/executables/${BUILD_CONFIG} .
 fi
