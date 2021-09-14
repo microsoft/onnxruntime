@@ -23,3 +23,5 @@ RUN pip install \
       sklearn \
       tokenizers \
       sentencepiece
+
+RUN pip install torch-ort --no-dependencies
