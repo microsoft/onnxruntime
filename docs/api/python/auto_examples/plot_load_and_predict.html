@@ -53,9 +53,16 @@ retrieve the definition of its inputs and outputs.</p>
 </pre></div>
 </div>
 <p>Let’s load a very simple model.
-The model is available on github <a class="reference external" href="https://github.com/onnx/onnx/tree/master/onnx/backend/test/data/node/test_sigmoid">onnx…test_sigmoid</a>.</p>
+The model is available on github <a class="reference external" href="https://github.com/onnx/onnx/tree/master/onnx/backend/test/data/node/test_sigmoid">onnx…test_sigmoid</a>.
+Note: The next release (ORT 1.10) will require explicitly setting
+the providers parameter if you want to use execution providers other
+than the default CPU provider (as opposed to the current behavior of
+providers getting set/registered by default based on the build flags) when
+instantiating InferenceSession. Following code assumes NVIDIA GPU is available,
+you can specify other execution providers or don't include providers parameter
+to use default CPU provider.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">example1</span> <span class="o">=</span> <span class="n">get_example</span><span class="p">(</span><span class="s2">&quot;sigmoid.onnx&quot;</span><span class="p">)</span>
-<span class="n">sess</span> <span class="o">=</span> <span class="n">rt</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="n">example1</span><span class="p">)</span>
+<span class="n">sess</span> <span class="o">=</span> <span class="n">rt</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="n">example1</span><span class="p">,</span> <span class="n">providers=</span><span class="p">[</span><span class="s2">&quot;CUDAExecutionProvider&quot;</span><span class="p">]</span><span class="p">)</span>
 </pre></div>
 </div>
 <p>Let’s see the input name and shape.</p>
