@@ -77,7 +77,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list):
                     files_list.append('<file src="' + str(child_file) +
                                       '" target="runtimes/android/native"/>')
 
-        if child.name == 'onnxruntime-ios':
+        if child.name == 'onnxruntime-ios-xcframework':
             # the xcframework has a file called 'onnxruntime' for each platform
             # e.g. onnxruntime-ios/onnxruntime.xcframework/ios-arm64/onnxruntime.framework/onnxruntime
             # we want to add the 'onnxruntime.xcframework/.../onnxruntime' component of that path

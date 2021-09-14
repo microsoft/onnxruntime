@@ -396,7 +396,7 @@ jobs:
       artifactName: 'onnxruntime-linux-x64'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
-  - task: DownloadPipelineArtifact@0
+  - task: DownloadPipelineArtifact@2
     displayName: 'Download iOS Pipeline Artifact'
     inputs:
       artifactName: 'onnxruntime-ios-full-xcframework'

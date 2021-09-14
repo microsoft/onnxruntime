@@ -51,10 +51,10 @@ else{
 }
 
 # TEMPORARY handling of the onnxruntime.xcframework to put in a directory so that the existing packaging logic works
-if (Test-Path $nuget_artifacts_dir\onnxruntime.xcframework) {
-  New-Item -Path $nuget_artifacts_dir\onnxruntime-ios-xcframework -ItemType Directory
-  Move-Item $nuget_artifacts_dir\onnxruntime.xcframework $nuget_artifacts_dir\onnxruntime-ios-xcframework
-}
+# if (Test-Path $nuget_artifacts_dir\onnxruntime.xcframework) {
+#   New-Item -Path $nuget_artifacts_dir\onnxruntime-ios-xcframework -ItemType Directory
+#   Move-Item $nuget_artifacts_dir\onnxruntime.xcframework $nuget_artifacts_dir\onnxruntime-ios-xcframework
+# }
 
 
 New-Item -Path $Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo\external\protobuf\cmake\RelWithDebInfo -ItemType directory
