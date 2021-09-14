@@ -43,6 +43,7 @@ jobs:
     steps:
     - script: |-
         echo "Selecting GPU based on HIP_VISIBLE_DEVICES=$HIP_VISIBLE_DEVICES"
+        export HUGGINGFACE_ROOT=/opt/conda/lib/python3.6/site-packages/transformers
       displayName: 'Initialize environment'
     
     - script: |-
@@ -84,7 +85,7 @@ jobs:
         cd ./build/RelWithDebInfo
         export PYTHONPATH=$PWD
         python \
-          /home/ciagent/huggingface-transformers/examples/pytorch/language-modeling/run_mlm.py \
+          /stage/huggingface-transformers/examples/pytorch/language-modeling/run_mlm.py \
           --model_name_or_path bert-large-uncased \
           --dataset_name wikitext \
           --dataset_config_name wikitext-2-raw-v1 \
@@ -108,7 +109,7 @@ jobs:
         cd ./build/RelWithDebInfo
         export PYTHONPATH=$PWD
         python \
-          /home/ciagent/huggingface-transformers/examples/pytorch/language-modeling/run_clm.py \
+          /stage/huggingface-transformers/examples/pytorch/language-modeling/run_clm.py \
           --model_name_or_path gpt2 \
           --dataset_name wikitext \
           --dataset_config_name wikitext-2-raw-v1 \
@@ -133,7 +134,7 @@ jobs:
         cd ./build/RelWithDebInfo
         export PYTHONPATH=$PWD
         python \
-          /home/ciagent/huggingface-transformers/examples/pytorch/translation/run_translation.py \
+          /stage/huggingface-transformers/examples/pytorch/translation/run_translation.py \
           --dataset_name wmt16 \
           --dataset_config ro-en \
           --model_name_or_path facebook/bart-large \
@@ -161,7 +162,7 @@ jobs:
         cd ./build/RelWithDebInfo
         export PYTHONPATH=$PWD
         python \
-          /home/ciagent/huggingface-transformers/examples/pytorch/question-answering/run_qa.py \
+          /stage/huggingface-transformers/examples/pytorch/question-answering/run_qa.py \
           --model_name_or_path roberta-large \
           --dataset_name squad \
           --do_train \
@@ -187,7 +188,7 @@ jobs:
         cd ./build/RelWithDebInfo
         export PYTHONPATH=$PWD
         python \
-          /home/ciagent/huggingface-transformers/examples/pytorch/language-modeling/run_mlm.py \
+          /stage/huggingface-transformers/examples/pytorch/language-modeling/run_mlm.py \
           --model_name_or_path distilbert-base-uncased \
           --dataset_name wikitext \
           --dataset_config_name wikitext-2-raw-v1 \
@@ -211,7 +212,7 @@ jobs:
     #    cd ./build/RelWithDebInfo
     #    export PYTHONPATH=$PWD
     #    python \
-    #      /home/ciagent/huggingface-transformers/examples/pytorch/text-classification/run_glue.py \
+    #      /stage/huggingface-transformers/examples/pytorch/text-classification/run_glue.py \
     #      --model_name_or_path microsoft/deberta-v2-xxlarge \
     #      --task_name MRPC \
     #      --do_train \
@@ -233,7 +234,7 @@ jobs:
     #    cd ./build/RelWithDebInfo
     #    export PYTHONPATH=$PWD
     #    python \
-    #      /home/ciagent/huggingface-transformers/examples/pytorch/translation/run_translation.py \
+    #      /stage/huggingface-transformers/examples/pytorch/translation/run_translation.py \
     #      --source_prefix '"translate English to Romanian:"' \
     #      --dataset_name wmt16 \
     #      --dataset_config ro-en \

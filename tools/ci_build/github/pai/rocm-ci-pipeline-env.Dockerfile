@@ -6,7 +6,7 @@ WORKDIR /stage
 RUN git clone https://github.com/microsoft/huggingface-transformers.git &&\
       cd huggingface-transformers &&\
       git checkout rocm-ci &&\
-      pip install .
+      pip install -e .
 
 RUN pip install \
       numpy \
