@@ -310,6 +310,17 @@ class MyStrNet(torch.nn.Module):
             print('hi')
         return x
 
+@pytest.fixture(scope='session', autouse=True)
+def run_before_test_session(request):
+    def insert_disable_fallback_in_env():
+        os.environ["ORTMODULE_FALLBACK_POLICY"] = "FALLBACK_DISABLE"
+
+    def remove_disable_fallback_from_env():
+        del os.environ["ORTMODULE_FALLBACK_POLICY"]
+
+    insert_disable_fallback_in_env()
+    request.addfinalizer(remove_disable_fallback_from_env)
+
 # TODO: This is a workaround for the problem that pytest is still cleaning up the previous test
 # while the next task already start.
 @pytest.fixture(autouse=True)
@@ -1558,7 +1569,7 @@ def test_exception_raised_for_custom_class_return_value_module(device):
     if _test_helpers.is_all_or_nothing_fallback_enabled(None, _FallbackPolicy.FALLBACK_UNSUPPORTED_DATA):
         # Fallback
         pt_out = pt_model(x, y, z)
-        ort_out = pt_model(x, y, z)
+        ort_out = ort_model(x, y, z)
         # Assert that the output from torch is the same as the one from ORTModule
         _test_helpers.assert_values_are_close(pt_out.out1, ort_out.out1)
         _test_helpers.assert_values_are_close(pt_out.out2, ort_out.out2)
@@ -1566,7 +1577,7 @@ def test_exception_raised_for_custom_class_return_value_module(device):
     else:
         # ORT backend
         with pytest.raises(_fallback.ORTModuleIOError) as runtime_error:
-            model(x, y, z)
+            ort_model(x, y, z)
         assert 'ORTModule does not support the following model output type' in str(runtime_error.value)
 
 def test_dynamic_axes_config():
@@ -1632,11 +1643,11 @@ def test_model_with_multiple_devices_to_to():
 
     pt_model = MultipleDeviceModel()
     x = torch.randn(20, 10)
-    ort_model = ORTModule(copy.deepcopy(pt_model))
     from onnxruntime.training.ortmodule._fallback import _FallbackPolicy
     if _test_helpers.is_all_or_nothing_fallback_enabled(None, _FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE):
         # Fallback
         with pytest.raises(RuntimeError) as runtime_error:
+            ort_model = ORTModule(copy.deepcopy(pt_model))
             ort_model(x)
         assert f"Expected all tensors to be on the same device, but found at least two devices" in str(runtime_error.value)
     else:
