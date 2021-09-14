@@ -1,3 +1,8 @@
+variables:
+  DoPublish: false
+  VersionSuffix: '-dev.${YYYYMMDD}.${I}'
+  NpmTag: 'dev'
+
 stages:
 - stage: Extract_commit
   jobs:
@@ -33,7 +38,6 @@ stages:
   jobs:
   - template: templates/win-web-ci.yml
     parameters:
-      NpmVersionSuffix: "-dev.${YYYYMMDD}.${I}"
       CommitOverride: true
       BuildConfig: 'Debug'
 
@@ -51,13 +55,23 @@ stages:
   jobs:
   - template: templates/win-web-ci.yml
     parameters:
-      NpmVersionSuffix: "-dev.${YYYYMMDD}.${I}"
+      NpmVersionSuffix: '$(VersionSuffix)'
       CommitOverride: true
       BuildConfig: 'Release'
 
 - stage: Publish_package
   dependsOn: Build_web_Release
+  condition:
+    and(succeeded(), or(and(eq(variables['Build.Reason'], 'Scheduled'),
+                            eq(variables['Build.SourceBranch'], 'refs/heads/master')
+                           ),
+                        and(in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'),
+                            eq('$(DoPublish)', true)
+                           )
+                       )
+       )
+  continueOnError: true
   jobs:
   - template: templates/win-web-publish.yml
     parameters:
-      NpmTag: "dev"
+      NpmTag: '$(NpmTag)'
