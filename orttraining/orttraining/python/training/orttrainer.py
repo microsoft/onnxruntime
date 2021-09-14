@@ -290,7 +290,7 @@ class ORTTrainer(object):
             return
 
         if "MODEL_LT_2GB" in os.environ:
-            onnx.save_model(self._onnx_model, path)
+            onnx.save_model(self._onnx_model, path, save_as_external_data=True)
         else:
             with open(path, "wb") as f:
                 f.write(self._onnx_model.SerializeToString())
@@ -732,7 +732,7 @@ class ORTTrainer(object):
             tmp_dir = tempfile.mkdtemp()
             f = os.path.join(tmp_dir, "model_to_train.onnx")
             print(f"model_to_train file for ort is saved in {f}")
-            onnx.save_model(self._onnx_model, f)
+            onnx.save_model(self._onnx_model, f, save_as_external_data=True)
             self._training_session = ort.TrainingSession(f, ort_parameters, session_options)
             shutil.rmtree(tmp_dir)
         else:
