@@ -349,6 +349,7 @@ jobs:
   - Windows_Packaging_CPU_arm_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
   - Android_Java_API_AAR_Packaging_Full
+  - iOS_Full_xcframework
   condition: succeeded()
   steps:
   - checkout: self
@@ -389,12 +390,11 @@ jobs:
       artifactName: 'onnxruntime-linux-x64'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
-  # Need to add top level folder to zip so it doesn't break the extraction script
-  # - task: DownloadPipelineArtifact@0
-  #   displayName: 'Download iOS Pipeline Artifact'
-  #   inputs:
-  #     artifactName: 'onnxruntime-ios-full-xcframework'
-  #     targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download iOS Pipeline Artifact'
+    inputs:
+      artifactName: 'onnxruntime-ios-full-xcframework'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
   - task: DownloadPipelineArtifact@2
     displayName: 'Download android-full-aar Pipeline Artifact'
