@@ -75,6 +75,10 @@ class KernelDef {
     return variadic_alias_offsets_;
   }
 
+  const optional<std::pair<int, int>>& SequenceTensorToTensorAlias() const {
+    return sequence_tensor_to_tensor_alias_map_;
+  }
+
   OrtMemType InputMemoryType(size_t input_index) const {
     auto it = input_memory_type_args_.find(input_index);
     if (it == input_memory_type_args_.end())
@@ -152,6 +156,9 @@ class KernelDef {
 
   // An element <i, j> means that output j is an alias of input i.
   std::vector<std::pair<int, int>> alias_map_;
+
+  // TODO: Write doc
+  optional<std::pair<int, int>> sequence_tensor_to_tensor_alias_map_;
 
   // This variable stores <input_offset, output_offset> for the variadic alias mapping
   // output 'i + output_offset' is an alias of input 'i + input_offset' for all i >= 0
@@ -272,6 +279,9 @@ class KernelDefBuilder {
   */
   KernelDefBuilder& Alias(const std::vector<std::pair<int, int>>& aliases);
   KernelDefBuilder& Alias(int input_index, int output_index);
+
+  // TODO: Write doc
+  KernelDefBuilder& SequenceTensorToTensorAlias(int input_index, int output_start_index);
 
   /**
      Apply variadic number of alias mapping from inputs to outputs. 

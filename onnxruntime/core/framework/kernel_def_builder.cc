@@ -128,6 +128,8 @@ bool KernelDef::IsConflict(const KernelDef& other) const {
   if (alias_map_.empty() && !other.Alias().empty())
     return false;
 
+  // TODO: Add SequenceTensorToTensorAlias conflict checking logic
+
   //check memory type
   auto& other_input_mem_types = other.input_memory_type_args_;
   for (auto it : input_memory_type_args_) {
@@ -253,6 +255,12 @@ KernelDefBuilder& KernelDefBuilder::Alias(const std::vector<std::pair<int, int>>
 
 KernelDefBuilder& KernelDefBuilder::Alias(int input_index, int output_index) {
   kernel_def_->alias_map_.emplace_back(input_index, output_index);
+  return *this;
+}
+
+KernelDefBuilder& KernelDefBuilder::SequenceTensorToTensorAlias(int input_index, int output_start_index) {
+  ORT_ENFORCE(input_index >= 0 && output_start_index >= 0);
+  kernel_def_->sequence_tensor_to_tensor_alias_map_ = std::make_pair(input_index, output_start_index);
   return *this;
 }
 

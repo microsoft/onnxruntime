@@ -285,7 +285,8 @@ class PlannerImpl {
 #endif
 
   // Find if there exists some input tensor that we can use in-place for output_arg_num-th input in the node.
-  bool FindReusableInput(const onnxruntime::Node& node, int output_arg_num, OrtValueIndex* reusable_input) {
+  bool FindReusableInput(const onnxruntime::Node& node, int output_arg_num,
+                         OrtValueIndex* reusable_input, int* tensor_index_in_reusable_sequence_input) {
 #ifdef ENABLE_TRAINING
     // Inputs of Yields are essentially the outputs for FW partial subgraph
     // Thses tensors will be pass back to pytorch, thus cannot share the buffer with other tensors
@@ -336,6 +337,23 @@ class PlannerImpl {
         }
       }
     }
+
+    /*
+    const optional<std::pair<int, int>>& sequence_tensor_to_tensor_alias_map = ci.kernel_def->SequenceTensorToTensorAlias();
+    if (sequence_tensor_to_tensor_alias_map.has_value()) {
+      if (sequence_tensor_to_tensor_alias_map.value().second <= output_arg_num) {
+        if ((0 <= sequence_tensor_to_tensor_alias_map.value().first) &&
+            (static_cast<size_t>(sequence_tensor_to_tensor_alias_map.value().first) < input_args.size())) {
+          auto p_input_arg = input_args[sequence_tensor_to_tensor_alias_map.value().first];
+          if (p_input_arg->Exists()) {
+            *reusable_input = Index(p_input_arg->Name());
+            *tensor_index_in_reusable_sequence_input = (output_arg_num - sequence_tensor_to_tensor_alias_map.value().second);
+            return true;
+          }
+        }
+      }
+    }
+    */
 
     const std::vector<std::pair<int, int>>& inplace_map = ci.kernel_def->MayInplace();
     for (auto pair : inplace_map) {
@@ -824,6 +842,8 @@ class PlannerImpl {
         // Declare OrtValue index of the reused buffer.
         // The the OrtValue indexed by current may reuse the memory in the OrtValue indexed by reused.
         OrtValueIndex reused;
+        // TODO: Write comment
+        int reused_tensor_in_tensor_sequence = -1;
         if (has_external_outputs) {
           ORT_ENFORCE(!IsNonTensor(*node_output), "Only tensors are supported for external outputs for now.");
           AllocPlan(current).alloc_kind = AllocKind::kAllocatedExternally;
@@ -874,9 +894,12 @@ class PlannerImpl {
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
           AllocPlan(current).program_counter.AddStart(program_counter);
         } else if (!context_.IsParallelExecutionEnabled() &&
-                   FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
+                   FindReusableInput(*pnode, static_cast<int>(output_arg_def_index),
+                                     &reused, &reused_tensor_in_tensor_sequence)) {
           // Reuse one of this node's input buffers as the output buffer (for in-place update)
           Reuse(reused, current, AllocKind::kReuse);
+          // Will be used only if the OrtValue to be re-used (aliased) is a tensor sequence
+          AllocPlan(current).reused_tensor_in_tensor_sequence = reused_tensor_in_tensor_sequence;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
           InplaceReuse(reused, current);
 #endif

@@ -92,6 +92,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   OrtValue& mlvalue1 = *frame.GetMutableNodeInputOrOutputMLValue(start_index + 1);
   ASSERT_STATUS_OK(frame.AllocateMLValueTensorPreAllocateBuffer(mlvalue1,
                                                                 start_index,
+                                                                -1,
                                                                 DataTypeImpl::GetType<float>(),
                                                                 p_tensor->Location(),
                                                                 shape2));
@@ -469,7 +470,6 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 TEST(ExecutionFrameTestInit, SparseInitializerAsOutput) {
-
   const std::vector<int64_t> dense_shape{3, 3};
   std::vector<float> dense_data = {
       0, 0, 1.764052391052246f,
@@ -509,7 +509,7 @@ TEST(ExecutionFrameTestInit, SparseInitializerAsOutput) {
     EXPECT_THAT(coo_view.Indices().DataAsSpan<int64_t>(), ::testing::ContainerEq(gsl::make_span(expected_linear_indices)));
   }
 }
-#endif // !defined(DISABLE_SPARSE_TENSORS)
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 }  // namespace test
 }  // namespace onnxruntime

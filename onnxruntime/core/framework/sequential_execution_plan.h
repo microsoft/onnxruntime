@@ -17,7 +17,7 @@ namespace onnxruntime {
 // the ExecutionFrame).
 using OrtValueIndex = int;
 using OrtValueName = std::string;
-#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE) 
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 // pair of start and end program counters,according to the execution plan
 using IntervalT = std::pair<size_t, size_t>;
 #endif
@@ -32,13 +32,16 @@ struct AllocPlanPerValue {
   // reused_buffer is valid only if alloc_kind == kReuse. It indicates
   // which OrtValue's buffer must be reused for this OrtValue.
   OrtValueIndex reused_buffer{0};
+  // reused_tensor_in_tensor_sequence is valid only if value_type == SequenceTensorType. It indicates
+  // which tensor within the tensor sequence must be reused for this OrtValue.
+  int reused_tensor_in_tensor_sequence{-1};
   // if the value is used in async kernel, a fence object would be created
   // note the fence object would be shared between MLValues reusing the same buffer
   bool create_fence_if_async{false};
-#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE) 
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   IntervalT life_interval{0, 0};
   IntervalT allocate_interval{0, 0};
-  OrtValueIndex inplace_reuse{-1}; //No in-place reuse
+  OrtValueIndex inplace_reuse{-1};  //No in-place reuse
 #endif
 
   class ProgramCounter {

@@ -7,10 +7,10 @@
 
 namespace onnxruntime {
 
-class SequenceConstructionFusion : public GraphTransformer {
+class ParsePastStateFusion : public GraphTransformer {
  public:
-  SequenceConstructionFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
-      : GraphTransformer("SequenceConstructionFusion", compatible_execution_providers) {}
+  ParsePastStateFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+      : GraphTransformer("ParsePastStateFusion", compatible_execution_providers) {}
 
  private:
   Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;

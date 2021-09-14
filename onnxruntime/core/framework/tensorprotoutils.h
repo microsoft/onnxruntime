@@ -123,6 +123,10 @@ inline bool HasTensorType(const ONNX_NAMESPACE::TypeProto& type_proto) {
   return type_proto.value_case() == ONNX_NAMESPACE::TypeProto::kTensorType;
 }
 
+inline bool HasSequenceType(const ONNX_NAMESPACE::TypeProto& type_proto) {
+  return type_proto.value_case() == ONNX_NAMESPACE::TypeProto::kSequenceType;
+}
+
 inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_Tensor& ten_proto) {
   return ten_proto.elem_type() != ONNX_NAMESPACE::TensorProto::UNDEFINED;
 }

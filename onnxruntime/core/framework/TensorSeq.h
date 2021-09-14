@@ -62,6 +62,11 @@ class TensorSeq {
     return tensors_[i];
   }
 
+  Tensor& GetMutable(size_t i) {
+    ORT_ENFORCE(i < tensors_.size());
+    return tensors_[i];
+  }
+
   void Add(Tensor&& tensor) {
     ORT_ENFORCE(IsSameDataType(tensor),
                 "TensorSeq: tensor to be added has a different data type.");

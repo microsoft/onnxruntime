@@ -2944,33 +2944,40 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
         updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
       });
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(SequenceConstructionWithTensorAndRepeat)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ParsePastState)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc(R"DOC(A provided tensor is inserted into a sequence `repeat` times to form an output sequence.)DOC")
+      .SetDoc(R"DOC()DOC")
       .Input(
           0,
-          "X",
-          "The tensor that will be repeated in the output sequence",
-          "T")
+          "input tensor sequence",
+          "Input tensor sequence which have past state tensors. "
+          "If empty, the past state seed will be used instead.",
+          "S")
       .Input(
           1,
-          "repeat",
-          "Number of times the tensor `X` will be repeated in the sequence",
-          "T1")
+          "past state seed",
+          "Past state seed",
+          "T")
       .Output(
           0,
-          "Y",
-          "A sequence containing the tensor `X` repeated `repeat` times",
-          "S")
+          "provided past state used",
+          "True if the provided past state was used, false if the past state seed was used (i.e.) provided past state is empty",
+          "T1")
+      .Output(
+          1,
+          "parsed state ",
+          "True if the provided past state was used, false if the past state seed was used (i.e.) provided past state is empty",
+          "T",
+          OpSchema::Variadic)
       .TypeConstraint(
           "T",
           OpSchema::all_tensor_types(),
           "Constrain input types to all tensor types.")
       .TypeConstraint(
           "T1",
-          {"tensor(int64)"},
-          "Constrain the repeats to an int64 tensor.")
+          {"tensor(bool)"},
+          "Constrain the `provided past state used` flag to a bool tensor.")
       .TypeConstraint(
           "S",
           OpSchema::all_tensor_sequence_types(),

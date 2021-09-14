@@ -47,7 +47,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/optimizer/bias_dropout_fusion.h"
-#include "core/optimizer/sequence_construction_fusion.h"
+#include "core/optimizer/parse_past_state_fusion.h"
 
 namespace onnxruntime {
 class IExecutionProvider;
@@ -182,7 +182,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_cuda_rocm_acl_armnn_eps));
 
-      transformers.emplace_back(std::make_unique<SequenceConstructionFusion>(cpu_cuda_rocm_eps));
+      transformers.emplace_back(std::make_unique<ParsePastStateFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<GeluFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<LayerNormFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(cpu_cuda_rocm_eps));
