@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="xunit.abstractions" />
+    <None Remove="System.Text.Json" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.abstractions" Version="2.0.3" />
+    <PackageReference Include="System.Text.Json" Version="5.0.2" />
+  </ItemGroup>
+</Project>
