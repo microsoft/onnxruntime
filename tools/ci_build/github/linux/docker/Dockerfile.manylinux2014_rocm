@@ -189,6 +189,12 @@ RUN cd /tmp/scripts && \
     /tmp/scripts/install_python_deps.sh -d gpu -p 3.9 -h ${TORCH_VERSION} $INSTALL_DEPS_EXTRA_ARGS && \
      rm -rf /tmp/scripts
 
+# remove protobuf to prevent ambiguity which is used for onnxruntime build
+RUN rm -fr /usr/local/bin/protoc \
+           /usr/local/libproto* \
+           /usr/local/include/google \
+           /usr/local/lib/pkgconfig/protobuf*
+
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
 RUN adduser --uid $BUILD_UID $BUILD_USER
