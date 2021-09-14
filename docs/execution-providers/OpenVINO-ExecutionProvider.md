@@ -101,14 +101,12 @@ However, int8 support won't be available for VPU.
 OpenVINO EP can be configured with certain options at runtime that control the behavior of the EP. These options can be set as key-value pairs as below:-
 
 ### Python API
-Key-Value pairs for config options can be set using the Session.set_providers API as follows:-
+Key-Value pairs for config options can be set using InferenceSession API as follow:-
 
 ```
-session = onnxruntime.InferenceSession(<path_to_model_file>, options)
-session.set_providers(['OpenVINOExecutionProvider'], [{Key1 : Value1, Key2 : Value2, ...}])
+session = onnxruntime.InferenceSession(<path_to_model_file>, providers=['OpenVINOExecutionProvider'], provider_options=[{Key1 : Value1, Key2 : Value2, ...}])
 ```
 *Note that the next release (ORT 1.10) will require explicitly setting the providers parameter if you want to use execution providers other than the default CPU provider (as opposed to the current behavior of providers getting set/registered by default based on the build flags) when instantiating InferenceSession.*
-*Note that this causes the InferenceSession to be re-initialized, which may cause model recompilation and hardware re-initialization.*
 
 ### C/C++ API
 All the options shown below are passed to SessionOptionsAppendExecutionProvider_OpenVINO() API and populated in the struct OrtOpenVINOProviderOptions in an example shown below, for example for CPU device type:
