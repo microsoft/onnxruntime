@@ -217,11 +217,15 @@ jobs:
   - script: |
      npm test
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
-    displayName: 'Run ort-web tests - unpacked mode'
+    displayName: 'Run ort-web tests'
   - script: |
      npm test -- --webgl-texture-pack-mode -b=webgl
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
-    displayName: 'Run ort-web tests - packed mode'
+    displayName: 'Run ort-web tests - WebGL: packed mode'
+  - script: |
+     npm test -- --wasm-enable-proxy -b=wasm
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Run ort-web tests - WebAssembly: proxy'
   - script: |
       npm pack
     workingDirectory: '$(Build.SourcesDirectory)\js\common'

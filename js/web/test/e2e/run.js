@@ -86,6 +86,8 @@ async function testAllBrowserCases({ hostInKarma }) {
   await runKarma({ hostInKarma, main: './browser-test-webgl.js', browser: 'Chrome_default' });
   await runKarma({ hostInKarma, main: './browser-test-wasm.js', browser: 'Chrome_default' });
   await runKarma({ hostInKarma, main: './browser-test-wasm-no-threads.js', browser: 'Chrome_default' });
+  await runKarma({ hostInKarma, main: './browser-test-wasm-proxy.js', browser: 'Chrome_default' });
+  await runKarma({ hostInKarma, main: './browser-test-wasm-no-threads-proxy.js', browser: 'Chrome_default' });
   await runKarma({ hostInKarma, main: './browser-test-wasm-path-override-filename.js', browser: 'Chrome_default' });
   await runKarma({ hostInKarma, main: './browser-test-wasm-path-override-prefix.js', browser: 'Chrome_default' });
 }
