@@ -19,22 +19,45 @@ stages:
         artifactName: '__commit'
         targetPath: '$(Build.ArtifactStagingDirectory)'
 
-- stage: Build_Debug
+- stage: Build_wasm_Debug
   dependsOn: Extract_commit
   jobs:
-  - template: templates/win-wasm-ci-pipeline.yml
+  - template: templates/win-wasm-ci.yml
     parameters:
-      NpmVersionSuffix: "-dev.${YYYYMMDD}.${I}"
       CommitOverride: true
       BuildConfig: 'Debug'
       CmdParams: ''
 
-- stage: Build_Release
+- stage: Build_web_Debug
+  dependsOn: Build_wasm_Debug
+  jobs:
+  - template: templates/win-web-ci.yml
+    parameters:
+      NpmVersionSuffix: "-dev.${YYYYMMDD}.${I}"
+      CommitOverride: true
+      BuildConfig: 'Debug'
+
+- stage: Build_wasm_Release
   dependsOn: Extract_commit
   jobs:
   - template: templates/win-wasm-ci-pipeline.yml
     parameters:
-      NpmVersionSuffix: "-dev.${YYYYMMDD}.${I}"
       CommitOverride: true
       BuildConfig: 'Release'
       CmdParams: '--skip_tests --disable_wasm_exception_catching --disable_rtti'
+
+- stage: Build_web_Release
+  dependsOn: Build_wasm_Release
+  jobs:
+  - template: templates/win-web-ci.yml
+    parameters:
+      NpmVersionSuffix: "-dev.${YYYYMMDD}.${I}"
+      CommitOverride: true
+      BuildConfig: 'Release'
+
+- stage: Publish_package
+  dependsOn: Build_web_Release
+  jobs:
+  - template: templates/win-web-publish.yml
+    parameters:
+      NpmTag: "dev"
