@@ -14,7 +14,7 @@ Get-ChildItem $Env:BUILD_BINARIESDIRECTORY\nuget-artifact -Filter *.zip |
 Foreach-Object {
  $cmd = "7z.exe x $($_.FullName) -y -o$nuget_artifacts_dir"
  Write-Output $cmd
- Invoke-Expression -Command $cmd
+ Invoke-Expression -Command $cmd 
 }
 
 ## .tgz files
@@ -48,6 +48,12 @@ if ($aars.Count -eq 1) {
 }
 else{
   Write-Error "Expected one Android .aar file but got: [$aars]"
+}
+
+# TEMPORARY handling of the onnxruntime.xcframework to put in a directory so that the existing packaging logic works
+if (Test-Path $nuget_artifacts_dir\onnxruntime.xcframework) {
+  New-Item -Path $nuget_artifacts_dir\onnxruntime-ios-xcframework -ItemType Directory
+  Move-Item $nuget_artifacts_dir\onnxruntime.xcframework $nuget_artifacts_dir\onnxruntime-ios-xcframework
 }
 
 

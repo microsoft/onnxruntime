@@ -470,21 +470,21 @@ jobs:
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - task: CopyFiles@2
-    displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
+    displayName: 'Copy native nuget package to: $(Build.ArtifactStagingDirectory)'
     inputs:
       SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
       Contents: '*.nupkg'
       TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
   - task: CopyFiles@2
-    displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
+    displayName: 'Copy native nuget symbols package to: $(Build.ArtifactStagingDirectory)'
     inputs:
       SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
       Contents: '*.snupkg'
       TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
   - task: CopyFiles@2
-    displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
+    displayName: 'Copy managed nuget package to: $(Build.ArtifactStagingDirectory)'
     inputs:
       SourceFolder: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
       Contents: '*.nupkg'
