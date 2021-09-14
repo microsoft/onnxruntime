@@ -107,7 +107,7 @@ Key-Value pairs for config options can be set using the Session.set_providers AP
 session = onnxruntime.InferenceSession(<path_to_model_file>, options)
 session.set_providers(['OpenVINOExecutionProvider'], [{Key1 : Value1, Key2 : Value2, ...}])
 ```
-*Note that the next release (ORT 1.10) will require explicitly setting the providers parameter if they want to use execution providers other than the default CPU provider (as opposed to the current behavior of providers getting set/registered by default based on the build flags) when instantiating InferenceSession.*
+*Note that the next release (ORT 1.10) will require explicitly setting the providers parameter if you want to use execution providers other than the default CPU provider (as opposed to the current behavior of providers getting set/registered by default based on the build flags) when instantiating InferenceSession.*
 *Note that this causes the InferenceSession to be re-initialized, which may cause model recompilation and hardware re-initialization.*
 
 ### C/C++ API
