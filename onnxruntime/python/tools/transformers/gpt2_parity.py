@@ -136,9 +136,11 @@ def print_wins(wins, rows, test_name):
         for row in rows:
             if row["run_id"] == key:
                 logger.info(
-                    "{:02d}: WINs={:02d}, run_id={}, latency={:5.2f} top1_match={:.4f} size={}_MB experiment={}".format(
+                    "{:02d}: WINs={:02d}, run_id={}, latency={:5.2f} top1_match={:.4f} size={}_MB experiment={} {}".
+                    format(
                         rank, value, key, float(row[get_latency_name()]), float(row["top1_match_rate"]),
-                        row["onnx_size_in_MB"], row["experiment"]))
+                        row["onnx_size_in_MB"], row["experiment"], " (Half2 Disabled)" if
+                        (row['ORT_CUDA_GEMM_OPTIONS'] == "4" and "Half2" not in row["experiment"]) else ""))
                 break
 
 
@@ -158,7 +160,7 @@ def run_significance_test(rows, output_csv_path):
             'top1_match_rate_2', 'U_statistic', 'U_pvalue', "T_statistic", "T_pvalue"
         ]
 
-        writer = csv.DictWriter(csvfile, fieldnames=column_names, delimiter="\t")
+        writer = csv.DictWriter(csvfile, fieldnames=column_names)
         writer.writeheader()
 
         required_match_columns = ["model_name", "test_cases", "runs"]
