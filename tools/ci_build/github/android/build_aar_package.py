@@ -3,9 +3,10 @@
 # Licensed under the MIT License.
 
 import argparse
+import json
 import os
 import pathlib
-import json
+import shutil
 import subprocess
 import sys
 
@@ -86,6 +87,7 @@ def _build_aar(args):
     build_config = args.config
     aar_dir = os.path.join(intermediates_dir, 'aar', build_config)
     jnilibs_dir = os.path.join(intermediates_dir, 'jnilibs', build_config)
+    exe_dir = os.path.join(intermediates_dir, 'executables', build_config)
     base_build_command = [
         sys.executable, BUILD_PY, '--config=' + build_config
     ] + build_settings['build_params']
@@ -116,6 +118,13 @@ def _build_aar(args):
             if os.path.exists(target_lib_name) or os.path.islink(target_lib_name):
                 os.remove(target_lib_name)
             os.symlink(os.path.join(abi_build_dir, build_config, lib_name), target_lib_name)
+
+        # copy executables for each abi, in case we want to publish those as well
+        abi_exe_dir = os.path.join(exe_dir, abi)
+        for exe_name in ['libonnxruntime.so', 'onnxruntime_perf_test', 'onnx_test_runner']:
+            os.makedirs(abi_exe_dir, exist_ok=True)
+            target_exe_name = os.path.join(abi_exe_dir, exe_name)
+            shutil.copyfile(os.path.join(abi_build_dir, build_config, exe_name), target_exe_name)
 
         # we only need to define the header files path once
         if not header_files_path:
