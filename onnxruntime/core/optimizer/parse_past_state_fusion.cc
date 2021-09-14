@@ -13,6 +13,14 @@ using namespace ::onnxruntime::utils;
 
 namespace onnxruntime {
 
+/*
+static bool AdjustParentGraph(Graph& parent_graph, 
+    Node& parent_node,
+     TensorProto past_state_seed, int64_t repeat, 
+    const std::string& base_name) {
+
+}
+*/
 static bool OpTypeVersionAndProviderCheck(const Node& node, const char* op_type,
                                           const std::initializer_list<OperatorSetVersion>& versions,
                                           const std::unordered_set<std::string>& compatible_eps) {
@@ -203,6 +211,12 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
 
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
 
+    // We must be within a Loop
+    const auto* parent_node = graph.ParentNode();
+    if (parent_node == nullptr || parent_node->OpType() != "Loop") {
+      continue;
+    }
+
     // SequenceLength node
     if (!OpTypeVersionAndProviderCheck(*node, "SequenceLength", {11}, GetCompatibleExecutionProviders()) ||
         graph.NodeProducesGraphOutput(*node) || (*node).GetOutputEdgesCount() != 1) {
@@ -210,6 +224,26 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
     }
 
     Node& sequence_length_node = *node;
+
+    bool sequence_length_input_is_subgraph_input = false;
+    const auto& sequence_length_node_input = sequence_length_node.InputDefs()[0]->Name();
+    int64_t loop_past_state_input_index = -1;
+    int64_t iter = 0;
+    for (const auto* graph_input : graph.GetInputs()) {
+      if (graph_input->Name() == sequence_length_node_input) {
+        sequence_length_input_is_subgraph_input = true;
+        loop_past_state_input_index = iter;
+        break;
+      } else {
+        ++iter;
+      }
+    }
+
+    // SequenceLength must be fed by a subgraph input
+
+    if (!sequence_length_input_is_subgraph_input) {
+      continue;
+    }
 
     // Greater node
     auto& greater_node = *graph.GetNode(sequence_length_node.OutputNodesBegin()->Index());
@@ -341,21 +375,19 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
 
     // If we have reached here, fusion is ON
 
+    const auto& base_name = sequence_length_node.Name() + "_" +
+                            greater_node.Name() + "_" +
+                            if_node.Name();
     // Add the past state seed as an initializer and add a node arg for that
     past_state_seed.clear_name();
-    past_state_seed.set_name(sequence_length_node.Name() + "_" +
-                             greater_node.Name() + "_" +
-                             if_node.Name() + "_" +
-                             past_state_seed.name());
+    past_state_seed.set_name(base_name + "_" + past_state_seed.name());
     graph.AddInitializedTensor(past_state_seed);
 
     auto& past_state_node_arg = graph.GetOrCreateNodeArg(past_state_seed.name(),
                                                          past_state_seed_type_proto);
 
     // Create a fused node for the subgraph
-    auto node_name = graph.GenerateNodeName(sequence_length_node.Name() + "_" +
-                                            greater_node.Name() + "_" +
-                                            if_node.Name());
+    auto node_name = graph.GenerateNodeName(base_name + "_" + "ParsePastState");
     Node& past_state_fusion = graph.AddNode(node_name,
                                             "ParsePastState",
                                             node_name,
