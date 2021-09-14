@@ -78,14 +78,19 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list):
                                       '" target="runtimes/android/native"/>')
 
         if child.name == 'onnxruntime-ios-xcframework':
-            # the xcframework has a file called 'onnxruntime' for each platform
+            framework = child.joinpath('onnxruntime.xcframework')
+            if framework.exists():
+                files_list.append('<file src="' + str(framework) + '/**'
+                                  '" target="runtimes/ios/native/onnxruntime.xcframework"/>')
+
+        # the xcframework has a file called 'onnxruntime' for each platform
             # e.g. onnxruntime-ios/onnxruntime.xcframework/ios-arm64/onnxruntime.framework/onnxruntime
             # we want to add the 'onnxruntime.xcframework/.../onnxruntime' component of that path
-            for entry in child.rglob('onnxruntime'):
-                if entry.is_file():
-                    files_list.append('<file src="' + str(entry) +
-                                      '" target="runtimes/ios/native/' + entry.relative_to(child).parent.as_posix() +
-                                      '"/>')
+            # for entry in child.rglob('onnxruntime'):
+            #     if entry.is_file():
+            #         files_list.append('<file src="' + str(entry) +
+            #                           '" target="runtimes/ios/native/' + entry.relative_to(child).parent.as_posix() +
+            #                           '"/>')
 
 
 def parse_arguments():
