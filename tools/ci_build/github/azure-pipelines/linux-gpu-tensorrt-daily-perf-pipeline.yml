@@ -4,9 +4,6 @@ jobs:
     clean: all
   timeoutInMinutes:  120
   pool: 'Onnxruntime-Linux-GPU-TensorRT-Perf'
-  dependsOn:
-  - NuGet_Packaging_${{ parameters.ArtifactSuffix }}
-  condition: succeeded()
   variables:
   - name: PoolName
     value: 'Testing on Pool'
