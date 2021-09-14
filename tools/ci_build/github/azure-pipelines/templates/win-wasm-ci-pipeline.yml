@@ -121,7 +121,7 @@ jobs:
 #     condition: always()
 
 - job: build_onnxruntime_web
-  dependsOn: build_WASM
+  #dependsOn: build_WASM
   pool: 'Win-CPU-2019'
 
   timeoutInMinutes: 30
