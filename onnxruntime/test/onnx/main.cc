@@ -339,15 +339,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_cuda) {
 #ifdef USE_CUDA
-      OrtCUDAProviderOptions cuda_options{
-          0,
-          OrtCudnnConvAlgoSearch::EXHAUSTIVE,
-          std::numeric_limits<size_t>::max(),
-          0,
-          true,
-          0,
-          nullptr,
-          nullptr};  // TODO: Support arena configuration for users of test runner
+      OrtCUDAProviderOptions cuda_options;
+      cuda_options.do_copy_in_default_stream=true;
+      // TODO: Support arena configuration for users of test runner
       sf.AppendExecutionProvider_CUDA(cuda_options);
 #else
       fprintf(stderr, "CUDA is not supported in this build");
