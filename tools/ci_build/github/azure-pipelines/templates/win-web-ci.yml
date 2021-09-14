@@ -11,6 +11,7 @@ parameters:
   type: string
   default: 'Debug'
 
+jobs:
 - job: build_onnxruntime_web
   pool: 'Win-CPU-2019'
 

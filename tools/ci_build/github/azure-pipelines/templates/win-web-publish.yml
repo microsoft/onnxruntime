@@ -3,6 +3,7 @@ parameters:
   type: string
   default: 'dev'
 
+jobs:
 - job: publish_onnxruntime_web
   pool: 'Win-CPU-2019'
 
