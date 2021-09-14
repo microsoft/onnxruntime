@@ -8,7 +8,7 @@ jobs:
   - name: PoolName
     value: 'Testing on Pool'
   steps:
-    - script: 'echo $(PoolName)'
+    - script: 'docker images'
       displayName: 'sample test'
       
     - template: templates/clean-agent-build-directory-step.yml
