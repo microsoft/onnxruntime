@@ -1,36 +1,38 @@
-jobs:
-- job: Extract_commit
-  pool: 'Win-CPU-2019'
-  timeoutInMinutes: 30
-  workspace:
-    clean: all
-  steps:
-  - checkout: none
-    fetchDepth: 1
-    submodules: false
-  - script: |
-     echo.$(Build.SourceVersion)
-     echo.$(Build.SourceVersion)>$(Build.ArtifactStagingDirectory)\__commit.txt
-  - task: PublishPipelineArtifact@0
-    displayName: 'Publish Pipeline Artifact'
-    inputs:
-      artifactName: '__commit'
-      targetPath: '$(Build.ArtifactStagingDirectory)'
+stages:
+- stage: Extract_commit
+  jobs:
+  - job: Extract_commit
+    pool: 'Win-CPU-2019'
+    timeoutInMinutes: 30
+    workspace:
+      clean: all
+    steps:
+    - checkout: none
+      fetchDepth: 1
+      submodules: false
+    - script: |
+      echo.$(Build.SourceVersion)
+      echo.$(Build.SourceVersion)>$(Build.ArtifactStagingDirectory)\__commit.txt
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish Pipeline Artifact'
+      inputs:
+        artifactName: '__commit'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
 
-- template: templates/win-wasm-ci-pipeline.yml
+- stage: Build_Debug
+  dependsOn: Extract_commit
+  template: templates/win-wasm-ci-pipeline.yml
   parameters:
     NpmVersionSuffix: "-dev.${YYYYMMDD}.${I}"
     CommitOverride: true
-    BuildConfig: $(BuildConfig)
-    CmdParams: $(CmdParams)
+    BuildConfig: 'Debug'
+    CmdParams: ''
+
+- stage: Build_Release
   dependsOn: Extract_commit
-  pool: 'Win-CPU-2019'
-  strategy:
-    maxParallel: 2
-    matrix:
-      'debug':
-        BuildConfig: 'Debug'
-        CmdParams: ''
-      'release':
-        BuildConfig: 'Release'
-        CmdParams: '--skip_tests --disable_wasm_exception_catching --disable_rtti'
+  template: templates/win-wasm-ci-pipeline.yml
+  parameters:
+    NpmVersionSuffix: "-dev.${YYYYMMDD}.${I}"
+    CommitOverride: true
+    BuildConfig: 'Release'
+    CmdParams: '--skip_tests --disable_wasm_exception_catching --disable_rtti'
