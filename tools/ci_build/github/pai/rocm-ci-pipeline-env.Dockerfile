@@ -16,7 +16,7 @@ RUN pip install \
       h5py \
       datasets==1.9.0 \
       requests \
-      sacrebleu \
+      sacrebleu==1.5.1 \
       sacremoses \
       scipy \
       scikit-learn \
