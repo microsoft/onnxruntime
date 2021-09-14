@@ -182,7 +182,7 @@ jobs:
     buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/android/default_full_aar_build_settings.json'
     artifactName: 'onnxruntime-android-full-aar'
     job_name_suffix: 'Full'
-    publish_executables: true
+    publish_executables: '1'
 
 - job: iOS_Full_xcframework
   workspace:
