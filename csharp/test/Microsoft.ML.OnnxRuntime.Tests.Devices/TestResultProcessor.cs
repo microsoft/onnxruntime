@@ -47,11 +47,17 @@ namespace Microsoft.ML.OnnxRuntime.Tests.Devices
 
     public class TestResultProcessor
     {
+        List<TestResult> _results;
         JsonSerializerOptions _serializerOptions = new JsonSerializerOptions { WriteIndented = true };
-        List<TestResult> _results { get; set; } = new List<TestResult>();
+
+        List<TestResult> Results
+        {
+            get => _results == null ? (_results = new List<TestResult>()) : _results;
+            set => _results = value;
+        }
 
         internal void RecordResult(TestResult test)
-            => _results.Add(test);
+            => Results.Add(test);
 
         public void RecordResult(ITestResultMessage testResult, ITestCase testCase, TestOutcome outcome)
         {
@@ -66,7 +72,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests.Devices
         }
 
         public TestResultSummary GetResults()
-            => new TestResultSummary(_results);
+            => new TestResultSummary(Results);
 
         public string GetSerializedResults()
         {
