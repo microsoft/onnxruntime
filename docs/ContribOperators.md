@@ -2771,8 +2771,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
 <dt><tt>mean</tt> (optional) : U</dt>
 <dd>Saved mean used during training to speed up gradient computation</dd>
-<dt><tt>inv_std_var</tt> (optional) : U</dt>
-<dd>Saved inverse standard variance used during training to speed up gradient computation.</dd>
+<dt><tt>inv_std</tt> (optional) : U</dt>
+<dd>Saved inverse standard deviation used during training to speed up gradient computation.</dd>
 </dl>
 
 #### Type Constraints
@@ -2781,7 +2781,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
 <dd>Constrain input and output types to float or half tensors.</dd>
 <dt><tt>U</tt> : tensor(float)</dt>
-<dd>Constrain mean and inv_std_var to float tensors.</dd>
+<dd>Constrain mean and inv_std to float tensors.</dd>
 </dl>
 
 
