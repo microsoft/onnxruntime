@@ -68,14 +68,14 @@ stages:
       CommitOverride: true
       BuildConfig: 'Release'
 
-- stage: Build_web_Release_BrowserStack
+- stage: Test_web_BrowserStack
   dependsOn: Build_wasm_Release
   jobs:
   - template: templates/web-browserstack-ci.yml
     parameters:
       CommitOverride: true
 
-- stage: Build_web_Release_MultiBrowsers
+- stage: Test_web_MultiBrowsers
   dependsOn: Build_wasm_Release
   jobs:
   - template: templates/win-web-multi-browsers.yml
@@ -85,8 +85,8 @@ stages:
 - stage: Publish_package
   dependsOn:
   - Build_web_Release
-  - Build_web_Release_BrowserStack
-  - Build_web_Release_MultiBrowsers
+  - Test_web_BrowserStack
+  - Test_web_MultiBrowsers
   condition:
     and(succeeded(), or(and(eq(variables['Build.Reason'], 'Scheduled'),
                             eq(variables['Build.SourceBranch'], 'refs/heads/master')
