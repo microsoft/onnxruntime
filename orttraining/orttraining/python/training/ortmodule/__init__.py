@@ -5,6 +5,7 @@
 
 import os
 import sys
+import torch
 
 from packaging import version
 
@@ -30,6 +31,7 @@ ORTMODULE_FALLBACK_POLICY = _FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE |\
                             _FallbackPolicy.FALLBACK_UNSUPPORTED_ONNX_MODEL |\
                             _FallbackPolicy.FALLBACK_BAD_INITIALIZATION
 ORTMODULE_FALLBACK_RETRY = False
+ORTMODULE_IS_DETERMINISTIC = torch.are_deterministic_algorithms_enabled()
 
 # Verify minimum PyTorch version is installed before proceding to ONNX Runtime initialization
 try:
@@ -51,9 +53,9 @@ except ImportError as e:
 
 if not is_torch_cpp_extensions_installed(TORCH_CPP_DIR) and '-m' not in sys.argv:
     _FALLBACK_INIT_EXCEPTION = wrap_exception(ORTModuleInitException,
-                                                        EnvironmentError(
-                                                            f"ORTModule's extensions were not detected at '{TORCH_CPP_DIR}' folder. "
-                                                            "Run `python -m torch_ort.configure` before using `ORTModule` frontend."))
+                                              EnvironmentError(
+                                                  f"ORTModule's extensions were not detected at '{TORCH_CPP_DIR}' folder. "
+                                                  "Run `python -m torch_ort.configure` before using `ORTModule` frontend."))
 
 # Initalized ORT's random seed with pytorch's initial seed
 # in case user has set pytorch seed before importing ORTModule
@@ -73,6 +75,17 @@ def override_torch_cuda_manual_seed(seed):
     return torch_cuda_manual_seed(seed)
 torch_cuda_manual_seed = torch.cuda.manual_seed
 torch.cuda.manual_seed = override_torch_cuda_manual_seed
+
+
+def use_deterministic_algorithms(enabled):
+    global ORTMODULE_IS_DETERMINISTIC
+    ORTMODULE_IS_DETERMINISTIC = enabled
+
+
+def are_deterministic_algorithms_enabled():
+    global ORTMODULE_IS_DETERMINISTIC
+    return ORTMODULE_IS_DETERMINISTIC
+
 
 # ORTModule must be loaded only after all validation passes
 from .ortmodule import ORTModule
