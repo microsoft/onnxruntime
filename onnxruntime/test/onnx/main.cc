@@ -310,16 +310,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
     if (enable_tensorrt) {
 #ifdef USE_TENSORRT
-      OrtCUDAProviderOptions cuda_options{
-          device_id,
-          OrtCudnnConvAlgoSearch::EXHAUSTIVE,
-          std::numeric_limits<size_t>::max(),
-          0,
-          true,
-          0,
-          nullptr,
-          nullptr};  // TODO: Support arena configuration for users of test runner
-
+      OrtCUDAProviderOptions cuda_options;
+      cuda_options.device_id=device_id;
+      cuda_options.do_copy_in_default_stream=true;
+      // TODO: Support arena configuration for users of test runner
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, device_id));
       sf.AppendExecutionProvider_CUDA(cuda_options);
 #else
