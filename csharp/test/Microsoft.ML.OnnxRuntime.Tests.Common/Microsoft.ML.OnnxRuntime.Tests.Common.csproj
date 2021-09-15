@@ -64,9 +64,11 @@
     </Compile>
     <Compile Update="Tensors\TensorArithmetic.cs">
       <DependentUpon>TensorArithmetic.tt</DependentUpon>
+      <DesignTime>True</DesignTime>
     </Compile>
     <Compile Update="Tensors\TensorOperations.cs">
       <DependentUpon>TensorOperations.tt</DependentUpon>
+      <DesignTime>True</DesignTime>
     </Compile>
   </ItemGroup>
   <ItemGroup>

@@ -13,7 +13,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var assembly = typeof(TestDataLoader).Assembly;
             byte[] model = null;
 
-            using (Stream stream = assembly.GetManifestResourceStream($"{assembly.GetName().Name}.TestData.{path}"))
+            var resourceName = assembly.GetManifestResourceNames().Single(p => p.EndsWith(path));
+
+            using (Stream stream = assembly.GetManifestResourceStream(resourceName))
             {
                 using (MemoryStream memoryStream = new MemoryStream())
                 {
