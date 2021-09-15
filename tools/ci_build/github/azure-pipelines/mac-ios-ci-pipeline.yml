@@ -15,7 +15,8 @@ jobs:
 
     - script: |
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
-          --skip_submodule_sync --build_dir $(Build.BinariesDirectory)/iOS_cpu \
+          --skip_submodule_sync \
+          --build_dir $(Build.BinariesDirectory)/iOS_cpu \
           --ios \
           --ios_sysroot iphonesimulator  \
           --osx_arch x86_64 \
@@ -29,7 +30,8 @@ jobs:
 
     - script: |
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
-          --skip_submodule_sync --build_dir $(Build.BinariesDirectory)/iOS_coreml \
+          --skip_submodule_sync \
+          --build_dir $(Build.BinariesDirectory)/iOS_coreml \
           --use_coreml \
           --ios \
           --ios_sysroot iphonesimulator  \
