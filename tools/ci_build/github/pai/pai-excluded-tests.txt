@@ -37,9 +37,6 @@ ReductionOpTest.ReduceSumSquare_double
 ReductionOpTest.ReduceInfMax_double
 ReductionOpTest.ReduceInfMin_double
 ReductionOpTest.ReduceInfLogSumExp_double
-ReductionOpTest.ReduceMax_half 
-ReductionOpTest.ReduceMin_half  
-ReductionOpTest.ReduceLogSumExp_half  
 GatherOpTest.Gather_invalid_index_cpu 
 Scatter.InvalidIndex
 GradientCheckerTest.AddGrad
