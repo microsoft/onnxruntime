@@ -1,7 +1,8 @@
 ---
-title: Accelerate PyTorch
-parent: Tutorials
-nav_order: 2
+title: Accelerate PyTorch Inference
+parent: Accelerate PyTorch
+grand_parent: Tutorials
+nav_order: 1
 ---
 # Accelerate PyTorch model inferencing
 {: .no_toc }
