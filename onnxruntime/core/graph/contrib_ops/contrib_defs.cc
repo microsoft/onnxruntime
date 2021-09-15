@@ -2998,7 +2998,7 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       .Input(
           1,
           "repeat",
-          "Number of times the input repeat is to be repeating in the output tensor sequence",
+          "Number of times the input repeat is to be repeated in the output tensor sequence",
           "T1")
       .Output(
           0,

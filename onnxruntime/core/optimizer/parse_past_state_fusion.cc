@@ -13,9 +13,40 @@ using namespace ::onnxruntime::utils;
 
 namespace onnxruntime {
 
+static std::vector<uint8_t> UnpackInitializer(const TensorProto& init) {
+  std::vector<uint8_t> unpacked_bytes;
+  UnpackInitializerData(init, unpacked_bytes);
+  return unpacked_bytes;
+}
+
+/*
+* We want to replace the following pattern:
+* 
+*  SequenceEmpty   ----------      ----------- other Loop inputs 
+*  (loop carried dep)         \   / 
+*                             Loop
+* 
+* 
+* into this:
+* 
+* 
+*  Past state seed (initializer)       ---               ---- repeat (i.e.) number of elements in the tensor sequence (initializer)
+*                                         \             / 
+*                                          \           /    
+*                                    SequenceConstructUsingTensorAndRepeat 
+*                                                |
+*                                                |   (loop carried dep)
+*                                                |
+*                                              Loop --------------------------  other Loop inputs 
+* 
+* The idea is that the initial "empty" sequence that will get populated on the first Loop iteration
+* in the subgraph using the past state seed is directly populated before the Loop is entered. 
+* This makes "parsing" the past state within the Loop subgraph much simpler
+*/
 static bool AdjustOuterScopeGraph(Graph& parent_graph, const Node& loop, size_t loop_input_index,
                                   TensorProto past_state_seed, const TypeProto*& past_state_seed_type_proto,
-                                  int64_t repeats, const std::string& base_name) {
+                                  int64_t repeat, const std::string& base_name,
+                                  const std::unordered_set<std::string>& compatible_eps) {
   Node* node_feeding_loop_input = nullptr;
   for (auto cur = loop.InputEdgesBegin(), end = loop.InputEdgesEnd(); cur != end; ++cur) {
     if (cur->GetDstArgIndex() == static_cast<int>(loop_input_index)) {
@@ -26,12 +57,17 @@ static bool AdjustOuterScopeGraph(Graph& parent_graph, const Node& loop, size_t 
 
   ORT_ENFORCE(node_feeding_loop_input);
 
+  Node& sequence_empty_node = *node_feeding_loop_input;
+
   // Node feeding loop input must be SequenceEmpty
-  if (node_feeding_loop_input->OpType() != "SequenceEmpty") {
+  if (!IsSupportedOptypeVersionAndDomain(sequence_empty_node, "SequenceEmpty", {11})) {
     return false;
   }
 
-  Node& sequence_empty_node = *node_feeding_loop_input;
+  // Check EP compatibility
+  if (!IsSupportedProvider(sequence_empty_node, compatible_eps)) {
+    return false;
+  }
 
   // SequenceEmpty should only feed the Loop node
   if (sequence_empty_node.GetOutputEdgesCount() != 1) {
@@ -50,7 +86,7 @@ static bool AdjustOuterScopeGraph(Graph& parent_graph, const Node& loop, size_t 
   repeats_proto.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
 
   TensorProto repeats_tensor;
-  repeats_tensor.add_int64_data(repeats);
+  repeats_tensor.add_int64_data(repeat);
   repeats_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
   repeats_tensor.set_name(base_name + "_" + "Repeats");
 
@@ -60,12 +96,12 @@ static bool AdjustOuterScopeGraph(Graph& parent_graph, const Node& loop, size_t 
   // Add node that will be used instead of SequenceEmpty
   auto node_name = parent_graph.GenerateNodeName(base_name + "_" + "SequenceConstructUsingTensorAndRepeat");
   Node& sequence_construct = parent_graph.AddNode(node_name,
-                                                 "SequenceConstructUsingTensorAndRepeat",
-                                                 node_name,
-                                                 {&past_state_seed_node_arg, &past_state_repeats_node_arg},
-                                                 sequence_empty_node.MutableOutputDefs(),
-                                                 nullptr,
-                                                 onnxruntime::kMSDomain);
+                                                  "SequenceConstructUsingTensorAndRepeat",
+                                                  node_name,
+                                                  {&past_state_seed_node_arg, &past_state_repeats_node_arg},
+                                                  sequence_empty_node.MutableOutputDefs(),
+                                                  nullptr,
+                                                  onnxruntime::kMSDomain);
 
   // Set the EP of the fused node to be as the SequenceEmpty node's EP
   sequence_construct.SetExecutionProviderType(sequence_empty_node.GetExecutionProviderType());
@@ -74,29 +110,16 @@ static bool AdjustOuterScopeGraph(Graph& parent_graph, const Node& loop, size_t 
   auto& sequence_empty_node_output_edges = GraphEdge::GetNodeOutputEdges(sequence_empty_node);
 
   // The Loop is now to be fed from the fused node
-          parent_graph.AddEdge(sequence_construct.Index(),
-                sequence_empty_node_output_edges[0].dst_node,
+  parent_graph.AddEdge(sequence_construct.Index(),
+                       sequence_empty_node_output_edges[0].dst_node,
                        0,
                        sequence_empty_node_output_edges[0].dst_arg_index);
 
   // Remove SequenceEmpty
-          GraphEdge::RemoveGraphEdges(parent_graph, sequence_empty_node_output_edges);
+  GraphEdge::RemoveGraphEdges(parent_graph, sequence_empty_node_output_edges);
   parent_graph.RemoveNode(sequence_empty_node.Index());
 
   return true;
-}
-
-static bool OpTypeVersionAndProviderCheck(const Node& node, const char* op_type,
-                                          const std::initializer_list<OperatorSetVersion>& versions,
-                                          const std::unordered_set<std::string>& compatible_eps) {
-  return IsSupportedOptypeVersionAndDomain(node, op_type, versions) &&
-         IsSupportedProvider(node, compatible_eps);
-}
-
-static std::vector<uint8_t> UnpackInitializer(const TensorProto& init) {
-  std::vector<uint8_t> unpacked_bytes;
-  UnpackInitializerData(init, unpacked_bytes);
-  return unpacked_bytes;
 }
 
 /*
@@ -111,8 +134,7 @@ Expected If Then branch:
         (tensor sequence) 
 */
 
-static bool IsExpectedIfThenBranch(const Graph& if_then_subgraph,
-                                   const std::unordered_set<std::string>& compatible_eps) {
+static bool IsExpectedIfThenBranch(const Graph& if_then_subgraph) {
   GraphViewer graph_viewer(if_then_subgraph);
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -124,12 +146,13 @@ static bool IsExpectedIfThenBranch(const Graph& if_then_subgraph,
   for (auto index : order) {
     auto* node = if_then_subgraph.GetNode(index);
     // check that node hasn't already been removed
-    if (!node)
+    if (!node) {
       return false;
+    }
 
     // The node should be an Identity node assigned to a compatible EP
     // consuming a tensor sequence input
-    if (OpTypeVersionAndProviderCheck(*node, "Identity", {1, 13, 14, 16}, compatible_eps) &&
+    if (IsSupportedOptypeVersionAndDomain(*node, "Identity", {1, 13, 14, 16}) &&
         HasSequenceType(*node->InputDefs()[0]->TypeAsProto())) {
       return true;
     }
@@ -138,18 +161,17 @@ static bool IsExpectedIfThenBranch(const Graph& if_then_subgraph,
   return false;
 }
 
-/*  Expected Loop subgraph:
+/*  Expected Loop subgraph for Loop node within If Else branch:
 
          (tensor sequence : loop carried dependency) 
               |
               |
-         SequenceInsert --------------------------------- past state seed (initialized tensor) 
+         SequenceInsert --------------------------------- past state seed (initializer) 
               |
               |
          (tensor sequence) 
 */
 static bool IsLoopedSequenceInsert(const Graph& loop_subgraph,
-                                   const std::unordered_set<std::string>& compatible_eps,
                                    /*out*/ TensorProto& past_state_seed,
                                    /*out*/ const TypeProto*& past_state_seed_type_proto) {
   GraphViewer graph_viewer(loop_subgraph);
@@ -163,22 +185,25 @@ static bool IsLoopedSequenceInsert(const Graph& loop_subgraph,
   for (auto index : order) {
     auto* node = loop_subgraph.GetNode(index);
     // check that node hasn't already been removed
-    if (!node)
+    if (!node) {
       continue;
+    }
 
-    if (OpTypeVersionAndProviderCheck(*node, "SequenceInsert", {11}, compatible_eps)) {
-      // While looking for the initializer, it is enough to search in the current level of the subgraph
-      // as that is the case usually.
-      const TensorProto* init = nullptr;
-      const auto* past_state_seed_node_arg = node->InputDefs()[1];
-      if (loop_subgraph.GetInitializedTensor(past_state_seed_node_arg->Name(), init)) {
-        // If the past state seed not an initializer, the fusion is off
-        // as it complicates things quite a bit but we don't expect it
-        // to be a non-initializer.
-        past_state_seed = *init;
-        past_state_seed_type_proto = past_state_seed_node_arg->TypeAsProto();
-        return true;
-      }
+    if (!IsSupportedOptypeVersionAndDomain(*node, "SequenceInsert", {11})) {
+      continue;
+    }
+
+    // While looking for the initializer, it is enough to search in the current level of the subgraph
+    // as that is the case usually.
+    const TensorProto* init = nullptr;
+    const auto* past_state_seed_node_arg = node->InputDefs()[1];
+    if (loop_subgraph.GetInitializedTensor(past_state_seed_node_arg->Name(), init)) {
+      // If the past state seed not an initializer, the fusion is off
+      // as it complicates things quite a bit but we don't expect it
+      // to be a non-initializer.
+      past_state_seed = *init;
+      past_state_seed_type_proto = past_state_seed_node_arg->TypeAsProto();
+      return true;
     }
   }
 
@@ -201,7 +226,6 @@ iteration count (M)
 */
 
 static bool IsExpectedIfElseBranch(const Graph& if_else_subgraph,
-                                   const std::unordered_set<std::string>& compatible_eps,
                                    /*out*/ TensorProto& past_state_seed,
                                    /*out*/ const TypeProto*& past_state_seed_type_proto) {
   GraphViewer graph_viewer(if_else_subgraph);
@@ -215,27 +239,23 @@ static bool IsExpectedIfElseBranch(const Graph& if_else_subgraph,
   for (auto index : order) {
     auto* node = if_else_subgraph.GetNode(index);
     // check that node hasn't already been removed
-    if (!node)
+    if (!node) {
       continue;
+    }
 
-    if (!OpTypeVersionAndProviderCheck(*node, "SequenceEmpty", {11}, compatible_eps)) {
+    if (!IsSupportedOptypeVersionAndDomain(*node, "SequenceEmpty", {11})) {
       continue;
     }
 
     const auto& next_node = *(node->OutputNodesBegin());
 
     // The SequenceEmpty node should feed into a Loop
-    if (!OpTypeVersionAndProviderCheck(next_node, "Loop", {11, 13, 16}, compatible_eps)) {
+    if (!IsSupportedOptypeVersionAndDomain(next_node, "Loop", {11, 13, 16})) {
       return false;
     }
 
     const Node& sequence_empty_node = *node;
     const Node& loop_node = *if_else_subgraph.GetNode(next_node.Index());
-
-    // Ensure that the assigned EPs of the SequenceEmpty and Loop nodes are the same
-    if (sequence_empty_node.GetExecutionProviderType() != loop_node.GetExecutionProviderType()) {
-      return false;
-    }
 
     // The Loop node should only have one output (the tensor sequence itself)
     if (loop_node.OutputDefs().size() != 1) {
@@ -243,7 +263,7 @@ static bool IsExpectedIfElseBranch(const Graph& if_else_subgraph,
     }
 
     auto& loop_subgraph = *loop_node.GetAttributeNameToSubgraphMap().find("body")->second;
-    if (!IsLoopedSequenceInsert(loop_subgraph, compatible_eps, past_state_seed, past_state_seed_type_proto)) {
+    if (!IsLoopedSequenceInsert(loop_subgraph, past_state_seed, past_state_seed_type_proto)) {
       return false;
     }
 
@@ -263,6 +283,60 @@ static bool IsExpectedIfElseBranch(const Graph& if_else_subgraph,
   return true;
 }
 
+/*
+* We are looking for the following pattern:
+* 
+*   SequenceEmpty   ----------      ----------- other Loop inputs 
+*  (loop carried dep)         \   / 
+*                             Loop
+* 
+* 
+* The loop subgraph should be:
+* 
+* 
+*                tensor sequence (loop carried dependency input)
+*                     |
+*                     |
+*                     |
+*                SequenceLength
+*                     |
+*                     |
+*                     |
+*                 Greater (check if greater than 0)
+*                     |
+*                     |
+*                     |
+*                    If (Check the expected then and else subgraphs of If above)
+*                   /  \
+*                  /    \
+*                 /      \
+*              bool      tensor sequence (either the input tensor sequence if length > 0 or a tensor sequence filled with a seed tensor) 
+*              output      |
+*               of         | 
+*              Greater     |
+*                          |
+*                          |
+*                          |---------- SequenceAt (0) ----- (tensor)
+*                          |
+*                          |---------- SequenceAt (1) ----- (tensor)
+*                          |
+*                          |---------- SequenceAt (n) ----- (tensor)
+*                                      (n depends on number of elements in the past state sequence)
+* 
+* 
+* 
+* We want to replace the above subgraph within the Loop subgraph into one node:
+* 
+*                  tensor sequence (loop carried dependency input)
+*                               |
+*                               |
+*                               |
+*                     SequenceTensorSplitter
+*                          /  |   |   \ 
+*         (tensor)    -----   |   |    ----- (tensor)
+*                            (tensor)
+*
+* */
 Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
                                        int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
@@ -271,8 +345,9 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
   for (auto index : order) {
     auto* node = graph.GetNode(index);
     // check that node hasn't already been removed
-    if (!node)
+    if (!node) {
       continue;
+    }
 
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
 
@@ -282,13 +357,22 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
       continue;
     }
 
-    // SequenceLength node
-    if (!OpTypeVersionAndProviderCheck(*node, "SequenceLength", {11}, GetCompatibleExecutionProviders()) ||
+    // SequenceLength node (Must not produce graph output or feed more than one downstream node)
+    if (!IsSupportedOptypeVersionAndDomain(*node, "SequenceLength", {11}) ||
         graph.NodeProducesGraphOutput(*node) || (*node).GetOutputEdgesCount() != 1) {
       continue;
     }
 
     Node& sequence_length_node = *node;
+
+    // Check EP compatibility for SequenceLength
+    // We don't need to check EP compatibility for downstream nodes
+    // as basically they will all get fused together into one node.
+    // We check EP compatibility for this node to ensure that
+    // there is a kernel that will be able to run the fused node.
+    if (!IsSupportedProvider(sequence_length_node, GetCompatibleExecutionProviders())) {
+      continue;
+    }
 
     const auto& sequence_length_node_input = sequence_length_node.InputDefs()[0]->Name();
     size_t loop_past_state_input_index = -1;
@@ -307,10 +391,10 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
       continue;
     }
 
-    // Greater node
+    // Greater node (Must not produce graph output or feed more than one downstream node)
     auto& greater_node = *graph.GetNode(sequence_length_node.OutputNodesBegin()->Index());
 
-    if (!OpTypeVersionAndProviderCheck(greater_node, "Greater", {9, 13}, GetCompatibleExecutionProviders()) ||
+    if (!IsSupportedOptypeVersionAndDomain(greater_node, "Greater", {9, 13}) ||
         graph.NodeProducesGraphOutput(greater_node) || greater_node.GetOutputEdgesCount() != 1) {
       continue;
     }
@@ -327,15 +411,11 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
       continue;
     }
 
-    // If node
+    // If node (Must not produce graph output)
     auto& if_node = *graph.GetNode(greater_node.OutputNodesBegin()->Index());
 
-    if (!OpTypeVersionAndProviderCheck(if_node, "If", {11, 13, 16}, GetCompatibleExecutionProviders()) ||
+    if (!IsSupportedOptypeVersionAndDomain(if_node, "If", {11, 13, 16}) ||
         graph.NodeProducesGraphOutput(if_node)) {
-      continue;
-    }
-
-    if (sequence_length_node.GetExecutionProviderType() != if_node.GetExecutionProviderType()) {
       continue;
     }
 
@@ -343,15 +423,13 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
     // and the second one should be of tensor sequence type
     const auto& if_output_defs = if_node.MutableOutputDefs();
 
-    // TODO: Handle cases where-in the boolean output might not be present
-    // (if we see such models)
+    // TODO: Handle cases where-in the boolean output might not be present (if we see such models)
     if (if_output_defs.size() != 2) {
       continue;
     }
 
     if (!HasElementType(*if_output_defs[0]->TypeAsProto()) ||
-        if_output_defs[0]->TypeAsProto()->tensor_type().elem_type() !=
-            TensorProto::DataType::TensorProto_DataType_BOOL) {
+        if_output_defs[0]->TypeAsProto()->tensor_type().elem_type() != TensorProto::DataType::TensorProto_DataType_BOOL) {
       continue;
     }
 
@@ -359,43 +437,36 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
       continue;
     }
 
+    // Check if the "then" subgraph matches expected pattern
     const auto& if_subgraphs = if_node.GetAttributeNameToSubgraphMap();
-    if (!IsExpectedIfThenBranch(*if_subgraphs.find("then_branch")->second, GetCompatibleExecutionProviders())) {
+    if (!IsExpectedIfThenBranch(*if_subgraphs.find("then_branch")->second)) {
       continue;
     }
 
     TensorProto past_state_seed;
     const TypeProto* past_state_seed_type_proto;
 
-    if (!IsExpectedIfElseBranch(*if_subgraphs.find("else_branch")->second, GetCompatibleExecutionProviders(),
-                                past_state_seed, past_state_seed_type_proto)) {
+    // Check if the "else" subgraph matches expected pattern
+    if (!IsExpectedIfElseBranch(*if_subgraphs.find("else_branch")->second, past_state_seed, past_state_seed_type_proto)) {
       continue;
     }
 
     size_t sequence_at_count = 0;
     for (auto if_node_output = if_node.OutputNodesBegin(), end = if_node.OutputNodesEnd();
          if_node_output != end; ++if_node_output) {
-      if (OpTypeVersionAndProviderCheck(*if_node_output, "SequenceAt", {11}, GetCompatibleExecutionProviders())) {
+      if (IsSupportedOptypeVersionAndDomain(*if_node_output, "SequenceAt", {11})) {
         ++sequence_at_count;
       }
     }
 
     bool proceed_with_fusion = true;
 
-    auto if_node_outputs = if_node.GetOutputEdgesCount();
-
-    // Output defs of the fused node will be one boolean plus the number of downstream
-    // SequenceAt nodes
+    // Number of output defs of the fused node will be the number of downstream SequenceAt nodes
     std::vector<NodeArg*> output_defs_of_fused_node(sequence_at_count, nullptr);
     std::vector<Node*> sequence_at_nodes(sequence_at_count, nullptr);
 
     for (auto it = if_node.OutputNodesBegin(), end = if_node.OutputNodesEnd(); it != end; ++it) {
       auto& if_node_output = *graph.GetNode(it->Index());
-
-      if (sequence_length_node.GetExecutionProviderType() != if_node_output.GetExecutionProviderType()) {
-        proceed_with_fusion = false;
-        break;
-      }
 
       if (if_node_output.OpType() == "SequenceAt") {
         const auto* position = if_node_output.InputDefs()[1];
@@ -444,7 +515,7 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
     if (!AdjustOuterScopeGraph(*graph.MutableParentGraph(), *parent_node,
                                loop_past_state_input_index, past_state_seed,
                                past_state_seed_type_proto, sequence_at_count,
-                               base_name)) {
+                               base_name, GetCompatibleExecutionProviders())) {
       continue;
     }
 
@@ -477,7 +548,6 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
         greater_output_dst_args.push_back(cur->dst_arg_index);
       }
     }
-
 
     // Re-route tensor outputs of SequenceAts so that they
     // are now being fed from the SequenceTensorSplitter fused node
@@ -517,7 +587,7 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
                     greater_output_dst_args[i]);
     }
 
-    // SequenceAt adjustments
+    // We are done with SequenceAt(s) - remove them
     for (size_t i = 0; i < sequence_at_count; ++i) {
       auto& sequence_at_node = *sequence_at_nodes[i];
       auto& sequence_at_output_edges = GraphEdge::GetNodeOutputEdges(sequence_at_node);
