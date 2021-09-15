@@ -117,7 +117,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     if (!matchfound)
                     {
                         // throw error
-                        throw new Exception($"No Matching Tensor found in InputOutputMetadata corresponding to the serliazed tensor specified");
+                        throw new Exception($"No Matching Tensor found in InputOutputMetadata corresponding to the serialized tensor specified");
                     }
                 }
             }
@@ -138,8 +138,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             for (int i = 0; i < nodeMeta.Dimensions.Length; i++)
             {
-                if (!(nodeMeta.Dimensions[i] == -1) || (nodeMeta.Dimensions[i] == intDims[i]))
-                    throw new Exception($"{nameof(nodeMeta.Dimensions)}[{i}] is expected to either -1 or {nameof(intDims)}[{i}]");
+                if ((nodeMeta.Dimensions[i] != -1) && (nodeMeta.Dimensions[i] != intDims[i]))
+                    throw new Exception($"{nameof(nodeMeta.Dimensions)}[{i}] is expected to either be -1 or {nameof(intDims)}[{i}]");
             }
 
             if (nodeMeta.ElementType == typeof(float))
