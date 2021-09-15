@@ -9,7 +9,6 @@ namespace Microsoft.ML.OnnxRuntime
     /// Represents the platform-specific options for creating an InferenceSession.
     /// </summary>
     /// <see cref="https://onnxruntime.ai"/>
-    /// <remarks>Satisfies partial class requirements.</remarks>
     public partial class SessionOptions
     {
         /// <summary>

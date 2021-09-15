@@ -21,6 +21,7 @@
     <PropertyGroup>
         <AutoGenerateBindingRedirects>True</AutoGenerateBindingRedirects>
         <MtouchExtraArgs>--nowarn:0109</MtouchExtraArgs>
+        <NoWarn>CS8002</NoWarn>
     </PropertyGroup>
 
     <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|iPhoneSimulator' ">
@@ -92,7 +93,6 @@
         <Reference Include="System.Core" />
         <Reference Include="Xamarin.iOS" />
         <Reference Include="System.Numerics" />
-        <Reference Include="System.Numerics.Vectors" />
     </ItemGroup>
 
     <ItemGroup>
@@ -109,6 +109,9 @@
       <PackageReference Include="System.Memory" Version="4.5.4" IncludeAssets="None" />
       <PackageReference Include="System.Text.Json">
         <Version>5.0.2</Version>
+      </PackageReference>
+      <PackageReference Include="Xamarin.TestCloud.Agent">
+        <Version>0.22.2</Version>
       </PackageReference>
     </ItemGroup>
 

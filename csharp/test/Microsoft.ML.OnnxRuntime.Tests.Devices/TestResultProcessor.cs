@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -47,13 +48,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests.Devices
 
     public class TestResultProcessor
     {
-        List<TestResult> _results;
+        ConcurrentBag<TestResult> _results = new ConcurrentBag<TestResult>();
         JsonSerializerOptions _serializerOptions = new JsonSerializerOptions { WriteIndented = true };
 
-        List<TestResult> Results
+        public ConcurrentBag<TestResult> Results
         {
-            get => _results == null ? (_results = new List<TestResult>()) : _results;
-            set => _results = value;
+            get => _results == null ? (_results = new ConcurrentBag<TestResult>()) : _results;
+            private set => _results = value;
         }
 
         internal void RecordResult(TestResult test)
@@ -61,18 +62,25 @@ namespace Microsoft.ML.OnnxRuntime.Tests.Devices
 
         public void RecordResult(ITestResultMessage testResult, ITestCase testCase, TestOutcome outcome)
         {
-            RecordResult(new TestResult
+            try
             {
-                TestId = testCase.UniqueID,
-                TestName = testCase.DisplayName,
-                Output = testResult.Output,
-                TestOutcome = outcome,
-                Duration = TimeSpan.FromSeconds((double)testResult.ExecutionTime).ToString("c", CultureInfo.InvariantCulture)
-            });
+                RecordResult(new TestResult
+                {
+                    TestId = testCase.UniqueID,
+                    TestName = testCase.DisplayName,
+                    Output = testResult.Output,
+                    TestOutcome = outcome,
+                    Duration = TimeSpan.FromSeconds((double)testResult.ExecutionTime).ToString("c", CultureInfo.InvariantCulture)
+                });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.TraceError(ex.Message);
+            }
         }
 
         public TestResultSummary GetResults()
-            => new TestResultSummary(Results);
+            => new TestResultSummary(Results.ToList());
 
         public string GetSerializedResults()
         {

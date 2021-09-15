@@ -64,6 +64,7 @@
     <MtouchArch>ARM64</MtouchArch>
     <CodesignKey>iPhone Developer</CodesignKey>
     <CodesignEntitlements>Entitlements.plist</CodesignEntitlements>
+    <MtouchLink>SdkOnly</MtouchLink>
   </PropertyGroup>
   <PropertyGroup>
       <OnnxNativeFrameworkPathPhone>..\..\..\build\iOS\iphoneos\Release\Release-iphoneos\onnxruntime.framework</OnnxNativeFrameworkPathPhone>
