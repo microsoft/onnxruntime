@@ -79,7 +79,7 @@ steps:
       --skip_memory_metrics
     python ../../orttraining/tools/ci_test/compare_huggingface.py \
       ci-pipeline-actual.json \
-      ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.bert-large.json 
+      ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.bert-large-rocm4.3.1-det.json
   displayName: 'Run Python Hugging-Face BERT-L test'
   condition: succeededOrFailed() # ensure all tests are run
 
@@ -104,7 +104,7 @@ steps:
       --skip_memory_metrics
     python ../../orttraining/tools/ci_test/compare_huggingface.py \
       ci-pipeline-actual.json \
-      ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.gpt2.json 
+      ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.gpt2-rocm4.3.1-det.json
   displayName: 'Run Python Hugging-Face GPT2 test'
   condition: succeededOrFailed() # ensure all tests are run
 
@@ -132,7 +132,7 @@ steps:
       --skip_memory_metrics 
     python ../../orttraining/tools/ci_test/compare_huggingface.py \
       ci-pipeline-actual.json \
-      ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.bart-large.json 
+      ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.bart-large-rocm4.3.1-det.json
   displayName: 'Run Python Hugging-Face BART-L test'
   condition: succeededOrFailed() # ensure all tests are run
 
@@ -158,7 +158,7 @@ steps:
       --skip_memory_metrics
     python ../../orttraining/tools/ci_test/compare_huggingface.py \
       ci-pipeline-actual.json \
-      ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.roberta-large.json 
+      ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.roberta-large-rocm4.3.1-det.json
   displayName: 'Run Python Hugging-Face RoBERTa-L test'
   condition: succeededOrFailed() # ensure all tests are run
 
@@ -182,7 +182,7 @@ steps:
       --skip_memory_metrics
     python ../../orttraining/tools/ci_test/compare_huggingface.py \
       ci-pipeline-actual.json \
-      ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.distilbert-base.json 
+      ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.distilbert-rocm4.3.1-det.json
   displayName: 'Run Python Hugging-Face DistilBERT test'
   condition: succeededOrFailed() # ensure all tests are run
 
