@@ -86,6 +86,7 @@ jobs:
       npm test -- suite1 --env=bs --wasm-init-timeout=30000 --file-cache --backend=wasm
     workingDirectory: '$(Build.SourcesDirectory)/js/web'
     displayName: 'npm test (Suite1, BS_IOS)'
+    continueOnError: true
     env:
       BROWSERSTACK_ACCESS_KEY: $(BROWSERSTACK_ACCESS_KEY)
       BROWSERSTACK_USERNAME: $(BROWSERSTACK_USERNAME)
