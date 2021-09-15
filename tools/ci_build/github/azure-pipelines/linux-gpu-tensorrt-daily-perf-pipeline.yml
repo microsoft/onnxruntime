@@ -96,5 +96,26 @@ jobs:
 
     - script: 'docker images'
       displayName: 'sample images'
-      
+    
+    - ${{ each option in parameters.ModelGroups }}:
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(with_arguments) -o ${{option}} -m $(${{option}})'
+        displayName: '${{option}} perf'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+        
+    # Prepare and Publish Artifacts 
+    
+    - script: 'mkdir $(Build.SourcesDirectory)/Artifact'
+      displayName: 'Prepare Artifacts Directory'
+      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+      condition: always() 
+
+    - ${{ if not(eq(length(parameters.ModelGroups), 0)) }}:
+      - script: 'cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact'
+        displayName: 'Copy Artifacts'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathtoPublish: '$(Build.SourcesDirectory)/Artifact'
+        artifactName: 'result-$(Build.BuildNumber)'
+        
     - template: templates/clean-agent-build-directory-step.yml
