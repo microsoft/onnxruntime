@@ -113,8 +113,11 @@ class MachineInfo():
     def get_related_packages(self) -> List[str]:
         import pkg_resources
         installed_packages = pkg_resources.working_set
-        related_packages = ['onnxruntime-gpu', 'onnxruntime', 'ort-nightly-gpu', 'ort-nightly', 'onnx', 'transformers', 'protobuf', 'sympy', 'torch', 'tensorflow', 'flatbuffers', 'numpy', 'onnxconverter-common']
-        related_packages_list = {i.key : i.version for i in installed_packages if i.key in related_packages}
+        related_packages = [
+            'onnxruntime-gpu', 'onnxruntime', 'ort-nightly-gpu', 'ort-nightly', 'onnx', 'transformers', 'protobuf',
+            'sympy', 'torch', 'tensorflow', 'flatbuffers', 'numpy', 'onnxconverter-common'
+        ]
+        related_packages_list = {i.key: i.version for i in installed_packages if i.key in related_packages}
         return related_packages_list
 
     def get_onnxruntime_info(self) -> Dict:

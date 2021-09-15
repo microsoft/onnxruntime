@@ -100,7 +100,7 @@ void SerializeProfile(const std::string& file_name, std::unordered_map<std::stri
 std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> DeserializeProfile(std::ifstream& infile) {
   // Load flexbuffer
   infile.seekg(0, std::ios::end);
-  int length = infile.tellg();
+  size_t length = infile.tellg();
   infile.seekg(0, std::ios::beg);
   std::unique_ptr<char[]> data{new char[length]};
   infile.read((char*)data.get(), length);
@@ -194,7 +194,7 @@ bool ReadDynamicRange(const std::string file_name, const bool is_trt_calibration
   } else {
     // ORT generated calibration table
     infile.seekg(0, std::ios::end);
-    int length = infile.tellg();
+    size_t length = infile.tellg();
     infile.seekg(0, std::ios::beg);
     std::unique_ptr<char[]> data{new char[length]};
     infile.read((char*)data.get(), length);
@@ -556,6 +556,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     engine_decryption_ = (int (*)(const char*, char*, size_t*))LIBFUNC(handle, "decrypt");
     engine_encryption_ = (int (*)(const char*, char*, size_t))LIBFUNC(handle, "encrypt");
   }
+
+  if (int8_enable_) {
+    int8_calibration_cache_available_ = !int8_calibration_cache_name_.empty();
+  }
+
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] TensorRT provider options: "
                         << "device_id: " << device_id_
                         << ", trt_max_partition_iterations: " << max_partition_iterations_
@@ -564,6 +569,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_fp16_enable: " << fp16_enable_
                         << ", trt_int8_enable: " << int8_enable_
                         << ", trt_int8_calibration_cache_name: " << int8_calibration_cache_name_
+                        << ", int8_calibration_cache_available: " << int8_calibration_cache_available_
                         << ", trt_int8_use_native_tensorrt_calibration_table: " << int8_use_native_tensorrt_calibration_table_
                         << ", trt_dla_enable: " << dla_enable_
                         << ", trt_dla_core: " << dla_core_
@@ -590,6 +596,8 @@ AllocatorPtr TensorrtExecutionProvider::GetAllocator(int id, OrtMemType mem_type
 }
 
 void TensorrtExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) {
+  // Try to get a CUDA allocator from allocator manager first
+  // Used to allocate CUDA device memory
   allocator_ = allocator_manager->GetAllocator(device_id_, OrtMemTypeDefault);
   if (nullptr == allocator_) {
     AllocatorCreationInfo default_memory_info(
@@ -599,6 +607,9 @@ void TensorrtExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManag
   }
   TryInsertAllocator(allocator_);
 
+  // OrtMemTypeCPUOutput -- allocated by cudaMallocHost, used to copy CUDA device memory to CPU
+  // Use pinned memory instead of pageable memory make the data transfer faster
+  // Used by node MemcpyToHost only
   auto cuda_pinned_alloc = allocator_manager->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUOutput);
   if (nullptr == cuda_pinned_alloc) {
     AllocatorCreationInfo pinned_allocator_info(
@@ -610,6 +621,24 @@ void TensorrtExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManag
     allocator_manager->InsertAllocator(cuda_pinned_alloc);
   }
   TryInsertAllocator(cuda_pinned_alloc);
+
+  auto cuda_cpu_alloc = allocator_manager->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUInput);
+  if (nullptr == cuda_cpu_alloc) {
+    // TODO: this is actually used for the cuda kernels which explicitly ask for inputs from CPU.
+    // This will be refactored/removed when allocator and execution provider are decoupled.
+    // Need to move the OrtMemoryType out of Allocator, that's one thing blocking us to share it with CPU EP
+    // CPUAllocator is OrtMemTypeDefault for CPU EP
+    AllocatorCreationInfo cpu_memory_info(
+        [](int device_id) {
+          return std::make_unique<CPUAllocator>(
+              OrtMemoryInfo("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
+                            OrtMemTypeCPUInput));
+        },
+        DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
+    cuda_cpu_alloc = CreateAllocator(cpu_memory_info);
+    allocator_manager->InsertAllocator(cuda_cpu_alloc);
+  }
+  TryInsertAllocator(cuda_cpu_alloc);
 }
 
 std::unique_ptr<IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() const {
@@ -1206,7 +1235,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
 
     // Load INT8 calibration table
     std::unordered_map<std::string, float> dynamic_range_map;
-    if (int8_enable_) {
+    if (int8_enable_ && int8_calibration_cache_available_) {
       const std::string calibration_cache_path = GetCachePath(cache_path_, int8_calibration_cache_name_);
       if (!ReadDynamicRange(calibration_cache_path, int8_use_native_tensorrt_calibration_table_, dynamic_range_map)) {
         throw std::runtime_error("Failed to read INT8 calibration table " + calibration_cache_path);
@@ -1260,7 +1289,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
       if (engine_cache_enable_ && engine_file) {
         engine_file.seekg(0, std::ios::end);
-        int engine_size = engine_file.tellg();
+        size_t engine_size = engine_file.tellg();
         engine_file.seekg(0, std::ios::beg);
         std::unique_ptr<char[]> engine_buf{new char[engine_size]};
         engine_file.read((char*)engine_buf.get(), engine_size);
@@ -1291,7 +1320,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
         }
       } else {
         // Set INT8 per tensor dynamic range
-        if (int8_enable_ && trt_builder->platformHasFastInt8()) {
+        if (int8_enable_ && trt_builder->platformHasFastInt8() && int8_calibration_cache_available_) {
           trt_config->setInt8Calibrator(nullptr);
           if (!SetDynamicRange(*trt_network, dynamic_range_map)) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
@@ -1375,9 +1404,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       *p = {context->allocate_func, context->release_func, context->allocator_handle, &parsers_[context->node_name],
             &engines_[context->node_name], &contexts_[context->node_name], &builders_[context->node_name],
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
-            input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, dla_enable_,
-            dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_, runtime_.get(), nullptr,
-            allocator_, dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_};
+            input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
+            dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
+            runtime_.get(), nullptr, allocator_, dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_};
       *state = p.release();
       return 0;
     };
@@ -1424,7 +1453,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           trt_state->context->reset();
           trt_state->engine->reset();
           engine_file.seekg(0, std::ios::end);
-          int engine_size = engine_file.tellg();
+          size_t engine_size = engine_file.tellg();
           engine_file.seekg(0, std::ios::beg);
           std::unique_ptr<char[]> engine_buf{new char[engine_size]};
           engine_file.read((char*)engine_buf.get(), engine_size);
@@ -1459,7 +1488,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           trt_state->context->reset();
           trt_state->engine->reset();
           *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
           if (trt_state->engine == nullptr) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                    "TensorRT EP could not deserialize engine from encrypted cache: " + engine_cache_path);
@@ -1617,7 +1645,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
         trt_config->addOptimizationProfile(*trt_profile);
 
         // Set INT8 Per Tensor Dynamic range
-        if (trt_state->int8_enable && trt_builder->platformHasFastInt8()) {
+        if (trt_state->int8_enable && trt_builder->platformHasFastInt8() && trt_state->int8_calibration_cache_available) {
           trt_config->setInt8Calibrator(nullptr);
           if (!SetDynamicRange(*trt_state->network->get(), trt_state->dynamic_range_map)) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to set INT8 dynamic range.");

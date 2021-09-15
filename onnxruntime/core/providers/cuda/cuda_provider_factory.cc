@@ -14,6 +14,10 @@
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 
+#ifdef ENABLE_NVTX_PROFILE
+#include "nvtx_profile.h"
+#endif
+
 using namespace onnxruntime;
 
 namespace onnxruntime {
@@ -144,6 +148,11 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
   cuda::INcclService& GetINcclService() override {
     return cuda::GetINcclService();
   }
+#endif
+
+#ifdef ENABLE_NVTX_PROFILE
+  void NvtxRangeCreator__BeginImpl(profile::NvtxRangeCreator* p) override { p->BeginImpl(); }
+  void NvtxRangeCreator__EndImpl(profile::NvtxRangeCreator* p) override { p->EndImpl(); }
 #endif
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const CUDAExecutionProviderInfo& info) override {

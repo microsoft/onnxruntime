@@ -87,7 +87,7 @@ jobs:
 
 - template: templates/win-ci.yml
   parameters:
-    ort_build_pool_name: 'onnxruntime-gpu-winbuild'
+    ort_build_pool_name: 'onnxruntime-gpu-tensorrt8-winbuild-t4'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     job_name_suffix: gpu
@@ -95,14 +95,14 @@ jobs:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-cuda
-    buildparameter: --use_cuda --cuda_version=11.1 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.1" --cudnn_home="C:\local\cudnn-11.4-windows-x64-v8.2.2.26\cuda" --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;52;60;61;70;75;80"
+    buildparameter: --use_cuda --cuda_version=11.4 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.4" --cudnn_home="C:\local\cudnn-11.4-windows-x64-v8.2.2.26\cuda" --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;52;60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
 
 - template: templates/win-ci.yml
   parameters:
-    ort_build_pool_name: 'onnxruntime-gpu-tensorrt8-winbuild'
+    ort_build_pool_name: 'onnxruntime-gpu-tensorrt8-winbuild-t4'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     job_name_suffix: tensorrt
@@ -110,7 +110,7 @@ jobs:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-tensorrt
-    buildparameter: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.0.1.6.Windows10.x86_64.cuda-11.3.cudnn8.2" --cuda_version=11.1 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.1" --cudnn_home="C:\local\cudnn-11.4-windows-x64-v8.2.2.26\cuda" --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;52;60;61;70;75;80"
+    buildparameter: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.0.3.4.Windows10.x86_64.cuda-11.3.cudnn8.2" --cuda_version=11.4 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.4" --cudnn_home="C:\local\cudnn-11.4-windows-x64-v8.2.2.26\cuda" --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;52;60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
@@ -121,6 +121,7 @@ jobs:
   pool: 'Win-CPU-2021'
   dependsOn:
   - Linux_C_API_Packaging_GPU_x64
+  - Linux_C_API_Packaging_GPU_TensorRT_x64
   - Windows_Packaging_gpu
   - Windows_Packaging_tensorrt
   condition: succeeded()
@@ -300,6 +301,15 @@ jobs:
       archiveFile: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
       replaceExistingArchive: true
 
+  - template: templates/validate-package.yml
+    parameters:
+      PackageType: 'tarball'
+      PackagePath: '$(Build.ArtifactStagingDirectory)'
+      PackageName: 'onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
+      PlatformsSupported: 'linux-x64'
+      VerifyNugetSigning: false
+      workingDirectory: '$(Build.ArtifactStagingDirectory)'
+
   - task: PublishPipelineArtifact@1
     inputs:
       targetPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
@@ -316,6 +326,7 @@ jobs:
   steps:
   - checkout: self
     submodules: false
+  - template: templates/set-version-number-variables-step.yml
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Combined GPU'
     inputs:
@@ -351,6 +362,15 @@ jobs:
       SourceFolder: '$(Build.BinariesDirectory)\zip-artifacts'
       Contents: 'onnxruntime-win-x64-gpu-*.zip'
       TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+  - template: templates/validate-package.yml
+    parameters:
+      PackageType: 'zip'
+      PackagePath: '$(Build.ArtifactStagingDirectory)'
+      PackageName: 'onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip'
+      PlatformsSupported: 'win-x64'
+      VerifyNugetSigning: false
+      workingDirectory: '$(Build.ArtifactStagingDirectory)'
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline Combined GPU Package Artifact'
@@ -458,6 +478,12 @@ jobs:
       arguments: '--configuration RelWithDebInfo -t:CreatePackage -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
+  - task: BatchScript@1
+    displayName: 'Add TensorRT header file to the native nuGet package'
+    inputs:
+      filename: $(Build.SourcesDirectory)\tools\ci_build\github\windows\bundle_nuget_with_native_headers.bat
+      workingFolder: $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo
+
   - task: CopyFiles@2
     displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
     inputs:
@@ -485,10 +511,11 @@ jobs:
       FolderPath: '$(Build.ArtifactStagingDirectory)'
       DoEsrp: ${{ parameters.DoEsrp }}
 
-  - template: templates/validate-nuget.yml
+  - template: templates/validate-package.yml
     parameters:
-      NugetPath: '$(Build.ArtifactStagingDirectory)'
-      NugetPackage: 'Microsoft.ML.OnnxRuntime.*nupkg'
+      PackageType: 'nuget'
+      PackagePath: '$(Build.ArtifactStagingDirectory)'
+      PackageName: 'Microsoft.ML.OnnxRuntime.*nupkg'
       PlatformsSupported: 'win-x64,linux-x64'
       VerifyNugetSigning: false
 

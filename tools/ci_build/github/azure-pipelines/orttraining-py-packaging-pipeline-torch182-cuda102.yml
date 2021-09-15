@@ -4,7 +4,7 @@ stages:
 - template: templates/py-packaging-training-cuda-stage.yml
   parameters:
     build_py_parameters: --enable_training --update --build
-    torch_version: '1.8.1'
+    torch_version: '1.8.2'
     cuda_version: '10.2'
     gcc_version: 8
     cmake_cuda_architectures: 35;37;50;52;60;61;70

@@ -305,7 +305,7 @@ stages:
             --network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64
             --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-10/root
             --build-arg PREPEND_PATH=/opt/rh/devtoolset-10/root/usr/bin:
-            --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64
+            --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
           Repository: onnxruntimetrainingrocmbuild-torch1.8.1
       - template: get-docker-image-steps.yml
         parameters:
@@ -318,7 +318,7 @@ stages:
             --network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64
             --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-10/root
             --build-arg PREPEND_PATH=/opt/rh/devtoolset-10/root/usr/bin:
-            --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64
+            --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
           Repository: onnxruntimetrainingrocmbuild-torch1.9.0
 
     - job: ROCM_training_wheels

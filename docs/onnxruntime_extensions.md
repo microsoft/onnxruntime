@@ -31,7 +31,14 @@ If your model contains operators from onnxruntime-extensions, please add argumen
 You could even manually edit the **required_operators.config** if you know the custom operators required and don't want to build the shared library.
 
 ### Build and Disable Exceptions
-You could add argument `--disable_exceptions` to disable exceptions in both onnxruntime and onnxruntime-extensions. However, if the custom operators you used in onnxruntime-extensions (such as BlingFireTokenizer) use c++ exceptions, then you cannot disable it.
+You could add argument `--disable_exceptions` to disable exceptions in both onnxruntime and onnxruntime-extensions.
+
+However, if the custom operators you used in onnxruntime-extensions (such as BlingFireTokenizer) use c++ exceptions, then you will also need to add argument `--enable_wasm_exception_throwing_override` to enable **Emscripten** to link in exception throwing support library. If this argument is not set, Emscripten will throw linking errors.
+
+### Example Build Command
+```console
+D:\onnxruntime> build.bat --config Release --build_wasm --enable_wasm_threads --enable_wasm_simd --skip_tests --disable_exceptions --disable_wasm_exception_catching --enable_wasm_exception_throwing_override --disable_rtti --use_extensions --parallel --minimal_build custom_ops --include_ops_by_config D:\required_operators.config
+```
 
 ## E2E Example using Custom Operators
 A common NLP task would probably contain several steps, including pre-processing, DL model and post-processing. It would be very efficient and productive to convert the pre/post processing code snippets into ONNX model since ONNX graph is actually a computation graph, and it can represent the most programming code, theoretically.
