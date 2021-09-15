@@ -6,4 +6,9 @@ nav_order: 4
 
 # Build ONNX Runtime for Web
 
- *[COMING SOON]* 
+
+ Check out the [release blog here](https://cloudblogs.microsoft.com/opensource/2021/09/02/onnx-runtime-web-running-your-machine-learning-model-in-browser/)
+
+
+ *[DOCUMENTATION COMING SOON]*
+
