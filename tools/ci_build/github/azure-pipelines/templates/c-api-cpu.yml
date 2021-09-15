@@ -442,15 +442,6 @@ jobs:
       command: "restore"
       restoreSolution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
 
-  # - task: DotNetCoreCLI@2
-  #   displayName: 'Restore nuget packages'
-  #   inputs:
-  #     command: restore
-  #     projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-  #     configuration: RelWithDebInfo
-  #     arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
-  #     workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
   - task: MSBuild@1
     displayName: 'Build C#'
     inputs:

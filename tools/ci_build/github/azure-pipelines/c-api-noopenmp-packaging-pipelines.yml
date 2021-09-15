@@ -445,14 +445,11 @@ jobs:
     inputs:
       versionSpec: 5.7.0
 
-  - task: DotNetCoreCLI@2
-    displayName: 'Restore nuget packages'
+  - task: NuGetCommand@2
+    displayName: Restore NuGet Packages
     inputs:
-      command: restore
-      projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-      configuration: RelWithDebInfo
-      arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
-      workingDirectory: '$(Build.SourcesDirectory)\csharp'
+      command: "restore"
+      restoreSolution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
 
   - task: MSBuild@1
     displayName: 'Build C#'

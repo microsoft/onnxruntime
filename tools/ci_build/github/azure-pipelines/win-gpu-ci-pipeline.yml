@@ -127,14 +127,11 @@ jobs:
       arguments: 'bdist_wheel'
       workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
 
-  - task: DotNetCoreCLI@2
-    displayName: 'Restore nuget packages'
+  - task: NuGetCommand@2
+    displayName: Restore NuGet Packages
     inputs:
-      command: restore
-      projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-      configuration: '$(BuildConfig)'
-      arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OrtPackageId=$(OrtPackageId)'
-      workingDirectory: '$(Build.SourcesDirectory)\csharp'      
+      command: "restore"
+      restoreSolution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
 
   - task: MSBuild@1
     displayName: 'Build C#'
