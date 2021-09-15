@@ -95,7 +95,7 @@ stages:
     and(succeeded(), or(and(eq(variables['Build.Reason'], 'Scheduled'),
                             eq(variables['Build.SourceBranch'], 'refs/heads/master')
                            ),
-                        and(in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'),
+                        and(eq(variables['Build.Reason'], 'Manual'),
                             eq('${{ parameters.DoPublish }}', true)
                            )
                        )
