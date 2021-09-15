@@ -14,7 +14,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             byte[] model = null;
 
             var resourceName = assembly.GetManifestResourceNames().Single(p => p.EndsWith(path));
-
             using (Stream stream = assembly.GetManifestResourceStream(resourceName))
             {
                 using (MemoryStream memoryStream = new MemoryStream())
@@ -33,7 +32,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var tensorData = new List<float>();
             var assembly = typeof(TestDataLoader).Assembly;
 
-            using (StreamReader inputFile = new StreamReader(assembly.GetManifestResourceStream($"{assembly.GetName().Name}.TestData.{path}")))
+            var resourceName = assembly.GetManifestResourceNames().Single(p => p.EndsWith(path));
+            using (StreamReader inputFile = new StreamReader(assembly.GetManifestResourceStream(resourceName)))
             {
                 inputFile.ReadLine(); //skip the input name
                 string[] dataStr = inputFile.ReadLine().Split(new char[] { ',', '[', ']' }, StringSplitOptions.RemoveEmptyEntries);
