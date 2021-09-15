@@ -10,9 +10,9 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-class ParsePastState final : public onnxruntime::cuda::CudaKernel {
+class SequenceConstructUsingTensorAndRepeat final : public onnxruntime::cuda::CudaKernel {
  public:
-  explicit ParsePastState(const OpKernelInfo& info);
+  explicit SequenceConstructUsingTensorAndRepeat(const OpKernelInfo& info);
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };

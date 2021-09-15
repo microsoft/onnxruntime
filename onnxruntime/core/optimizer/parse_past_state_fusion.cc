@@ -13,14 +13,63 @@ using namespace ::onnxruntime::utils;
 
 namespace onnxruntime {
 
-/*
-static bool AdjustParentGraph(Graph& parent_graph, 
-    Node& parent_node,
-     TensorProto past_state_seed, int64_t repeat, 
-    const std::string& base_name) {
+static bool AdjustOuterScopeGraph(Graph& parent_graph, const Node& loop, size_t loop_input_index,
+                                  TensorProto past_state_seed, const TypeProto*& past_state_seed_type_proto,
+                                  int64_t repeats, const std::string& base_name) {
+  Node* node_feeding_loop_input = nullptr;
+  auto& loop_input_edges = GraphEdge::GetNodeInputEdges(loop);
+  for (auto cur = loop_input_edges.cbegin(), end = loop_input_edges.cend(); cur != end; ++cur) {
+    if (cur->dst_arg_index == static_cast<int>(loop_input_index)) {
+      node_feeding_loop_input = parent_graph.GetNode(cur->src_node);
+      break;
+    }
+  }
 
+  ORT_ENFORCE(node_feeding_loop_input);
+
+  // Node feeding loop input must be SequenceEmpty
+  if (node_feeding_loop_input->OpType() != "SequenceEmpty") {
+    return false;
+  }
+
+  Node& sequence_empty_node = *node_feeding_loop_input;
+
+  // Add past state seed as an initializer
+  past_state_seed.clear_name();
+  past_state_seed.set_name(base_name + "_" + past_state_seed.name());
+  auto& past_state_seed_node_arg = parent_graph.GetOrCreateNodeArg(past_state_seed.name(),
+                                                                   past_state_seed_type_proto);
+  parent_graph.AddInitializedTensor(past_state_seed);
+
+  // Add past state repeats as an initializer
+  TypeProto repeats_proto;
+  repeats_proto.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+
+  TensorProto repeats_tensor;
+  repeats_tensor.add_int64_data(repeats);
+  repeats_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+
+  auto& past_state_repeats_node_arg = parent_graph.GetOrCreateNodeArg(base_name + "_" + "Repeats",
+                                                                      &repeats_proto);
+  parent_graph.AddInitializedTensor(repeats_tensor);
+
+  // Add node that will be used instead of SequenceEmpty
+  auto node_name = parent_graph.GenerateNodeName(base_name + "_" + "SequenceConstructUsingTensorAndRepeat");
+  Node& past_state_fusion = parent_graph.AddNode(node_name,
+                                                 "SequenceConstructUsingTensorAndRepeat",
+                                                 node_name,
+                                                 {&past_state_seed_node_arg, &past_state_repeats_node_arg},
+                                                 sequence_empty_node.MutableOutputDefs(),
+                                                 nullptr,
+                                                 onnxruntime::kMSDomain);
+
+  // Remove SequenceEmpty
+  GraphEdge::RemoveGraphEdges(parent_graph, GraphEdge::GetNodeOutputEdges(sequence_empty_node));
+  parent_graph.RemoveNode(sequence_empty_node.Index());
+
+  return true;
 }
-*/
+
 static bool OpTypeVersionAndProviderCheck(const Node& node, const char* op_type,
                                           const std::initializer_list<OperatorSetVersion>& versions,
                                           const std::unordered_set<std::string>& compatible_eps) {
@@ -225,13 +274,11 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
 
     Node& sequence_length_node = *node;
 
-    bool sequence_length_input_is_subgraph_input = false;
     const auto& sequence_length_node_input = sequence_length_node.InputDefs()[0]->Name();
-    int64_t loop_past_state_input_index = -1;
-    int64_t iter = 0;
+    size_t loop_past_state_input_index = -1;
+    size_t iter = 0;
     for (const auto* graph_input : graph.GetInputs()) {
       if (graph_input->Name() == sequence_length_node_input) {
-        sequence_length_input_is_subgraph_input = true;
         loop_past_state_input_index = iter;
         break;
       } else {
@@ -240,8 +287,7 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
     }
 
     // SequenceLength must be fed by a subgraph input
-
-    if (!sequence_length_input_is_subgraph_input) {
+    if (loop_past_state_input_index == -1) {
       continue;
     }
 
@@ -311,7 +357,8 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
     }
 
     size_t sequence_at_count = 0;
-    for (auto if_node_output = if_node.OutputNodesBegin(), end = if_node.OutputNodesEnd(); if_node_output != end; ++if_node_output) {
+    for (auto if_node_output = if_node.OutputNodesBegin(), end = if_node.OutputNodesEnd();
+         if_node_output != end; ++if_node_output) {
       if (OpTypeVersionAndProviderCheck(*if_node_output, "SequenceAt", {11}, GetCompatibleExecutionProviders())) {
         ++sequence_at_count;
       }
@@ -323,10 +370,9 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
 
     // Output defs of the fused node will be one boolean plus the number of downstream
     // SequenceAt nodes
-    std::vector<NodeArg*> output_defs_of_fused_node(1 + sequence_at_count, nullptr);
+    std::vector<NodeArg*> output_defs_of_fused_node(sequence_at_count, nullptr);
     std::vector<Node*> sequence_at_nodes(sequence_at_count, nullptr);
 
-    output_defs_of_fused_node[0] = if_output_defs[0];
     for (auto it = if_node.OutputNodesBegin(), end = if_node.OutputNodesEnd(); it != end; ++it) {
       auto& if_node_output = *graph.GetNode(it->Index());
 
@@ -365,7 +411,7 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
         }
 
         sequence_at_nodes[position_init_value] = &if_node_output;
-        output_defs_of_fused_node[1 + position_init_value] = if_node_output.MutableOutputDefs()[0];
+        output_defs_of_fused_node[position_init_value] = if_node_output.MutableOutputDefs()[0];
       }
     }
 
@@ -373,25 +419,27 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
       continue;
     }
 
-    // If we have reached here, fusion is ON
-
     const auto& base_name = sequence_length_node.Name() + "_" +
                             greater_node.Name() + "_" +
                             if_node.Name();
-    // Add the past state seed as an initializer and add a node arg for that
-    past_state_seed.clear_name();
-    past_state_seed.set_name(base_name + "_" + past_state_seed.name());
-    graph.AddInitializedTensor(past_state_seed);
 
-    auto& past_state_node_arg = graph.GetOrCreateNodeArg(past_state_seed.name(),
-                                                         past_state_seed_type_proto);
+    // Check if the parent graph is conducive for fusion and if so make appropriate
+    // parent graph changes before continuing with changes here
+    if (!AdjustOuterScopeGraph(*graph.MutableParentGraph(), *parent_node,
+                               loop_past_state_input_index, past_state_seed,
+                               past_state_seed_type_proto, sequence_at_count,
+                               base_name)) {
+      continue;
+    }
+
+    // If we have reached here, fusion is ON
 
     // Create a fused node for the subgraph
-    auto node_name = graph.GenerateNodeName(base_name + "_" + "ParsePastState");
+    auto node_name = graph.GenerateNodeName(base_name + "_" + "SequenceTensorSplitter");
     Node& past_state_fusion = graph.AddNode(node_name,
-                                            "ParsePastState",
+                                            "SequenceTensorSplitter",
                                             node_name,
-                                            {sequence_length_node.MutableInputDefs()[0], &past_state_node_arg},
+                                            {sequence_length_node.MutableInputDefs()[0]},
                                             output_defs_of_fused_node,
                                             nullptr,
                                             onnxruntime::kMSDomain);
@@ -399,51 +447,46 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
     // Set the EP of the fused node to be the EP of the SequenceEmpty node
     past_state_fusion.SetExecutionProviderType(sequence_length_node.GetExecutionProviderType());
 
-    // Adjust relationships (edges)
+    // Adjust relationships (edges) wrt to the new fused node
     auto past_state_fusion_idx = past_state_fusion.Index();
 
-    // Re-route tensor sequence input to SequenceLength to the first input of the fused node
-    auto& sequence_length_input_edges = GraphEdge::GetNodeInputEdges(sequence_length_node);
-    // Check if there is an input edge feeding SequenceLength as sometimes it could
-    // be consuming a graph input in which case the input edge count is 0.
-    if (sequence_length_input_edges.size() == 1) {
-      graph.AddEdge(sequence_length_input_edges[0].src_node,
-                    past_state_fusion_idx,
-                    sequence_length_input_edges[0].src_arg_index, 0);
-    }
-
-    // Re-route bool output of If so that it is now being fed from the fused node
+    // Re-route bool output of If so that it is now being fed from the Greater node
+    // after deleting existing output edge from Greater node
+    GraphEdge::RemoveGraphEdges(graph, GraphEdge::GetNodeOutputEdges(greater_node));
     auto& if_output_edges = GraphEdge::GetNodeOutputEdges(if_node);
     for (auto cur = if_output_edges.cbegin(), end = if_output_edges.cend(); cur != end; ++cur) {
       if (cur->src_arg_index == 0) {  // 0th index of If is the bool output
-        graph.AddEdge(past_state_fusion_idx,
+        graph.AddEdge(greater_node.Index(),
                       cur->dst_node,
-                      0,  // 0th index of the fused node is the bool output
+                      0,  // 0th index of the Greater node is the bool output
                       cur->dst_arg_index);
       }
     }
 
-    // Re-route tensor outputs of SequenceAts so that they are now being fed from the fused node
+    // Adjust the Greater node's input NodeArg so that it is the iter count input of the Loop subgraph
+    // The 0th graph input index is the iter count
+    greater_node.MutableInputDefs()[0] = &graph.GetOrCreateNodeArg(graph.GetInputs()[0]->Name(),
+                                                                   graph.GetInputs()[0]->TypeAsProto());
+
+    // Re-route tensor outputs of SequenceAts so that they
+    // are now being fed from the SequenceTensorSplitter fused node
     for (size_t i = 0; i < sequence_at_count; ++i) {
       auto& sequence_at_output_edges = GraphEdge::GetNodeOutputEdges(*sequence_at_nodes[i]);
 
-      for (auto cur = sequence_at_output_edges.cbegin(), end = sequence_at_output_edges.cend(); cur != end; ++cur) {
+      for (auto cur = sequence_at_output_edges.cbegin(), end = sequence_at_output_edges.cend();
+           cur != end; ++cur) {
         graph.AddEdge(past_state_fusion_idx,
                       cur->dst_node,
-                      static_cast<int>(i + 1),  // offset source node arg index by 1 because the first output is the bool output
+                      static_cast<int>(i),
                       cur->dst_arg_index);
       }
     }
 
     // Remove all unnecessary relationships/nodes prior to the SequenceAts
     auto& sequence_length_output_edges = GraphEdge::GetNodeOutputEdges(sequence_length_node);
-    GraphEdge::RemoveGraphEdges(graph, sequence_length_input_edges);
+    // SequenceLength will not have any input edge as it is fed by a graph input
     GraphEdge::RemoveGraphEdges(graph, sequence_length_output_edges);
     graph.RemoveNode(sequence_length_node.Index());
-
-    auto& greater_output_edges = GraphEdge::GetNodeOutputEdges(greater_node);
-    GraphEdge::RemoveGraphEdges(graph, greater_output_edges);
-    graph.RemoveNode(greater_node.Index());
 
     GraphEdge::RemoveGraphEdges(graph, if_output_edges);
     graph.RemoveNode(if_node.Index());

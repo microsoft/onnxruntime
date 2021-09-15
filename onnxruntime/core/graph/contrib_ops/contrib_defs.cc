@@ -2944,40 +2944,75 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
         updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
       });
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(ParsePastState)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SequenceTensorSplitter)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC()DOC")
       .Input(
           0,
           "input tensor sequence",
-          "Input tensor sequence which have past state tensors. "
-          "If empty, the past state seed will be used instead.",
+          "Input tensor sequence which will be split into many tensors in the output",
           "S")
-      .Input(
-          1,
-          "past state seed",
-          "Past state seed",
-          "T")
       .Output(
           0,
-          "provided past state used",
-          "True if the provided past state was used, false if the past state seed was used (i.e.) provided past state is empty",
-          "T1")
-      .Output(
-          1,
-          "parsed state ",
-          "True if the provided past state was used, false if the past state seed was used (i.e.) provided past state is empty",
+          "output tensors",
+          "The number of outputs should be equal to the number of tensors in the input tensor sequence. "
+          "The ith output tensor will be the ith tensor in the input tensor sequence.",
           "T",
           OpSchema::Variadic)
+      .TypeConstraint(
+          "S",
+          OpSchema::all_tensor_sequence_types(),
+          "Constrain input types to all tensor sequence types.")
+      .TypeConstraint(
+          "T",
+          OpSchema::all_tensor_types(),
+          "Constrain input types to all tensor types.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        const auto* input_type = ctx.getInputType(0);
+
+        if (nullptr == input_type) {
+          fail_type_inference("Input type is null. Type info is expected.");
+        }
+
+        auto num_outputs = ctx.getNumOutputs();
+
+        for (size_t i = 0; i < num_outputs; ++i) {
+          auto* output_tensor_type =
+              ctx.getOutputType(i)->mutable_tensor_type();
+
+          output_tensor_type->set_elem_type(static_cast<TensorProto_DataType>(
+              input_type->sequence_type().elem_type().tensor_type().elem_type()));
+        }
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SequenceConstructUsingTensorAndRepeat)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC()DOC")
+      .Input(
+          0,
+          "input tensor",
+          "Input tensor which will be repeated in the tensor sequence",
+          "T")
+      .Input(
+          1,
+          "repeat",
+          "Number of times the input repeat is to be repeating in the output tensor sequence",
+          "T1")
+      .Output(
+          0,
+          "output tensor sequence",
+          "Constructs an output tensor sequence by repeating an input tensor `repeat` times",
+          "S")
       .TypeConstraint(
           "T",
           OpSchema::all_tensor_types(),
           "Constrain input types to all tensor types.")
       .TypeConstraint(
           "T1",
-          {"tensor(bool)"},
-          "Constrain the `provided past state used` flag to a bool tensor.")
+          {"tensor(int64_t)"},
+          "Constrain the `repeat` an int64 tensor.")
       .TypeConstraint(
           "S",
           OpSchema::all_tensor_sequence_types(),
