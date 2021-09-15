@@ -192,8 +192,8 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
   //
   // NOTE: this workaround can be removed in ROCm 4.3:
   //       https://github.com/ROCmSoftwarePlatform/MIOpen/pull/914
-  const auto one = ReduceConsts<HipT>::One;
-  const auto zero = ReduceConsts<HipT>::Zero;
+  const auto one = Consts<float>::One;
+  const auto zero = Consts<float>::Zero;
   MiopenTensor input_tensor;
   MiopenTensor output_tensor;
   ORT_RETURN_IF_ERROR(input_tensor.Set(input_dims_miopen, miopen_type_X));
@@ -521,8 +521,8 @@ Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, Pr
   //
   // NOTE: this workaround can be removed in ROCm 4.3:
   //       https://github.com/ROCmSoftwarePlatform/MIOpen/pull/914
-  const auto one = ReduceConsts<HipT>::One;
-  const auto zero = ReduceConsts<HipT>::Zero;
+  const float one = Consts<float>::One; 
+  const float zero = Consts<float>::Zero; 
   MiopenTensor input_tensor;
   MiopenTensor output_tensor;
   ORT_RETURN_IF_ERROR(input_tensor.Set(input_dims_miopen, miopen_type_X));
