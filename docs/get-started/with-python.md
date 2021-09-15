@@ -26,14 +26,11 @@ pip install onnxruntime
 
 
 ```python
-## pytorch
-pip install onnx-pytorch
-## ONNX is built into pytorch
-pip install torch 
+## ONNX is built into PyTorch
+pip install pytorch 
 ```
 ```python
 ## tensorflow
-pip install onnx-tf
 pip install tf2onnx
 ```
 ```python

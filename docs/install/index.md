@@ -34,12 +34,11 @@ pip install onnxruntime-gpu
 {: .no_toc }
 
 ```bash
-## pytorch
-pip install onnx-pytorch
+## ONNX is built into PyTorch
+pip install pytorch
 ```
 ```python
 ## tensorflow
-pip install onnx-tf
 pip install tf2onnx
 ```
 
