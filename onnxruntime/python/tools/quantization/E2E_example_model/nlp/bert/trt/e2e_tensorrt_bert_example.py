@@ -71,7 +71,7 @@ class BertDataReader(CalibrationDataReader):
 
 if __name__ == '__main__':
     '''
-    QDQ Quantization of BERT model for TensorRT.
+    BERT QDQ Quantization for TensorRT.
 
     There are two steps for the quantization,
     first, calibration is done based on SQuAD dataset to get dynamic range of each floating point tensor in the model
