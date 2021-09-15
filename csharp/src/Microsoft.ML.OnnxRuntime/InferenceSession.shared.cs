@@ -590,10 +590,10 @@ namespace Microsoft.ML.OnnxRuntime
                         result.Add(DisposableNamedOnnxValue.CreateFromOrtValue(outputNames[i], ortValue));
                     }
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     result.Dispose();
-                    throw e;
+                    throw;
                 }
                 return result;
             }
@@ -721,10 +721,10 @@ namespace Microsoft.ML.OnnxRuntime
                     result.Add(DisposableNamedOnnxValue.CreateFromOrtValue(outputNames.ElementAt(i), ortValue));
                 }
             }
-            catch (OnnxRuntimeException e)
+            catch (OnnxRuntimeException)
             {
                 result.Dispose();
-                throw e;
+                throw;
             }
             return result;
         }
@@ -861,14 +861,14 @@ namespace Microsoft.ML.OnnxRuntime
                                                                     out startTime));
                 _profilingStartTimeNs = (ulong)startTime;
             }
-            catch (OnnxRuntimeException e)
+            catch (OnnxRuntimeException)
             {
                 if (_nativeHandle != IntPtr.Zero)
                 {
                     NativeMethods.OrtReleaseSession(_nativeHandle);
                     _nativeHandle = IntPtr.Zero;
                 }
-                throw e;
+                throw;
             }
 
             _builtInRunOptions = new RunOptions();  // create a default built-in run option, and avoid creating a new one every run() call  

@@ -52,10 +52,10 @@ namespace Microsoft.ML.OnnxRuntime
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options.Handle, 1));
                 return options;
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 options.Dispose();
-                throw e;
+                throw;
             }
         }
 
@@ -79,10 +79,10 @@ namespace Microsoft.ML.OnnxRuntime
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options.Handle, 1));
                 return options;
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 options.Dispose();
-                throw e;
+                throw;
             }
         }
 

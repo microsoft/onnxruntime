@@ -78,20 +78,20 @@
     <Service Include="{508349b6-6b84-4df5-91f0-309beebad82d}" />
   </ItemGroup>
 
-  <!-- NOTE: The xUnit framework doesn't pickup the tests defined within the referenced Microsoft.ML.OnnxRuntime.Tests project -->
+  <!-- NOTE: The xUnit framework doesn't pickup the tests defined within the referenced Microsoft.ML.OnnxRuntime.Tests.Common project -->
   <ItemGroup>
-    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests\InferenceTest.cs">
+    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\InferenceTest.cs">
       <Link>InferenceTest.cs</Link>
     </Compile>
-    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests\OrtIoBindingAllocationTest.cs">
+    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\OrtIoBindingAllocationTest.cs">
       <Link>OrtIoBindingAllocationTest.cs</Link>
     </Compile>
-    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests\Tensors\TensorTests.cs">
+    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Tensors\TensorTests.cs">
       <Link>TensorTests.cs</Link>
     </Compile>
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj" />
+    <ProjectReference Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Microsoft.ML.OnnxRuntime.Tests.Common.csproj" />
   </ItemGroup>
 </Project>

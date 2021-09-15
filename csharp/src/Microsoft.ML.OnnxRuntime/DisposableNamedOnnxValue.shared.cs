@@ -245,10 +245,10 @@ namespace Microsoft.ML.OnnxRuntime
                 {
                     var dt = new DenseTensor<string>(nativeTensorWrapper.GetBytesAsStringMemory(), nativeTensorWrapper.Dimensions);
                     return new DisposableNamedOnnxValue(name, dt, OnnxValueType.ONNX_TYPE_TENSOR, nativeTensorWrapper.ElementType, nativeTensorWrapper);
-                } catch(Exception e)
+                } catch(Exception)
                 {
                     nativeTensorWrapper.Dispose();
-                    throw e;
+                    throw;
                 }
             }
             else
@@ -259,10 +259,10 @@ namespace Microsoft.ML.OnnxRuntime
                     DenseTensor<T> dt = new DenseTensor<T>(nativeTensorWrapper.Memory, nativeTensorWrapper.Dimensions);
                     return new DisposableNamedOnnxValue(name, dt, OnnxValueType.ONNX_TYPE_TENSOR, nativeTensorWrapper.ElementType, nativeTensorWrapper);
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     nativeTensorWrapper.Dispose();
-                    throw e;
+                    throw;
                 }
             }
         }
@@ -298,10 +298,10 @@ namespace Microsoft.ML.OnnxRuntime
                 var nativeCollectionManager = new NativeOrtValueCollectionOwner(ortValueSequence, sequence);
                 result = new DisposableNamedOnnxValue(name, sequence, OnnxValueType.ONNX_TYPE_SEQUENCE, TensorElementType.DataTypeMax, nativeCollectionManager);
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 sequence.Dispose();
-                throw e;
+                throw;
             }
             return result;
         }

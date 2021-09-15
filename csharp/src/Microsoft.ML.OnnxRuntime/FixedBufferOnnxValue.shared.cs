@@ -120,10 +120,10 @@ namespace Microsoft.ML.OnnxRuntime
                                                         memPtr, bytesSize);
                 return new FixedBufferOnnxValue(memHandle, ortValue, OnnxValueType.ONNX_TYPE_TENSOR, elementType);
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 memHandle.Dispose();
-                throw e;
+                throw;
             }
         }
 

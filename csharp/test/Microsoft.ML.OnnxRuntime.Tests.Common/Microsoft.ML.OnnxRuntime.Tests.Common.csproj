@@ -19,6 +19,7 @@
     <Configurations>Debug;Release;RelWithDebInfo</Configurations>
     <!-- end -->
     <RootNamespace>Microsoft.ML.OnnxRuntime.Tests</RootNamespace>
+    <AssemblyName>Microsoft.ML.OnnxRuntime.Tests.Common</AssemblyName>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(IsLinuxBuild)'=='true'">

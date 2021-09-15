@@ -227,10 +227,10 @@ namespace Microsoft.ML.OnnxRuntime
                         IntPtr ortValue = Marshal.ReadIntPtr(ortValues, IntPtr.Size * i);
                         ortList.Add(new OrtValue(ortValue));
                     }
-                } catch(Exception e)
+                } catch(Exception)
                 {
                     ortList.Dispose();
-                    throw e;
+                    throw;
                 }
                 return ortList;
             }

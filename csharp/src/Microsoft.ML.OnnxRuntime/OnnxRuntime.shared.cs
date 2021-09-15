@@ -59,10 +59,10 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSetLanguageProjection(handle, OrtLanguageProjection.ORT_PROJECTION_CSHARP));
             }
-            catch (OnnxRuntimeException e)
+            catch (OnnxRuntimeException)
             {
                 ReleaseHandle();
-                throw e;
+                throw;
             }
         }
         #endregion

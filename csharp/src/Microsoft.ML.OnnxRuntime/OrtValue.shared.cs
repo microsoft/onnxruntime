@@ -250,10 +250,10 @@ namespace Microsoft.ML.OnnxRuntime
 
                     ortValue = new OrtValue(nativeValue);
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     memHandle?.Dispose();
-                    throw e;
+                    throw;
                 }
             }
             memoryHandle = memHandle;
@@ -350,10 +350,10 @@ namespace Microsoft.ML.OnnxRuntime
                         NativeApiStatus.VerifySuccess(NativeMethods.OrtFillStringTensor(ortValue.Handle, nativeStrings, (UIntPtr)len));
                 }
             }
-            catch (OnnxRuntimeException e)
+            catch (OnnxRuntimeException)
             {
                 ortValue.Dispose();
-                throw e;
+                throw;
             }
             return ortValue;
         }
