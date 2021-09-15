@@ -107,6 +107,7 @@ stages:
 
 - stage: Publish_package
   dependsOn:
+  - Build_web_Debug
   - Build_web_Release
   - Test_web_BrowserStack
   - Test_web_MultiBrowsers
