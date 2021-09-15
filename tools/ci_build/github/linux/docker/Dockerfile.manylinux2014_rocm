@@ -16,6 +16,13 @@ LABEL maintainer="The ManyLinux project"
 
 RUN yum remove -y devtoolset\* git\* && conda remove -y cmake
 
+# remove protobuf 2.6.1 from rocm/pytorch:rocm4.2_centos7_py3.6_pytorch
+# it's too old to compile onnx 1.10
+RUN rm -fr /usr/local/bin/protoc \
+           /usr/local/libproto* \
+           /usr/local/include/google \
+           /usr/local/lib/pkgconfig/protobuf*
+
 ENV AUDITWHEEL_POLICY=${POLICY} AUDITWHEEL_ARCH=${PLATFORM} AUDITWHEEL_PLAT=${POLICY}_${PLATFORM}
 ENV LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 LANGUAGE=en_US.UTF-8
 ENV DEVTOOLSET_ROOTPATH=${DEVTOOLSET_ROOTPATH}
@@ -70,6 +77,12 @@ RUN export LIBXCRYPT_VERSION=4.4.23 && \
     export PERL_DOWNLOAD_URL=https://www.cpan.org/src/5.0 && \
     manylinux-entrypoint /build_scripts/install-libxcrypt.sh
 
+COPY build_scripts/install-protobuf.sh /build_scripts/
+RUN export PROTOBUF_VERSION=3.17.3 && \
+    export PROTOBUF_ROOT=protobuf-all-${PROTOBUF_VERSION} && \
+    export PROTOBUF_HASH=77ad26d3f65222fd96ccc18b055632b0bfedf295cb748b712a98ba1ac0b704b2 && \
+    export PROTOBUF_DOWNLOAD_URL=https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOBUF_VERSION} && \
+    manylinux-entrypoint /build_scripts/install-protobuf.sh
 
 FROM runtime_base AS build_base
 COPY build_scripts/install-build-packages.sh /build_scripts/
@@ -175,6 +188,12 @@ RUN cd /tmp/scripts && \
     /tmp/scripts/install_python_deps.sh -d gpu -p 3.8 -h ${TORCH_VERSION} $INSTALL_DEPS_EXTRA_ARGS && \
     /tmp/scripts/install_python_deps.sh -d gpu -p 3.9 -h ${TORCH_VERSION} $INSTALL_DEPS_EXTRA_ARGS && \
      rm -rf /tmp/scripts
+
+# remove protobuf to prevent ambiguity which is used for onnxruntime build
+RUN rm -fr /usr/local/bin/protoc \
+           /usr/local/libproto* \
+           /usr/local/include/google \
+           /usr/local/lib/pkgconfig/protobuf*
 
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev

@@ -17,7 +17,7 @@ namespace {
 Status SetEnvironmentVar(const std::string& name, const optional<std::string>& value) {
   if (value.has_value()) {
     ORT_RETURN_IF_NOT(
-        setenv(name.c_str(), value.value().c_str(), 1) == 0,
+        setenv(name.c_str(), value->c_str(), 1) == 0,
         "setenv() failed: ", errno);
   } else {
     ORT_RETURN_IF_NOT(

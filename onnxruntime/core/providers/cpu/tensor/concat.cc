@@ -2,9 +2,12 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/concat.h"
-#include "core/providers/common.h"
+
+#include "core/framework/element_type_lists.h"
 #include "core/framework/TensorSeq.h"
+#include "core/providers/common.h"
 #include "core/providers/cpu/tensor/copy.h"
+#include "core/providers/op_kernel_type_control.h"
 
 namespace onnxruntime {
 
@@ -29,6 +32,24 @@ ONNX_CPU_OPERATOR_KERNEL(
     13,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     Concat);
+
+namespace op_kernel_type_control {
+// we're using one set of types for all opsets
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Concat, Input, 0,
+    element_type_lists::All);
+
+// Concat can be used with dimensions or indices so require int32_t and int64_t to be supported
+ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Concat, Input, 0, int32_t, int64_t);
+}  // namespace op_kernel_type_control
+
+namespace {
+using DataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                 Concat, Input, 0);
+using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                        Concat, Input, 0);
+}  // namespace
 
 // this method will be shared between 'Concat' (CPU and GPU) and
 // 'ConcatFromSequence' ('concat' and 'stack' modes) to validate inputs
@@ -244,13 +265,13 @@ Status ConcatBase::ComputeImpl(Prepare& p, OpKernelContext* ctx) const {
       continue;
 
     // parallel copy the data across
-    auto status = DispatchStridedCopy(ctx->GetOperatorThreadPool(),
-                                      *p.output_tensor,
-                                      initial_output_offset,
-                                      output_strides_for_copy,
-                                      prep.tensor->Shape(),
-                                      *prep.tensor,
-                                      StridesForTensor(*prep.tensor));
+    auto status = DispatchStridedCopy<EnabledDataTypes>(ctx->GetOperatorThreadPool(),
+                                                        *p.output_tensor,
+                                                        initial_output_offset,
+                                                        output_strides_for_copy,
+                                                        prep.tensor->Shape(),
+                                                        *prep.tensor,
+                                                        StridesForTensor(*prep.tensor));
     ORT_RETURN_IF_ERROR(status);
 
     // advance along the axis that we are concatenating on (by the size of the axis of the tensor that we just copied)

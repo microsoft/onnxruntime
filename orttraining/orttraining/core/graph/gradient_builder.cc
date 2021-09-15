@@ -1785,10 +1785,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
   }
 
   // Also connect forward outputs to PythonOpGrad for random segement fault issues.
-  // Todo (pengwa): we should investigate whether we could avoid those outputs that are not used
-  // in backward computation.
+  // Todo (pengwa): remove the control dependency from PythonOpGrad schema.
   for (int i = 1; i < GetSrcNodeOutputSize(); ++i) {
-    input_args.push_back(O(i));
+    input_args.push_back(ArgDef());
   }
 
   // src_attrs["input_requires_grads"] stores all inputs's requires_grad attributes,
