@@ -27,7 +27,7 @@ pip install onnxruntime
 
 ```python
 ## ONNX is built into PyTorch
-pip install pytorch 
+pip install torch 
 ```
 ```python
 ## tensorflow

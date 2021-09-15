@@ -26,6 +26,7 @@ Details on OS versions, compilers, language versions, dependent libraries, etc c
 ```bash
 pip install onnxruntime
 ```
+
 ```bash
 pip install onnxruntime-gpu
 ```
@@ -35,7 +36,7 @@ pip install onnxruntime-gpu
 
 ```bash
 ## ONNX is built into PyTorch
-pip install pytorch
+pip install torch
 ```
 ```python
 ## tensorflow
