@@ -13,7 +13,7 @@ SequenceConstructUsingTensorAndRepeat::SequenceConstructUsingTensorAndRepeat(
 Status SequenceConstructUsingTensorAndRepeat::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
   auto repeat = context->Input<Tensor>(1)->Data<int64_t>()[0];
-  if (repeat <= 0) {
+  if (repeat < 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Repeat needs to be positive");
   }
 
