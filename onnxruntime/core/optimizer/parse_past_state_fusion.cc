@@ -17,10 +17,9 @@ static bool AdjustOuterScopeGraph(Graph& parent_graph, const Node& loop, size_t 
                                   TensorProto past_state_seed, const TypeProto*& past_state_seed_type_proto,
                                   int64_t repeats, const std::string& base_name) {
   Node* node_feeding_loop_input = nullptr;
-  auto& loop_input_edges = GraphEdge::GetNodeInputEdges(loop);
-  for (auto cur = loop_input_edges.cbegin(), end = loop_input_edges.cend(); cur != end; ++cur) {
-    if (cur->dst_arg_index == static_cast<int>(loop_input_index)) {
-      node_feeding_loop_input = parent_graph.GetNode(cur->src_node);
+  for (auto cur = loop.InputEdgesBegin(), end = loop.InputEdgesEnd(); cur != end; ++cur) {
+    if (cur->GetDstArgIndex() == static_cast<int>(loop_input_index)) {
+      node_feeding_loop_input = parent_graph.GetNode(cur->GetNode().Index());
       break;
     }
   }
@@ -34,9 +33,14 @@ static bool AdjustOuterScopeGraph(Graph& parent_graph, const Node& loop, size_t 
 
   Node& sequence_empty_node = *node_feeding_loop_input;
 
+  // SequenceEmpty should only feed the Loop node
+  if (sequence_empty_node.GetOutputEdgesCount() != 1) {
+    return false;
+  }
+
   // Add past state seed as an initializer
   past_state_seed.clear_name();
-  past_state_seed.set_name(base_name + "_" + past_state_seed.name());
+  past_state_seed.set_name(base_name + "_" + "PastStateSeed");
   auto& past_state_seed_node_arg = parent_graph.GetOrCreateNodeArg(past_state_seed.name(),
                                                                    past_state_seed_type_proto);
   parent_graph.AddInitializedTensor(past_state_seed);
@@ -48,14 +52,14 @@ static bool AdjustOuterScopeGraph(Graph& parent_graph, const Node& loop, size_t 
   TensorProto repeats_tensor;
   repeats_tensor.add_int64_data(repeats);
   repeats_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  repeats_tensor.set_name(base_name + "_" + "Repeats");
 
-  auto& past_state_repeats_node_arg = parent_graph.GetOrCreateNodeArg(base_name + "_" + "Repeats",
-                                                                      &repeats_proto);
+  auto& past_state_repeats_node_arg = parent_graph.GetOrCreateNodeArg(repeats_tensor.name(), &repeats_proto);
   parent_graph.AddInitializedTensor(repeats_tensor);
 
   // Add node that will be used instead of SequenceEmpty
   auto node_name = parent_graph.GenerateNodeName(base_name + "_" + "SequenceConstructUsingTensorAndRepeat");
-  Node& past_state_fusion = parent_graph.AddNode(node_name,
+  Node& sequence_construct = parent_graph.AddNode(node_name,
                                                  "SequenceConstructUsingTensorAndRepeat",
                                                  node_name,
                                                  {&past_state_seed_node_arg, &past_state_repeats_node_arg},
@@ -63,8 +67,20 @@ static bool AdjustOuterScopeGraph(Graph& parent_graph, const Node& loop, size_t 
                                                  nullptr,
                                                  onnxruntime::kMSDomain);
 
+  // Set the EP of the fused node to be as the SequenceEmpty node's EP
+  sequence_construct.SetExecutionProviderType(sequence_empty_node.GetExecutionProviderType());
+
+  // Adjust the edges
+  auto& sequence_empty_node_output_edges = GraphEdge::GetNodeOutputEdges(sequence_empty_node);
+
+  // The Loop is now to be fed from the fused node
+          parent_graph.AddEdge(sequence_construct.Index(),
+                sequence_empty_node_output_edges[0].dst_node,
+                       0,
+                       sequence_empty_node_output_edges[0].dst_arg_index);
+
   // Remove SequenceEmpty
-  GraphEdge::RemoveGraphEdges(parent_graph, GraphEdge::GetNodeOutputEdges(sequence_empty_node));
+          GraphEdge::RemoveGraphEdges(parent_graph, sequence_empty_node_output_edges);
   parent_graph.RemoveNode(sequence_empty_node.Index());
 
   return true;
@@ -436,7 +452,7 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
 
     // Create a fused node for the subgraph
     auto node_name = graph.GenerateNodeName(base_name + "_" + "SequenceTensorSplitter");
-    Node& past_state_fusion = graph.AddNode(node_name,
+    Node& sequence_splitter = graph.AddNode(node_name,
                                             "SequenceTensorSplitter",
                                             node_name,
                                             {sequence_length_node.MutableInputDefs()[0]},
@@ -445,28 +461,23 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
                                             onnxruntime::kMSDomain);
 
     // Set the EP of the fused node to be the EP of the SequenceEmpty node
-    past_state_fusion.SetExecutionProviderType(sequence_length_node.GetExecutionProviderType());
+    sequence_splitter.SetExecutionProviderType(sequence_length_node.GetExecutionProviderType());
 
     // Adjust relationships (edges) wrt to the new fused node
-    auto past_state_fusion_idx = past_state_fusion.Index();
+    auto sequence_splitter_idx = sequence_splitter.Index();
 
     // Re-route bool output of If so that it is now being fed from the Greater node
     // after deleting existing output edge from Greater node
-    GraphEdge::RemoveGraphEdges(graph, GraphEdge::GetNodeOutputEdges(greater_node));
+    std::vector<NodeIndex> greater_output_nodes;
+    std::vector<int> greater_output_dst_args;
     auto& if_output_edges = GraphEdge::GetNodeOutputEdges(if_node);
     for (auto cur = if_output_edges.cbegin(), end = if_output_edges.cend(); cur != end; ++cur) {
       if (cur->src_arg_index == 0) {  // 0th index of If is the bool output
-        graph.AddEdge(greater_node.Index(),
-                      cur->dst_node,
-                      0,  // 0th index of the Greater node is the bool output
-                      cur->dst_arg_index);
+        greater_output_nodes.push_back(cur->dst_node);
+        greater_output_dst_args.push_back(cur->dst_arg_index);
       }
     }
 
-    // Adjust the Greater node's input NodeArg so that it is the iter count input of the Loop subgraph
-    // The 0th graph input index is the iter count
-    greater_node.MutableInputDefs()[0] = &graph.GetOrCreateNodeArg(graph.GetInputs()[0]->Name(),
-                                                                   graph.GetInputs()[0]->TypeAsProto());
 
     // Re-route tensor outputs of SequenceAts so that they
     // are now being fed from the SequenceTensorSplitter fused node
@@ -475,22 +486,38 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
 
       for (auto cur = sequence_at_output_edges.cbegin(), end = sequence_at_output_edges.cend();
            cur != end; ++cur) {
-        graph.AddEdge(past_state_fusion_idx,
+        graph.AddEdge(sequence_splitter_idx,
                       cur->dst_node,
                       static_cast<int>(i),
                       cur->dst_arg_index);
       }
     }
 
-    // Remove all unnecessary relationships/nodes prior to the SequenceAts
-    auto& sequence_length_output_edges = GraphEdge::GetNodeOutputEdges(sequence_length_node);
-    // SequenceLength will not have any input edge as it is fed by a graph input
-    GraphEdge::RemoveGraphEdges(graph, sequence_length_output_edges);
+    // We are done with SequenceLength - remove it
+    GraphEdge::RemoveGraphEdges(graph, GraphEdge::GetNodeOutputEdges(sequence_length_node));
     graph.RemoveNode(sequence_length_node.Index());
 
+    // We are done with If - remove it
     GraphEdge::RemoveGraphEdges(graph, if_output_edges);
     graph.RemoveNode(if_node.Index());
 
+    // Greater node adjustments
+    // Input - Adjust the Greater node's input NodeArg so that it is the iter count input of the Loop subgraph
+    // The 0th graph input index is the iter count
+    greater_node.MutableInputDefs()[0] = &graph.GetOrCreateNodeArg(graph.GetInputs()[0]->Name(), graph.GetInputs()[0]->TypeAsProto());
+
+    // Output - Remove existing edge prior to adding new ones
+    GraphEdge::RemoveGraphEdges(graph, GraphEdge::GetNodeOutputEdges(greater_node));
+    size_t greater_output_count = greater_output_nodes.size();
+
+    for (size_t i = 0; i < greater_output_count; ++i) {
+      graph.AddEdge(greater_node.Index(),
+                    greater_output_nodes[i],
+                    0,  // 0th index of the Greater node is the bool output
+                    greater_output_dst_args[i]);
+    }
+
+    // SequenceAt adjustments
     for (size_t i = 0; i < sequence_at_count; ++i) {
       auto& sequence_at_node = *sequence_at_nodes[i];
       auto& sequence_at_output_edges = GraphEdge::GetNodeOutputEdges(sequence_at_node);

@@ -3011,7 +3011,7 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
           "Constrain input types to all tensor types.")
       .TypeConstraint(
           "T1",
-          {"tensor(int64_t)"},
+          {"tensor(int64)"},
           "Constrain the `repeat` an int64 tensor.")
       .TypeConstraint(
           "S",
@@ -3032,7 +3032,7 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
 
         output_tensor_type->set_elem_type(static_cast<TensorProto_DataType>(input_type->tensor_type().elem_type()));
 
-        *(output_tensor_type->mutable_shape()) = ctx.getInputType(0)->tensor_type().shape();
+        *(output_tensor_type->mutable_shape()) = input_type->tensor_type().shape();
       });
 
   static const char* Optional_ver1_doc = R"DOC(

@@ -27,16 +27,16 @@ Status SequenceTensorSplitter::ComputeInternal(OpKernelContext* context) const {
               "SequenceInsert GPU: Unable to get an allocator.");
 
   for (size_t i = 0; i < output_count; ++i) {
-    const Tensor* tensor = context->Input<Tensor>(static_cast<int>(i));
-    auto* output = context->Output(static_cast<int>(i), tensor->Shape());
+    const Tensor* input = &input_sequence->Get(i);
+    auto* output = context->Output(static_cast<int>(i), input->Shape());
 
     void* output_buffer_ptr = output->MutableDataRaw();
-    const void* input_buffer_ptr = tensor->DataRaw();
+    const void* input_buffer_ptr = input->DataRaw();
 
     if (output_buffer_ptr != input_buffer_ptr) {
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_buffer_ptr,
                                            input_buffer_ptr,
-                                           tensor->SizeInBytes(),
+                                           input->SizeInBytes(),
                                            cudaMemcpyDeviceToDevice, Stream()));
     }
   }
