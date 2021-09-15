@@ -157,7 +157,7 @@ jobs:
     condition: and(and(succeeded(), eq(variables['BuildConfig'], 'RelWithDebInfo')),eq('${{ parameters.RunOnnxRuntimeTests}}', true))
     inputs:
       command: test
-      projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj'
+      projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp.csproj'
       configuration: '$(BuildConfig)'          
       arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) --blame'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
