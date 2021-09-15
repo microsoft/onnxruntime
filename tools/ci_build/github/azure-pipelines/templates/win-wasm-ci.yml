@@ -7,7 +7,7 @@ parameters:
   type: string
   default: 'Debug'
 
-- name: CmdParams
+- name: ExtraBuildArgs
   type: string
   default: ''
 
@@ -18,6 +18,7 @@ jobs:
   variables:
     EnvSetupScript: setup_env.bat
     buildArch: x64
+    CommonBuildArgs: '--config ${{ parameters.BuildConfig }} --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --build_wasm --emsdk_version releases-upstream-823d37b15d1ab61bc9ac0665ceef6951d3703842-64bit ${{ parameters.ExtraBuildArgs }}'
   timeoutInMinutes: 120
   workspace:
     clean: all
@@ -63,25 +64,25 @@ jobs:
     displayName: 'Build and test'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory)\wasm --skip_submodule_sync --build_wasm --emsdk_version releases-upstream-823d37b15d1ab61bc9ac0665ceef6951d3703842-64bit --cmake_generator "Visual Studio 16 2019" ${{ parameters.CmdParams }}'
+      arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm'
       workingDirectory: '$(Build.BinariesDirectory)'
   - task: PythonScript@0
     displayName: 'Build and test (threads)'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory)\wasm_threads --skip_submodule_sync --build_wasm --emsdk_version releases-upstream-823d37b15d1ab61bc9ac0665ceef6951d3703842-64bit --path_to_protoc_exe $(Build.BinariesDirectory)\wasm\host_protoc\Release\protoc.exe --cmake_generator "Visual Studio 16 2019" --enable_wasm_threads ${{ parameters.CmdParams }}'
+      arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_threads --path_to_protoc_exe $(Build.BinariesDirectory)\wasm\host_protoc\Release\protoc.exe --enable_wasm_threads'
       workingDirectory: '$(Build.BinariesDirectory)'
   - task: PythonScript@0
     displayName: 'Build and test (simd + threads)'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory)\wasm_simd_threads --skip_submodule_sync --build_wasm --emsdk_version releases-upstream-823d37b15d1ab61bc9ac0665ceef6951d3703842-64bit --path_to_protoc_exe $(Build.BinariesDirectory)\wasm\host_protoc\Release\protoc.exe --cmake_generator "Visual Studio 16 2019" --enable_wasm_simd --enable_wasm_threads ${{ parameters.CmdParams }}'
+      arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_simd_threads --path_to_protoc_exe $(Build.BinariesDirectory)\wasm\host_protoc\Release\protoc.exe --enable_wasm_simd --enable_wasm_threads'
       workingDirectory: '$(Build.BinariesDirectory)'
   - task: PythonScript@0
     displayName: 'Build and test (simd)'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory)\wasm_simd --skip_submodule_sync --build_wasm --emsdk_version releases-upstream-823d37b15d1ab61bc9ac0665ceef6951d3703842-64bit --path_to_protoc_exe $(Build.BinariesDirectory)\wasm\host_protoc\Release\protoc.exe --cmake_generator "Visual Studio 16 2019" --enable_wasm_simd ${{ parameters.CmdParams }}'
+      arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_simd --path_to_protoc_exe $(Build.BinariesDirectory)\wasm\host_protoc\Release\protoc.exe --enable_wasm_simd'
       workingDirectory: '$(Build.BinariesDirectory)'
   - script: |
       copy $(Build.BinariesDirectory)\wasm\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)

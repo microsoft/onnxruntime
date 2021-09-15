@@ -1,20 +1,39 @@
 parameters:
-- name: CmdParams
-  displayName: 'Additional build command parameters'
+- name: NpmPublish
+  displayName: 'NPM packages publish configuration'
   type: string
-  default: ''
-- name: DoPublish
-  displayName: 'Publish ONNX Runtime Web NPM packages'
-  type: boolean
-  default: false
-- name: VersionSuffix
-  displayName: 'version suffix of the NPM package'
-  type: string
-  default: '-dev.${YYYYMMDD}.${REV}'
-- name: NpmTag
-  displayName: 'npm publish tag'
-  type: string
-  default: 'dev'
+  values:
+  - 'no'
+  - 'nightly (@dev)'
+  - 'release candidate (@rc)'
+  - 'production (@latest)'
+  - 'custom'
+  default: no
+
+variables:
+  # pipeline should define the following varaibles
+  #   ExtraBuildArgs
+  #   VersionSuffix
+  #   NpmTag
+
+  ${{ if eq(parameters.NpmPublish, 'no') }}:
+    DoPublish: false
+    VersionSuffix: ''
+    NpmTag: ''
+  ${{ if eq(parameters.NpmPublish, 'nightly (@dev)') }}:
+    DoPublish: true
+    VersionSuffix: '-dev.${YYYYMMDD}.${REV}'
+    NpmTag: 'dev'
+  ${{ if eq(parameters.NpmPublish, 'release candidate (@rc)') }}:
+    DoPublish: true
+    VersionSuffix: '-rc'
+    NpmTag: 'rc'
+  ${{ if eq(parameters.NpmPublish, 'production (@latest)') }}:
+    DoPublish: true
+    VersionSuffix: ''
+    NpmTag: 'latest'
+  ${{ if eq(parameters.NpmPublish, 'custom') }}:
+    DoPublish: true
 
 stages:
 - stage: Extract_commit
@@ -44,7 +63,7 @@ stages:
     parameters:
       CommitOverride: true
       BuildConfig: 'Debug'
-      CmdParams: '${{ parameters.CmdParams }}'
+      ExtraBuildArgs: '$(ExtraBuildArgs)'
 
 - stage: Build_web_Debug
   dependsOn: Build_wasm_Debug
@@ -61,14 +80,14 @@ stages:
     parameters:
       CommitOverride: true
       BuildConfig: 'Release'
-      CmdParams: '--skip_tests --disable_wasm_exception_catching --disable_rtti ${{ parameters.CmdParams }}'
+      ExtraBuildArgs: '--skip_tests --disable_wasm_exception_catching --disable_rtti $(ExtraBuildArgs)'
 
 - stage: Build_web_Release
   dependsOn: Build_wasm_Release
   jobs:
   - template: templates/win-web-ci.yml
     parameters:
-      NpmVersionSuffix: '${{ parameters.VersionSuffix }}'
+      NpmVersionSuffix: '$(VersionSuffix)'
       CommitOverride: true
       BuildConfig: 'Release'
 
@@ -96,11 +115,11 @@ stages:
                             eq(variables['Build.SourceBranch'], 'refs/heads/master')
                            ),
                         and(eq(variables['Build.Reason'], 'Manual'),
-                            eq('${{ parameters.DoPublish }}', true)
+                            eq(variables['DoPublish'], true)
                            )
                        )
        )
   jobs:
   - template: templates/win-web-publish.yml
     parameters:
-      NpmTag: '${{ parameters.NpmTag }}'
+      NpmTag: '$(NpmTag)'
