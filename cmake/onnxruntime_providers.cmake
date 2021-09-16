@@ -965,17 +965,25 @@ if (onnxruntime_USE_MIGRAPHX)
     "${ONNXRUNTIME_ROOT}/core/framework/run_options.cc"
     "${ONNXRUNTIME_ROOT}/core/framework/onnxruntime_typeinfo.cc"
     "${ONNXRUNTIME_ROOT}/core/framework/tensor_type_and_shape.cc"
-#    "${ONNXRUNTIME_ROOT}/core/framework/allocator.cc"
+    "${ONNXRUNTIME_ROOT}/core/session/default_cpu_allocator_c_api.cc"
+    "${ONNXRUNTIME_ROOT}/core/session/custom_ops.cc"
+    "${ONNXRUNTIME_ROOT}/core/framework/onnxruntime_map_type_info.cc"
+    "${ONNXRUNTIME_ROOT}/core/framework/onnxruntime_sequence_type_info.cc"
+    "${ONNXRUNTIME_ROOT}/core/util/thread_utils.cc"
+    "${ONNXRUNTIME_ROOT}/core/framework/allocatormgr.h"
+    "${ONNXRUNTIME_ROOT}/core/session/allocator_adapters.cc"
+    "${ONNXRUNTIME_ROOT}/core/session/provider_stubs.cc"
   )
-    
+   
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_migraphx_cc_srcs})
   onnxruntime_add_shared_library(onnxruntime_providers_migraphx ${onnxruntime_providers_migraphx_cc_srcs})
-  target_link_libraries(onnxruntime_providers_migraphx PRIVATE ${migraphx_libs} ${ONNXRUNTIME_PROVIDERS_SHARED} flatbuffers)
+  onnxruntime_add_include_to_target(onnxruntime_providers_migraphx onnxruntime_common onnxruntime_framework
+          onnxruntime_providers onnxruntime_util onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
+  target_link_libraries(onnxruntime_providers_migraphx PRIVATE ${migraphx_libs} ${ONNXRUNTIME_PROVIDERS_SHARED} onnx flatbuffers)
   set_target_properties(onnxruntime_providers_migraphx PROPERTIES FOLDER "ONNXRuntime")
   target_compile_definitions(onnxruntime_providers_migraphx PRIVATE ONNXIFI_BUILD_LIBRARY=1)
   target_compile_options(onnxruntime_providers_migraphx PRIVATE -Wno-error=sign-compare)
   target_include_directories(onnxruntime_providers_migraphx PRIVATE ${ONNXRUNTIME_ROOT})
-  onnxruntime_add_include_to_target(onnxruntime_providers_migraphx onnxruntime_common onnx flatbuffers)
   add_dependencies(onnxruntime_providers_migraphx onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/migraphx  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_migraphx PROPERTIES LINKER_LANGUAGE CXX)
@@ -983,10 +991,10 @@ if (onnxruntime_USE_MIGRAPHX)
   set_property(TARGET onnxruntime_providers_migraphx APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/migraphx/version_script.lds -Xlinker --gc-sections")
   target_link_libraries(onnxruntime_providers_migraphx PRIVATE nsync_cpp stdc++fs)
 
-  install(TARGETS onnxruntime_providers_migraphx
-          ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-          LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-          RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
+#  install(TARGETS onnxruntime_providers_migraphx
+#          ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+#          LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+#          RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
 if (onnxruntime_USE_ACL)

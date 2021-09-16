@@ -58,7 +58,8 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
-  // void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
+  void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
+
   // Status OnRunEnd() override;
 
   // Status SetComputeStream(void* stream) override;

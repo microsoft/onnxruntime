@@ -2,6 +2,7 @@
 // Licensed under the MIT License
 
 #include "core/providers/shared_library/provider_api.h"
+#define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/safeint.h"
 // #include "core/framework/ortdevice.h"

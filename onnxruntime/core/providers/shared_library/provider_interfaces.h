@@ -131,6 +131,9 @@ struct ProviderHost {
 
   virtual AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) = 0;
 
+  // virtual OrtStatus* CreateMemoryInfo(_In_ const char* name1, enum OrtAllocatorType type, int id1,
+  //                   enum OrtMemType mem_type1, _Outptr_ OrtMemoryInfo** out) = 0;
+
   virtual std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info) = 0;
 
   virtual void* CPUAllocator__Alloc(CPUAllocator* p, size_t size) = 0;
