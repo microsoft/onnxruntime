@@ -171,7 +171,8 @@ namespace Microsoft.ML.OnnxRuntime
         NNAPI_FLAG_USE_FP16 = 0x001,
         NNAPI_FLAG_USE_NCHW = 0x002,
         NNAPI_FLAG_CPU_DISABLED = 0x004,
-        NNAPI_FLAG_LAST = NNAPI_FLAG_CPU_DISABLED
+        NNAPI_FLAG_CPU_ONLY = 0x008,
+        NNAPI_FLAG_LAST = NNAPI_FLAG_CPU_ONLY
     }
 
 
