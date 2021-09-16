@@ -208,7 +208,7 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Atanh | Yes | No | No |
 | AveragePool | Yes | Yes | Yes |
 | BatchNormalization | Yes | Yes | Yes |
-| Ceil | No | Yes | Yes |
+| Ceil | Yes | Yes | Yes |
 | Cast | Yes | Yes | Yes |
 | Clip | Yes | Yes | Yes |
 | Concat | Yes | Yes | Yes |
@@ -231,6 +231,7 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Floor | Yes | Yes | Yes |
 | Gather | Yes | Yes | Yes |
 | GatherElements | No | No | Yes |
+| GatherND | Yes | Yes | Yes |
 | Gemm | Yes | Yes | Yes |
 | GlobalAveragePool | Yes | Yes | Yes |
 | GlobalLpPool | Yes | Yes | No |
@@ -240,7 +241,7 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | LeakyRelu | Yes | Yes | Yes |
 | Less | Yes | Yes | Yes |
 | Log | Yes | Yes | Yes |
-| Loop | No | No | Yes |
+| Loop | Yes | Yes | Yes |
 | LRN | Yes | Yes | Yes |
 | MatMul | Yes | Yes | Yes |
 | Max | Yes | Yes | Yes |
@@ -269,6 +270,7 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Reshape | Yes | Yes | Yes |
 | Resize | Yes | No | Yes |
 | RoiAlign | No | No | Yes |
+| Round | Yes | Yes | Yes |
 | Scatter | No | No | Yes |
 | Selu | Yes | Yes | No |
 | Shape | Yes | Yes | Yes |
@@ -287,7 +289,7 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Sum | Yes | Yes | Yes |
 | Tan | Yes | Yes | No |
 | Tanh | Yes | Yes | Yes |
-| Tile | No | No | Yes |
+| Tile | Yes | Yes | Yes |
 | TopK | Yes | Yes | Yes |
 | Transpose | Yes | Yes | Yes |
 | Unsqueeze | Yes | Yes | Yes |
@@ -342,6 +344,7 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 | tiny_yolov3 | Yes | Yes | Yes | No* |
 | mask_rcnn | Yes | Yes | Yes | No* |
 | faster_rcnn | Yes | Yes | Yes | No* |
+| yolov4 | Yes | Yes | Yes | No* |
 | yolov5 | Yes | Yes | Yes | No* |
 
 ### Image Manipulation Networks
@@ -362,10 +365,10 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 In order to showcase what you can do with the OpenVINO Execution Provider for ONNX Runtime, we have created a few samples that shows how you can get that performance boost you’re looking for with just one additional line of code. 
 
 ### Python API
-[Object detection with tinyYOLOv2 in Python](../../tutorials/tutorials/OpenVINO_EP_samples/tiny_yolo_v2_object_detection_python.md)
+[Object detection with tinyYOLOv2 in Python](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/python/OpenVINO_EP/tiny_yolo_v2_object_detection)
 
 ### C/C++ API
-[Image classification with Squeezenet in CPP](../../tutorials/tutorials/OpenVINO_EP_samples/squeezenet_classification_cpp.md)
+[Image classification with Squeezenet in CPP](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_cxx/OpenVINO_EP/squeezenet_classification)
 
 ### Csharp API
-[Object detection with YOLOv3 in C#](../../tutorials/tutorials/OpenVINO_EP_samples/yolov3_object_detection_csharp.md)
+[Object detection with YOLOv3 in C#](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_sharp)

@@ -235,7 +235,7 @@ See more information on the OpenVINO Execution Provider [here](../../reference/e
 
    Follow [documentation](https://docs.openvinotoolkit.org/2021.4/index.html) for detailed instructions.
 
-  *2021.4 is the recommended OpenVINO version. [OpenVINO 2020.3](https://docs.openvinotoolkit.org/2020.3/index.html) is minimal OpenVINO version requirement.*
+  *2021.4 is the recommended OpenVINO version. [OpenVINO 2021.2](https://docs.openvinotoolkit.org/2021.2/index.html) is minimal OpenVINO version requirement.*
   *The minimum ubuntu version to support 2021.4 is 18.04.*
 
 2. Configure the target hardware with specific follow on instructions:
