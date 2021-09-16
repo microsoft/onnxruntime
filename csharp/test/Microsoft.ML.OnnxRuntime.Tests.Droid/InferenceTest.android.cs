@@ -8,7 +8,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         public void TestPlatformSessionOptions()
         {
             var opt = new SessionOptions();
-            opt.AppendExecutionProvider_Nnapi(NNAPIFlags.NNAPI_FLAG_USE_NONE);
+            opt.AppendExecutionProvider_Nnapi();
             Assert.NotNull(opt);
         }
     }

@@ -575,7 +575,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 IntPtr libraryHandle = IntPtr.Zero;
                 try
                 {
-
                     option.RegisterCustomOpLibraryV2(libFullPath, out libraryHandle);
                 }
                 catch (Exception ex)

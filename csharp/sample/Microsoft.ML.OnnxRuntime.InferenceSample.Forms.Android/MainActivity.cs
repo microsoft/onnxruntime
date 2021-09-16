@@ -15,7 +15,7 @@ namespace Microsoft.ML.OnnxRuntime.InferenceSample.Forms.Droid
             Xamarin.Essentials.Platform.Init(this, savedInstanceState);
             global::Xamarin.Forms.Forms.Init(this, savedInstanceState);
 
-            App.PlatformSessionOptions.AppendExecutionProvider_Nnapi(NNAPIFlags.NNAPI_FLAG_USE_NONE);
+            App.PlatformSessionOptions.AppendExecutionProvider_Nnapi();
 
             LoadApplication(new App());
         }

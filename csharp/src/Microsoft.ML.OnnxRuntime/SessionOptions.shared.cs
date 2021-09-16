@@ -3,35 +3,11 @@
 
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
+using System.Collections.Generic;
 
 namespace Microsoft.ML.OnnxRuntime
 {
-    /// <summary>
-    /// CoreML flags for use with SessionOptions
-    /// </summary>
-    [Flags]
-    public enum COREMLFlags : uint
-    {
-        COREML_FLAG_USE_NONE = 0x000,
-        COREML_FLAG_USE_CPU_ONLY = 0x001,
-        COREML_FLAG_ENABLE_ON_SUBGRAPH = 0x002,
-        COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE = 0x004,
-        COREML_FLAG_LAST = COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE,
-    }
-
-    /// <summary>
-    /// NNAPI flags for use with SessionOptions
-    /// </summary>
-    [Flags]
-    public enum NNAPIFlags
-    {
-        NNAPI_FLAG_USE_NONE = 0x000,
-        NNAPI_FLAG_USE_FP16 = 0x001,
-        NNAPI_FLAG_USE_NCHW = 0x002,
-        NNAPI_FLAG_CPU_DISABLED = 0x004,
-        NNAPI_FLAG_LAST = NNAPI_FLAG_CPU_DISABLED
-    }
-
     /// <summary>
     /// Graph optimization level to use with SessionOptions
     ///  [https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Graph_Optimizations.md]
@@ -57,10 +33,14 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
     /// <summary>
-    /// Holds the platform-agnostic options for creating an InferenceSession
+    /// Holds the options for creating an InferenceSession
     /// </summary>
-    public partial class SessionOptions : SafeHandle
+    public class SessionOptions : SafeHandle
     {
+        // Delay-loaded CUDA or cuDNN DLLs. Currently, delayload is disabled. See cmake/CMakeLists.txt for more information.
+        private static string[] cudaDelayLoadedLibs = { };
+        private static string[] trtDelayLoadedLibs = { };
+
         #region Constructor and Factory methods
 
         /// <summary>
@@ -72,22 +52,306 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionOptions(out handle));
         }
 
-        #endregion
+#if !__MOBILE__
+        /// <summary>
+        /// A helper method to construct a SessionOptions object for CUDA execution.
+        /// Use only if CUDA is installed and you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="deviceId"></param>
+        /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
+        public static SessionOptions MakeSessionOptionWithCudaProvider(int deviceId = 0)
+        {
+            CheckCudaExecutionProviderDLLs();
+            SessionOptions options = new SessionOptions();
+            options.AppendExecutionProvider_CUDA(deviceId);
+            return options;
+        }
 
-        #region Constructor and Factory methods
+        /// <summary>
+        /// A helper method to construct a SessionOptions object for TensorRT execution.
+        /// Use only if CUDA/TensorRT are installed and you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="deviceId"></param>
+        /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
+        public static SessionOptions MakeSessionOptionWithTensorrtProvider(int deviceId = 0)
+        {
+            CheckTensorrtExecutionProviderDLLs();
+            SessionOptions options = new SessionOptions();
+            try
+            {
+                options.AppendExecutionProvider_Tensorrt(deviceId);
+                options.AppendExecutionProvider_CUDA(deviceId);
+                return options;
+            }
+            catch (Exception e)
+            {
+                options.Dispose();
+                throw e;
+            }
+        }
+
+        /// <summary>
+        /// A helper method to construct a SessionOptions object for TensorRT execution provider.
+        /// Use only if CUDA/TensorRT are installed and you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="trtProviderOptions">TensorRT EP provider options</param>
+        /// <returns>A SessionsOptions() object configured for execution on provider options</returns>
+        public static SessionOptions MakeSessionOptionWithTensorrtProvider(OrtTensorRTProviderOptions trtProviderOptions)
+        {
+            CheckTensorrtExecutionProviderDLLs();
+            SessionOptions options = new SessionOptions();
+            try
+            {
+                // Make sure that CUDA EP uses the same device id as TensorRT EP.
+                options.AppendExecutionProvider_Tensorrt(trtProviderOptions);
+                options.AppendExecutionProvider_CUDA(trtProviderOptions.GetDeviceId());
+                return options;
+            }
+            catch (Exception e)
+            {
+                options.Dispose();
+                throw e;
+            }
+        }
+
+        /// <summary>
+        /// A helper method to construct a SessionOptions object for Nuphar execution.
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="settings">settings string, comprises of comma separated key:value pairs. default is empty</param>
+        /// <returns>A SessionsOptions() object configured for execution with Nuphar</returns>
+        public static SessionOptions MakeSessionOptionWithNupharProvider(String settings = "")
+        {
+            SessionOptions options = new SessionOptions();
+            options.AppendExecutionProvider_Nuphar(settings);
+
+            return options;
+        }
+
+        /// <summary>
+        /// A helper method to construct a SessionOptions object for ROCM execution.
+        /// Use only if ROCM is installed and you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="deviceId">Device Id</param>
+        /// <param name="gpuMemLimit">GPU memory limit. Defaults to no limit.</param>
+        /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
+        public static SessionOptions MakeSessionOptionWithRocmProvider(int deviceId = 0, UIntPtr gpuMemLimit = default)
+        {
+            SessionOptions options = new SessionOptions();
+            options.AppendExecutionProvider_ROCM(deviceId, gpuMemLimit);
+            return options;
+        }
+#endif // !__MOBILE__
+#endregion
+
+        #region ExecutionProviderAppends
 
         /// <summary>
         /// Appends CPU EP to a list of available execution providers for the session.
         /// </summary>
         /// <param name="useArena">1 - use arena, 0 - do not use arena</param>
-        public void AppendExecutionProvider_CPU(int useArena)
+        public void AppendExecutionProvider_CPU(int useArena = 1)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(handle, useArena));
         }
 
-        #endregion
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="useArena">1 - use allocation arena, 0 - otherwise</param>
+        public void AppendExecutionProvider_Dnnl(int useArena = 1)
+        {
+#if __MOBILE__
+            throw new NotSupportedException("The DNNL Execution Provider is not supported in this build");
+#else
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Dnnl(handle, useArena));
+#endif
+        }
 
-        #region Public Methods
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="deviceId">integer device ID</param>
+        public void AppendExecutionProvider_CUDA(int deviceId = 0)
+        {
+#if __MOBILE__
+            throw new NotSupportedException("The CUDA Execution Provider is not supported in this build");
+#else
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA(handle, deviceId));
+#endif
+        }
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="deviceId">device identification</param>
+        public void AppendExecutionProvider_DML(int deviceId = 0)
+        {
+#if __MOBILE__
+            throw new NotSupportedException("The DML Execution Provider is not supported in this build");
+#else
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_DML(handle, deviceId));
+#endif
+        }
+
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="deviceId">device identification, default empty string</param>
+        public void AppendExecutionProvider_OpenVINO(string deviceId = "")
+        {
+#if __MOBILE__
+            throw new NotSupportedException("The OpenVINO Execution Provider is not supported in this build");
+#else
+            var deviceIdPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(deviceId), GCHandleType.Pinned);
+            using (var pinnedDeviceIdName = new PinnedGCHandle(deviceIdPinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_OpenVINO(handle, pinnedDeviceIdName.Pointer));
+            }
+#endif
+        }
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="deviceId">device identification</param>
+        public void AppendExecutionProvider_Tensorrt(int deviceId = 0)
+        {
+#if __MOBILE__
+            throw new NotSupportedException("The TensorRT Execution Provider is not supported in this build");
+#else
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Tensorrt(handle, deviceId));
+#endif
+        }
+
+        /// <summary>
+        /// Append a TensorRT EP instance (based on specified configuration) to the SessionOptions instance.
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="trtProviderOptions">TensorRT EP provider options</param>
+        public void AppendExecutionProvider_Tensorrt(OrtTensorRTProviderOptions trtProviderOptions)
+        {
+#if __MOBILE__
+            throw new NotSupportedException("The TensorRT Execution Provider is not supported in this build");
+#else
+            NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_TensorRT(handle, trtProviderOptions.Handle));
+#endif
+        }
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="deviceId">Device Id</param>
+        /// <param name="gpuMemLimit">GPU memory limit. Defaults to no limit.</param>
+        public void AppendExecutionProvider_ROCM(int deviceId = 0, UIntPtr gpuMemLimit = default)
+        {
+#if __MOBILE__
+            throw new NotSupportedException("The ROCM Execution Provider is not supported in this build");
+#else
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtSessionOptionsAppendExecutionProvider_ROCM(handle, deviceId, gpuMemLimit));
+#endif
+        }
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="deviceId">device identification</param>
+        public void AppendExecutionProvider_MIGraphX(int deviceId = 0)
+        {
+#if __MOBILE__
+            throw new NotSupportedException($"The MIGraphX Execution Provider is not supported in this build");
+#else
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_MIGraphX(handle, deviceId));
+#endif
+        }
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="nnapi_flags">nnapi specific flag mask</param>
+        public void AppendExecutionProvider_Nnapi(uint nnapi_flags = 0)
+        {
+#if __ANDROID__
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nnapi(handle, nnapi_flags));
+#else
+            throw new NotSupportedException("The NNAPI Execution Provider is not supported in this build");
+#endif
+        }
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="coreml_flags">CoreML specific flags</param>
+        public void AppendExecutionProvider_CoreML(uint coreml_flags = 0)
+        {
+#if __IOS__
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CoreML(handle, coreml_flags));
+#else
+            throw new NotSupportedException("The CoreML Execution Provider is not supported in this build");
+#endif
+        }
+
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="settings">string with Nuphar specific settings</param>
+        public void AppendExecutionProvider_Nuphar(string settings = "")
+        {
+#if __MOBILE__
+            throw new NotSupportedException("The Nuphar Execution Provider is not supported in this build");
+#else
+            var settingsPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(settings), GCHandleType.Pinned);
+            using (var pinnedSettingsName = new PinnedGCHandle(settingsPinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(handle, 1, pinnedSettingsName.Pointer));
+            }
+#endif
+        }
+
+#endregion //ExecutionProviderAppends
+
+#region Public Methods
+
+        /// <summary>
+        /// (Deprecated) Loads a DLL named 'libraryPath' and looks for this entry point:
+        /// OrtStatus* RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);
+        /// It then passes in the provided session options to this function along with the api base.
+        /// Deprecated in favor of RegisterCustomOpLibraryV2() because it provides users with the library handle 
+        /// to release when all sessions relying on it are destroyed
+        /// </summary>
+        /// <param name="libraryPath">path to the custom op library</param>
+        [ObsoleteAttribute("RegisterCustomOpLibrary(...) is obsolete. Use RegisterCustomOpLibraryV2(...) instead.", false)]
+        public void RegisterCustomOpLibrary(string libraryPath)
+        {
+            IntPtr libraryHandle = IntPtr.Zero;
+            var libraryPathPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(libraryPath), GCHandleType.Pinned);
+            using (var pinnedlibraryPath = new PinnedGCHandle(libraryPathPinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, pinnedlibraryPath.Pointer, out libraryHandle));
+            }
+        }
+
+        /// <summary>
+        /// Loads a DLL named 'libraryPath' and looks for this entry point:
+        /// OrtStatus* RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);
+        /// It then passes in the provided session options to this function along with the api base.
+        /// The handle to the loaded library is returned in 'libraryHandle'.
+        /// It can be unloaded by the caller after all sessions using the passed in
+        /// session options are destroyed, or if an error occurs and it is non null.
+        /// Hint: .NET Core 3.1 has a 'NativeLibrary' class that can be used to free the library handle
+        /// </summary>
+        /// <param name="libraryPath">Custom op library path</param>
+        /// <param name="libraryHandle">out parameter, library handle</param>
+        public void RegisterCustomOpLibraryV2(string libraryPath, out IntPtr libraryHandle)
+        {
+            var libraryPathPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(libraryPath), GCHandleType.Pinned);
+            using (var pinnedlibraryPath = new PinnedGCHandle(libraryPathPinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, pinnedlibraryPath.Pointer, out libraryHandle));
+            }
+        }
 
         /// <summary>
         /// Add a pre-allocated initializer to a session. If a model contains an initializer with a name
@@ -152,8 +416,7 @@ namespace Microsoft.ML.OnnxRuntime
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtAddFreeDimensionOverrideByName(handle, pinnedDimName.Pointer, dimValue));
             }
         }
-
-        #endregion
+#endregion
 
         internal IntPtr Handle
         {
@@ -162,8 +425,7 @@ namespace Microsoft.ML.OnnxRuntime
                 return handle;
             }
         }
-
-        #region Public Properties
+#region Public Properties
 
         /// <summary>
         /// Overrides SafeHandle.IsInvalid
@@ -428,6 +690,59 @@ namespace Microsoft.ML.OnnxRuntime
 
         #endregion
 
+        #region Private Methods
+
+#if !__MOBILE__
+        // Declared, but called only if OS = Windows.
+        [DllImport("kernel32.dll")]
+        private static extern IntPtr LoadLibrary(string dllToLoad);
+
+        [DllImport("kernel32.dll")]
+        static extern uint GetSystemDirectory([Out] StringBuilder lpBuffer, uint uSize);
+        private static bool CheckCudaExecutionProviderDLLs()
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                foreach (var dll in cudaDelayLoadedLibs)
+                {
+                    IntPtr handle = LoadLibrary(dll);
+                    if (handle != IntPtr.Zero)
+                        continue;
+                    var sysdir = new StringBuilder(String.Empty, 2048);
+                    GetSystemDirectory(sysdir, (uint)sysdir.Capacity);
+                    throw new OnnxRuntimeException(
+                        ErrorCode.NoSuchFile,
+                        $"kernel32.LoadLibrary():'{dll}' not found. CUDA is required for GPU execution. " +
+                        $". Verify it is available in the system directory={sysdir}. Else copy it to the output folder."
+                        );
+                }
+            }
+            return true;
+        }
+
+        private static bool CheckTensorrtExecutionProviderDLLs()
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                foreach (var dll in trtDelayLoadedLibs)
+                {
+                    IntPtr handle = LoadLibrary(dll);
+                    if (handle != IntPtr.Zero)
+                        continue;
+                    var sysdir = new StringBuilder(String.Empty, 2048);
+                    GetSystemDirectory(sysdir, (uint)sysdir.Capacity);
+                    throw new OnnxRuntimeException(
+                        ErrorCode.NoSuchFile,
+                        $"kernel32.LoadLibrary():'{dll}' not found. TensorRT/CUDA are required for GPU execution. " +
+                        $". Verify it is available in the system directory={sysdir}. Else copy it to the output folder."
+                        );
+                }
+            }
+            return true;
+        }
+
+#endif // !__MOBILE__
+#endregion
         #region SafeHandle
         /// <summary>
         /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
@@ -441,6 +756,6 @@ namespace Microsoft.ML.OnnxRuntime
             return true;
         }
 
-        #endregion
+#endregion
     }
 }

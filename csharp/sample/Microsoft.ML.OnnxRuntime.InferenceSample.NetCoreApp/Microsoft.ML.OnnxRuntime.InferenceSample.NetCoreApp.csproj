@@ -31,42 +31,41 @@
 
   <ItemGroup>
     <None Include="$(NativeBuildOutputDir)\libonnxruntime.so" Condition="'$(IsLinuxBuild)'=='true'">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
     <None Include="$(NativeBuildOutputDir)\onnxruntime.dll" Condition="'$(IsWindowsBuild)'=='true'">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
     <None Include="$(NativeBuildOutputDir)\libonnxruntime.dylib" Condition="'$(IsMacOSBuild)'=='true'">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
     <None Include="$(NativeBuildOutputDir)\onnxruntime.pdb" Condition="'$(IsWindowsBuild)'=='true'And Exists('$(NativeBuildOutputDir)\onnxruntime.pdb')">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
     <None Include="$(NativeBuildOutputDir)\dnnl.dll" Condition="Exists('$(NativeBuildOutputDir)\dnnl.dll')">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
     <None Include="$(NativeBuildOutputDir)\libdnnl.so.1" Condition="Exists('$(NativeBuildOutputDir)\libdnnl.so.1')">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
     <None Include="$(NativeBuildOutputDir)\mklml.dll" Condition="Exists('$(NativeBuildOutputDir)\mklml.dll')">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
     <None Include="$(NativeBuildOutputDir)\libmklml_intel.so" Condition="Exists('$(NativeBuildOutputDir)\libmklml_intel.so')">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
     <None Include="$(NativeBuildOutputDir)\libmklml_gnu.so" Condition="Exists('$(NativeBuildOutputDir)\libmklml_gnu.so')">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
-
   </ItemGroup>
 
   <ItemGroup>
