@@ -110,7 +110,7 @@ option(onnxruntime_USE_ROCM "Build with AMD GPU support" OFF)
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
 option(onnxruntime_DISABLE_ML_OPS "Disable traditional ML ops" OFF)
 option(onnxruntime_DISABLE_SPARSE_TENSORS "Disable sparse tensors data types" OFF)
-cmake_dependent_option(onnxruntime_DISABLE_RTTI "Disable RTTI" ON "NOT onnxruntime_ENABLE_PYTHON" OFF)
+cmake_dependent_option(onnxruntime_DISABLE_RTTI "Disable RTTI" ON "onnxruntime_MINIMAL_BUILD;NOT onnxruntime_ENABLE_PYTHON" OFF)
 # For now onnxruntime_DISABLE_EXCEPTIONS will only work with onnxruntime_MINIMAL_BUILD, more changes (ONNX, non-CPU EP, ...) are required to run this standalone
 option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handling. Requires onnxruntime_MINIMAL_BUILD currently." OFF)
 option(onnxruntime_MINIMAL_BUILD "Exclude as much as possible from the build. Support ORT format models. No support for ONNX format models." OFF)
@@ -148,6 +148,7 @@ option(onnxruntime_USE_MPI "Build with MPI support" OFF)
 option(onnxruntime_BUILD_WEBASSEMBLY "Enable this option to create WebAssembly byte codes" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_THREADS "Enable this option to create WebAssembly byte codes with multi-threads support" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING "Enable this option to turn on exception catching" OFF)
+option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_THROWING "Enable this option to turn on exception throwing even if the build disabled exceptions support" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO "Enable this option to turn on DWARF format debug info" OFF)
 
 # Enable bitcode for iOS
