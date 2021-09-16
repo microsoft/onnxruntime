@@ -45,7 +45,7 @@ static std::vector<uint8_t> UnpackInitializer(const TensorProto& init) {
 * logic is required within the Loop to handle the first iteration and other iterations separately.
 */
 static bool AdjustOuterScopeGraph(Graph& parent_graph, const Node& loop, size_t loop_input_index,
-                                  TensorProto past_state_seed, const TypeProto*& past_state_seed_type_proto,
+                                  TensorProto past_state_seed, const TypeProto& past_state_seed_type_proto,
                                   int64_t repeat, const std::string& base_name,
                                   const std::unordered_set<std::string>& compatible_eps) {
   Node* node_feeding_loop_input = nullptr;
@@ -79,7 +79,7 @@ static bool AdjustOuterScopeGraph(Graph& parent_graph, const Node& loop, size_t 
   past_state_seed.clear_name();
   past_state_seed.set_name(base_name + "_" + "PastStateSeed");
   auto& past_state_seed_node_arg = parent_graph.GetOrCreateNodeArg(past_state_seed.name(),
-                                                                   past_state_seed_type_proto);
+                                                                   &past_state_seed_type_proto);
   parent_graph.AddInitializedTensor(past_state_seed);
 
   // Add past state repeats as an initializer
@@ -446,7 +446,7 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
     }
 
     TensorProto past_state_seed;
-    const TypeProto* past_state_seed_type_proto;
+    const TypeProto* past_state_seed_type_proto = nullptr;
 
     // Check if the "else" subgraph matches expected pattern
     if (!IsExpectedIfElseBranch(*if_subgraphs.find("else_branch")->second, past_state_seed, past_state_seed_type_proto)) {
@@ -517,7 +517,7 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
     if (!AdjustOuterScopeGraph(*graph.MutableParentGraph(), *parent_node,
                                static_cast<size_t>(loop_past_state_input_index),
                                past_state_seed,
-                               past_state_seed_type_proto, sequence_at_count,
+                               *past_state_seed_type_proto, sequence_at_count,
                                base_name, GetCompatibleExecutionProviders())) {
       continue;
     }
