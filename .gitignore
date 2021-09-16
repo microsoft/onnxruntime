@@ -2,6 +2,7 @@ _site
 .sass-cache
 .jekyll-metadata
 *.out
+.venv
 
 # direnv, posh-direnv
 .envrc
