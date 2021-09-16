@@ -12,6 +12,63 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+
+
+    <!--This block of code is temporary to account for old links since the site was reorganized.
+    This wont redirect _all_ broken links but catches the main ones.-->
+    <noscript>
+        <meta http-equiv="refresh" content="2;URL='/docs'" />
+    </noscript>
+    <!--[if lt IE 9]><script type="text/javascript">var IE_fix=true;</script><![endif]-->
+    <script type="text/javascript">
+        var url = "/docs";
+        var delay = "2000";
+        window.onload = function ()
+        {
+            setTimeout(GoToURL, delay);
+        }
+        function GoToURL()
+        {
+            if(typeof IE_fix != "undefined") // IE8 and lower fix to pass the http referer
+            {
+                var referLink = document.createElement("a");
+                referLink.href = url;
+                document.body.appendChild(referLink);
+                referLink.click();
+            }
+            else { 
+                var pathname = window.location.pathname;
+
+                // redirect how-to/build to build
+                if(pathname.includes("docs/how-to/build")){
+                    window.location.replace("/docs/build");
+                }
+                // how-to was removed - this is a catch all for deleted paths to how-to
+                else if(pathname.includes("docs/how-to")){
+                    window.location.replace("/docs");
+                }
+                else if(pathname.includes("/docs/resources/graph-optimizations")){
+                    window.location.replace("/docs/performance/graph-optimizations");
+                }
+                // resource was removed - this is a catch all for deleted paths to resource
+                else if(pathname.includes("docs/resource")){
+                    window.location.replace("/docs/reference");
+                }
+                else if(pathname.includes("/docs/reference/execution-providers")){
+                    window.location.replace("/docs/execution-providers/");
+                }
+                else if(pathname.includes("docs/reference/api")){
+                    window.location.replace("/docs/api");
+                }
+                // Catch all docs 404 and redirect to docs home
+                else if(pathname.includes("/docs")){
+                    window.location.replace("/docs");
+                }
+             }
+        }
+    </script>
+
+
     <title>ONNX Runtime | Oops</title>
     <link rel="icon" href="/images/ONNXRuntime-Favicon.png" type="image/gif" sizes="16x16">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Open+Sans:300,400,700">
@@ -40,6 +97,9 @@
                             <ul class="navbar-nav navbar-nav mr-auto text-uppercase" id="navigation">
                                 <li class="nav-item">
                                     <a class="nav-link pr-3" href="/index.html#getStartedTable">Get Started</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link pr-3" href="/docs">Docs</a>
                                 </li>
                                 <li class="nav-item">
                                     <a class="nav-link pr-3" target="_blank" href="https://cloudblogs.microsoft.com/opensource/tag/onnx">News</a>
