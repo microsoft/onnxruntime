@@ -41,7 +41,10 @@ IF EXIST test\Microsoft.ML.OnnxRuntime.EndToEndTests\obj RMDIR /S /Q test\Micros
 @echo %PackageName%
 @echo %CurrentOnnxRuntimeVersion%
 %dn% clean test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj
-%dn% restore -v detailed test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --configfile .\Nuget.CSharp.config --no-cache --packages test\Microsoft.ML.OnnxRuntime.EndToEndTests\packages --source https://api.nuget.org/v3/index.json --source  %LocalNuGetRepo%
+%dn% restore -v normal test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --configfile .\Nuget.CSharp.config --no-cache --packages test\Microsoft.ML.OnnxRuntime.EndToEndTests\packages --source https://api.nuget.org/v3/index.json --source  %LocalNuGetRepo%
+REM msbuild /t:Clean test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj
+REM nuget restore test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj -ConfigFile .\Nuget.CSharp.config -NoCache -PackagesDirectory test\Microsoft.ML.OnnxRuntime.EndToEndTests\packages -Source https://api.nuget.org/v3/index.json -Source %LocalNuGetRepo%
+
 
 IF NOT errorlevel 0 (
     @echo "Failed to restore nuget packages for the test project"

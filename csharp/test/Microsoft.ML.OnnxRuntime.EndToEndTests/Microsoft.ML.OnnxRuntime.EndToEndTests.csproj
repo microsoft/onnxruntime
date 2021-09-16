@@ -5,15 +5,14 @@
     <OnnxRuntimeCsharpRoot>$(MSBuildThisFileDirectory)..\..</OnnxRuntimeCsharpRoot>
     <Platform>AnyCPU</Platform>
     <OutputPath>bin\$(Configuration)\</OutputPath>
-    <CurrentOnnxRuntimeVersion Condition="'$(CurrentOnnxRuntimeVersion)' == ''">1.0.1</CurrentOnnxRuntimeVersion>
+    <CurrentOnnxRuntimeVersion Condition="'$(CurrentOnnxRuntimeVersion)' == ''">1.8.1</CurrentOnnxRuntimeVersion>
     <PackageName Condition="'$(PACKAGENAME)' == ''">Microsoft.ML.OnnxRuntime</PackageName>
-    <IsLinuxBuild Condition="'$(IsLinuxBuild)' == ''">false</IsLinuxBuild>
-    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
-    <SignAssembly>true</SignAssembly>
-    <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
     <IsLinuxBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))' == 'true'">true</IsLinuxBuild> 
     <IsWindowsBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">true</IsWindowsBuild> 
     <IsMacOSBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))' == 'true'">true</IsMacOSBuild> 
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(IsLinuxBuild)'=='true'">
@@ -36,13 +35,19 @@
 
   <ItemGroup>
     <PackageReference Include="Google.Protobuf" Version="3.17.3" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.11.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="15.8.0" />
     <PackageReference Include="xunit" Version="2.4.1" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.4.3" />
     <PackageReference Include="$(PACKAGENAME)" Version="$(CurrentOnnxRuntimeVersion)" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="$(MSBuildThisFileDirectory)..\Microsoft.ML.OnnxRuntime.Tests.Common\InferenceTest.cs" />
+    <BuildEnvVars Include="OnnxRuntimeBuildDirectory=$(OnnxRuntimeBuildDirectory)" />
+
+    <!-- do we need $(MSBuildThisFileDirectory) here? -->
+    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\InferenceTest.cs"/>
+    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\OnnxMl.cs"/>
+    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\InferenceTest.netcore.cs" />
+    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\TestDataLoader.cs" />
 
     <!-- Works in CI builds-->
     <None Include="$(OnnxRuntimeBuildDirectory)\testdata\testdata\custom_op*.dll;$(OnnxRuntimeBuildDirectory)\testdata\testdata\custom_op*.pdb;$(OnnxRuntimeBuildDirectory)\testdata\testdata\libcustom*.so;$(OnnxRuntimeBuildDirectory)\testdata\testdata\libcustom*.dylib">
@@ -50,40 +55,47 @@
       <Visible>false</Visible>
     </None>
     <!-- Works for local builds-->
-    <None Include="$(NativeBuildOutputDir)\*.dll;$(NativeBuildOutputDir)\*.pdb;$(NativeBuildOutputDir)\*.dylib;$(NativeBuildOutputDir)\libcustom*.so;$(NativeBuildOutputDir)\libcustom*.dylib">
+    <None Include="$(NativeBuildOutputDir)\custom_op*.dll;$(NativeBuildOutputDir)\custom_op*.pdb;$(NativeBuildOutputDir)\libcustom*.so;$(NativeBuildOutputDir)\libcustom*.dylib">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
+    <!-- -->
+
+    <!-- test data for non-mobile scenarios -->
     <None Include="$(OnnxRuntimeCSharpRoot)\testdata\*">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
     <None Include="$(OnnxRuntimeCSharpRoot)\..\onnxruntime\test\testdata\overridable_initializer.onnx">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
     <None Include="$(OnnxRuntimeCSharpRoot)\..\onnxruntime\test\testdata\capi_symbolic_dims.onnx">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
     <None Include="$(OnnxRuntimeCSharpRoot)\..\onnxruntime\test\testdata\custom_op_library\custom_op_test.onnx">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
 
-    <BuildEnvVars Include="OnnxRuntimeBuildDirectory=$(OnnxRuntimeBuildDirectory)" />
-    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\InferenceTest.netcore.cs">
-      <Link>InferenceTest.netcore.cs</Link>
-    </Compile>
+    <!-- test data for mobile scenarios -->
+    <EmbeddedResource Include="..\..\testdata\*">
+        <Link>TestData\%(Filename)%(Extension)</Link>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\..\onnxruntime\test\testdata\overridable_initializer.onnx">
+        <Link>TestData\overridable_initializer.onnx</Link>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\..\onnxruntime\test\testdata\capi_symbolic_dims.onnx">
+        <Link>TestData\capi_symbolic_dims.onnx</Link>
+    </EmbeddedResource>
   </ItemGroup>
 
   <Target Name="DefineBuildEnvironmentVariables" BeforeTargets="Build">
     <WriteLinesToFile File="$(OutputPath)\Properties.txt" Lines="@(BuildEnvVars)" Overwrite="true" />
   </Target>
+
   <ItemGroup>
     <Service Include="{508349b6-6b84-4df5-91f0-309beebad82d}" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Microsoft.ML.OnnxRuntime.Tests.Common.csproj" />
   </ItemGroup>
 </Project>
