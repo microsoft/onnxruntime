@@ -60,6 +60,7 @@ export declare namespace Env {
     contextId?: 'webgl'|'webgl2';
     /**
      * Set or get the maximum batch size for matmul. 0 means to disable batching.
+     *
      * @deprecated
      */
     matmulMaxBatchSize?: number;

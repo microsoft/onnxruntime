@@ -15,6 +15,7 @@ export declare namespace SessionHandler {
 
 /**
  * Represent a handler instance of an inference session.
+ *
  * @internal
  */
 export interface SessionHandler {
@@ -32,6 +33,7 @@ export interface SessionHandler {
 
 /**
  * Represent a backend that provides implementation of model inferencing.
+ *
  * @internal
  */
 export interface Backend {
