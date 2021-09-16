@@ -17,7 +17,7 @@ from pathlib import Path
 from onnxruntime.quantization import CalibrationDataReader, create_calibrator, write_calibration_table, QuantType, QuantizationMode, QLinearOpsRegistry, optimize_model, QDQQuantizer
 
 class BertDataReader(CalibrationDataReader):
-    def __init__(self, model_path, squad_json, vocab_file, cache_file, batch_size, max_seq_length, num_inputs):
+    def __init__(self, model_path, squad_json, vocab_file, batch_size, max_seq_length, num_inputs):
         self.model_path = model_path
         self.data = dp.read_squad_json(squad_json)
         self.max_seq_length = max_seq_length
@@ -64,7 +64,6 @@ class BertDataReader(CalibrationDataReader):
                 input_mask = np.expand_dims(features[0].input_mask, axis=0)
                 segment_ids = np.expand_dims(features[0].segment_ids, axis=0)
         data = [{"input_ids": input_ids, "input_mask": input_mask, "segment_ids":segment_ids}]
-        print(input_ids.shape)
         self.current_index += self.batch_size
         self.enum_data_dicts = iter(data)
         return next(self.enum_data_dicts, None)
@@ -74,7 +73,7 @@ if __name__ == '__main__':
     BERT QDQ Quantization for TensorRT.
 
     There are two steps for the quantization,
-    first, calibration is done based on SQuAD dataset to get dynamic range of each floating point tensor in the model
+    first, calibration is done based on SQuAD dataset to get dynamic range of floating point tensors in the model
     second, Q/DQ nodes with dynamic range (scale and zero-point) are inserted to the model
 
     The onnx model used in the script is converted from Hugging Face BERT model,
@@ -84,32 +83,32 @@ if __name__ == '__main__':
     https://github.com/NVIDIA/TensorRT/tree/master/demo/BERT
     '''
 
-    # Model and Dataset settings
+    # Model, dataset and quantization settings
     model_path = "./model.onnx"
-    squad_json = "./dev-v1.1.json"
-    vocab_file = "./vocab.txt"
-    calibration_cache_file = "./bert.flatbuffers"
+    squad_json = "./squad/dev-v1.1.json"
+    vocab_file = "./squad/vocab.txt"
     augmented_model_path = "./augmented_model.onnx"
     qdq_model_path = "./qdq_model.onnx"
     sequence_lengths = [384]
     calib_num = 100
+    op_types_to_quantize = ['MatMul', 'Transpose', 'Add']
 
     # Generate INT8 calibration cache
     print("Calibration starts ...")
-    calibrator = create_calibrator(model_path, [], augmented_model_path=augmented_model_path)
+    if not op_types_to_quantize or len(op_types_to_quantize) == 0:
+        op_types_to_quantize = list(QLinearOpsRegistry.keys())
+    calibrator = create_calibrator(model_path, op_types_to_quantize, augmented_model_path=augmented_model_path)
     calibrator.set_execution_providers(["CUDAExecutionProvider"]) 
-    data_reader = BertDataReader(model_path, squad_json, vocab_file, calibration_cache_file, 2, sequence_lengths[-1], calib_num)
+    data_reader = BertDataReader(model_path, squad_json, vocab_file, 2, sequence_lengths[-1], calib_num)
     calibrator.collect_data(data_reader)
     compute_range = calibrator.compute_range()
     write_calibration_table(compute_range)
-    print("Calibration is done. Calibration cache is saved to ", calibration_cache_file)
+    print("Calibration is done. Calibration cache is saved to calibration.json")
 
     # Generate QDQ model
     mode = QuantizationMode.QLinearOps
-    op_types_to_quantize = ['MatMul', 'Transpose', 'Add']
-    if not op_types_to_quantize or len(op_types_to_quantize) == 0:
-        op_types_to_quantize = list(QLinearOpsRegistry.keys())
-    model = onnx.load_model(Path(model_path), optimize_model)
+
+    model = onnx.load_model(Path(model_path), False)
     quantizer = QDQQuantizer(
         model,
         False, #per_channel
@@ -119,8 +118,8 @@ if __name__ == '__main__':
         QuantType.QInt8, #weight_type
         QuantType.QInt8, #activation_type
         compute_range,
-        [], #nodes_to_quantize,
-        [], #nodes_to_exclude,
+        [], #nodes_to_quantize
+        [], #nodes_to_exclude
         op_types_to_quantize,
         {'ActivationSymmetric' : True}) #extra_options
     quantizer.quantize_model()
