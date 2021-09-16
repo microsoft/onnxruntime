@@ -98,8 +98,10 @@ Following features are included in `onnxruntime-common`:
 Use following command in folder `<ORT_ROOT>/js/common` to generate API reference document:
 
 ```
-npx typedoc lib/index.ts --name "ONNX Runtime JavaScript API" --cleanOutputDir --excludeInternal --out <API_DOC_OUTPUT_FOLDER>
+npx typedoc
 ```
+
+Document will be generated in folder `<ORT_ROOT>/js/common/docs`.
 
 ## onnxruntime-node
 
