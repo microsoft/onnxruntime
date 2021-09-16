@@ -710,8 +710,9 @@ def find_model_path(path):
 
     logger.info(target_model_path)
     if len(target_model_path) > 1:
-        logger.error("We expect to find only one model in " + path)
-        raise
+        print(target_model_path)
+        #logger.error("We expect to find only one model in " + path)
+        #raise
 
     return target_model_path[0]
 
