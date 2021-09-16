@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "utils.h"
-#include <limits>
 
 OrtCUDAProviderOptions CreateDefaultOrtCudaProviderOptionsWithCustomStream(void* cuda_compute_stream) {
   OrtCUDAProviderOptions cuda_options;

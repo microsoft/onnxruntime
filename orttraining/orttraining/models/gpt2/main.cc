@@ -355,7 +355,6 @@ void setup_training_params(GPT2Parameters& params) {
     OrtCUDAProviderOptions info;
     info.device_id=gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
     info.do_copy_in_default_stream=true;
-
     params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_Cuda(&info));
     params.input_allocator = CreateCUDAPinnedAllocator(info.device_id, CUDA_PINNED);
   }

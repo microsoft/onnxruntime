@@ -171,7 +171,6 @@ Status ParseArguments(int argc, char* argv[], MnistParameters& params) {
     if (use_cuda) {
       OrtCUDAProviderOptions info;
       info.do_copy_in_default_stream = true;
-
       params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_Cuda(&info));
     }
 #endif
