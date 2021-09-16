@@ -149,7 +149,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # TODO: remove after PyTorch ONNX exporter supports VAR_KEYWORD parameters.
         for input_parameter in self._module_parameters:
             if input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
-                if self._debug_options.logging.log_level <= LogLevel.WARNING:
+                if self._debug_options.logging.log_level >= LogLevel.WARNING:
                     warnings.warn("The model's forward method has **kwargs parameter which has EXPERIMENTAL support!",
                                   UserWarning)
 
@@ -239,7 +239,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         """Creates and returns the session configuration to be used for the ExecutionAgent"""
 
         if torch.are_deterministic_algorithms_enabled():
-            if self._debug_options.logging.log_level <= _logger.LogLevel.INFO:
+            if self._debug_options.logging.log_level >= _logger.LogLevel.INFO:
                 warnings.warn("ORTModule's determinism will be enabled because PyTorch's determinism is enabled.",
                               UserWarning)
 

@@ -74,7 +74,7 @@ class TrainingManager(GraphExecutionManager):
 
         try:
             if self._first_skip_check_warning is True and self._skip_check.is_disabled() is False \
-                    and self._debug_options.logging.log_level <= _logger.LogLevel.WARNING:
+                    and self._debug_options.logging.log_level >= _logger.LogLevel.WARNING:
                 # Only change this after the firs time a warning is issued.
                 self._first_skip_check_warning = False
                 warnings.warn(f"Fast path enabled - skipping checks."
