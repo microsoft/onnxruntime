@@ -609,15 +609,9 @@ void setup_training_params(BertParameters& params) {
 
 #ifdef USE_CUDA
   {
-    OrtCUDAProviderOptions info{
-        gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank()),
-        OrtCudnnConvAlgoSearch::EXHAUSTIVE,
-        std::numeric_limits<size_t>::max(),
-        0,
-        true,
-        0,
-        nullptr,
-        nullptr};
+    OrtCUDAProviderOptions info;
+    info.device_id = gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
+    info.do_copy_in_default_stream = true;
 
     if (params.gpu_mem_limit_in_gb > 0) {
       info.gpu_mem_limit = gsl::narrow<size_t>(params.gpu_mem_limit_in_gb * 1024 * 1024 * 1024);
