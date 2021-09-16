@@ -93,6 +93,14 @@ Following features are included in `onnxruntime-common`:
 - `Tensor`/`OnnxValue` interfaces, implementation and a set of utility functions
 - `Backend` interfaces and a set of functions for backend registration
 
+### Generate API reference document
+
+Use following command in folder `<ORT_ROOT>/js/common` to generate API reference document:
+
+```
+npx typedoc lib/index.ts --name "ONNX Runtime JavaScript API" --cleanOutputDir --excludeInternal --out <API_DOC_OUTPUT_FOLDER>
+```
+
 ## onnxruntime-node
 
 > language: typescript/C++
