@@ -12,6 +12,7 @@ import unittest
 import os
 import pytest
 from onnx import TensorProto, load_model
+from model_loader import get_test_data_path, get_fusion_test_model
 
 from parity_utilities import find_transformers_source
 if find_transformers_source():
@@ -37,22 +38,12 @@ BERT_TEST_MODELS = {
 }
 
 
-def _get_fusion_test_model(file):
-    relative_path = os.path.join(os.path.dirname(__file__), '..', '..', 'testdata', 'transform', 'fusion', file)
-    if (os.path.exists(relative_path)):
-        return relative_path
-    return os.path.join('.', 'testdata', 'transform', 'fusion', file)
-
-
 def _get_test_model_path(name):
     sub_dir, file = BERT_TEST_MODELS[name]
     if sub_dir == "FUSION":
-        return _get_fusion_test_model(file)
+        return get_fusion_test_model(file)
     else:
-        relative_path = os.path.join(os.path.dirname(__file__), 'test_data', sub_dir, file)
-        if (os.path.exists(relative_path)):
-            return relative_path
-        return os.path.join('.', 'transformers', 'test_data', sub_dir, file)
+        return get_test_data_path(sub_dir, file)
 
 
 class TestBertOptimization(unittest.TestCase):
@@ -212,7 +203,7 @@ class TestBertOptimization(unittest.TestCase):
         onnx_files.append('embed_layer_norm_format3_no_cast_opset13.onnx')
 
         for file in onnx_files:
-            input_model_path = _get_fusion_test_model(file)
+            input_model_path = get_fusion_test_model(file)
             model = optimize_model(input_model_path, 'bert')
             expected_node_count = {'EmbedLayerNormalization': 1, 'Attention': 1, 'ReduceSum': 0}
             self.verify_node_count(model, expected_node_count, file)

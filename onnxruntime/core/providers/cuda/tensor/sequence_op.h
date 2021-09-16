@@ -35,7 +35,6 @@ class SequenceAt final : public CudaKernel {
     const void* source_addr = source_tensor.DataRaw(source_type);
 
     Tensor* target_tensor = context->Output(0, source_tensor.Shape());
-    ORT_ENFORCE(target_tensor != nullptr, "SequenceAt GPU: Got nullptr for output tensor.");
     void* target_addr = target_tensor->MutableDataRaw(source_type);
 
     if (source_addr != target_addr) {
@@ -52,27 +51,33 @@ class SequenceConstruct final : public CudaKernel {
  public:
   SequenceConstruct(const OpKernelInfo& info) : CudaKernel(info) {}
   Status ComputeInternal(OpKernelContext* context) const override {
-    TensorSeq* Y = context->Output<TensorSeq>(0);
+    auto num_inputs = Node().InputArgCount().front();
+    ORT_ENFORCE(num_inputs >= 1, "Must have 1 or more inputs");
+
+    MLDataType first_dtype = context->Input<Tensor>(0)->DataType();
 
     AllocatorPtr alloc;
     ORT_ENFORCE(context->GetTempSpaceAllocator(&alloc).IsOK(),
                 "SequenceConstruct GPU: Unable to get an allocator.");
 
-    int32_t at = 0;
-    const Tensor* source_tensor = nullptr;
-    while (nullptr != (source_tensor = context->Input<Tensor>(at++))) {
-      if (1 == at) {
-        Y->SetType(source_tensor->DataType());
-      }
+    TensorSeq* Y = context->Output<TensorSeq>(0);
+    Y->SetType(first_dtype);
+    Y->Reserve(num_inputs);
+
+    for (int input_idx = 0; input_idx < num_inputs; ++input_idx) {
+      const auto* source_tensor = context->Input<Tensor>(input_idx);
+
       std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor->DataType(),
                                                              source_tensor->Shape(), alloc);
-      ORT_ENFORCE(target_tensor, "SequenceConstruct GPU: Failed to allocate new tensor.");
+
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target_tensor->MutableDataRaw(),
                                            source_tensor->DataRaw(),
                                            source_tensor->SizeInBytes(),
                                            cudaMemcpyDeviceToDevice, Stream()));
-      Y->Add(std::move(*target_tensor));  // Add will check type consistency inside
+
+      Y->Add(std::move(*target_tensor));  // Add will check for type consistency
     }
+
     return Status::OK();
   }
 };  // SequenceConstruct
@@ -179,9 +184,11 @@ class SequenceErase final : public CudaKernel {
     AllocatorPtr alloc;
     ORT_ENFORCE(context->GetTempSpaceAllocator(&alloc).IsOK(),
                 "SequenceErase GPU: Unable to get an allocator.");
+
     TensorSeq* Y = context->Output<TensorSeq>(0);
-    ORT_ENFORCE(Y != nullptr, "SequenceErase GPU: Failed to allocate output tensor sequence.");
     Y->SetType(X->DataType());
+    Y->Reserve(X_size - 1);
+
     for (int64_t i = 0; i < X_size; ++i) {
       if (i == idx) {
         continue;
@@ -190,13 +197,13 @@ class SequenceErase final : public CudaKernel {
       std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(),
                                                              source_tensor.Shape(), alloc);
 
-      ORT_ENFORCE(target_tensor, "SequenceErase GPU: Failed to allocate new tensor.");
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target_tensor->MutableDataRaw(),
                                            source_tensor.DataRaw(),
                                            source_tensor.SizeInBytes(),
                                            cudaMemcpyDeviceToDevice, Stream()));
-      Y->Add(std::move(*target_tensor));
+      Y->Add(std::move(*target_tensor));  // Add will check for type consistency
     }
+
     return Status::OK();
   }
 };  // SequenceErase
@@ -223,44 +230,39 @@ class SequenceInsert final : public CudaKernel {
       ORT_ENFORCE(idx >= 0 && idx <= S_size, "SequenceInsert GPU: Invalid sequence index.");
     }
     const Tensor* X = context->Input<Tensor>(1);
-    ORT_ENFORCE(X != nullptr, "SequenceInsert GPU: Got nullptr for tensor input.");
 
     AllocatorPtr alloc;
     ORT_ENFORCE(context->GetTempSpaceAllocator(&alloc).IsOK(),
                 "SequenceInsert GPU: Unable to get an allocator.");
 
+    std::unique_ptr<Tensor> tensor_to_be_inserted = Tensor::Create(X->DataType(),
+                                                                   X->Shape(), alloc);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(tensor_to_be_inserted->MutableDataRaw(),
+                                         X->DataRaw(), X->SizeInBytes(),
+                                         cudaMemcpyDeviceToDevice, Stream()));
+
     TensorSeq* Y = context->Output<TensorSeq>(0);
-    ORT_ENFORCE(Y != nullptr, "SequenceInsert GPU: Failed to allocate output tensor sequence.");
     Y->SetType(S->DataType());
+    Y->Reserve(S_size + 1);
+
     for (int64_t i = 0; i < S_size; ++i) {
       if (i == idx) {
-        std::unique_ptr<Tensor> target_tensor = Tensor::Create(X->DataType(),
-                                                               X->Shape(), alloc);
-        ORT_ENFORCE(target_tensor, "SequenceInsert GPU: Failed to allocate new tensor.");
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target_tensor->MutableDataRaw(),
-                                             X->DataRaw(), X->SizeInBytes(),
-                                             cudaMemcpyDeviceToDevice, Stream()));
-        Y->Add(std::move(*target_tensor));
+        Y->Add(std::move(*tensor_to_be_inserted));  // Add will check for type consistency
       }
       const Tensor& source_tensor = S->Get(i);
       std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(),
                                                              source_tensor.Shape(), alloc);
-      ORT_ENFORCE(target_tensor, "SequenceInsert GPU: Failed to allocate new tensor.");
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target_tensor->MutableDataRaw(),
                                            source_tensor.DataRaw(),
                                            source_tensor.SizeInBytes(),
                                            cudaMemcpyDeviceToDevice, Stream()));
-      Y->Add(std::move(*target_tensor));  // Add will check type consistency inside
-    }                                     // for
-    if (idx == S_size) {
-      std::unique_ptr<Tensor> target_tensor = Tensor::Create(X->DataType(),
-                                                             X->Shape(), alloc);
-      ORT_ENFORCE(target_tensor, "SequenceInsert GPU: Failed to allocate new tensor.");
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target_tensor->MutableDataRaw(),
-                                           X->DataRaw(), X->SizeInBytes(),
-                                           cudaMemcpyDeviceToDevice, Stream()));
-      Y->Add(std::move(*target_tensor));
+      Y->Add(std::move(*target_tensor));  // Add will check for type consistency
     }
+
+    if (idx == S_size) {
+      Y->Add(std::move(*tensor_to_be_inserted));  // Add will check for type consistency
+    }
+
     return Status::OK();
   }
 };  // SequenceInsert

@@ -169,29 +169,34 @@ TEST_F(FunExpansionTest, DropoutGrad_WithRatio2) {
   CheckDropoutGradWithRatio<MLFloat16>(true);
 }
 
-TEST_F(FunExpansionTest, GeluGrad_2D) {
-  FunctionTestCase testCase("GeluGrad");
+template <typename T, bool RunTest = true>
+void TestUnaryOpGrad(const char* opname) {
+  
+  FunctionTestCase testCase(opname);
   std::vector<int64_t> shape{16, 4};
-  testCase.AddInput<float>("dY", shape);
-  testCase.AddInput<float>("X", shape);
+  testCase.AddInput<T, RunTest>("dY", shape);
+  testCase.AddInput<T, RunTest>("X", shape);
   testCase.AddOutput("dX");
-  testCase.RunTest();
+  if (RunTest)
+    testCase.RunTest();
+  else
+    // Test only expanded model creation and model checking.
+    testCase.CreateModel(true);
 }
 
-template <typename T>
-void CheckGeluGrad() {
-  // Tests only expanded model creation and checking.
-  FunctionTestCase testCase("GeluGrad");
-  std::vector<int64_t> shape{16, 4};
-  testCase.AddInput<T, false>("dY", shape);
-  testCase.AddInput<T, false>("X", shape);
-  testCase.AddOutput("dX");
-  testCase.CreateModel(true);
+TEST_F(FunExpansionTest, GeluGrad_float) {
+  TestUnaryOpGrad<float, true>("GeluGrad");
 }
 
 TEST_F(FunExpansionTest, GeluGrad_HalfPrecision) {
-  CheckGeluGrad<BFloat16>();
-  CheckGeluGrad<MLFloat16>();
+  TestUnaryOpGrad<BFloat16, false>("GeluGrad");
+  TestUnaryOpGrad<MLFloat16, false>("GeluGrad");
+}
+
+TEST_F(FunExpansionTest, FastGeluGrad) {
+  TestUnaryOpGrad<float, true>("FastGeluGrad");
+  TestUnaryOpGrad<BFloat16, false>("FastGeluGrad");
+  TestUnaryOpGrad<MLFloat16, false>("FastGeluGrad");
 }
 
 }  // namespace test
