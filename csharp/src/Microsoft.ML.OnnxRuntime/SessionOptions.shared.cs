@@ -268,7 +268,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
-        /// <param name="nnapi_flags">nnapi specific flag mask</param>
+        /// <param name="nnapiFlags">NNAPI specific flag mask</param>
         public void AppendExecutionProvider_Nnapi(NnapiFlags nnapiFlags = NnapiFlags.NNAPI_FLAG_USE_NONE)
         {
 #if __ANDROID__
@@ -282,7 +282,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
-        /// <param name="coreml_flags">CoreML specific flags</param>
+        /// <param name="coremlFlags">CoreML specific flags</param>
         public void AppendExecutionProvider_CoreML(CoreMLFlags coremlFlags = CoreMLFlags.COREML_FLAG_USE_NONE)
         {
 #if __IOS__
