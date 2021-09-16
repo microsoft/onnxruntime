@@ -81,6 +81,7 @@ jobs:
     env:
       BROWSERSTACK_ACCESS_KEY: $(BROWSERSTACK_ACCESS_KEY)
       BROWSERSTACK_USERNAME: $(BROWSERSTACK_USERNAME)
+    continueOnError: true
   - script: |
       export ONNXJS_TEST_BS_BROWSERS=BS_IOS_14_iPhoneXS
       npm test -- suite1 --env=bs --wasm-init-timeout=30000 --file-cache --backend=wasm
