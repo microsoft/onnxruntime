@@ -56,7 +56,6 @@ jobs:
     displayName: "Set variables"
 
   - script: |
-      git submodule update --recursive --init
       /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
         $(Build.SourcesDirectory) \
         $(Build.BinariesDirectory)/protobuf \
