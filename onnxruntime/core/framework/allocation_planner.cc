@@ -340,13 +340,15 @@ class PlannerImpl {
 
     const optional<std::pair<int, int>>& sequence_tensor_to_tensor_alias_map = ci.kernel_def->SequenceTensorToTensorAlias();
     if (sequence_tensor_to_tensor_alias_map.has_value()) {
-      if (sequence_tensor_to_tensor_alias_map.value().second <= output_arg_num) {
-        if ((0 <= sequence_tensor_to_tensor_alias_map.value().first) &&
-            (static_cast<size_t>(sequence_tensor_to_tensor_alias_map.value().first) < input_args.size())) {
-          auto p_input_arg = input_args[sequence_tensor_to_tensor_alias_map.value().first];
+      int input_offset = variadic_alias_offsets.value().first;
+      int output_start_offset = variadic_alias_offsets.value().second;
+      if (output_start_offset <= output_arg_num) {
+        if ((0 <= input_offset) &&
+            (static_cast<size_t>(input_offset) < input_args.size())) {
+          auto p_input_arg = input_args[input_offset];
           if (p_input_arg->Exists()) {
             *reusable_input = Index(p_input_arg->Name());
-            *tensor_index_in_reusable_sequence_input = (output_arg_num - sequence_tensor_to_tensor_alias_map.value().second);
+            *tensor_index_in_reusable_sequence_input = (output_arg_num - output_start_offset);
             return true;
           }
         }

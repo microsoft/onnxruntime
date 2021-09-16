@@ -499,8 +499,8 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
           break;
         }
 
-        sequence_at_nodes[position_init_value] = &if_node_output;
-        output_defs_of_fused_node[position_init_value] = if_node_output.MutableOutputDefs()[0];
+        sequence_at_nodes[static_cast<size_t>(position_init_value)] = &if_node_output;
+        output_defs_of_fused_node[static_cast<size_t>(position_init_value)] = if_node_output.MutableOutputDefs()[0];
       }
     }
 
