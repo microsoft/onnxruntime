@@ -3,7 +3,7 @@
 
 set(MLAS_SRC_DIR ${ONNXRUNTIME_ROOT}/core/mlas/lib)
 
-onnxruntime_add_static_library(onnxruntime_mlas 
+onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/platform.cpp
   ${MLAS_SRC_DIR}/threading.cpp
   ${MLAS_SRC_DIR}/sgemm.cpp
@@ -38,7 +38,7 @@ function(setup_mlas_source_for_windows)
     set(ARMASM_FLAGS "")
 
     if(onnxruntime_target_platform STREQUAL "ARM64")
-      target_sources(onnxruntime_mlas PRIVATE 
+      target_sources(onnxruntime_mlas PRIVATE
         ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
       )
@@ -48,9 +48,10 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/arm64/QgemmS8S8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/QgemmU8X8KernelUdot.asm
         ${MLAS_SRC_DIR}/arm64/SgemmKernelNeon.asm
+        ${MLAS_SRC_DIR}/arm64/SgemvKernelNeon.asm
       )
     else()
-      target_sources(onnxruntime_mlas PRIVATE 
+      target_sources(onnxruntime_mlas PRIVATE
         ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
       )
 
@@ -88,7 +89,7 @@ function(setup_mlas_source_for_windows)
       target_sources(onnxruntime_mlas PRIVATE ${obj_filename})
     endforeach()
   elseif(onnxruntime_target_platform STREQUAL "ARM")
-    target_sources(onnxruntime_mlas PRIVATE 
+    target_sources(onnxruntime_mlas PRIVATE
       ${MLAS_SRC_DIR}/arm/sgemmc.cpp
     )
   elseif(onnxruntime_target_platform STREQUAL "x64")
@@ -188,7 +189,7 @@ else()
             set(X86 TRUE)
         endif()
         endforeach()
-    elseif(ANDROID)  
+    elseif(ANDROID)
         if (CMAKE_ANDROID_ARCH_ABI STREQUAL "armeabi-v7a")
           set(ARM TRUE)
         elseif (CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
@@ -227,7 +228,7 @@ else()
     endif()
 
     if(APPLE)
-      get_target_property(ONNXRUNTIME_MLAS_MACOSX_ARCH onnxruntime_mlas OSX_ARCHITECTURES)  
+      get_target_property(ONNXRUNTIME_MLAS_MACOSX_ARCH onnxruntime_mlas OSX_ARCHITECTURES)
     endif()
     list(LENGTH ONNXRUNTIME_MLAS_MACOSX_ARCH  ONNXRUNTIME_MLAS_MACOSX_ARCH_LENGH)
     if(ONNXRUNTIME_MLAS_MACOSX_ARCH_LENGH GREATER 1)
@@ -314,7 +315,7 @@ else()
         if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH)
           set(MLAS_SOURCE_IS_NOT_SET 0)
         endif()
-    endif()    
+    endif()
     if(X86 AND MLAS_SOURCE_IS_NOT_SET)
         enable_language(ASM)
 
@@ -417,7 +418,7 @@ else()
           ${mlas_platform_srcs_avx512f}
           ${mlas_platform_srcs_avx512core}
         )
-    
+
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
           onnxruntime_add_static_library(onnxruntime_mlas_x86_64 ${mlas_platform_srcs})
           set_target_properties(onnxruntime_mlas_x86_64 PROPERTIES OSX_ARCHITECTURES "x86_64")
@@ -426,7 +427,7 @@ else()
         else()
           set(MLAS_SOURCE_IS_NOT_SET 1)
         endif()
-    
+
     endif()
     target_sources(onnxruntime_mlas PRIVATE ${mlas_platform_srcs})
 endif()
