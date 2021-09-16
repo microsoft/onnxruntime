@@ -301,7 +301,7 @@ jobs:
   - task: MSBuild@1
     displayName: 'Build Nuget Packages'
     inputs:
-      soltuion: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
       configuration: RelWithDebInfo
       platform: 'Any CPU'
       msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
@@ -362,7 +362,6 @@ jobs:
     displayName: 'Run Roslyn Analyzers'
     inputs:
       userProvideBuildInfo: msBuildInfo
-      # msBuildArchitecture: DotNetCore
       msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\msbuild.exe" $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln -p:configuration="RelWithDebInfo" -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
     condition: and(succeeded(), eq('${{ parameters.DoCompliance }}', true))
 

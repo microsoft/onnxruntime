@@ -27,7 +27,6 @@
     <AndroidHttpClientHandlerType>Xamarin.Android.Net.AndroidClientHandler</AndroidHttpClientHandlerType>
     <SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
-    <DefineConstants>__MOBILE__;__ANDROID__;$(DefineConstants)</DefineConstants>
   </PropertyGroup>
   <PropertyGroup>
     <AutoGenerateBindingRedirects>True</AutoGenerateBindingRedirects>
@@ -128,9 +127,6 @@
       <Version>5.0.0.2083</Version>
     </PackageReference>
     <PackageReference Include="Google.Protobuf" Version="3.17.3" />
-    <PackageReference Include="System.Text.Json">
-      <Version>5.0.2</Version>
-    </PackageReference>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj">
@@ -140,10 +136,6 @@
     <ProjectReference Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Microsoft.ML.OnnxRuntime.Tests.Common.csproj">
       <Project>{04FA49F0-AA23-4EE5-B455-6E12FFAD29E6}</Project>
       <Name>Microsoft.ML.OnnxRuntime.Tests.Common</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\Microsoft.ML.OnnxRuntime.Tests.Devices\Microsoft.ML.OnnxRuntime.Tests.Devices.csproj">
-      <Project>{30431891-3929-4394-8049-75055B92315F}</Project>
-      <Name>Microsoft.ML.OnnxRuntime.Tests.Devices</Name>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>

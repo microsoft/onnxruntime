@@ -2,7 +2,7 @@
 using System.Threading.Tasks;
 using Android.App;
 using Android.OS;
-using Microsoft.ML.OnnxRuntime.Tests.Devices;
+using Microsoft.ML.OnnxRuntime.Tests.Helpers;
 using Xunit.Runners;
 using Xunit.Runners.UI;
 using Xunit.Sdk;

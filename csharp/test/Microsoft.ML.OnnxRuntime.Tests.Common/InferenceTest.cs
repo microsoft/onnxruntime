@@ -138,6 +138,20 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+#if! __MOBILE__
+        // Use to set dll probe path so that the right dll(s) is loaded by the test process
+        // Invoke only to specify Windows specific EPs' dll locations explicitly
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+
+        [return: MarshalAs(UnmanagedType.Bool)]
+        static extern bool SetDllDirectory(string lpPathName);
+#else
+        static bool SetDllDirectory(string lpPathName)
+        {
+            throw new NotSupportedException();
+        }
+#endif
+
         [Fact(DisplayName = "TestRunOptions")]
         public void TestRunOptions()
         {
@@ -187,10 +201,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             Assert.True(providers.Length > 0);
             Assert.Equal("CPUExecutionProvider", providers[providers.Length - 1]);
 
-# if USE_CUDA
+#if USE_CUDA
             Assert.True(Array.Exists(providers, provider => provider == "CUDAExecutionProvider"));
 #endif
-# if USE_ROCM
+#if USE_ROCM
             Assert.True(Array.Exists(providers, provider => provider == "ROCMExecutionProvider"));
 #endif
         }
@@ -2014,7 +2028,7 @@ After:
         public DisposableListTest() { }
         public DisposableListTest(int count) : base(count) { }
 
-        #region IDisposable Support
+#region IDisposable Support
         private bool disposedValue = false; // To detect redundant calls
 
         protected virtual void Dispose(bool disposing)
@@ -2047,6 +2061,6 @@ After:
             Dispose(true);
             GC.SuppressFinalize(this);
         }
-        #endregion
+#endregion
     }
 }

@@ -13,13 +13,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private const string module = "onnxruntime.dll";
         private const string propertiesFile = "Properties.txt";
 
-        // Use to set dll probe path so that the right dll(s) is loaded by the test process
-        // Invoke only to specify Windows specific EPs' dll locations explicitly
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-
-        [return: MarshalAs(UnmanagedType.Bool)]
-        static extern bool SetDllDirectory(string lpPathName);
-
         [Fact(DisplayName = "CanCreateAndDisposeSessionWithModelPath")]
         public void CanCreateAndDisposeSessionWithModelPath()
         {

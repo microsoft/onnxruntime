@@ -2,10 +2,11 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Text.Json;
+using Newtonsoft.Json;
 using Xunit.Abstractions;
 
-namespace Microsoft.ML.OnnxRuntime.Tests.Devices
+
+namespace Microsoft.ML.OnnxRuntime.Tests.Helpers
 {
     public enum TestOutcome
     {
@@ -48,7 +49,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests.Devices
     public class TestResultProcessor
     {
         List<TestResult> _results;
-        JsonSerializerOptions _serializerOptions = new JsonSerializerOptions { WriteIndented = true };
 
         List<TestResult> Results
         {
@@ -77,7 +77,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests.Devices
         public string GetSerializedResults()
         {
             var resultSummary = GetResults();
-            var serializedResultSummary = JsonSerializer.Serialize(resultSummary, _serializerOptions);
+            var serializedResultSummary = JsonConvert.SerializeObject(resultSummary, Formatting.Indented);
             return serializedResultSummary;
         }
     }

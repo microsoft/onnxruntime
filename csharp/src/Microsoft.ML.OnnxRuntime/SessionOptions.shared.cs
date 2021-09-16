@@ -269,10 +269,11 @@ namespace Microsoft.ML.OnnxRuntime
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
         /// <param name="nnapi_flags">nnapi specific flag mask</param>
-        public void AppendExecutionProvider_Nnapi(uint nnapi_flags = 0)
+        public void AppendExecutionProvider_Nnapi(NnapiFlags nnapiFlags = NnapiFlags.NNAPI_FLAG_USE_NONE)
         {
 #if __ANDROID__
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nnapi(handle, nnapi_flags));
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nnapi(handle, (uint)nnapiFlags));
 #else
             throw new NotSupportedException("The NNAPI Execution Provider is not supported in this build");
 #endif
@@ -282,10 +283,11 @@ namespace Microsoft.ML.OnnxRuntime
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
         /// <param name="coreml_flags">CoreML specific flags</param>
-        public void AppendExecutionProvider_CoreML(uint coreml_flags = 0)
+        public void AppendExecutionProvider_CoreML(CoreMLFlags coremlFlags = CoreMLFlags.COREML_FLAG_USE_NONE)
         {
 #if __IOS__
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CoreML(handle, coreml_flags));
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtSessionOptionsAppendExecutionProvider_CoreML(handle, (uint)coremlFlags));
 #else
             throw new NotSupportedException("The CoreML Execution Provider is not supported in this build");
 #endif
@@ -690,13 +692,25 @@ namespace Microsoft.ML.OnnxRuntime
 
         #region Private Methods
 
+#if! __MOBILE__
         // Declared, but called only if OS = Windows.
         [DllImport("kernel32.dll")]
         private static extern IntPtr LoadLibrary(string dllToLoad);
 
         [DllImport("kernel32.dll")]
         static extern uint GetSystemDirectory([Out] StringBuilder lpBuffer, uint uSize);
-        private static bool CheckCudaExecutionProviderDLLs()
+#else
+        private static IntPtr LoadLibrary(string dllToLoad)
+        {
+            throw new NotSupportedException();
+        }
+        static uint GetSystemDirectory([Out] StringBuilder lpBuffer, uint uSize)
+        {
+            throw new NotSupportedException();
+        }
+#endif
+
+    private static bool CheckCudaExecutionProviderDLLs()
         {
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {

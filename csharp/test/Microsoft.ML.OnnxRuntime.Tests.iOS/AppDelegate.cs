@@ -1,7 +1,7 @@
 ﻿using System.Reflection;
 using System.Threading.Tasks;
 using Foundation;
-using Microsoft.ML.OnnxRuntime.Tests.Devices;
+using Microsoft.ML.OnnxRuntime.Tests.Helpers;
 using UIKit;
 using Xunit.Runner;
 using Xunit.Runners;
