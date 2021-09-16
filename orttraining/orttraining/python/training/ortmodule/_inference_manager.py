@@ -73,7 +73,7 @@ class InferenceManager(GraphExecutionManager):
         try:
             # Issue at most one warning message about fast path
             if self._first_skip_check_warning is True and self._skip_check.is_disabled() is False \
-                    and self._debug_options.logging.log_level >= _logger.LogLevel.WARNING:
+                    and self._debug_options.logging.log_level <= _logger.LogLevel.WARNING:
                 self._first_skip_check_warning = False
                 warnings.warn(f"Fast path enabled - skipping checks."
                               f"rebuild gradient graph: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT)},"

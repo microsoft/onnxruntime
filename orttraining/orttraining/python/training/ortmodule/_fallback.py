@@ -178,7 +178,7 @@ class _FallbackManager(object):
                     self.policy.is_set(policy) and \
                     (policy.value in self._policy_exception_map and type(exception) in self._policy_exception_map[policy.value]):
 
-                if log_level >= _logger.LogLevel.INFO:
+                if log_level <= _logger.LogLevel.INFO:
                     warnings.warn(
                         f'Fallback for policy {policy.name} is pending.', UserWarning)
                 self._exception = exception
@@ -206,7 +206,7 @@ class _FallbackManager(object):
 
         assert self.is_pending(), '`fallback` can only be called when there is a pending fallback'
 
-        if log_level >= _logger.LogLevel.WARNING:
+        if log_level <= _logger.LogLevel.WARNING:
             warnings.warn(
                 (f'Fallback to PyTorch due to exception {type(self._exception)} was triggered. '
                  'Report this issue with a minimal repro at https://www.github.com/microsoft/onnxruntime. '
