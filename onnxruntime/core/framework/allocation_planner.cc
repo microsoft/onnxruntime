@@ -340,8 +340,8 @@ class PlannerImpl {
 
     const optional<std::pair<int, int>>& sequence_tensor_to_tensor_alias_map = ci.kernel_def->SequenceTensorToTensorAlias();
     if (sequence_tensor_to_tensor_alias_map.has_value()) {
-      int input_offset = variadic_alias_offsets.value().first;
-      int output_start_offset = variadic_alias_offsets.value().second;
+      int input_offset = sequence_tensor_to_tensor_alias_map.value().first;
+      int output_start_offset = sequence_tensor_to_tensor_alias_map.value().second;
       if (output_start_offset <= output_arg_num) {
         if ((0 <= input_offset) &&
             (static_cast<size_t>(input_offset) < input_args.size())) {
