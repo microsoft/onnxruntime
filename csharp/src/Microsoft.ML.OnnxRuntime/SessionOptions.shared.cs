@@ -52,7 +52,6 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionOptions(out handle));
         }
 
-#if !__MOBILE__
         /// <summary>
         /// A helper method to construct a SessionOptions object for CUDA execution.
         /// Use only if CUDA is installed and you have the onnxruntime package specific to this Execution Provider.
@@ -83,10 +82,10 @@ namespace Microsoft.ML.OnnxRuntime
                 options.AppendExecutionProvider_CUDA(deviceId);
                 return options;
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 options.Dispose();
-                throw e;
+                throw;
             }
         }
 
@@ -107,10 +106,10 @@ namespace Microsoft.ML.OnnxRuntime
                 options.AppendExecutionProvider_CUDA(trtProviderOptions.GetDeviceId());
                 return options;
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 options.Dispose();
-                throw e;
+                throw;
             }
         }
 
@@ -141,7 +140,6 @@ namespace Microsoft.ML.OnnxRuntime
             options.AppendExecutionProvider_ROCM(deviceId, gpuMemLimit);
             return options;
         }
-#endif // !__MOBILE__
 #endregion
 
         #region ExecutionProviderAppends
@@ -692,7 +690,6 @@ namespace Microsoft.ML.OnnxRuntime
 
         #region Private Methods
 
-#if !__MOBILE__
         // Declared, but called only if OS = Windows.
         [DllImport("kernel32.dll")]
         private static extern IntPtr LoadLibrary(string dllToLoad);
@@ -741,7 +738,6 @@ namespace Microsoft.ML.OnnxRuntime
             return true;
         }
 
-#endif // !__MOBILE__
 #endregion
         #region SafeHandle
         /// <summary>

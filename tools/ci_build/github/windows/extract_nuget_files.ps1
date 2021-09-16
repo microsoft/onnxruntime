@@ -37,6 +37,7 @@ Foreach-Object {
 # copy android AAR. 
 # should only be one .aar file called onnxruntime-mobile-x.y.z.aar but sanity check that
 $aars = Get-ChildItem $Env:BUILD_BINARIESDIRECTORY\nuget-artifact -Filter onnxruntime-mobile-*.aar 
+
 if ($aars.Count -eq 1) {
   $aar = $aars[0]
   $target_dir = "$nuget_artifacts_dir\onnxruntime-android-aar"
@@ -46,7 +47,7 @@ if ($aars.Count -eq 1) {
   Write-Output "Copy-Item $($aar.FullName) $target_file"
   Copy-Item $aar.FullName $target_file
 }
-else{
+elseif ($aars.Count -gt 1) {
   Write-Error "Expected one Android .aar file but got: [$aars]"
 }
 

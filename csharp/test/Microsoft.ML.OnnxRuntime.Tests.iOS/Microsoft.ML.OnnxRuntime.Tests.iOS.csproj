@@ -17,6 +17,7 @@
     <SignAssembly>true</SignAssembly>
     <!-- need signing for friend access to the internals of the Tensors assembly -->
     <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
+    <DefineConstants>__MOBILE__;__IOS__;$(DefineConstants)</DefineConstants>
   </PropertyGroup>
   <PropertyGroup>
     <AutoGenerateBindingRedirects>True</AutoGenerateBindingRedirects>
