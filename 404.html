@@ -16,21 +16,20 @@
 
     <!--This block of code is temporary to account for old links since the site was reorganized.
     This wont redirect _all_ broken links but catches the main ones.-->
-    <noscript>
-        <meta http-equiv="refresh" content="2;URL='/docs'" />
-    </noscript>
+
     <!--[if lt IE 9]><script type="text/javascript">var IE_fix=true;</script><![endif]-->
     <script type="text/javascript">
-        var url = "/docs";
-        var delay = "2000";
+        
         window.onload = function ()
         {
+            var delay = "2000";
             setTimeout(GoToURL, delay);
         }
         function GoToURL()
         {
             if(typeof IE_fix != "undefined") // IE8 and lower fix to pass the http referer
             {
+                var url = "/docs";
                 var referLink = document.createElement("a");
                 referLink.href = url;
                 document.body.appendChild(referLink);
@@ -40,29 +39,29 @@
                 var pathname = window.location.pathname;
 
                 // redirect how-to/build to build
-                if(pathname.includes("docs/how-to/build")){
-                    window.location.replace("/docs/build");
+                if(pathname.includes("/docs/how-to/build")){
+                    window.location.replace("https://onnxruntime.ai/docs/build");
                 }
                 // how-to was removed - this is a catch all for deleted paths to how-to
-                else if(pathname.includes("docs/how-to")){
-                    window.location.replace("/docs");
+                else if(pathname.includes("/docs/how-to")){
+                    window.location.replace("https://onnxruntime.ai/docs");
                 }
                 else if(pathname.includes("/docs/resources/graph-optimizations")){
-                    window.location.replace("/docs/performance/graph-optimizations");
+                    window.location.replace("https://onnxruntime.ai/docs/performance/graph-optimizations");
                 }
                 // resource was removed - this is a catch all for deleted paths to resource
-                else if(pathname.includes("docs/resource")){
-                    window.location.replace("/docs/reference");
+                else if(pathname.includes("/docs/resource")){
+                    window.location.replace("https://onnxruntime.ai/docs/reference");
                 }
                 else if(pathname.includes("/docs/reference/execution-providers")){
-                    window.location.replace("/docs/execution-providers/");
+                    window.location.replace("https://onnxruntime.ai/docs/execution-providers/");
                 }
                 else if(pathname.includes("docs/reference/api")){
-                    window.location.replace("/docs/api");
+                    window.location.replace("https://onnxruntime.ai/docs/api");
                 }
                 // Catch all docs 404 and redirect to docs home
                 else if(pathname.includes("/docs")){
-                    window.location.replace("/docs");
+                    window.location.replace("https://onnxruntime.ai/docs");
                 }
              }
         }
