@@ -958,6 +958,14 @@ if (onnxruntime_USE_MIGRAPHX)
     "${ONNXRUNTIME_ROOT}/core/providers/migraphx/*.cc"
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/session/provider_bridge_ort.cc"
+    "${ONNXRUNTIME_ROOT}/core/session/onnxruntime_c_api.cc"
+    "${ONNXRUNTIME_ROOT}/core/session/abi_session_options.cc"
+    "${ONNXRUNTIME_ROOT}/core/framework/error_code.cc"
+    "${ONNXRUNTIME_ROOT}/core/framework/run_options.cc"
+    "${ONNXRUNTIME_ROOT}/core/framework/onnxruntime_typeinfo.cc"
+    "${ONNXRUNTIME_ROOT}/core/framework/tensor_type_and_shape.cc"
+#    "${ONNXRUNTIME_ROOT}/core/framework/allocator.cc"
   )
     
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_migraphx_cc_srcs})

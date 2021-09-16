@@ -24,9 +24,9 @@ private:
   int device_id_;
 };
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id) {
-  return std::make_shared<onnxruntime::MIGraphXProviderFactory>(device_id);
-}
+// std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id) {
+//   return std::make_shared<onnxruntime::MIGraphXProviderFactory>(device_id);
+// }
 
 }  // namespace onnxruntime
 

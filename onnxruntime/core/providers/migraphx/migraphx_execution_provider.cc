@@ -8,7 +8,6 @@
 //#include "core/framework/provider_options.h"
 //#include "core/session/onnxruntime_c_api.h"
 
-
 // #include "core/common/common.h"
 // #include "core/common/logging/logging.h"
 // #include "core/framework/compute_capability.h"
@@ -39,6 +38,10 @@
 #elif __GNUC__
 #pragma GCC diagnostic pop
 #endif
+
+// const OrtApi* g_ort = OrtGetApi(ORT_API_VERSION);
+// const OrtApi* Ort::g_api = OrtGetApi(ORT_API_VERSION);
+// const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 
 #define MEMCPY_S(dest, src, destsz, srcsz) memcpy(dest, src, std::min(destsz, srcsz))
 
