@@ -8,7 +8,7 @@ set -e
 
 if [ $# -ne 3 ]
 then
-    echo "Usage: ${0} <repo root path> <host_protoc_build_path> <host_protoc_install_path>"
+    echo "Usage: ${0} <repo_root_path> <host_protoc_build_path> <host_protoc_install_path>"
     exit 1
 fi
 
