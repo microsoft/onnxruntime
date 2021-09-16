@@ -1,6 +1,6 @@
 # Testing Android Changes using the Emulator
 
-See [Android build instructions](https://www.onnxruntime.ai/docs/how-to/build.html#android) and information on the locations of the various files referred to here.
+See [Android build instructions](https://www.onnxruntime.ai/docs/build/android-ios.html) and information on the locations of the various files referred to here.
 
 ## Install the emulator
 

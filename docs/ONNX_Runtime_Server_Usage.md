@@ -101,7 +101,7 @@ For easy tracking of requests, we provide the following header fields:
 
 ### rsyslog Support
 
-If you prefer using an ONNX Runtime Server with [rsyslog](https://www.rsyslog.com/) support([build instruction](https://www.onnxruntime.ai/docs/how-to/build.html#build-onnx-runtime-server-on-linux)), you should be able to see the log in `/var/log/syslog` after the ONNX Runtime Server runs. For detail about how to use rsyslog, please reference [here](https://www.rsyslog.com/category/guides-for-rsyslog/).
+If you prefer using an ONNX Runtime Server with [rsyslog](https://www.rsyslog.com/) support([build instruction](https://onnxruntime.ai/docs/build/inferencing.html)), you should be able to see the log in `/var/log/syslog` after the ONNX Runtime Server runs. For detail about how to use rsyslog, please reference [here](https://www.rsyslog.com/category/guides-for-rsyslog/).
 
 ## Report Issues
 

@@ -1,10 +1,10 @@
 # Android Test Application for ORT-Mobile 
 
-This directory contains a simple android application for testing [ONNX Runtime AAR package](https://www.onnxruntime.ai/docs/how-to/build.html#build-android-archive-aar).
+This directory contains a simple android application for testing [ONNX Runtime AAR package](https://onnxruntime.ai/docs/build/android-ios.html#build-android-archive-aar).
 
 ## Background
 
-For general usage and build purpose of ORT-Mobile Android, please see the [documentation](https://www.onnxruntime.ai/docs/how-to/build.html#android) here.
+For general usage and build purpose of ORT-Mobile Android, please see the [documentation](https://www.onnxruntime.ai/docs/build/android-ios.html) here.
 
 ### Test Android Application Overview
 
@@ -23,7 +23,7 @@ This android application is mainly aimed for testing:
 
 ### Building
 
-Use the android's [build instructions](https://www.onnxruntime.ai/docs/how-to/build.html#android-build-instructions) with `--build_java` and `--android_run_emulator` option.
+Use the android's [build instructions](https://onnxruntime.ai/docs/build/android-ios.html) with `--build_java` and `--android_run_emulator` option.
 
 Please note that you may need to set the `--android_abi=x86_64` (the default option is `arm64-v8a`). This is because android instrumentation test is run on an android emulator which requires an abi of `x86_64`.
 

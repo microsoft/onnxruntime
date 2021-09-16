@@ -6,7 +6,7 @@ A configuration file must be created with details of the kernels that are requir
 
 Following that, ORT must be manually built, providing the configuration file in the `--include_ops_by_config` parameter. The build process will update the ORT kernel registration source files to exclude the unused kernels.
 
-See the [build instructions](https://www.onnxruntime.ai/docs/how-to/build.html#build-instructions) for more details on building ORT.
+See the [build instructions](https://www.onnxruntime.ai/docs/build) for more details on building ORT.
 
 When building ORT with a reduced set of kernel registrations, `--skip_tests` **MUST** be specified as the kernel reduction will render many of the unit tests invalid.
 

@@ -8,7 +8,7 @@ The [Open Neural Network Exchange](http://onnx.ai/) (ONNX) is an open standard f
 
 ### Why ONNX Runtime React Native
 
-With ONNX Runtime React Native, React Native developers can score pre-trained ONNX models directy on React Native apps by leveraging [ONNX Runtime Mobile](https://www.onnxruntime.ai/docs/reference/mobile/prebuilt-package/), so it provides a light-weight inference solution for Android and iOS.
+With ONNX Runtime React Native, React Native developers can score pre-trained ONNX models directy on React Native apps by leveraging [ONNX Runtime Mobile](https://onnxruntime.ai/docs/reference/mobile/prebuilt-package/), so it provides a light-weight inference solution for Android and iOS.
 
 ### Installation
 

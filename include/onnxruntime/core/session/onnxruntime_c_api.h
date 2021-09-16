@@ -273,7 +273,7 @@ typedef void(ORT_API_CALL* OrtLoggingFunction)(
     const char* message);
 
 // Graph optimization level.
-// Refer to https://www.onnxruntime.ai/docs/resources/graph-optimizations.html
+// Refer to https://onnxruntime.ai/docs/performance/graph-optimizations.html
 // for an in-depth understanding of Graph Optimizations
 typedef enum GraphOptimizationLevel {
   ORT_DISABLE_ALL = 0,
@@ -2047,7 +2047,7 @@ struct OrtApi {
   * Lifetime of the created allocator will be valid for the duration of the environment.
   * Returns an error if an allocator with the same OrtMemoryInfo is already registered.
   *
-  * See https://onnxruntime.ai/docs/reference/api/c-api.html for details.
+  * See https://onnxruntime.ai/docs/api/ for details.
   *
   * \param[in] env OrtEnv instance (must be non-null).
   * \param[in] mem_info (must be non-null).
@@ -2374,7 +2374,7 @@ struct OrtApi {
   *
   * Create the configuration of an arena that can eventually be used to define an arena based allocator's behavior.
   *
-  * Supported keys are (See https://onnxruntime.ai/docs/reference/api/c-api.html for details on what the
+  * Supported keys are (See https://onnxruntime.ai/docs/api/ for details on what the
   * following parameters mean and how to choose these values.):
   * "max_mem": Maximum memory that can be allocated by the arena based allocator.
   *  Use 0 for ORT to pick the best value. Default is 0.
@@ -2530,7 +2530,7 @@ struct OrtApi {
 
   /** \brief Set options in a TensorRT Execution Provider.
   *
-  * Please refer to https://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html#c-api-example
+  * Please refer to https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html
   * to know the available keys and values. Key should be in null terminated string format of the member of ::OrtTensorRTProviderOptionsV2
   * and value should be its related range.
   *
@@ -2591,7 +2591,7 @@ struct OrtApi {
   * The behavior of this is exactly the same as OrtApi::CreateAndRegisterAllocator except
   * instead of ORT creating an allocator based on provided info, in this case
   * ORT uses the user-provided custom allocator.
-  * See https://onnxruntime.ai/docs/reference/api/c-api.html for details.
+  * See https://onnxruntime.ai/docs/api/ for details.
   *
   * \param[in] env
   * \param[in] allocator User provided allocator

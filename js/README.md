@@ -111,7 +111,7 @@ Node.js v12+ (recommended v14+)
 
 #### Build ONNX Runtime and Node.js binding
 
-Follow [instructions](https://www.onnxruntime.ai/docs/how-to/build.html#apis-and-language-bindings) for building ONNX Runtime Node.js binding
+Follow [instructions](https://onnxruntime.ai/docs/get-started/) for building ONNX Runtime Node.js binding
 
 #### Build Node.js binding only
 
@@ -161,7 +161,7 @@ This project is a library for running ONNX models on browsers. It is the success
 
      1. Build ONNX Runtime WebAssembly
 
-        ~~Follow [instructions](https://www.onnxruntime.ai/docs/how-to/build.html#apis-and-language-bindings) for building ONNX Runtime WebAssembly. (TODO: document is not ready. we are working on it. Please see steps described as below.)~~
+        ~~Follow [instructions](https://onnxruntime.ai/docs/build/) for building ONNX Runtime WebAssembly. (TODO: document is not ready. we are working on it. Please see steps described as below.)~~
 
         in `<ORT_ROOT>/`, run one of the following commands to build WebAssembly:
 
@@ -309,7 +309,7 @@ This project provides an ONNX Runtime React Native JavaScript library to run ONN
 
 ### Models with ORT format
 
-By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with ORT format. Follow the [instruciton](https://www.onnxruntime.ai/docs/how-to/mobile/model-conversion.html#converting-onnx-models-to-ort-format) to covert ONNX model to ORT format.
+By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with ORT format. Follow the [instruciton](https://onnxruntime.ai/docs/tutorials/mobile/model-conversion.html#converting-onnx-models-to-ort-format) to covert ONNX model to ORT format.
 
 ### Build
 
@@ -323,9 +323,9 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
 
    1. To use a published Android ONNX Runtime Mobile package from Maven, go to step 5.
 
-   2. Set up an Android build environment referring to [instruction](https://www.onnxruntime.ai/docs/how-to/build/android-ios.html#android)
+   2. Set up an Android build environment referring to [instruction](https://www.onnxruntime.ai/docs/build/android-ios.html#android)
 
-   3. In `<ORT_ROOT>`, run this python script to build ONNX Runtime Android archive file. In windows, this requires an admin account to build. To build a model specific package with reduced size, refer to [instruction](https://www.onnxruntime.ai/docs/how-to/build/reduced.html#build-ort-with-reduced-size).
+   3. In `<ORT_ROOT>`, run this python script to build ONNX Runtime Android archive file. In windows, this requires an admin account to build. To build a model specific package with reduced size, refer to [instruction](https://www.onnxruntime.ai/docs/build/reduced.html#build-ort-with-reduced-size).
 
       ```sh
       python tools/ci_build/github/android/build_aar_package.py tools/ci_build/github/android/default_mobile_aar_build_settings.json --config MinSizeRel --android_sdk_path <ANDROID_SDK_PATH> --android_ndk_path <ANDROID_NDK_PATH> --build_dir <BUILD_DIRECTORY> --include_ops_by_config tools/ci_build/github/android/mobile_package.required_operators.config
@@ -345,7 +345,7 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
 
    1. To use a published c/c++ ONNX Runtime Mobile package from CocoaPods, skip all steps below.
 
-   2. Set up iOS build environment referring to [instruction](https://www.onnxruntime.ai/docs/how-to/build/android-ios.html#ios).
+   2. Set up iOS build environment referring to [instruction](https://www.onnxruntime.ai/docs/build/android-ios.html#ios).
 
    3. Build a fat ONNX Runtime Mobile Framework for iOS and iOS simulator from `<ORT_ROOT>` using this command,
 
