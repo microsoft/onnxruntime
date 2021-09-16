@@ -17,6 +17,7 @@ const backendsSortedByPriority: string[] = [];
 
 /**
  * Register a backend.
+ * @internal
  *
  * @param name - the name as a key to lookup as an execution provider.
  * @param backend - the backend object.
@@ -48,6 +49,7 @@ export const registerBackend = (name: string, backend: Backend, priority: number
 
 /**
  * Resolve backend by specified hints.
+ * @internal
  *
  * @param backendHints - a list of execution provider names to lookup. If omitted use registered backends as list.
  * @returns a promise that resolves to the backend.
