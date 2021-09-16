@@ -19,7 +19,7 @@ module.exports = function (config) {
   config.set({
     frameworks: ['mocha'],
     files: [
-      { pattern: distPrefix + 'ort.js' },
+      { pattern: distPrefix + 'ort.min.js' },
       { pattern: './common.js' },
       { pattern: TEST_MAIN },
       { pattern: './node_modules/onnxruntime-web/dist/*.wasm', included: false, nocache: true },
