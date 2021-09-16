@@ -571,7 +571,7 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_valu
   ORT_ENFORCE(ort_value_reuse.IsTensor() || ort_value_reuse.IsTensorSequence());
 
   Tensor* reuse_tensor = nullptr;
-  if (ort_value_reuse.IsTensor()) {
+  if (ort_value_reuse.IsTensor()) {  // Often occurring case
     reuse_tensor = ort_value_reuse.GetMutable<Tensor>();
   } else {
     auto* input_tensor_seq = ort_value_reuse.GetMutable<TensorSeq>();
@@ -711,19 +711,10 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
         if (!reuse_value.IsAllocated()) {
           ORT_RETURN_IF_ERROR(AllocateAsPerAllocationPlan(reuse_value, reuse_mlvalue_index, shape));
         }
-        if (reuse_value.IsTensor()) {
-          ORT_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(
-              ort_value, reuse_mlvalue_index, -1, ml_data_type, alloc_info, *shape, per_alloc_plan.create_fence_if_async));
-        } else if (reuse_value.IsTensorSequence()) {
-          // Sanity check
-          ORT_ENFORCE(per_alloc_plan.reused_tensor_in_tensor_sequence != -1);
-          // Alias a tensor from the sequence as the output tensor
-          ORT_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(
-              ort_value, reuse_mlvalue_index, per_alloc_plan.reused_tensor_in_tensor_sequence,
-              ml_data_type, alloc_info, *shape, per_alloc_plan.create_fence_if_async));
-        } else {
-          return Status(ONNXRUNTIME, FAIL, "Trying to re-use a tensor from an OrtValue that is neither a Tensor nor a TensorSequence");
-        }
+        ORT_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(
+            ort_value, reuse_mlvalue_index, per_alloc_plan.reused_tensor_in_tensor_sequence,
+            ml_data_type, alloc_info, *shape, per_alloc_plan.create_fence_if_async));
+
         break;
       }
       case AllocKind::kShare: {

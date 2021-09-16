@@ -27,10 +27,10 @@ static std::vector<uint8_t> UnpackInitializer(const TensorProto& init) {
 *                             Loop
 * 
 * 
-* into this:
+* with this:
 * 
 * 
-*  Past state seed (initializer)       ---               ---- repeat (i.e.) number of elements in the tensor sequence (initializer)
+*  Past state seed (initializer)----------                ---- repeat (i.e.) number of elements in the tensor sequence (initializer)
 *                                         \             / 
 *                                          \           /    
 *                                    SequenceConstructUsingTensorAndRepeat 
@@ -41,7 +41,8 @@ static std::vector<uint8_t> UnpackInitializer(const TensorProto& init) {
 * 
 * The idea is that the initial "empty" sequence that will get populated on the first Loop iteration
 * in the subgraph using the past state seed is directly populated before the Loop is entered. 
-* This makes "parsing" the past state within the Loop subgraph much simpler
+* This makes "parsing" the past state within the Loop subgraph much simpler (i.e.) no conditional
+* logic is required within the Loop to handle the first iteration and other iterations separately.
 */
 static bool AdjustOuterScopeGraph(Graph& parent_graph, const Node& loop, size_t loop_input_index,
                                   TensorProto past_state_seed, const TypeProto*& past_state_seed_type_proto,
@@ -107,7 +108,7 @@ static bool AdjustOuterScopeGraph(Graph& parent_graph, const Node& loop, size_t 
   sequence_construct.SetExecutionProviderType(sequence_empty_node.GetExecutionProviderType());
 
   // Adjust the edges
-  auto& sequence_empty_node_output_edges = GraphEdge::GetNodeOutputEdges(sequence_empty_node);
+  const auto& sequence_empty_node_output_edges = GraphEdge::GetNodeOutputEdges(sequence_empty_node);
 
   // The Loop is now to be fed from the fused node
   parent_graph.AddEdge(sequence_construct.Index(),
@@ -122,8 +123,8 @@ static bool AdjustOuterScopeGraph(Graph& parent_graph, const Node& loop, size_t 
   return true;
 }
 
-/*
-Expected If Then branch:
+/* Expected If Then branch: 
+   (pass through provided tensor sequence for the non-first iterations of the Loop)
 
         (tensor sequence) 
              |
@@ -162,6 +163,7 @@ static bool IsExpectedIfThenBranch(const Graph& if_then_subgraph) {
 }
 
 /*  Expected Loop subgraph for Loop node within If Else branch:
+   (create initial past state on the first iteration of the Loop)
 
          (tensor sequence : loop carried dependency) 
               |
@@ -210,8 +212,9 @@ static bool IsLoopedSequenceInsert(const Graph& loop_subgraph,
   return false;
 }
 
-/*
+/* 
 Expected If Else branch:
+(create initial past state on the first iteration of the Loop)
 
 The condition input is expected to be an initializer of condition (true)
 
@@ -254,7 +257,6 @@ static bool IsExpectedIfElseBranch(const Graph& if_else_subgraph,
       return false;
     }
 
-    const Node& sequence_empty_node = *node;
     const Node& loop_node = *if_else_subgraph.GetNode(next_node.Index());
 
     // The Loop node should only have one output (the tensor sequence itself)
@@ -284,14 +286,14 @@ static bool IsExpectedIfElseBranch(const Graph& if_else_subgraph,
 }
 
 /*
-* We are looking for the following pattern:
+* We are looking for the following pattern in one level of the graph (possibly the main graph):
 * 
 *   SequenceEmpty   ----------      ----------- other Loop inputs 
 *  (loop carried dep)         \   / 
 *                             Loop
 * 
 * 
-* The loop subgraph should be:
+* The Loop subgraph should look like this:
 * 
 * 
 *                tensor sequence (loop carried dependency input)
@@ -375,8 +377,8 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
     }
 
     const auto& sequence_length_node_input = sequence_length_node.InputDefs()[0]->Name();
-    size_t loop_past_state_input_index = -1;
-    size_t iter = 0;
+    int64_t loop_past_state_input_index = -1;
+    int64_t iter = 0;
     for (const auto* graph_input : graph.GetInputs()) {
       if (graph_input->Name() == sequence_length_node_input) {
         loop_past_state_input_index = iter;
@@ -513,7 +515,8 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
     // Check if the parent graph is conducive for fusion and if so make appropriate
     // parent graph changes before continuing with changes here
     if (!AdjustOuterScopeGraph(*graph.MutableParentGraph(), *parent_node,
-                               loop_past_state_input_index, past_state_seed,
+                               static_cast<size_t>(loop_past_state_input_index),
+                               past_state_seed,
                                past_state_seed_type_proto, sequence_at_count,
                                base_name, GetCompatibleExecutionProviders())) {
       continue;
@@ -541,7 +544,7 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
     // after deleting existing output edge from Greater node
     std::vector<NodeIndex> greater_output_nodes;
     std::vector<int> greater_output_dst_args;
-    auto& if_output_edges = GraphEdge::GetNodeOutputEdges(if_node);
+    const auto& if_output_edges = GraphEdge::GetNodeOutputEdges(if_node);
     for (auto cur = if_output_edges.cbegin(), end = if_output_edges.cend(); cur != end; ++cur) {
       if (cur->src_arg_index == 0) {  // 0th index of If is the bool output
         greater_output_nodes.push_back(cur->dst_node);
@@ -552,7 +555,7 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
     // Re-route tensor outputs of SequenceAts so that they
     // are now being fed from the SequenceTensorSplitter fused node
     for (size_t i = 0; i < sequence_at_count; ++i) {
-      auto& sequence_at_output_edges = GraphEdge::GetNodeOutputEdges(*sequence_at_nodes[i]);
+      const auto& sequence_at_output_edges = GraphEdge::GetNodeOutputEdges(*sequence_at_nodes[i]);
 
       for (auto cur = sequence_at_output_edges.cbegin(), end = sequence_at_output_edges.cend();
            cur != end; ++cur) {
@@ -590,9 +593,7 @@ Status ParsePastStateFusion::ApplyImpl(Graph& graph, bool& modified,
     // We are done with SequenceAt(s) - remove them
     for (size_t i = 0; i < sequence_at_count; ++i) {
       auto& sequence_at_node = *sequence_at_nodes[i];
-      auto& sequence_at_output_edges = GraphEdge::GetNodeOutputEdges(sequence_at_node);
-
-      GraphEdge::RemoveGraphEdges(graph, sequence_at_output_edges);
+      GraphEdge::RemoveGraphEdges(graph, GraphEdge::GetNodeOutputEdges(sequence_at_node));
       graph.RemoveNode(sequence_at_node.Index());
     }
 

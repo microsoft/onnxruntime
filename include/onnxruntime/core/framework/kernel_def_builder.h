@@ -157,7 +157,20 @@ class KernelDef {
   // An element <i, j> means that output j is an alias of input i.
   std::vector<std::pair<int, int>> alias_map_;
 
-  // TODO: Write doc
+  // An element <i, j> means that starting output j, each output is an
+  // alias of a tensor in the input tensor sequence i. The tensor index
+  // in the tensor sequence is based on the offset of an output wrt to j.
+  // The input i must be a tensor sequence and all outputs starting j
+  // must be tensors.
+  // For example, for a node with 2 outputs consuming a tensor sequence
+  // as the first input, an element <0, 0> means that the 0th output
+  // and the 1st output are aliases of the corresponding tensors in the
+  // input sequence.
+  // A tensor sequence with less than 2 tensors will result in a runtime
+  // exception. It is upto the kernel developer to be sure that the cardinality
+  // requirements are met prior to using this functionality.
+  // Because of the variable nature of this aliasing functionality, currently
+  // only one such aliasing functionality is supported.
   optional<std::pair<int, int>> sequence_tensor_to_tensor_alias_map_;
 
   // This variable stores <input_offset, output_offset> for the variadic alias mapping
@@ -280,7 +293,10 @@ class KernelDefBuilder {
   KernelDefBuilder& Alias(const std::vector<std::pair<int, int>>& aliases);
   KernelDefBuilder& Alias(int input_index, int output_index);
 
-  // TODO: Write doc
+  /**
+     Alias mapping from tensor sequence input to tensor outputs. 
+     Please read comment for sequence_tensor_to_tensor_alias_map_ 
+  */
   KernelDefBuilder& SequenceTensorToTensorAlias(int input_index, int output_start_index);
 
   /**

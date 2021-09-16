@@ -840,8 +840,12 @@ class PlannerImpl {
         // Declare OrtValue index of the reused buffer.
         // The the OrtValue indexed by current may reuse the memory in the OrtValue indexed by reused.
         OrtValueIndex reused;
-        // TODO: Write comment
+
+        // Declare index of tensor within a tensor sequence input that will be reused.
+        // Will only be used if `SequenceTensorToTensorAlias` is requested by the kernel
+        // developer.
         int reused_tensor_in_tensor_sequence = -1;
+
         if (has_external_outputs) {
           ORT_ENFORCE(!IsNonTensor(*node_output), "Only tensors are supported for external outputs for now.");
           AllocPlan(current).alloc_kind = AllocKind::kAllocatedExternally;
