@@ -40,8 +40,7 @@ jobs:
 - job: 
   displayName: Linux
 
-  pool:
-    vmImage: ubuntu-20.04
+  pool: onnxruntime-linux-cpu-westus2
 
   timeoutInMinutes: 60
 
