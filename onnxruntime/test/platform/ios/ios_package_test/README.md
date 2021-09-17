@@ -14,7 +14,7 @@ The iOS End-to-End Test App will use CocoaPods to install the Onnx Runtime C/C++
 ### Model used
 - [sigmoid ONNX model](https://github.com/onnx/onnx/blob/f9b0cc99344869c246b8f4011b8586a39841284c/onnx/backend/test/data/node/test_sigmoid/model.onnx) converted to ORT format
 
-    Here's the [document](onnxruntime.ai/docs/tutorials/mobile/) about how you can convert an ONNX model into ORT format.
+    Here's the [document](https://onnxruntime.ai/docs/tutorials/mobile/model-conversion.html) about how you can convert an ONNX model into ORT format.
 
 ### Tests
 - [Tests for C API ](./ios_package_testTests/ios_package_test_c_api.m)
