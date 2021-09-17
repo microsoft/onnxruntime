@@ -3862,5 +3862,5 @@ def test_ortmodule_determinism_flag(is_training,deterministic):
         x = torch.randn(N, D_in)
         _ = model(x)
 
-        from onnxruntime.training.ortmodule import are_deterministic_algorithms_enabled
-        assert are_deterministic_algorithms_enabled() is torch.are_deterministic_algorithms_enabled()
+        from onnxruntime.training.ortmodule import _are_deterministic_algorithms_enabled
+        assert _are_deterministic_algorithms_enabled() is torch.are_deterministic_algorithms_enabled()

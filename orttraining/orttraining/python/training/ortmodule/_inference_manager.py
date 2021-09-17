@@ -6,8 +6,8 @@
 from . import (_utils,
                _io,
                _logger,
-               are_deterministic_algorithms_enabled,
-               use_deterministic_algorithms)
+               _are_deterministic_algorithms_enabled,
+               _use_deterministic_algorithms)
 from ._graph_execution_manager import (GraphExecutionManager,
                                        _RunStateInfo,
                                        _SkipCheck)
@@ -105,8 +105,8 @@ class InferenceManager(GraphExecutionManager):
 
                 create_execution_session = (build_graph or self._device != module_device or
                                             torch.are_deterministic_algorithms_enabled() is not
-                                            are_deterministic_algorithms_enabled())
-                use_deterministic_algorithms(torch.are_deterministic_algorithms_enabled())
+                                            _are_deterministic_algorithms_enabled())
+                _use_deterministic_algorithms(torch.are_deterministic_algorithms_enabled())
 
                 if self._device != module_device:
                     self._device = module_device

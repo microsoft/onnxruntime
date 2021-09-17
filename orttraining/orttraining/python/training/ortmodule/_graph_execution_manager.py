@@ -9,17 +9,15 @@ from . import (_utils,
                _logger,
                torch_cpp_extensions as _cpp_ext,
                _onnx_models,
-               are_deterministic_algorithms_enabled)
+               _are_deterministic_algorithms_enabled)
 from ._custom_autograd_function import custom_autograd_function_enabler
 from ._custom_autograd_function_exporter import _post_process_after_export
 from ._graph_execution_interface import GraphExecutionInterface
 from ._fallback import (_FallbackManager,
-                       _FallbackPolicy,
-                       ORTModuleFallbackException,
-                       ORTModuleDeviceException,
-                       ORTModuleONNXModelException,
-                       ORTModuleTorchModelException,
-                       wrap_exception)
+                        ORTModuleDeviceException,
+                        ORTModuleONNXModelException,
+                        ORTModuleTorchModelException,
+                        wrap_exception)
 from ._gradient_accumulation_manager import GradientAccumulationManager
 from onnxruntime.training.ortmodule import ONNX_OPSET_VERSION
 
@@ -238,7 +236,7 @@ class GraphExecutionManager(GraphExecutionInterface):
     def _get_session_config(self):
         """Creates and returns the session configuration to be used for the ExecutionAgent"""
 
-        if are_deterministic_algorithms_enabled():
+        if _are_deterministic_algorithms_enabled():
             if self._debug_options.logging.log_level <= _logger.LogLevel.INFO:
                 warnings.warn("ORTModule's determinism will be enabled because PyTorch's determinism is enabled.",
                               UserWarning)
@@ -267,7 +265,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         session_options = onnxruntime.SessionOptions()
         session_options.enable_mem_pattern = False
         session_options.enable_mem_reuse = False
-        session_options.use_deterministic_compute = are_deterministic_algorithms_enabled()
+        session_options.use_deterministic_compute = _are_deterministic_algorithms_enabled()
         # default to PRIORITY_BASED execution order
         session_options.execution_order = onnxruntime.ExecutionOrder.PRIORITY_BASED
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
