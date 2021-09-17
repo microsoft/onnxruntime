@@ -22,7 +22,7 @@
         
         window.onload = function ()
         {
-            var delay = "2000";
+            var delay = "500";
             setTimeout(GoToURL, delay);
         }
         function GoToURL()
@@ -36,29 +36,20 @@
                 referLink.click();
             }
             else { 
-                var pathname = window.location.pathname;
 
-                // redirect how-to/build to build
-                if(pathname.includes("/docs/how-to/build")){
-                    window.location.replace("/docs/build");
-                }
-                // how-to was removed - this is a catch all for deleted paths to how-to
-                else if(pathname.includes("/docs/how-to")){
-                    window.location.replace("/docs");
-                }
-                else if(pathname.includes("/docs/resources/graph-optimizations")){
-                    window.location.replace("/docs/performance/graph-optimizations");
-                }
-                // resource was removed - this is a catch all for deleted paths to resource
-                else if(pathname.includes("/docs/resource")){
-                    window.location.replace("/docs/reference");
-                }
-                else if(pathname.includes("/docs/reference/execution-providers")){
-                    window.location.replace("/docs/execution-providers/");
-                }
-                else if(pathname.includes("docs/reference/api")){
-                    window.location.replace("/docs/api");
-                }
+                $.getJSON("../../redirect.json", (json) => {
+
+                    var redirectRules = json.redirectRules
+                    var pathname = window.location.pathname;
+
+                    for(let i = 0; i < redirectRules.length; i++){
+
+                        if(pathname.includes(redirectRules[i].pathname)){
+                                window.location.replace(redirectRules[i].redirect);
+                        }
+                    }
+                });
+
              }
         }
     </script>

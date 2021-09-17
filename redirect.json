@@ -1,0 +1,29 @@
+{
+    "redirectRules":
+    [
+        {
+            "pathname": "/docs/how-to/build",
+            "redirect": "/docs/build"
+        },       
+        {
+            "pathname": "/docs/how-to",
+            "redirect": "/docs"
+        },       
+        {
+            "pathname": "/docs/resources/graph-optimizations",
+            "redirect": "/docs/performance/graph-optimizations"
+        },       
+        {
+            "pathname": "/docs/resource",
+            "redirect": "/docs/reference"
+        },       
+        {
+            "pathname": " /docs/reference/execution-providers",
+            "redirect": "/docs/execution-providers/"
+        },       
+        {
+            "pathname": "/docs/reference/api",
+            "redirect": "/docs/api"
+        }
+   ]
+} 
