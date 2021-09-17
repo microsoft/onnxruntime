@@ -52,7 +52,7 @@ struct ReduceConsts {
   static const ElemType One;
 };
 
-#ifdef ROCM_VERSION >= 40300
+#if ROCM_VERSION >= 40300
 // Up until ROCm 4.2 miopenReduceTensor() required alpha/beta to be the same data
 // type as the input type. This differs from cudnnReduceTensor() and other
 // MIOpen/cuDNN APIs where alpha/beta are float when input type is half (float16).

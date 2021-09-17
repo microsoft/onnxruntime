@@ -88,7 +88,7 @@ const float Consts<half>::Zero = 0;
 
 const float Consts<half>::One = 1;
 
-#ifdef ROCM_VERSION >= 40300
+#if ROCM_VERSION >= 40300
 template <>
 const float ReduceConsts<half>::One = 1;
 
