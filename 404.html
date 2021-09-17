@@ -36,7 +36,7 @@
             }
             else { 
                 
-                var redirectRulesUrl = window.location.hostname + "/redirect.json";
+                var redirectRulesUrl = window.location.origin + "/redirect.json";
 
                 $.getJSON(redirectRulesUrl, (json) => {
 
