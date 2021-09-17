@@ -16,6 +16,7 @@
     <link rel="stylesheet" href="css/custom.css">
     <link rel="stylesheet" href="css/responsive.css">
     <link rel="icon" href="./images/ONNXRuntime-Favicon.png" type="image/gif" sizes="16x16">
+
     <!--Redirect for moved links-->
 
     <!--[if lt IE 9]><script type="text/javascript">var IE_fix=true;</script><![endif]-->
@@ -37,14 +38,23 @@
                 referLink.click();
             }
             else { 
+                var redirectRulesUrl = window.location.origin;
+
+                var isTest = pathname.includes(".github.io/onnxruntime");
+
+                if(isTest){
+                    redirectRulesUrl = redirectRulesUrl + "/onnxruntime/docs/redirect.json";
+                }
+                else{
+                    redirectRulesUrl = redirectRulesUrl + "/docs/redirect.json"
+                }
                 
-                var redirectRulesUrl = window.location.origin + "/docs/redirect.json";
 
                 $.getJSON(redirectRulesUrl, (json) => {
 
                     var redirectRules = json.redirectRules;
                     var pathname = window.location.pathname;
-                    var isTest = pathname.includes(".github.io/onnxruntime");
+                    
 
                     for(let i = 0; i < redirectRules.length; i++){
 
