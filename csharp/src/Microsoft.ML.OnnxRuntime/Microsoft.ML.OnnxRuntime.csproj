@@ -226,8 +226,9 @@
     <Target Name="CopyPackage" AfterTargets="Pack">
       <Copy
         SourceFiles="$(OutputPath)\$(PackageId).$(PackageVersion).nupkg"
-        DestinationFolder="$(NativeBuildOutputDir)\nuget-artifacts"
+        DestinationFolder="$(NativeBuildOutputDir)"
       />
+      <!-- DestinationFolder="$(NativeBuildOutputDir)\nuget-artifacts" -->
     </Target>
   
 </Project>

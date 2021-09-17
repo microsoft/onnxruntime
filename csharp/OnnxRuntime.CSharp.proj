@@ -125,14 +125,9 @@ CMake creates a target to this project
              Targets="CopyMiscFiles;Pack"
              Properties="NoBuild=true;Platform=AnyCPU;PackageVersion=$(PackageVersion);OrtPackageId=$(OrtPackageId)"/>
 
-    <Message Importance="High" Text="Contents of nuget-artifacts directory" />
-    <Exec ContinueOnError="True" Command="dir /s /b" ConsoleToMSBuild="true" WorkingDirectory="$(NativeBuildOutputDirAbs)/nuget-artifacts">
+    <Message Importance="High" Text="Contents of build directory" />
+    <Exec ContinueOnError="True" Command="dir /s /b" ConsoleToMSBuild="true" WorkingDirectory="$(NativeBuildOutputDirAbs)">
       <Output TaskParameter="ConsoleOutput" PropertyName="DirListing" />
-    </Exec>
-
-    <Message Importance="High" Text="Contents of nuget-artifacts directory python" />
-    <Exec ContinueOnError="True" Command="python -c &quot;from pathlib import Path;[print(x) for x in Path(r'$(NativeBuildOutputDirAbs)/nuget-artifacts').rglob('*')];&quot;" ConsoleToMSBuild="true" WorkingDirectory="$(NativeBuildOutputDirAbs)/nuget-artifacts">
-      <Output TaskParameter="ConsoleOutput" PropertyName="DirListingPy" />
     </Exec>
 
     <Message Importance="High" Text="Generating nuspec for the native Nuget package ..." />

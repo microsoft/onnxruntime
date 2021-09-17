@@ -209,7 +209,7 @@ def generate_dependencies(list, package_name, version):
         if include_dml:
             list.append(dml_dependency)
         list.append('</group>')
-        if not include_dml:
+        if package_name == 'Microsoft.ML.OnnxRuntime':
             # Support monoandroid11.0
             list.append('<group targetFramework="monoandroid11.0">')
             list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
@@ -575,7 +575,7 @@ def generate_files(list, args):
         files_list.append('<file src=' + '"' + target_targets + '" target="build\\netstandard2.0" />')
 
         # Process xamarin targets files
-        if is_cpu_package:
+        if args.package_name == 'Microsoft.ML.OnnxRuntime':
             monoandroid_source_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime',
                                                       'targets', 'monoandroid11.0', 'targets.xml')
             monoandroid_target_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime',
