@@ -35,16 +35,23 @@
                 referLink.click();
             }
             else { 
+                
 
                 $.getJSON("../../redirect.json", (json) => {
 
                     var redirectRules = json.redirectRules
                     var pathname = window.location.pathname;
+                    var isTest = pathname.includes(".github.io/onnxruntime")
 
                     for(let i = 0; i < redirectRules.length; i++){
 
                         if(pathname.includes(redirectRules[i].pathname)){
+                            if(!isTest){
                                 window.location.replace(redirectRules[i].redirect);
+                             }
+                             else{
+                                 window.location.replace(redirectRules[i].testRedirect);
+                             }
                         }
                     }
                 });

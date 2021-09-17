@@ -3,27 +3,33 @@
     [
         {
             "pathname": "/docs/how-to/build",
-            "redirect": "/docs/build"
+            "redirect": "/docs/build",
+            "testRedirect": "/onnxruntime/docs/build" 
         },       
         {
             "pathname": "/docs/how-to",
-            "redirect": "/docs"
+            "redirect": "/docs",
+            "testRedirect": "/onnxruntime/docs/build"
         },       
         {
             "pathname": "/docs/resources/graph-optimizations",
-            "redirect": "/docs/performance/graph-optimizations"
+            "redirect": "/docs/performance/graph-optimizations",
+            "testRedirect": "/onnxruntime/docs/build"
         },       
         {
             "pathname": "/docs/resource",
-            "redirect": "/docs/reference"
+            "redirect": "/docs/reference",
+            "testRedirect": "/onnxruntime/docs/build"
         },       
         {
             "pathname": " /docs/reference/execution-providers",
-            "redirect": "/docs/execution-providers/"
+            "redirect": "/docs/execution-providers/",
+            "testRedirect": "/onnxruntime/docs/build"
         },       
         {
             "pathname": "/docs/reference/api",
-            "redirect": "/docs/api"
+            "redirect": "/docs/api",
+            "testRedirect": "/onnxruntime/docs/build"
         }
    ]
 } 
