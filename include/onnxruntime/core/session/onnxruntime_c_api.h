@@ -3,7 +3,7 @@
 
 // See docs\c_cxx\README.md on generating the Doxygen documentation from this file
 
-/** \mainpagee C & C++ APIs
+/** \mainpage C & C++ APIs
 *
 * <h1>C</h1>
 *
