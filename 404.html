@@ -38,8 +38,9 @@
                 referLink.click();
             }
             else { 
-                var redirectRulesUrl = window.location.origin;
 
+                var redirectRulesUrl = window.location.origin;
+                var pathname = window.location.pathname;
                 var isTest = pathname.includes(".github.io/onnxruntime");
 
                 if(isTest){
@@ -53,9 +54,7 @@
                 $.getJSON(redirectRulesUrl, (json) => {
 
                     var redirectRules = json.redirectRules;
-                    var pathname = window.location.pathname;
-                    
-
+                                       
                     for(let i = 0; i < redirectRules.length; i++){
 
                         if(pathname.includes(redirectRules[i].pathname)){
