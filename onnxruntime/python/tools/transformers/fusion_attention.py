@@ -87,7 +87,7 @@ class FusionAttention(Fusion):
         self.hidden_size = hidden_size
         self.num_heads = num_heads
         self.attention_mask = attention_mask
-        
+
         # Flags to show warning only once
         self.num_heads_warning = True
         self.hidden_size_warning = True
@@ -120,13 +120,13 @@ class FusionAttention(Fusion):
         if self.num_heads > 0 and num_heads != self.num_heads:
             if self.num_heads_warning:
                 logger.warning(f"--num_heads is {self.num_heads}. Detected value is {num_heads}. Using detected value.")
-                self.num_heads_warning = False # Do not show the warning more than once
+                self.num_heads_warning = False  # Do not show the warning more than once
 
         if self.hidden_size > 0 and hidden_size != self.hidden_size:
             if self.hidden_size_warning:
                 logger.warning(
                     f"--hidden_size is {self.hidden_size}. Detected value is {hidden_size}. Using detected value.")
-                self.hidden_size_warning = False # Do not show the warning more than once
+                self.hidden_size_warning = False  # Do not show the warning more than once
 
         return num_heads, hidden_size
 
@@ -450,8 +450,8 @@ class FusionAttention(Fusion):
             # number of heads are same for all the paths, hence to create attention node, we pass the q_num_heads
             # the input_hidden_size represents the input hidden size, this is used as needed but hidden sizes for Q, K are extracted appropriately
             new_node = self.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v, add_q, add_k, add_v,
-                                                  q_num_heads, q_hidden_size, root_input,
-                                                  attention_last_node.output[0], add_qk_str)
+                                                  q_num_heads, q_hidden_size, root_input, attention_last_node.output[0],
+                                                  add_qk_str)
             if new_node is None:
                 return
 

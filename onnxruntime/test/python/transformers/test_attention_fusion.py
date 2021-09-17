@@ -89,12 +89,14 @@ class TestFusion(unittest.TestCase):
         dir = '.'
         model_path = os.path.join(dir, "attention_with_varied_qkv.onnx")
         onnx.save(model, model_path)
-        optimized_model = optimize_model(model_path, 'bert', num_heads=8, hidden_size=8) #wrong num_heads and hidden_size
+
+        #wrong num_heads and hidden_size
+        optimized_model = optimize_model(model_path, 'bert', num_heads=8, hidden_size=8)
+
         os.remove(model_path)
 
         self.verify_fusion(optimized_model, 'attention_with_varied_qkv_opt.onnx')
-        
-        
+
     def test_3d_attention_fusion_tf2onnx_model(self):
         model = create_tf2onnx_attention_3d()
         dir = '.'
