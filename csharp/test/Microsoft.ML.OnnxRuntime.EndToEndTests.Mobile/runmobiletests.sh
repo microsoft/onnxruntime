@@ -9,7 +9,7 @@ iosTestResultStatus=null
 finishedTests=false
 errors=0
 maxErrors=10
-timeoutInSeconds=5
+timeoutInSeconds=60
 failed=false
 
 # Determine latest test runs (first item is latest run)
