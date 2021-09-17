@@ -32,7 +32,7 @@ variables:
   # https://ms.portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/Overview/appId/ef5b3365-5c24-4e2e-b79d-6382a48d7436/isMSAApp/
   OnnxPrincipalAppId: ef5b3365-5c24-4e2e-b79d-6382a48d7436
 
-  # TODO: create a secret for the App above and save it as a secret pipeline variable in ADO (not in plain-text here)
+  # this variable is defined as a secret pipeline variable in Azure DevOps
   # OnnxPrincipalPassword: ***
 
 jobs:
