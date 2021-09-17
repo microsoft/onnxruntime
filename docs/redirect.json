@@ -22,7 +22,7 @@
             "testRedirect": "/onnxruntime/docs/build"
         },       
         {
-            "pathname": " /docs/reference/execution-providers",
+            "pathname": "/docs/reference/execution-providers",
             "redirect": "/docs/execution-providers/",
             "testRedirect": "/onnxruntime/docs/build"
         },       
