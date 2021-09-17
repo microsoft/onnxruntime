@@ -72,7 +72,8 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
-    <None Include="InferenceTest.cs" Condition=" '$(EnableDefaultCompileItems)' == 'true' " />
+    <!-- include common files for visibility, however they're compiled directly by the target specific test projects -->
+    <None Include="InferenceTest.cs"/>
     <None Include="OrtIoBindingAllocationTest.cs" Condition=" '$(EnableDefaultCompileItems)' == 'true' " />
     <None Include="Tensors\TensorTests.cs" Condition=" '$(EnableDefaultCompileItems)' == 'true' " />
   </ItemGroup>
