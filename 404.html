@@ -49,9 +49,11 @@
                         if(pathname.includes(redirectRules[i].pathname)){
                             if(!isTest){
                                 window.location.replace(redirectRules[i].redirect);
+                                break;
                              }
                              else{
                                  window.location.replace(redirectRules[i].testRedirect);
+                                 break;
                              }
                         }
                     }
