@@ -186,31 +186,26 @@
 
   <ItemGroup>
     <Compile Include="**\*.shared.cs" Link="%(Filename)%(Extension)" />
-    <Compile Include="**\*.shared.*.cs" Link="%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup Condition="$(TargetFramework.StartsWith('netstandard'))">
     <PackageReference Include="System.Memory" Version="4.5.4" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
     <Compile Include="**\*.netstandard.cs" Link="platform\netstandard\%(Filename)%(Extension)" />
-    <Compile Include="**\*.netstandard.*.cs" Link="platform\netstandard\%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup Condition=" $(TargetFramework.StartsWith('net')) AND !$(TargetFramework.StartsWith('netstandard')) ">
     <PackageReference Include="System.Memory" Version="4.5.4" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
     <Compile Include="**\*.net.cs" Link="platform\net\%(Filename)%(Extension)" />
-    <Compile Include="**\*.net.*.cs" Link="platform\net\%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup Condition="$(TargetFramework.StartsWith('monoandroid'))">
     <Compile Include="**\*.android.cs" Link="platform\android\%(Filename)%(Extension)" />
-    <Compile Include="**\*.android.*.cs" Link="platform\android\%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup Condition="$(TargetFramework.StartsWith('xamarinios')) ">
     <Compile Include="**\*.ios.cs" Link="platform\ios\%(Filename)%(Extension)" />
-    <Compile Include="**\*.ios.*.cs" Link="platform\ios\%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>
@@ -228,7 +223,6 @@
         SourceFiles="$(OutputPath)\$(PackageId).$(PackageVersion).nupkg"
         DestinationFolder="$(NativeBuildOutputDir)"
       />
-      <!-- DestinationFolder="$(NativeBuildOutputDir)\nuget-artifacts" -->
     </Target>
   
 </Project>

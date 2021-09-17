@@ -5,6 +5,7 @@
     <OnnxRuntimeCsharpRoot>$(MSBuildThisFileDirectory)..\..</OnnxRuntimeCsharpRoot>
     <Platform>AnyCPU</Platform>
     <OutputPath>bin\$(Configuration)\</OutputPath>
+    <!-- arbitrary version for testing locally. when used in a CI CurrentOnnxRuntimeVersion should always be specified and match the package being tested -->
     <CurrentOnnxRuntimeVersion Condition="'$(CurrentOnnxRuntimeVersion)' == ''">1.8.1</CurrentOnnxRuntimeVersion>
     <PackageName Condition="'$(PACKAGENAME)' == ''">Microsoft.ML.OnnxRuntime</PackageName>
     <IsLinuxBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))' == 'true'">true</IsLinuxBuild> 
@@ -43,7 +44,6 @@
   <ItemGroup>
     <BuildEnvVars Include="OnnxRuntimeBuildDirectory=$(OnnxRuntimeBuildDirectory)" />
 
-    <!-- do we need $(MSBuildThisFileDirectory) here? -->
     <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\InferenceTest.cs"/>
     <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\OnnxMl.cs"/>
     <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\InferenceTest.netcore.cs" />
@@ -79,7 +79,7 @@
       <Visible>false</Visible>
     </None>
 
-    <!-- test data for mobile scenarios -->
+    <!-- test data as embedded resources for mobile scenarios -->
     <EmbeddedResource Include="..\..\testdata\*">
         <Link>TestData\%(Filename)%(Extension)</Link>
     </EmbeddedResource>

@@ -45,10 +45,7 @@ def is_this_file_needed(ep, filename):
 def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list):
     for child in nuget_artifacts_dir.iterdir():
         if not child.is_dir():
-            print("Skipping " + child.name)
             continue
-
-        print("Processing " + child.name)
 
         for cpu_arch in ['x86', 'x64', 'arm', 'arm64']:
             if child.name == get_package_name('win', cpu_arch, ep):
@@ -77,6 +74,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list):
                     if child_file.suffix == '.so' and is_this_file_needed(ep, child_file.name):
                         files_list.append('<file src="' + str(child_file) +
                                           '" target="runtimes/linux-%s/native"/>' % cpu_arch)
+										  
         if child.name == 'onnxruntime-android':
             for child_file in child.iterdir():
                 if child_file.suffix in ['.aar']:
@@ -659,9 +657,6 @@ def main():
     # Create the nuspec needed to generate the Nuget
     with open(os.path.join(args.native_build_path, 'NativeNuget.nuspec'), 'w') as f:
         for line in lines:
-            # ---- TEMPORARY ---- #
-            print(line)
-            # ---- END ---- #
             f.write(line)
             f.write('\n')
 
