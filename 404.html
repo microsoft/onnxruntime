@@ -40,8 +40,7 @@
             else { 
 
                 var redirectRulesUrl = window.location.origin;
-                var pathname = window.location.pathname;
-                var isTest = pathname.includes(".github.io/onnxruntime");
+                var isTest =  window.location.origin.includes("github.io");
 
                 if(isTest){
                     redirectRulesUrl = redirectRulesUrl + "/onnxruntime/docs/redirect.json";
@@ -54,7 +53,8 @@
                 $.getJSON(redirectRulesUrl, (json) => {
 
                     var redirectRules = json.redirectRules;
-                                       
+                    var pathname = window.location.pathname;
+                    
                     for(let i = 0; i < redirectRules.length; i++){
 
                         if(pathname.includes(redirectRules[i].pathname)){
