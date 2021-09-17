@@ -142,8 +142,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 #endregion
 
-        #region ExecutionProviderAppends
-
+#region ExecutionProviderAppends
         /// <summary>
         /// Appends CPU EP to a list of available execution providers for the session.
         /// </summary>
@@ -309,11 +308,9 @@ namespace Microsoft.ML.OnnxRuntime
             }
 #endif
         }
-
 #endregion //ExecutionProviderAppends
 
 #region Public Methods
-
         /// <summary>
         /// (Deprecated) Loads a DLL named 'libraryPath' and looks for this entry point:
         /// OrtStatus* RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);
@@ -425,8 +422,8 @@ namespace Microsoft.ML.OnnxRuntime
                 return handle;
             }
         }
-#region Public Properties
 
+#region Public Properties
         /// <summary>
         /// Overrides SafeHandle.IsInvalid
         /// </summary>
@@ -457,7 +454,6 @@ namespace Microsoft.ML.OnnxRuntime
                 }
             }
         }
-
         private bool _enableMemoryPattern = true;
 
         /// <summary>
@@ -492,7 +488,6 @@ namespace Microsoft.ML.OnnxRuntime
                 }
             }
         }
-
         private bool _enableProfiling = false;
 
         /// <summary>
@@ -514,7 +509,6 @@ namespace Microsoft.ML.OnnxRuntime
                 }
             }
         }
-
         private string _optimizedModelFilePath = "";
 
         /// <summary>
@@ -541,7 +535,6 @@ namespace Microsoft.ML.OnnxRuntime
                 }
             }
         }
-
         private bool _enableCpuMemArena = true;
 
         /// <summary>
@@ -566,7 +559,6 @@ namespace Microsoft.ML.OnnxRuntime
                 _logId = value;
             }
         }
-
         private string _logId = "";
 
         /// <summary>
@@ -585,7 +577,6 @@ namespace Microsoft.ML.OnnxRuntime
                 _logSeverityLevel = value;
             }
         }
-
         private OrtLoggingLevel _logSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING;
 
         /// <summary>
@@ -605,7 +596,6 @@ namespace Microsoft.ML.OnnxRuntime
                 _logVerbosityLevel = value;
             }
         }
-
         private int _logVerbosityLevel = 0;
 
         /// <summary>
@@ -625,7 +615,6 @@ namespace Microsoft.ML.OnnxRuntime
                 _intraOpNumThreads = value;
             }
         }
-
         private int _intraOpNumThreads = 0; // set to what is set in C++ SessionOptions by default;
 
         /// <summary>
@@ -646,7 +635,6 @@ namespace Microsoft.ML.OnnxRuntime
                 _interOpNumThreads = value;
             }
         }
-
         private int _interOpNumThreads = 0; // set to what is set in C++ SessionOptions by default;
 
         /// <summary>
@@ -665,7 +653,6 @@ namespace Microsoft.ML.OnnxRuntime
                 _graphOptimizationLevel = value;
             }
         }
-
         private GraphOptimizationLevel _graphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
 
         /// <summary>
@@ -685,7 +672,6 @@ namespace Microsoft.ML.OnnxRuntime
                 _executionMode = value;
             }
         }
-
         private ExecutionMode _executionMode = ExecutionMode.ORT_SEQUENTIAL;
 
         #endregion
@@ -710,7 +696,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 #endif
 
-    private static bool CheckCudaExecutionProviderDLLs()
+        private static bool CheckCudaExecutionProviderDLLs()
         {
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
@@ -751,9 +737,9 @@ namespace Microsoft.ML.OnnxRuntime
             }
             return true;
         }
-
 #endregion
-        #region SafeHandle
+
+#region SafeHandle
         /// <summary>
         /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
         /// the native instance of SessionOptions
@@ -765,7 +751,6 @@ namespace Microsoft.ML.OnnxRuntime
             handle = IntPtr.Zero;
             return true;
         }
-
 #endregion
     }
 }
