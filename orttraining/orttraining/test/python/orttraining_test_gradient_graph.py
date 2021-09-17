@@ -6,10 +6,12 @@ import onnx
 import torch
 from torch import nn
 from torch.onnx import TrainingMode
+import numpy as np
 
 import onnxruntime
 from onnxruntime.training import GradientGraphBuilder
 from onnxruntime.training.ortmodule._custom_op_symbolic_registry import CustomOpSymbolicRegistry
+
 
 class NeuralNet(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes, loss_fn):
@@ -26,6 +28,10 @@ class NeuralNet(torch.nn.Module):
         out = self.fc2(out)
         loss = self.loss_fn(out, label)
         return out, loss
+
+
+def to_numpy(tensor):
+    return tensor.detach().cpu().numpy() if tensor.requires_grad else tensor.cpu().numpy()
 
 
 class GradientGraphBuilderTest(unittest.TestCase):
@@ -69,8 +75,28 @@ class GradientGraphBuilderTest(unittest.TestCase):
 
         ort_session = onnxruntime.InferenceSession(
             str(gradient_graph_path))
-        # TODO See https://pytorch.org/tutorials/advanced/super_resolution_with_onnxruntime.html
-        # TODO Test that gradients exist.
+        inputs = ort_session.get_inputs()
+        ort_inputs = {
+            inputs[0].name: to_numpy(x),
+            inputs[1].name: to_numpy(label),
+        }
+        ort_outs = ort_session.run(None, ort_inputs)
+        onnx_output_names = [node.name for node in onnx_model.graph.output]
+        onnx_name_to_output = dict(zip(onnx_output_names, ort_outs))
+        self.assertEqual(6, len(onnx_name_to_output))
+
+        ort_output = onnx_name_to_output['output']
+        np.testing.assert_allclose(
+            to_numpy(torch_out), ort_output, rtol=1e-03, atol=1e-05)
+
+        ort_loss = onnx_name_to_output['loss']
+        np.testing.assert_allclose(
+            to_numpy(torch_loss), ort_loss, rtol=1e-03, atol=1e-05)
+
+        # Make sure the gradients have the right shape.
+        for name, param in model.named_parameters():
+            grad = onnx_name_to_output[name + '_grad']
+            self.assertEqual(param.size(), grad.shape)
 
 
 if __name__ == '__main__':
