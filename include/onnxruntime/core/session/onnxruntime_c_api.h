@@ -308,7 +308,7 @@ struct OrtCustomOp;
 typedef struct OrtCustomOp OrtCustomOp;
 
 typedef enum OrtAllocatorType {
-  Invalid = -1,
+  OrtInvalidAllocator = -1,
   OrtDeviceAllocator = 0,
   OrtArenaAllocator = 1
 } OrtAllocatorType;
@@ -337,7 +337,7 @@ typedef enum OrtCudnnConvAlgoSearch {
 */
 typedef struct OrtCUDAProviderOptions {
 #ifdef __cplusplus
-  OrtCUDAProviderOptions() : device_id{}, cudnn_conv_algo_search{EXHAUSTIVE}, gpu_mem_limit{SIZE_MAX}, arena_extend_strategy{}, do_copy_in_default_stream{}, has_user_compute_stream{}, user_compute_stream{}, default_memory_arena_cfg{} {}
+  OrtCUDAProviderOptions() : device_id{}, cudnn_conv_algo_search{OrtCudnnConvAlgoSearchExhaustive}, gpu_mem_limit{SIZE_MAX}, arena_extend_strategy{}, do_copy_in_default_stream{}, has_user_compute_stream{}, user_compute_stream{}, default_memory_arena_cfg{} {}
 #endif
 
   int device_id;  ///< CUDA device id (0 = default device)
