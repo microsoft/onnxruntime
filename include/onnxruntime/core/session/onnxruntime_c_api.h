@@ -1,21 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-/* How to build the Doxygen HTML pages:
+// See docs\c_cxx\README.md on generating the Doxygen documentation from this file
 
-+ Install Doxygen (https://www.doxygen.nl/download.html)
-+ Running from the command line:
-  + cd to (Repository Root)\docs
-  + Run "\Program Files\doxygen\bin\doxygen.exe" Doxyfile
-+ Using the Doxygen GUI app:
-  + Launch Doxygen GUI
-  + File->Open (Repository Root)\docs\Doxyfile
-  + Switch to Run tab, click 'Run doxygen'
-+ Generated docs are written to (Repository Root)\build\doxygen\html
-
-*/
-
-/** \mainpage C & C++ APIs
+/** \mainpagee C & C++ APIs
 *
 * <h1>C</h1>
 *
