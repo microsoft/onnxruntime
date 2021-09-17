@@ -218,7 +218,7 @@
     <TargetsFile Include="$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime\targets\netstandard\targets.xml" Visible="false" />
   </ItemGroup>
 
-  <Target Name="CopyMiscFiles" BeforeTargets="PreBuildEvent">
+  <Target Name="CopyMiscFiles" BeforeTargets="Pack">
     <Copy SourceFiles="@(LicenseFile)" DestinationFiles="@(LicenseFile->'$(OnnxRuntimeCsharpRoot)\..\%(Filename).txt')" />
     <Copy SourceFiles="@(TargetsFile)" DestinationFiles="@(TargetsFile->'$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime\targets\netstandard\$(PackageId).targets')" />
   </Target>
