@@ -68,6 +68,7 @@
       <DependentUpon>TensorOperations.tt</DependentUpon>
     </Compile>
   </ItemGroup>
+
   <ItemGroup>
     <None Include="InferenceTest.cs" Condition=" '$(EnableDefaultCompileItems)' == 'true' " />
     <None Include="OrtIoBindingAllocationTest.cs" Condition=" '$(EnableDefaultCompileItems)' == 'true' " />

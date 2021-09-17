@@ -7,13 +7,13 @@ namespace EndToEndTests.Mobile.Automation
         public static IApp StartApp(Platform platform)
         {
             // For local testing of the Android test app, run a command line Debug build first
-            // msbuild <path_to_repo>/onnxruntime/csharp/test/Microsoft.ML.OnnxRuntime.Tests.Droid/Microsoft.ML.OnnxRuntime.Tests.Droid.csproj /p:Configuration=Debug /t:PackageForAndroid
+            // msbuild <path_to_repo>/onnxruntime/csharp/test/Microsoft.ML.OnnxRuntime.Tests.Droid/Microsoft.ML.OnnxRuntime.Tests.Droid.csproj /p:Configuration=Release /t:PackageForAndroid
             if (platform == Platform.Android)
             {
                 return ConfigureApp
                     .Android
                     .EnableLocalScreenshots()
-                    .ApkFile("../../../../Microsoft.ML.OnnxRuntime.Tests.Droid/bin/Debug/com.xamcat.microsoft_ml_onnxruntime_tests_droid.apk")
+                    .ApkFile("../../../../Microsoft.ML.OnnxRuntime.Tests.Droid/bin/Release/com.xamcat.microsoft_ml_onnxruntime_tests_droid.apk")
                     .StartApp();
             }
 

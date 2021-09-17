@@ -73,7 +73,7 @@
         <WarningLevel>4</WarningLevel>
         <CodesignEntitlements>Entitlements.plist</CodesignEntitlements>
         <MtouchArch>ARM64</MtouchArch>
-        <CodesignKey>iPhone Developer</CodesignKey>
+        <CodesignKey>iPhone Distribution</CodesignKey>
         <MtouchLink>SdkOnly</MtouchLink>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     </PropertyGroup>
