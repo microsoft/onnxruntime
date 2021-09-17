@@ -40,28 +40,24 @@
 
                 // redirect how-to/build to build
                 if(pathname.includes("/docs/how-to/build")){
-                    window.location.replace("https://onnxruntime.ai/docs/build");
+                    window.location.replace("/docs/build");
                 }
                 // how-to was removed - this is a catch all for deleted paths to how-to
                 else if(pathname.includes("/docs/how-to")){
-                    window.location.replace("https://onnxruntime.ai/docs");
+                    window.location.replace("/docs");
                 }
                 else if(pathname.includes("/docs/resources/graph-optimizations")){
-                    window.location.replace("https://onnxruntime.ai/docs/performance/graph-optimizations");
+                    window.location.replace("/docs/performance/graph-optimizations");
                 }
                 // resource was removed - this is a catch all for deleted paths to resource
                 else if(pathname.includes("/docs/resource")){
-                    window.location.replace("https://onnxruntime.ai/docs/reference");
+                    window.location.replace("/docs/reference");
                 }
                 else if(pathname.includes("/docs/reference/execution-providers")){
-                    window.location.replace("https://onnxruntime.ai/docs/execution-providers/");
+                    window.location.replace("/docs/execution-providers/");
                 }
                 else if(pathname.includes("docs/reference/api")){
-                    window.location.replace("https://onnxruntime.ai/docs/api");
-                }
-                // Catch all docs 404 and redirect to docs home
-                else if(pathname.includes("/docs")){
-                    window.location.replace("https://onnxruntime.ai/docs");
+                    window.location.replace("/docs/api");
                 }
              }
         }
