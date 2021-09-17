@@ -27,7 +27,7 @@ size_t gpu_mem_limit = std::numeric_limits<size_t>::max();
 #if defined(USE_CUDA) || defined(USE_ROCM)
 #ifdef USE_CUDA
 // TODO remove deprecated global config
-OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE;
+OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearchExhaustive;
 // TODO remove deprecated global config
 bool do_copy_in_default_stream = true;
 onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocator_info{};
