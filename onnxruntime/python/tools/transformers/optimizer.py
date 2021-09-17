@@ -248,7 +248,7 @@ def get_fusion_statistics(optimized_model_path: str) -> Dict[str, int]:
         A dictionary with operator type as key, and count as value
     """
     model = load_model(optimized_model_path, format=None, load_external_data=True)
-    optimizer = BertOnnxModel(model, num_heads=12, hidden_size=768)
+    optimizer = BertOnnxModel(model)
     return optimizer.get_fused_operator_statistics()
 
 
@@ -272,24 +272,24 @@ def _parse_arguments():
         '--num_heads',
         required=False,
         type=int,
-        default=12,
+        default=0,
         help=
-        "number of attention heads. 12 for bert-base model and 16 for bert-large. For BERT, set it to 0 to detect automatically."
+        "number of attention heads like 12 for bert-base and 16 for bert-large. Default is 0 to detect automatically."
     )
 
     parser.add_argument(
         '--hidden_size',
         required=False,
         type=int,
-        default=768,
+        default=0,
         help=
-        "bert model hidden size. 768 for bert-base model and 1024 for bert-large. For BERT, set it to 0 to detect automatically."
+        "hidden size like 768 for bert-base and 1024 for bert-large. Default is 0 to detect automatically."
     )
 
     parser.add_argument('--input_int32',
                         required=False,
                         action='store_true',
-                        help="Use int32 (instead of int64) tensor as input to avoid unnecessary data cast.")
+                        help="Use int32 (instead of int64) tensor as BERT input. It could avoid unnecessary data cast when EmbedLayerNormalization is fused.")
     parser.set_defaults(input_int32=False)
 
     parser.add_argument(
