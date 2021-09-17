@@ -176,6 +176,11 @@
 <span class="sd">            precedence. Values can either be provider names or tuples of</span>
 <span class="sd">            (provider name, options dict). If not provided, then all available</span>
 <span class="sd">            providers are used with the default precedence.</span>
+<span class="sd">            The next release (ORT 1.10) will require explicitly setting</span>
+<span class="sd">            this providers parameter if you want to use execution providers</span>
+<span class="sd">            other than the default CPU provider (as opposed to the current</span>
+<span class="sd">            behavior of providers getting set/registered by default based on the</span>
+<span class="sd">            build flags) when instantiating InferenceSession.</span>
 <span class="sd">        :param provider_options: Optional sequence of options dicts corresponding</span>
 <span class="sd">            to the providers listed in &#39;providers&#39;.</span>
 
