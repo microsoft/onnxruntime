@@ -288,7 +288,7 @@ def hipify(src_file_path, dst_file_path):
         s = s.replace('CUFFT', 'HIPFFT')
 
         # Undo where above hipify steps went too far.
-        s = s.replace('ROCM_VERSION', 'CUDA_VERSION')  # semantically different meanings, cannot hipify 
+        s = s.replace('ROCM_VERSION', 'CUDA_VERSION')  # semantically different meanings, cannot hipify
 
     with open(dst_file_path, 'w') as f:
         f.write(s)
