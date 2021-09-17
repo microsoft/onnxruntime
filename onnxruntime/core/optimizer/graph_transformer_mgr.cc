@@ -20,9 +20,6 @@ common::Status GraphTransformerManager::GetSteps(unsigned& steps) const {
 }
 
 common::Status GraphTransformerManager::ApplyTransformers(Graph& graph, TransformerLevel level, const logging::Logger& logger) const {
-  if (level_to_transformer_map_.empty()) {
-    return Status::OK();
-  }
   const auto& transformers = level_to_transformer_map_.find(level);
   if (transformers == level_to_transformer_map_.end()) {
     return Status::OK();
