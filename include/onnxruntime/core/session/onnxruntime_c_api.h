@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// See docs\c_cxx\README.md on generating the Doxygen documentation from this file
+
 /** \mainpage C & C++ APIs
 *
 * <h1>C</h1>

@@ -51,14 +51,14 @@ PROJECT_BRIEF          =
 # pixels and the maximum width should not exceed 200 pixels. Doxygen will copy
 # the logo to the output directory.
 
-PROJECT_LOGO           = "images/ONNX_Runtime_logo - Docs.png"
+PROJECT_LOGO           = "../images/ONNX_Runtime_logo - Docs.png"
 
 # The OUTPUT_DIRECTORY tag is used to specify the (relative or absolute) path
 # into which the generated documentation will be written. If a relative path is
 # entered, it will be relative to the location where doxygen was started. If
 # left blank the current directory will be used.
 
-OUTPUT_DIRECTORY       = doxygen-html
+OUTPUT_DIRECTORY       = ../../build/doxygen
 
 # If the CREATE_SUBDIRS tag is set to YES then doxygen will create 4096 sub-
 # directories (in 2 levels) under the output directory of each output format and
@@ -843,7 +843,7 @@ WARN_NO_PARAMDOC       = YES
 # Possible values are: NO, YES and FAIL_ON_WARNINGS.
 # The default value is: NO.
 
-WARN_AS_ERROR          = NO
+WARN_AS_ERROR          = FAIL_ON_WARNINGS
 
 # The WARN_FORMAT tag determines the format of the warning messages that doxygen
 # can produce. The string should contain the $file, $line, and $text tags, which
@@ -871,8 +871,8 @@ WARN_LOGFILE           =
 # spaces. See also FILE_PATTERNS and EXTENSION_MAPPING
 # Note: If this tag is empty the current directory is searched.
 
-INPUT                  = ../include/onnxruntime/core/session/onnxruntime_c_api.h \
-                         ../include/onnxruntime/core/session/onnxruntime_cxx_api.h
+INPUT                  = ../../include/onnxruntime/core/session/onnxruntime_c_api.h \
+                         ../../include/onnxruntime/core/session/onnxruntime_cxx_api.h
 
 # This tag can be used to specify the character encoding of the source files
 # that doxygen parses. Internally doxygen uses the UTF-8 encoding. Doxygen uses
@@ -993,7 +993,7 @@ EXCLUDE_SYMBOLS        =
 # that contain example code fragments that are included (see the \include
 # command).
 
-EXAMPLE_PATH           = ../include/onnxruntime/core/session
+EXAMPLE_PATH           = ../../include/onnxruntime/core/session
 
 # If the value of the EXAMPLE_PATH tag contains directories, you can use the
 # EXAMPLE_PATTERNS tag to specify one or more wildcard pattern (like *.cpp and
@@ -1258,7 +1258,7 @@ HTML_FILE_EXTENSION    = .html
 # of the possible markers and block names see the documentation.
 # This tag requires that the tag GENERATE_HTML is set to YES.
 
-HTML_HEADER            =
+HTML_HEADER            = doxygen-header.html
 
 # The HTML_FOOTER tag can be used to specify a user-defined HTML footer for each
 # generated HTML page. If the tag is left blank doxygen will generate a standard
