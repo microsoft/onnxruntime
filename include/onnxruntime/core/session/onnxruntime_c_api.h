@@ -1,9 +1,24 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-/** @file onnxruntime_c_api.h
+// See docs\c_cxx\README.md on generating the Doxygen documentation from this file
 
-  @brief ONNX Runtime C API.
+/** \mainpage C & C++ APIs
+*
+* <h1>C</h1>
+*
+* ::OrtApi - Click here to jump to the structure with all C API functions.
+*
+* <h1>C++</h1>
+*
+* ::Ort - Click here to jump to the namespace holding all of the C++ wrapper classes
+*
+* It is a set of header only wrapper classes around the C API. The goal is to turn the C style return value error codes into C++ exceptions, and to
+* automate memory management through standard C++ RAII principles.
+*
+* \addtogroup Global
+* ONNX Runtime C API
+* @{
 */
 
 #pragma once
