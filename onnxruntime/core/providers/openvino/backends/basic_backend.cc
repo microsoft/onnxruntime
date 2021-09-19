@@ -41,7 +41,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   std::ifstream blob_path;
   std::string ov_compiled_blobs_dir = "";
 
-#if defined(OPENVINO_2021_3)
+#if defined(OPENVINO_2021_4)
   if(hw_target == "MYRIAD")
     vpu_status = true;
   const std::string compiled_blob_path = onnxruntime::GetEnvironmentVar("OV_BLOB_PATH");
