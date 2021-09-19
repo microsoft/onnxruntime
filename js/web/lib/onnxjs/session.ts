@@ -48,10 +48,10 @@ export class Session {
     this.profiler.stop();
   }
 
-  async loadModel(uri: string): Promise<void>;
+  async loadModel(uri: string, fetchOptions?: RequestInit): Promise<void>;
   async loadModel(buffer: ArrayBuffer, byteOffset?: number, length?: number): Promise<void>;
   async loadModel(buffer: Uint8Array): Promise<void>;
-  async loadModel(arg: string|ArrayBuffer|Uint8Array, byteOffset?: number, length?: number): Promise<void> {
+  async loadModel(arg: string|ArrayBuffer|Uint8Array, arg1?: RequestInit | number, length?: number): Promise<void> {
     await this.profiler.event('session', 'Session.loadModel', async () => {
       // resolve backend and session handler
       const backend = await resolveBackend(this.backendHint);
@@ -66,13 +66,13 @@ export class Session {
           this.initialize(Buffer.from(buf), isOrtFormat);
         } else {
           // browser
-          const response = await fetch(arg);
+          const response = await fetch(arg, (arg1 ?? {}) as RequestInit);
           const buf = await response.arrayBuffer();
           this.initialize(new Uint8Array(buf), isOrtFormat);
         }
       } else if (!ArrayBuffer.isView(arg)) {
         // load model from ArrayBuffer
-        const arr = new Uint8Array(arg, byteOffset || 0, length || arg.byteLength);
+        const arr = new Uint8Array(arg, (arg1 || 0) as number, length || arg.byteLength);
         this.initialize(arr);
       } else {
         // load model from Uint8array
