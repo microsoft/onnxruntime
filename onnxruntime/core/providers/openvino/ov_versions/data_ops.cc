@@ -104,7 +104,6 @@ std::vector<SupportedOp> supported_op_mode = {
     {"GlobalLpPool", V_2020_4, {"CPU", "GPU"}},
     {"Greater", V_2020_4, {"All"}},
     {"Identity", V_2020_4, {"All"}},
-    {"ImageScaler", V_2021_4, {"All"}},
     {"InstanceNormalization", V_2020_4, {"All"}},
     {"HardSigmoid", V_2020_4, {"CPU", "GPU"}},
     {"LeakyRelu", V_2020_4, {"All"}},
