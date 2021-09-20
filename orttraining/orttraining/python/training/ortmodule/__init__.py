@@ -76,5 +76,4 @@ torch.cuda.manual_seed = override_torch_cuda_manual_seed
 
 # ORTModule must be loaded only after all validation passes
 from .ortmodule import ORTModule
-from .hierarchal_ortmodule import HierarchalORTModule
 from .debug_options import DebugOptions, LogLevel

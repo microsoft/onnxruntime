@@ -7,7 +7,8 @@ import torch.fx
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.checkpoint import checkpoint
-from onnxruntime.training.ortmodule import ORTModule, HierarchalORTModule
+from onnxruntime.training.ortmodule import ORTModule
+from onnxruntime.training.ortmodule.experimental.hierarchical_ortmodule import HierarchicalORTModule
 
 
 class A(nn.Module):
@@ -76,35 +77,39 @@ class Main(nn.Module):
         return z
 
 
-def test_hierarchal_ortmodule():
-    x = torch.rand(2).requires_grad_()
-    m = Main()
+def test_hierarchical_ortmodule():
+    def trial():
+        x = torch.rand(2).requires_grad_()
+        m = Main()
 
-    y_ref = m(x)
-    y_ref.sum().backward()
-    g_ref = x.grad.detach()
+        y_ref = m(x)
+        y_ref.sum().backward()
+        g_ref = x.grad.detach()
 
-    x.grad = None
-    m = HierarchalORTModule(m)
+        x.grad = None
+        m = HierarchicalORTModule(m)
 
-    y = m(x,)
-    y.sum().backward()
-    g = x.grad.detach()
+        y = m(x,)
+        y.sum().backward()
+        g = x.grad.detach()
 
-    def count_ortmodule(module):
-        n = 0
-        for child in module.children():
-            if isinstance(child, ORTModule):
-                n = n + 1
-        return n
-    # Some sub-modules become ORTModule.
-    num_ortmodule = count_ortmodule(m._module)
-    assert num_ortmodule == 2
+        def count_ortmodule(module):
+            n = 0
+            for child in module.children():
+                if isinstance(child, ORTModule):
+                    n = n + 1
+            return n
+        # Some sub-modules become ORTModule.
+        num_ortmodule = count_ortmodule(m._original_module)
+        assert num_ortmodule == 2
 
-    assert torch.allclose(y, y_ref)
-    assert torch.allclose(g, g_ref)
+        assert torch.allclose(y, y_ref)
+        assert torch.allclose(g, g_ref)
+
+    num_trials = 8
+    for i in range(num_trials):
+        trial()
 
 
 if __name__ == '__main__':
-    for i in range(20):
-        test_hierarchal_ortmodule()
+    test_hierarchical_ortmodule()

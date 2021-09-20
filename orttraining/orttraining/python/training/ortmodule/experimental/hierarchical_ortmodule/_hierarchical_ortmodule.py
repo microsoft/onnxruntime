@@ -1,15 +1,16 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # debug_options.py
+import tempfile
 import torch
-from . import ORTModule
+from ... import ORTModule
 
 
-class HierarchalORTModule(torch.nn.Module):
+class HierarchicalORTModule(torch.nn.Module):
     def __init__(self, module):
-        super(HierarchalORTModule, self).__init__()
+        super(HierarchicalORTModule, self).__init__()
         self._initialized = False
-        self._module = module
+        self._original_module = module
 
     def _initialize(self, *args, **kwargs):
         handle_pool = []
@@ -18,7 +19,6 @@ class HierarchalORTModule(torch.nn.Module):
         # A forward pre-hook to record inputs for each nn.Module.
         def record_args(module, args):
             if module in module_arg_pool:
-                # Maybe throw if one module is called multiple times.
                 module_arg_pool[module].append(args)
             else:
                 module_arg_pool[module] = [args]
@@ -50,8 +50,9 @@ class HierarchalORTModule(torch.nn.Module):
                 # Check if this leaf module is exportable.
                 for args in module_arg_pool[module]:
                     try:
-                        torch.onnx.export(
-                            module, args, 'tmp.onnx', opset_version=9)
+                        with tempfile.NamedTemporaryFile(prefix='sub-module') as temp:
+                            torch.onnx.export(
+                                module, args, temp, opset_version=9)
                     except Exception as e:
                         exportable = False
 
@@ -80,8 +81,9 @@ class HierarchalORTModule(torch.nn.Module):
                     module_exportable = True
                     for args in module_arg_pool[module]:
                         try:
-                            torch.onnx.export(
-                                module, args, 'tmp.onnx', opset_version=9)
+                            with tempfile.NamedTemporaryFile(prefix='sub-module') as temp:
+                                torch.onnx.export(
+                                    module, args, temp, opset_version=9)
                         except Exception as e:
                             # If this module is not exportable for one arg
                             # group, we say this module is not exportable.
@@ -117,11 +119,11 @@ class HierarchalORTModule(torch.nn.Module):
                         recursive_wrap(sub)
 
         # Add a hook to record forward's input for all modules.
-        recursive_hook(self._module)
+        recursive_hook(self._original_module)
 
         # Run forward with actual input to record all possible
         # inputs for all invoked modules.
-        y = self._module(*args, **kwargs)
+        y = self._original_module(*args, **kwargs)
 
         # We already have "supported_modules" so
         # we no longer need those hooks in forward pass.
@@ -130,7 +132,7 @@ class HierarchalORTModule(torch.nn.Module):
 
         # Try exporter on all module-input pairs. If a module can be exported with
         # all its recorded inputs, then it's exporable.
-        check_exportable(self._module)
+        check_exportable(self._original_module)
 
         # A naive way of determining if ORT can run nn.Module
         def is_supported(module):
@@ -154,10 +156,10 @@ class HierarchalORTModule(torch.nn.Module):
                     else:
                         recursive_wrap(sub)
 
-        recursive_wrap(self._module)
+        recursive_wrap(self._original_module)
 
     def forward(self, *inputs, **kwargs):
         if not self._initialized:
-            self._initialize(*inputs, **kwargs)
             self._initialized = True
-        return self._module.forward(*inputs, **kwargs)
+            self._initialize(*inputs, **kwargs)
+        return self._original_module.forward(*inputs, **kwargs)
