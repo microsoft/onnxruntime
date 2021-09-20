@@ -42,9 +42,9 @@ class OnnxruntimeWebAssemblyBackend implements Backend {
     // init wasm
     await initWasm();
   }
-  createSessionHandler(path: string, options?: InferenceSession.SessionOptions): Promise<SessionHandler>;
+  createSessionHandler(path: string, options?: InferenceSession.SessionOptions & { fetchOptions?: RequestInit }): Promise<SessionHandler>;
   createSessionHandler(buffer: Uint8Array, options?: InferenceSession.SessionOptions): Promise<SessionHandler>;
-  async createSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
+  async createSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions & { fetchOptions?: RequestInit }):
       Promise<SessionHandler> {
     let buffer: Uint8Array;
     if (typeof pathOrBuffer === 'string') {
@@ -53,7 +53,7 @@ class OnnxruntimeWebAssemblyBackend implements Backend {
         buffer = await promisify(readFile)(pathOrBuffer);
       } else {
         // browser
-        const response = await fetch(pathOrBuffer);
+        const response = await fetch(pathOrBuffer, options?.fetchOptions ?? {});
         const arrayBuffer = await response.arrayBuffer();
         buffer = new Uint8Array(arrayBuffer);
       }

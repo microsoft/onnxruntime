@@ -10,7 +10,7 @@ class OnnxjsBackend implements Backend {
   // eslint-disable-next-line @typescript-eslint/no-empty-function
   async init(): Promise<void> {}
 
-  async createSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
+  async createSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions & { fetchOptions?: RequestInit }):
       Promise<SessionHandler> {
     // NOTE: Session.Config(from onnx.js) is not compatible with InferenceSession.SessionOptions(from
     // onnxruntime-common).
@@ -20,7 +20,7 @@ class OnnxjsBackend implements Backend {
 
     // typescript cannot merge method override correctly (so far in 4.2.3). need if-else to call the method.
     if (typeof pathOrBuffer === 'string') {
-      await session.loadModel(pathOrBuffer);
+      await session.loadModel(pathOrBuffer, options?.fetchOptions ?? {});
     } else {
       await session.loadModel(pathOrBuffer);
     }

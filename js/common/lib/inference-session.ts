@@ -338,7 +338,7 @@ export interface InferenceSessionFactory {
    * @param options - specify configuration for creating a new inference session.
    * @returns A promise that resolves to an InferenceSession object.
    */
-  create(uri: string, options?: InferenceSession.SessionOptions): Promise<InferenceSession>;
+  create(uri: string, options?: InferenceSession.SessionOptions & { fetchOptions?: RequestInit }): Promise<InferenceSession>;
 
   /**
    * Create a new inference session and load model asynchronously from an array bufer.
