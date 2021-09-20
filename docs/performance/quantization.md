@@ -42,7 +42,7 @@ There are 2 ways to represent quantized ONNX models:
 
 For the last 2 cases, you don't need to quantize the model with quantization tool. OnnxRuntime CPU EP can run them directly as quantized model. TensorRT and NNAPI EP are adding support. 
 
-Picure below shows the equivalent representation with QDQ format and Operator oriented format for quantized Conv. This [E2E](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/quantization/image_classification/cpu/run.py) example demonstrates QDQ and Operator Oriented format.
+Picture below shows the equivalent representation with QDQ format and Operator oriented format for quantized Conv. This [E2E](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/quantization/image_classification/cpu/run.py) example demonstrates QDQ and Operator Oriented format.
 
 ![Changes to nodes from basic and extended optimizations](../../images/QDQ_Format.png)
 
