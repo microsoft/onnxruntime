@@ -25,7 +25,7 @@ Pre-built packages and Docker images are available for Jetpack in the [Jetson Zo
 
 See [Build instructions](../build/eps.md#tensorrt).
 
-The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 8.0.1.6.
+The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 8.0.3.4.
 
 ## Usage
 ### C/C++
