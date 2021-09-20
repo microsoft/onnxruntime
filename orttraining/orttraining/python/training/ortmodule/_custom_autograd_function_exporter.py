@@ -5,6 +5,7 @@
 
 import sys
 import torch
+import torch.utils.checkpoint
 import warnings
 from torch.onnx import symbolic_helper
 
@@ -18,7 +19,7 @@ from . import _logger
 # for big models such as GPT-2. Exporting CheckpointFunction as PythonOp means
 # every transformer would be computed by Pytorch and ORT doesn't contribute
 # at all.
-_banned_autograd_function_names = set(['CheckpointFunction'])
+_banned_autograd_function_names = set([torch.utils.checkpoint.CheckpointFunction.__name__])
 
 
 def _export(g, n, *args, **kwargs):

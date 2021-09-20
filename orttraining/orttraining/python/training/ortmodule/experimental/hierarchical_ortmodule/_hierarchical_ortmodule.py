@@ -162,4 +162,4 @@ class HierarchicalORTModule(torch.nn.Module):
         if not self._initialized:
             self._initialized = True
             self._initialize(*inputs, **kwargs)
-        return self._original_module.forward(*inputs, **kwargs)
+        return self._original_module(*inputs, **kwargs)
