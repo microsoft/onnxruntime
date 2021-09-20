@@ -12,16 +12,20 @@ namespace EndToEndTests.Mobile.Automation
             {
                 return ConfigureApp
                     .Android
+#if DEBUG
                     .EnableLocalScreenshots()
                     .ApkFile("../../../../Microsoft.ML.OnnxRuntime.Tests.Droid/bin/Release/com.xamcat.microsoft_ml_onnxruntime_tests_droid.apk")
+#endif
                     .StartApp();
             }
 
             // For local testing of the iOS test app, install to a physical iPhone device first
             return ConfigureApp
                 .iOS
+#if DEBUG
                 .EnableLocalScreenshots()
                 .InstalledApp(bundleId: "com.xamcat.Microsoft-ML-OnnxRuntime-Tests-iOS")
+#endif
                 .StartApp();
         }
     }

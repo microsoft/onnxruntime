@@ -1,6 +1,6 @@
 ﻿using System;
-using System.Text.Json;
 using System.Threading;
+using Newtonsoft.Json;
 using NUnit.Framework;
 using Xamarin.UITest;
 
@@ -24,9 +24,7 @@ namespace EndToEndTests.Mobile.Automation
 
         [SetUp]
         public void BeforeEachTest()
-        {
-            _app = AppInitializer.StartApp(_platform);
-        }
+            => _app = AppInitializer.StartApp(_platform);
 
         [Test]
         public void RunPlatformUnitTest()
@@ -41,7 +39,7 @@ namespace EndToEndTests.Mobile.Automation
             var serializedResultSummary = _app.Invoke(_getResultsBackdoorMethodName)?.ToString();
             Assert.IsNotEmpty(serializedResultSummary, "Test results were not returned");
 
-            var testOutcome = JsonSerializer.Deserialize<TestOutcome>(serializedResultSummary);
+            var testOutcome = JsonConvert.DeserializeObject<TestOutcome>(serializedResultSummary);
             Assert.AreEqual(testOutcome.Failed, 0, $"{testOutcome.Failed} tests failed");
 
             _app.Screenshot("Post-testing");

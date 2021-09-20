@@ -31,20 +31,14 @@ function checkTestRunStatus() {
     testResultRegex='"resultStatus":"([a-z]*)"'
 
     # Get Android and iOS test run id's if they have not already been resolved
-    if [ $latestiOSTestRunId = null ] || [ $latestAndroidTestRunId = null ]; then
-        getLatestTestRunIds
-    fi
+    [ $latestiOSTestRunId = null ] || [ $latestAndroidTestRunId = null ] && { getLatestTestRunIds }
 
-    # Error if it's not possible to resolve both tset run ID values
-    if [ $latestiOSTestRunId = null ] || [ $latestAndroidTestRunId = null ]; then
-        ((errors++))
-        return
-    fi
+    # Error if it's not possible to resolve both test run ID values
+    [ $latestiOSTestRunId = null ] || [ $latestAndroidTestRunId = null ] && { ((errors++)); return }
     
     androidLatestTestRunJson=$(curl -s -b -v -w "%{http_code}" -H "X-API-Token:$tokenAndroid" "https://api.appcenter.ms/v0.1/apps/$org/$appNameAndroid/test_runs/$latestAndroidTestRunId")   
     [[ $androidLatestTestRunJson =~ $runStatusRegex ]]   
     latestAndroidTestRunState="${BASH_REMATCH[1]}"
-
 
     iosLatestTestRunJson=$(curl -s -b -v -w "%{http_code}" -H "X-API-Token:$tokeniOS" "https://api.appcenter.ms/v0.1/apps/$org/$appNameiOS/test_runs/$latestiOSTestRunId")
     [[ $iosLatestTestRunJson =~ $runStatusRegex ]]   

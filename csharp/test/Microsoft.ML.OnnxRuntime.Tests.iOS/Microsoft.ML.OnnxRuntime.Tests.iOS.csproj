@@ -76,6 +76,7 @@
         <CodesignKey>iPhone Distribution</CodesignKey>
         <MtouchLink>SdkOnly</MtouchLink>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <MtouchUseLlvm>true</MtouchUseLlvm>
     </PropertyGroup>
 
     <PropertyGroup>
