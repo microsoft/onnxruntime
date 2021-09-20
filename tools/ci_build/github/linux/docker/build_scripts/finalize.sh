@@ -10,7 +10,7 @@ MY_DIR=$(dirname "${BASH_SOURCE[0]}")
 source $MY_DIR/build_utils.sh
 
 mkdir /opt/python
-for PREFIX in $(find /opt/_internal/ -mindepth 1 -maxdepth 1 -name 'cpython*'); do
+for PREFIX in $(find /opt/_internal/ -mindepth 1 -maxdepth 1 \( -name 'cpython*' -o -name 'pypy*' \)); do
 	# Some python's install as bin/python3. Make them available as
 	# bin/python.
 	if [ -e ${PREFIX}/bin/python3 ] && [ ! -e ${PREFIX}/bin/python ]; then
@@ -20,16 +20,20 @@ for PREFIX in $(find /opt/_internal/ -mindepth 1 -maxdepth 1 -name 'cpython*'); 
 	if [ -e ${PREFIX}/bin/pip3 ] && [ ! -e ${PREFIX}/bin/pip ]; then
 		ln -s pip3 ${PREFIX}/bin/pip
 	fi
+	PY_VER=$(${PREFIX}/bin/python -c "import sys; print('.'.join(str(v) for v in sys.version_info[:2]))")
 	# Since we fall back on a canned copy of pip, we might not have
 	# the latest pip and friends. Upgrade them to make sure.
-	${PREFIX}/bin/pip install -U --require-hashes -r ${MY_DIR}/requirements.txt
+	${PREFIX}/bin/pip install -U --require-hashes -r ${MY_DIR}/requirements${PY_VER}.txt
 	# Create a symlink to PREFIX using the ABI_TAG in /opt/python/
 	ABI_TAG=$(${PREFIX}/bin/python ${MY_DIR}/python-tag-abi-tag.py)
 	ln -s ${PREFIX} /opt/python/${ABI_TAG}
 	# Make versioned python commands available directly in environment.
 	PYVERS=$(${PREFIX}/bin/python -c "import sys; print('.'.join(map(str, sys.version_info[:2])))")
-	ln -s ${PREFIX}/bin/python /usr/local/bin/python${PYVERS}
-	ln -s ${PREFIX}/bin/pip /usr/local/bin/pip${PYVERS}
+	if [[ "${PREFIX}" == *"/pypy"* ]]; then
+		ln -s ${PREFIX}/bin/python /usr/local/bin/pypy${PYVERS}
+	else
+		ln -s ${PREFIX}/bin/python /usr/local/bin/python${PYVERS}
+	fi
 done
 
 # Create venv for auditwheel & certifi
@@ -38,15 +42,24 @@ TOOLS_PATH=/opt/_internal/tools
 source $TOOLS_PATH/bin/activate
 
 # Install default packages
-pip install -U --require-hashes -r $MY_DIR/requirements.txt
-# Install certifi and auditwheel
-pip install -U --require-hashes -r $MY_DIR/requirements-tools.txt
+pip install -U --require-hashes -r $MY_DIR/requirements3.9.txt
+# Install certifi and pipx
+pip install -U --require-hashes -r $MY_DIR/requirements-base-tools.txt
 
-# Make auditwheel available in PATH
-ln -s $TOOLS_PATH/bin/auditwheel /usr/local/bin/auditwheel
+# Make pipx available in PATH,
+# Make sure when root installs apps, they're also in the PATH
+cat <<EOF > /usr/local/bin/pipx
+#!/bin/bash
 
-# Make pipx available in PATH
-ln -s $TOOLS_PATH/bin/pipx /usr/local/bin/pipx
+set -euo pipefail
+
+if [ \$(id -u) -eq 0 ]; then
+	export PIPX_HOME=/opt/_internal/pipx
+	export PIPX_BIN_DIR=/usr/local/bin
+fi
+${TOOLS_PATH}/bin/pipx "\$@"
+EOF
+chmod 755 /usr/local/bin/pipx
 
 # Our openssl doesn't know how to find the system CA trust store
 #   (https://github.com/pypa/manylinux/issues/53)
@@ -58,6 +71,14 @@ export SSL_CERT_FILE=/opt/_internal/certs.pem
 
 # Deactivate the tools virtual environment
 deactivate
+
+# install other tools with pipx
+pushd $MY_DIR/requirements-tools
+for TOOL_PATH in $(find . -type f); do
+	TOOL=$(basename ${TOOL_PATH})
+	pipx install --pip-args="--require-hashes -r" ${TOOL}
+done
+popd
 
 # We do not need the precompiled .pyc and .pyo files.
 clean_pyc /opt/_internal

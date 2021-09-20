@@ -89,7 +89,7 @@ inline void TestShapeInference(const std::string& op_type,
 
   node->add_output("Output");
 
-  ONNX_NAMESPACE::shape_inference::InferShapes(model, true, schema_registry);
+  ONNX_NAMESPACE::shape_inference::InferShapes(model, schema_registry);
   ONNX_NAMESPACE::checker::check_model(model);
 
   auto inferredGraph = model.graph();

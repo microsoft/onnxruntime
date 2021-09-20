@@ -6,15 +6,39 @@ import torch
 from numpy.testing import assert_allclose
 from onnxruntime.capi.ort_trainer import ORTTrainer as Legacy_ORTTrainer
 from onnxruntime.training import orttrainer
+
 try:
     from onnxruntime.training.ortmodule import ORTModule
+    from onnxruntime.training.ortmodule._custom_autograd_function import enable_custom_autograd_support
     from onnxruntime.training.ortmodule._graph_execution_manager_factory import GraphExecutionManagerFactory
+    from onnxruntime.training.ortmodule._fallback import ORTModuleInitException
 except ImportError:
     # Some pipelines do not contain ORTModule
     pass
-except EnvironmentError:
-    # Some pipelines do not contain ORTModule
-    pass
+except Exception as e:
+    from onnxruntime.training.ortmodule._fallback import ORTModuleInitException
+    if isinstance(e, ORTModuleInitException):
+        # ORTModule is present but not ready to run
+        # That is OK because this file is also used by ORTTrainer tests
+        pass
+    raise
+
+def is_all_or_nothing_fallback_enabled(model, policy=None):
+    from onnxruntime.training.ortmodule import ORTMODULE_FALLBACK_POLICY
+    from onnxruntime.training.ortmodule._fallback import _FallbackPolicy
+
+    if os.getenv('ORTMODULE_FALLBACK_POLICY') == _FallbackPolicy.FALLBACK_DISABLE.name:
+        return False
+
+    if not policy:
+        policy = _FallbackPolicy.FALLBACK_DISABLE
+
+    fallback_on_env = policy in ORTMODULE_FALLBACK_POLICY
+    fallback_on_model = False
+    if model:
+        fallback_on_model = policy in model._torch_module._execution_manager(is_training=True)._fallback_manager.policy or\
+                            policy in model._torch_module._execution_manager(is_training=False)._fallback_manager.policy
+    return fallback_on_env or fallback_on_model
 
 def assert_model_outputs(output_a, output_b, verbose=False, rtol=1e-7, atol=0):
     r"""Asserts whether output_a and output_b difference is within specified tolerance
@@ -104,14 +128,14 @@ def assert_optim_state(expected_state, actual_state, rtol=1e-7, atol=0):
                 "Update_Count": update_tensor # if optimizer is adam, absent otherwise
             },
         ...
-        "shared_optimizer_state": # if optimizer is shared, absent otherwise. 
+        "shared_optimizer_state": # if optimizer is shared, absent otherwise.
                                     So far, only lamb optimizer uses this.
         {
             "step": step_tensor # int array of size 1
         }
 
     Args:
-        expected_state (dict(dict())): Expected optimizer state 
+        expected_state (dict(dict())): Expected optimizer state
         actual_state (dict(dict())): Actual optimizer state
         rtol (float, default is 1e-7): Max relative difference
         atol (float, default is 0): Max absolute difference
@@ -187,24 +211,29 @@ def assert_values_are_close(input, other, rtol=1e-05, atol=1e-06):
         assert False, err_msg
 
 def enable_custom_autograd_function(module):
-    for mode in [True, False]:
-        module._torch_module._execution_manager(mode)._enable_custom_autograd_function = True
+    enable_custom_autograd_support()
 
 def run_with_pytorch_on_device(device, model, input_list, label_input, is_eval_mode=False):
-    model.to(device)
+    with torch.no_grad():
+        model = copy.deepcopy(model).to(device)
     if is_eval_mode:
         model.eval()
     else:
         model.train()
 
-    inputs_on_device = [input_.to(device) for input_ in input_list]
+    with torch.no_grad():
+        inputs_on_device = [input_.to(device) for input_ in input_list]
+        for i, val in enumerate(input_list):
+            if val.requires_grad:
+                inputs_on_device[i].requires_grad_()
+        target = label_input.to(device)
+
     output = model(*inputs_on_device)
     forward_outputs = [output]
     grad_outputs = []
 
     if not is_eval_mode:
         criterion = torch.nn.MSELoss()
-        target = label_input.to(device)
         loss = criterion(output, target)
         loss.backward()
         for name, param in model.named_parameters():
@@ -213,23 +242,29 @@ def run_with_pytorch_on_device(device, model, input_list, label_input, is_eval_m
     return forward_outputs, grad_outputs
 
 def run_with_ort_on_device(device, model, input_list, label_input, is_eval_mode=False):
-    model = copy.deepcopy(model)
-    model.to(device)
-    model = ORTModule(model)
+    with torch.no_grad():
+        model = copy.deepcopy(model)
+        model.to(device)
     enable_custom_autograd_function(model)
+    model = ORTModule(model)
     if is_eval_mode:
         model.eval()
     else:
         model.train()
 
-    inputs_on_device = [input_.to(device) for input_ in input_list]
+    with torch.no_grad():
+        inputs_on_device = [input_.to(device) for input_ in input_list]
+        for i, val in enumerate(input_list):
+            if val.requires_grad:
+                inputs_on_device[i].requires_grad_()
+
+        target = label_input.to(device)
     output = model(*inputs_on_device)
     forward_outputs = [output]
     grad_outputs = []
 
     if not is_eval_mode:
         criterion = torch.nn.MSELoss()
-        target = label_input.to(device)
         loss = criterion(output, target)
         loss.backward()
         for name, param in model.named_parameters():
@@ -241,28 +276,33 @@ def compare_tensor_list(val_list_a, val_list_b):
     for val_a, val_b in zip(val_list_a, val_list_b):
        assert_values_are_close(val_a, val_b, atol=1e-7, rtol=1e-6)
 
-def run_training_test_and_compare(pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input, ignore_grad_compare=False):
+def run_training_test_and_compare(pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input,
+                                  ignore_grad_compare=False, expected_outputs=[], expected_grads=[]):
     cpu = torch.device("cpu")
 
     def cpu_barrier_func():
         pass
     run_training_test_on_device_and_compare(
-        cpu, pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input, cpu_barrier_func, ignore_grad_compare)
+        cpu, pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input, cpu_barrier_func,
+        ignore_grad_compare, expected_outputs, expected_grads)
 
     def cuda_barrier_func():
         torch.cuda.synchronize()
     cuda = torch.device('cuda:0')
     run_training_test_on_device_and_compare(
-        cuda, pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input, cuda_barrier_func, ignore_grad_compare)
+        cuda, pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input, cuda_barrier_func,
+        ignore_grad_compare, expected_outputs, expected_grads)
 
-def run_training_test_on_device_and_compare(device, pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input, barrier_func, ignore_grad_compare=False):
+def run_training_test_on_device_and_compare(device, pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input, barrier_func,
+                                            ignore_grad_compare=False, expected_outputs=[], expected_grads=[]):
     repeats = 16
     for i in range(repeats):
         m = pt_model_builder_func()
         x = pt_model_inputs_generator()
 
-        m_ort = copy.deepcopy(m)
-        x_ort = copy.deepcopy(x)
+        with torch.no_grad():
+            m_ort = copy.deepcopy(m)
+            x_ort = copy.deepcopy(x)
 
         outputs, grads = run_with_pytorch_on_device(
             device, m, [x], pt_model_label_input)
@@ -276,11 +316,17 @@ def run_training_test_on_device_and_compare(device, pt_model_builder_func, pt_mo
         val_list_b = [o.detach().cpu() for o in outputs_ort if o is not None]
         compare_tensor_list(val_list_a, val_list_b)
 
+        if len(expected_outputs) > 0:
+            compare_tensor_list(val_list_a, expected_outputs)
+
         # For some test, it is expected the diff might be big due to inconsistent computation orders.
         if ignore_grad_compare is False:
             val_list_a = [o.detach().cpu() for o in grads if o is not None]
             val_list_b = [o.detach().cpu() for o in grads_ort if o is not None]
             compare_tensor_list(val_list_a, val_list_b)
+
+            if len(expected_grads) > 0:
+                compare_tensor_list(val_list_a, expected_grads)
 
 def run_evaluate_test_and_compare(pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input):
     cpu = torch.device("cpu")

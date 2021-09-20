@@ -10,10 +10,18 @@ TODO: Implement mechanism to register extensions and prevent issues with incorre
       for each :meth:`torch.utils.cpp_extension.*` call
 """
 
+import os
 import threading
 from functools import wraps
+from glob import glob
 from onnxruntime.capi import _pybind_state as C
 
+
+def is_installed(torch_cpp_extension_path):
+    torch_cpp_exts = glob(os.path.join(torch_cpp_extension_path, '*.so'))
+    torch_cpp_exts.extend(glob(os.path.join(torch_cpp_extension_path, '*.dll')))
+    torch_cpp_exts.extend(glob(os.path.join(torch_cpp_extension_path, '*.dylib')))
+    return len(torch_cpp_exts) > 0
 
 def run_once_aten_op_executor(f):
     """

@@ -12,6 +12,7 @@ ONNX_OPERATOR_KERNEL_EX(
     11,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
         .TypeConstraint("S", DataTypeImpl::AllFixedSizeSequenceTensorTypes())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("I", std::vector<MLDataType>{
@@ -44,6 +45,7 @@ ONNX_OPERATOR_KERNEL_EX(
     11,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
+        .OutputMemoryType(OrtMemTypeCPUInput, 0)
         .TypeConstraint("S", DataTypeImpl::AllFixedSizeSequenceTensorTypes())
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
     SequenceLength);
@@ -63,6 +65,7 @@ ONNX_OPERATOR_KERNEL_EX(
     11,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
         .TypeConstraint("S", DataTypeImpl::AllFixedSizeSequenceTensorTypes())
         .TypeConstraint("I", std::vector<MLDataType>{
                                  DataTypeImpl::GetTensorType<int32_t>(),
@@ -75,13 +78,12 @@ ONNX_OPERATOR_KERNEL_EX(
     11,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 2)
         .TypeConstraint("S", DataTypeImpl::AllFixedSizeSequenceTensorTypes())
         .TypeConstraint("I", std::vector<MLDataType>{
                                  DataTypeImpl::GetTensorType<int32_t>(),
                                  DataTypeImpl::GetTensorType<int64_t>()}),
     SequenceInsert);
 
-} // namespace cuda
-} // namespace onnxruntime
-
-
+}  // namespace cuda
+}  // namespace onnxruntime

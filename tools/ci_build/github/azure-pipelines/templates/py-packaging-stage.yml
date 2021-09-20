@@ -211,7 +211,7 @@ stages:
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11
           Context: tools/ci_build/github/linux/docker
-          DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg BASEIMAGE=nvcr.io/nvidia/cuda:11.1-cudnn8-devel-centos7 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-9/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-9/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-9/root/usr/lib64:/opt/rh/devtoolset-9/root/usr/lib:/opt/rh/devtoolset-9/root/usr/lib64/dyninst:/opt/rh/devtoolset-9/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
+          DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg BASEIMAGE=nvidia/cuda:11.4.0-cudnn8-devel-centos7 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-10/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-10/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
           Repository: onnxruntimecuda11build
 
       - task: CmdLine@2
@@ -219,7 +219,7 @@ stages:
         inputs:
           script: |
             mkdir -p $HOME/.onnx
-            docker run --gpus all -e CC=/opt/rh/devtoolset-9/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-9/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --rm \
+            docker run --gpus all -e CC=/opt/rh/devtoolset-10/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-10/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --rm \
               --volume /data/onnx:/data/onnx:ro \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
@@ -234,9 +234,9 @@ stages:
                   --skip_submodule_sync \
                   --parallel \
                   --build_wheel \
-                  --enable_onnx_tests --use_cuda --cuda_version=11.1 --cuda_home=/usr/local/cuda-11.1 --cudnn_home=/usr/local/cuda-11.1 \
+                  --enable_onnx_tests --use_cuda --cuda_version=11.4 --cuda_home=/usr/local/cuda-11.4 --cudnn_home=/usr/local/cuda-11.4 \
                   ${{ parameters.build_py_parameters }} \
-                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-9/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
+                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CmdLine@2
@@ -264,9 +264,9 @@ stages:
                   --skip_submodule_sync \
                   --parallel \
                   --build_wheel \
-                  --enable_onnx_tests --use_cuda --cuda_version=11.1 --cuda_home=/usr/local/cuda-11.1 --cudnn_home=/usr/local/cuda-11.1 \
+                  --enable_onnx_tests --use_cuda --cuda_version=11.4 --cuda_home=/usr/local/cuda-11.4 --cudnn_home=/usr/local/cuda-11.4 \
                   ${{ parameters.build_py_parameters }} --ctest_path '' \
-                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-9/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
+                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
 
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
@@ -296,30 +296,30 @@ stages:
       steps:
       - template: get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_rocm
-          Context: tools/ci_build/github/linux/docker
-          DockerBuildArgs: >-
-            --build-arg TORCH_VERSION=1.8.1
-            --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
-            --build-arg BUILD_UID=$(id -u)
-            --network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64
-            --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-9/root
-            --build-arg PREPEND_PATH=/opt/rh/devtoolset-9/root/usr/bin:
-            --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-9/root/usr/lib64:/opt/rh/devtoolset-9/root/usr/lib:/opt/rh/devtoolset-9/root/usr/lib64/dyninst:/opt/rh/devtoolset-9/root/usr/lib/dyninst:/usr/local/lib64
-          Repository: onnxruntimetrainingrocmbuild-torch1.8.1
-      - template: get-docker-image-steps.yml
-        parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_rocm
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_rocm4_2
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: >-
             --build-arg TORCH_VERSION=1.9.0
             --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
             --build-arg BUILD_UID=$(id -u)
             --network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64
-            --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-9/root
-            --build-arg PREPEND_PATH=/opt/rh/devtoolset-9/root/usr/bin:
-            --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-9/root/usr/lib64:/opt/rh/devtoolset-9/root/usr/lib:/opt/rh/devtoolset-9/root/usr/lib64/dyninst:/opt/rh/devtoolset-9/root/usr/lib/dyninst:/usr/local/lib64
-          Repository: onnxruntimetrainingrocmbuild-torch1.9.0
+            --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-10/root
+            --build-arg PREPEND_PATH=/opt/rh/devtoolset-10/root/usr/bin:
+            --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
+          Repository: onnxruntimetrainingrocmbuild-torch1.9.0-rocm4.2
+      - template: get-docker-image-steps.yml
+        parameters:
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_rocm4_3_1
+          Context: tools/ci_build/github/linux/docker
+          DockerBuildArgs: >-
+            --build-arg TORCH_VERSION=1.9.0
+            --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
+            --build-arg BUILD_UID=$(id -u)
+            --network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64
+            --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-10/root
+            --build-arg PREPEND_PATH=/opt/rh/devtoolset-10/root/usr/bin:
+            --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
+          Repository: onnxruntimetrainingrocmbuild-torch1.9.0-rocm4.3.1
 
     - job: ROCM_training_wheels
       timeoutInMinutes: 180
@@ -331,30 +331,38 @@ stages:
       - ROCm_build_environment
       strategy:
         matrix:
-          Python36 Torch181:
-            PythonVersion: '3.6'
-            TorchVersion: '1.8.1'
-          Python37 Torch181:
-            PythonVersion: '3.7'
-            TorchVersion: '1.8.1'
-          Python38 Torch181:
-            PythonVersion: '3.8'
-            TorchVersion: '1.8.1'
-          Python39 Torch181:
-            PythonVersion: '3.9'
-            TorchVersion: '1.8.1'
-          Python36 Torch190:
+          Python36 Torch190 Rocm42:
             PythonVersion: '3.6'
             TorchVersion: '1.9.0'
-          Python37 Torch190:
+            RocmVersion: '4.2'
+          Python37 Torch190 Rocm42:
             PythonVersion: '3.7'
             TorchVersion: '1.9.0'
-          Python38 Torch190:
+            RocmVersion: '4.2'
+          Python38 Torch190 Rocm42:
             PythonVersion: '3.8'
             TorchVersion: '1.9.0'
-          Python39 Torch190:
+            RocmVersion: '4.2'
+          Python39 Torch190 Rocm42:
             PythonVersion: '3.9'
             TorchVersion: '1.9.0'
+            RocmVersion: '4.2'
+          Python36 Torch190 Rocm431:
+            PythonVersion: '3.6'
+            TorchVersion: '1.9.0'
+            RocmVersion: '4.3.1'
+          Python37 Torch190 Rocm431:
+            PythonVersion: '3.7'
+            TorchVersion: '1.9.0'
+            RocmVersion: '4.3.1'
+          Python38 Torch190 Rocm431:
+            PythonVersion: '3.8'
+            TorchVersion: '1.9.0'
+            RocmVersion: '4.3.1'
+          Python39 Torch190 Rocm431:
+            PythonVersion: '3.9'
+            TorchVersion: '1.9.0'
+            RocmVersion: '4.3.1'
       steps:
 
       - checkout: self
@@ -372,7 +380,7 @@ stages:
               --network=host \
               --cap-add=SYS_PTRACE \
               --security-opt seccomp=unconfined \
-              -e CC=/opt/rh/devtoolset-9/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-9/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
+              -e CC=/opt/rh/devtoolset-10/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-10/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
               --workdir /onnxruntime_src \
@@ -380,11 +388,11 @@ stages:
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
               --user onnxruntimedev \
-              onnxruntimetrainingrocmbuild-torch$(TorchVersion) \
+              onnxruntimetrainingrocmbuild-torch$(TorchVersion)-rocm$(RocmVersion) \
                 /onnxruntime_src/tools/ci_build/build.py \
                   --config Release \
                   --use_rocm \
-                    --rocm_version=4.2 \
+                    --rocm_version=$(RocmVersion) \
                     --rocm_home=/opt/rocm \
                     --nccl_home=/opt/rocm \
                   --update \
@@ -435,7 +443,7 @@ stages:
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
             --user onnxruntimedev \
-            onnxruntimetrainingrocmbuild-torch$(TorchVersion) \
+            onnxruntimetrainingrocmbuild-torch$(TorchVersion)-rocm$(RocmVersion) \
                /onnxruntime_src/tools/ci_build/github/pai/pai_test_launcher.sh
         displayName: 'Run onnxruntime unit tests (in container)'
 
@@ -458,7 +466,7 @@ stages:
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
             --user onnxruntimedev \
-            onnxruntimetrainingrocmbuild-torch$(TorchVersion) \
+            onnxruntimetrainingrocmbuild-torch$(TorchVersion)-rocm$(RocmVersion) \
               orttraining/tools/ci_test/run_batch_size_test.py \
                 --binary_dir /build/Release \
                 --model_root training_e2e_test_data/models \
@@ -485,7 +493,7 @@ stages:
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
             --user onnxruntimedev \
-            onnxruntimetrainingrocmbuild-torch$(TorchVersion) \
+            onnxruntimetrainingrocmbuild-torch$(TorchVersion)-rocm$(RocmVersion) \
               orttraining/tools/ci_test/run_bert_perf_test.py \
                 --binary_dir /build/Release \
                 --model_root training_e2e_test_data/models \
@@ -513,7 +521,7 @@ stages:
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
             --user onnxruntimedev \
-            onnxruntimetrainingrocmbuild-torch$(TorchVersion) \
+            onnxruntimetrainingrocmbuild-torch$(TorchVersion)-rocm$(RocmVersion) \
               orttraining/tools/ci_test/run_convergence_test.py \
                 --binary_dir /build/Release \
                 --model_root training_e2e_test_data/models \
@@ -552,7 +560,7 @@ stages:
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
               -e PythonManylinuxDir=$(PythonManylinuxdir) \
-              onnxruntimetrainingrocmbuild-torch$(TorchVersion) \
+              onnxruntimetrainingrocmbuild-torch$(TorchVersion)-rocm$(RocmVersion) \
                 /onnxruntime_src/tools/ci_build/github/pai/wrap_rocm_python_doc_publisher.sh
           workingDirectory: $(Build.SourcesDirectory)
 
@@ -656,7 +664,7 @@ stages:
           workingFolder: '$(Build.BinariesDirectory)'
 
       - script: |
-          python -m pip install -q pyopenssl setuptools wheel numpy==1.16.6
+          python -m pip install -q setuptools wheel numpy==1.16.6
         workingDirectory: '$(Build.BinariesDirectory)'
         displayName: 'Install python modules'
 
@@ -796,28 +804,28 @@ stages:
       pool: 'onnxruntime-gpu-winbuild'
       timeoutInMinutes:  240
       variables:
-        CUDA_VERSION: '11.1'
+        CUDA_VERSION: '11.4'
         buildArch: x64
       strategy:
         matrix:
           Python36_cuda:
             PythonVersion: '3.6'
-            EpBuildFlags: --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.0.5.39\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+            EpBuildFlags: --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.2.2.26\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
             EnvSetupScript: setup_env_cuda_11.bat
             EP_NAME: gpu
           Python37_cuda:
             PythonVersion: '3.7'
-            EpBuildFlags: --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.0.5.39\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+            EpBuildFlags: --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.2.2.26\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
             EnvSetupScript: setup_env_cuda_11.bat
             EP_NAME: gpu
           Python38_cuda:
             PythonVersion: '3.8'
-            EpBuildFlags: --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.0.5.39\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+            EpBuildFlags: --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.2.2.26\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
             EnvSetupScript: setup_env_cuda_11.bat
             EP_NAME: gpu
           Python39_cuda:
             PythonVersion: '3.9'
-            EpBuildFlags: --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.0.5.39\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+            EpBuildFlags: --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.2.2.26\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
             EnvSetupScript: setup_env_cuda_11.bat
             EP_NAME: gpu
           Python36_dml:
@@ -861,7 +869,7 @@ stages:
           workingFolder: '$(Build.BinariesDirectory)'
 
       - script: |
-          python -m pip install -q pyopenssl setuptools wheel numpy==1.16.6
+          python -m pip install -q setuptools wheel numpy==1.16.6
         workingDirectory: '$(Build.BinariesDirectory)'
         displayName: 'Install python modules'
 
@@ -1002,7 +1010,7 @@ stages:
       pool:
         vmImage: 'macOS-10.15'
       variables:
-        MACOSX_DEPLOYMENT_TARGET: '10.13'
+        MACOSX_DEPLOYMENT_TARGET: '10.14'
       strategy:
         matrix:
           Python36:

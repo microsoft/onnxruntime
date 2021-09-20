@@ -10,6 +10,7 @@
 #include "gmock/gmock.h"
 #include "onnx/defs/function.h"
 #include "core/graph/function_impl.h"
+#include "test/framework/test_utils.h"
 
 #ifdef __GNUC__
 #define UNUSED __attribute__((unused))
@@ -144,8 +145,19 @@ static bool RegisterCustomSchemas() {
             node.set_domain(kMSNchwcDomain);
           }
         }
-        return nodes;
-      }());
+        return nodes; }(),
+                    []() {
+                      std::vector<OperatorSetIdProto> operator_sets(2);
+                      auto& onnx_opset = operator_sets[0];
+                      onnx_opset.set_domain("");
+                      onnx_opset.set_version(11);
+
+                      auto& test_opset = operator_sets[1];
+                      test_opset.set_domain(kMSNchwcDomain);
+                      test_opset.set_version(1);
+
+                      return operator_sets;
+                    }());
 
   return true;
 }
@@ -205,6 +217,7 @@ const std::vector<float> values = {13.f,
 const std::vector<int64_t> indices = {9, 30, 50};  // Not to exceed 59
 }  // namespace sparse_details
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 // To match a simple Add graph above
 static void ConstructSparseTensor(const std::string& name,
                                   SparseTensorProto& sparse_proto) {
@@ -221,6 +234,7 @@ static void ConstructSparseTensor(const std::string& name,
   std::copy(values.cbegin(), values.cend(), dest_span.begin());
 
   const std::vector<int64_t>& indices = sparse_details::indices;  // Not to exceed 59
+
   auto& m_indicies = *sparse_proto.mutable_indices();
   m_indicies.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
   *m_indicies.mutable_dims()->Add() = static_cast<int64_t>(indices.size());
@@ -252,16 +266,16 @@ static void ValidateSparseTensorProto(const SparseTensorProto& proto) {
     ++expected_begin;
   }
   // Check indices
-  EXPECT_EQ(proto.indices().data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  const auto& indices = proto.indices();
   auto expected_indices = gsl::make_span(sparse_details::indices);
-  auto actual_indices = gsl::make_span<const int64_t>(proto.indices().int64_data().data(), proto.indices().int64_data_size());
-  EXPECT_THAT(actual_indices, testing::ContainerEq(expected_indices));
+  SparseIndicesChecker(indices, expected_indices);
   // check shape
   const auto& dims = proto.dims();
   auto actual_shape = gsl::make_span<const int64_t>(dims.data(), dims.size());
   auto expected_shape = gsl::make_span(sparse_details::shape);
   EXPECT_THAT(actual_shape, testing::ContainerEq(expected_shape));
 }
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 TEST_F(GraphTest, SimpleAddWithoutDomain) {
   ModelProto m;
@@ -1292,6 +1306,7 @@ TEST_F(GraphTest, UnusedInitializerIsIgnored) {
   ASSERT_TRUE(graph.GetAllInitializedTensors().empty());
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 TEST_F(GraphTest, UnusedSparseInitializerIsIgnored) {
   std::string s1;
   {
@@ -1322,6 +1337,7 @@ TEST_F(GraphTest, UnusedSparseInitializerIsIgnored) {
   auto& graph_proto = graph2.ToGraphProto();
   ASSERT_TRUE(graph_proto.sparse_initializer().empty());
 }
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 TEST_F(GraphTest, GraphConstruction_CheckIsNotAcyclic) {
   // A cyclic graph
@@ -1786,6 +1802,7 @@ TEST_F(GraphTest, AddRemoveInitializerHandling) {
                                  << num_initializers << " remain.";
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 TEST_F(GraphTest, SparseInitializerHandling) {
   const char* const input_initializer_name = "x";
   Model model("SparseInitializerHandling", false, *logger_);
@@ -1836,6 +1853,7 @@ TEST_F(GraphTest, SparseInitializerHandling) {
     ValidateSparseTensorProto(model_proto_get.graph().sparse_initializer().at(0));
   }
 }
+#endif  //!defined(DISABLE_SPARSE_TENSORS)
 
 TEST_F(GraphTest, SetInputsAndSetOutputs_NewInputAndOutput) {
   std::shared_ptr<Model> model;

@@ -177,12 +177,9 @@ TEST(MathOpTest, MatMulSharedPrepackedWeights) {
                         {10.0f, 10.0f, 10.0f,
                          -10.0f, -10.0f, -10.0f});
 
-  auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape({4, 3}),
-                                           b_init_values.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
   OrtValue b;
-
-  b.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-         DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({4, 3}),
+                       b_init_values.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), b);
 
   SessionOptions so;
   // Set up B as a shared initializer to be shared between sessions

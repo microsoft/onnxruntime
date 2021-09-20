@@ -65,7 +65,7 @@ In your python code, you can use the optimizer like the following:
 ```python
 from onnxruntime.transformers import optimizer
 optimized_model = optimizer.optimize_model("gpt2.onnx", model_type='gpt2', num_heads=12, hidden_size=768)
-optimized_model.convert_model_float32_to_float16()
+optimized_model.convert_float_to_float16()
 optimized_model.save_model_to_file("gpt2_fp16.onnx")
 ```
 

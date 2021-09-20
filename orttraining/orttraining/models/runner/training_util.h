@@ -6,7 +6,7 @@
 #include <math.h>
 #include "constant.h"
 #include "core/framework/callback.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/framework_common.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 

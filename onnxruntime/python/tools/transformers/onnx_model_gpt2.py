@@ -4,14 +4,10 @@
 #--------------------------------------------------------------------------
 import logging
 import onnx
-import sys
-import argparse
-import numpy as np
-from collections import deque
-from onnx import ModelProto, TensorProto, numpy_helper
 from onnx_model_bert import BertOnnxModel
 from fusion_gpt_attention_no_past import FusionGptAttentionNoPast
 from fusion_gpt_attention import FusionGptAttention
+from fusion_gpt_attention_megatron import FusionGptAttentionMegatron
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +22,8 @@ class Gpt2OnnxModel(BertOnnxModel):
             fusion.apply()
         else:
             fusion = FusionGptAttention(self, self.num_heads)
+            fusion.apply()
+            fusion = FusionGptAttentionMegatron(self, self.num_heads)
             fusion.apply()
 
     def postprocess(self):

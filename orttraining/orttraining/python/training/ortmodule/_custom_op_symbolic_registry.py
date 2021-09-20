@@ -30,8 +30,12 @@ def register_symbolic(name, domain=''):
 
 
 @register_symbolic('cross_entropy_loss')
-@parse_args('v', 'v', 'v', 'i', 'v')
-def cross_entropy_loss(g, self, target, weight, reduction, ignore_index):
+@parse_args('v', 'v', 'v', 'i', 'v', 'v')
+def cross_entropy_loss(g, self, target, weight, reduction, ignore_index, label_smoothing=0.0):
+    label_smoothing = sym_help._maybe_get_const(label_smoothing, "f")
+    if label_smoothing > 0.0:
+        raise RuntimeError("Unsupported: ONNX does not support label_smoothing")
+
     # reduction: 0->none, 1->mean, 2->sum
     reduction = sym_help._maybe_get_const(reduction, 'i')
     reduction_vals = ['none', 'mean', 'sum']
@@ -67,6 +71,12 @@ def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
             indices_shape + [_get_tensor_dim_size(weight, 1)])
         output.setType(output_type)
     return output
+
+
+@register_symbolic('diagonal')
+def diagonal(g, self, offset, dim1, dim2):
+    return g.op("com.microsoft::ATenOp", self, offset, dim1, dim2,
+                name_s='aten::diagonal')
 
 
 @register_symbolic('max_pool2d')

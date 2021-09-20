@@ -240,6 +240,19 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
                 self._output_types[int(o_str)] = set(values)
 
 
+class Input1TypedRegistrationProcessor(DefaultTypeUsageProcessor):
+    '''
+    Processor for operators where the second input type is used in a typed kernel registration.
+    '''
+    def __init__(self, domain: str, optype: str):
+        # init with tracking of input 1 only.
+        super().__init__(domain, optype, inputs=[1], outputs=[])
+
+    def is_typed_registration_needed(self, type_in_registration: str,
+                                     globally_allowed_types: typing.Optional[typing.Set[str]]):
+        return self.is_input_type_enabled(type_in_registration, 1, globally_allowed_types)
+
+
 class Output0TypedRegistrationProcessor(DefaultTypeUsageProcessor):
     '''
     Processor for operators where the first output type is used in a typed kernel registration.
@@ -339,11 +352,11 @@ def _create_operator_type_usage_processors():
                                   'Scatter', 'ScatterElements', 'ScatterND', 'Shrink', 'Sigmoid', 'Sign', 'Sin',
                                   'Softmax', 'Split', 'SplitToSequence', 'Sqrt', 'Sum',
                                   'Tanh', 'TopK', 'Transpose',
-                                  'Unique',
-                                  'Where']
+                                  'Unique']
 
     # ops that are used to manipulate shapes or indices so require int32_t and int64_t to be available
     default_processor_onnx_ops_requiring_ints_for_input_0 = ['Add',
+                                                             'Concat',
                                                              'Div',
                                                              'Equal',
                                                              'Greater',
@@ -390,6 +403,9 @@ def _create_operator_type_usage_processors():
     # Random generator ops produce new data so we track the output type
     onnx_random_ops = ['RandomNormal', 'RandomNormalLike', 'RandomUniform', 'RandomUniformLike', 'Multinomial']
     [add(DefaultTypeUsageProcessor('ai.onnx', op, inputs=[], outputs=[0])) for op in onnx_random_ops]
+
+    # Where always has a boolean first input so track the second input type for typed registration
+    add(Input1TypedRegistrationProcessor('ai.onnx', 'Where'))
 
     # we only support 'float' as input for [Dynamic]QuantizeLinear so just track the output type
     # as that's what is used in the typed registration

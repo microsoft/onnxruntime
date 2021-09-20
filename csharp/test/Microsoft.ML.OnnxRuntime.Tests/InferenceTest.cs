@@ -30,6 +30,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact]
         public void TestSessionOptions()
         {
+            // get instance to setup logging 
+            var ortEnvInstance = OrtEnv.Instance();
+
             using (SessionOptions opt = new SessionOptions())
             {
                 Assert.NotNull(opt);
@@ -89,16 +92,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AddSessionConfigEntry("", "invalid key"); });
                 Assert.Contains("[ErrorCode:InvalidArgument] Config key is empty", ex.Message);
 
-                opt.AppendExecutionProvider_CPU(1);
-#if USE_DNNL
-                opt.AppendExecutionProvider_Dnnl(0);
-#endif
 #if USE_CUDA
                 opt.AppendExecutionProvider_CUDA(0);
 #endif
-#if USE_ROCM
-                opt.AppendExecutionProvider_ROCM(0);
-#endif
+
 #if USE_DML
                 // Explicitly set dll probe path so that the (potentially) stale system DirectML.dll
                 // doesn't get loaded by the test process when it is eventually delay loaded by onnruntime.dll
@@ -110,22 +107,37 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 // Restore the default dll search order
                 SetDllDirectory(null);
+#endif
 
+#if USE_DNNL
+                opt.AppendExecutionProvider_Dnnl(0);
 #endif
-#if USE_OPENVINO
-                opt.AppendExecutionProvider_OpenVINO();
-#endif
-#if USE_TENSORRT
-                opt.AppendExecutionProvider_Tensorrt(0);
-#endif
+
 #if USE_MIGRAPHX
                 opt.AppendExecutionProvider_MIGraphX(0);
 #endif
+
 #if USE_NNAPI
                 opt.AppendExecutionProvider_Nnapi(0);
 #endif
 
+#if USE_NUPHAR
+                opt.AppendExecutionProvider_Nuphar();
+#endif
 
+#if USE_OPENVINO
+                opt.AppendExecutionProvider_OpenVINO();
+#endif
+
+#if USE_ROCM
+                opt.AppendExecutionProvider_ROCM(0);
+#endif
+
+#if USE_TENSORRT
+                opt.AppendExecutionProvider_Tensorrt(0);
+#endif
+
+                opt.AppendExecutionProvider_CPU(1);
             }
         }
 
@@ -837,9 +849,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_max_uint16", "node test error"},
                 { "test_resize_downsample_scales_linear_align_corners", "node test error"},
                 { "test_strnormalizer_nostopwords_nochangecase", "node test error"},
-                { "test_cast_STRING_to_FLOAT", "node test error"},
                 { "test_cumsum_2d_negative_axis", "node test error"},
-                { "test_cast_FLOAT16_to_DOUBLE", "node test error"},
                 { "test_adagrad_multiple", "node test error"},
                 { "test_einsum_inner_prod", "node test error"},
                 { "test_clip_default_int8_min", "node test error"},
@@ -852,7 +862,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_clip_default_int8_max", "node test error"},
                 { "test_einsum_sum", "node test error"},
                 { "test_min_int16", "node test error"},
-                { "test_cast_FLOAT_to_DOUBLE", "node test error"},
                 { "test_adagrad", "node test error"},
                 { "test_min_float64", "node test error"},
                 { "test_max_int16", "node test error"},
@@ -860,7 +869,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_sequence_insert_at_front", "node test error"},
                 { "test_cumsum_1d_exclusive", "node test error"},
                 { "test_training_dropout_default", "node test error"},
-                { "test_cast_BFLOAT16_to_FLOAT", "node test error"},
                 { "test_training_dropout", "node test error"},
                 { "test_adam", "node test error"},
                 { "test_training_dropout_mask", "node test error"},
@@ -869,7 +877,24 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_cumsum_1d", "node test error"},
                 { "test_conv_with_autopad_same", "node test error"},
                 { "test_cumsum_1d_reverse_exclusive", "node test error"},
+                { "test_cast_STRING_to_FLOAT", "node test error"},
+                { "test_cast_FLOAT16_to_DOUBLE", "node test error"},
+                { "test_cast_FLOAT_to_DOUBLE", "node test error"},
+                { "test_cast_BFLOAT16_to_FLOAT", "node test error"},
                 { "test_cast_FLOAT_to_BFLOAT16", "node test error"},
+                { "test_cast_FLOAT_to_STRING", "node test error"},
+                { "test_castlike_STRING_to_FLOAT", "node test error"},
+                { "test_castlike_STRING_to_FLOAT_expanded", "node test error"},
+                { "test_castlike_FLOAT16_to_DOUBLE", "node test error"},
+                { "test_castlike_FLOAT16_to_DOUBLE_expanded", "node test error"},
+                { "test_castlike_FLOAT_to_DOUBLE", "node test error"},
+                { "test_castlike_FLOAT_to_DOUBLE_expanded", "node test error"},
+                { "test_castlike_BFLOAT16_to_FLOAT", "node test error"},
+                { "test_castlike_BFLOAT16_to_FLOAT_expanded", "node test error"},
+                { "test_castlike_FLOAT_to_BFLOAT16", "node test error"},
+                { "test_castlike_FLOAT_to_BFLOAT16_expanded", "node test error"},
+                { "test_castlike_FLOAT_to_STRING", "node test error"},
+                { "test_castlike_FLOAT_to_STRING_expanded", "node test error"},
                 { "test_bitshift_right_uint16", "node test error"},
                 { "test_bitshift_left_uint16", "node test error"},
                 { "test_pow_types_float32_uint64", "node test error"},
@@ -891,7 +916,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_convtranspose_autopad_same", "node test error"},
                 { "test_training_dropout_default_mask", "node test error"},
                 { "test_min_int8", "node test error"},
-                { "test_cast_FLOAT_to_STRING", "node test error"},
                 { "test_identity_sequence", "data type not supported"},
                 { "test_gru_batchwise", "batchwise operations not supported"},
                 { "test_lstm_batchwise", "batchwise operations not supported"},
@@ -907,6 +931,24 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_bernoulli", "random generator"},
                 { "test_bernoulli_seed", "random generator"},
                 { "test_bernoulli_double", "random generator"},
+                { "test_bernoulli_expanded", "random generator"},
+                { "test_bernoulli_seed_expanded", "random generator"},
+                { "test_bernoulli_double_expanded", "random generator"},
+                { "test_shape", "opset15 version not implemented yet"},
+                { "test_shape_clip_end", "opset15 version not implemented yet"},
+                { "test_shape_clip_start", "opset15 version not implemented yet"},
+                { "test_shape_end_1", "opset15 version not implemented yet"},
+                { "test_shape_end_negative", "opset15 version not implemented yet"},
+                { "test_shape_example", "opset15 version not implemented yet"},
+                { "test_shape_start_1", "opset15 version not implemented yet"},
+                { "test_shape_start_negative_1", "opset15 version not implemented yet"},
+                { "test_shape_start_1_end_2", "opset15 version not implemented yet"},
+                { "test_shape_start_1_end_negative_1", "opset15 version not implemented yet"},
+                { "test_shape_end_negative_1", "opset15 version not implemented yet"},
+                { "test_optional_get_element", "not implemented yet"},
+                { "test_optional_get_element_sequence", "not implemented yet"},
+                { "test_optional_has_element", "not implemented yet"},
+                { "test_optional_has_element_empty", "not implemented yet"},
             };
 
             // The following models fails on nocontribops win CI

@@ -10,7 +10,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/data_transfer.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/tensor.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/platform/path_lib.h"
