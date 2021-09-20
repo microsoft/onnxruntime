@@ -101,7 +101,7 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
    * To use earlier versions of TensorRT, prior to building, change the onnx-tensorrt submodule to a branch corresponding to the TensorRT version. e.g. To use TensorRT 7.2.x,
      * cd cmake/external/onnx-tensorrt
      * git remote update
-     * git checkout 7.2
+     * git checkout 7.2.1
      * build as usual (but add the --skip_submodule_sync command so it doesn't update the submodule)
    * The path to TensorRT installation must be provided via the `--tensorrt_home` parameter.
 
@@ -118,10 +118,10 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
 ```
 # to build with the latest supported TensorRT version
 ./build.sh --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home>
-# to build with earlier version. e.g. TensorRT 7.2
+# to build with earlier version. e.g. TensorRT 7.2.1
 cd cmake/external/onnx-tensorrt
 git remote update
-git checkout 7.2
+git checkout 7.2.1
 ./build.sh  --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home> --skip_submodule_sync
 ```
 
