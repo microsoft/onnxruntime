@@ -7,6 +7,7 @@
       <SmartLink>True</SmartLink>
       <ForceLoad>True</ForceLoad>
       <LinkerFlags>-lc++</LinkerFlags>
+      <WeakFrameworks>CoreML</WeakFrameworks>
     </NativeReference>
     <NativeReference Condition="'$(Platform)' == 'iPhone'" Include="$(MSBuildThisFileDirectory)..\..\runtimes\ios\native\onnxruntime.xcframework\ios-arm64\onnxruntime.framework">
       <Kind>Framework</Kind>
@@ -14,6 +15,7 @@
       <SmartLink>True</SmartLink>
       <ForceLoad>True</ForceLoad>
       <LinkerFlags>-lc++</LinkerFlags>
+      <WeakFrameworks>CoreML</WeakFrameworks>
     </NativeReference>
   </ItemGroup>
 </Project>
