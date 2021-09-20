@@ -348,14 +348,14 @@ typedef struct OrtCUDAProviderOptions {
   OrtCUDAProviderOptions() : device_id{}, cudnn_conv_algo_search{OrtCudnnConvAlgoSearchExhaustive}, gpu_mem_limit{SIZE_MAX}, arena_extend_strategy{}, do_copy_in_default_stream{1}, has_user_compute_stream{}, user_compute_stream{}, default_memory_arena_cfg{} {}
 #endif
 
-  /** \brief CUDA device if
+  /** \brief CUDA device Id
   *   Defaults to 0.
   */
   int device_id;
 
   /** \brief CUDA Convolution algorithm search configuration.
   *   See enum OrtCudnnConvAlgoSearch for more details.
-  *   Defaults to EXHAUSTIVE.
+  *   Defaults to OrtCudnnConvAlgoSearchExhaustive.
   */
   OrtCudnnConvAlgoSearch cudnn_conv_algo_search;
 
@@ -366,16 +366,14 @@ typedef struct OrtCUDAProviderOptions {
   size_t gpu_mem_limit;
 
   /** \brief Strategy used to grow the memory arena
-  *
-  * 0 = kNextPowerOfTwo<br>
-  * 1 = kSameAsRequested<br>
-  * Defaults to 0.
-  * \note If a ::OrtArenaCfg has been applied, it will override this field
+  *   0 = kNextPowerOfTwo<br>
+  *   1 = kSameAsRequested<br>
+  *   Defaults to 0.
+  *   \note If a ::OrtArenaCfg has been applied, it will override this field
   */
   int arena_extend_strategy;
 
-  /** \brief Flag indicating if copying needs to take place on the same stream as compute in the CUDA EP
-  *    
+  /** \brief Flag indicating if copying needs to take place on the same stream as the compute stream in the CUDA EP   
   *   0 = Use separate streams for copying and compute.
   *   1 = Use the same stream for copying and compute.
   *   Defaults to 1.
