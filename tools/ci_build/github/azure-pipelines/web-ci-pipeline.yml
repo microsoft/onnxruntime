@@ -3,37 +3,23 @@ parameters:
   displayName: 'NPM packages publish configuration'
   type: string
   values:
-  - 'no'
   - 'nightly (@dev)'
   - 'release candidate (@rc)'
   - 'production (@latest)'
   - 'custom'
-  default: no
+  default: 'nightly (@dev)'
 
 variables:
   # pipeline should define the following varaibles
   #   ExtraBuildArgs
   #   VersionSuffix
-  #   NpmTag
 
-  ${{ if eq(parameters.NpmPublish, 'no') }}:
-    DoPublish: false
-    VersionSuffix: ''
-    NpmTag: ''
   ${{ if eq(parameters.NpmPublish, 'nightly (@dev)') }}:
-    DoPublish: true
     VersionSuffix: '-dev.${YYYYMMDD}.${REV}'
-    NpmTag: 'dev'
   ${{ if eq(parameters.NpmPublish, 'release candidate (@rc)') }}:
-    DoPublish: true
     VersionSuffix: '-rc'
-    NpmTag: 'rc'
   ${{ if eq(parameters.NpmPublish, 'production (@latest)') }}:
-    DoPublish: true
     VersionSuffix: ''
-    NpmTag: 'latest'
-  ${{ if eq(parameters.NpmPublish, 'custom') }}:
-    DoPublish: true
 
 stages:
 - stage: Extract_commit
@@ -104,23 +90,3 @@ stages:
   - template: templates/win-web-multi-browsers.yml
     parameters:
       CommitOverride: true
-
-- stage: Publish_package
-  dependsOn:
-  - Build_web_Debug
-  - Build_web_Release
-  - Test_web_BrowserStack
-  - Test_web_MultiBrowsers
-  condition:
-    and(succeeded(), or(and(eq(variables['Build.Reason'], 'Scheduled'),
-                            eq(variables['Build.SourceBranch'], 'refs/heads/master')
-                           ),
-                        and(eq(variables['Build.Reason'], 'Manual'),
-                            eq(variables['DoPublish'], true)
-                           )
-                       )
-       )
-  jobs:
-  - template: templates/win-web-publish.yml
-    parameters:
-      NpmTag: '$(NpmTag)'
