@@ -337,15 +337,23 @@ typedef enum OrtCudnnConvAlgoSearch {
 */
 typedef struct OrtCUDAProviderOptions {
 #ifdef __cplusplus
-  OrtCUDAProviderOptions() : device_id{}, cudnn_conv_algo_search{EXHAUSTIVE}, gpu_mem_limit{SIZE_MAX}, arena_extend_strategy{}, do_copy_in_default_stream{}, has_user_compute_stream{}, user_compute_stream{}, default_memory_arena_cfg{} {}
+  OrtCUDAProviderOptions() : device_id{}, cudnn_conv_algo_search{EXHAUSTIVE}, gpu_mem_limit{SIZE_MAX}, arena_extend_strategy{}, do_copy_in_default_stream{1}, has_user_compute_stream{}, user_compute_stream{}, default_memory_arena_cfg{} {}
 #endif
 
-  int device_id;  ///< CUDA device id (0 = default device)
+  /** \brief CUDA device if
+  *   Defaults to 0.
+  */
+  int device_id;
+
+  /** \brief CUDA Convolution algorithm search configuration.
+  *   See enum OrtCudnnConvAlgoSearch for more details.
+  *   Defaults to EXHAUSTIVE.
+  */
   OrtCudnnConvAlgoSearch cudnn_conv_algo_search;
 
   /** \brief CUDA memory limit (To use all possible memory pass in maximum size_t)
-  *
-  * \note If a ::OrtArenaCfg has been applied, it will override this field
+  *   Defaults to SIZE_MAX.
+  *   \note If a ::OrtArenaCfg has been applied, it will override this field
   */
   size_t gpu_mem_limit;
 
@@ -353,13 +361,35 @@ typedef struct OrtCUDAProviderOptions {
   *
   * 0 = kNextPowerOfTwo<br>
   * 1 = kSameAsRequested<br>
+  * Defaults to 0.
   * \note If a ::OrtArenaCfg has been applied, it will override this field
   */
   int arena_extend_strategy;
+
+  /** \brief Flag indicating if copying needs to take place on the same stream as compute in the CUDA EP
+  *    
+  *   0 = Use separate streams for copying and compute.
+  *   1 = Use the same stream for copying and compute.
+  *   Defaults to 1.
+  *   WARNING: Setting this to 0 may result in data races for some models.
+  *   Please see issue #4829 for more details.
+  */
   int do_copy_in_default_stream;
+
+  /** \brief Flag indicating if there is a user provided compute stream
+  *   Defaults to 0.
+  */
   int has_user_compute_stream;
+
+  /** \brief User provided compute stream. 
+  *   If provided, please set `has_user_compute_stream` to 1.
+  */
   void* user_compute_stream;
+
+  /** \brief CUDA memory arena configuration parameters
+  */
   OrtArenaCfg* default_memory_arena_cfg;
+
 } OrtCUDAProviderOptions;
 
 /** \brief ROCM Provider Options
