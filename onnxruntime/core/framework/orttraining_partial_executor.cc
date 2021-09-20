@@ -21,7 +21,7 @@
 
 #ifdef ENABLE_NVTX_PROFILE
 // This header is for profile using Nvidia's visual profilier.
-#include "core/profile/profile.h"
+#include "core/providers/cuda/nvtx_profile.h"
 #include "core/profile/context.h"
 #endif
 

@@ -92,14 +92,22 @@ def parse_arguments(argv=None):
         type=Precision,
         default=Precision.FLOAT32,
         choices=list(Precision),
-        help="Precision of model to run. fp32 for full precision, fp16 for half precision, and int8 for quantization")
+        help=
+        "Precision of model to run. fp32 for full precision, fp16 for half or mixed precision, and int8 for quantization"
+    )
 
     parser.add_argument("-t",
                         "--test_cases",
                         required=False,
                         type=int,
                         default=1000,
-                        help="Number of test cases for parity")
+                        help="Number of test cases per run for parity")
+    parser.add_argument("-r",
+                        "--test_runs",
+                        required=False,
+                        type=int,
+                        default=10,
+                        help="Number of runs for parity. It is used for significance test.")
 
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
@@ -180,6 +188,17 @@ def parse_arguments(argv=None):
     return args
 
 
+def get_onnx_model_size(onnx_path: str, use_external_data_format: bool):
+    if not use_external_data_format:
+        return os.path.getsize(onnx_path)
+    else:
+        return sum([f.stat().st_size for f in Path(onnx_path).parent.rglob('*')])
+
+
+def get_latency_name():
+    return "average_latency(batch_size=8,sequence_length=1,past_sequence_length=32)"
+
+
 def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_results.csv"):
     result = {}
     from transformers import __version__ as transformers_version
@@ -216,6 +235,8 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
         assert not args.output.endswith('.onnx'), "output shall be a directory for --use_external_data_format"
 
     model_class = MODEL_CLASSES[args.model_class][0]
+    use_padding = MODEL_CLASSES[args.model_class][2]
+
     if args.model_class == "GPT2LMHeadModel_BeamSearchStep":
         model_type = "beam_search_step"
     elif args.model_class == "GPT2LMHeadModel_ConfigurableOneStepSearch":
@@ -255,23 +276,26 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
     if (not args.use_external_data_format) and (config.n_layer > 24):
         logger.info(f"Try --use_external_data_format when model size > 2GB")
 
-    onnx_model_paths = gpt2helper.get_onnx_paths(output_dir,
-                                                 args.model_name_or_path,
-                                                 args.model_class,
-                                                 new_folder=args.use_external_data_format)
+    onnx_model_paths = gpt2helper.get_onnx_paths(
+        output_dir,
+        args.model_name_or_path,
+        args.model_class,
+        new_folder=args.use_external_data_format,
+        remove_existing=["fp32", "fp16", "int8"])  # Do not remove raw model to save time in parity test
 
     raw_onnx_model = onnx_model_paths["raw"]
 
-    logger.info(f"Exporting ONNX model to {raw_onnx_model}")
-    use_padding = MODEL_CLASSES[args.model_class][2]
-
-    gpt2helper.export_onnx(model,
-                           device,
-                           raw_onnx_model,
-                           args.verbose,
-                           args.use_external_data_format,
-                           has_position_ids=use_padding,
-                           has_attention_mask=use_padding)
+    if os.path.exists(raw_onnx_model):
+        logger.warning(f"Skip exporting ONNX model since it existed: {raw_onnx_model}")
+    else:
+        logger.info(f"Exporting ONNX model to {raw_onnx_model}")
+        gpt2helper.export_onnx(model,
+                               device,
+                               raw_onnx_model,
+                               args.verbose,
+                               args.use_external_data_format,
+                               has_position_ids=use_padding,
+                               has_attention_mask=use_padding)
 
     fp16_params = {"keep_io_types": args.keep_io_types}
     if args.io_block_list:
@@ -308,6 +332,7 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
         output_path = args.output
 
     logger.info(f"Output path: {output_path}")
+    model_size_in_MB = int(get_onnx_model_size(output_path, args.use_external_data_format) / 1024 / 1024)
 
     session = create_onnxruntime_session(output_path, args.use_gpu, enable_all_optimization=True, verbose=args.verbose)
     if args.model_class == "GPT2LMHeadModel" and session is not None:
@@ -320,7 +345,8 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                                                model_class=args.model_class,
                                                has_position_ids=use_padding,
                                                has_attention_mask=use_padding,
-                                               total_test_cases=args.test_cases,
+                                               test_cases_per_run=args.test_cases,
+                                               total_runs=args.test_runs,
                                                verbose=args.verbose)
 
         latency = gpt2helper.test_performance(session,
@@ -342,15 +368,15 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
         # Write results to file
         import csv
         from onnxruntime import __version__ as ort_version
-        latency_name = "average_latency(batch_size=8,sequence_length=1,past_sequence_length=32)"
+        latency_name = get_latency_name()
         csv_file_existed = os.path.exists(csv_filename)
         with open(csv_filename, mode="a", newline='') as csv_file:
             column_names = [
                 "experiment", "run_id", "model_name", "model_class", "gpu", "precision", "optimizer", "test_cases",
-                "keep_io_types", "io_block_list", "op_block_list", "node_block_list", "force_fp16_initializers",
-                "ORT_TRANSFORMER_OPTIONS", "ORT_CUDA_GEMM_OPTIONS", "onnxruntime", latency_name, "diff_50_percentile",
-                "diff_90_percentile", "diff_95_percentile", "diff_99_percentile", "diff_pass_rate", "nan_rate",
-                "top1_match_rate", "onnx_size_in_MB"
+                "runs", "keep_io_types", "io_block_list", "op_block_list", "node_block_list", "force_fp16_initializers",
+                "ORT_TRANSFORMER_OPTIONS", "ORT_CUDA_GEMM_OPTIONS", "onnxruntime", latency_name, "top1_match_rate",
+                "onnx_size_in_MB", "diff_50_percentile", "diff_90_percentile", "diff_95_percentile",
+                "diff_99_percentile", "diff_pass_rate", "nan_rate", "top1_match_rate_per_run"
             ]
             csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
             if not csv_file_existed:
@@ -364,6 +390,7 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                 "precision": args.precision,
                 "optimizer": args.optimize_onnx,
                 "test_cases": args.test_cases,
+                "runs": args.test_runs,
                 "keep_io_types": args.keep_io_types,
                 "io_block_list": args.io_block_list,
                 "op_block_list": args.op_block_list,
@@ -380,7 +407,8 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                 "diff_pass_rate": parity_result["diff_pass_rate"],
                 "nan_rate": parity_result["nan_rate"],
                 "top1_match_rate": parity_result["top1_match_rate"],
-                "onnx_size_in_MB": "{}".format(int(os.path.getsize(output_path) / 1024 / 1024))
+                "top1_match_rate_per_run": parity_result["top1_match_rate_per_run"],
+                "onnx_size_in_MB": "{}".format(model_size_in_MB),
             }
             logger.info(f"result: {row}")
             result.update(row)

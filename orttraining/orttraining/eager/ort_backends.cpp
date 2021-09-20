@@ -60,6 +60,13 @@ onnxruntime::Status ORTBackendsManager::set_device(size_t device_index, const st
   return onnxruntime::Status::OK();
 }
 
+OrtDevice ORTBackendsManager::GetOrtDeviceInfo(size_t torch_device_index){
+  auto lookup = backends_.find(torch_device_index);
+  ORT_ENFORCE(lookup != backends_.end());
+  auto allocator = lookup->second->GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault);
+  return allocator->Info().device;
+}
+
 onnxruntime::ORTInvoker& ORTBackendsManager::GetInvoker(const at::Device device) {
   ORT_LOG_FN(device);
 

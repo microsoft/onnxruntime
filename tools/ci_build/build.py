@@ -346,6 +346,10 @@ def parse_arguments():
         "--disable_wasm_exception_catching", action='store_true',
         help="Disable exception catching in WebAssembly.")
     parser.add_argument(
+        "--enable_wasm_exception_throwing_override", action='store_true',
+        help="Enable exception throwing in WebAssembly, this will override default disabling exception throwing "
+        "behavior when disable exceptions.")
+    parser.add_argument(
         "--enable_wasm_threads", action='store_true',
         help="Enable WebAssembly multi-threads support")
     parser.add_argument(
@@ -756,7 +760,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_MINIMAL_BUILD=" + ("ON" if args.minimal_build is not None else "OFF"),
         "-Donnxruntime_EXTENDED_MINIMAL_BUILD=" + ("ON" if args.minimal_build and 'extended' in args.minimal_build
                                                    else "OFF"),
-        "-Donnxruntime_MINIMAL_BUILD_CUSTOM_OPS=" + ("ON" if args.minimal_build and 'custom_ops' in args.minimal_build
+        "-Donnxruntime_MINIMAL_BUILD_CUSTOM_OPS=" + ("ON" if (args.minimal_build is not None and ('custom_ops' in
+                                                     args.minimal_build or args.use_extensions))
                                                      else "OFF"),
         "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if is_reduced_ops_build(args) else "OFF"),
         # enable pyop if it is nightly build
@@ -794,6 +799,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_WEBASSEMBLY_SIMD=" + ("ON" if args.enable_wasm_simd else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING=" + ("OFF" if args.disable_wasm_exception_catching
                                                                   else "ON"),
+        "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_THROWING=" + ("ON" if args.enable_wasm_exception_throwing_override
+                                                                  else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_WEBASSEMBLY_MALLOC=" + args.wasm_malloc,

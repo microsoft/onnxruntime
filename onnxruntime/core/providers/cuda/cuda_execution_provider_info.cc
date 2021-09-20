@@ -26,9 +26,9 @@ constexpr const char* kCudnnConvUseMaxWorkspace = "cudnn_conv_use_max_workspace"
 
 namespace {
 const DeleteOnUnloadPtr<EnumNameMapping<OrtCudnnConvAlgoSearch>> ort_cudnn_conv_algo_search_mapping = new EnumNameMapping<OrtCudnnConvAlgoSearch>{
-    {OrtCudnnConvAlgoSearch::EXHAUSTIVE, "EXHAUSTIVE"},
-    {OrtCudnnConvAlgoSearch::HEURISTIC, "HEURISTIC"},
-    {OrtCudnnConvAlgoSearch::DEFAULT, "DEFAULT"},
+    {OrtCudnnConvAlgoSearchExhaustive, "EXHAUSTIVE"},
+    {OrtCudnnConvAlgoSearchHeuristic, "HEURISTIC"},
+    {OrtCudnnConvAlgoSearchDefault, "DEFAULT"},
 };
 
 const DeleteOnUnloadPtr<EnumNameMapping<ArenaExtendStrategy>> arena_extend_strategy_mapping = new EnumNameMapping<ArenaExtendStrategy>{

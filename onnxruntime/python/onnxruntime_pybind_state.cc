@@ -957,15 +957,15 @@ void addObjectMethods(py::module& m, Environment& env, ExecutionProviderRegistra
       .value("PRIORITY_BASED", ExecutionOrder::PRIORITY_BASED);
 
   py::enum_<OrtAllocatorType>(m, "OrtAllocatorType")
-      .value("INVALID", OrtAllocatorType::Invalid)
-      .value("ORT_DEVICE_ALLOCATOR", OrtAllocatorType::OrtDeviceAllocator)
-      .value("ORT_ARENA_ALLOCATOR", OrtAllocatorType::OrtArenaAllocator);
+      .value("INVALID", OrtInvalidAllocator)
+      .value("ORT_DEVICE_ALLOCATOR", OrtDeviceAllocator)
+      .value("ORT_ARENA_ALLOCATOR", OrtArenaAllocator);
 
   py::enum_<OrtMemType>(m, "OrtMemType")
-      .value("CPU_INPUT", OrtMemType::OrtMemTypeCPUInput)
-      .value("CPU_OUTPUT", OrtMemType::OrtMemTypeCPUOutput)
-      .value("CPU", OrtMemType::OrtMemTypeCPU)
-      .value("DEFAULT", OrtMemType::OrtMemTypeDefault);
+      .value("CPU_INPUT", OrtMemTypeCPUInput)
+      .value("CPU_OUTPUT", OrtMemTypeCPUOutput)
+      .value("CPU", OrtMemTypeCPU)
+      .value("DEFAULT", OrtMemTypeDefault);
 
   py::class_<OrtDevice> device(m, "OrtDevice", R"pbdoc(ONNXRuntime device informaion.)pbdoc");
   device.def(py::init<OrtDevice::DeviceType, OrtDevice::MemoryType, OrtDevice::DeviceId>())
