@@ -41,7 +41,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   std::ifstream blob_path;
   std::string ov_compiled_blobs_dir = "";
 
-#if defined(OPENVINO_2021_3)
+#if defined(OPENVINO_2021_4)
   if(hw_target == "MYRIAD")
     vpu_status = true;
   const std::string compiled_blob_path = onnxruntime::GetEnvironmentVar("OV_BLOB_PATH");
@@ -91,7 +91,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   if (global_context_.use_compiled_network == true) {
     std::string cache_dir_path;
     if (global_context_.blob_dump_path.empty()) {
-      cache_dir_path = "myCacheFolder";
+      cache_dir_path = "ov_compiled_blobs";
     } else {
       cache_dir_path = global_context_.blob_dump_path;
     }
@@ -107,6 +107,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
   }
 #else
+  //Flow for OpenVINO versions supported till OV 2021.3
   bool import_blob_status = false;
   if(hw_target == "MYRIAD" && global_context_.use_compiled_network == true) {
     if(!openvino_ep::backend_utils::UseCompiledNetwork()) {
