@@ -174,6 +174,8 @@ class QDQConv(QDQOperatorBase):
         assert (node.op_type == "Conv")
 
         self.quantizer.quantize_tensor(node.input[0])
+        self.quantizer.quantize_tensor(node.output[0])
+
         if self.quantizer.is_per_channel():
             self.quantizer.quantize_tensor_per_channel(node.input[1], 0)
         else:
