@@ -2954,9 +2954,10 @@ struct OrtApi {
   * \param[out] Returns pointer to a CUDA stream that can be used to launch the custom CUDA kernel.
   *             If retrieving the CUDA stream is not relevant (CUDA not enabled in the build, kernel partitioned to
   *             some other EP), then a nullptr is returned as the output param.
-  *             Do not free the returned pointer as it refers to internal data owned by the underlying session.
+  *             Do not free or mutate the returned pointer as it refers to internal data owned by the underlying session.
+  *             Only use it for custom kernel launching.
   */
-  ORT_API2_STATUS(KernelContext_GetCUDAStream, _In_ const OrtKernelContext* context, _Outptr_ const void** out);
+  ORT_API2_STATUS(KernelContext_GetCUDAStream, _In_ const OrtKernelContext* context, _Outptr_ void** out);
   /// @}
 };
 

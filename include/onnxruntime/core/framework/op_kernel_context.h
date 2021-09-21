@@ -147,7 +147,7 @@ class OpKernelContext {
   Return the compute stream associated with the EP that the kernel is partitioned to.
   For EPs that do not have a compute stream (e.g. CPU EP), a nullptr is returned.
   */
-  const void* GetComputeStream() const {
+  void* GetComputeStream() const {
     return kernel_->Info().GetExecutionProvider()->GetComputeStream();
   }
 
