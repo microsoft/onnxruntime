@@ -15,6 +15,8 @@ export declare namespace Env {
      * to 1, no worker thread will be spawned.
      *
      * This setting is available only when WebAssembly multithread feature is available in current context.
+     *
+     * @defaultValue `0`
      */
     numThreads?: number;
 
@@ -22,12 +24,16 @@ export declare namespace Env {
      * set or get a boolean value indicating whether to enable SIMD. If set to false, SIMD will be forcely disabled.
      *
      * This setting is available only when WebAssembly SIMD feature is available in current context.
+     *
+     * @defaultValue `true`
      */
     simd?: boolean;
 
     /**
      * Set or get a number specifying the timeout for initialization of WebAssembly backend, in milliseconds. A zero
-     * value indicates no timeout is set. (default is 0)
+     * value indicates no timeout is set.
+     *
+     * @defaultValue `0`
      */
     initTimeout?: number;
 
@@ -39,29 +45,41 @@ export declare namespace Env {
 
     /**
      * Set or get a boolean value indicating whether to proxy the execution of main thread to a worker thread.
+     *
+     * @defaultValue `false`
      */
     proxy?: boolean;
   }
 
   export interface WebGLFlags {
     /**
-     * Set or get the WebGL Context ID (webgl or webgl2). Default value is webgl2.
+     * Set or get the WebGL Context ID (webgl or webgl2).
+     *
+     * @defaultValue `'webgl2'`
      */
     contextId?: 'webgl'|'webgl2';
     /**
      * Set or get the maximum batch size for matmul. 0 means to disable batching.
+     *
+     * @deprecated
      */
     matmulMaxBatchSize?: number;
     /**
-     * Set or get the texture cache mode. Default value is full.
+     * Set or get the texture cache mode.
+     *
+     * @defaultValue `'full'`
      */
     textureCacheMode?: 'initializerOnly'|'full';
     /**
      * Set or get the packed texture mode
+     *
+     * @defaultValue `false`
      */
     pack?: boolean;
     /**
      * Set or get whether enable async download.
+     *
+     * @defaultValue `false`
      */
     async?: boolean;
   }
@@ -69,11 +87,15 @@ export declare namespace Env {
 
 export interface Env {
   /**
-   * set the severity level for logging. If omitted, default is 'warning'
+   * set the severity level for logging.
+   *
+   * @defaultValue `'warning'`
    */
   logLevel?: 'verbose'|'info'|'warning'|'error'|'fatal';
   /**
    * Indicate whether run in debug mode.
+   *
+   * @defaultValue `false`
    */
   debug?: boolean;
 
