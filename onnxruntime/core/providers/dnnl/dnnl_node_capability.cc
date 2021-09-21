@@ -183,8 +183,24 @@ bool DnnlReduceMeanNodeCapability::IsDimensionSupported(const Node* node) const 
 // DnnlSoftmaxNodeCapability class
 bool DnnlSoftmaxNodeCapability::Supported(const Node* node) const {
   if (!IsTypeSupported(node)) return false;
+  if (!IsAttributeSupported(node)) return false;
   return true;
 }
+
+//DNNL Softmax supports opset version of 13 and above, or only axis value of 2 for opset version < 13
+bool DnnlSoftmaxNodeCapability::IsAttributeSupported(const Node* node) const {
+  const NodeAttributes& attributes = node->GetAttributes();
+  auto opset = node->SinceVersion();
+  auto attr = attributes.find("axis");
+  int64_t axis = 1;
+  if (attr != attributes.end() && attr->second().i() == 0) {
+    axis = attr->second().i();
+  }
+  if (opset < 13 && axis != 2)
+    return false;
+  return true;
+}
+
 
 // DnnlMatMulNodeCapability class
 //-------------------------------------
