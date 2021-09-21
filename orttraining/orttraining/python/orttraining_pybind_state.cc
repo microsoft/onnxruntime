@@ -751,7 +751,8 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         GradientGraphConfiguration gradient_graph_config{};
         gradient_graph_config.set_gradients_as_graph_outputs = true;
         // Save some objects, otherwise they get lost.
-        auto gradient_graph_config_ptr = std::make_unique<GradientGraphConfiguration>(gradient_graph_config);
+        auto gradient_graph_config_ptr = std::make_unique<GradientGraphConfiguration>(gradient_graph_config);        
+        auto logger_ptr = std::make_unique<logging::Logger>(logger);
 
         auto builder = std::make_unique<GradientGraphBuilder>(
             &model->MainGraph(),
@@ -759,10 +760,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
             x_node_arg_names,
             loss_node_arg_name,
             *gradient_graph_config_ptr,
-            logger);
-
-        // Save some objects, otherwise they get lost.
-        auto logger_ptr = std::make_unique<logging::Logger>(logger);
+            *logger_ptr);
 
         return std::make_unique<PyGradientGraphBuilder>(std::move(builder), std::move(model), std::move(logger_ptr), std::move(gradient_graph_config_ptr));
       }))

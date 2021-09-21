@@ -6,9 +6,10 @@
 from onnxruntime.capi._pybind_state import GradientGraphBuilder, PropagateCastOpsStrategy, TrainingParameters
 from onnxruntime.capi.training.training_session import TrainingSession
 
-from .orttrainer_options import ORTTrainerOptions
+from .gradient_graph._gradient_graph_tools import export_gradient_graph
 from .orttrainer import ORTTrainer, TrainStepInfo
-from . import amp, checkpoint, optim, model_desc_validation
+from .orttrainer_options import ORTTrainerOptions
+from . import amp, checkpoint, model_desc_validation, optim
 
 
 try:

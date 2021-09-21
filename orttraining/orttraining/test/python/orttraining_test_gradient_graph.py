@@ -2,25 +2,22 @@ import os
 import unittest
 from pathlib import Path
 
+import numpy as np
 import onnx
+import onnxruntime
 import torch
+from onnxruntime.training import export_gradient_graph
 from torch import nn
 from torch.onnx import TrainingMode
-import numpy as np
-
-import onnxruntime
-from onnxruntime.training import GradientGraphBuilder
-from onnxruntime.training.ortmodule._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 
 
 class NeuralNet(torch.nn.Module):
-    def __init__(self, input_size, hidden_size, num_classes, loss_fn):
+    def __init__(self, input_size, hidden_size, num_classes):
         super(NeuralNet, self).__init__()
 
         self.fc1 = torch.nn.Linear(input_size, hidden_size)
         self.relu = torch.nn.ReLU()
         self.fc2 = torch.nn.Linear(hidden_size, num_classes)
-        self.loss_fn = loss_fn
 
     def forward(self, input1, label):
         out = self.fc1(input1)
@@ -36,21 +33,21 @@ def to_numpy(tensor):
 
 class GradientGraphBuilderTest(unittest.TestCase):
     def test_save(self):
-        # Make sure that loss nodes that expect multiple outputs are set up.
-        CustomOpSymbolicRegistry.register_all()
         loss_fn = nn.CrossEntropyLoss()
         model = NeuralNet(input_size=10, hidden_size=5,
-                          num_classes=2, loss_fn=loss_fn)
+                          num_classes=2)
         model.train()
         directory_path = Path(os.path.dirname(__file__)).resolve()
-        path = directory_path / 'gradient_graph_builder_test_model.onnx'
+        intermediate_path = directory_path / 'gradient_graph_builder_test_model.onnx'
+        gradient_graph_path = directory_path/'gradient_graph_model.onnx'
         batch_size = 1
+        export_gradient_graph(model, loss_fn, batch_size, gradient_graph_path, intermediate_path)
         x = torch.randn(batch_size, model.fc1.in_features, requires_grad=True)
         label = torch.tensor([1])
         torch_out, torch_loss = model(x, label)
 
         torch.onnx.export(
-            model, (x, label), str(path),
+            model, (x, label), str(intermediate_path),
             export_params=True,
             opset_version=12, do_constant_folding=False,
             training=TrainingMode.TRAINING,
@@ -61,13 +58,12 @@ class GradientGraphBuilderTest(unittest.TestCase):
                 'label': {0: 'batch_size', },
                 'output': {0: 'batch_size', },
             })
-        builder = GradientGraphBuilder(str(path),
+        builder = GradientGraphBuilder(str(intermediate_path),
                                        {'loss'},
                                        {'fc1.weight', 'fc1.bias',
                                            'fc2.weight', 'fc2.bias'},
                                        'loss')
         builder.build()
-        gradient_graph_path = directory_path/'gradient_graph_model.onnx'
         builder.save(str(gradient_graph_path))
 
         onnx_model = onnx.load(str(gradient_graph_path))
