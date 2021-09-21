@@ -1,0 +1,61 @@
+#Test nuget package on Linux
+parameters:
+  AgentPool: 'Linux-CPU'
+  ArtifactSuffix: ''
+  NugetPackageName : ''
+
+jobs:
+- job: NuGet_Test_Linux_${{ parameters.ArtifactSuffix }}
+  workspace:
+    clean: all
+  timeoutInMinutes:  120
+  pool: ${{ parameters.AgentPool }}
+  dependsOn:
+  - NuGet_Packaging_${{ parameters.ArtifactSuffix }}
+  condition: succeeded()
+  variables:
+  - name: OnnxRuntimeBuildDirectory
+    value: '$(Build.BinariesDirectory)'
+  steps:
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Signed NuGet'
+    inputs:
+      artifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Linux CustomOp TestData'
+    inputs:
+      artifactName: 'onnxruntime-linux-x64'
+      targetPath: '$(Build.BinariesDirectory)/testdata'
+
+  - template: ../nuget/templates/get-nuget-package-version-as-variable.yml
+    parameters:
+      packageFolder: '$(Build.BinariesDirectory)/nuget-artifact'
+
+  - task: CmdLine@2
+    displayName: 'Create symlink for test models'
+    inputs:
+      script: |     
+         ln -sf /data/models $(Build.BinariesDirectory)
+
+  - task: Bash@3
+    displayName: 'Run Package Test'
+    inputs:
+      targetType: filePath
+      filePath: '$(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh'
+      arguments: '$(Build.BinariesDirectory)/nuget-artifact $(NuGetPackageVersionNumber)'
+      workingDirectory: $(Build.BinariesDirectory)
+    env:
+      OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)
+      DisableContribOps: $(DisableContribOps)
+      DisableMlOps: $(DisableMlOps)
+      IsReleaseBuild: $(IsReleaseBuild)
+      PACKAGENAME: ${{ parameters.NugetPackageName }}
+        
+  - template: component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'always'
+
+  - template: clean-agent-build-directory-step.yml
