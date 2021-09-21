@@ -95,7 +95,8 @@ class QDQQuantizer(ONNXQuantizer):
         if output_name in self.quantization_params.keys() and \
            len(self.model.input_name_to_nodes()[upstream_output_name]) == 1 and \
            not self.model.is_graph_output(output_name):
-            self.model.replace_input_of_all_nodes(output_name, upstream_output_name)
+            self.model.replace_output_of_all_nodes(upstream_output_name, output_name)
+            self.tensors_to_quantize.remove(upstream_output_name)
             return True
         return False
 
