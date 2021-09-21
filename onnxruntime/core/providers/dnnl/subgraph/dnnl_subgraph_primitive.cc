@@ -43,7 +43,7 @@ int Product(dnnl::memory::dims d) {
 
 void DnnlSubgraphPrimitive::AddKernels() {
   std::unordered_set<std::string> binary_ops = {"Add", "Div", "Mul", "Sub"};
-  std::unordered_set<std::string> elementwise_ops = {"Abs", "Elu", "Exp","Log", "Relu", "Round", "Sigmoid", "Softplus", "Sqrt", "Tanh"};
+  std::unordered_set<std::string> elementwise_ops = {"Abs", "Elu", "Exp", "LeakyRelu", "Log", "Relu", "Round", "Sigmoid", "Softplus", "Sqrt", "Tanh"};
   std::unordered_set<std::string> pool_ops = {"AveragePool", "GlobalAveragePool", "GlobalMaxPool", "MaxPool"};
   for (auto& node : subgraph_->GetDnnlNodes()) {
     if (node.OpType() == "BatchNormalization") {
