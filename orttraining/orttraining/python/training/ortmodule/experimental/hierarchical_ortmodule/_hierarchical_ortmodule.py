@@ -10,7 +10,7 @@ class HierarchicalORTModule(torch.nn.Module):
     def __init__(self, module):
         super(HierarchicalORTModule, self).__init__()
         self._initialized = False
-        self._original_module = module
+        self._wrapped_module = module
 
     def _initialize(self, *args, **kwargs):
         handle_pool = []
@@ -95,6 +95,27 @@ class HierarchicalORTModule(torch.nn.Module):
                     exportable_list[module] = module_exportable
                     return exportable_list[module]
 
+        # Add a hook to record forward's input for all modules.
+        recursive_hook(self._wrapped_module)
+
+        # Run forward with actual input to record all possible
+        # inputs for all invoked modules.
+        y = self._wrapped_module(*args, **kwargs)
+
+        # We already have "supported_modules" so
+        # we no longer need those hooks in forward pass.
+        for h in handle_pool:
+            h.remove()
+
+        # Try exporter on all module-input pairs. If a module can be exported with
+        # all its recorded inputs, then it's exporable.
+        check_exportable(self._wrapped_module)
+
+        # A naive way of determining if ORT can run nn.Module
+        def is_supported(module):
+            # This is what Yuan called GetCapability().
+            return module in exportable_list and exportable_list[module]
+
         # Top-down wrapper to replace nn.Module's with ORTModule.
         # Note that using bottom-up wrapper may lead to much
         # ORTModule instances and each ORTModule owns a much smaller graph.
@@ -118,48 +139,10 @@ class HierarchicalORTModule(torch.nn.Module):
                         # Let's check its sub-modules.
                         recursive_wrap(sub)
 
-        # Add a hook to record forward's input for all modules.
-        recursive_hook(self._original_module)
-
-        # Run forward with actual input to record all possible
-        # inputs for all invoked modules.
-        y = self._original_module(*args, **kwargs)
-
-        # We already have "supported_modules" so
-        # we no longer need those hooks in forward pass.
-        for h in handle_pool:
-            h.remove()
-
-        # Try exporter on all module-input pairs. If a module can be exported with
-        # all its recorded inputs, then it's exporable.
-        check_exportable(self._original_module)
-
-        # A naive way of determining if ORT can run nn.Module
-        def is_supported(module):
-            # This is what Yuan called GetCapability().
-            return module in exportable_list and exportable_list[module]
-
-        # Recursively wrap nn.Module as ORTModule so supported computation
-        # would be delegate to ORT and the rest may happen in Pytorch.
-        def recursive_wrap(module):
-            sub_dict = module._modules
-            for name, sub in sub_dict.items():
-                if isinstance(sub, torch.nn.ModuleList):
-                    for name1, sub1 in sub._modules.items():
-                        if is_supported(sub1):
-                            sub._modules[name1] = ORTModule(sub1)
-                        else:
-                            recursive_wrap(sub1)
-                else:
-                    if is_supported(sub):
-                        sub_dict[name] = ORTModule(sub)
-                    else:
-                        recursive_wrap(sub)
-
-        recursive_wrap(self._original_module)
+        recursive_wrap(self._wrapped_module)
 
     def forward(self, *inputs, **kwargs):
         if not self._initialized:
             self._initialized = True
             self._initialize(*inputs, **kwargs)
-        return self._original_module(*inputs, **kwargs)
+        return self._wrapped_module(*inputs, **kwargs)

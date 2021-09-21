@@ -77,10 +77,42 @@ class Main(nn.Module):
         return z
 
 
+class E(nn.Module):
+    # Sub-modules are stored in nn.ModuleList.
+    def __init__(self):
+        super(E, self).__init__()
+        self.my_layers = nn.ModuleList([A(), B(), C(), D()])
+
+    def forward(self, x):
+        y = x
+        for layer in self.my_layers:
+            y = layer(y)
+        return y
+
+
+class MainWithModuleList(nn.Module):
+    # Sub-modules are stored in nn.ModuleList.
+    def __init__(self):
+        super(MainWithModuleList, self).__init__()
+        self.my_layers = nn.ModuleList([E(), E()])
+
+    def forward(self, x):
+        y = x
+        for layer in self.my_layers:
+            y = layer(y)
+        return y
+
+
 def test_hierarchical_ortmodule():
-    def trial():
+    def count_ortmodule(module):
+        n = 1 if isinstance(module, ORTModule) else 0
+        for sub in module._modules.values():
+            n = n + count_ortmodule(sub)
+        return n
+
+    def trial(module_to_wrap, expected_num_ortmodule):
         x = torch.rand(2).requires_grad_()
-        m = Main()
+        m = module_to_wrap
 
         y_ref = m(x)
         y_ref.sum().backward()
@@ -93,22 +125,16 @@ def test_hierarchical_ortmodule():
         y.sum().backward()
         g = x.grad.detach()
 
-        def count_ortmodule(module):
-            n = 0
-            for child in module.children():
-                if isinstance(child, ORTModule):
-                    n = n + 1
-            return n
         # Some sub-modules become ORTModule.
-        num_ortmodule = count_ortmodule(m._original_module)
-        assert num_ortmodule == 2
+        assert expected_num_ortmodule == count_ortmodule(m)
 
         assert torch.allclose(y, y_ref)
         assert torch.allclose(g, g_ref)
 
     num_trials = 8
     for i in range(num_trials):
-        trial()
+        trial(Main(), 6)
+        trial(MainWithModuleList(), 12)
 
 
 if __name__ == '__main__':
