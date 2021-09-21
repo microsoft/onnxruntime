@@ -8,10 +8,13 @@ import onnxruntime
 import torch
 from onnxruntime.training import export_gradient_graph
 from torch import nn
-from torch.onnx import TrainingMode
 
 
 class NeuralNet(torch.nn.Module):
+    r"""
+    Simple example model.
+    """
+
     def __init__(self, input_size, hidden_size, num_classes):
         super(NeuralNet, self).__init__()
 
@@ -19,12 +22,11 @@ class NeuralNet(torch.nn.Module):
         self.relu = torch.nn.ReLU()
         self.fc2 = torch.nn.Linear(hidden_size, num_classes)
 
-    def forward(self, input1, label):
-        out = self.fc1(input1)
+    def forward(self, x):
+        out = self.fc1(x)
         out = self.relu(out)
         out = self.fc2(out)
-        loss = self.loss_fn(out, label)
-        return out, loss
+        return out
 
 
 def to_numpy(tensor):
@@ -36,45 +38,29 @@ class GradientGraphBuilderTest(unittest.TestCase):
         loss_fn = nn.CrossEntropyLoss()
         model = NeuralNet(input_size=10, hidden_size=5,
                           num_classes=2)
-        model.train()
         directory_path = Path(os.path.dirname(__file__)).resolve()
-        intermediate_path = directory_path / 'gradient_graph_builder_test_model.onnx'
+        intermediate_graph_path = directory_path / \
+            'gradient_graph_builder_test_model.onnx'
         gradient_graph_path = directory_path/'gradient_graph_model.onnx'
-        batch_size = 1
-        export_gradient_graph(model, loss_fn, batch_size, gradient_graph_path, intermediate_path)
-        x = torch.randn(batch_size, model.fc1.in_features, requires_grad=True)
-        label = torch.tensor([1])
-        torch_out, torch_loss = model(x, label)
 
-        torch.onnx.export(
-            model, (x, label), str(intermediate_path),
-            export_params=True,
-            opset_version=12, do_constant_folding=False,
-            training=TrainingMode.TRAINING,
-            input_names=['input', 'label'],
-            output_names=['output', 'loss'],
-            dynamic_axes={
-                'input': {0: 'batch_size', },
-                'label': {0: 'batch_size', },
-                'output': {0: 'batch_size', },
-            })
-        builder = GradientGraphBuilder(str(intermediate_path),
-                                       {'loss'},
-                                       {'fc1.weight', 'fc1.bias',
-                                           'fc2.weight', 'fc2.bias'},
-                                       'loss')
-        builder.build()
-        builder.save(str(gradient_graph_path))
+        batch_size = 1
+        example_input = torch.randn(
+            batch_size, model.fc1.in_features, requires_grad=True)
+
+        export_gradient_graph(
+            model, loss_fn, intermediate_graph_path, gradient_graph_path)
 
         onnx_model = onnx.load(str(gradient_graph_path))
         onnx.checker.check_model(onnx_model)
+
+        torch_out = model(example_input)
 
         ort_session = onnxruntime.InferenceSession(
             str(gradient_graph_path))
         inputs = ort_session.get_inputs()
         ort_inputs = {
             inputs[0].name: to_numpy(x),
-            inputs[1].name: to_numpy(label),
+            inputs[1].name: to_numpy(labels),
         }
         ort_outs = ort_session.run(None, ort_inputs)
         onnx_output_names = [node.name for node in onnx_model.graph.output]
