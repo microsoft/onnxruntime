@@ -142,8 +142,12 @@ void MyCustomKernelWithAttributes::Compute(OrtKernelContext* context) {
 template <typename T>
 static void custom_slice(const T* X, int64_t from, int64_t to, T* Y, const void* compute_stream) {
 #ifdef USE_CUDA
-  // Launch on stream 0 or user provided stream
-  cuda_slice(X, from, to, Y, compute_stream == nullptr ? 0 : reinterpret_cast<cudaStream_t>(compute_stream));
+  // We do not expect the compute_stream to be nullptr as we have queried the compute stream
+  // being used by the ORT session. If it is a nullptr, there was an issue with the stream querying.
+  // We don't launch the operation to trigger a test failure in that case.
+  if (compute_stream) {
+    cuda_slice(X, from, to, Y, reinterpret_cast<cudaStream_t>(compute_stream));
+  }
 #else
   ORT_UNUSED_PARAMETER(compute_stream);
   for (auto i = from; i < to; i++) {
