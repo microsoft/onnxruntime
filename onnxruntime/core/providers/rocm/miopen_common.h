@@ -56,14 +56,5 @@ struct ReduceConsts {
   static const ElemType One;
 };
 
-inline double ClampMiopenBatchNormEpsilon(double epsilon) {
-  if (epsilon < MIOPEN_BN_MIN_EPSILON) {
-    if (MIOPEN_BN_MIN_EPSILON - epsilon > FLT_EPSILON)
-      LOGS_DEFAULT(WARNING) << "Provided epsilon is smaller than CUDNN_BN_MIN_EPSILON. Setting it to CUDNN_BN_MIN_EPSILON";
-    return MIOPEN_BN_MIN_EPSILON;
-  }
-  return epsilon;
-}
-
 }  // namespace rocm
 }  // namespace onnxruntime
