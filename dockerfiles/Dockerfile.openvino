@@ -21,14 +21,15 @@ ENV InferenceEngine_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/
 ENV ngraph_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/ngraph/cmake
 
 USER root
-RUN apt update; apt install -y git protobuf-compiler libprotobuf-dev
-RUN git clone --recursive -b ${ONNXRUNTIME_BRANCH} ${ONNXRUNTIME_REPO} 
-RUN /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh
-RUN ln -s cmake-* cmake-dir
-RUN python3 -m pip install wheel
 ENV PATH=${WORKDIR_PATH}/cmake-dir/bin:$PATH
-RUN pip3 install onnx
-RUN cd onnxruntime && ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE} --build_shared_lib --build_wheel 
+RUN apt update; apt install -y git
+RUN git clone --recursive -b ${ONNXRUNTIME_BRANCH} ${ONNXRUNTIME_REPO} && \
+    onnxruntime/dockerfiles/scripts/install_common_deps_openvino.sh && \
+    python3 -m pip install wheel && \
+    onnxruntime/tools/ci_build/github/linux/docker/scripts/install_protobuf.sh && \
+    cd onnxruntime/cmake/external/onnx && python3 setup.py install && \
+    xargs rm < /tmp/src/protobuf-3.16.0/install_manifest.txt ; rm -rf /tmp/src && \
+    cd /home/openvino/onnxruntime && ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE} --build_shared_lib --build_wheel 
 
 #Steps to download sources
 RUN cat /etc/apt/sources.list | sed 's/^# deb-src/deb-src/g' > ./temp; mv temp /etc/apt/sources.list

@@ -12,7 +12,7 @@ ARG ONNXRUNTIME_BRANCH=master
 WORKDIR /code
 ARG MY_ROOT=/code
 
-ENV PATH /opt/miniconda/bin:/code/cmake-3.21.0-linux-x86_64/bin:$PATH
+ENV PATH /opt/miniconda/bin:$PATH
 ENV LD_LIBRARY_PATH=/opt/miniconda/lib:/usr/lib:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
 
 ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2021.4.689
@@ -28,7 +28,7 @@ ENV LANG en_US.UTF-8
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt update -y && \
-    apt -y install --no-install-recommends apt-transport-https ca-certificates python3 python3-pip gnupg udev zip unzip x11-apps lsb-core wget curl cpio sudo libboost-python-dev libpng-dev zlib1g-dev git libnuma1 ocl-icd-libopencl1 clinfo libboost-filesystem1.65-dev libboost-thread1.65-dev protobuf-compiler libprotoc-dev autoconf automake libtool libjson-c-dev unattended-upgrades && \
+    apt -y install --no-install-recommends apt-transport-https ca-certificates python3 python3-pip gnupg udev zip unzip x11-apps lsb-core wget curl cpio sudo libboost-python-dev libpng-dev zlib1g-dev git libnuma1 ocl-icd-libopencl1 clinfo libboost-filesystem1.65-dev libboost-thread1.65-dev autoconf automake libtool libjson-c-dev unattended-upgrades && \
     unattended-upgrade && \
     rm -rf /var/lib/apt/lists/* && \
 # libusb from source
@@ -101,15 +101,18 @@ RUN apt update -y && \
 # Download and build ONNX Runtime
     cd ${MY_ROOT} && \
     git clone --recursive -b ${ONNXRUNTIME_BRANCH} ${ONNXRUNTIME_REPO} && \
-    /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh && \
+    apt-get remove -y cmake cmake-data && \
+    onnxruntime/dockerfiles/scripts/install_common_deps_openvino.sh && \
+    onnxruntime/tools/ci_build/github/linux/docker/scripts/install_protobuf.sh && \
     cd onnxruntime/cmake/external/onnx && python3 setup.py install && \
+    xargs rm < /tmp/src/protobuf-3.16.0/install_manifest.txt ; rm -rf /tmp/src && \
     cd ${MY_ROOT}/onnxruntime && ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE} --build_nuget --build_shared_lib && \
     mv ${MY_ROOT}/onnxruntime/build/Linux/Release/nuget-artifacts ${MY_ROOT} && \
 # Clean-up unnecessary files
-    rm -rf ${MY_ROOT}/cmake* /opt/cmake ${MY_ROOT}/onnxruntime && \
+    cd / && rm -rf ${MY_ROOT}/onnxruntime && \
     rm -rf /opt/miniconda && \
     rm -rf /opt/v1.0.22.zip && \
-    apt remove -y git && apt autoremove -y  && apt remove -y cmake && \
+    apt remove -y git && apt autoremove -y  && \
     cd /usr/lib/ && rm -rf python2.7 python3.7 python3.8  && \
     cd && rm -rf .cache && \
     cd /usr/share/python-wheels/ && rm -rf *.whl
