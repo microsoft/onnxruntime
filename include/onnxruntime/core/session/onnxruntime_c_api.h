@@ -291,10 +291,6 @@ typedef enum OrtCudnnConvAlgoSearch {
 /// Options for the CUDA provider that are passed to SessionOptionsAppendExecutionProvider_CUDA
 /// </summary>
 typedef struct OrtCUDAProviderOptions {
-#ifdef __cplusplus
-  OrtCUDAProviderOptions() : device_id{}, cudnn_conv_algo_search{EXHAUSTIVE}, gpu_mem_limit{SIZE_MAX}, arena_extend_strategy{}, do_copy_in_default_stream{1}, has_user_compute_stream{}, user_compute_stream{}, default_memory_arena_cfg{} {}
-#endif
-
   /** \brief CUDA device Id
   *   Defaults to 0.
   */
@@ -327,7 +323,7 @@ typedef struct OrtCUDAProviderOptions {
   *   WARNING: Setting this to 0 may result in data races for some models.
   *   Please see issue #4829 for more details.
   */
-  int do_copy_in_default_stream;
+  int do_copy_in_default_stream = 1;
 
   /** \brief Flag indicating if there is a user provided compute stream
   *   Defaults to 0.
