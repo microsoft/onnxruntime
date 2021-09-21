@@ -224,10 +224,10 @@ typedef OrtStatus* OrtStatusPtr;
 * When an allocator is passed to any function, be sure that the allocator object is not destroyed until the last allocated object using it is freed.
 */
 typedef struct OrtAllocator {
-  uint32_t version; ///< Must be initialized to ORT_API_VERSION
-  void*(ORT_API_CALL* Alloc)(struct OrtAllocator* this_, size_t size); ///< Returns a pointer to an allocated block of `size` bytes
-  void(ORT_API_CALL* Free)(struct OrtAllocator* this_, void* p); ///< Free a block of memory previously allocated with OrtAllocator::Alloc
-  const struct OrtMemoryInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_); ///< Return a pointer to an ::OrtMemoryInfo that describes this allocator
+  uint32_t version;                                                                   ///< Must be initialized to ORT_API_VERSION
+  void*(ORT_API_CALL* Alloc)(struct OrtAllocator* this_, size_t size);                ///< Returns a pointer to an allocated block of `size` bytes
+  void(ORT_API_CALL* Free)(struct OrtAllocator* this_, void* p);                      ///< Free a block of memory previously allocated with OrtAllocator::Alloc
+  const struct OrtMemoryInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);  ///< Return a pointer to an ::OrtMemoryInfo that describes this allocator
 } OrtAllocator;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
@@ -298,11 +298,18 @@ typedef enum OrtCudnnConvAlgoSearch {
 /// </summary>
 typedef struct OrtCUDAProviderOptions {
 #ifdef __cplusplus
-  OrtCUDAProviderOptions() : device_id{}, cudnn_conv_algo_search{OrtCudnnConvAlgoSearchExhaustive}, gpu_mem_limit{SIZE_MAX}, arena_extend_strategy{}, do_copy_in_default_stream{}, has_user_compute_stream{}, user_compute_stream{}, default_memory_arena_cfg{} {}
+  OrtCUDAProviderOptions() : device_id{}, cudnn_conv_algo_search{OrtCudnnConvAlgoSearchExhaustive}, gpu_mem_limit{SIZE_MAX}, arena_extend_strategy{}, do_copy_in_default_stream{1}, has_user_compute_stream{}, user_compute_stream{}, default_memory_arena_cfg{} {}
 #endif
 
-  int device_id;  ///< CUDA device id (0 = default device)
+  /** \brief CUDA device Id
+  *   Defaults to 0.
+  */
+  int device_id;
 
+  /** \brief CUDA Convolution algorithm search configuration.
+  *   See enum OrtCudnnConvAlgoSearch for more details.
+  *   Defaults to OrtCudnnConvAlgoSearchExhaustive.
+  */
   OrtCudnnConvAlgoSearch cudnn_conv_algo_search;
 
   /** \brief CUDA memory limit (To use all possible memory pass in maximum size_t)
@@ -319,7 +326,11 @@ typedef struct OrtCUDAProviderOptions {
   */
   int arena_extend_strategy;
 
+<<<<<<< HEAD
   /** \brief Flag indicating if copying needs to take place on the same stream as the compute stream in the CUDA EP
+=======
+  /** \brief Flag indicating if copying needs to take place on the same stream as the compute stream in the CUDA EP
+>>>>>>> f7dedc900 (Fix default initialization value in C API header (#9126))
   *   0 = Use separate streams for copying and compute.
   *   1 = Use the same stream for copying and compute.
   *   Defaults to 1.
@@ -333,7 +344,11 @@ typedef struct OrtCUDAProviderOptions {
   */
   int has_user_compute_stream;
 
+<<<<<<< HEAD
   /** \brief User provided compute stream.
+=======
+  /** \brief User provided compute stream.
+>>>>>>> f7dedc900 (Fix default initialization value in C API header (#9126))
   *   If provided, please set `has_user_compute_stream` to 1.
   */
   void* user_compute_stream;
