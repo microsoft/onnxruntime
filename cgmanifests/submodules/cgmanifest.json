@@ -374,7 +374,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "97ec95075187b3e6bfbe2820572f9edc93e6ac5b",
+          "commitHash": "d4b2aff0c890ae38bad87c20f5731333db2a2cc1",
           "repositoryUrl": "https://github.com/microsoft/onnxruntime-extensions.git"
         },
         "comments": "git submodule at cmake/external/onnxruntime-extensions"

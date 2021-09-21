@@ -951,6 +951,7 @@ struct TensorSeq final {
   size_t Size() const noexcept { return g_host->TensorSeq__Size(this); }
   const Tensor& Get(size_t i) const { return g_host->TensorSeq__Get(this, i); }
   void Add(Tensor&& tensor) { g_host->TensorSeq__Add(this, std::move(tensor)); }
+  void Reserve(size_t capacity) { g_host->TensorSeq__Reserve(this, capacity); }
 };
 
 template <>

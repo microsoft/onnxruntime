@@ -611,7 +611,8 @@ class Gpt2Helper:
                     is_float16=False,
                     rtol=5e-4,
                     atol=5e-4,
-                    total_test_cases=100,
+                    test_cases_per_run=10000,
+                    total_runs=1,
                     use_io_binding=True,
                     model_class="GPT2LMHeadModel",
                     has_position_ids=True,
@@ -624,7 +625,7 @@ class Gpt2Helper:
         config: GPT2Config = model.config
 
         logger.info(
-            f"Running parity test (atol={atol}, test_cases={total_test_cases}, use_io_binding={use_io_binding}, model_class={model_class}, is_float16={is_float16}) ..."
+            f"Running parity test (atol={atol}, test_cases={test_cases_per_run}, runs={total_runs}, use_io_binding={use_io_binding}, model_class={model_class}, is_float16={is_float16}) ..."
         )
 
         max_batch_size = 8
@@ -641,7 +642,10 @@ class Gpt2Helper:
         top1_matched_cases = 0
 
         max_abs_diff_list = []
+        top1_matched_cases_per_run = [0] * total_runs
+        total_test_cases = test_cases_per_run * total_runs
         for i in range(total_test_cases):
+            run_id = int(i / test_cases_per_run)
             sequence_length = random.randint(1, max_seq_len)
             past_sequence_length = random.randint(0, max_past_seq_len)
             batch_size = random.randint(1, max_batch_size)
@@ -669,6 +673,7 @@ class Gpt2Helper:
                 passed_test_cases += 1
             if is_top1_matched:
                 top1_matched_cases += 1
+                top1_matched_cases_per_run[run_id] += 1
 
             if verbose and not is_all_close:
                 logger.info(
@@ -691,6 +696,7 @@ class Gpt2Helper:
             result = {f"max_diff_percentile_{p}": "nan" for p in [50, 90, 95, 99]}
 
         result["top1_match_rate"] = top1_matched_cases * 1.0 / total_test_cases
+        result["top1_match_rate_per_run"] = [x * 1.0 / test_cases_per_run for x in top1_matched_cases_per_run]
         result["diff_pass_rate"] = passed_test_cases * 1.0 / total_test_cases
         result["nan_rate"] = (total_test_cases - len(max_abs_diff_list)) * 1.0 / total_test_cases
 
@@ -762,7 +768,8 @@ class Gpt2Helper:
                        model_name_or_path,
                        model_class: str = 'GPT2LMHeadModel',
                        has_past=True,
-                       new_folder=False):
+                       new_folder=False,
+                       remove_existing=["raw", "fp32", "fp16", "int8"]):
         """ Build a  path name for given model based on given attributes.
         """
         model_name = model_name_or_path
@@ -777,15 +784,19 @@ class Gpt2Helper:
             model_name += "_past"
 
         if new_folder:
+            suffix = {"raw": "", "fp32": "_fp32", "fp16": "_fp16", "int8": "_int8"}
             # Remove the directories if existed.
-            for suffix in ["", "_fp32", "_fp16", "_int8"]:
-                new_dir = os.path.join(output_dir, model_name + suffix)
+            for model_type in ["raw", "fp32", "fp16", "int8"]:
+                new_dir = os.path.join(output_dir, model_name + suffix[model_type])
                 if os.path.exists(new_dir):
-                    try:
-                        shutil.rmtree(new_dir)
-                        logger.info(f"Removed the existed directory: {new_dir}")
-                    except OSError as e:
-                        logger.info(f"Failed to remove the directory {new_dir}: {e.strerror}")
+                    if (model_type in remove_existing):
+                        try:
+                            shutil.rmtree(new_dir)
+                            logger.info(f"Removed the existed directory: {new_dir}")
+                        except OSError as e:
+                            logger.info(f"Failed to remove the directory {new_dir}: {e.strerror}")
+                    else:
+                        logger.info(f"Directory for {model_type} existed: {new_dir}")
 
             # store each model to its own directory (for external data format).
             return {

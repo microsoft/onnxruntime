@@ -300,6 +300,9 @@ class BertOnnxModel(OnnxModel):
         self.prune_graph()
 
     def optimize(self, options: FusionOptions = None, add_dynamic_axes=False):
+        # Remove cast nodes that having same data type of input and output based on symbolic shape inference.
+        self.utils.remove_useless_cast_nodes()
+
         if (options is None) or options.enable_layer_norm:
             self.fuse_layer_norm()
 
@@ -324,7 +327,7 @@ class BertOnnxModel(OnnxModel):
             self.fuse_embed_layer()
 
         # Remove reshape nodes that having same shape of input and output based on symbolic shape inference.
-        FusionUtils.remove_useless_reshape_nodes(self)
+        self.utils.remove_useless_reshape_nodes()
 
         self.postprocess()
 

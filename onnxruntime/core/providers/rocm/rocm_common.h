@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/providers/shared_library/provider_api.h"
 #include "core/common/status.h"
 #include "core/providers/rocm/rocm_pch.h"
 #include "core/providers/rocm/shared_inc/rocm_call.h"

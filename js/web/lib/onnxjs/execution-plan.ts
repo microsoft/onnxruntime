@@ -134,15 +134,20 @@ export class ExecutionPlan {
       }
 
       const output: Tensor[] = [];
-      this.graph.getOutputIndices().forEach((outputIndex) => {
-        const thisValue = this._values[outputIndex];
-        if (thisValue === undefined) {
+      for (let i = 0; i < this.graph.getOutputIndices().length; i++) {
+        const outputIndex = this.graph.getOutputIndices()[i];
+        const outputTensor = this._values[outputIndex];
+        if (outputTensor === undefined) {
           throw new Error(`required output [${outputIndex}] does not have value`);
         }
-        // eslint-disable-next-line no-unused-expressions
-        thisValue.data;
-        output.push(thisValue);
-      });
+        if (outputIndex === 0) {
+          await outputTensor.getData();
+        } else {
+          // eslint-disable-next-line no-unused-expressions
+          outputTensor.data;
+        }
+        output.push(outputTensor);
+      }
       Logger.verbose('ExecPlan', 'disposing of inferenceHandler');
       inferenceHandler.dispose();
       return output;
