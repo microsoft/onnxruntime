@@ -36,6 +36,112 @@ struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
     int32_t OutputZeroPoint;
 };
 
+//
+// Define the prototypes of the platform optimized routines.
+//
+
+typedef
+void
+(MLASCALL MLAS_CONV_SYM_KERNEL)(
+    const void* Input,
+    const void* Filter,
+    uint8_t* Output,
+    size_t KernelSize,
+    size_t InputChannels,
+    size_t OutputChannels,
+    unsigned ChannelCount,
+    unsigned OutputCount,
+    const struct MLAS_CONV_SYM_POST_PROCESS_PARAMS* PostProcessParams,
+    unsigned KernelFlags
+    );
+
+typedef
+void
+(MLASCALL MLAS_CONV_SYM_DEPTHWISE_KERNEL)(
+    const void* Input,
+    const void* Filter,
+    uint8_t* Output,
+    size_t KernelSize,
+    size_t Channels,
+    size_t ChannelOffset,
+    unsigned ChannelCount,
+    unsigned OutputCount,
+    const struct MLAS_CONV_SYM_POST_PROCESS_PARAMS* PostProcessParams,
+    unsigned KernelFlags
+    );
+
+extern "C" {
+
+#if defined(MLAS_TARGET_AMD64)
+    MLAS_CONV_SYM_KERNEL MlasConvSymKernelAvx2;
+    MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseKernelAvx2;
+    MLAS_CONV_SYM_KERNEL MlasConvSymKernelAvxVnni;
+    MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseKernelAvxVnni;
+    MLAS_CONV_SYM_KERNEL MlasConvSymKernelAvx512Core;
+    MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseKernelAvx512Core;
+    MLAS_CONV_SYM_KERNEL MlasConvSymKernelAvx512Vnni;
+    MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseKernelAvx512Vnni;
+#endif
+
+}
+
+//
+//
+//
+
+struct MLAS_CONV_SYM_DISPATCH {
+    MLAS_CONV_SYM_KERNEL* Kernel;
+    MLAS_CONV_SYM_DEPTHWISE_KERNEL* DepthwiseKernel;
+    uint8_t KernelChannelCount;
+    uint8_t KernelOutputCount;
+    uint8_t KernelDepthwiseChannelCount;
+    uint8_t KernelDepthwiseOutputCount;
+};
+
+#if defined(MLAS_TARGET_AMD64)
+
+const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx2 = {
+    MlasConvSymKernelAvx2,
+    MlasConvSymDepthwiseKernelAvx2,
+    16,                                     // KernelChannelCount
+    4,                                      // KernelOutputCount
+    16,                                     // KernelDepthwiseChannelCount
+    4,                                      // KernelDepthwiseOutputCount
+};
+
+const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvxVnni = {
+    MlasConvSymKernelAvxVnni,
+    MlasConvSymDepthwiseKernelAvxVnni,
+    16,                                     // KernelChannelCount
+    6,                                      // KernelOutputCount
+    16,                                     // KernelDepthwiseChannelCount
+    4,                                      // KernelDepthwiseOutputCount
+};
+
+#if !defined(ORT_MINIMAL_BUILD)
+
+const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Core = {
+    MlasConvSymKernelAvx512Core,
+    MlasConvSymDepthwiseKernelAvx512Core,
+    64,                                     // KernelChannelCount
+    6,                                      // KernelOutputCount
+    64,                                     // KernelDepthwiseChannelCount
+    6,                                      // KernelDepthwiseOutputCount
+};
+
+const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Vnni = {
+    MlasConvSymKernelAvx512Vnni,
+    MlasConvSymDepthwiseKernelAvx512Vnni,
+    64,                                     // KernelChannelCount
+    6,                                      // KernelOutputCount
+    64,                                     // KernelDepthwiseChannelCount
+    6,                                      // KernelDepthwiseOutputCount
+};
+
+#endif // ORT_MINIMAL_BUILD
+
+#endif // MLAS_TARGET_AMD64
+
 MLAS_FORCEINLINE
 void
 MlasConvSymSetOutputZeroPoint(
@@ -56,11 +162,13 @@ MlasConvSymPackWSize(
     size_t KernelSize
     )
 {
-    if (GroupCount > 1) {
+    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = MlasPlatform.ConvSymDispatch;
 
-        if (MlasPlatform.ConvSymDepthwiseKernel == nullptr) {
-            return 0;
-        }
+    if (ConvSymDispatch == nullptr) {
+        return 0;
+    }
+
+    if (GroupCount > 1) {
 
         if (InputChannels == 1 && OutputChannels == 1) {
 
@@ -77,10 +185,6 @@ MlasConvSymPackWSize(
         }
 
     } else {
-
-        if (MlasPlatform.ConvSymKernel == nullptr) {
-            return 0;
-        }
 
         if ((InputChannels % 4) != 0) {
             return 0;
@@ -200,6 +304,8 @@ MlasConvSym(
     const MLAS_CONV_SYM_PARAMS& Params
     )
 {
+    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = MlasPlatform.ConvSymDispatch;
+
     int32_t KernelFlags = 0;
 
     if (Params.PerChannelScale) {
@@ -214,45 +320,56 @@ MlasConvSym(
 
     MlasConvSymSetOutputZeroPoint(PostProcessParams, Params.OutputZeroPoint);
 
-    size_t co_kernel = MlasPlatform.MaximumConvSymChannelCount;
-    size_t oc_kernel = MlasPlatform.MaximumConvSymOutputCount;
+    const size_t KernelChannelCount = ConvSymDispatch->KernelChannelCount;
+    const size_t KernelOutputCount = ConvSymDispatch->KernelOutputCount;
+
+    const size_t KernelSize = Params.KernelSize;
+    const size_t InputChannels = Params.InputChannels;
+    const size_t OutputChannels = Params.OutputChannels;
 
     for (size_t oc0 = 0; oc0 < Params.OutputCount;) {
-      const size_t oc0_this_pass = std::min<size_t>(Params.OutputCount - oc0, 240);
-      const int8_t* pwb = static_cast<const int8_t*>(Params.Filter);
-      for (size_t co = 0; co < Params.OutputChannels;) {
-        const size_t co_this_pass = std::min<size_t>(Params.OutputChannels - co, co_kernel);
-        auto* gemm_out = Params.Output + (oc0 * Params.OutputChannels) + co;
-        for (size_t oc = 0; oc < oc0_this_pass;) {
-          const void* gg;
-          if (Params.InputIndirection) {
-            gg = Params.InputIndirection + (oc0 + oc) * Params.KernelSize;
-          } else {
-            gg = Params.InputDirect + (oc0 + oc) * Params.InputChannels;
-          }
-          size_t oc_this_pass = std::min<size_t>(oc0_this_pass - oc, oc_kernel);
 
-          PostProcessParams.Bias = Params.Bias + co;
-          PostProcessParams.Scale = Params.Scale + (Params.PerChannelScale ? co : 0);
+        const size_t oc0_this_pass = std::min<size_t>(Params.OutputCount - oc0, 240);
+        const int8_t* pwb = static_cast<const int8_t*>(Params.Filter);
 
-          MlasPlatform.ConvSymKernel(
-              gg,
-              pwb,
-              gemm_out,
-              Params.KernelSize,
-              Params.InputChannels,
-              Params.OutputChannels,
-              static_cast<unsigned>(co_this_pass),
-              static_cast<unsigned>(oc_this_pass),
-              &PostProcessParams,
-              KernelFlags);
-          oc += oc_this_pass;
-          gemm_out += oc_this_pass * Params.OutputChannels;
+        for (size_t co = 0; co < OutputChannels;) {
+
+            const size_t ChannelCount = std::min<size_t>(OutputChannels - co, KernelChannelCount);
+            auto* gemm_out = Params.Output + (oc0 * OutputChannels) + co;
+
+            PostProcessParams.Bias = Params.Bias + co;
+            PostProcessParams.Scale = Params.Scale + (Params.PerChannelScale ? co : 0);
+
+            for (size_t oc = 0; oc < oc0_this_pass;) {
+
+                const void* gg;
+                if (Params.InputIndirection) {
+                    gg = Params.InputIndirection + (oc0 + oc) * KernelSize;
+                } else {
+                    gg = Params.InputDirect + (oc0 + oc) * InputChannels;
+                }
+                size_t OutputCount = std::min<size_t>(oc0_this_pass - oc, KernelOutputCount);
+
+                ConvSymDispatch->Kernel(
+                    gg,
+                    pwb,
+                    gemm_out,
+                    KernelSize,
+                    InputChannels,
+                    OutputChannels,
+                    static_cast<unsigned>(ChannelCount),
+                    static_cast<unsigned>(OutputCount),
+                    &PostProcessParams,
+                    KernelFlags);
+                oc += OutputCount;
+                gemm_out += OutputCount * OutputChannels;
+            }
+
+            co += ChannelCount;
+            pwb += ChannelCount * InputChannels * KernelSize;
         }
-        co += co_this_pass;
-        pwb += co_this_pass * Params.InputChannels * Params.KernelSize;
-      }
-      oc0 += oc0_this_pass;
+
+        oc0 += oc0_this_pass;
     }
 }
 
@@ -261,6 +378,8 @@ MlasConvSymDepthwise(
     const MLAS_CONV_SYM_PARAMS& Params
     )
 {
+    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = MlasPlatform.ConvSymDispatch;
+
     unsigned KernelFlags = 0;
 
     if (Params.PerChannelScale) {
@@ -275,35 +394,43 @@ MlasConvSymDepthwise(
 
     MlasConvSymSetOutputZeroPoint(PostProcessParams, Params.OutputZeroPoint);
 
-    size_t co_kernel = MlasPlatform.MaximumConvSymChannelCount;
-    size_t oc_kernel = MlasPlatform.MaximumConvSymDepthwiseOutputCount;
+    const size_t KernelChannelCount = ConvSymDispatch->KernelDepthwiseChannelCount;
+    const size_t KernelOutputCount = ConvSymDispatch->KernelDepthwiseOutputCount;
 
-    auto* gemm_out = Params.Output;
-    auto* conv_input = Params.InputIndirection;
-    for (size_t oc = 0; oc < Params.OutputCount;) {
-        size_t oc_this_pass = std::min<size_t>(Params.OutputCount - oc, oc_kernel);
-        for (size_t co = 0; co < Params.OutputChannels;) {
-            const size_t co_this_pass = std::min<size_t>(Params.OutputChannels - co, co_kernel);
+    const size_t KernelSize = Params.KernelSize;
+    const size_t OutputChannels = Params.OutputChannels;
 
-            PostProcessParams.Bias = Params.Bias + co;
-            PostProcessParams.Scale = Params.Scale + (Params.PerChannelScale ? co : 0);
+    const auto* InputIndirection = Params.InputIndirection;
+    auto* Output = Params.Output;
 
-            MlasPlatform.ConvSymDepthwiseKernel(
-                conv_input,
-                static_cast<const int8_t*>(Params.Filter) + co,
-                gemm_out + co,
-                Params.KernelSize,
-                Params.OutputChannels,
-                co,
-                static_cast<unsigned>(co_this_pass),
-                static_cast<unsigned>(oc_this_pass),
+    for (size_t OutputCountRemaining = Params.OutputCount; OutputCountRemaining > 0;) {
+
+        const size_t OutputCount = std::min(OutputCountRemaining, KernelOutputCount);
+
+        for (size_t ChannelOffset = 0; ChannelOffset < OutputChannels;) {
+
+            const size_t ChannelCount = std::min(OutputChannels - ChannelOffset, KernelChannelCount);
+
+            PostProcessParams.Bias = Params.Bias + ChannelOffset;
+            PostProcessParams.Scale = Params.Scale + (Params.PerChannelScale ? ChannelOffset : 0);
+
+            ConvSymDispatch->DepthwiseKernel(
+                InputIndirection,
+                static_cast<const uint8_t*>(Params.Filter) + ChannelOffset,
+                Output + ChannelOffset,
+                KernelSize,
+                OutputChannels,
+                ChannelOffset,
+                static_cast<unsigned>(ChannelCount),
+                static_cast<unsigned>(OutputCount),
                 &PostProcessParams,
                 KernelFlags);
-            co += co_this_pass;
+
+            ChannelOffset += ChannelCount;
         }
 
-        oc += oc_this_pass;
-        gemm_out += oc_this_pass * Params.OutputChannels;
-        conv_input += Params.KernelSize * oc_this_pass;
+        InputIndirection += OutputCount * KernelSize;
+        Output += OutputCount * OutputChannels;
+        OutputCountRemaining -= OutputCount;
     }
 }

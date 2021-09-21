@@ -238,11 +238,7 @@ Return Value:
                 this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx2;
                 this->GemmU8U8Dispatch = &MlasGemmU8U8DispatchAvx2;
                 this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx2;
-                this->ConvSymKernel = MlasConvSymKernelAvx2;
-                this->ConvSymDepthwiseKernel = MlasConvSymDepthwiseKernelAvx2;
-                this->MaximumConvSymChannelCount = 16;
-                this->MaximumConvSymOutputCount = 4;
-                this->MaximumConvSymDepthwiseOutputCount = 4;
+                this->ConvSymDispatch = &MlasConvSymDispatchAvx2;
 
                 this->GemmFloatKernel = MlasGemmFloatKernelFma3;
                 this->GemmDoubleKernel = MlasGemmDoubleKernelFma3;
@@ -284,9 +280,7 @@ Return Value:
                     this->GemmU8U8Dispatch = &MlasGemmU8S8DispatchAvx2;
                     this->GemmU8S8Kernel = MlasGemmU8S8KernelAvxVnni;
                     this->GemvU8S8Kernel = MlasGemvU8S8KernelAvxVnni;
-                    this->ConvSymKernel = MlasConvSymKernelAvxVnni;
-                    this->ConvSymDepthwiseKernel = MlasConvSymDepthwiseKernelAvxVnni;
-                    this->MaximumConvSymOutputCount = 6;
+                    this->ConvSymDispatch = &MlasConvSymDispatchAvxVnni;
                 }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -324,11 +318,7 @@ Return Value:
                         this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx512Core;
                         this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Core;
                         this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx512Core;
-                        this->ConvSymKernel = MlasConvSymKernelAvx512Core;
-                        this->ConvSymDepthwiseKernel = MlasConvSymDepthwiseKernelAvx512Core;
-                        this->MaximumConvSymChannelCount = 64;
-                        this->MaximumConvSymOutputCount = 6;
-                        this->MaximumConvSymDepthwiseOutputCount = 6;
+                        this->ConvSymDispatch = &MlasConvSymDispatchAvx512Core;
 
                         //
                         // Check if the processor supports AVX512VNNI.
@@ -339,8 +329,7 @@ Return Value:
                             this->GemmU8U8Dispatch = &MlasGemmU8S8DispatchAvx2;
                             this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx512Vnni;
                             this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Vnni;
-                            this->ConvSymKernel = MlasConvSymKernelAvx512Vnni;
-                            this->ConvSymDepthwiseKernel = MlasConvSymDepthwiseKernelAvx512Vnni;
+                            this->ConvSymDispatch = &MlasConvSymDispatchAvx512Vnni;
                         }
                     }
                 }

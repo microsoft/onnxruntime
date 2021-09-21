@@ -482,36 +482,6 @@ struct MLAS_U8X8_KERNEL
         );
 };
 
-typedef
-void
-(MLASCALL MLAS_CONV_SYM_KERNEL)(
-    const void* Input,
-    const void* Filter,
-    uint8_t* Output,
-    size_t KernelSize,
-    size_t InputChannels,
-    size_t OutputChannels,
-    unsigned ChannelCount,
-    unsigned OutputCount,
-    const struct MLAS_CONV_SYM_POST_PROCESS_PARAMS* PostProcessParams,
-    unsigned KernelFlags
-    );
-
-typedef
-void
-(MLASCALL MLAS_CONV_SYM_DEPTHWISE_KERNEL)(
-    const void* Input,
-    const void* Filter,
-    uint8_t* Output,
-    size_t KernelSize,
-    size_t Channels,
-    size_t ChannelOffset,
-    unsigned ChannelCount,
-    unsigned OutputCount,
-    const struct MLAS_CONV_SYM_POST_PROCESS_PARAMS* PostProcessParams,
-    unsigned KernelFlags
-    );
-
 extern "C" {
 
 #if defined(MLAS_TARGET_AMD64_IX86)
@@ -558,14 +528,6 @@ extern "C" {
     MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvxVnni;
     MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx2;
     MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx512Core;
-    MLAS_CONV_SYM_KERNEL MlasConvSymKernelAvx2;
-    MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseKernelAvx2;
-    MLAS_CONV_SYM_KERNEL MlasConvSymKernelAvxVnni;
-    MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseKernelAvxVnni;
-    MLAS_CONV_SYM_KERNEL MlasConvSymKernelAvx512Core;
-    MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseKernelAvx512Core;
-    MLAS_CONV_SYM_KERNEL MlasConvSymKernelAvx512Vnni;
-    MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseKernelAvx512Vnni;
 #endif
 
 #if defined(MLAS_TARGET_AMD64)
@@ -703,6 +665,17 @@ extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchUdot;
 extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchDefault;
 
 //
+// Symmetric quantized integer convolution dispatch structure.
+//
+
+struct MLAS_CONV_SYM_DISPATCH;
+
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx2;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvxVnni;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Core;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Vnni;
+
+//
 // Quantized depthwise convolution kernels.
 //
 
@@ -771,8 +744,7 @@ struct MLAS_PLATFORM {
     MLAS_QLINEAR_BINARY_OP_U8_KERNEL* QLinearAddU8Kernel;
     MLAS_U8X8_KERNEL<int8_t>::DepthwiseKernel* ConvDepthwiseU8S8Kernel;
     MLAS_U8X8_KERNEL<uint8_t>::DepthwiseKernel* ConvDepthwiseU8U8Kernel;
-    MLAS_CONV_SYM_KERNEL* ConvSymKernel;
-    MLAS_CONV_SYM_DEPTHWISE_KERNEL* ConvSymDepthwiseKernel;
+    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ComputeExpF32Kernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* LogisticKernelRoutine;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* TanhKernelRoutine;
@@ -786,9 +758,6 @@ struct MLAS_PLATFORM {
     uint32_t NchwcBlockSize;
     uint32_t PreferredBufferAlignment;
     int32_t MaximumThreadCount;
-    uint8_t MaximumConvSymChannelCount;
-    uint8_t MaximumConvSymOutputCount;
-    uint8_t MaximumConvSymDepthwiseOutputCount;
 #else
     static constexpr int32_t MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
 #endif
