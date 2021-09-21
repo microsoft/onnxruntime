@@ -3,14 +3,19 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from . import _utils, _io, _logger
-from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo, _SkipCheck
+from . import (_utils,
+               _io,
+               _logger,
+               _are_deterministic_algorithms_enabled,
+               _use_deterministic_algorithms)
+from ._graph_execution_manager import (GraphExecutionManager,
+                                       _RunStateInfo,
+                                       _SkipCheck)
 from ._execution_agent import InferenceAgent
 from .debug_options import DebugOptions
 from ._fallback import ORTModuleFallbackException, _FallbackPolicy, _FallbackManager
 
 from onnxruntime.capi import _pybind_state as C
-import onnx
 import torch
 import warnings
 
@@ -66,9 +71,9 @@ class InferenceManager(GraphExecutionManager):
             return self._fallback_manager.fallback(self._original_module, self._debug_options.logging.log_level, *inputs, **kwargs)
 
         try:
-            if self._first_skip_check_warning == True and self._skip_check.is_disabled() == False \
-                and self._debug_options.logging.log_level <= _logger.LogLevel.WARNING:
-                # Only change this after the firs time a warning is issued.
+            # Issue at most one warning message about fast path
+            if self._first_skip_check_warning is True and self._skip_check.is_disabled() is False \
+                    and self._debug_options.logging.log_level <= _logger.LogLevel.WARNING:
                 self._first_skip_check_warning = False
                 warnings.warn(f"Fast path enabled - skipping checks."
                               f"rebuild gradient graph: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT)},"
@@ -78,7 +83,7 @@ class InferenceManager(GraphExecutionManager):
             # If exporting module to ONNX for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
             build_graph = False
-            if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) == False or \
+            if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) is False or \
                 not self._onnx_models.exported_model:
                 # Exporting module to ONNX for the first time
                 build_graph = self._export_model(*inputs, **kwargs)
@@ -93,13 +98,16 @@ class InferenceManager(GraphExecutionManager):
             # If creating the execution agent for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
             create_execution_session = False
-            if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT) == False or \
-                not self._execution_agent:
+            if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT) is False or \
+                    not self._execution_agent:
                 module_device = _utils.get_device_from_module(
                     self._original_module)
-                # The inference session should be created every time
-                # the graph was built or if the device changed between calls to forward
-                create_execution_session = build_graph or self._device != module_device
+
+                create_execution_session = (build_graph or self._device != module_device or
+                                            torch.are_deterministic_algorithms_enabled() is not
+                                            _are_deterministic_algorithms_enabled())
+                _use_deterministic_algorithms(torch.are_deterministic_algorithms_enabled())
+
                 if self._device != module_device:
                     self._device = module_device
 
@@ -107,7 +115,7 @@ class InferenceManager(GraphExecutionManager):
                 # Create execution session creates the inference_session
                 self._create_execution_agent()
 
-            if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) == False:
+            if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) is False:
                 # Assert that the input and model device match
                 _utils._check_same_device(self._device, "Input argument to forward", *inputs)
 

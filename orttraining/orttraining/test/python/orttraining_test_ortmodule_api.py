@@ -3846,3 +3846,21 @@ def test_ortmodule_skip_check_load_from_os_env(policy_str, policy):
         assert ort_model._torch_module._execution_manager(training_mode)._skip_check == policy
 
     del os.environ['ORTMODULE_SKIPCHECK_POLICY']
+
+@pytest.mark.parametrize("is_training,deterministic",
+                         list(itertools.product([True,False],repeat=2)))
+def test_ortmodule_determinism_flag(is_training,deterministic):
+
+    torch.use_deterministic_algorithms(deterministic)
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out)
+    model = ORTModule(model)
+    model.train(is_training)
+
+    for i in range(5):
+        x = torch.randn(N, D_in)
+        _ = model(x)
+
+        from onnxruntime.training.ortmodule import _are_deterministic_algorithms_enabled
+        assert _are_deterministic_algorithms_enabled() is torch.are_deterministic_algorithms_enabled()
