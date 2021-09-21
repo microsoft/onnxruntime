@@ -56,7 +56,7 @@
     <WarningLevel>4</WarningLevel>
     <AndroidManagedSymbols>true</AndroidManagedSymbols>
     <AndroidUseSharedRuntime>False</AndroidUseSharedRuntime>
-    <AndroidLinkMode>SdkOnly</AndroidLinkMode>
+    <AndroidLinkMode>Full</AndroidLinkMode>
     <EmbedAssembliesIntoApk>True</EmbedAssembliesIntoApk>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <NoWarn>CS8002</NoWarn>
@@ -66,6 +66,7 @@
     <EnableLLVM>true</EnableLLVM>
     <AndroidLinkTool>r8</AndroidLinkTool>
     <AndroidSupportedAbis>arm64-v8a;armeabi-v7a;x86</AndroidSupportedAbis>
+    <AndroidLinkSkip>Microsoft.ML.OnnxRuntime.Tests;</AndroidLinkSkip>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
@@ -135,9 +136,6 @@
       <Version>5.0.0.2083</Version>
     </PackageReference>
     <PackageReference Include="Google.Protobuf" Version="3.17.3" />
-    <PackageReference Include="System.Text.Json">
-      <Version>5.0.2</Version>
-    </PackageReference>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj">

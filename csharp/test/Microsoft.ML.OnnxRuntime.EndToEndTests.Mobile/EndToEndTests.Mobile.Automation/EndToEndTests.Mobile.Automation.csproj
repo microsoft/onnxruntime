@@ -68,6 +68,9 @@
   <ItemGroup>
     <Compile Include="Tests.cs" />
     <Compile Include="AppInitializer.cs" />
+    <Compile Include="..\..\Microsoft.ML.OnnxRuntime.Tests.Devices\TestResultData.cs">
+      <Link>TestResultData.cs</Link>
+    </Compile>
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

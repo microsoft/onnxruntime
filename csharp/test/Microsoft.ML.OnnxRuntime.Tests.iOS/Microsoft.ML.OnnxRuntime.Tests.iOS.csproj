@@ -77,6 +77,7 @@
         <MtouchLink>SdkOnly</MtouchLink>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <MtouchUseLlvm>true</MtouchUseLlvm>
+        <MtouchExtraArgs>--nowarn:0109</MtouchExtraArgs>
     </PropertyGroup>
 
     <PropertyGroup>
@@ -108,9 +109,6 @@
         <Version>5.0.0.2083</Version>
       </PackageReference>
       <PackageReference Include="System.Memory" Version="4.5.4" IncludeAssets="None" />
-      <PackageReference Include="System.Text.Json">
-        <Version>5.0.2</Version>
-      </PackageReference>
       <PackageReference Include="Xamarin.TestCloud.Agent">
         <Version>0.22.2</Version>
       </PackageReference>

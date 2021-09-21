@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Threading;
+using Microsoft.ML.OnnxRuntime.Tests.Devices;
 using Newtonsoft.Json;
 using NUnit.Framework;
 using Xamarin.UITest;
@@ -39,19 +40,10 @@ namespace EndToEndTests.Mobile.Automation
             var serializedResultSummary = _app.Invoke(_getResultsBackdoorMethodName)?.ToString();
             Assert.IsNotEmpty(serializedResultSummary, "Test results were not returned");
 
-            var testOutcome = JsonConvert.DeserializeObject<TestOutcome>(serializedResultSummary);
-            Assert.AreEqual(testOutcome.Failed, 0, $"{testOutcome.Failed} tests failed");
+            var testSummary = JsonConvert.DeserializeObject<TestResultSummary>(serializedResultSummary);
+            Assert.AreEqual(testSummary.Failed, 0, $"{testSummary.Failed} tests failed");
 
             _app.Screenshot("Post-testing");
         }
-    }
-
-    public class TestOutcome
-    {
-        public int TestCount { get; set; }
-        public int Succeeded { get; set; }
-        public int Skipped { get; set; }
-        public int Failed { get; set; }
-        public int NotRun { get; set; }
     }
 }
