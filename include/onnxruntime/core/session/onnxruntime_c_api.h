@@ -268,10 +268,10 @@ typedef OrtStatus* OrtStatusPtr;
 * When an allocator is passed to any function, be sure that the allocator object is not destroyed until the last allocated object using it is freed.
 */
 typedef struct OrtAllocator {
-  uint32_t version; ///< Must be initialized to ORT_API_VERSION
-  void*(ORT_API_CALL* Alloc)(struct OrtAllocator* this_, size_t size); ///< Returns a pointer to an allocated block of `size` bytes
-  void(ORT_API_CALL* Free)(struct OrtAllocator* this_, void* p); ///< Free a block of memory previously allocated with OrtAllocator::Alloc
-  const struct OrtMemoryInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_); ///< Return a pointer to an ::OrtMemoryInfo that describes this allocator
+  uint32_t version;                                                                   ///< Must be initialized to ORT_API_VERSION
+  void*(ORT_API_CALL* Alloc)(struct OrtAllocator* this_, size_t size);                ///< Returns a pointer to an allocated block of `size` bytes
+  void(ORT_API_CALL* Free)(struct OrtAllocator* this_, void* p);                      ///< Free a block of memory previously allocated with OrtAllocator::Alloc
+  const struct OrtMemoryInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);  ///< Return a pointer to an ::OrtMemoryInfo that describes this allocator
 } OrtAllocator;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
@@ -2948,6 +2948,15 @@ struct OrtApi {
   */
   ORT_API2_STATUS(GetSparseTensorIndices, _In_ const OrtValue* ort_value, enum OrtSparseIndicesFormat indices_format, _Out_ size_t* num_indices, _Outptr_ const void** indices);
 
+  /** \brief Used for custom operators, gets the CUDA stream to use to launch the custom CUDA kernel     
+  *   \see ::OrtCustomOp
+  * \param[context] OrtKernelContext instance
+  * \param[out] Returns pointer to a CUDA stream that can be used to launch the custom CUDA kernel.
+  *             If retrieving the CUDA stream is not relevant (CUDA not enabled in the build, kernel partitioned to
+  *             some other EP), then a nullptr is returned as the output param.
+  *             Do not free the returned pointer as it refers to internal data owned by the underlying session.
+  */
+  ORT_API2_STATUS(KernelContext_GetCUDAStream, _In_ const OrtKernelContext* context, _Outptr_ const void** out);
   /// @}
 };
 

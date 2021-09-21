@@ -69,13 +69,13 @@ class OpKernelContext {
     return *output_ptr;
   }
 
-  #if !defined(DISABLE_SPARSE_TENSORS)
+#if !defined(DISABLE_SPARSE_TENSORS)
   // Fetch a sparse-tensor output corresponding to the specified index.
   // shape must specify the shape of the underlying dense-tensor.
   // Memory allocation for the output may happen when this method is invoked,
   // unless static optimization pre-allocates it.
   SparseTensor* OutputSparse(int index, const TensorShape& shape);
-  #endif
+#endif
 
   // Retrieve indexed shape obtained from memory planning before actual
   // computation. If the indexed shape cannot be inferred, this function returns
@@ -141,6 +141,14 @@ class OpKernelContext {
   */
   int GetDeviceId() const {
     return kernel_->Info().GetExecutionProvider()->GetDeviceId();
+  }
+
+  /**
+  Return the compute stream associated with the EP that the kernel is partitioned to.
+  For EPs that do not have a compute stream (e.g. CPU EP), a nullptr is returned.
+  */
+  const void* GetComputeStream() const {
+    return kernel_->Info().GetExecutionProvider()->GetComputeStream();
   }
 
   /**
