@@ -7,6 +7,12 @@ from ... import ORTModule
 
 
 class HierarchicalORTModule(torch.nn.Module):
+    # This class recursively wraps sub-modules of "self._wrapped_module"
+    # as ORTModule whenever it can. The actual wrapping happens in its
+    # first "forward(...)" call because we need to call Pytorch-to-ONNX
+    # exporter with actual inputs. Afterwards, supported computation
+    # will be delegated to ORT and unsupported computation is still
+    # done by Pytorch.
     def __init__(self, module):
         super(HierarchicalORTModule, self).__init__()
         self._initialized = False
