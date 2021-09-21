@@ -803,37 +803,37 @@ var validCombos = {
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
 
     "windows,C-API,X64,TensorRT":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
 
     "windows,C++,X64,TensorRT":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
 
     "windows,C#,X64,TensorRT":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
 
     "windows,Python,X64,TensorRT":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
 
     "linux,C-API,X64,TensorRT":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
 
     "linux,C++,X64,TensorRT":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
 
     "linux,C#,X64,TensorRT":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
 
     "linux,Python,X64,TensorRT":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
 
     "linux,C-API,ARM64,TensorRT":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
 
     "linux,C++,ARM64,TensorRT":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
 
     "linux,C#,ARM64,TensorRT":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
 
     "linux,Python,ARM64,TensorRT":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
@@ -860,7 +860,7 @@ var validCombos = {
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
 
     "windows,Python,X86,DirectML":
-    "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
+    "Follow build instructions from [here](https://aka.ms/build-ort-directml)",
     
     "windows,C-API,X64,DirectML":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
@@ -872,7 +872,7 @@ var validCombos = {
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
     
     "windows,Python,X64,DirectML":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
+        "pip install onnxruntime-directml",
     
     "windows,C-API,ARM64,DirectML":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
@@ -884,7 +884,7 @@ var validCombos = {
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
     
     "windows,Python,ARM64,DirectML":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
+        "Follow build instructions from [here](https://aka.ms/build-ort-directml)",
     
     "linux,Java,X64,DefaultCPU":
         "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
@@ -948,7 +948,7 @@ var validCombos = {
         "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle. <br/>Refer to <a href='http://www.onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
     "windows,Java,X64,TensorRT":
-        "Follow <a href='http://www.onnxruntime.ai/docs/how-to/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+        "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle. <br/>Refer to <a href='http://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
 
     "windows,Java,X64,DNNL":
         "Follow <a href='http://www.onnxruntime.ai/docs/how-to/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
@@ -963,7 +963,7 @@ var validCombos = {
         "Follow <a href='http://www.onnxruntime.ai/docs/how-to/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
     "linux,Java,X64,TensorRT":
-        "Follow <a href='http://www.onnxruntime.ai/docs/how-to/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+        "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle. <br/>Refer to <a href='http://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
 
     "linux,Java,X64,DNNL":
         "Follow <a href='http://www.onnxruntime.ai/docs/how-to/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
@@ -1139,7 +1139,6 @@ var validCombos = {
     "linux,C++,ARM64,RockchipNPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-rknpu' target='_blank'>here</a>",
 
-    
     "mac,C-API,ARM64,CoreML":
         "<i>Coming soon!</i>",
 
@@ -1150,8 +1149,18 @@ var validCombos = {
         "<i>Coming soon!</i>",
     
     "mac,C-API,ARM64,CoreML":
-        "<i>Coming soon!</i>"
+        "<i>Coming soon!</i>",
+
+    //power
+    "linux,C-API,Power,DefaultCPU":
+        "Follow build instructions from <a href='https://onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>here</a>",
     
+     "linux,C++,Power,DefaultCPU":
+        "Follow build instructions from <a href='https://onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>here</a>",
+    
+    "linux,Python,Power,DefaultCPU":
+        "Follow build instructions from <a href='https://onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>here</a>"
+
 };
 
 function commandMessage(key) {
