@@ -15,7 +15,7 @@ class NeuralNet(torch.nn.Module):
     Simple example model.
     """
 
-    def __init__(self, input_size, hidden_size, num_classes):
+    def __init__(self, input_size: int, hidden_size: int, num_classes: int):
         super(NeuralNet, self).__init__()
 
         self.fc1 = torch.nn.Linear(input_size, hidden_size)
@@ -36,7 +36,7 @@ def to_numpy(tensor):
 class GradientGraphBuilderTest(unittest.TestCase):
     def test_save(self):
         loss_fn = nn.CrossEntropyLoss()
-        input_size=10
+        input_size = 10
         model = NeuralNet(input_size=input_size, hidden_size=5,
                           num_classes=2)
         directory_path = Path(os.path.dirname(__file__)).resolve()
@@ -47,20 +47,20 @@ class GradientGraphBuilderTest(unittest.TestCase):
         batch_size = 1
         example_input = torch.randn(
             batch_size, input_size, requires_grad=True)
+        example_labels = torch.tensor([1])
 
         export_gradient_graph(
-            model, loss_fn, example_input, intermediate_graph_path, gradient_graph_path)
+            model, loss_fn, example_input, example_labels, intermediate_graph_path, gradient_graph_path)
 
         onnx_model = onnx.load(str(gradient_graph_path))
         onnx.checker.check_model(onnx_model)
 
         torch_out = model(example_input)
-        labels = torch.rand_like(torch_out)
         ort_session = onnxruntime.InferenceSession(str(gradient_graph_path))
         inputs = ort_session.get_inputs()
         ort_inputs = {
             inputs[0].name: to_numpy(example_input),
-            inputs[1].name: to_numpy(labels),
+            inputs[1].name: to_numpy(example_labels),
         }
         ort_outs = ort_session.run(None, ort_inputs)
         onnx_output_names = [node.name for node in onnx_model.graph.output]
@@ -71,14 +71,17 @@ class GradientGraphBuilderTest(unittest.TestCase):
         np.testing.assert_allclose(
             to_numpy(torch_out), ort_output, rtol=1e-03, atol=1e-05)
 
-        torch_loss= loss_fn(torch_out, labels)
+        torch_loss = loss_fn(torch_out, example_labels)
         ort_loss = onnx_name_to_output['loss']
         np.testing.assert_allclose(
             to_numpy(torch_loss), ort_loss, rtol=1e-03, atol=1e-05)
 
         # Make sure the gradients have the right shape.
+        model_param_names = tuple(name for name, _ in model.named_parameters())
+        self.assertEqual(4, len(model_param_names))
+
         for name, param in model.named_parameters():
-            grad = onnx_name_to_output[name + '_grad']
+            grad = onnx_name_to_output['model.' + name + '_grad']
             self.assertEqual(param.size(), grad.shape)
 
 

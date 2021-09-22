@@ -12,6 +12,7 @@ def export_gradient_graph(
         model: torch.nn.Module,
         loss_fn: Callable[[Any, Any], Any],
         example_input: torch.Tensor,
+        example_labels: torch.Tensor,
         intermediate_graph_path: Union[Path, str],
         gradient_graph_path: Union[Path, str]):
     r"""
@@ -27,8 +28,6 @@ def export_gradient_graph(
     # Make sure that loss nodes that expect multiple outputs are set up.
     CustomOpSymbolicRegistry.register_all()
 
-    example_labels = model(example_input)
-
     if not isinstance(intermediate_graph_path, str):
         intermediate_graph_path = str(intermediate_graph_path)
 
@@ -36,15 +35,20 @@ def export_gradient_graph(
         gradient_graph_path = str(gradient_graph_path)
 
     class WrapperModule(torch.nn.Module):
+        def __init__(self, model: torch.nn.Module):
+            super(WrapperModule, self).__init__()
+            self.model = model
+
         def forward(self, model_input, expected_labels):
-            output = model(model_input)
+            output = self.model(model_input)
             loss = loss_fn(output, expected_labels)
             return output, loss
 
-    wrapped_model = WrapperModule()
+    wrapped_model = WrapperModule(model)
 
     torch.onnx.export(
-        wrapped_model, (example_input, example_labels), intermediate_graph_path,
+        wrapped_model, (example_input, example_labels),
+        intermediate_graph_path,
         export_params=True,
         opset_version=12, do_constant_folding=False,
         training=TrainingMode.TRAINING,
@@ -62,6 +66,10 @@ def export_gradient_graph(
     for name, _ in model.named_parameters():
         # Should we check `if _.requires_grad:` first?
         nodes_needing_gradients.add(name)
+
+    # 'model.' will be prepended to nodes because we wrapped `model` with a member called `model`.
+    nodes_needing_gradients = set(
+        'model.' + name for name in nodes_needing_gradients)
 
     builder = GradientGraphBuilder(intermediate_graph_path,
                                    {'loss'},
