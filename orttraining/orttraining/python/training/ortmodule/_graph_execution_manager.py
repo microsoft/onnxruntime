@@ -71,7 +71,7 @@ class _SkipCheck(IntFlag):
 
 
 class GraphExecutionManager(GraphExecutionInterface):
-    def __init__(self, module, debug_options: DebugOptions, fallback_manager: _FallbackManager):
+    def __init__(self, module, debug_options: DebugOptions, fallback_manager: _FallbackManager, custom_op_set):
         """Manages construction and execution of ONNX graphs"""
 
         super(GraphExecutionManager, self).__init__(module._original_module)
@@ -99,11 +99,12 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # indicators of some logic have been executed previously thus could be skipped for faster training
         # default is enabled, if not define in os env
-        self._skip_check = _SkipCheck(_SkipCheck.SKIP_CHECK_DEVICE | _SkipCheck.SKIP_CHECK_BUILD_GRADIENT | _SkipCheck.SKIP_CHECK_EXECUTION_AGENT)
+        self._skip_check = _SkipCheck(
+            _SkipCheck.SKIP_CHECK_DEVICE | _SkipCheck.SKIP_CHECK_BUILD_GRADIENT | _SkipCheck.SKIP_CHECK_EXECUTION_AGENT)
         if os.getenv('ORTMODULE_SKIPCHECK_POLICY') is not None:
             self._skip_check = reduce(lambda x, y: x | y,
                                       [_SkipCheck[name] for name in
-                                        _utils.parse_os_env_skip_check_flags('ORTMODULE_SKIPCHECK_POLICY')])
+                                       _utils.parse_os_env_skip_check_flags('ORTMODULE_SKIPCHECK_POLICY')])
         self._first_skip_check_warning = True
 
         # Graph transformer config
@@ -174,6 +175,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Flag to re-export the model due to attribute change on original module.
         # Re-export will be avoided if _skip_check is enabled.
         self._original_model_has_changed = False
+        self._custom_op_set = custom_op_set
 
         # Load ATenOp executor extension.
         load_aten_op_executor_cpp_extension()
@@ -263,9 +265,12 @@ class GraphExecutionManager(GraphExecutionInterface):
                 provider_option_map["cudnn_conv_algo_search"] = "HEURISTIC"
                 provider_option_map["cudnn_conv_use_max_workspace"] = "1"
             if self._use_external_gpu_allocator:
-                provider_option_map["gpu_external_alloc"] = str(self._torch_alloc)
-                provider_option_map["gpu_external_free"] = str(self._torch_free)
-                provider_option_map["gpu_external_empty_cache"] = str(self._torch_empty_cache)
+                provider_option_map["gpu_external_alloc"] = str(
+                    self._torch_alloc)
+                provider_option_map["gpu_external_free"] = str(
+                    self._torch_free)
+                provider_option_map["gpu_external_empty_cache"] = str(
+                    self._torch_empty_cache)
             provider_options = [provider_option_map, {}]
         elif self._device.type == 'cpu':
             providers = ["CPUExecutionProvider"]
@@ -377,7 +382,8 @@ class GraphExecutionManager(GraphExecutionInterface):
                                   sample_inputs_as_tuple,
                                   f,
                                   **required_export_kwargs,
-                                  **self._export_extra_kwargs)
+                                  **self._export_extra_kwargs,
+                                  export_modules_as_functions=self._custom_op_set)
         except Exception as e:
             raise wrap_exception(ORTModuleONNXModelException,
                                  RuntimeError(f'There was an error while exporting the PyTorch model to ONNX: '
@@ -432,7 +438,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         grad_builder_config.build_gradient_graph = training
         grad_builder_config.graph_transformer_config = self._get_graph_transformer_config()
         grad_builder_config.enable_caching = self._enable_grad_acc_optimization
-        grad_builder_config.loglevel = _logger.ortmodule_loglevel_to_onnxruntime_c_loglevel(self._debug_options.logging.log_level)
+        grad_builder_config.loglevel = _logger.ortmodule_loglevel_to_onnxruntime_c_loglevel(
+            self._debug_options.logging.log_level)
         grad_builder_config.use_memory_efficient_gradient = self._use_memory_efficient_gradient
         self._graph_builder = C.OrtModuleGraphBuilder()
 

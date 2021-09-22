@@ -30,7 +30,7 @@ class TrainingManager(GraphExecutionManager):
     TrainingManager is responsible for building and running the forward and backward graph of the training model
     """
 
-    def __init__(self, model, debug_options: DebugOptions, fallback_manager: _FallbackManager):
+    def __init__(self, model, debug_options: DebugOptions, fallback_manager: _FallbackManager, custom_op_set):
         super().__init__(model, debug_options, fallback_manager)
         self._export_mode = torch.onnx.TrainingMode.TRAINING
         self._forward_class = self._create_autofunction_class()

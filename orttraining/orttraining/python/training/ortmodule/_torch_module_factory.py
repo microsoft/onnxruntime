@@ -6,9 +6,8 @@ from ._torch_module_ort import TorchModuleORT
 from .debug_options import DebugOptions
 from ._fallback import _FallbackManager
 
-
 class TorchModuleFactory:
-    def __call__(self, module, debug_options: DebugOptions, fallback_manager: _FallbackManager):
+    def __call__(self, module, debug_options: DebugOptions, fallback_manager: _FallbackManager, custom_op_set):
         """Creates a TorchModule instance based on the input module."""
 
-        return TorchModuleORT(module, debug_options, fallback_manager)
+        return TorchModuleORT(module, debug_options, fallback_manager, custom_op_set)
