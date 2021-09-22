@@ -7,8 +7,9 @@ from onnxruntime.capi._pybind_state import GradientGraphBuilder, PropagateCastOp
 from onnxruntime.capi.training.training_session import TrainingSession
 
 from .gradient_graph._gradient_graph_tools import export_gradient_graph
-from .orttrainer import ORTTrainer, TrainStepInfo
+# Options need to be imported before `ORTTrainer`.
 from .orttrainer_options import ORTTrainerOptions
+from .orttrainer import ORTTrainer, TrainStepInfo
 from . import amp, checkpoint, model_desc_validation, optim
 
 

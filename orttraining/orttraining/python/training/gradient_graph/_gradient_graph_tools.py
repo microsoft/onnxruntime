@@ -36,16 +36,15 @@ def export_gradient_graph(
         gradient_graph_path = str(gradient_graph_path)
 
     class WrapperModule(torch.nn.Module):
-        def __init__(self):
-            super(WrapperModule, self).__init__()
-
         def forward(self, model_input, expected_labels):
             output = model(model_input)
             loss = loss_fn(output, expected_labels)
             return output, loss
 
+    wrapped_model = WrapperModule()
+
     torch.onnx.export(
-        model, (example_input, example_labels), intermediate_graph_path,
+        wrapped_model, (example_input, example_labels), intermediate_graph_path,
         export_params=True,
         opset_version=12, do_constant_folding=False,
         training=TrainingMode.TRAINING,
