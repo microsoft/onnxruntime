@@ -4,7 +4,10 @@ jobs:
     vmImage: 'macOS-10.15'
   timeoutInMinutes: 180
   steps:
-  # Onnx has no 3.9 python package available yet, need to use python 3.8 to avoid build onnx package
+  - bash: env
+    displayName: env vars
+
+    # Onnx has no 3.9 python package available yet, need to use python 3.8 to avoid build onnx package
   # pythonVersion can be updated in Azure pipeline settings
   # https://dev.azure.com/onnxruntime/onnxruntime/_build?definitionId=53
   - task: UsePythonVersion@0
@@ -17,9 +20,6 @@ jobs:
 
   - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
     displayName: Setup gradle wrapper to use gradle 6.8.3
-
-  - bash: env
-    displayName: env vars
 
   # We build the host protoc to <ORT_ROOT>/protobuf_install
   - script: |
