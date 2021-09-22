@@ -74,6 +74,28 @@ void FuseResidualAddIfAny(Graph& graph, const Node& dropout_node,
   }
 }
 
+static bool IsSameShape(const TensorShapeProto& shape1, const TensorShapeProto& shape2) {
+  // TODO: This should probably be defined to be the equality operator on TensorShapeProto.
+  namespace on = ONNX_NAMESPACE;
+  int rank1 = shape1.dim_size();
+  if (shape2.dim_size() != rank1) return false;
+  for (int i = 0; i < rank1; i++) {
+    const auto& val1 = shape1.dim(i);
+    const auto& val2 = shape2.dim(i);
+    if (utils::HasDimValue(val1) && utils::HasDimValue(val2) &&
+        (val1.dim_value() == val2.dim_value()))
+      continue;  // same known dimension
+    if (utils::HasDimParam(val1) && utils::HasDimParam(val2)) {
+      const auto& val1_param = val1.dim_param();
+      if (val1_param == val2.dim_param() && !val1_param.empty())
+        continue;  // same unknown dimension
+    }
+    return false;
+  }
+  return true;
+};
+
+
 Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
@@ -107,22 +129,34 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       continue;
     }
 
-    int last_dim_shape1 = input1_shape->dim_size() - 1;
-    int last_dim_shape2 = input2_shape->dim_size() - 1;
-    if (!utils::HasDimValue(input1_shape->dim(last_dim_shape1)) ||
-        !utils::HasDimValue(input2_shape->dim(last_dim_shape2)) ||
-        input1_shape->dim(last_dim_shape1).dim_value() != input2_shape->dim(last_dim_shape2).dim_value()) {
-      continue;
+
+
+    bool same_rank = false;
+    if (IsSameShape(*input1_shape, *input2_shape)) {
+      same_rank = true;
+    } else {
+      int last_dim_shape1 = input1_shape->dim_size() - 1;
+      int last_dim_shape2 = input2_shape->dim_size() - 1;
+      if (!utils::HasDimValue(input1_shape->dim(last_dim_shape1)) ||
+          !utils::HasDimValue(input2_shape->dim(last_dim_shape2)) ||
+          input1_shape->dim(last_dim_shape1).dim_value() != input2_shape->dim(last_dim_shape2).dim_value()) {
+        continue;
+      }
     }
 
-    if (input1_shape->dim_size() == 1) {
-      dropout_input.push_back(node.MutableInputDefs()[1]);  // dropout input
-      dropout_input.push_back(node.MutableInputDefs()[0]);  // bias
-    } else if (input2_shape->dim_size() == 1) {
+    if (same_rank) {
       dropout_input.push_back(node.MutableInputDefs()[0]);  // dropout input
       dropout_input.push_back(node.MutableInputDefs()[1]);  // bias
     } else {
-      continue;
+      if (input1_shape->dim_size() == 1) {
+        dropout_input.push_back(node.MutableInputDefs()[1]);  // dropout input
+        dropout_input.push_back(node.MutableInputDefs()[0]);  // bias
+      } else if (input2_shape->dim_size() == 1) {
+        dropout_input.push_back(node.MutableInputDefs()[0]);  // dropout input
+        dropout_input.push_back(node.MutableInputDefs()[1]);  // bias
+      } else {
+        continue;
+      }
     }
     Node& add_node = node;
     nodes_to_fuse.push_back(add_node);
@@ -163,7 +197,7 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     const std::string op_type = "BiasDropout";
     Node& dropout_add_fusion_node = graph.AddNode(graph.GenerateNodeName(op_type),
                                                   op_type,
-                                                  "fused Add and Dropout",
+                                                  "fused Add-Dropout-Add for " + dropout_node.Name(),
                                                   dropout_input,
                                                   dropout_output,
                                                   {},

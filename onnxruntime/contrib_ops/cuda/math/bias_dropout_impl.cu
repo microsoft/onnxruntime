@@ -79,6 +79,57 @@ __global__ void BiasDropoutKernel(
   }
 }
 
+
+template <typename T, bool has_residual>
+__global__ void BiasDropoutSameRankKernel(
+    const int64_t N,
+    const float ratio,
+    const std::pair<uint64_t, uint64_t> seeds,
+    const T* X_data,
+    const T* bias_data,
+    const T* residual_data,
+    T* Y_data,
+    bool* mask_data) {
+  const float p = 1.0f - ratio;
+  const float scale = 1.0f / p;
+
+  CUDA_LONG idx = blockDim.x * blockIdx.x + threadIdx.x;
+  CUDA_LONG step_size = gridDim.x * blockDim.x * UNROLL;
+  CUDA_LONG rounded_size = ((N - 1) / step_size + 1) * step_size;
+
+  curandStatePhilox4_32_10_t state;
+  curand_init(seeds.first, idx, seeds.second, &state);
+
+  // We ensure every thread generates the same number of random numbers (by rounding
+  // up the size) and at the same timestep (by syncing threads).
+  // From CUDA curand documentation:
+  //   The Philox_4x32_10 algorithm is closely tied to the thread and block count.
+  //   Each thread computes 4 random numbers in the same time thus the most efficient
+  //   use of Philox_4x32_10 is to generate a multiple of 4 times number of threads.
+  for (CUDA_LONG id = idx; id < rounded_size; id += step_size) {
+    float4 rand = curand_uniform4(&state);
+
+  #pragma unroll
+    for (CUDA_LONG i = 0; i < UNROLL; i++) {
+      CUDA_LONG li = id + gridDim.x * blockDim.x * i;
+      if (li < N) {
+        // int offset = fdm_dim.mod(li);
+        // float bias = float(bias_data[offset]);
+
+        mask_data[li] = (&rand.x)[i] < p;
+        float output_data = (float(X_data[li]) + float(bias_data[li])) * mask_data[li] * scale;
+        if (has_residual) {
+          output_data += float(residual_data[li]);
+        }
+
+        Y_data[li] = T(output_data);
+      }
+    }
+
+    __syncthreads();
+  }
+}
+
 template <typename T>
 void BiasDropoutKernelImpl(
     const cudaDeviceProp& prop,
@@ -91,7 +142,8 @@ void BiasDropoutKernelImpl(
     const T* bias_data,
     const T* residual_data,
     T* Y_data,
-    bool* mask_data) {
+    bool* mask_data,
+    bool bias_data_same_rank) {
   const int block_size = 256;
   const int blocks_per_sm = prop.maxThreadsPerMultiProcessor / block_size;
   const int grid_size = std::min(prop.multiProcessorCount * blocks_per_sm, static_cast<int>(CeilDiv(N, block_size * UNROLL)));
@@ -100,10 +152,18 @@ void BiasDropoutKernelImpl(
   const uint64_t counter_offset = static_cast<uint64_t>(((N - 1) / (block_size * grid_size * UNROLL) + 1) * UNROLL);
   auto seeds = generator.NextPhiloxSeeds(counter_offset);
 
-  if (residual_data == nullptr) {
-    BiasDropoutKernel<T, false><<<grid_size, block_size, 0, stream>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
+  if (bias_data_same_rank) {
+    if (residual_data == nullptr) {
+      BiasDropoutSameRankKernel<T, false><<<grid_size, block_size, 0, stream>>>(N, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
+    } else {
+      BiasDropoutSameRankKernel<T, true><<<grid_size, block_size, 0, stream>>>(N, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
+    }
   } else {
-    BiasDropoutKernel<T, true><<<grid_size, block_size, 0, stream>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
+    if (residual_data == nullptr) {
+      BiasDropoutKernel<T, false><<<grid_size, block_size, 0, stream>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
+    } else {
+      BiasDropoutKernel<T, true><<<grid_size, block_size, 0, stream>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
+    }
   }
 }
 
@@ -119,7 +179,9 @@ void BiasDropoutKernelImpl(
       const T* bias_data,           \
       const T* residual_data,       \
       T* Y_data,                    \
-      bool* mask_data);
+      bool* mask_data,              \
+      bool bias_data_same_rank);
+
 
 SPECIALIZED_BIAS_DROPOUT_IMPL(float)
 SPECIALIZED_BIAS_DROPOUT_IMPL(double)
