@@ -74,7 +74,7 @@ jobs:
       
     - name: environment
       ${{ if eq(parameters.RunDocker, true) }}:
-        value: docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf 
+        value: docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf -v $(modelVolume)
       ${{ if ne(parameters.RunDocker, true) }}:
         value: machine.sh
         
