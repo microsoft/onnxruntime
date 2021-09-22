@@ -46,45 +46,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests.Droid
 
     public class OnnxRuntimeResultChannel : ITestListener, IResultChannel
     {
-        TestResultProcessor _resultProcessor = new TestResultProcessor();
-
-        public string GetResults()
-            => _resultProcessor?.GetSerializedResults();
-
-        public Task CloseChannel()
-            => Task.CompletedTask;
-
-        public Task<bool> OpenChannel(string message = null)
-        {
-            if (_resultProcessor?.Results.Count > 0)
-                _resultProcessor = new TestResultProcessor();
-
-            return Task.FromResult(true);
-        }
-
-        public void RecordResult(TestResultViewModel result)
-            => _resultProcessor?.RecordResult(result.TestResultMessage, result.TestCase.TestCase, GetTestOutcomeFromTestState(result.TestCase.Result));
-
-        TestOutcome GetTestOutcomeFromTestState(TestState state)
-        {
-            switch (state)
-            {
-                case TestState.Failed:
-                    return TestOutcome.Failed;
-                case TestState.NotRun:
-                    return TestOutcome.NotRun;
-                case TestState.Passed:
-                    return TestOutcome.Passed;
-                case TestState.Skipped:
-                    return TestOutcome.Skipped;
-                default:
-                    throw new NotImplementedException();
-            }
-        }
-    }
-
-    public class OnnxRuntimeResultChannel : ITestListener, IResultChannel
-    {
         TestResultProcessor _resultProcessor;
 
         public Task CloseChannel()
