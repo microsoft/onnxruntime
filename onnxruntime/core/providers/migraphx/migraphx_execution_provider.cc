@@ -5,6 +5,10 @@
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/safeint.h"
+#include "core/framework/ortdevice.h"
+#include "core/framework/provider_options.h"
+#include "core/session/onnxruntime_c_api.h"
+
 // #include "core/framework/ortdevice.h"
 //#include "core/framework/provider_options.h"
 //#include "core/session/onnxruntime_c_api.h"
