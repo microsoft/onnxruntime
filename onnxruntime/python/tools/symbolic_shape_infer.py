@@ -892,7 +892,8 @@ class SymbolicShapeInference:
             helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type,
                                           data_shape[:axis] + indices_shape + data_shape[axis + 1:]))
         # for 1D input, do some sympy compute
-        if node.input[0] in self.sympy_data_ and node.input[1] in self.initializers_ and len(data_shape) == 1 and 0 == get_attribute(node, 'axis', 0):
+        if node.input[0] in self.sympy_data_ and (node.input[1] in self.sympy_data_ or node.input[1] in self.initializers_)
+           and len(data_shape) == 1 and 0 == get_attribute(node, 'axis', 0):
             idx = self._get_value(node, 1)
             data = self.sympy_data_[node.input[0]]
             if type(data) == list:
