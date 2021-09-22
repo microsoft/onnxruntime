@@ -536,15 +536,18 @@ function ot_buildMatcher() {
 var ot_validCombos = {
    //linux
     "ot_linux,ot_PyTorch18,ot_X64,ot_CUDA10":
-    "pip install torch-ort -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.cu102.html<br/> python -m torch_ort.configure",
+    "pip install torch-ort<br/> python -m torch_ort.configure",
 
     "ot_linux,ot_PyTorch18,ot_X64,ot_CUDA11":
-    "pip install torch-ort -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.cu111.html<br/> python -m torch_ort.configure",
+    "pip install torch-ort -f https://download.onnxruntime.ai/onnxruntime_stable_cu111.html<br/> python -m torch_ort.configure",
 
     "ot_linux,ot_PyTorch18,ot_X64,ot_DefaultCPU":
     "Follow sample notebook from <a href='https://github.com/microsoft/onnxruntime-training-examples' target='_blank'>here</a>",
 
-    "ot_linux,ot_PyTorch18,ot_X64,ot_AMD":
+    "ot_linux,ot_PyTorch18,ot_X64,ot_ROCm42":
+    "This combination requires an AMD docker image. See <a href=https://github.com/pytorch/ort>the torch-ort repo</a> for details",
+   
+    "ot_linux,ot_PyTorch18,ot_X64,ot_ROCm431":
     "This combination requires an AMD docker image. See <a href=https://github.com/pytorch/ort>the torch-ort repo</a> for details",
    
     "ot_linux,ot_PyTorch18,ot_X64,ot_DNNL":
@@ -554,10 +557,13 @@ var ot_validCombos = {
     "pip install torch-ort<br/> python -m torch_ort.configure",
 
     "ot_linux,ot_PyTorch19,ot_X64,ot_CUDA11":
-    "pip install torch-ort -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch190.cu111.html<br/> python -m torch_ort.configure",
+    "pip install torch-ort -f https://download.onnxruntime.ai/onnxruntime_stable_cu111.html<br/> python -m torch_ort.configure",
 
-    "ot_linux,ot_PyTorch19,ot_X64,ot_AMD":
-    "(Preview) pip install torch -f https://download.pytorch.org/whl/rocm4.2/torch_stable.html<br/>pip install torch-ort -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch190.rocm42.html<br/>python -m torch_ort.configure</br>",
+    "ot_linux,ot_PyTorch19,ot_X64,ot_ROCm42":
+    "(Preview) pip install torch -f https://download.pytorch.org/whl/rocm4.2/torch_stable.html<br/>pip install torch-ort -f https://download.onnxruntime.ai/onnxruntime_stable_rocm42.html<br/>python -m torch_ort.configure</br>",
+   
+    "ot_linux,ot_PyTorch19,ot_X64,ot_ROCm431":
+    "(Preview) pip install torch -f https://download.pytorch.org/whl/rocm4.3.1/torch_stable.html<br/>pip install torch-ort -f https://download.onnxruntime.ai/onnxruntime_stable_rocm431.html<br/>python -m torch_ort.configure</br>",
    
     "ot_linux,ot_C++,ot_X64,ot_CUDA10":
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
