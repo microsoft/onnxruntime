@@ -44,26 +44,60 @@ __global__ void DropoutKernel(
   curandStatePhilox4_32_10_t state;
   curand_init(seeds.first, idx, seeds.second, &state);
 
-  // We ensure every thread generates the same number of random numbers (by rounding
-  // up the size) and at the same timestep (by syncing threads).
-  // From CUDA curand documentation:
-  //   The Philox_4x32_10 algorithm is closely tied to the thread and block count.
-  //   Each thread computes 4 random numbers in the same time thus the most efficient
-  //   use of Philox_4x32_10 is to generate a multiple of 4 times number of threads.
-  for (CUDA_LONG id = idx; id < rounded_size; id += step_size) {
-    float4 rand = curand_uniform4(&state);
-  
-  #pragma unroll
-    for (CUDA_LONG i = 0; i < UNROLL; i++) {
-      CUDA_LONG li = id + gridDim.x * blockDim.x * i;
-      if (li < N) {
-        mask_data[li] = (&rand.x)[i] < p;
-        Y_data[li] = T(float(X_data[li]) * mask_data[li] * scale);
-      }
-    }
+  float4 rand;
 
-    __syncthreads();
+  if (N % UNROLL != 0) {
+    // We ensure every thread generates the same number of random numbers (by rounding
+    // up the size) and at the same timestep (by syncing threads).
+    // From CUDA curand documentation:
+    //   The Philox_4x32_10 algorithm is closely tied to the thread and block count.
+    //   Each thread computes 4 random numbers in the same time thus the most efficient
+    //   use of Philox_4x32_10 is to generate a multiple of 4 times number of threads.
+    for (CUDA_LONG id = idx; id < rounded_size; id += step_size) {
+      rand = curand_uniform4(&state);
+    
+      #pragma unroll
+      for (CUDA_LONG i = 0; i < UNROLL; i++) {
+        CUDA_LONG li = id + gridDim.x * blockDim.x * i;
+        if (li < N) {
+          mask_data[li] = (&rand.x)[i] < p;
+          Y_data[li] = T(float(X_data[li]) * mask_data[li] * scale);
+        }
+      }
+
+      __syncthreads();
+    }
+  } else {
+    // using vectorized data load/store approach when N % 4 == 0 since this is 
+    // typical case for input shape size
+    using LoadT = aligned_vector<T, UNROLL>;
+    using MaskLoadT = aligned_vector<bool, UNROLL>;
+
+    for (CUDA_LONG id = idx * UNROLL; id < N; id += step_size) {
+      rand = curand_uniform4(&state);
+    
+      // vectorized load into storage
+      T src[UNROLL];
+      LoadT *value = reinterpret_cast<LoadT*>(&src);
+      *value = *reinterpret_cast<const LoadT*>(&X_data[id]);
+
+      T r[UNROLL];
+      bool mask[UNROLL];
+
+      // actual computation
+      #pragma unroll
+      for (int ii = 0; ii < UNROLL; ii++) {
+        mask[ii] = (&rand.x)[ii] < p;
+        r[ii] = T(float(src[ii]) * mask[ii] * scale);
+      }
+      // Vectorized writes for mask_data & Y_data
+      *(reinterpret_cast<LoadT*>(&Y_data[id])) = *reinterpret_cast<LoadT*>(&r[0]);
+      *(reinterpret_cast<MaskLoadT*>(&mask_data[id])) = *reinterpret_cast<MaskLoadT*>(&mask[0]);
+
+      __syncthreads();
+    }
   }
+
 }
 
 template <typename T>

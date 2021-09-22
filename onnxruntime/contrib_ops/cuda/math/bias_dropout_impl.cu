@@ -49,34 +49,82 @@ __global__ void BiasDropoutKernel(
   curandStatePhilox4_32_10_t state;
   curand_init(seeds.first, idx, seeds.second, &state);
 
-  // We ensure every thread generates the same number of random numbers (by rounding
-  // up the size) and at the same timestep (by syncing threads).
-  // From CUDA curand documentation:
-  //   The Philox_4x32_10 algorithm is closely tied to the thread and block count.
-  //   Each thread computes 4 random numbers in the same time thus the most efficient
-  //   use of Philox_4x32_10 is to generate a multiple of 4 times number of threads.
-  for (CUDA_LONG id = idx; id < rounded_size; id += step_size) {
-    float4 rand = curand_uniform4(&state);
+  float4 rand;
 
-  #pragma unroll
-    for (CUDA_LONG i = 0; i < UNROLL; i++) {
-      CUDA_LONG li = id + gridDim.x * blockDim.x * i;
-      if (li < N) {
-        int offset = fdm_dim.mod(li);
+  if (N % UNROLL != 0) { 
+    // We ensure every thread generates the same number of random numbers (by rounding
+    // up the size) and at the same timestep (by syncing threads).
+    // From CUDA curand documentation:
+    //   The Philox_4x32_10 algorithm is closely tied to the thread and block count.
+    //   Each thread computes 4 random numbers in the same time thus the most efficient
+    //   use of Philox_4x32_10 is to generate a multiple of 4 times number of threads.
+    for (CUDA_LONG id = idx; id < rounded_size; id += step_size) {
+      rand = curand_uniform4(&state);
+
+    #pragma unroll
+      for (CUDA_LONG i = 0; i < UNROLL; i++) {
+        CUDA_LONG li = id + gridDim.x * blockDim.x * i;
+        if (li < N) {
+          int offset = fdm_dim.mod(li);
+          float bias = float(bias_data[offset]);
+
+          mask_data[li] = (&rand.x)[i] < p;
+          float output_data = (float(X_data[li]) + bias) * mask_data[li] * scale;
+          if (has_residual) {
+            output_data += float(residual_data[li]);
+          }
+
+          Y_data[li] = T(output_data);
+        }
+      }
+
+      __syncthreads();
+    }
+  } else {
+    // using vectorized data load/store approach when N % 4 == 0 
+    // since this is typical case for input shape size
+    using LoadT = aligned_vector<T, UNROLL>;
+    using MaskLoadT = aligned_vector<bool, UNROLL>;
+    using ResidualLoadT = aligned_vector<T, UNROLL>;
+
+    for (CUDA_LONG id = idx * UNROLL; id < N; id += step_size) {
+      rand = curand_uniform4(&state);
+    
+      // vectorized load into storage
+      T src[UNROLL];
+      LoadT *value1 = reinterpret_cast<LoadT*>(&src);
+      *value1 = *reinterpret_cast<const LoadT*>(&X_data[id]);
+
+      T residual[UNROLL];
+      if (has_residual) {
+        ResidualLoadT *value2 = reinterpret_cast<ResidualLoadT*>(&residual);
+        *value2 = *reinterpret_cast<const ResidualLoadT*>(&residual_data[id]);
+      }
+
+      T r[UNROLL];
+      bool mask[UNROLL];
+
+      // actual computation
+      #pragma unroll
+      for (int ii = 0; ii < UNROLL; ii++) {
+        int offset = fdm_dim.mod(id + ii);
         float bias = float(bias_data[offset]);
 
-        mask_data[li] = (&rand.x)[i] < p;
-        float output_data = (float(X_data[li]) + bias) * mask_data[li] * scale;
+        mask[ii] = (&rand.x)[ii] < p;
+        float output_data = (float(src[ii]) + bias) * mask[ii] * scale;
         if (has_residual) {
-          output_data += float(residual_data[li]);
+          output_data += float(residual[ii]);
         }
-
-        Y_data[li] = T(output_data);
+        r[ii] = T(output_data);
       }
-    }
+      // Vectorized writes for mask_data & Y_data
+      *(reinterpret_cast<LoadT*>(&Y_data[id])) = *reinterpret_cast<LoadT*>(&r[0]);
+      *(reinterpret_cast<MaskLoadT*>(&mask_data[id])) = *reinterpret_cast<MaskLoadT*>(&mask[0]);
 
-    __syncthreads();
+      __syncthreads();
+    }
   }
+
 }
 
 template <typename T>
