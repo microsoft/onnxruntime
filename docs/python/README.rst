@@ -11,7 +11,7 @@ Changes
 1.10.0
 ^^^^^
 
-Release Notes : https://github.com/Microsoft/onnxruntime/releases/tag/v1.10.0
+Release Notes : TODO
 
 1.9.0
 ^^^^^
