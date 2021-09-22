@@ -14,6 +14,7 @@
 #include "dnnl_pool.h"
 #include "dnnl_reducemean.h"
 #include "dnnl_softmax.h"
+#include "dnnl_softmaxgrad.h"
 #include "dnnl_sum.h"
 
 #if defined(ENABLE_TRAINING)
@@ -73,6 +74,8 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlConvGrad().CreatePrimitive(*this, node);
     } else if (node.OpType() == "ReluGrad") {
       DnnlReluGrad().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "SoftmaxGrad") {
+      DnnlSoftmaxGrad().CreatePrimitive(*this, node);
 #endif
     } else {
       throw std::invalid_argument("Kernel not found");
