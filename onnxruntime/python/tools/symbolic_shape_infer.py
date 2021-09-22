@@ -1111,7 +1111,7 @@ class SymbolicShapeInference:
         num_samples = self._try_get_value(node, 1)
         di = rank - 1
         last_dim = num_samples if num_samples else str(self._new_symbolic_dim_from_output(node, 0, di))
-        output_shape = sympy_shape[:-2] + [last_dim]
+        output_shape = sympy_shape[:-1] + [last_dim]
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(
             helper.make_tensor_value_info(node.output[0], onnx.TensorProto.INT64,

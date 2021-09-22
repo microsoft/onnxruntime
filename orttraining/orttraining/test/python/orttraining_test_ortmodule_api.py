@@ -968,13 +968,11 @@ def test_gradient_correctness_argmax_diagonal(offset, dim1, dim2):
 
 # Since multinomial is a generator function, we do not have to test for gradient
 # Two consecutive calls on the torch.multinomail on a probability distribution with more 
-# than one index with non-zero probability(eg, [0, 10, 3, 0]) will not always result in 
-# the same output. Output could be [1] or [2] when sampling one index.
-# Hence we test this with an input that will always give deterministic output 
-# with only one index having non-zero probability.
-@pytest.mark.parametrize("input", ([0, 10, 0, 0], [[0, 10, 0, 0], [0, 10, 0, 0]]))
+# than one index with non-zero probability(eg, [0, 10, 3, 0]) will not result in 
+# the same output. Thus we reset the seed before each call to the op torch.multinomial.
+@pytest.mark.parametrize("input_shape", ([5], [2,5]))
 @pytest.mark.parametrize("num_samples, replacement", ((1, False), (2, True)))
-def test_aten_multinomial(input, num_samples, replacement):
+def test_aten_multinomial(input_shape, num_samples, replacement):
     class NeuralNetDiagonal(torch.nn.Module):
         def __init__(self, num_samples, replacement):
             super(NeuralNetDiagonal, self).__init__()
@@ -984,21 +982,24 @@ def test_aten_multinomial(input, num_samples, replacement):
         def forward(self, input):
             return torch.multinomial(input, self.num_samples, self.replacement)
 
-    torch.manual_seed(5032)
     torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
     device = 'cuda'
     pt_model = NeuralNetDiagonal(num_samples, replacement).to(device)
-    dbo = DebugOptions(save_onnx = True, onnx_prefix = 'ort_aten_Mult')
-    ort_model = ORTModule(copy.deepcopy(pt_model), dbo)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
 
     def run_step(model, input):
+        # reset manual seed to reset the generator
+        torch.manual_seed(5032)
         prediction = model(input)
         return prediction
 
-    pt_input = torch.tensor(input, dtype=torch.float, device=device)
+    pt_input = torch.rand(input_shape, dtype=torch.float, device=device)
     ort_input = copy.deepcopy(pt_input)
     pt_prediction = run_step(pt_model, pt_input)
+    ort_prediction = run_step(ort_model, ort_input)
+    # run the ort prediction again since the first call involves export 
+    # and run step, which means the torch.multinomial is called twice in a row without 
+    # resetting the generator in between, which will result in a different output
     ort_prediction = run_step(ort_model, ort_input)
 
     _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
