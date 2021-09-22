@@ -740,8 +740,9 @@ class OnnxModel:
         for input in input_to_remove:
             self.model.graph.input.remove(input)
 
-        logger.info("Graph pruned: {} inputs, {} outputs and {} nodes are removed".format(
-            len(input_to_remove), len(output_to_remove), len(nodes_to_remove)))
+        if input_to_remove or output_to_remove or nodes_to_remove:
+            logger.info("Graph pruned: {} inputs, {} outputs and {} nodes are removed".format(
+                len(input_to_remove), len(output_to_remove), len(nodes_to_remove)))
 
         self.update_graph()
 
@@ -883,10 +884,13 @@ class OnnxModel:
                 # Show warnings of potential confliction of existing external data file.
                 if all_tensors_to_one_file:
                     if os.path.exists(location):
-                        logger.warning(f"External data file ({location}) existed. Please remove the file and try again.")
+                        logger.warning(
+                            f"External data file ({location}) existed. Please remove the file and try again.")
                 else:
                     if os.listdir(output_dir):
-                        logger.warning(f"Output directory ({output_dir}) for external data is not empty. Please try again with a new directory.")
+                        logger.warning(
+                            f"Output directory ({output_dir}) for external data is not empty. Please try again with a new directory."
+                        )
 
                 external_data_helper.convert_model_to_external_data(self.model,
                                                                     all_tensors_to_one_file=all_tensors_to_one_file,
