@@ -46,18 +46,19 @@ namespace Microsoft.ML.OnnxRuntime.Tests.Droid
 
     public class OnnxRuntimeResultChannel : ITestListener, IResultChannel
     {
-        TestResultProcessor _resultProcessor;
+        TestResultProcessor _resultProcessor = new TestResultProcessor();
+
+        public string GetResults()
+            => _resultProcessor?.GetSerializedResults();
 
         public Task CloseChannel()
-        {
-            // Serialize result data and push results to a pre-defined endpoint/webhook
-            System.Console.WriteLine(_resultProcessor.GetSerializedResults());
-            return Task.CompletedTask;
-        }
+            => Task.CompletedTask;
 
         public Task<bool> OpenChannel(string message = null)
         {
-            _resultProcessor = new TestResultProcessor();
+            if (_resultProcessor?.Results.Count > 0)
+                _resultProcessor = new TestResultProcessor();
+
             return Task.FromResult(true);
         }
 
@@ -77,7 +78,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests.Droid
                 case TestState.Skipped:
                     return TestOutcome.Skipped;
                 default:
-                    throw new System.NotImplementedException();
+                    throw new NotImplementedException();
             }
         }
     }
