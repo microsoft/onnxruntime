@@ -966,6 +966,43 @@ def test_gradient_correctness_argmax_diagonal(offset, dim1, dim2):
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
+# Since multinomial is a generator function, we do not have to test for gradient
+# Two consecutive calls on the torch.multinomail on a probability distribution with more 
+# than one index with non-zero probability(eg, [0, 10, 3, 0]) will not always result in 
+# the same output. Output could be [1] or [2] when sampling one index.
+# Hence we test this with an input that will always give deterministic output 
+# with only one index having non-zero probability.
+@pytest.mark.parametrize("input", ([0, 10, 0, 0], [[0, 10, 0, 0], [0, 10, 0, 0]]))
+@pytest.mark.parametrize("num_samples, replacement", ((1, False), (2, True)))
+def test_aten_multinomial(input, num_samples, replacement):
+    class NeuralNetDiagonal(torch.nn.Module):
+        def __init__(self, num_samples, replacement):
+            super(NeuralNetDiagonal, self).__init__()
+            self.num_samples = num_samples
+            self.replacement = replacement
+
+        def forward(self, input):
+            return torch.multinomial(input, self.num_samples, self.replacement)
+
+    torch.manual_seed(5032)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    device = 'cuda'
+    pt_model = NeuralNetDiagonal(num_samples, replacement).to(device)
+    dbo = DebugOptions(save_onnx = True, onnx_prefix = 'ort_aten_Mult')
+    ort_model = ORTModule(copy.deepcopy(pt_model), dbo)
+
+    def run_step(model, input):
+        prediction = model(input)
+        return prediction
+
+    pt_input = torch.tensor(input, dtype=torch.float, device=device)
+    ort_input = copy.deepcopy(pt_input)
+    pt_prediction = run_step(pt_model, pt_input)
+    ort_prediction = run_step(ort_model, ort_input)
+
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+
 def test_module_with_non_differential_output():
     device = 'cuda'
     N, D_in, H, D_out = 32, 128, 64, 10
