@@ -4,7 +4,9 @@ jobs:
     vmImage: 'macOS-10.15'
   timeoutInMinutes: 180
   steps:
-  - bash: env
+  - script: |
+      env
+      ls -la $ANDROID_HOME/ndk
     displayName: env vars
 
     # Onnx has no 3.9 python package available yet, need to use python 3.8 to avoid build onnx package
