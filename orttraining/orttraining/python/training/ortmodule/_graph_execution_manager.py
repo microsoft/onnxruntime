@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+from typing import Union
 from .debug_options import DebugOptions, LogLevel
 from . import (_utils,
                _io,
@@ -71,7 +72,7 @@ class _SkipCheck(IntFlag):
 
 
 class GraphExecutionManager(GraphExecutionInterface):
-    def __init__(self, module, debug_options: DebugOptions, fallback_manager: _FallbackManager, custom_op_set):
+    def __init__(self, module, debug_options: DebugOptions, fallback_manager: _FallbackManager, custom_op_set: Union[bool, set] = False):
         """Manages construction and execution of ONNX graphs"""
 
         super(GraphExecutionManager, self).__init__(module._original_module)
