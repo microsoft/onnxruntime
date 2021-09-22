@@ -5,7 +5,9 @@ jobs:
   timeoutInMinutes: 180
   steps:
   - script: |
+      set -e -x
       env
+      ls -la $ANDROID_HOME
       ls -la $ANDROID_HOME/ndk
     displayName: env vars
 
