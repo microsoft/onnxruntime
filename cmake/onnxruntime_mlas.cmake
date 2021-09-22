@@ -258,6 +258,7 @@ else()
         set(mlas_platform_srcs
           ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelNeon.S
+          ${MLAS_SRC_DIR}/aarch64/QgemmSymKernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelUdot.S
           ${MLAS_SRC_DIR}/aarch64/SgemmKernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/SgemvKernelNeon.S

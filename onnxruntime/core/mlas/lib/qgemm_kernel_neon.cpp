@@ -971,4 +971,143 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmS8S8DispatchNeon = {
     MLAS_GEMM_S8S8_KERNEL_NEON::PackedStrides.K,
 };
 
+extern "C" {
+    // Prototype of NEON s8 kernel in assembly
+
+    size_t
+    MLASCALL
+    MlasGemmSymKernelNeon(
+        const uint8_t* A,
+        const uint8_t* B,
+        int32_t* C,
+        size_t PackedCountK,
+        size_t CountM,
+        size_t CountN,
+        size_t ldc,
+        size_t lda,
+        const int32_t* ColumnSumVector
+        );
+}
+
+
+void
+MlasGemmConvSym(
+    const MLAS_GEMM_U8X8_SHAPE_PARAMS* Shape,
+    const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
+    const size_t RangeStartM,
+    const size_t RangeCountM,
+    const size_t RangeStartN,
+    const size_t RangeCountN
+    )
+{
+
+    const size_t K = Shape->K;
+
+    const size_t lda = Data->lda;
+    const size_t ldc = Data->ldc;
+
+    const uint8_t* A = Data->A + RangeStartM * lda;
+    const uint8_t* PackedB = (const uint8_t*)Data->B;
+    int32_t* C = Data->C + RangeStartM * ldc + RangeStartN;
+
+    int32_t ZeroPointA = Data->ZeroPointA;
+
+    //
+    // Fixup the sign bit of the per-matrix zero point offset of matrix A if the
+    // kernel requires signed data.
+    //
+
+    ZeroPointA = MlasGemmU8X8FixupZeroPointA<MLAS_GEMM_S8S8_KERNEL_NEON>(ZeroPointA);
+
+    //
+    // Extract the pointer to the column sum buffer from the packed matrix.
+    //
+
+    const size_t AlignedN =
+        (Shape->N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1);
+    const int32_t* PackedColumnSumBuffer = (const int32_t*)PackedB;
+    PackedB = (const uint8_t*)(PackedColumnSumBuffer + AlignedN);
+    PackedColumnSumBuffer += RangeStartN;
+
+
+        const size_t PackedCountK = (K + 15) / 16;
+
+
+            //
+            // Copy a panel of matrix A to a local packed buffer.
+            //
+        auto PanelA = A;
+
+            //
+            // Apply the global depth value constant without the ZeroPointB scaling from:
+            //
+            //     (A[i] - ZeroPointA) * (B[i] - ZeroPointB)
+            //              ==>
+            //     A[i] * B[i] - A[i] * ZeroPointB - B[i] * ZeroPointA + ZeroPointA * ZeroPointB
+            //
+            // The ZeroPointB term is factored out and either applied below for per-matrix
+            // quantization or inside the kernel for per-column quantization.
+            //
+
+            //
+            // Step through each slice of matrix B along the N dimension.
+            //
+
+            size_t CountN;
+
+            for (size_t n = 0; n < RangeCountN; n += CountN) {
+
+                CountN = std::min(RangeCountN - n, (size_t)1024);
+
+                //    MlasGemmU8X8ScaleSumBuffer(ColumnSumBuffer, PackedColumnSumBuffer + n,
+                //        CountN, -ZeroPointA);
+
+                const uint8_t* b = PackedB + (RangeStartN + n) *
+                    16 * PackedCountK;
+                int32_t* c = C + n;
+
+                //
+                // Step through the rows of the local packed buffer.
+                //
+
+                auto pa = PanelA;
+                size_t RowsRemaining = RangeCountM;
+
+                bool PostProcess = true;
+
+                while (RowsRemaining > 0) {
+
+                    size_t RowsHandled = MlasGemmSymKernelNeon(
+                        pa,
+                        b,
+                        c,
+                        PackedCountK,
+                        RowsRemaining,
+                        CountN,
+                        ldc,
+                        lda, //RowSums,
+                        PackedColumnSumBuffer + n
+                        //(PackedZeroPointB != nullptr) ? ZeroPointBBuffer : nullptr,
+                        //ZeroMode
+                        );
+
+                    if (PostProcess && Data->OutputProcessor != nullptr) {
+                        Data->OutputProcessor->Process(
+                            Data->C,
+                            RangeStartM + RangeCountM - RowsRemaining,
+                            RangeStartN + n,
+                            RowsHandled,
+                            CountN,
+                            Data->ldc);
+                    }
+
+                    c += ldc * RowsHandled;
+                    pa += 16 * PackedCountK * RowsHandled;
+                    RowsRemaining -= RowsHandled;
+                }
+            }
+
+
+}
+
 #endif  //defined(MLAS_TARGET_ARM64)

@@ -11,6 +11,17 @@
 #include "core/util/qmath.h"
 #include "core/mlas/inc/mlas.h"
 
+
+extern void
+MlasGemmConvSym(
+    const MLAS_GEMM_U8X8_SHAPE_PARAMS* Shape,
+    const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
+    const size_t RangeStartM,
+    const size_t RangeCountM,
+    const size_t RangeStartN,
+    const size_t RangeCountN
+);
+
 namespace onnxruntime {
 
 class QLinearConv : public OpKernel {
@@ -373,7 +384,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
   const int64_t X_offset = C * input_image_size;
   const int64_t Y_offset = M * output_image_size;
   const int64_t kernel_dim = group_input_channels * kernel_size;
-  const int64_t col_buffer_size = kernel_dim * output_image_size;
+  const int64_t col_buffer_size = kernel_dim * output_image_size + 16;
 
   // Use an intermediate int32_t buffer for the GEMM computation before
   // requantizing to the output type.
@@ -413,31 +424,8 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
     col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
   }
 
-  // Replicate the logic from MlasGemmU8X8Schedule to control the number of
-  // worker threads used for the convolution.
-  int32_t maximum_thread_count;
-  if (CPUIDInfo::GetCPUIDInfo().IsHybrid()) {
-    maximum_thread_count = 64;
-  } else {
-    maximum_thread_count = 16;
-  }
-  constexpr double thread_complexity = static_cast<double>(64 * 1024);
-
-  const double complexity = static_cast<double>(output_image_size) *
-                            static_cast<double>(group_output_channels) *
-                            static_cast<double>(kernel_dim);
-
-  int32_t thread_count = maximum_thread_count;
-  if (complexity < thread_complexity * maximum_thread_count) {
-    thread_count = static_cast<int32_t>(complexity / thread_complexity) + 1;
-  }
-  if (thread_count > output_image_size) {
-    // Ensure that every thread produces at least one output.
-    thread_count = static_cast<int32_t>(output_image_size);
-  }
-
+  int32_t thread_count = (output_image_size + 3) / 4;
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
-  thread_count = std::min(thread_count, concurrency::ThreadPool::DegreeOfParallelism(thread_pool));
 
   for (int64_t image_id = 0; image_id < N; ++image_id) {
     const auto* input_data = Xdata;
@@ -475,9 +463,8 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
     }
 
     auto conv_worker = [&](ptrdiff_t batch) {
-      auto work = concurrency::ThreadPool::PartitionWork(batch, thread_count, static_cast<ptrdiff_t>(output_image_size));
-      int64_t output_start = static_cast<int64_t>(work.start);
-      int64_t output_count = static_cast<int64_t>(work.end - work.start);
+      int64_t output_start = batch * 4;
+      int64_t output_count = std::min((int64_t)4, output_image_size - output_start);
 
       auto* worker_gemm_output = gemm_output + output_start * M;
       auto* worker_requantize_output = output_data + output_start * M;
@@ -522,6 +509,12 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
           gemm_params.ZeroPointB = &W_zero_point_value;
           gemm_params.C = worker_gemm_output + group_id * group_output_channels;
           gemm_params.ldc = static_cast<size_t>(M);
+
+          MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
+          gemm_shape.M = static_cast<size_t>(output_count);
+          gemm_shape.N = static_cast<size_t>(group_output_channels);
+          gemm_shape.K = static_cast<size_t>(kernel_dim);
+          gemm_shape.BIsSigned = is_W_signed;
 
           // Prepare the im2col transformation or use the input buffer directly for
           // pointwise convolutions.
@@ -579,13 +572,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
             gemm_params.lda = static_cast<size_t>(C);
           }
 
-          MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
-          gemm_shape.M = static_cast<size_t>(output_count);
-          gemm_shape.N = static_cast<size_t>(group_output_channels);
-          gemm_shape.K = static_cast<size_t>(kernel_dim);
-          gemm_shape.BIsSigned = is_W_signed;
-
-          MlasGemm(gemm_shape, gemm_params, nullptr);
+          MlasGemmConvSym(&gemm_shape, &gemm_params, 0, gemm_shape.M, 0, gemm_shape.N);
         }
       }
 
