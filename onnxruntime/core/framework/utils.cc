@@ -21,7 +21,7 @@
 #include "core/framework/TensorSeq.h"
 #ifdef ENABLE_TRAINING
 #include "core/framework/orttraining_partial_executor.h"
-#include "orttraining/training_ops/cpu/aten_ops/aten_op_config.h"
+#include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
 #endif
 
 namespace ONNX_NAMESPACE {
@@ -98,6 +98,20 @@ void DefaultFree(void* p) {
 #endif
 }
 
+void ConstructStrings(void* p_data, int64_t elements) {
+  auto* ptr = static_cast<std::string*>(p_data);
+  for (int64_t i = 0; i < elements; ++i) {
+    new (ptr + i) std::string();
+  }
+}
+
+void DestroyStrings(void* p_data, int64_t elements) {
+  using string = std::string;
+  auto* ptr = static_cast<std::string*>(p_data);
+  for (int64_t i = 0; i < elements; i++)
+    ptr[i].~string();
+}
+
 bool ProviderIsCpuBased(const std::string& provider_type) {
   return provider_type == onnxruntime::kCpuExecutionProvider ||
          provider_type == onnxruntime::kDnnlExecutionProvider ||
@@ -118,15 +132,17 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
   if (!allocator) {
     return Status(common::ONNXRUNTIME, common::FAIL, "invalid allocator.");
   }
+
   if (source_mlvalue.IsTensor()) {
-
     const Tensor& source_tensor = source_mlvalue.Get<Tensor>();
-    std::unique_ptr<Tensor> target_tensor = std::make_unique<Tensor>(source_tensor.DataType(),
-                                                                     source_tensor.Shape(),
-                                                                     allocator);
-    auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-    target_mlvalue.Init(target_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
-
+    Tensor::InitOrtValue(source_tensor.DataType(),
+                         source_tensor.Shape(),
+                         allocator, target_mlvalue);
+  } else if (source_mlvalue.IsSparseTensor()) {
+#if !defined(DISABLE_SPARSE_TENSORS)
+    const SparseTensor& source_tensor = source_mlvalue.Get<SparseTensor>();
+    SparseTensor::InitOrtValue(source_tensor.DataType(), source_tensor.DenseShape(), allocator, target_mlvalue);
+#endif
   } else if (source_mlvalue.IsTensorSequence()) {
     const TensorSeq& source_tensor_seq = source_mlvalue.Get<TensorSeq>();
     auto target_tensor_seq = std::make_unique<TensorSeq>(source_tensor_seq.DataType());
@@ -134,7 +150,7 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
     for (auto iter = source_tensor_seq.begin(); iter != source_tensor_seq.end(); ++iter) {
       tensors.emplace_back(iter->DataType(), onnxruntime::TensorShape(iter->Shape()), allocator);
     }
-    target_tensor_seq->SetElements(std::move(tensors)); 
+    target_tensor_seq->SetElements(std::move(tensors));
     auto ml_tensor_seq = DataTypeImpl::GetType<TensorSeq>();
     target_mlvalue.Init(target_tensor_seq.release(), ml_tensor_seq, ml_tensor_seq->GetDeleteFunc());
   } else {
@@ -161,14 +177,20 @@ const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info) 
   return required_provider_type;
 }
 
-// Copy MLValue. Uses DataTransferManager for device copy if necessary. If copy_pairs is provided,
+// Copy MLValue. Uses DataTransferManager for device copy if necessary. If copy_tensor_pairs/copy_sparse_pairs is provided,
 // src/dst pairs that need a device copy are added to copy_pairs so copying can be batches by the DataTransferManager
 // implementation for performance reasons.
 static Status BatchOrCopyMLValue(const SessionState& session_state,
                                  const MLValueCopyInfo& copy_info,
                                  const OrtValue& source_mlvalue,
                                  OrtValue& target_mlvalue,
-                                 std::vector<IDataTransfer::SrcDstPair>* copy_pairs = nullptr) {
+#if !defined(DISABLE_SPARSE_TENSORS)
+                                 std::vector<IDataTransfer::SrcDstPair>* copy_tensor_pairs = nullptr,
+                                 std::vector<IDataTransfer::SparseSrcDstPair>* copy_sparse_pairs = nullptr)
+#else
+                                 std::vector<IDataTransfer::SrcDstPair>* copy_tensor_pairs = nullptr)
+#endif
+{
   // same device so direct copy
   if (copy_info.source_device == copy_info.target_device) {
     target_mlvalue = source_mlvalue;
@@ -182,13 +204,24 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
   }
 
   if (source_mlvalue.IsTensor()) {
-    const Tensor& source_tensor = source_mlvalue.Get<Tensor>();
-    Tensor& target_tensor = *target_mlvalue.GetMutable<Tensor>();
-    if (copy_pairs != nullptr) {
-      copy_pairs->push_back({source_tensor, target_tensor, 0});
+    const auto& source_tensor = source_mlvalue.Get<Tensor>();
+    Tensor* p_output_tensor = target_mlvalue.GetMutable<Tensor>();
+
+    if (copy_tensor_pairs != nullptr) {
+      copy_tensor_pairs->push_back({source_tensor, *p_output_tensor, 0});
     } else {
-      ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(source_tensor, target_tensor));
+      ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(source_tensor, *p_output_tensor));
     }
+  } else if (source_mlvalue.IsSparseTensor()) {
+#if !defined(DISABLE_SPARSE_TENSORS)
+    const auto& source_tensor = source_mlvalue.Get<SparseTensor>();
+    SparseTensor* p_output_tensor = target_mlvalue.GetMutable<SparseTensor>();
+    if (copy_sparse_pairs != nullptr) {
+      copy_sparse_pairs->push_back({source_tensor, *p_output_tensor, 0});
+    } else {
+      ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopySparseTensor(source_tensor, *p_output_tensor));
+    }
+#endif
   } else if (source_mlvalue.IsTensorSequence()) {
     const TensorSeq& source_tensor_seq = source_mlvalue.Get<TensorSeq>();
     TensorSeq& target_tensor_seq = const_cast<TensorSeq&>(target_mlvalue.Get<TensorSeq>());
@@ -205,19 +238,20 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
     auto target_iter = target_tensor_seq.begin();
     while (source_iter != source_tensor_seq.end() &&
            target_iter != target_tensor_seq.end()) {
-      if (copy_pairs != nullptr) {
-        copy_pairs->push_back({*source_iter, const_cast<Tensor&>(*target_iter), 0});
+      if (copy_tensor_pairs != nullptr) {
+        copy_tensor_pairs->push_back({*source_iter, const_cast<Tensor&>(*target_iter), 0});
       } else {
         ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(*source_iter, const_cast<Tensor&>(*target_iter)));
       }
       ++source_iter;
       ++target_iter;
-    }//while
+    }  //while
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported OrtValue type to copy between device.");
   }
+
   return Status::OK();
-}
+}  // namespace utils
 
 static bool HaveCpuExecutionProvidersOnly(const ExecutionProviders& execution_providers) {
   for (const auto& execution_provider : execution_providers) {
@@ -422,6 +456,10 @@ static void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager
     const auto& feed = feeds[i];
     if (feed.IsTensor()) {
       feed_locations[i] = feed.Get<Tensor>().Location().device;
+    } else if (feed.IsSparseTensor()) {
+#if !defined(DISABLE_SPARSE_TENSORS)
+      feed_locations[i] = feed.Get<SparseTensor>().Location().device;
+#endif
     }
   }
 
@@ -430,8 +468,14 @@ static void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager
 
   for (size_t i = 0; i < num_outputs; ++i) {
     const auto& fetch = fetches[i];
-    if (fetch.IsAllocated() && fetch.IsTensor()) {
-      fetch_alloc_info[i] = &fetch.Get<Tensor>().Location();
+    if (fetch.IsAllocated()) {
+      if (fetch.IsTensor()) {
+        fetch_alloc_info[i] = &fetch.Get<Tensor>().Location();
+      } else if (fetch.IsSparseTensor()) {
+#if !defined(DISABLE_SPARSE_TENSORS)
+        fetch_alloc_info[i] = &fetch.Get<SparseTensor>().Location();
+#endif
+      }
     }
   }
 
@@ -447,16 +491,29 @@ static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
 
   new_feeds.resize(num_feeds);
   std::vector<IDataTransfer::SrcDstPair> batched_data_transfers;
-  batched_data_transfers.reserve(num_feeds);
+#if !defined(DISABLE_SPARSE_TENSORS)
+  std::vector<IDataTransfer::SparseSrcDstPair> batched_sparse_data_transfers;
+#endif
 
   for (size_t idx = 0; idx < num_feeds; ++idx) {
+#if !defined(DISABLE_SPARSE_TENSORS)
+    ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], orig_feeds[idx], new_feeds[idx],
+                                           &batched_data_transfers, &batched_sparse_data_transfers));
+#else
     ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], orig_feeds[idx], new_feeds[idx],
                                            &batched_data_transfers));
+#endif
   }
 
   if (!batched_data_transfers.empty()) {
     ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensors(batched_data_transfers));
   }
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+  if (!batched_sparse_data_transfers.empty()) {
+    ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopySparseTensors(batched_sparse_data_transfers));
+  }
+#endif
 
   return Status::OK();
 }
@@ -464,14 +521,20 @@ static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
 // public method to do a single copy. used by external partners
 common::Status CopyOneInputAcrossDevices(const SessionState& session_state, const std::string& input_name,
                                          const OrtValue& orig_mlvalue, OrtValue& new_mlvalue) {
-  if (!orig_mlvalue.IsTensor()) {
+  if (!orig_mlvalue.IsTensor() && !orig_mlvalue.IsSparseTensor()) {
     new_mlvalue = orig_mlvalue;
     return Status::OK();
   }
 
   MLValueCopyInfo copy_info;
   ORT_RETURN_IF_ERROR(CalculateStaticCopyInfoForFeed(session_state, input_name, copy_info));
+#if !defined(DISABLE_SPARSE_TENSORS)
+  copy_info.source_device = (orig_mlvalue.IsTensor())
+                                ? orig_mlvalue.Get<Tensor>().Location().device
+                                : orig_mlvalue.Get<SparseTensor>().Location().device;
+#else
   copy_info.source_device = orig_mlvalue.Get<Tensor>().Location().device;
+#endif
 
   return BatchOrCopyMLValue(session_state, copy_info, orig_mlvalue, new_mlvalue);
 }
@@ -484,16 +547,29 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
   user_fetches.resize(num_outputs);
 
   std::vector<IDataTransfer::SrcDstPair> batched_data_transfers;
-  batched_data_transfers.reserve(num_outputs);
+#if !defined(DISABLE_SPARSE_TENSORS)
+  std::vector<IDataTransfer::SparseSrcDstPair> batched_sparse_data_transfers;
+#endif
 
   for (size_t idx = 0; idx < num_outputs; ++idx) {
+#if !defined(DISABLE_SPARSE_TENSORS)
+    ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], fetches[idx], user_fetches[idx],
+                                           &batched_data_transfers, &batched_sparse_data_transfers));
+#else
     ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], fetches[idx], user_fetches[idx],
                                            &batched_data_transfers));
+#endif
   }
 
   if (!batched_data_transfers.empty()) {
     ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensors(batched_data_transfers));
   }
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+  if (!batched_sparse_data_transfers.empty()) {
+    ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopySparseTensors(batched_sparse_data_transfers));
+  }
+#endif
 
   return Status::OK();
 }
@@ -590,11 +666,11 @@ common::Status ExecuteGraph(const SessionState& session_state,
 #ifdef ENABLE_TRAINING
 common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                                    const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-                                   const logging::Logger& logger, PartialGraphExecutionState& state) {
-
+                                   const logging::Logger& logger, PartialGraphExecutionState& state,
+                                   const OrtValueCachePtr& cache) {
   // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
   FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
-  PartialExecutor executor{state};
+  PartialExecutor executor{state, cache};
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
   const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
 
@@ -736,13 +812,16 @@ bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index)
   }
 
 #ifdef ENABLE_TRAINING
-  if (node.GetExecutionProviderType() == kCudaExecutionProvider &&
-      (node.OpType() == "ATenOp" || node.OpType() == "ATenOpGrad")) {
-    const std::string name = node.GetAttributes().at("name").s();
-    const auto* op_config_ptr = contrib::aten_ops::ATenOperatorConfigs::Instance().GetConfig(name);
-    if (op_config_ptr) {
-      return op_config_ptr->IsInputOnCpu(index, node.OpType() == "ATenOpGrad");
+  if (node.GetExecutionProviderType() == kCudaExecutionProvider && node.OpType() == "ATenOp" && node.Domain() == kMSDomain) {
+    const auto& attrs = node.GetAttributes();
+    ORT_ENFORCE(utils::HasString(attrs.at("name")));
+    std::string op_name = attrs.at("name").s();
+    std::string overload_name = "";
+    if (attrs.find("overload_name") != attrs.end() && utils::HasString(attrs.at("overload_name"))) {
+      overload_name = attrs.at("overload_name").s();
     }
+
+    return !contrib::aten_ops::ATenOperatorExecutor::Instance().IsTensorArgument(op_name, overload_name, index);
   }
 #else
   ORT_UNUSED_PARAMETER(node);

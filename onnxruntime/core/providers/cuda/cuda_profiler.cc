@@ -14,7 +14,6 @@ onnxruntime::OrtMutex CudaProfiler::mtx;
 std::atomic_flag CudaProfiler::enabled{0};
 std::vector<CudaProfiler::KernelStat> CudaProfiler::stats;
 std::unordered_map<uint32_t, uint64_t> CudaProfiler::id_map;
-bool CudaProfiler::initialized{false};
 
 #define BUF_SIZE (32 * 1024)
 #define ALIGN_SIZE (8)
@@ -50,7 +49,6 @@ static const char* GetMemcpyKindString(CUpti_ActivityMemcpyKind kind) {
 
 void CUPTIAPI CudaProfiler::BufferRequested(uint8_t** buffer, size_t* size, size_t* maxNumRecords) {
   uint8_t* bfr = (uint8_t*)malloc(BUF_SIZE + ALIGN_SIZE);
-  //ORT_ENFORCE(bfr, "Failed to allocate memory for cuda kernel profiling.");
   *size = BUF_SIZE;
   *buffer = ALIGN_BUFFER(bfr, ALIGN_SIZE);
   *maxNumRecords = 0;
@@ -82,7 +80,6 @@ void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext, uint32_t, uint8_t* buffer
         } else if (CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION == record->kind) {
           auto correlation = reinterpret_cast<const CUpti_ActivityExternalCorrelation*>(record);
           id_map.insert({correlation->correlationId, correlation->externalId});
-          //std::cout << "cuda correlation event captured"  << std::endl;
         }
       } else if (status == CUPTI_ERROR_MAX_LIMIT_REACHED) {
         break;
@@ -100,8 +97,12 @@ bool CudaProfiler::StartProfiling() {
         cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MEMCPY) == CUPTI_SUCCESS &&
         cuptiActivityEnable(CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION) == CUPTI_SUCCESS &&
         cuptiActivityRegisterCallbacks(BufferRequested, BufferCompleted) == CUPTI_SUCCESS) {
-      initialized = true;
+      initialized_ = true;
       return true;
+    } else {
+      DisableEvents();
+      enabled.clear();
+      return false;
     }
   }
   return false;
@@ -109,65 +110,89 @@ bool CudaProfiler::StartProfiling() {
 
 void CudaProfiler::EndProfiling(TimePoint start_time, Events& events) {
   std::map<uint64_t, std::vector<EventRecord>> event_map;
-  if (enabled.test_and_set()) {
-    cuptiActivityDisable(CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION);
-    cuptiActivityDisable(CUPTI_ACTIVITY_KIND_KERNEL);
-    cuptiActivityDisable(CUPTI_ACTIVITY_KIND_MEMCPY);
-    cuptiActivityDisable(CUPTI_ACTIVITY_KIND_RUNTIME);
-    cuptiActivityDisable(CUPTI_ACTIVITY_KIND_DRIVER);
-    if (initialized) {
-      cuptiActivityFlushAll(1);
-      std::lock_guard<onnxruntime::OrtMutex> lock(mtx);
-      int64_t profiling_start = std::chrono::duration_cast<std::chrono::nanoseconds>(start_time.time_since_epoch()).count();
-      for (const auto& stat : stats) {
-        std::initializer_list<std::pair<std::string, std::string>> args = {{"op_name", stat.name_},
-                                                                           {"stream", std::to_string(stat.stream_)},
-                                                                           {"grid_x", std::to_string(stat.grid_x_)},
-                                                                           {"grid_y", std::to_string(stat.grid_y_)},
-                                                                           {"grid_z", std::to_string(stat.grid_z_)},
-                                                                           {"block_x", std::to_string(stat.block_x_)},
-                                                                           {"block_y", std::to_string(stat.block_y_)},
-                                                                           {"block_z", std::to_string(stat.block_z_)}};
-        EventRecord event{
-            KEVENT, -1, -1, stat.name_, DUR(profiling_start, stat.stop_), DUR(stat.start_, stat.stop_), {args.begin(), args.end()}};
-        auto ts = id_map[stat.correlation_id];
-        if (event_map.find(ts) == event_map.end()) {
-          event_map.insert({ts, {event}});
-        } else {
-          event_map[ts].push_back(std::move(event));
+  if (initialized_) {
+    DisableEvents();
+    cuptiActivityFlushAll(1);
+    std::lock_guard<onnxruntime::OrtMutex> lock(mtx);
+    int64_t profiling_start = std::chrono::duration_cast<std::chrono::nanoseconds>(start_time.time_since_epoch()).count();
+    for (const auto& stat : stats) {
+      std::initializer_list<std::pair<std::string, std::string>> args = {{"op_name", ""},
+                                                                         {"stream", std::to_string(stat.stream_)},
+                                                                         {"grid_x", std::to_string(stat.grid_x_)},
+                                                                         {"grid_y", std::to_string(stat.grid_y_)},
+                                                                         {"grid_z", std::to_string(stat.grid_z_)},
+                                                                         {"block_x", std::to_string(stat.block_x_)},
+                                                                         {"block_y", std::to_string(stat.block_y_)},
+                                                                         {"block_z", std::to_string(stat.block_z_)}};
+      EventRecord event{
+          KEVENT, -1, -1, stat.name_, DUR(profiling_start, stat.stop_), DUR(stat.start_, stat.stop_), {args.begin(), args.end()}};
+      auto ts = id_map[stat.correlation_id];
+      if (event_map.find(ts) == event_map.end()) {
+        event_map.insert({ts, {event}});
+      } else {
+        event_map[ts].push_back(std::move(event));
+      }
+    }
+    auto insert_iter = events.begin();
+    for (auto& map_iter : event_map) {
+      auto ts = static_cast<long long>(map_iter.first);
+      while (insert_iter != events.end() && insert_iter->ts < ts) {
+        insert_iter++;
+      }
+      if (insert_iter != events.end() && insert_iter != events.begin() && insert_iter->ts > ts) {
+        insert_iter--;
+      }
+      if (insert_iter != events.end() && insert_iter->ts == ts) {
+        for (auto& evt_iter : map_iter.second) {
+          evt_iter.args["op_name"] = insert_iter->args["op_name"];
         }
       }
-      stats.clear();
-      cuptiFinalize();
+      insert_iter = events.insert(insert_iter, map_iter.second.begin(), map_iter.second.end());
+      while (insert_iter != events.end() && insert_iter->cat == EventCategory::KERNEL_EVENT) {
+        insert_iter++;
+      }
     }
+    cuptiFinalize();
+    Clear();
+  }  //if initialized
+}
+
+CudaProfiler::~CudaProfiler() {
+  if (initialized_) {
+    DisableEvents();
+    cuptiFinalize();
+    Clear();
   }
-  id_map.clear();
-  enabled.clear();
-  auto insert_iter = events.begin();
-  for (auto& map_iter : event_map) {
-    auto ts = static_cast<long long>(map_iter.first);
-    while (insert_iter != events.end() && insert_iter->ts < ts) {
-      insert_iter++;
-    }
-    if (insert_iter != events.end() && insert_iter != events.begin() && insert_iter->ts > ts) {
-      insert_iter--;
-    }
-    insert_iter = events.insert(insert_iter, map_iter.second.begin(), map_iter.second.end());
-    while (insert_iter != events.end() && insert_iter->cat == EventCategory::KERNEL_EVENT) {
-      insert_iter++;
-    }
-  }
-} 
+}
 
 void CudaProfiler::Start(uint64_t id) {
-  cuptiActivityPushExternalCorrelationId(CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, id);
-  //std::cout << "cuda correlation id pushed" << std::endl;
+  if (initialized_) {
+    cuptiActivityPushExternalCorrelationId(CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, id);
+  }
 }
 
 void CudaProfiler::Stop(uint64_t) {
-  uint64_t last_id{0};
-  cuptiActivityPopExternalCorrelationId(CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, &last_id);
-  //std::cout << "cuda correlation id popped" << std::endl;
+  if (initialized_) {
+    uint64_t last_id{0};
+    cuptiActivityPopExternalCorrelationId(CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, &last_id);
+  }
+}
+
+void CudaProfiler::DisableEvents() {
+  cuptiActivityDisable(CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION);
+  cuptiActivityDisable(CUPTI_ACTIVITY_KIND_KERNEL);
+  cuptiActivityDisable(CUPTI_ACTIVITY_KIND_MEMCPY);
+  cuptiActivityDisable(CUPTI_ACTIVITY_KIND_DRIVER);
+  cuptiActivityDisable(CUPTI_ACTIVITY_KIND_RUNTIME);
+}
+
+void CudaProfiler::Clear() {
+  if (initialized_) {
+    id_map.clear();
+    stats.clear();
+    initialized_ = false;
+    enabled.clear();
+  }
 }
 
 }  // namespace profiling

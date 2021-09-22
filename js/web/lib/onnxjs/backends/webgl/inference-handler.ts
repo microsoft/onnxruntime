@@ -5,64 +5,98 @@ import {InferenceHandler} from '../../backend';
 import {Logger} from '../../instrument';
 import {Tensor} from '../../tensor';
 import {ShapeUtil} from '../../util';
-import {WebGLPack} from './ops/pack';
+import {createPackProgramInfoLoader} from './ops/pack';
+import {createPackedReshape3DProgramInfoLoader, isReshapeCheap, processDims3D} from './ops/reshape-packed';
 
-import {WebGLUint8Encode} from './ops/uint8-encode';
-import {WebGLUnpack} from './ops/unpack';
+import {encodeAsUint8} from './ops/uint8-encode';
+import {createUnpackProgramInfoLoader} from './ops/unpack';
 import {WebGLSessionHandler} from './session-handler';
 import {Encoder} from './texture-data-encoder';
-import {WidthHeightPrefs} from './texture-layout-strategy';
-import {Artifact, RunData, TextureData, TextureLayout, WebGLOperator} from './types';
-import {getPackedShape} from './utils';
+import {calculateTextureWidthAndHeight, createTextureLayoutFromShape, createTextureLayoutFromTextureType} from './texture-layout';
+import {Artifact, ProgramInfo, ProgramInfoLoader, TextureData, TextureLayout, TextureType} from './types';
+
+const getProgramInfoUniqueKey =
+    (programInfo: ProgramInfo|ProgramInfoLoader, inputTextureDatas: TextureData[]): string => {
+      const inputs =
+          inputTextureDatas.map(texture => `${texture.unpackedShape.join(',')};${texture.width}x${texture.height}`)
+              .join('_');
+      let key = programInfo.name;
+      if (programInfo.cacheHint) {
+        key += '[' + programInfo.cacheHint + ']';
+      }
+      key += ':' + inputs;
+      return key;
+    };
 
 export class WebGLInferenceHandler implements InferenceHandler {
   private packedTextureDataCache: Map<Tensor.Id, TextureData>;
   private unpackedTextureDataCache: Map<Tensor.Id, TextureData>;
-  private pack2unpackMap: Map<Tensor.Id, Tensor.Id>;
-  private unpack2packMap: Map<Tensor.Id, Tensor.Id>;
   constructor(public session: WebGLSessionHandler) {
     this.packedTextureDataCache = new Map();
     this.unpackedTextureDataCache = new Map();
-
-    this.pack2unpackMap = new Map();
-    this.unpack2packMap = new Map();
   }
 
-  run(op: WebGLOperator, inputs: Tensor[]): Tensor[] {
-    let artifact = this.session.programManager.getArtifact(op);
+  /**
+   * @returns [width, height]
+   */
+  calculateTextureWidthAndHeight(shape: readonly number[], textureType: TextureType): [number, number] {
+    return calculateTextureWidthAndHeight(this.session.layoutStrategy, shape, textureType);
+  }
+
+  executeProgram(program: ProgramInfo|ProgramInfoLoader, inputs: readonly Tensor[]): TextureData {
+    if (inputs.length < program.inputNames.length) {
+      throw new Error(`Input size mustn't be less than ${program.inputNames.length}.`);
+    }
+    if (program.inputNames.length !== program.inputTypes.length) {
+      throw new Error('input names size does not match input types');
+    }
+
+    // create texture info for input
+    const inputTextureDatas: TextureData[] = [];
+    for (let i = 0; i < program.inputNames.length; ++i) {
+      inputTextureDatas[i] = this.getOrCreateTextureData(inputs[i], program.inputTypes[i]);
+    }
+
+    const key = getProgramInfoUniqueKey(program, inputTextureDatas);
+    let artifact = this.session.programManager.getArtifact(key);
+    const programInfo = artifact ?
+        artifact.programInfo :
+        (typeof (program as ProgramInfoLoader).get === 'function' ? (program as ProgramInfoLoader).get() :
+                                                                    (program as ProgramInfo));
+
+    // create texture info for output
+    const outputTextureLayout = createTextureLayoutFromTextureType(
+        this.session.layoutStrategy, programInfo.output.dims, programInfo.output.textureType);
+    const outputTextureData = this.createTextureData(outputTextureLayout, programInfo.output.type);
+
     if (!artifact) {
-      const programInfo = op.createProgramInfo(this, inputs);
-      if (!programInfo.name) {
-        programInfo.name = op.constructor?.name;
-      }
-      artifact = this.session.programManager.build(programInfo);
-      this.session.programManager.setArtifact(op, artifact);
+      artifact = this.session.programManager.build(programInfo, inputTextureDatas, outputTextureData);
+      this.session.programManager.setArtifact(key, artifact);
     }
-    const runData = op.createRunData(this, artifact.programInfo, inputs);
-    this.runProgram(artifact, runData);
-    return [runData.outputTextureData.tensor];
+
+    this.runProgram(artifact, inputTextureDatas, outputTextureData);
+    return outputTextureData;
   }
 
-  checkAndUpdateTextureForm(artifact: Artifact, runData: RunData) {
-    // pack/unpack inputs
-    for (let i = 0; i < runData.inputTextureDatas.length; ++i) {
-      const input = runData.inputTextureDatas[i];
-      if (input.isPacked && !artifact.programInfo.expectPackedInputs) {
-        runData.inputTextureDatas[i] = this.unpack(input);
-      } else if (!input.isPacked && artifact.programInfo.expectPackedInputs) {
-        runData.inputTextureDatas[i] = this.pack(input);
+  run(program: ProgramInfoLoader, inputs: readonly Tensor[]): Tensor {
+    const outputTextureData = this.executeProgram(program, inputs);
+    return outputTextureData.tensor;
+  }
+
+  private runProgram(artifact: Artifact, inputs: TextureData[], output: TextureData): void {
+    // input should match
+    for (let i = 0; i < inputs.length; ++i) {
+      if (!!inputs[i].isPacked !== (artifact.programInfo.inputTypes[i] === TextureType.packed)) {
+        throw new Error(`input[${i}] property packed inconsistent`);
       }
     }
-  }
-  runProgram(artifact: Artifact, runData: RunData) {
-    this.checkAndUpdateTextureForm(artifact, runData);
 
     // output should match
-    if (!!runData.outputTextureData.isPacked !== !!artifact.programInfo.expectPackedOutputs) {
+    if (!!output.isPacked !== (artifact.programInfo.output.textureType === TextureType.packed)) {
       throw new Error('output property packed inconsistent');
     }
 
-    this.session.programManager.run(artifact, runData);
+    this.session.programManager.run(artifact, inputs, output);
   }
 
   /**
@@ -76,40 +110,67 @@ export class WebGLInferenceHandler implements InferenceHandler {
    *   Creates a texture data object associated with the given tensor.
    * @param tensor the tensor with data to upload
    */
-  getOrCreateTextureData(tensor: Tensor, layout?: TextureLayout, isPacked = false) {
-    let td = this.getTextureData(tensor.dataId, isPacked);
+  private getOrCreateTextureData(tensor: Tensor, textureType: TextureType) {
+    let td = this.getTextureData(tensor.dataId, textureType === TextureType.packed);
+
     if (!td) {
-      Logger.verbose('InferenceHandler', `Creating new TextureData for dims: [${tensor.dims}]`);
-      if (!layout) {
-        layout = this.createTextureLayoutFromShape(tensor.dims.slice());
-      }
-      // if we don't find the texture data with specific pack mode in the cache, try with the different
-      // pack mode to see if the tensor is cached using that pack mode. If succeed, we can return this
-      // tensor data and later apply a pack/unpack op on this texture, no need to create a new one here.
-      td = this.getTextureData(tensor.dataId, !isPacked);
-      if (!td) {
-        if (isPacked) {
-          const unpackedTextureLayout = this.getOrCreateTextureLayout(tensor, 1, false, [], true);
-          const unpackedTextureData = this.createTextureData(
-              unpackedTextureLayout, tensor.type, tensor.numberData, tensor, Encoder.Usage.UploadOnly);
-          td = this.pack(unpackedTextureData);
+      // check if we have texture data in different type
+      td = this.getTextureData(tensor.dataId, textureType !== TextureType.packed);
+      if (td) {
+        if (textureType === TextureType.packed) {
+          return this.pack(td);
         } else {
-          td = this.createTextureData(layout, tensor.type, tensor.numberData, tensor, Encoder.Usage.UploadOnly);
+          return this.unpack(td);
         }
       }
-    } else {
-      Logger.verbose('InferenceHandler', `Retrieving TextureData from cache: [${tensor.dims}]`);
+    }
+
+    if (!td) {
+      const layout = createTextureLayoutFromTextureType(this.session.layoutStrategy, tensor.dims, textureType);
+
+      if (textureType === TextureType.packedLastDimension) {
+        const group = 1;
+        const channels = 4;
+        const shape = tensor.dims;
+        if (shape.length === 4) {
+          // pre-processing for kernel data of Conv.
+          //
+          // TODO: currently this is a hacking to overwrite Conv's weight. The correct way to do this should be:
+          // 1. implement texture based const-folding
+          // 2. create a WebGL program "preprocessConvWeight" to do the same work as below
+          // 3. run the program before dotProduct.
+          //
+          const adjustedKernelShape = [shape[0], Math.ceil((shape[1] * shape[2] * shape[3]) / channels)];
+          const adjustedLayout =
+              createTextureLayoutFromTextureType(this.session.layoutStrategy, adjustedKernelShape, textureType);
+          let buffer = tensor.numberData;
+          if (shape[1] * shape[2] * shape[3] % channels !== 0) {
+            const numFeatureMaps = shape[0];
+            const oldRowSize = shape[1] * shape[2] * shape[3];
+            const newRowSize = Math.ceil(oldRowSize * group / channels) * channels;
+            const newSize = numFeatureMaps * newRowSize;
+            buffer = new Float32Array(newSize);
+            for (let f = 0; f < numFeatureMaps; ++f) {
+              const oldOffset = f * oldRowSize;
+              const newOffset = f * newRowSize + f % group * oldRowSize;
+              buffer.set(tensor.numberData.subarray(oldOffset, oldOffset + oldRowSize), newOffset);
+            }
+          }
+          return this.createTextureData(adjustedLayout, tensor.type, buffer, tensor, Encoder.Usage.UploadOnly);
+        }
+      }
+
+      if (textureType === TextureType.packed) {
+        const unpackedTextureLayout =
+            createTextureLayoutFromShape(this.session.layoutStrategy, tensor.dims, 1, [], {reverseWH: true});
+        const unpackedTextureData = this.createTextureData(
+            unpackedTextureLayout, tensor.type, tensor.numberData, tensor, Encoder.Usage.UploadOnly);
+        td = this.pack(unpackedTextureData);
+      } else {
+        td = this.createTextureData(layout, tensor.type, tensor.numberData, tensor, Encoder.Usage.UploadOnly);
+      }
     }
     return td;
-  }
-
-  /**
-   * Create a TextureData object from the given data type and texture layout.
-   * Usage = Encoder.Usage.Default.
-   * @param dataType the tensor data type
-   */
-  createTextureDataFromLayout(layout: TextureLayout, dataType: Tensor.DataType): TextureData {
-    return this.createTextureData(layout, dataType);
   }
 
   /**
@@ -134,16 +195,48 @@ export class WebGLInferenceHandler implements InferenceHandler {
     return this.createTextureDataFromTexture(layout, dataType, texture, tensor);
   }
 
-  /**
-   * Create a TextureData object, using the given texture.
-   * This function does not create new texture. Usually used in scenarios using texture sharing. (eg. Reshape)
-   * @param dataType the tensor data type
-   * @param texture the WebGLTexture object to share
-   * @param tensorId the tensor ID of the shared tensor data
-   */
-  createSharedTextureData(
-      layout: TextureLayout, dataType: Tensor.DataType, texture: WebGLTexture, tensorId?: Tensor.Id): TextureData {
-    return this.createTextureDataFromTexture(layout, dataType, texture, undefined, tensorId);
+  reshapeUnpacked(input: Tensor, reshapedDims: readonly number[]): Tensor {
+    const inputTD = this.getOrCreateTextureData(input, TextureType.unpacked);
+    const newTextureLayout: TextureLayout = {
+      channels: inputTD.channels,
+      height: inputTD.height,
+      width: inputTD.width,
+      // handle reshaping into scalar Tensors
+      shape: reshapedDims.length !== 0 ? reshapedDims : [1],
+      strides: ShapeUtil.computeStrides(reshapedDims),
+      unpackedShape: reshapedDims,
+    };
+    const newTextureData = this.createTextureDataFromTexture(newTextureLayout, input.type, inputTD.texture);
+    return newTextureData.tensor;
+  }
+
+  reshapePacked(input: Tensor, reshapedDims: readonly number[]): Tensor {
+    const inputTD = this.getOrCreateTextureData(input, TextureType.packed);
+
+    // check if the reshape is 'cheap'
+    if (isReshapeCheap(input.dims, reshapedDims)) {
+      const newTextureLayout: TextureLayout = {
+        channels: inputTD.channels,
+        height: inputTD.height,
+        width: inputTD.width,
+        // handle reshaping into scalar Tensors
+        shape: reshapedDims.length !== 0 ? reshapedDims : [1],
+        strides: ShapeUtil.computeStrides(reshapedDims),
+        unpackedShape: reshapedDims,
+        isPacked: true
+      };
+      const newTextureData = this.createTextureDataFromTexture(newTextureLayout, input.type, inputTD.texture);
+      return newTextureData.tensor;
+    }
+
+    const squeezedInputShape = processDims3D(input.dims);
+    const squeezedOutputShape = processDims3D(reshapedDims);
+
+    const squeezedInputTensor = this.reshapePacked(input, squeezedInputShape);
+    const squeezedOutputTensor = this.run(
+        createPackedReshape3DProgramInfoLoader(this, squeezedInputTensor, squeezedOutputShape), [squeezedInputTensor]);
+    const outputTensor = this.reshapePacked(squeezedOutputTensor, reshapedDims);
+    return outputTensor;
   }
 
   private createTextureDataFromTexture(
@@ -152,15 +245,15 @@ export class WebGLInferenceHandler implements InferenceHandler {
       ...layout,
       tensor: tensor ||
           new Tensor(
-                  layout.unpackedShape, dataType, (_id: Tensor.Id) => this.readTexture(textureData), undefined,
-                  undefined, tensorId),
+                  layout.unpackedShape, dataType, (_id: Tensor.Id) => this.readTexture(textureData),
+                  async (_id: Tensor.Id) => this.readTextureAsync(textureData), undefined, tensorId),
       texture
     };
     this.setTextureData(textureData.tensor.dataId, textureData, layout.isPacked);
     return textureData;
   }
 
-  getTextureData(tensorId: Tensor.Id, isPacked = false): TextureData|undefined {
+  private getTextureData(tensorId: Tensor.Id, isPacked = false): TextureData|undefined {
     return this.session.isInitializer(tensorId) ?
         this.session.getTextureData(tensorId, isPacked) :
         isPacked ? this.packedTextureDataCache.get(tensorId) : this.unpackedTextureDataCache.get(tensorId);
@@ -174,68 +267,6 @@ export class WebGLInferenceHandler implements InferenceHandler {
   }
   isTextureLayoutCached(tensor: Tensor, isPacked = false): boolean {
     return !!this.getTextureData(tensor.dataId, isPacked);
-  }
-  /**
-   * Create a TextureLayout object from a tensor. If a related texture data is found, returns the cached texture layout.
-   */
-  getOrCreateTextureLayout(
-      tensor: Tensor, channels: 1|4 = 1, isPacked = false, unpackedShape?: readonly number[],
-      reverseWH = false): TextureLayout {
-    const td = this.getTextureData(tensor.dataId, isPacked);
-    if (td) {
-      return td;
-    }
-    return this.createTextureLayoutFromShape(
-        channels === 1 || isPacked ? tensor.dims : getPackedShape(tensor.dims), channels, unpackedShape,
-        isPacked || reverseWH ? {isPacked, reverseWH} : undefined);
-  }
-
-  /**
-   * Create a TextureLayout object from shape.
-   */
-  createTextureLayoutFromShape(
-      shape: readonly number[], channels: 1|4 = 1, unpackedShape?: readonly number[],
-      prefs?: WidthHeightPrefs): TextureLayout {
-    const isPacked = !!(prefs && prefs.isPacked);
-    const [texWidth, texHeight] =
-        this.session.layoutStrategy.computeTextureWH(isPacked ? unpackedShape || shape : shape, prefs);
-    let [width, height] = [texWidth, texHeight];
-    if (prefs && prefs.reverseWH) {
-      width = texHeight;
-      height = texWidth;
-    }
-    const rank = shape.length;
-    let inferredDims = shape.slice(0);
-    if (rank === 0) {
-      inferredDims = [1];
-    }
-    if (channels === 1) {
-      // unpackedShape will take `shape` and not `inferredDims` so as to create a scalar Tensor if need be
-      unpackedShape = shape;
-    } else if (isPacked) {
-      if (channels !== 4) {
-        throw new Error('a packed texture must be 4-channel');
-      }
-      unpackedShape = shape;
-      if (rank > 0) {
-        inferredDims[rank - 1] = Math.ceil(inferredDims[rank - 1] / 2);
-      }
-      if (rank > 1) {
-        inferredDims[rank - 2] = Math.ceil(inferredDims[rank - 2] / 2);
-      }
-    } else if (!unpackedShape) {
-      throw new Error('Unpacked shape is needed when using channels > 1');
-    }
-    return {
-      width,
-      height,
-      channels,
-      isPacked,
-      shape: inferredDims,
-      strides: ShapeUtil.computeStrides(inferredDims),
-      unpackedShape,
-      reversedWH: (prefs && prefs.reverseWH)
-    };
   }
 
   dispose(): void {
@@ -251,62 +282,28 @@ export class WebGLInferenceHandler implements InferenceHandler {
       return this.readTexture(this.unpack(textureData));
     }
     if (!this.session.backend.glContext.isFloat32DownloadSupported) {
-      const op = new WebGLUint8Encode();
-      const uint8TD = op.runInternal(this, textureData);
-      return this.session.textureManager.readUint8TextureAsFloat(uint8TD);
+      return this.session.textureManager.readUint8TextureAsFloat(encodeAsUint8(this, textureData));
     }
     return this.session.textureManager.readTexture(textureData, textureData.tensor.type, textureData.channels);
   }
 
+  async readTextureAsync(textureData: TextureData): Promise<Tensor.NumberType> {
+    if (textureData.isPacked) {
+      return this.readTextureAsync(this.unpack(textureData));
+    }
+    if (!this.session.backend.glContext.isFloat32DownloadSupported) {
+      return this.session.textureManager.readUint8TextureAsFloat(encodeAsUint8(this, textureData));
+    }
+    return this.session.textureManager.readTextureAsync(textureData, textureData.tensor.type, textureData.channels);
+  }
+
   pack(input: TextureData): TextureData {
-    const cachedId = this.unpack2packMap.get(input.tensor.dataId);
-    if (cachedId) {
-      return this.packedTextureDataCache.get(cachedId)!;
-    }
-    const key = `${input.shape}`;
-    let op = this.session.packOpCache.get(key);
-    if (!op) {
-      op = new WebGLPack();
-      this.session.packOpCache.set(key, op);
-    }
-    let artifact = this.session.programManager.getArtifact(op);
-    if (!artifact) {
-      const programInfo = op.createProgramInfo(this, [input.tensor]);
-      artifact = this.session.programManager.build(programInfo);
-      this.session.programManager.setArtifact(op, artifact);
-    }
-    const runData = op.createRunData(this, artifact.programInfo, [input.tensor]);
-    this.runProgram(artifact, runData);
-    this.unpack2packMap.set(input.tensor.dataId, runData.outputTextureData.tensor.dataId);
-    return runData.outputTextureData;
+    const outputTextureData = this.executeProgram(createPackProgramInfoLoader(this, input.tensor), [input.tensor]);
+    return outputTextureData;
   }
 
   unpack(input: TextureData): TextureData {
-    const cachedId = this.pack2unpackMap.get(input.tensor.dataId);
-    if (cachedId) {
-      return this.unpackedTextureDataCache.get(cachedId)!;
-    }
-    // For unpacked kernel, cache it by using input's unpackedShape as cache key.
-    // Note that we need to use input.unpackedShape instead of input.shape here,
-    // as the shape infers the packed texture shape. Different unpackedShape can have the
-    // same packed texture shape. For example, for unpacked shape, both [2, 3] and
-    // [2, 4] has the same packed shape [1, 2], but those two shapes should have different
-    // unpack shaders.
-    const key = `${input.unpackedShape}`;
-    let op = this.session.unpackOpCache.get(key);
-    if (!op) {
-      op = new WebGLUnpack();
-      this.session.unpackOpCache.set(key, op);
-    }
-    let artifact = this.session.programManager.getArtifact(op);
-    if (!artifact) {
-      const programInfo = op.createProgramInfo(this, [input.tensor]);
-      artifact = this.session.programManager.build(programInfo);
-      this.session.programManager.setArtifact(op, artifact);
-    }
-    const runData = op.createRunData(this, artifact.programInfo, [input.tensor]);
-    this.runProgram(artifact, runData);
-    this.pack2unpackMap.set(input.tensor.dataId, runData.outputTextureData.tensor.dataId);
-    return runData.outputTextureData;
+    const outputTextureData = this.executeProgram(createUnpackProgramInfoLoader(this, input.tensor), [input.tensor]);
+    return outputTextureData;
   }
 }

@@ -39,8 +39,7 @@
 #endif
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
-#include "core/session/device_allocator.h"
-#include "core/session/allocator_impl.h"
+#include "core/session/inference_session_utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "dummy_provider.h"
@@ -265,7 +264,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
                                ProviderType bind_provider_type,
                                bool is_preallocate_output_vec,
                                ProviderType allocation_provider,
-                               IExecutionProvider *gpu_provider,
+                               IExecutionProvider* gpu_provider,
                                OrtDevice* output_device) {
   unique_ptr<IOBinding> io_binding;
   Status st = session_object.NewIOBinding(&io_binding);
@@ -606,6 +605,8 @@ TEST(InferenceSessionTests, CheckRunLogger) {
 #endif
 }
 
+// WebAssembly will emit profiling data into console
+#if !defined(__wasm__)
 TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
   SessionOptions so;
 
@@ -642,11 +643,18 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
   ASSERT_TRUE(lines[size - 1].find("]") != string::npos);
   std::vector<std::string> tags = {"pid", "dur", "ts", "ph", "X", "name", "args"};
 
+  bool has_kernel_info = false;
   for (size_t i = 1; i < size - 1; ++i) {
     for (auto& s : tags) {
       ASSERT_TRUE(lines[i].find(s) != string::npos);
+      has_kernel_info = has_kernel_info || lines[i].find("Kernel") != string::npos &&
+                                               lines[i].find("stream") != string::npos &&
+                                               lines[i].find("block_x") != string::npos;
     }
   }
+#ifdef USE_CUDA
+  ASSERT_TRUE(has_kernel_info);
+#endif
 }
 
 TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
@@ -687,6 +695,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
     count++;
   }
 }
+#endif  // __wasm__
 
 TEST(InferenceSessionTests, CheckRunProfilerStartTime) {
   // Test whether the InferenceSession can access the profiler's start time
@@ -849,11 +858,11 @@ static void TestBindHelper(const std::string& log_str,
   so.session_log_verbosity_level = 1;  // change to 1 for detailed logging
 
   InferenceSession session_object{so, GetEnvironment()};
-  IExecutionProvider *gpu_provider{};
+  IExecutionProvider* gpu_provider{};
 
   if (bind_provider_type == kCudaExecutionProvider || bind_provider_type == kRocmExecutionProvider) {
 #ifdef USE_CUDA
-    auto provider = DefaultCudaExecutionProvider(); 
+    auto provider = DefaultCudaExecutionProvider();
     gpu_provider = provider.get();
     ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
 #elif USE_ROCM

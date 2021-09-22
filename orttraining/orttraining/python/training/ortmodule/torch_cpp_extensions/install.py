@@ -52,6 +52,16 @@ def build_torch_cpp_extensions():
         print('There was an error compiling "aten_op_executor" PyTorch CPP extension')
         sys.exit(ret_code)
 
+    setup_script = os.path.join(cpp_ext_dir,
+                                'torch_interop_utils',
+                                'setup.py')
+    ret_code = subprocess.call(f"{sys.executable} {setup_script} build",
+                               cwd=cpp_ext_dir,
+                               shell=True)
+    if ret_code != 0:
+        print('There was an error compiling "torch_interop_utils" PyTorch CPP extension')
+        sys.exit(ret_code)
+
     ############################################################################
     # Copy Pytorch CPP Extensions to the local onnxruntime package folder
     ############################################################################

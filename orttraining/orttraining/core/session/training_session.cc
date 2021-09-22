@@ -921,7 +921,7 @@ Status TrainingSession::BuildOptimizer(
     OptimizerOutputKeyMap<std::string>& opt_graph_outputs) {
   ORT_RETURN_IF_NOT(
       opt_configs.size() == weights_to_train_.size(),
-      "Number of optimizer configurations does not match number of weights to train.")
+      "Number of optimizer configurations does not match number of weights to train.");
 
   for (const auto& weight_name : weights_to_train_) {
     ORT_RETURN_IF_NOT(
@@ -1289,7 +1289,7 @@ Status TrainingSession::SetStateTensors(const NameMLValMap& state_tensors, bool 
     if (is_valid_state_tensor && is_tensor_present) {
       ORT_RETURN_IF_NOT(
           initializer_it->second.IsTensor() && state.second.IsTensor(),
-          "Non-tensor type as initializer is not expected.")
+          "Non-tensor type as initializer is not expected.");
 
       auto* initializer_tensor = initializer_it->second.GetMutable<Tensor>();
       auto& ckpt_tensor = state.second.Get<Tensor>();

@@ -21,7 +21,7 @@
 
 #ifdef ENABLE_NVTX_PROFILE
 // This header is for profile using Nvidia's visual profilier.
-#include "core/profile/profile.h"
+#include "core/providers/cuda/nvtx_profile.h" 
 #include "core/profile/context.h"
 #endif
 
@@ -136,14 +136,13 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   size_t total_output_sizes = 0;
 
   if (is_profiler_enabled) {
-    tp = session_state.Profiler().StartTime();
+    tp = session_state.Profiler().Start();
   }
 
   ExecutionFrame frame{feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state};
-  const std::unordered_set<NodeIndex>* to_be_executed_nodes = nullptr;
 
 #if !defined(ORT_MINIMAL_BUILD)
-  to_be_executed_nodes = session_state.GetToBeExecutedNodes(fetch_mlvalue_idxs);
+  const auto* const to_be_executed_nodes = session_state.GetToBeExecutedNodes(fetch_mlvalue_idxs);
   const bool only_execute_path_to_fetches = only_execute_path_to_fetches_ && (to_be_executed_nodes != nullptr);
 
   if (only_execute_path_to_fetches) {
@@ -151,7 +150,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   }
 #else
   ORT_UNUSED_PARAMETER(only_execute_path_to_fetches_);
-  const bool only_execute_path_to_fetches = false;
 #endif
 
   LOGS(logger, INFO) << "Begin execution";
@@ -169,8 +167,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #ifdef CONCURRENCY_VISUALIZER
   // need unique name for the series. number of nodes should be good enough for a subgraph
   char series_name[MaxSeriesNameLengthInChars] = "MainGraph";
-  if (graph_viewer->IsSubgraph()) {
-    auto s = graph_viewer->ParentNode()->Name().substr(0, MaxSeriesNameLengthInChars - 1);
+  if (graph_viewer.IsSubgraph()) {
+    auto s = graph_viewer.ParentNode()->Name().substr(0, MaxSeriesNameLengthInChars - 1);
     std::copy(s.cbegin(), s.cend(), series_name);
   }
 
@@ -188,6 +186,12 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       profile::Color::Black);
 #endif
 
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+    size_t program_counter = 0;
+    utils::NodeDumpContext dump_context { session_state.GetGraphExecutionCounter(), program_counter };
+#endif
+
+
   for (const auto& node_exec_plan : exec_plan_vec) {
     if (terminate_flag_) {
       LOGS(logger, WARNING) << "Exiting due to terminate flag being set to true.";
@@ -196,10 +200,12 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
     auto node_index = node_exec_plan.node_index;
 
+#if !defined(ORT_MINIMAL_BUILD)
     // If it is not necessary to execute the node.
     if (only_execute_path_to_fetches && to_be_executed_nodes->count(node_index) == 0) {
       continue;
     }
+#endif
 
     const auto& node = *graph_viewer.GetNode(node_exec_plan.node_index);
 
@@ -235,7 +241,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     OpKernelContextInternal op_kernel_context(session_state, frame, *p_op_kernel, logger, terminate_flag_);
     // TODO: log kernel outputs?
     if (is_profiler_enabled) {
-      sync_time_begin = session_state.Profiler().StartTime();
+      sync_time_begin = session_state.Profiler().Start();
     }
 
     // sync before compute
@@ -271,7 +277,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       }
     }
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    utils::DumpNodeInputs(op_kernel_context, p_op_kernel->Node(), session_state);
+    dump_context.program_counter = program_counter++;
+    utils::DumpNodeInputs(dump_context, op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
 
     const std::string node_name_for_profiling = [&]() -> std::string {
@@ -289,7 +296,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       // call compute on the kernel
       VLOGS(logger, 1) << "Computing kernel: " << node_name_for_profiling;
 
-      kernel_begin_time = session_state.Profiler().StartTime();
+      kernel_begin_time = session_state.Profiler().Start();
 
       // Calculate total input sizes for this operation.
       CalculateTotalInputSizes(&op_kernel_context, p_op_kernel,
@@ -371,7 +378,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                                          {"output_size", std::to_string(total_output_sizes)},
                                                          {"thread_scheduling_stats", concurrency::ThreadPool::StopProfiling(session_state.GetThreadPool())},
                                                      });
-      sync_time_begin = session_state.Profiler().StartTime();
+      sync_time_begin = session_state.Profiler().Start();
     }
 
     // sync after compute for outputs
@@ -418,7 +425,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     }
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    utils::DumpNodeOutputs(op_kernel_context, p_op_kernel->Node(), session_state);
+    utils::DumpNodeOutputs(dump_context, op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
 
     // free ml-values corresponding to this node
@@ -477,6 +484,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     session_state.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", tp);
   }
 
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   for (auto i : frame.GetStaticMemorySizeInfo()) {
     LOGS(logger, INFO) << "[Memory] ExecutionFrame statically allocates "
                        << i.second << " bytes for " << i.first << std::endl;
@@ -486,6 +494,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     LOGS(logger, INFO) << "[Memory] ExecutionFrame dynamically allocates "
                        << i.second << " bytes for " << i.first << std::endl;
   }
+#endif
 
   return Status::OK();
 }

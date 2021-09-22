@@ -12,15 +12,10 @@ from onnx import helper, numpy_helper, TensorProto, NodeProto
 from onnx_model import OnnxModel
 from fusion_base import Fusion
 from fusion_utils import FusionUtils, NumpyHelper
+from fusion_options import AttentionMaskFormat
+from shape_infer_helper import SymbolicShapeInferenceHelper, get_shape_from_type_proto
 
 logger = getLogger(__name__)
-
-
-class AttentionMaskFormat:
-    MaskIndexEnd = 0
-    MaskIndexEndAndStart = 1
-    AttentionMask = 2
-    NoMask = 3
 
 
 class AttentionMask():
@@ -93,6 +88,10 @@ class FusionAttention(Fusion):
         self.num_heads = num_heads
         self.attention_mask = attention_mask
 
+        # Flags to show warning only once
+        self.num_heads_warning = True
+        self.hidden_size_warning = True
+
     def get_num_heads_and_hidden_size(self, reshape_q: NodeProto) -> Tuple[int, int]:
         """ Detect num_heads and hidden_size from a reshape node.
 
@@ -119,16 +118,39 @@ class FusionAttention(Fusion):
         hidden_size = num_heads * head_size
 
         if self.num_heads > 0 and num_heads != self.num_heads:
-            logger.warn("--num_heads is {self.num_heads}. Detected value is {num_heads}. Using detected value.")
+            if self.num_heads_warning:
+                logger.warning(f"--num_heads is {self.num_heads}. Detected value is {num_heads}. Using detected value.")
+                self.num_heads_warning = False  # Do not show the warning more than once
 
         if self.hidden_size > 0 and hidden_size != self.hidden_size:
-            logger.warn("--hidden_size is {self.hidden_size}. Detected value is {hidden_size}. Using detected value.")
+            if self.hidden_size_warning:
+                logger.warning(
+                    f"--hidden_size is {self.hidden_size}. Detected value is {hidden_size}. Using detected value.")
+                self.hidden_size_warning = False  # Do not show the warning more than once
 
         return num_heads, hidden_size
 
+    def get_add_qk_str(self, add_qk: NodeProto):
+        shape_infer = self.model.infer_runtime_shape(update=True)
+        if shape_infer is None:
+            return
+
+        input_0_shape = shape_infer.get_edge_shape(add_qk.input[0])
+        input_1_shape = shape_infer.get_edge_shape(add_qk.input[1])
+
+        if input_0_shape is None or input_1_shape is None:
+            logger.debug(f"one of the inputs of {add_qk} is None")
+            return None
+
+        if input_0_shape != input_1_shape:
+            logger.debug(f"the shape of two inputs of {add_qk} is not same")
+            return None
+
+        return add_qk.input[1]
+
     def create_attention_node(self, mask_index: str, q_matmul: NodeProto, k_matmul: NodeProto, v_matmul: NodeProto,
                               q_add: NodeProto, k_add: NodeProto, v_add: NodeProto, num_heads: int, hidden_size: int,
-                              input: str, output: str) -> Union[NodeProto, None]:
+                              input: str, output: str, add_qk_str: str) -> Union[NodeProto, None]:
         """ Create an Attention node.
 
         Args:
@@ -165,6 +187,7 @@ class FusionAttention(Fusion):
             return None
         if not (k_weight and v_weight and q_bias and k_bias):
             return None
+
         qw = NumpyHelper.to_array(q_weight)
         kw = NumpyHelper.to_array(k_weight)
         vw = NumpyHelper.to_array(v_weight)
@@ -179,10 +202,9 @@ class FusionAttention(Fusion):
         assert qw_in_size == kw_in_size == vw_in_size
 
         if hidden_size > 0 and hidden_size != qw_in_size:
-            logger.debug(
+            logger.warning(
                 f"Input hidden size {hidden_size} is not same as weight matrix dimension of q,k,v paths {qw_in_size}, provide correct input hidden size or pass 0"
             )
-            return None
 
         is_qkv_diff_dims = False
         if qw.shape != vw.shape:
@@ -245,6 +267,10 @@ class FusionAttention(Fusion):
         attention_inputs = [input, attention_node_name + '_qkv_weight', attention_node_name + '_qkv_bias']
         if mask_index is not None:
             attention_inputs.append(mask_index)
+
+        if add_qk_str is not None:
+            attention_inputs.append("")
+            attention_inputs.append(add_qk_str)
 
         attention_node = helper.make_node('Attention',
                                           inputs=attention_inputs,
@@ -365,7 +391,7 @@ class FusionAttention(Fusion):
         if is_distill:
             (_, where_qk, matmul_qk, _) = qk_nodes
         elif is_distill_add:
-            (_, _, where_qk, matmul_qk) = qk_nodes
+            (_, add_qk, where_qk, matmul_qk) = qk_nodes
         else:
             (_, add_qk, _, matmul_qk) = qk_nodes
 
@@ -392,6 +418,7 @@ class FusionAttention(Fusion):
 
         # Note that Cast might be removed by OnnxRuntime so we match two patterns here.
         mask_nodes = None
+        add_qk_str = None
         if is_distill:
             _, mask_nodes, _ = self.model.match_parent_paths(where_qk,
                                                              [(['Expand', 'Reshape', 'Equal'], [0, 0, 0]),
@@ -401,6 +428,11 @@ class FusionAttention(Fusion):
             _, mask_nodes, _ = self.model.match_parent_paths(
                 where_qk, [(['Cast', 'Equal', 'Unsqueeze', 'Unsqueeze'], [0, 0, 0, 0]),
                            (['Equal', 'Unsqueeze', 'Unsqueeze'], [0, 0, 0])], output_name_to_node)
+            if add_qk is not None:
+                add_qk_str = self.get_add_qk_str(add_qk)
+                if add_qk_str is None:
+                    logger.debug(f"fuse_attention: failed to verify shape inference of {add_qk}")
+                    return
         else:
             _, mask_nodes, _ = self.model.match_parent_paths(
                 add_qk, [(['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze'], [None, 0, 1, 0, 0]),
@@ -418,8 +450,8 @@ class FusionAttention(Fusion):
             # number of heads are same for all the paths, hence to create attention node, we pass the q_num_heads
             # the input_hidden_size represents the input hidden size, this is used as needed but hidden sizes for Q, K are extracted appropriately
             new_node = self.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v, add_q, add_k, add_v,
-                                                  q_num_heads, self.hidden_size, root_input,
-                                                  attention_last_node.output[0])
+                                                  q_num_heads, q_hidden_size, root_input, attention_last_node.output[0],
+                                                  add_qk_str)
             if new_node is None:
                 return
 

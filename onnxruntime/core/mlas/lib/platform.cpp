@@ -281,7 +281,7 @@ Return Value:
                     this->GemvU8S8Kernel = MlasGemvU8S8KernelAvxVnni;
                 }
 
-#if !defined(MLAS_AVX512F_UNSUPPORTED)
+#if !defined(ORT_MINIMAL_BUILD)
 
                 //
                 // Check if the processor supports AVX512F features and the
@@ -301,20 +301,15 @@ Return Value:
                     this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelAvx512F;
                     this->ComputeExpF32Kernel = MlasComputeExpF32KernelAvx512F;
                     this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelAvx512F;
-                    this->NchwcBlockSize = 16;
-                    this->PreferredBufferAlignment = 64;
-
-#if !defined(MLAS_AVX512F_INTRINSICS_UNSUPPORTED)
                     this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelAvx512F;
                     this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8KernelAvx512F;
-#endif
+                    this->NchwcBlockSize = 16;
+                    this->PreferredBufferAlignment = 64;
 
                     //
                     // Check if the processor supports AVX512 core features
                     // (AVX512BW/AVX512DQ/AVX512VL).
                     //
-
-#if !defined(MLAS_AVX512CORE_UNSUPPORTED)
 
                     if ((Cpuid7[1] & 0xC0020000) == 0xC0020000) {
 
@@ -333,12 +328,9 @@ Return Value:
                             this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Vnni;
                         }
                     }
-
-#endif // MLAS_AVX512CORE_UNSUPPORTED
-
                 }
 
-#endif // MLAS_AVX512F_UNSUPPORTED
+#endif // ORT_MINIMAL_BUILD
 
             }
 
@@ -374,7 +366,7 @@ Return Value:
 #endif // MLAS_TARGET_ARM64
 #if defined(MLAS_TARGET_POWER)
   this->GemmFloatKernel = MlasSgemmKernel;
-#if defined(__linux__)
+#if defined(__linux__)  && defined(POWER10)
 #if (defined(__GNUC__) && ((__GNUC__ > 10) || (__GNUC__== 10 && __GNUC_MINOR__ >= 2))) || \
     (defined(__clang__) && (__clang_major__ >= 12))
   unsigned long hwcap2 = getauxval(AT_HWCAP2);

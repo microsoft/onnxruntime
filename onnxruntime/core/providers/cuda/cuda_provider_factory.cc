@@ -14,6 +14,10 @@
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 
+#ifdef ENABLE_NVTX_PROFILE
+#include "nvtx_profile.h"
+#endif
+
 using namespace onnxruntime;
 
 namespace onnxruntime {
@@ -94,6 +98,14 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
     return cuda::Impl_Cast(static_cast<cudaStream_t>(stream), input_data, output_data, count);
   }
 
+  void cuda__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) override {
+    return cuda::Impl_Cast(static_cast<cudaStream_t>(stream), input_data, output_data, count);
+  }
+
+  void cuda__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) override {
+    return cuda::Impl_Cast(static_cast<cudaStream_t>(stream), input_data, output_data, count);
+  }
+
   bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return CudaCall<cudaError, false>(cudaError(retCode), exprString, libName, cudaError(successCode), msg); }
   bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return CudaCall<cudaError, true>(cudaError(retCode), exprString, libName, cudaError(successCode), msg); }
 
@@ -136,6 +148,11 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
   cuda::INcclService& GetINcclService() override {
     return cuda::GetINcclService();
   }
+#endif
+
+#ifdef ENABLE_NVTX_PROFILE
+  void NvtxRangeCreator__BeginImpl(profile::NvtxRangeCreator* p) override { p->BeginImpl(); }
+  void NvtxRangeCreator__EndImpl(profile::NvtxRangeCreator* p) override { p->EndImpl(); }
 #endif
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const CUDAExecutionProviderInfo& info) override {

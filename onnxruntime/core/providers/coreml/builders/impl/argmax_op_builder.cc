@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/providers/shared/utils/utils.h"
+#ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
+#endif
 #include "core/providers/coreml/builders/op_builder_factory.h"
 
 #include "base_op_builder.h"
@@ -12,9 +14,11 @@ namespace coreml {
 
 class ArgMaxOpBuilder : public BaseOpBuilder {
   // Add operator related
+#ifdef __APPLE__
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+#endif
 
   // Operator support related
  private:
@@ -24,10 +28,11 @@ class ArgMaxOpBuilder : public BaseOpBuilder {
 
 // Add operator related
 
+#ifdef __APPLE__
 Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                               const Node& node,
                                               const logging::Logger& /* logger */) const {
-  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(node);
+  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(model_builder, node);
   const auto& graph_viewer = model_builder.GetGraphViewer();
 
   NodeAttrHelper helper(node);
@@ -46,7 +51,7 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   if (node.GetOutputEdgesCount() == 1) {
     auto it = node.OutputEdgesBegin();
     const auto* succ_node(graph_viewer.GetNode(it->GetNode().Index()));
-    // If Argmax's successive node is a Cast from int64 to int32 output 
+    // If Argmax's successive node is a Cast from int64 to int32 output
     // The 'cast to' type is checked in operater supported related, omit the check here
     if (succ_node->OpType() == "Cast") {
       // Skip the cast's input/argmax's output
@@ -63,6 +68,7 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
+#endif
 
 // Operator support related
 
@@ -84,8 +90,8 @@ bool ArgMaxOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
       const auto& op_type = it->GetNode().OpType();
       if (op_type == "Cast") {
         // Check if the output type of cast node is int32
-        NodeAttrHelper helper(it->GetNode());
-        const auto cast_to_type = helper.Get("to", ONNX_NAMESPACE::TensorProto::UNDEFINED);
+        NodeAttrHelper output_helper(it->GetNode());
+        const auto cast_to_type = output_helper.Get("to", ONNX_NAMESPACE::TensorProto::UNDEFINED);
         if (cast_to_type == ONNX_NAMESPACE::TensorProto::INT32) {
           LOGS(logger, VERBOSE) << "Argmax has both cast and other downstream nodes.";
           return false;

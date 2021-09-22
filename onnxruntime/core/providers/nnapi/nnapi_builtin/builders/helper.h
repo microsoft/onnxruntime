@@ -110,7 +110,8 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
 bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, const Node& node,
                                     const std::vector<size_t>& indices);
 
-float GetQuantizationScale(const InitializedTensorSet& initializers, const Node& node, size_t idx);
+common::Status GetQuantizationScale(const InitializedTensorSet& initializers, const Node& node,
+                                    size_t idx, float& scale);
 
 common::Status GetQuantizationZeroPoint(const InitializedTensorSet& initializers,
                                         const Node& node, size_t idx, int32_t& zero_point) ORT_MUST_USE_RESULT;
@@ -126,8 +127,17 @@ void GetFlattenOutputShape(const Node& node, const Shape& input_shape, int32_t& 
 // If a node is supported by NNAPI
 bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const OpSupportCheckParams& params);
 
-// Get a list of groups of supported nodes, each group represents a subgraph supported by NNAPI EP
-std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_viewer, const OpSupportCheckParams& params);
+// If a node is supported by NNAPI in a partition node group
+// `node_outputs_in_group` is the set of the output names of the nodes added to this group so far
+bool IsNodeSupportedInGroup(const Node& node, const GraphViewer& graph_viewer,
+                            const OpSupportCheckParams& params,
+                            const std::unordered_set<std::string>& node_outputs_in_group);
+
+// If a graph input is supported by NNAPI
+bool IsInputSupported(const NodeArg& input, const std::string& parent_name);
+
+// If an NNAPI partition node group is valid
+bool IsValidSupportedNodeGroup(const std::vector<const Node*>& supported_node_group);
 
 // Get string representation of a Shape
 std::string Shape2String(const std::vector<uint32_t>& shape);

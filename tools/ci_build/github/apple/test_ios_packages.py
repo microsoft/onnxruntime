@@ -12,6 +12,10 @@ SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", "..", ".."))
 
 
+from package_assembly_utils import (  # noqa: E402
+    gen_file_from_template, load_framework_info)
+
+
 def _test_ios_packages(args):
     # check if CocoaPods is installed
     if shutil.which('pod') is None:
@@ -27,43 +31,75 @@ def _test_ios_packages(args):
     if not c_framework_dir.is_dir():
         raise FileNotFoundError('c_framework_dir {} is not a folder.'.format(c_framework_dir))
 
-    framework_path = os.path.join(c_framework_dir, 'onnxruntime.framework')
-    if not pathlib.Path(framework_path).exists():
-        raise FileNotFoundError('{} does not have onnxruntime.framework'.format(c_framework_dir))
+    has_framework = pathlib.Path(os.path.join(c_framework_dir, 'onnxruntime.framework')).exists()
+    has_xcframework = pathlib.Path(os.path.join(c_framework_dir, 'onnxruntime.xcframework')).exists()
+
+    if not has_framework and not has_xcframework:
+        raise FileNotFoundError('{} does not have onnxruntime.framework/xcframework'.format(c_framework_dir))
+
+    if has_framework and has_xcframework:
+        raise ValueError('Cannot proceed when both onnxruntime.framework '
+                         'and onnxruntime.xcframework exist')
+
+    framework_name = 'onnxruntime.framework' if has_framework else 'onnxruntime.xcframework'
 
     # create a temp folder
     import tempfile
     with tempfile.TemporaryDirectory() as temp_dir:
+        # This is for debugging only
+        # temp_dir = <a local directory>
+        # shutil.rmtree(temp_dir)
+
         # create a zip file contains the framework
         # TODO, move this into a util function
         local_pods_dir = os.path.join(temp_dir, 'local_pods')
         os.makedirs(local_pods_dir, exist_ok=True)
         # shutil.make_archive require target file as full path without extension
-        zip_base_filename = os.path.join(local_pods_dir, 'onnxruntime-mobile')
+        zip_base_filename = os.path.join(local_pods_dir, 'onnxruntime-mobile-c')
         zip_file_path = zip_base_filename + '.zip'
-        shutil.make_archive(zip_base_filename, 'zip', root_dir=c_framework_dir, base_dir='onnxruntime.framework')
+        shutil.make_archive(zip_base_filename, 'zip', root_dir=c_framework_dir, base_dir=framework_name)
 
         # copy the test project to the temp_dir
         test_proj_path = os.path.join(REPO_DIR, 'onnxruntime', 'test', 'platform', 'ios', 'ios_package_test')
         target_proj_path = os.path.join(temp_dir, 'ios_package_test')
         shutil.copytree(test_proj_path, target_proj_path)
 
-        # update the podspec to point to the local framework zip file
-        local_podspec_path = os.path.join(target_proj_path, 'onnxruntime-mobile.podspec')
-        local_podspec_template = os.path.join(target_proj_path, 'onnxruntime-mobile.podspec.template')
-        with open(local_podspec_template, 'r') as file:
-            file_data = file.read()
+        # generate the podspec file from the template
+        framework_info = load_framework_info(args.framework_info_file.resolve())
 
-        # replace the target strings
-        file_data = file_data.replace('${ORT_BASE_FRAMEWORK_ARCHIVE}', 'file:' + zip_file_path)
         with open(os.path.join(REPO_DIR, 'VERSION_NUMBER')) as version_file:
-            file_data = file_data.replace('${ORT_VERSION}', version_file.readline().strip())
+            ORT_VERSION = version_file.readline().strip()
 
-        # write the updated podspec
-        with open(local_podspec_path, 'w') as file:
+        variable_substitutions = {
+            "VERSION": ORT_VERSION,
+            "IOS_DEPLOYMENT_TARGET": framework_info["IOS_DEPLOYMENT_TARGET"],
+            "WEAK_FRAMEWORK": framework_info["WEAK_FRAMEWORK"],
+            "LICENSE_FILE": '"LICENSE"',
+        }
+
+        podspec_template = os.path.join(SCRIPT_DIR, "c", "onnxruntime-mobile-c.podspec.template")
+        podspec = os.path.join(target_proj_path, "onnxruntime-mobile-c.podspec")
+
+        gen_file_from_template(podspec_template, podspec, variable_substitutions)
+
+        # update the podspec to point to the local framework zip file
+        with open(podspec, 'r') as file:
+            file_data = file.read()
+        file_data = file_data.replace('file:///http_source_placeholder', 'file:' + zip_file_path)
+
+        # We will only publish xcframework, however, assembly of the xcframework is a post process
+        # and it cannot be done by CMake for now. See, https://gitlab.kitware.com/cmake/cmake/-/issues/21752
+        # For a single sysroot and arch built by build.py or cmake, we can only generate framework
+        # We still need a way to test it, replace the xcframework with framework in the podspec
+        if has_framework:
+            file_data = file_data.replace('onnxruntime.xcframework', 'onnxruntime.framework')
+        with open(podspec, 'w') as file:
             file.write(file_data)
 
-        # install pods first
+        # clean the Cocoapods cache first, in case the same pod was cached in previous runs
+        subprocess.run(['pod', 'cache', 'clean', '--all'], shell=False, check=True, cwd=target_proj_path)
+
+        # install pods
         subprocess.run(['pod', 'install'], shell=False, check=True, cwd=target_proj_path)
 
         # run the tests
@@ -83,6 +119,10 @@ def parse_args():
     parser.add_argument('--fail_if_cocoapods_missing', action='store_true',
                         help='This script will fail if CocoaPods is not installed, '
                         'will not throw error unless fail_if_cocoapod_missing is set.')
+
+    parser.add_argument("--framework_info_file", type=pathlib.Path, required=True,
+                        help="Path to the framework_info.json file containing additional values for the podspec. "
+                             "This file should be generated by CMake in the build directory.")
 
     parser.add_argument('--c_framework_dir', type=pathlib.Path, required=True,
                         help='Provide the parent directory for C/C++ framework')

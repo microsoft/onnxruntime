@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "pch.h"
+#include "adapter/pch.h"
 
 #include "winml_adapter_model.h"
 
@@ -634,6 +634,14 @@ ORT_API_STATUS_IMPL(winmla::ModelAddOperator,
         }
         auto raw_data = tensor->DataRaw();
         attr->set_f(*reinterpret_cast<const float*>(raw_data));
+        break;
+      }
+      case onnx::AttributeProto_AttributeType_STRING: {
+        if (tensor->Shape().Size() != 1) {
+          return OrtApis::CreateStatus(ORT_ENGINE_ERROR, "Expected a single string value!");
+        }
+        auto raw_data = tensor->DataRaw();
+        attr->set_s(*reinterpret_cast<const std::string*>(raw_data));
         break;
       }
       case onnx::AttributeProto_AttributeType_INTS: {

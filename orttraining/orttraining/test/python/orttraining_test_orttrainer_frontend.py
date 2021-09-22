@@ -88,7 +88,7 @@ def testORTTrainerOptionsDefaultValues(test_input):
         'utils': {
             'frozen_weights': [],
             'grad_norm_clip': True,
-            'invertible_layer_norm_gradient': False,
+            'memory_efficient_gradient': False,
             'run_symbolic_shape_infer': False
         },
         'debug': {

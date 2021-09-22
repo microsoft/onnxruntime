@@ -1,0 +1,71 @@
+parameters:
+- name: artifactName
+  displayName: Artifact Name
+  type: string
+  default: ''
+
+- name: job_name_suffix
+  displayName: job name
+  type: string
+  default: ''
+
+jobs:
+- job: Final_AAR_Testing_Android_${{ parameters.job_name_suffix }}
+  workspace:
+    clean: all
+  pool:
+    vmImage: 'macOS-10.15'
+  variables:
+  - name: runCodesignValidationInjection
+    value: false
+  timeoutInMinutes: 60
+  dependsOn:
+    - Android_Java_API_AAR_Packaging_${{ parameters.job_name_suffix }}
+  steps:
+  - template: set-version-number-variables-step.yml
+
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Final Android AAR'
+    inputs:
+      buildType: 'current'
+      artifactName: '${{parameters.artifactName}}'
+      targetPath: '$(Build.BinariesDirectory)/final-android-aar'
+
+  - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(Build.SourcesDirectory)
+    displayName: Setup gradle wrapper to use gradle 6.8.3
+
+  - script: |
+      python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
+        --android-sdk-root ${ANDROID_SDK_ROOT} \
+        --create-avd --system-image "system-images;android-30;google_apis;x86_64" \
+        --start --emulator-extra-args="-partition-size 4096" \
+        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+    displayName: Start Android emulator
+
+  - script: |
+      set -e -x
+      mkdir android_test
+      cd android_test
+      cp -av $(Build.SourcesDirectory)/java/src/test/android ./
+      cd ./android
+      mkdir -p app/libs
+      cp $(Build.BinariesDirectory)/final-android-aar/onnxruntime-mobile-$(OnnxRuntimeVersion).aar app/libs/onnxruntime-mobile.aar
+      $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest
+    displayName: Run E2E test for Android
+    workingDirectory: $(Build.BinariesDirectory)
+
+  - script: |
+      python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
+        --android-sdk-root ${ANDROID_SDK_ROOT} \
+        --stop \
+        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+    displayName: Stop Android emulator
+    condition: always()
+
+  - template: component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
+
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()

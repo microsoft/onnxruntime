@@ -14,12 +14,25 @@ using Events = std::vector<onnxruntime::profiling::EventRecord>;
 
 class CudaProfiler final : public EpProfiler {
  public:
+  CudaProfiler() = default;
+  CudaProfiler(const CudaProfiler&) = delete;
+  CudaProfiler& operator=(const CudaProfiler&) = delete;
+  CudaProfiler(CudaProfiler&& cuda_profiler) noexcept {
+    initialized_ = cuda_profiler.initialized_;
+    cuda_profiler.initialized_ = false;
+  }
+  CudaProfiler& operator=(CudaProfiler&& cuda_profiler) noexcept {
+    initialized_ = cuda_profiler.initialized_;
+    cuda_profiler.initialized_ = false;
+    return *this;
+  }
+  virtual ~CudaProfiler();
   bool StartProfiling() override;
   void EndProfiling(TimePoint start_time, Events& events) override;
   void Start(uint64_t) override;
   void Stop(uint64_t) override;
 
-private:
+ private:
   static void CUPTIAPI BufferRequested(uint8_t**, size_t*, size_t*);
   static void CUPTIAPI BufferCompleted(CUcontext, uint32_t, uint8_t*, size_t, size_t);
   struct KernelStat {
@@ -39,7 +52,10 @@ private:
   static std::atomic_flag enabled;
   static std::vector<KernelStat> stats;
   static std::unordered_map<uint32_t, uint64_t> id_map;
-  static bool initialized;
+
+  void DisableEvents();
+  void Clear();
+  bool initialized_ = false;
 };
 
 }  // namespace profiling

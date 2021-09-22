@@ -4,6 +4,7 @@
  */
 package ai.onnxruntime;
 
+import java.nio.ByteBuffer;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -78,6 +79,49 @@ public class TensorCreationTest {
         try (OnnxTensor t = OnnxTensor.createTensor(env, d)) {
           Assertions.assertEquals(d, t.getValue());
         }
+      }
+    }
+  }
+
+  @Test
+  public void testStringCreation() throws OrtException {
+    try (OrtEnvironment env = OrtEnvironment.getEnvironment()) {
+      String[] arrValues = new String[] {"this", "is", "a", "single", "dimensional", "string"};
+      try (OnnxTensor t = OnnxTensor.createTensor(env, arrValues)) {
+        Assertions.assertArrayEquals(new long[] {6}, t.getInfo().shape);
+        String[] output = (String[]) t.getValue();
+        Assertions.assertArrayEquals(arrValues, output);
+      }
+
+      String[][] stringValues =
+          new String[][] {{"this", "is", "a"}, {"multi", "dimensional", "string"}};
+      try (OnnxTensor t = OnnxTensor.createTensor(env, stringValues)) {
+        Assertions.assertArrayEquals(new long[] {2, 3}, t.getInfo().shape);
+        String[][] output = (String[][]) t.getValue();
+        Assertions.assertArrayEquals(stringValues, output);
+      }
+
+      String[][][] deepStringValues =
+          new String[][][] {
+            {{"this", "is", "a"}, {"multi", "dimensional", "string"}},
+            {{"with", "lots", "more"}, {"dimensions", "than", "before"}}
+          };
+      try (OnnxTensor t = OnnxTensor.createTensor(env, deepStringValues)) {
+        Assertions.assertArrayEquals(new long[] {2, 2, 3}, t.getInfo().shape);
+        String[][][] output = (String[][][]) t.getValue();
+        Assertions.assertArrayEquals(deepStringValues, output);
+      }
+    }
+  }
+
+  @Test
+  public void testUint8Creation() throws OrtException {
+    try (OrtEnvironment env = OrtEnvironment.getEnvironment()) {
+      byte[] buf = new byte[] {0, 1};
+      ByteBuffer data = ByteBuffer.wrap(buf);
+      long[] shape = new long[] {2};
+      try (OnnxTensor t = OnnxTensor.createTensor(env, data, shape, OnnxJavaType.UINT8)) {
+        Assertions.assertArrayEquals(buf, (byte[]) t.getValue());
       }
     }
   }

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "pch.h"
+#include "lib/Api.Image/pch.h"
 
 #include <winmeta.h>  // winmeta needed for TraceLoggingKeyword
 #include <TraceLoggingProvider.h>

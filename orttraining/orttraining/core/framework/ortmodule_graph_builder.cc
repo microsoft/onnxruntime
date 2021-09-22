@@ -191,7 +191,7 @@ Status OrtModuleGraphBuilder::BuildGradientGraph(const std::unordered_set<std::s
 
   // Build gradient graph.
   GradientGraphConfiguration gradient_graph_config{};
-  gradient_graph_config.use_invertible_layernorm_grad = config_.use_invertible_layernorm_grad;
+  gradient_graph_config.use_memory_efficient_gradient = config_.use_memory_efficient_gradient;
   gradient_graph_config.set_gradients_as_graph_outputs = true;
   std::unordered_set<std::string> y_node_arg_names(graph_info_.user_output_names.begin(),
                                                    graph_info_.user_output_names.end());
@@ -263,15 +263,15 @@ void OrtModuleGraphBuilder::HandleOutputsAndGrads() {
 
   // YieldOps non_differentiable_outputs attribute specifies the indices of outputs that are not differentiable
   const auto& non_differentiable_indices = graph_info_.output_grad_indices_non_differentiable;
+  const std::string non_differentiable_outputs_name = "non_differentiable_outputs";
+  ONNX_NAMESPACE::AttributeProto non_differentiable_outputs;
+  non_differentiable_outputs.set_name(non_differentiable_outputs_name);
+  non_differentiable_outputs.set_type(ONNX_NAMESPACE::AttributeProto::INTS);
+
   if (non_differentiable_indices.size() > 0) {
-    ONNX_NAMESPACE::AttributeProto non_differentiable_outputs;
-    const std::string non_differentiable_outputs_name = "non_differentiable_outputs";
-    non_differentiable_outputs.set_name(non_differentiable_outputs_name);
-    non_differentiable_outputs.set_type(ONNX_NAMESPACE::AttributeProto::INTS);
     for (auto index : non_differentiable_indices) {
       non_differentiable_outputs.add_ints(index);
     }
-    attributes.insert({non_differentiable_outputs_name, non_differentiable_outputs});
   }
 
   // YieldOps full_shape_outputs attribute specifies the indices of outputs that must be full shape.
@@ -303,7 +303,64 @@ void OrtModuleGraphBuilder::HandleOutputsAndGrads() {
       graph_info_.module_output_gradient_name.emplace_back(grad_name);
     }
   }
+
+  size_t input_count = yield_input_node_args.size();
+  for (auto& iter : graph_info_.frontier_node_arg_map) {
+    std::string name = iter.second;
+    yield_input_node_args.emplace_back(gradient_graph.GetNodeArg(name));
+    graph_info_.cached_node_arg_names.emplace_back(name);
+  }
+
+  const auto& frontier_tensors = graph_info_.frontier_node_arg_map;
+  if (frontier_tensors.size() > 0) {
+    for (size_t index = input_count; index < input_count + frontier_tensors.size(); index++) {
+      non_differentiable_outputs.add_ints(index);
+    }
+  }
+
+  // YieldOps non_differentiable_outputs /attribute specifies the indices of outputs that are not differentiable
+  if (non_differentiable_indices.size() > 0 || frontier_tensors.size() > 0) {
+    attributes.insert({non_differentiable_outputs_name, non_differentiable_outputs});
+  }
+
   attributes.insert({full_shape_outputs_name, full_shape_outputs});
+
+  // Handle potential duplciated output_gradient names
+  std::unordered_map<std::string, std::vector<size_t>> name_to_idx;
+  for (size_t i = 0; i < yield_output_node_args.size(); ++i) {
+    const std::string& name = yield_output_node_args[i]->Name();
+    auto it = name_to_idx.find(name);
+    if (it == name_to_idx.end()) {
+      name_to_idx.insert(std::make_pair(name, std::vector<size_t>{i}));
+    } else {
+      it->second.push_back(i);
+    }
+  }
+
+  for (auto& name_idx_pair : name_to_idx) {
+    // Only process if there is a duplicated name
+    if (name_idx_pair.second.size() > 1) {
+      const std::string& arg_name = name_idx_pair.first;
+      const std::vector<size_t>& indices = name_idx_pair.second;
+
+      // Replace duplicated names with indexed names
+      std::vector<NodeArg*> sum_input_node_args;
+      std::vector<NodeArg*> sum_output_node_arg;
+      sum_output_node_arg.push_back(gradient_graph.GetNodeArg(arg_name));
+
+      int duplicate_counter = 0;
+      for (size_t idx : indices) {
+        std::string indexed_arg_name = arg_name + "_" + std::to_string(duplicate_counter++);
+        auto& indexed_node_arg = gradient_graph.GetOrCreateNodeArg(indexed_arg_name, yield_output_node_args[idx]->TypeAsProto());
+        sum_input_node_args.push_back(&indexed_node_arg);
+        yield_output_node_args[idx] = &indexed_node_arg;
+      }
+
+      // Insert the Sum node to sum-up the duplicated gradients
+      gradient_graph.AddNode("Sum_for_" + arg_name, "Sum", "Sum up duplicated gradient",
+                             sum_input_node_args, sum_output_node_arg, {}, kOnnxDomain);
+    }
+  }
 
   gradient_graph.AddNode("YieldOp", "YieldOp", "Yield Op", yield_input_node_args, yield_output_node_args, &attributes,
                          kMSDomain);

@@ -4,7 +4,7 @@
     <OutputType>Exe</OutputType>
     <Platforms>AnyCPU;x86</Platforms>
     <TargetFramework>netcoreapp2.1</TargetFramework>
-    <OnnxRuntimeCsharpRoot>..\..</OnnxRuntimeCsharpRoot>
+    <OnnxRuntimeCsharpRoot>$(ProjectDir)..\..</OnnxRuntimeCsharpRoot>
     <SignAssembly>false</SignAssembly>
     <Configurations>Debug;Release;RelWithDebInfo</Configurations>
     <IsLinuxBuild Condition="'$(IsLinuxBuild)' == ''">false</IsLinuxBuild>
@@ -29,27 +29,35 @@
 
   <ItemGroup>
     <None Include="$(NativeBuildOutputDir)\libonnxruntime.so" Condition="'$(IsLinuxBuild)'=='true'">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
     <None Include="$(NativeBuildOutputDir)\onnxruntime.dll" Condition="'$(IsLinuxBuild)'=='false'">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
-    <None Include="$(NativeBuildOutputDir)\onnxruntime.pdb" Condition="'$(IsLinuxBuild)'=='false'And Exists('$(NativeBuildOutputDir)\onnxruntime.pdb')">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    <None Include="$(NativeBuildOutputDir)\onnxruntime.pdb" Condition="'$(IsLinuxBuild)'=='false' And Exists('$(NativeBuildOutputDir)\onnxruntime.pdb')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
-    <None Include="$(NativeBuildOutputDir)\dnnl.dll" Condition="Exists('$(NativeBuildOutputDir)\dnnl.dll')">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    <None Include="$(NativeBuildOutputDir)\libonnxruntime_providers_*.so" Condition="'$(IsLinuxBuild)'=='true' And Exists('$(NativeBuildOutputDir)\libonnxruntime_providers_shared.so')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
-    <None Include="$(NativeBuildOutputDir)\libdnnl.so.1" Condition="Exists('$(NativeBuildOutputDir)\libdnnl.so.1')">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    <None Include="$(NativeBuildOutputDir)\onnxruntime_providers_*.dll" Condition="'$(IsLinuxBuild)'=='false' And Exists('$(NativeBuildOutputDir)\onnxruntime_providers_shared.dll')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(NativeBuildOutputDir)\libdnnl.so.1" Condition="'$(IsLinuxBuild)'=='true' And Exists('$(NativeBuildOutputDir)\libdnnl.so.1')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(NativeBuildOutputDir)\dnnl.dll" Condition="'$(IsLinuxBuild)'=='false' And Exists('$(NativeBuildOutputDir)\dnnl.dll')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
     <None Include="$(OnnxRuntimeCSharpRoot)\testdata\*">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
 
@@ -61,7 +69,8 @@
     <PackageReference Include="Google.Protobuf" Version="3.13.0" />  
   </ItemGroup>
 
-  <Target Name="ProtoGen" BeforeTargets="Build">
+  <!-- create OnnxMl.cs and add to project -->
+  <Target Name="ProtoGen" BeforeTargets="BeforeBuild" Condition="Exists('$(ProtocExe)')">
     <Exec Command="$(ProtocExe) -I=$(ProtoSrc) --csharp_out=. $(ProtoSrc)\onnx-ml.proto3" ContinueOnError="false"></Exec>
   </Target>
 

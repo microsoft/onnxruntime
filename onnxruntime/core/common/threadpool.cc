@@ -408,7 +408,8 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
   // hence we need at most one for each thread, even if the numberof blocks of iterations is larger.
   auto d_of_p = DegreeOfParallelism(this);
   auto num_blocks = total / block_size;
-  int num_work_items = static_cast<int>(std::min(static_cast<std::ptrdiff_t>(d_of_p), num_blocks));
+  auto num_threads_inc_main = NumThreads() + 1;
+  int num_work_items = static_cast<int>(std::min(static_cast<std::ptrdiff_t>(num_threads_inc_main), num_blocks));
   assert(num_work_items > 0);
 
   LoopCounter lc(total, d_of_p, block_size);

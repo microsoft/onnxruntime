@@ -34,38 +34,30 @@ static void RunTest(const embedlayernorm::OpData& data,
   std::vector<int64_t> output_dims = {data.batch_size, data.sequence_size, data.hidden_size};
   std::vector<int64_t> mask_index_dims = {data.batch_size};
 
-  float word_embedding_scale = 0.0f;
-  uint8_t word_embedding_zero_point = 0;
+  quantization::Params<uint8_t> word_embedding_params;
   std::vector<uint8_t> word_embedding_data_quant =
-      QuantizeLinear<uint8_t, /*symmetric=*/false>(
-          data.word_embedding_data, word_embedding_scale, word_embedding_zero_point);
+      QuantizeLinearTestVector<uint8_t>(data.word_embedding_data,
+                                        word_embedding_params);
 
-  float position_embedding_scale = 0.0f;
-  uint8_t position_embedding_zero_point = 0;
+  quantization::Params<uint8_t> position_embedding_params;
   std::vector<uint8_t> position_embedding_data_quant =
-      QuantizeLinear<uint8_t, /*symmetric=*/false>(
-          data.position_embedding_data, position_embedding_scale, position_embedding_zero_point);
+      QuantizeLinearTestVector<uint8_t>(data.position_embedding_data,
+                                        position_embedding_params);
 
-  float segment_embedding_scale = 0.0f;
-  uint8_t segment_embedding_zero_point = 0;
+  quantization::Params<uint8_t> segment_embedding_params = {};
   std::vector<uint8_t> segment_embedding_data_quant;
   if (data.has_segment) {
-    segment_embedding_data_quant =
-        QuantizeLinear<uint8_t, /*symmetric=*/false>(
-            data.segment_embedding_data, segment_embedding_scale, segment_embedding_zero_point);
+    segment_embedding_data_quant = QuantizeLinearTestVector<uint8_t>(
+      data.segment_embedding_data, segment_embedding_params);
   }
 
-  float gamma_scale = 0.0f;
-  uint8_t gamma_zero_point = 0;
+  quantization::Params<uint8_t> gamma_params;
   std::vector<uint8_t> gamma_data_quant =
-      QuantizeLinear<uint8_t, /*symmetric=*/false>(
-          data.gamma_data, gamma_scale, gamma_zero_point);
+      QuantizeLinearTestVector<uint8_t>(data.gamma_data, gamma_params);
 
-  float beta_scale = 0.0f;
-  uint8_t beta_zero_point = 0;
+  quantization::Params<uint8_t> beta_params;
   std::vector<uint8_t> beta_data_quant =
-      QuantizeLinear<uint8_t, /*symmetric=*/false>(
-          data.beta_data, beta_scale, beta_zero_point);
+      QuantizeLinearTestVector<uint8_t>(data.beta_data, beta_params);
 
   OpTester tester("QEmbedLayerNormalization", 1, onnxruntime::kMSDomain);
 
@@ -112,53 +104,53 @@ static void RunTest(const embedlayernorm::OpData& data,
   // Quantized scales:
   tester.AddInput<float>("word_embedding_scale",
                          /*dims=*/{},
-                         {word_embedding_scale},
+                         {word_embedding_params.scale},
                          /*is_initializer=*/true);
   tester.AddInput<float>("position_embedding_scale",
                          /*dims=*/{},
-                         {position_embedding_scale},
+                         {position_embedding_params.scale},
                          /*is_initializer=*/true);
   if (data.has_segment) {
     tester.AddInput<float>("segment_embedding_scale",
                            /*dims=*/{},
-                           {segment_embedding_scale},
+                           {segment_embedding_params.scale},
                            /*is_initializer=*/true);
   } else {
     tester.AddOptionalInputEdge<float>();
   }
   tester.AddInput<float>("gamma_scale",
                          /*dims=*/{},
-                         {gamma_scale},
+                         {gamma_params.scale},
                          /*is_initializer=*/true);
   tester.AddInput<float>("beta_scale",
                          /*dims=*/{},
-                         {beta_scale},
+                         {beta_params.scale},
                          /*is_initializer=*/true);
 
   // Quantized zero points:
   tester.AddInput<uint8_t>("word_embedding_zero_point",
                            /*dims=*/{},
-                           {word_embedding_zero_point},
+                           {word_embedding_params.zero_point},
                            /*is_initializer=*/true);
   tester.AddInput<uint8_t>("position_embedding_zero_point",
                            /*dims=*/{},
-                           {position_embedding_zero_point},
+                           {position_embedding_params.zero_point},
                            /*is_initializer=*/true);
   if (data.has_segment) {
     tester.AddInput<uint8_t>("segment_embedding_zero_point",
                              /*dims=*/{},
-                             {segment_embedding_zero_point},
+                             {segment_embedding_params.zero_point},
                              /*is_initializer=*/true);
   } else {
     tester.AddOptionalInputEdge<uint8_t>();
   }
   tester.AddInput<uint8_t>("gamma_zero_point",
                            /*dims=*/{},
-                           {gamma_zero_point},
+                           {gamma_params.zero_point},
                            /*is_initializer=*/true);
   tester.AddInput<uint8_t>("beta_zero_point",
                            /*dims=*/{},
-                           {beta_zero_point},
+                           {beta_params.zero_point},
                            /*is_initializer=*/true);
   // Outputs:
   tester.AddOutput<float>("output", output_dims, data.output_data);

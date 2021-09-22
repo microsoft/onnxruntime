@@ -19,7 +19,7 @@ profiling::Profiler::~Profiler() {
 profiling::Profiler::~Profiler() {}
 #endif
 
-::onnxruntime::TimePoint profiling::Profiler::StartTime() const {
+::onnxruntime::TimePoint profiling::Profiler::Start() {
   ORT_ENFORCE(enabled_);
   auto start_time = std::chrono::high_resolution_clock::now();
   auto ts = TimeDiffMicroSeconds(profiling_start_time_, start_time);
@@ -47,7 +47,7 @@ void Profiler::StartProfiling(const logging::Logger* custom_logger) {
   enabled_ = true;
   profile_with_logger_ = true;
   custom_logger_ = custom_logger;
-  profiling_start_time_ = StartTime();
+  profiling_start_time_ = std::chrono::high_resolution_clock::now();
   for (const auto& ep_profiler : ep_profilers_) {
     ep_profiler->StartProfiling();
   }
@@ -56,9 +56,11 @@ void Profiler::StartProfiling(const logging::Logger* custom_logger) {
 template <typename T>
 void Profiler::StartProfiling(const std::basic_string<T>& file_name) {
   enabled_ = true;
+#if !defined(__wasm__)
   profile_stream_.open(file_name, std::ios::out | std::ios::trunc);
+#endif
   profile_stream_file_ = ToMBString(file_name);
-  profiling_start_time_ = StartTime();
+  profiling_start_time_ = std::chrono::high_resolution_clock::now();
   for (auto& ep_profiler : ep_profilers_) {
     ep_profiler->StartProfiling();
   }
@@ -148,7 +150,9 @@ std::string Profiler::EndProfiling() {
     }
   }
   profile_stream_ << "]\n";
+#if !defined(__wasm__)
   profile_stream_.close();
+#endif
   enabled_ = false;  // will not collect profile after writing.
   return profile_stream_file_;
 }

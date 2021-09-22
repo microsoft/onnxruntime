@@ -64,8 +64,8 @@ OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
                                            bool enable_cpu_mem_arena,
                                            bool enable_mem_pattern,
                                            size_t execution_mode,
-                                           bool /* enable_profiling */,
-                                           const char* /* profile_file_prefix */,
+                                           bool enable_profiling,
+                                           const char* /*profile_file_prefix*/,
                                            const char* log_id,
                                            size_t log_severity_level,
                                            size_t log_verbosity_level) {
@@ -93,6 +93,11 @@ OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
   RETURN_NULLPTR_IF_ERROR(SetSessionExecutionMode, session_options, static_cast<ExecutionMode>(execution_mode));
 
   // TODO: support profling
+  if (enable_profiling) {
+    RETURN_NULLPTR_IF_ERROR(EnableProfiling, session_options, "");
+  } else {
+    RETURN_NULLPTR_IF_ERROR(DisableProfiling, session_options);
+  }
 
   if (log_id != nullptr) {
     RETURN_NULLPTR_IF_ERROR(SetSessionLogId, session_options, log_id);
@@ -102,6 +107,11 @@ OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
   RETURN_NULLPTR_IF_ERROR(SetSessionLogSeverityLevel, session_options, log_severity_level);
 
   RETURN_NULLPTR_IF_ERROR(SetSessionLogVerbosityLevel, session_options, log_verbosity_level);
+
+#ifdef ENABLE_EXTENSION_CUSTOM_OPS
+  // Enable ORT CustomOps in onnxruntime-extensions
+  RETURN_NULLPTR_IF_ERROR(EnableOrtCustomOps, session_options);
+#endif
 
   return session_options;
 }
@@ -121,11 +131,6 @@ OrtSession* OrtCreateSession(void* data, size_t data_length, OrtSessionOptions* 
   if (session_options == nullptr) {
     return nullptr;
   }
-
-#ifdef ENABLE_EXTENSION_CUSTOM_OPS
-  // Enable ORT CustomOps in onnxruntime-extensions
-  RETURN_NULLPTR_IF_ERROR(EnableOrtCustomOps, session_options);
-#endif
 
 #if defined(__EMSCRIPTEN_PTHREADS__)
   RETURN_NULLPTR_IF_ERROR(DisablePerSessionThreads, session_options);
@@ -344,4 +349,14 @@ int OrtRun(OrtSession* session,
            const char** output_names, size_t output_count, ort_tensor_handle_t* outputs,
            OrtRunOptions* run_options) {
   return CHECK_STATUS(Run, session, run_options, input_names, inputs, input_count, output_names, output_count, outputs);
+}
+
+char* OrtEndProfiling(ort_session_handle_t session) {
+  OrtAllocator* allocator = nullptr;
+  RETURN_NULLPTR_IF_ERROR(GetAllocatorWithDefaultOptions, &allocator);
+
+  char* file_name = nullptr;
+  return (CHECK_STATUS(SessionEndProfiling, session, allocator, &file_name) == ORT_OK)
+             ? file_name
+             : nullptr;
 }

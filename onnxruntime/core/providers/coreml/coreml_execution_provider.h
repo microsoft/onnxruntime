@@ -34,6 +34,8 @@ class CoreMLExecutionProvider : public IExecutionProvider {
 
  private:
   // <fused_node_name, <coreml_model_file_path, compiled_coreml_model>>
+  #ifdef __APPLE__
   std::unordered_map<std::string, std::unique_ptr<onnxruntime::coreml::Model>> coreml_models_;
+  #endif
 };
 }  // namespace onnxruntime

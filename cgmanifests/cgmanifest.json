@@ -469,6 +469,16 @@
             },
             "comments": "dlpack"
          }
+      },
+      {
+         "component": {
+            "Type": "other",
+            "Other": {
+               "Name": "SQLite3",
+               "Version": "3.22.0",
+               "DownloadUrl": "http://security.ubuntu.com/ubuntu/pool/main/s/sqlite3/libsqlite3-dev_3.22.0-1ubuntu0.4_amd64.deb"
+            }
+         }
       }
    ],
    "Version": 1

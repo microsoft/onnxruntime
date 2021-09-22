@@ -1,4 +1,8 @@
 #!/bin/bash
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+# This file is used by Linux Multi GPU TensorRT CI Pipeline,Linux Nuphar CI Pipeline,Linux OpenVINO CI Pipeline,orttraining-linux-gpu-ci-pipeline
 #This file is only for Linux pipelines that build on ubuntu. All the docker images here are based on ubuntu.
 #Please don't put CentOS or manylinux2014 related stuffs here.
 set -e -o -x
@@ -21,9 +25,9 @@ echo "ALLOW_RELEASED_ONNX_OPSET_ONLY environment variable is set as "$ALLOW_RELE
 while getopts o:d:p:x:v:y:t:i:mue parameter_Option
 do case "${parameter_Option}"
 in
-#android, yocto, ubuntu20.04
+#yocto, ubuntu20.04
 o) BUILD_OS=${OPTARG};;
-#gpu, tensorrt or openvino. It is ignored when BUILD_OS is android or yocto.
+#gpu, tensorrt or openvino. It is ignored when BUILD_OS is yocto.
 d) BUILD_DEVICE=${OPTARG};;
 #python version: 3.6 3.7 (absence means default 3.6)
 p) PYTHON_VER=${OPTARG};;
@@ -48,13 +52,7 @@ esac
 done
 
 EXIT_CODE=1
-if [ $BUILD_OS = "ubuntu18.04" ]; then
-   DEFAULT_PYTHON_VER="3.6"
-elif [ $BUILD_OS = "ubuntu20.04" ]; then
-   DEFAULT_PYTHON_VER="3.8"
-else
-   DEFAULT_PYTHON_VER="3.6"   
-fi
+DEFAULT_PYTHON_VER="3.8"
 		
 PYTHON_VER=${PYTHON_VER:=$DEFAULT_PYTHON_VER}
 echo "bo=$BUILD_OS bd=$BUILD_DEVICE bdir=$BUILD_DIR pv=$PYTHON_VER bex=$BUILD_EXTR_PAR"
@@ -65,14 +63,10 @@ if [[ -n "${IMAGE_CACHE_CONTAINER_REGISTRY_NAME}" ]]; then
 fi
 DOCKER_CMD="docker"
 
+
+NEED_BUILD_SHARED_LIB=true
 cd $SCRIPT_DIR/docker
-if [ $BUILD_OS = "android" ]; then
-    IMAGE="android"
-    DOCKER_FILE=Dockerfile.ubuntu_for_android
-    $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
-        --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER}" \
-        --dockerfile $DOCKER_FILE --context .
-elif [ $BUILD_OS = "yocto" ]; then
+if [ $BUILD_OS = "yocto" ]; then
     IMAGE="arm-yocto-$YOCTO_VERSION"
     DOCKER_FILE=Dockerfile.ubuntu_for_arm
     # ACL 19.05 need yocto 4.19
@@ -84,8 +78,12 @@ elif [ $BUILD_OS = "yocto" ]; then
         --docker-build-args="--build-arg TOOL_CHAIN=$TOOL_CHAIN_SCRIPT --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER}" \
         --dockerfile $DOCKER_FILE --context .
 elif [ $BUILD_DEVICE = "gpu" ]; then
-        #This code path is only for training. Inferecing pipeline uses CentOS
+        # This code path is only for training. Inferecing pipeline uses CentOS
         IMAGE="$BUILD_OS-gpu_training"
+        # Current build script doesn't support building shared lib with Python dependency. To enable building with PythonOp,
+        # We need to avoid `--no-undefined` when building shared lib (Otherwise, CIs will report `undefined symbols`), but removing that would bring some other concerns.
+        # Plus the fact training did not need build shared library, we disable the --build_shared_lib for training CIs.
+        NEED_BUILD_SHARED_LIB=false
         INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -t"
         if [[ $INSTALL_DEPS_DISTRIBUTED_SETUP = true ]]; then
             INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -m"
@@ -102,25 +100,15 @@ elif [[ $BUILD_DEVICE = "tensorrt"* ]]; then
             IMAGE="$BUILD_OS-cuda11.0-cudnn8.0-tensorrt7.1"
             DOCKER_FILE=Dockerfile.ubuntu_tensorrt7_1
         else
-            # TensorRT container release 20.12
-            IMAGE="$BUILD_OS-cuda11.1-cudnn8.0-tensorrt7.2"
+            # TensorRT container release 21.07
+            IMAGE="$BUILD_OS-cuda11.4-cudnn8.2-tensorrt8.0"
             DOCKER_FILE=Dockerfile.ubuntu_tensorrt
         fi
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
             --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER}" \
             --dockerfile $DOCKER_FILE --context .
 else
-        IMAGE_OS_VERSION=""
-        if [ $BUILD_OS = "ubuntu18.04" ]; then
-           IMAGE_OS_VERSION="18.04"
-           PYTHON_VER="3.6"
-        elif [ $BUILD_OS = "ubuntu20.04" ]; then
-           IMAGE_OS_VERSION="20.04"
-           PYTHON_VER="3.8"
-        else
-           exit 1
-        fi
-        BUILD_ARGS="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg OS_VERSION=${IMAGE_OS_VERSION}"
+        BUILD_ARGS="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.8"
         
         if [ $BUILD_DEVICE = "openvino" ]; then
            IMAGE="$BUILD_OS-openvino"
@@ -135,6 +123,10 @@ else
                 --dockerfile $DOCKER_FILE --context .
 fi
 
+if [[ $NEED_BUILD_SHARED_LIB = true ]]; then
+    BUILD_EXTR_PAR=" --build_shared_lib ${BUILD_EXTR_PAR}"
+fi
+
 if [ -v EXTRA_IMAGE_TAG ]; then
     ${DOCKER_CMD} tag "onnxruntime-$IMAGE" "${EXTRA_IMAGE_TAG}"
 fi
@@ -146,7 +138,7 @@ if [ -z "$NIGHTLY_BUILD" ]; then
     set NIGHTLY_BUILD=0
 fi
 
-if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "openvino" ] || [ $BUILD_DEVICE = "nnapi" ] || [ $BUILD_DEVICE = "arm" ]; then
+if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "openvino" ] || [ $BUILD_DEVICE = "arm" ]; then
     RUNTIME=
 else
     RUNTIME="--gpus all"
