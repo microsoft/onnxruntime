@@ -36,7 +36,8 @@ def to_numpy(tensor):
 class GradientGraphBuilderTest(unittest.TestCase):
     def test_save(self):
         loss_fn = nn.CrossEntropyLoss()
-        model = NeuralNet(input_size=10, hidden_size=5,
+        input_size=10
+        model = NeuralNet(input_size=input_size, hidden_size=5,
                           num_classes=2)
         directory_path = Path(os.path.dirname(__file__)).resolve()
         intermediate_graph_path = directory_path / \
@@ -45,21 +46,20 @@ class GradientGraphBuilderTest(unittest.TestCase):
 
         batch_size = 1
         example_input = torch.randn(
-            batch_size, model.fc1.in_features, requires_grad=True)
+            batch_size, input_size, requires_grad=True)
 
         export_gradient_graph(
-            model, loss_fn, intermediate_graph_path, gradient_graph_path)
+            model, loss_fn, example_input, intermediate_graph_path, gradient_graph_path)
 
         onnx_model = onnx.load(str(gradient_graph_path))
         onnx.checker.check_model(onnx_model)
 
         torch_out = model(example_input)
-
-        ort_session = onnxruntime.InferenceSession(
-            str(gradient_graph_path))
+        labels = torch.rand_like(torch_out)
+        ort_session = onnxruntime.InferenceSession(str(gradient_graph_path))
         inputs = ort_session.get_inputs()
         ort_inputs = {
-            inputs[0].name: to_numpy(x),
+            inputs[0].name: to_numpy(example_input),
             inputs[1].name: to_numpy(labels),
         }
         ort_outs = ort_session.run(None, ort_inputs)
@@ -71,6 +71,7 @@ class GradientGraphBuilderTest(unittest.TestCase):
         np.testing.assert_allclose(
             to_numpy(torch_out), ort_output, rtol=1e-03, atol=1e-05)
 
+        torch_loss= loss_fn(torch_out, labels)
         ort_loss = onnx_name_to_output['loss']
         np.testing.assert_allclose(
             to_numpy(torch_loss), ort_loss, rtol=1e-03, atol=1e-05)

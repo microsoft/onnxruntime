@@ -45,7 +45,7 @@ def export_gradient_graph(
             return output, loss
 
     torch.onnx.export(
-        model, (example_input, example_labels), str(intermediate_graph_path),
+        model, (example_input, example_labels), intermediate_graph_path,
         export_params=True,
         opset_version=12, do_constant_folding=False,
         training=TrainingMode.TRAINING,
@@ -60,8 +60,8 @@ def export_gradient_graph(
 
     # TODO Allow customizing.
     nodes_needing_gradients = set()
-    for name, param in model.named_parameters():
-        # Should we check `if param.requires_grad:` first?
+    for name, _ in model.named_parameters():
+        # Should we check `if _.requires_grad:` first?
         nodes_needing_gradients.add(name)
 
     builder = GradientGraphBuilder(intermediate_graph_path,
