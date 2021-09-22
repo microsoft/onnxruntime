@@ -5,7 +5,6 @@ VisualStudioVersion = 16.0.810.8
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.ML.OnnxRuntime.EndToEndTests", "Microsoft.ML.OnnxRuntime.EndToEndTests.csproj", "{B6FB2796-4CFB-44FF-B826-E1B8CA9E9447}"
 EndProject
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU

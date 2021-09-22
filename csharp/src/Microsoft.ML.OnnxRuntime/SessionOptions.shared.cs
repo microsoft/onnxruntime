@@ -9,6 +9,32 @@ using System.Collections.Generic;
 namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
+    /// CoreML flags for use with SessionOptions
+    /// </summary>
+    [Flags]
+    public enum COREMLFlags : uint
+    {
+        COREML_FLAG_USE_NONE = 0x000,
+        COREML_FLAG_USE_CPU_ONLY = 0x001,
+        COREML_FLAG_ENABLE_ON_SUBGRAPH = 0x002,
+        COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE = 0x004,
+        COREML_FLAG_LAST = COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE,
+    }
+
+    /// <summary>
+    /// NNAPI flags for use with SessionOptions
+    /// </summary>
+    [Flags]
+    public enum NNAPIFlags
+    {
+        NNAPI_FLAG_USE_NONE = 0x000,
+        NNAPI_FLAG_USE_FP16 = 0x001,
+        NNAPI_FLAG_USE_NCHW = 0x002,
+        NNAPI_FLAG_CPU_DISABLED = 0x004,
+        NNAPI_FLAG_LAST = NNAPI_FLAG_CPU_DISABLED
+    }
+
+    /// <summary>
     /// Graph optimization level to use with SessionOptions
     ///  [https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Graph_Optimizations.md]
     /// </summary>

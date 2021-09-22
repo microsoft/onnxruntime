@@ -1,9 +1,9 @@
 ﻿using System;
-using System.IO;
-using System.Linq;
+using System.Threading;
+using Microsoft.ML.OnnxRuntime.Tests.Devices;
+using Newtonsoft.Json;
 using NUnit.Framework;
 using Xamarin.UITest;
-using Xamarin.UITest.Queries;
 
 namespace EndToEndTests.Mobile.Automation
 {
@@ -11,24 +11,39 @@ namespace EndToEndTests.Mobile.Automation
     [TestFixture(Platform.iOS)]
     public class Tests
     {
-        IApp app;
-        Platform platform;
+        IApp _app;
+        Platform _platform;
+        string _getResultsBackdoorMethodName;
+        string _activityIndicatorClassName;
 
         public Tests(Platform platform)
         {
-            this.platform = platform;
+            _platform = platform;
+            _activityIndicatorClassName = platform == Platform.Android ? "ActivityIndicatorRenderer" : "Xamarin_Forms_Platform_iOS_ActivityIndicatorRenderer";
+            _getResultsBackdoorMethodName = platform == Platform.Android ? "GetTestResults" : "getTestResults";
         }
 
         [SetUp]
         public void BeforeEachTest()
-        {
-            app = AppInitializer.StartApp(platform);
-        }
+            => _app = AppInitializer.StartApp(_platform);
 
         [Test]
-        public void AppLaunches()
+        public void RunPlatformUnitTest()
         {
-            app.Screenshot("First screen.");
+            _app.Screenshot("Pre-testing");
+            _app.WaitForElement(i => i.Marked("Run Everything"));
+            _app.Tap(i => i.Marked("Run Everything"));
+            _app.WaitForElement(i => i.Class(_activityIndicatorClassName));
+            _app.WaitForNoElement(i => i.Class(_activityIndicatorClassName).Child(0), timeout: TimeSpan.FromSeconds(30));
+            Thread.Sleep(1000); // Gives the test app sufficient time to prepare the results
+
+            var serializedResultSummary = _app.Invoke(_getResultsBackdoorMethodName)?.ToString();
+            Assert.IsNotEmpty(serializedResultSummary, "Test results were not returned");
+
+            var testSummary = JsonConvert.DeserializeObject<TestResultSummary>(serializedResultSummary);
+            Assert.AreEqual(testSummary.Failed, 0, $"{testSummary.Failed} tests failed");
+
+            _app.Screenshot("Post-testing");
         }
     }
 }
