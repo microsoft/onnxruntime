@@ -164,7 +164,7 @@ class MinMaxCalibrater(CalibraterBase):
 
         for tensor in tensors:
 
-            # When doing Reducemax/ReduceMin, ORT can't reduce on dim with value of 0 if 'keepdims' is false.
+            # When doing ReduceMax/ReduceMin, ORT can't reduce on dim with value of 0 if 'keepdims' is false.
             # To make the code simple, we always let keepdims to be 1.
             keepdims = 1
             dim = value_infos[tensor].type.tensor_type.shape.dim
