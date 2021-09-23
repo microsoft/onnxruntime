@@ -147,14 +147,12 @@ jobs:
         pathtoPublish: '$(Build.SourcesDirectory)/Artifact'
         artifactName: 'result-$(Build.BuildNumber)'
         
-    # Post to Dashboard 
-
     - ${{ if eq(parameters.PostToDashboard, true) }}:
-    - task: DownloadPipelineArtifact@2
-      inputs:
-        artifact: 'result-$(Build.BuildNumber)'
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          artifact: 'result-$(Build.BuildNumber)'
 
-    - script: python3 $(Build.SourcesDirectory)\onnxruntime\python\tools\tensorrt\perf\post.py -r $(Pipeline.Workspace)\result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" -t ${{ parameters.TrtVersion }} -b $(branch)
-      displayName: 'Post to Dashboard'
-  
+      - script: python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Pipeline.Workspace)/result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" -t ${{ parameters.TrtVersion }} -b $(branch)
+        displayName: 'Post to Dashboard'
+    
     - template: templates/clean-agent-build-directory-step.yml
