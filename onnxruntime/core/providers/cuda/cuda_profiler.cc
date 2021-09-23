@@ -20,7 +20,7 @@ std::unordered_map<uint32_t, uint64_t> CudaProfiler::id_map;
 #define ALIGN_SIZE (8)
 #define ALIGN_BUFFER(buffer, align) \
   (((uintptr_t)(buffer) & ((align)-1)) ? ((buffer) + (align) - ((uintptr_t)(buffer) & ((align)-1))) : (buffer))
-#define DUR(s, e) std::lround(static_cast<double>(e - s) / 1000)
+#define DUR(s, e) ((e-s)/1000)
 
 static const char* GetMemcpyKindString(CUpti_ActivityMemcpyKind kind) {
   switch (kind) {
@@ -64,7 +64,7 @@ void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext, uint32_t, uint8_t* buffer
       status = cuptiActivityGetNextRecord(buffer, validSize, &record);
       if (status == CUPTI_SUCCESS) {
         if (CUPTI_ACTIVITY_KIND_KERNEL == record->kind) {
-          CUpti_ActivityKernel4* kernel = (CUpti_ActivityKernel4*)record;
+          CUpti_ActivityKernel3* kernel = (CUpti_ActivityKernel3*)record;
           stats.push_back({kernel->name, kernel->streamId,
                            kernel->gridX, kernel->gridY, kernel->gridZ,
                            kernel->blockX, kernel->blockY, kernel->blockZ,
@@ -72,7 +72,7 @@ void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext, uint32_t, uint8_t* buffer
                            static_cast<int64_t>(kernel->end),
                            kernel->correlationId});
         } else if (CUPTI_ACTIVITY_KIND_MEMCPY == record->kind) {
-          CUpti_ActivityMemcpy4* mmcpy = (CUpti_ActivityMemcpy4*)record;
+          CUpti_ActivityMemcpy3* mmcpy = (CUpti_ActivityMemcpy3*)record;
           stats.push_back({GetMemcpyKindString((CUpti_ActivityMemcpyKind)mmcpy->copyKind),
                            mmcpy->streamId, -1, -1, -1, -1, -1, -1,
                            static_cast<int64_t>(mmcpy->start),
