@@ -4,14 +4,7 @@ jobs:
     vmImage: 'macOS-10.15'
   timeoutInMinutes: 180
   steps:
-  - script: |
-      set -e -x
-      env
-      ls -la $ANDROID_HOME
-      ls -la $ANDROID_HOME/ndk
-    displayName: env vars
-
-    # Onnx has no 3.9 python package available yet, need to use python 3.8 to avoid build onnx package
+  # Onnx has no 3.9 python package available yet, need to use python 3.8 to avoid build onnx package
   # pythonVersion can be updated in Azure pipeline settings
   # https://dev.azure.com/onnxruntime/onnxruntime/_build?definitionId=53
   - task: UsePythonVersion@0
