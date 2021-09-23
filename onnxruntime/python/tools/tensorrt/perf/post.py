@@ -1,16 +1,20 @@
 import argparse
-import mysql.connector
 import sys
 import os
 import pandas as pd
-from sqlalchemy import create_engine
+import time
+from datetime import datetime, timedelta
+from azure.kusto.data import KustoConnectionStringBuilder
+from azure.kusto.ingest import (
+    IngestionProperties,
+    DataFormat,
+    ReportLevel,
+    QueuedIngestClient,
+)
 
 # database connection strings 
-sql_connector = 'mysql+mysqlconnector://'
-user='ort@onnxruntimedashboard'
-password=os.environ.get('DASHBOARD_MYSQL_ORT_PASSWORD')
-host='onnxruntimedashboard.mysql.database.azure.com'
-database='onnxruntime'
+cluster = "https://ingest-onnxruntimedashboarddb.southcentralus.kusto.windows.net"
+database = "ep_perf_dashboard"
 
 # table names
 fail = 'fail'
@@ -18,7 +22,9 @@ memory = 'memory'
 latency = 'latency'
 status = 'status'
 latency_over_time = 'latency_over_time'
-        
+
+time_string_format = '%Y-%m-%d %H:%M:%S'
+
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -99,43 +105,40 @@ def get_status(status, model_group):
     status_db_columns = ['Model', 'CpuFp32', 'CudaEpFp32', 'TrtEpFp32', 'StandaloneFp32', 'CudaEpFp16', 'TrtEpFp16', 'StandaloneFp16']
     status = adjust_columns(status, status_columns, status_db_columns, model_group)
     return status
-
-def delete_old_records(engine, table_name):
-
-    # delete using cursor for large table
-    conn = engine.raw_connection()
-    cursor = conn.cursor()
-    delete_query = ('DELETE FROM onnxruntime.' + table_name + ' '
-                    'WHERE UploadTime < DATE_SUB(Now(), INTERVAL 100 DAY);'
-                    )
-    cursor.execute(delete_query)
-    conn.commit()
-    cursor.close()
-    conn.close()
     
-def write_table(engine, table, table_name, trt_version, upload_time):
-    delete_old_records(engine, table_name)
+def delete_old_records(upload_time, table):
+    older_than = datetime.datetime.strptime(upload_time, time_string_format) - timedelta(days=30)   
+    condition = table['UploadTime'].apply(lambda x: datetime.datetime.strptime(x,'%Y-%m-%d %H:%M:%S')) > older_than
+    return table[condition]
+
+def write_table(client, table, table_name, trt_version, upload_time):
+    table = delete_old_records(upload_time, table)
     if table.empty:
         return
     table = table.assign(TrtVersion=trt_version) # add TrtVersion
     table = table.assign(UploadTime=upload_time) # add UploadTime
-    table.to_sql(table_name, con=engine, if_exists='append', index=False, chunksize=1)
+    
+    ingestion_props = IngestionProperties(
+      database=database,
+      table=table_name,
+      data_format=DataFormat.CSV,
+      report_level=ReportLevel.FailuresAndSuccesses
+    )
+ 
+    client.ingest_from_dataframe(table, ingestion_properties=ingestion_props)
 
-def get_time():
-    import time   
-    datetime = time.strftime('%Y-%m-%d %H:%M:%S')
+def get_time():   
+    datetime = time.strftime()
     return datetime
             
 def main():
     
-    # connect to database
     args = parse_arguments()
-    connection_string = sql_connector + \
-                        user + ':' + \
-                        password + \
-                        '@' + host + '/' + \
-                        database
-    engine = create_engine(connection_string)
+    
+    # connect to database
+    kcsb = KustoConnectionStringBuilder.with_az_cli_authentication(cluster)
+    client = QueuedIngestClient(kcsb)
+    
     datetime = get_time()
 
     try:
@@ -166,7 +169,7 @@ def main():
         for table in tables: 
             print('writing ' + table + ' over time to database')
             db_table_name = 'ep_model_' + table
-            write_table(engine, table_results[table], db_table_name, args.trt_version, datetime)
+            write_table(client, table_results[table], db_table_name, args.trt_version, datetime)
 
     except BaseException as e: 
         print(str(e))
