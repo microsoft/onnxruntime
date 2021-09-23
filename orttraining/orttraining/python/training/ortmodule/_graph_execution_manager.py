@@ -323,5 +323,5 @@ class GraphExecutionManager(ABC):
 
         # Initializers can be cached and used since they are expected not to be re-instantiated
         # between forward calls.
-        self._graph_initializers = [param for name, param in self._flattened_module.named_parameters() 
+        self._graph_initializers = [param for name, param in self._flattened_module.named_parameters()
                                     if name in self._graph_initializer_names]
