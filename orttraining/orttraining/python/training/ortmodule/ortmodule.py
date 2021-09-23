@@ -19,7 +19,7 @@ from onnxruntime.tools import pytorch_export_contrib_ops
 
 import functools
 import torch
-from typing import Iterator, Optional, Tuple, TypeVar, Callable, Set
+from typing import Iterator, Optional, Tuple, TypeVar, Callable
 
 
 # Needed to override PyTorch methods

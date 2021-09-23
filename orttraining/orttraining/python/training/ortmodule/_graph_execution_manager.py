@@ -392,10 +392,9 @@ class GraphExecutionManager(GraphExecutionInterface):
                                               f'\n\n{_utils.get_exception_as_string(e)}'))
         exported_model = onnx.load_model_from_string(f.getvalue())
 
-        operator_functions = [
-            function for function in exported_model.functions if function.name in self._custom_op_names]
-        for f in operator_functions:
-            exported_model.functions.remove(f)
+        for function in exported_model.functions:
+            if function.name in self._custom_op_names:
+                exported_model.functions.remove(function)
 
         exported_model = _post_process_after_export(exported_model,
                                                     self._enable_custom_autograd_function,
