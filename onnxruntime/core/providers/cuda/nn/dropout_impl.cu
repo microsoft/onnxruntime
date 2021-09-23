@@ -39,7 +39,6 @@ __global__ void DropoutKernel(
 
   CUDA_LONG idx = blockDim.x * blockIdx.x + threadIdx.x;
   CUDA_LONG step_size = gridDim.x * blockDim.x * UNROLL;
-  CUDA_LONG rounded_size = ((N - 1) / step_size + 1) * step_size;
 
   curandStatePhilox4_32_10_t state;
   curand_init(seeds.first, idx, seeds.second, &state);
@@ -52,12 +51,13 @@ __global__ void DropoutKernel(
   //   The Philox_4x32_10 algorithm is closely tied to the thread and block count.
   //   Each thread computes 4 random numbers in the same time thus the most efficient
   //   use of Philox_4x32_10 is to generate a multiple of 4 times number of threads.
-  for (CUDA_LONG id = idx; id < rounded_size; id += step_size) {
+  for (CUDA_LONG id = idx * UNROLL; id < N; id += step_size) {
     rand = curand_uniform4(&state);
-  
+
+    // actual computation
     #pragma unroll
-    for (CUDA_LONG i = 0; i < UNROLL; i++) {
-      CUDA_LONG li = id + gridDim.x * blockDim.x * i;
+    for (int i = 0; i < UNROLL; i++) {
+      CUDA_LONG li = id + i;
       if (li < N) {
         mask_data[li] = (&rand.x)[i] < p;
         Y_data[li] = T(float(X_data[li]) * mask_data[li] * scale);
@@ -82,7 +82,6 @@ __global__ void DropoutVectorizedKernel(
 
   CUDA_LONG idx = blockDim.x * blockIdx.x + threadIdx.x;
   CUDA_LONG step_size = gridDim.x * blockDim.x * UNROLL;
-  CUDA_LONG rounded_size = ((N - 1) / step_size + 1) * step_size;
 
   curandStatePhilox4_32_10_t state;
   curand_init(seeds.first, idx, seeds.second, &state);

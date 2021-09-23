@@ -44,7 +44,6 @@ __global__ void BiasDropoutKernel(
 
   CUDA_LONG idx = blockDim.x * blockIdx.x + threadIdx.x;
   CUDA_LONG step_size = gridDim.x * blockDim.x * UNROLL;
-  CUDA_LONG rounded_size = ((N - 1) / step_size + 1) * step_size;
 
   curandStatePhilox4_32_10_t state;
   curand_init(seeds.first, idx, seeds.second, &state);
@@ -57,12 +56,13 @@ __global__ void BiasDropoutKernel(
   //   The Philox_4x32_10 algorithm is closely tied to the thread and block count.
   //   Each thread computes 4 random numbers in the same time thus the most efficient
   //   use of Philox_4x32_10 is to generate a multiple of 4 times number of threads.
-  for (CUDA_LONG id = idx; id < rounded_size; id += step_size) {
+  for (CUDA_LONG id = idx * UNROLL; id < N; id += step_size) {
     rand = curand_uniform4(&state);
-
-  #pragma unroll
-    for (CUDA_LONG i = 0; i < UNROLL; i++) {
-      CUDA_LONG li = id + gridDim.x * blockDim.x * i;
+  
+    // actual computation
+    #pragma unroll
+    for (int i = 0; i < UNROLL; i++) {
+      CUDA_LONG li = id + i;
       if (li < N) {
         int offset = fdm_dim.mod(li);
         float bias = float(bias_data[offset]);

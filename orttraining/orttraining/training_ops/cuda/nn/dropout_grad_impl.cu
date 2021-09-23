@@ -34,17 +34,17 @@ __global__ void DropoutGradientKernel(
     const float scale,
     T* dX_data) {
 
-  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+  CUDA_LONG idx = blockDim.x * blockIdx.x + threadIdx.x;
+  CUDA_LONG id = idx * UNROLL;
 
   #pragma unroll
-  for (int i = 0; i < NumElementsPerThread; i++) {
-    if (id < N) {
-      dX_data[id] = T(float(dY_data[id]) * mask_data[id] * scale);
-      id += NumThreadsPerBlock;
+  for (int i = 0; i < UNROLL; i++) {
+    CUDA_LONG li = id + i;
+    if (li < N) {
+      dX_data[li] = T(float(dY_data[li]) * mask_data[li] * scale);
     }
   }
 }
-
 
 template <typename T, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void DropoutGradientVectorizedKernel(
