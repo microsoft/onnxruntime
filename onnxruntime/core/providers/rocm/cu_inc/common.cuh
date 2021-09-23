@@ -205,6 +205,11 @@ struct GridDim {
   };
 };
 
+// Capture permutations of int32/64/float/double
+template <typename T, typename T1>
+__device__ __inline__ T _Pow(T a, T1 b) {
+  return static_cast<T>(pow(static_cast<double>(a), static_cast<double>(b)));
+}
 
 #define CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N)          \
   HIP_LONG id = blockDim.x * blockIdx.x + threadIdx.x;     \
