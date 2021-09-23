@@ -10,14 +10,14 @@ from ._fallback import _FallbackManager, ORTModuleTorchModelException, wrap_exce
 from collections import OrderedDict
 import functools
 import torch
-from typing import Iterator, Optional, Tuple, TypeVar, Callable, Union
+from typing import Iterator, Optional, Tuple, TypeVar, Callable
 
 
 T = TypeVar('T', bound='torch.nn.Module')
 
 
 class TorchModuleORT(TorchModuleInterface):
-    def __init__(self, module: torch.nn.Module, debug_options: DebugOptions, fallback_manager: _FallbackManager, custom_op_set: Union[bool, set] = False):
+    def __init__(self, module: torch.nn.Module, debug_options: DebugOptions, fallback_manager: _FallbackManager, custom_op_set):
         super().__init__(module)
         self._flattened_module = _io._FlattenedModule(module)
 

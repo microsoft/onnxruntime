@@ -19,8 +19,8 @@ from onnxruntime.tools import pytorch_export_contrib_ops
 
 import functools
 import torch
-from typing import Iterator, Optional, Tuple, TypeVar, Set, Callable, Union
-import warnings
+from typing import Iterator, Optional, Tuple, TypeVar, Callable
+
 
 # Needed to override PyTorch methods
 T = TypeVar('T', bound='Module')
@@ -37,8 +37,8 @@ class ORTModule(torch.nn.Module):
         debug_options (:obj:`DebugOptions`, optional): debugging options for ORTModule.
     """
 
-    def __init__(self, module, debug_options=None, custom_op_set: Union[bool, set] = False):
-    
+    def __init__(self, module, debug_options=None, custom_op_set):
+
         # NOTE: torch.nn.Modules that call setattr on their internal attributes regularly
         #       (for example PyTorch Lightning), will trigger regular re-exports. This is
         #       because ORTModule auto detects such setattrs on the original module and
@@ -68,7 +68,7 @@ class ORTModule(torch.nn.Module):
 
             super(ORTModule, self).__init__()
 
-            self._torch_module = TorchModuleFactory()(module, debug_options, self._fallback_manager, custom_op_set)
+            self._torch_module = TorchModuleFactory()(module, debug_options, self._fallback_manager)
 
             # Create forward dynamically, so each ORTModule instance will have its own copy.
             # This is needed to be able to copy the forward signatures from the original PyTorch models

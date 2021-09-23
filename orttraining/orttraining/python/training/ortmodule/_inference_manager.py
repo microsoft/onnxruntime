@@ -18,7 +18,6 @@ from ._fallback import ORTModuleFallbackException, _FallbackPolicy, _FallbackMan
 from onnxruntime.capi import _pybind_state as C
 import torch
 import warnings
-from typing import Union
 
 
 class InferenceManager(GraphExecutionManager):
@@ -27,7 +26,7 @@ class InferenceManager(GraphExecutionManager):
     InferenceManager is resposible for building and running the forward graph of the inference model
     """
 
-    def __init__(self, model, debug_options: DebugOptions, fallback_manager: _FallbackManager, custom_op_set: Union[bool, set] = False):
+    def __init__(self, model, debug_options: DebugOptions, fallback_manager: _FallbackManager, custom_op_set):
         super().__init__(model, debug_options, fallback_manager, custom_op_set)
         self._export_mode = torch.onnx.TrainingMode.EVAL
 
