@@ -16,19 +16,16 @@ Abstract:
 
 #include "mlasi.h"
 
-template<typename FilterType>
-void
-MLASCALL
-MlasConvDepthwiseKernel(
-    const uint8_t* const* Input,
-    uint8_t InputZeroPoint,
-    const FilterType* Filter,
-    FilterType FilterZeroPoint,
-    int32_t* Output,
-    size_t Channels,
-    size_t OutputCount,
-    size_t KernelSize
-    )
+template <typename FilterType>
+void MLASCALL
+MlasConvDepthwiseKernel(const uint8_t* const* Input,
+                        uint8_t InputZeroPoint,
+                        const FilterType* Filter,
+                        FilterType FilterZeroPoint,
+                        int32_t* Output,
+                        size_t Channels,
+                        size_t OutputCount,
+                        size_t KernelSize)
 {
 #if defined(MLAS_SSE2_INTRINSICS)
     const __m128i ZeroVector = _mm_setzero_si128();
@@ -39,23 +36,23 @@ MlasConvDepthwiseKernel(
     const uint8x8_t FilterZeroPointVector = vdup_n_u8(uint8_t(FilterZeroPoint));
 #endif
 
-    while (OutputCount > 0) {
+    const int8x8_t BitFlipVector = vdup_n_u8(0x80);
 
+    while (OutputCount > 0) {
         size_t ChannelOffset = 0;
         size_t c = Channels;
 
 #if defined(MLAS_SSE2_INTRINSICS)
 
         while (c >= 8) {
-
             __m128i Accumulator0 = _mm_setzero_si128();
             __m128i Accumulator1 = _mm_setzero_si128();
             size_t ChannelKernelOffset = ChannelOffset;
 
             for (size_t k = 0; k < KernelSize; k++) {
-
                 __m128i InputVector = _mm_loadl_epi64((const __m128i*)&Input[k][ChannelOffset]);
-                __m128i FilterVector = _mm_loadl_epi64((const __m128i*)&Filter[ChannelKernelOffset]);
+                __m128i FilterVector =
+                    _mm_loadl_epi64((const __m128i*)&Filter[ChannelKernelOffset]);
 
                 InputVector = _mm_unpacklo_epi8(InputVector, ZeroVector);
 
@@ -91,37 +88,557 @@ MlasConvDepthwiseKernel(
 #elif defined(MLAS_NEON_INTRINSICS)
 
         while (c >= 8) {
-
             int32x4_t Accumulator0 = vdupq_n_s32(0);
             int32x4_t Accumulator1 = vdupq_n_s32(0);
             size_t ChannelKernelOffset = ChannelOffset;
 
-            for (size_t k = 0; k < KernelSize; k++) {
+            if (KernelSize == 9) {
+                {
+                    size_t k = 0;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
 
-                uint8x8_t InputVector = vld1_u8(&Input[k][ChannelOffset]);
-                uint8x8_t FilterVector = vld1_u8(reinterpret_cast<const uint8_t*>(&Filter[ChannelKernelOffset]));
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
 
-                int16x8_t InputVector16 = vreinterpretq_s16_u16(vsubl_u8(InputVector, InputZeroPointVector));
-                int16x8_t FilterVector16;
+                    ChannelKernelOffset += Channels;
 
-                if (std::is_signed<FilterType>::value) {
-                    FilterVector16 = vsubl_s8(vreinterpret_s8_u8(FilterVector), vreinterpret_s8_u8(FilterZeroPointVector));
-                } else {
-                    FilterVector16 = vreinterpretq_s16_u16(vsubl_u8(FilterVector, FilterZeroPointVector));
+                    int8x8_t InputVector2 = veor_s8(
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Input[k + 1][ChannelOffset])),
+                        BitFlipVector);
+                    int8x8_t FilterVector2 =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    mulit = vmlal_s8(mulit, InputVector2, FilterVector2);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 2;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    ChannelKernelOffset += Channels;
+
+                    int8x8_t InputVector2 = veor_s8(
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Input[k + 1][ChannelOffset])),
+                        BitFlipVector);
+                    int8x8_t FilterVector2 =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    mulit = vmlal_s8(mulit, InputVector2, FilterVector2);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 4;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    ChannelKernelOffset += Channels;
+
+                    int8x8_t InputVector2 = veor_s8(
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Input[k + 1][ChannelOffset])),
+                        BitFlipVector);
+                    int8x8_t FilterVector2 =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    mulit = vmlal_s8(mulit, InputVector2, FilterVector2);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 6;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    ChannelKernelOffset += Channels;
+
+                    int8x8_t InputVector2 = veor_s8(
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Input[k + 1][ChannelOffset])),
+                        BitFlipVector);
+                    int8x8_t FilterVector2 =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    mulit = vmlal_s8(mulit, InputVector2, FilterVector2);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 8;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
                 }
 
-                Accumulator0 = vmlal_s16(Accumulator0, vget_low_s16(InputVector16), vget_low_s16(FilterVector16));
-#if defined(MLAS_NEON64_INTRINSICS)
-                Accumulator1 = vmlal_high_s16(Accumulator1, InputVector16, FilterVector16);
-#else
-                Accumulator1 = vmlal_s16(Accumulator1, vget_high_s16(InputVector16), vget_high_s16(FilterVector16));
+                vst1q_s32(&Output[0], Accumulator0);
+                vst1q_s32(&Output[4], Accumulator1);
+
+#if 0
+                for (unsigned i = 0; i < 8; i++) {
+                    int32_t column_sum = 0;
+                    size_t offset = ChannelOffset + i;
+                    for (unsigned j = 0; j < 9; j++) {
+                        column_sum += Filter[offset];
+                        offset += Channels;
+                    }
+                    column_sum = (column_sum * 0x80);
+                    Output[i] += column_sum;
+                }
 #endif
 
-                ChannelKernelOffset += Channels;
+            } else if (KernelSize == 25) {
+                {
+                    size_t k = 0;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 1;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 2;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 3;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 4;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 5;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 6;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 7;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 8;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 9;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 10;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 11;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 12;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 13;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 14;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 15;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 16;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 17;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 18;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 19;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 20;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 21;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 22;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 23;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+                {
+                    size_t k = 24;
+                    int8x8_t InputVector =
+                        veor_s8(vld1_s8(reinterpret_cast<const int8_t*>(&Input[k][ChannelOffset])),
+                                BitFlipVector);
+                    int8x8_t FilterVector =
+                        vld1_s8(reinterpret_cast<const int8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t mulit = vmull_s8(InputVector, FilterVector);
+
+                    Accumulator0 = vaddw_s16(Accumulator0, vget_low_s16(mulit));
+                    Accumulator1 = vaddw_high_s16(Accumulator1, mulit);
+
+                    ChannelKernelOffset += Channels;
+                }
+
+                vst1q_s32(&Output[0], Accumulator0);
+                vst1q_s32(&Output[4], Accumulator1);
+
+            } else {
+                for (size_t k = 0; k < KernelSize; k++) {
+                    uint8x8_t InputVector = vld1_u8(&Input[k][ChannelOffset]);
+                    uint8x8_t FilterVector =
+                        vld1_u8(reinterpret_cast<const uint8_t*>(&Filter[ChannelKernelOffset]));
+
+                    int16x8_t InputVector16 =
+                        vreinterpretq_s16_u16(vsubl_u8(InputVector, InputZeroPointVector));
+                    int16x8_t FilterVector16;
+
+                    if (std::is_signed<FilterType>::value) {
+                        FilterVector16 = vsubl_s8(vreinterpret_s8_u8(FilterVector),
+                                                  vreinterpret_s8_u8(FilterZeroPointVector));
+                    } else {
+                        FilterVector16 =
+                            vreinterpretq_s16_u16(vsubl_u8(FilterVector, FilterZeroPointVector));
+                    }
+
+                    Accumulator0 = vmlal_s16(Accumulator0, vget_low_s16(InputVector16),
+                                             vget_low_s16(FilterVector16));
+#if defined(MLAS_NEON64_INTRINSICS)
+                    Accumulator1 = vmlal_high_s16(Accumulator1, InputVector16, FilterVector16);
+#else
+                    Accumulator1 = vmlal_s16(Accumulator1, vget_high_s16(InputVector16),
+                                             vget_high_s16(FilterVector16));
+#endif
+
+                    ChannelKernelOffset += Channels;
+                }
+
+                vst1q_s32(&Output[0], Accumulator0);
+                vst1q_s32(&Output[4], Accumulator1);
             }
 
-            vst1q_s32(&Output[0], Accumulator0);
-            vst1q_s32(&Output[4], Accumulator1);
             Output += 8;
 
             ChannelOffset += 8;
@@ -131,12 +648,10 @@ MlasConvDepthwiseKernel(
 #endif
 
         while (c > 0) {
-
             int32_t Accumulator = 0;
             size_t ChannelKernelOffset = ChannelOffset;
 
             for (size_t k = 0; k < KernelSize; k++) {
-
                 int32_t InputValue = int32_t(Input[k][ChannelOffset]) - InputZeroPoint;
                 int32_t FilterValue = int32_t(Filter[ChannelKernelOffset]) - FilterZeroPoint;
 
@@ -155,47 +670,36 @@ MlasConvDepthwiseKernel(
     }
 }
 
-template
-void
-MLASCALL
-MlasConvDepthwiseKernel(
-    const uint8_t* const* Input,
-    uint8_t InputZeroPoint,
-    const int8_t* Filter,
-    int8_t FilterZeroPoint,
-    int32_t* Output,
-    size_t Channels,
-    size_t OutputCount,
-    size_t KernelSize
-    );
+template void MLASCALL
+MlasConvDepthwiseKernel(const uint8_t* const* Input,
+                        uint8_t InputZeroPoint,
+                        const int8_t* Filter,
+                        int8_t FilterZeroPoint,
+                        int32_t* Output,
+                        size_t Channels,
+                        size_t OutputCount,
+                        size_t KernelSize);
 
-template
-void
-MLASCALL
-MlasConvDepthwiseKernel(
-    const uint8_t* const* Input,
-    uint8_t InputZeroPoint,
-    const uint8_t* Filter,
-    uint8_t FilterZeroPoint,
-    int32_t* Output,
-    size_t Channels,
-    size_t OutputCount,
-    size_t KernelSize
-    );
+template void MLASCALL
+MlasConvDepthwiseKernel(const uint8_t* const* Input,
+                        uint8_t InputZeroPoint,
+                        const uint8_t* Filter,
+                        uint8_t FilterZeroPoint,
+                        int32_t* Output,
+                        size_t Channels,
+                        size_t OutputCount,
+                        size_t KernelSize);
 
-void
-MLASCALL
-MlasConvDepthwise(
-    const uint8_t* const* Input,
-    uint8_t InputZeroPoint,
-    const uint8_t* Filter,
-    uint8_t FilterZeroPoint,
-    bool FilterIsSigned,
-    int32_t* Output,
-    size_t Channels,
-    size_t OutputCount,
-    size_t KernelSize
-    )
+void MLASCALL
+MlasConvDepthwise(const uint8_t* const* Input,
+                  uint8_t InputZeroPoint,
+                  const uint8_t* Filter,
+                  uint8_t FilterZeroPoint,
+                  bool FilterIsSigned,
+                  int32_t* Output,
+                  size_t Channels,
+                  size_t OutputCount,
+                  size_t KernelSize)
 /*++
 
 Routine Description:
@@ -243,35 +747,21 @@ Return Value:
 --*/
 {
     if (FilterIsSigned) {
-
 #if defined(MLAS_TARGET_AMD64)
         MlasPlatform.ConvDepthwiseU8S8Kernel(
 #else
         MlasConvDepthwiseKernel<int8_t>(
 #endif
-            Input,
-            InputZeroPoint,
-            reinterpret_cast<const int8_t*>(Filter),
-            static_cast<int8_t>(FilterZeroPoint),
-            Output,
-            Channels,
-            OutputCount,
-            KernelSize);
+            Input, InputZeroPoint, reinterpret_cast<const int8_t*>(Filter),
+            static_cast<int8_t>(FilterZeroPoint), Output, Channels, OutputCount, KernelSize);
 
     } else {
-
 #if defined(MLAS_TARGET_AMD64)
         MlasPlatform.ConvDepthwiseU8U8Kernel(
 #else
         MlasConvDepthwiseKernel<uint8_t>(
 #endif
-            Input,
-            InputZeroPoint,
-            Filter,
-            FilterZeroPoint,
-            Output,
-            Channels,
-            OutputCount,
+            Input, InputZeroPoint, Filter, FilterZeroPoint, Output, Channels, OutputCount,
             KernelSize);
     }
 }
