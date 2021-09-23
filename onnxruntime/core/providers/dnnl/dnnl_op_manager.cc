@@ -38,6 +38,7 @@ DnnlOpManager::DnnlOpManager() {
   dnnl_ops_map_.emplace(std::make_pair("ConvGrad", std::unique_ptr<DnnlNodeCapability>(new DnnlDefaultNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("MaxPoolGrad", std::unique_ptr<DnnlNodeCapability>(new DnnlPoolNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("ReluGrad", std::unique_ptr<DnnlNodeCapability>(new DnnlDefaultNodeCapability())));
+  dnnl_ops_map_.emplace(std::make_pair("SoftmaxGrad", std::unique_ptr<DnnlNodeCapability>(new DnnlSoftmaxNodeCapability())));
 #endif  // ENABLE_TRAINING
 }
 
