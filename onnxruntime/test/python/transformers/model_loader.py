@@ -14,7 +14,6 @@ if find_transformers_source():
 else:
     from onnxruntime.transformers.fusion_utils import NumpyHelper
 
-
 def fill_zeros_for_external_data(tensor: TensorProto):
     if tensor.HasField("raw_data"):  # already loaded
         return

@@ -51,7 +51,7 @@ CMake creates a target to this project
              Targets="Restore" 
              Properties="Platform=AnyCPU" 
              />
-    <MSBuild Projects="test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj"
+    <MSBuild Projects="test\Microsoft.ML.OnnxRuntime.Tests.Common\Microsoft.ML.OnnxRuntime.Tests.Common.csproj"
              Targets="Restore" 
              Properties="ProtocDirectory=$(ProtocDirectory)"
              />
@@ -71,7 +71,7 @@ CMake creates a target to this project
              Targets="Build" 
              Properties="Platform=AnyCPU"
              />
-    <MSBuild Projects="test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj"
+    <MSBuild Projects="test\Microsoft.ML.OnnxRuntime.Tests.Common\Microsoft.ML.OnnxRuntime.Tests.Common.csproj"
              Targets="Build"
              />
     <MSBuild Projects="tools\Microsoft.ML.OnnxRuntime.PerfTool\Microsoft.ML.OnnxRuntime.PerfTool.csproj"
@@ -131,11 +131,7 @@ CMake creates a target to this project
     </Exec>
 
     <Message Importance="High" Text="Bundling native shared library artifacts into a NuGet package ..." />
-    <Exec ContinueOnError="False" Command="$(NugetExe) pack -Symbols -SymbolPackageFormat snupkg NativeNuget.nuspec" ConsoleToMSBuild="true" WorkingDirectory="$(NativeBuildOutputDirAbs)" Condition=" '$(OS)' == 'Windows_NT'">
-      <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
-    </Exec>
-
-    <Exec ContinueOnError="False" Command="$(NugetExe) pack NativeNuget.nuspec" ConsoleToMSBuild="true" WorkingDirectory="$(NativeBuildOutputDirAbs)" Condition=" '$(OS)' != 'Windows_NT'">
+    <Exec ContinueOnError="False" Command="$(NugetExe) pack -Symbols -SymbolPackageFormat snupkg NativeNuget.nuspec" ConsoleToMSBuild="true" WorkingDirectory="$(NativeBuildOutputDirAbs)">
       <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
     </Exec>
 

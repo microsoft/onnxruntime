@@ -248,7 +248,7 @@ def get_fusion_statistics(optimized_model_path: str) -> Dict[str, int]:
         A dictionary with operator type as key, and count as value
     """
     model = load_model(optimized_model_path, format=None, load_external_data=True)
-    optimizer = BertOnnxModel(model)
+    optimizer = BertOnnxModel(model, num_heads=12, hidden_size=768)
     return optimizer.get_fused_operator_statistics()
 
 
@@ -272,27 +272,24 @@ def _parse_arguments():
         '--num_heads',
         required=False,
         type=int,
-        default=0,
+        default=12,
         help=
-        "number of attention heads like 12 for bert-base and 16 for bert-large. Default is 0 to detect automatically for BERT. For other model type, this parameter need specify correctly."
+        "number of attention heads. 12 for bert-base model and 16 for bert-large. For BERT, set it to 0 to detect automatically."
     )
 
     parser.add_argument(
         '--hidden_size',
         required=False,
         type=int,
-        default=0,
+        default=768,
         help=
-        "hidden size like 768 for bert-base and 1024 for bert-large. Default is 0 to detect automatically for BERT. For other model type, this parameter need specify correctly."
+        "bert model hidden size. 768 for bert-base model and 1024 for bert-large. For BERT, set it to 0 to detect automatically."
     )
 
-    parser.add_argument(
-        '--input_int32',
-        required=False,
-        action='store_true',
-        help=
-        "Use int32 (instead of int64) inputs. It could avoid unnecessary data cast when EmbedLayerNormalization is fused for BERT."
-    )
+    parser.add_argument('--input_int32',
+                        required=False,
+                        action='store_true',
+                        help="Use int32 (instead of int64) tensor as input to avoid unnecessary data cast.")
     parser.set_defaults(input_int32=False)
 
     parser.add_argument(
@@ -300,7 +297,7 @@ def _parse_arguments():
         required=False,
         action='store_true',
         help=
-        "Convert all weights and nodes in float32 to float16. It has potential loss in precision compared to mixed precision conversion (see convert_float_to_float16)."
+        "If your target device is V100 or T4 GPU, try this to convert float32 to float16 for best performance (with potential loss in precision)."
     )
     parser.set_defaults(float16=False)
 
@@ -313,7 +310,7 @@ def _parse_arguments():
         '--use_gpu',
         required=False,
         action='store_true',
-        help="Use GPU for inference. Set this flag if your model is intended for GPU when opt_level > 1.")
+        help="use GPU for inference. Set this flag if your model is intended for GPU and opt_level > 1.")
     parser.set_defaults(use_gpu=False)
 
     parser.add_argument('--only_onnxruntime',
@@ -329,13 +326,13 @@ def _parse_arguments():
         choices=[0, 1, 2, 99],
         default=None,
         help=
-        "onnxruntime optimization level. 0 will disable onnxruntime graph optimization. The recommended value is 1. When opt_level > 1 is used, optimized model for GPU might not run in CPU. Level 2 and 99 are intended for --only_onnxruntime."
+        "onnxruntime optimization level. 0 will disable onnxruntime graph optimization. Graph fusion in Python is not impacted by setting."
     )
 
     parser.add_argument('--use_external_data_format',
                         required=False,
                         action='store_true',
-                        help="use external data format to store large model (>2GB)")
+                        help="use external data format")
     parser.set_defaults(use_external_data_format=False)
 
     args = parser.parse_args()

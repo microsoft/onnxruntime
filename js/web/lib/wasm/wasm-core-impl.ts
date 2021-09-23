@@ -84,7 +84,7 @@ export const createSession =
 export const releaseSession = (sessionId: number): void => {
   const wasm = getInstance();
   const session = activeSessions[sessionId];
-  if (!Number.isSafeInteger(sessionId) || !session) {
+  if (!session) {
     throw new Error('invalid session id');
   }
   const sessionHandle = session[0];
