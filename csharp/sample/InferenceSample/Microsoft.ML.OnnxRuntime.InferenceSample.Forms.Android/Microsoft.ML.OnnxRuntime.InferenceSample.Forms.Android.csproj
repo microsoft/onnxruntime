@@ -93,22 +93,22 @@
       <Project>{C5BDDD5D-F811-4CDD-A977-2D8581C21F36}</Project>
       <Name>Microsoft.ML.OnnxRuntime.InferenceSample.Forms</Name>
     </ProjectReference>
-    <ProjectReference Include="..\..\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj">
+    <ProjectReference Include="..\..\..\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj">
       <Project>{584B53B3-359D-4DC2-BCD8-530B5D4685AD}</Project>
       <Name>Microsoft.ML.OnnxRuntime</Name>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <AndroidNativeLibrary Condition=" Exists('..\..\..\build\Android\arm64-v8a\Release\libonnxruntime.so') " Include="..\..\..\build\Android\arm64-v8a\Release\libonnxruntime.so">
+    <AndroidNativeLibrary Condition=" Exists('..\..\..\..\build\Android\arm64-v8a\Release\libonnxruntime.so') " Include="..\..\..\..\build\Android\arm64-v8a\Release\libonnxruntime.so">
       <Link>libs\arm64-v8a\libonnxruntime.so</Link>
     </AndroidNativeLibrary>
-    <AndroidNativeLibrary Condition=" Exists('..\..\..\build\Android\armeabi-v7a\Release\libonnxruntime.so') " Include="..\..\..\build\Android\armeabi-v7a\Release\libonnxruntime.so">
+    <AndroidNativeLibrary Condition=" Exists('..\..\..\..\build\Android\armeabi-v7a\Release\libonnxruntime.so') " Include="..\..\..\..\build\Android\armeabi-v7a\Release\libonnxruntime.so">
       <Link>libs\armeabi-v7a\libonnxruntime.so</Link>
     </AndroidNativeLibrary>
-    <AndroidNativeLibrary Condition=" Exists('..\..\..\build\Android\x86\Release\libonnxruntime.so') " Include="..\..\..\build\Android\x86\Release\libonnxruntime.so">
+    <AndroidNativeLibrary Condition=" Exists('..\..\..\..\build\Android\x86\Release\libonnxruntime.so') " Include="..\..\..\..\build\Android\x86\Release\libonnxruntime.so">
       <Link>libs\x86\libonnxruntime.so</Link>
     </AndroidNativeLibrary>
-    <AndroidNativeLibrary Condition=" Exists('..\..\..\build\Android\x86_64\Release\libonnxruntime.so') " Include="..\..\..\build\Android\x86_64\Release\libonnxruntime.so">
+    <AndroidNativeLibrary Condition=" Exists('..\..\..\..\build\Android\x86_64\Release\libonnxruntime.so') " Include="..\..\..\..\build\Android\x86_64\Release\libonnxruntime.so">
       <Link>libs\x86_64\libonnxruntime.so</Link>
     </AndroidNativeLibrary>
   </ItemGroup>

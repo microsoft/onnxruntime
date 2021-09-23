@@ -67,8 +67,8 @@
     <MtouchLink>SdkOnly</MtouchLink>
   </PropertyGroup>
   <PropertyGroup>
-      <OnnxNativeFrameworkPathPhone>..\..\..\build\iOS\iphoneos\Release\Release-iphoneos\onnxruntime.framework</OnnxNativeFrameworkPathPhone>
-      <OnnxNativeFrameworkPathSimulator>..\..\..\build\iOS\iphonesimulator\Release\Release-iphonesimulator\onnxruntime.framework</OnnxNativeFrameworkPathSimulator>
+      <OnnxNativeFrameworkPathPhone>..\..\..\..\build\iOS\iphoneos\Release\Release-iphoneos\onnxruntime.framework</OnnxNativeFrameworkPathPhone>
+      <OnnxNativeFrameworkPathSimulator>..\..\..\..\build\iOS\iphonesimulator\Release\Release-iphonesimulator\onnxruntime.framework</OnnxNativeFrameworkPathSimulator>
   </PropertyGroup>
   <PropertyGroup Condition="('$(Platform)' == 'iPhoneSimulator' AND Exists('$(OnnxNativeFrameworkPathSimulator)')) OR ('$(Platform)' == 'iPhone' AND Exists('$(OnnxNativeFrameworkPathPhone)'))">
       <DefineConstants>__NATIVE_DEPENDENCIES_EXIST__</DefineConstants>
@@ -142,7 +142,7 @@
       <Project>{C5BDDD5D-F811-4CDD-A977-2D8581C21F36}</Project>
       <Name>Microsoft.ML.OnnxRuntime.InferenceSample.Forms</Name>
     </ProjectReference>
-    <ProjectReference Include="..\..\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj">
+    <ProjectReference Include="..\..\..\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj">
       <Project>{584B53B3-359D-4DC2-BCD8-530B5D4685AD}</Project>
       <Name>Microsoft.ML.OnnxRuntime</Name>
     </ProjectReference>

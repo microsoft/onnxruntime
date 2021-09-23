@@ -16,6 +16,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Microsoft.ML.OnnxRuntime.InferenceSample\Microsoft.ML.OnnxRuntime.InferenceSample.csproj" />
-    <ProjectReference Include="..\..\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj" />
+    <ProjectReference Include="..\..\..\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj" />
   </ItemGroup>
 </Project>
