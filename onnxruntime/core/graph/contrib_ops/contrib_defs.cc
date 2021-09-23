@@ -2854,6 +2854,76 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(NvtxPush)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("NvtxPush operator")
+      .Input(
+          0,
+          "input",
+          "Input tensor",
+          "V",
+          OpSchema::Single,
+          true,
+          1,
+          OpSchema::Differentiable)
+      .Output(
+          0,
+          "output",
+          "Tensor to copy input into.",
+          "V",
+          OpSchema::Single,
+          true,
+          1,
+          OpSchema::Differentiable)
+      .TypeConstraint(
+          "V",
+          [](){
+            auto t = OpSchema::all_tensor_types_with_bfloat();
+            auto s = OpSchema::all_tensor_sequence_types();
+            auto o = OpSchema::all_optional_types();
+            t.insert(t.end(), s.begin(), s.end());
+            t.insert(t.end(), o.begin(), o.end());
+            return t;
+          }(),
+          "Constrain input and output types to all tensor, sequence, and optional types.")
+      .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(NvtxPop)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("NvtxPop operator")
+      .Input(
+          0,
+          "input",
+          "Input tensor",
+          "V",
+          OpSchema::Single,
+          true,
+          1,
+          OpSchema::Differentiable)
+      .Output(
+          0,
+          "output",
+          "Tensor to copy input into.",
+          "V",
+          OpSchema::Single,
+          true,
+          1,
+          OpSchema::Differentiable)
+      .TypeConstraint(
+          "V",
+          [](){
+            auto t = OpSchema::all_tensor_types_with_bfloat();
+            auto s = OpSchema::all_tensor_sequence_types();
+            auto o = OpSchema::all_optional_types();
+            t.insert(t.end(), s.begin(), s.end());
+            t.insert(t.end(), o.begin(), o.end());
+            return t;
+          }(),
+          "Constrain input and output types to all tensor, sequence, and optional types.")
+      .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput);
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(BiasDropout)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
