@@ -560,7 +560,7 @@ var ot_validCombos = {
     "pip install torch-ort -f https://download.onnxruntime.ai/onnxruntime_stable_cu111.html<br/> python -m torch_ort.configure",
 
     "ot_linux,ot_PyTorch19,ot_X64,ot_ROCm42":
-    "pip install torch -f https://download.pytorch.org/whl/rocm4.2/torch_stable.html<br/>pip install torch-ort -f https://download.onnxruntime.ai/onnxruntime_stable_rocm42.html<br/>python -m torch_ort.configure</br>",
+    "(Preview) pip install torch -f https://download.pytorch.org/whl/rocm4.2/torch_stable.html<br/>pip install torch-ort -f https://download.onnxruntime.ai/onnxruntime_stable_rocm42.html<br/>python -m torch_ort.configure</br>",
    
     "ot_linux,ot_PyTorch19,ot_X64,ot_ROCm431":
     "This combination requires an AMD docker image. See <a href=https://github.com/pytorch/ort>the torch-ort repo</a> for details",
