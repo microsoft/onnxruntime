@@ -1,7 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "core/platform/ort_mutex.h"
 #include "core/common/profiler_common.h"
+
+#ifdef USE_ROCM
+
+class CudaProfiler final : public EpProfiler {
+ public
+  bool StartProfiling() override { return true; }
+  void EndProfiling(TimePoint, Events&) override{};
+  void Start(uint64_t) override{};
+  void Stop(uint64_t) override{};
+};
+
+#else
+
+#include "core/platform/ort_mutex.h"
 #include <cupti.h>
 #include <mutex>
 #include <vector>
@@ -26,7 +39,7 @@ class CudaProfiler final : public EpProfiler {
     cuda_profiler.initialized_ = false;
     return *this;
   }
-  virtual ~CudaProfiler();
+  ~CudaProfiler();
   bool StartProfiling() override;
   void EndProfiling(TimePoint start_time, Events& events) override;
   void Start(uint64_t) override;
@@ -60,3 +73,4 @@ class CudaProfiler final : public EpProfiler {
 
 }  // namespace profiling
 }  // namespace onnxruntime
+#endif

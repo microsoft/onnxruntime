@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#ifndef USE_ROCM
 #include "cuda_profiler.h"
 #include <map>
 #include <string>
@@ -197,3 +198,4 @@ void CudaProfiler::Clear() {
 
 }  // namespace profiling
 }  // namespace onnxruntime
+#endif
