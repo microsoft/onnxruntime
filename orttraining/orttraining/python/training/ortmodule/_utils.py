@@ -18,8 +18,9 @@ import warnings
 from distutils.version import LooseVersion
 
 def _ortvalue_from_torch_tensor(torch_tensor):
-    # TODO: Current DLPack doesn't support bool and PyTorch disables converting bool tensor to DLPack
-    # in recent commit. We need to convert bool tensor to unit8 tensor to workaround this.
+    # TODO: Current DLPack doesn't support bool and PyTorch disables converting bool tensor to DLPack in recent commit.
+    # https://github.com/pytorch/pytorch/blob/7e7be526c9d9179f35084e9cca5b5c5ad5172100/aten/src/ATen/DLConvertor.cpp#L41
+    # We need to convert bool tensor to unit8 tensor to workaround this.
     # DLPack is discussing how to support bool type, we can remove this workaround once both DLPack
     # and PyTorch support bool type.
     is_bool_tensor = torch_tensor.dtype == torch.bool
@@ -44,8 +45,9 @@ def _torch_tensor_to_dlpack(tensor):
     if tensor.device.type == 'ort':
         return C.ort_to_dlpack(tensor)
     else:
-        # TODO: Current DLPack doesn't support bool and PyTorch disables converting bool tensor to DLPack
-        # in recent commit. We need to convert bool tensor to unit8 tensor to workaround this.
+        # TODO: Current DLPack doesn't support bool and PyTorch disables converting bool tensor to DLPack in recent commit.
+        # https://github.com/pytorch/pytorch/blob/7e7be526c9d9179f35084e9cca5b5c5ad5172100/aten/src/ATen/DLConvertor.cpp#L41
+        # We need to convert bool tensor to unit8 tensor to workaround this.
         # DLPack is discussing how to support bool type, we can remove this workaround once both DLPack
         # and PyTorch support bool type.
         if tensor.dtype == torch.bool and LooseVersion(torch.__version__) >= LooseVersion('1.10.0'):
