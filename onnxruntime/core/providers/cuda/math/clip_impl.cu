@@ -43,6 +43,7 @@ template void ClipImpl<double>(cudaStream_t stream, const double* input_data, do
 template void ClipImpl<MLFloat16>(cudaStream_t stream, const MLFloat16* input_data, MLFloat16* output_data, const MLFloat16* min, const MLFloat16* max, MLFloat16 min_default, MLFloat16 max_default, size_t count);
 template void ClipImpl<int8_t>(cudaStream_t stream, const int8_t* input_data, int8_t* output_data, const int8_t* min, const int8_t* max, int8_t min_default, int8_t max_default, size_t count);
 template void ClipImpl<uint8_t>(cudaStream_t stream, const uint8_t* input_data, uint8_t* output_data, const uint8_t* min, const uint8_t* max, uint8_t min_default, uint8_t max_default, size_t count);
+template void ClipImpl<int32_t>(cudaStream_t stream, const int32_t* input_data, int32_t* output_data, const int32_t* min, const int32_t* max, int32_t min_default, int32_t max_default, size_t count);
 template void ClipImpl<int64_t>(cudaStream_t stream, const int64_t* input_data, int64_t* output_data, const int64_t* min, const int64_t* max, int64_t min_default, int64_t max_default, size_t count);
 template void ClipImpl<uint64_t>(cudaStream_t stream, const uint64_t* input_data, uint64_t* output_data, const uint64_t* min, const uint64_t* max, uint64_t min_default, uint64_t max_default, size_t count);
 

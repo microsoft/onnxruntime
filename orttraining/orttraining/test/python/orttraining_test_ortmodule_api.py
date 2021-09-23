@@ -869,7 +869,8 @@ def test_gradient_correctness_cross_entropy_loss(use_fp16):
 @pytest.mark.parametrize("use_fp16", [False, True])
 @pytest.mark.parametrize("reduction", ['none', 'sum', 'mean'])
 @pytest.mark.parametrize("zero_infinity", [False, True])
-def test_gradient_correctness_ctc_loss(use_fp16, reduction, zero_infinity):
+@pytest.mark.parametrize("int_type", [torch.long, torch.int32])
+def test_gradient_correctness_ctc_loss(use_fp16, reduction, zero_infinity, int_type):
     # https://pytorch.org/docs/stable/generated/torch.nn.CTCLoss.html
     class NeuralNetCTCLoss(torch.nn.Module):
         def __init__(self, num_embeddings, embedding_dim):
@@ -897,10 +898,10 @@ def test_gradient_correctness_ctc_loss(use_fp16, reduction, zero_infinity):
 
         # Initialize random batch of input vectors, for *size = (T,N,C)
         input = torch.randn(T, N, C, device=device).log_softmax(2).detach().requires_grad_()
-        input_lengths = torch.full(size=(N,), fill_value=T, dtype=torch.long, device=device)
+        input_lengths = torch.full(size=(N,), fill_value=T, dtype=int_type, device=device)
 
         # Initialize random batch of targets (0 = blank, 1:C = classes)
-        target_lengths = torch.randint(low=1, high=T, size=(N,), dtype=torch.long, device=device)
+        target_lengths = torch.randint(low=1, high=T, size=(N,), dtype=int_type, device=device)
         target = torch.randint(low=1, high=C, size=(sum(target_lengths),), dtype=torch.long, device=device)
 
         pt_prediction = run_step(pt_model, input, target, input_lengths, target_lengths)

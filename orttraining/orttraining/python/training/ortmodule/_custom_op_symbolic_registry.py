@@ -121,7 +121,8 @@ def ctc_loss(g, log_probs, targets, input_lengths, target_lengths, blank, reduct
         result = g.op("Where", condition, zero_cast, result)
     if reduction_i == 1:
         one_const = g.op("Constant", value_t=torch.tensor(1, dtype=torch.int64))
-        target_lengths_clip = g.op("Clip", target_lengths, one_const)
+        one_cast = g.op("Cast", one_const, to_i=sym_help.cast_pytorch_to_onnx[target_lengths.type().scalarType()])
+        target_lengths_clip = g.op("Clip", target_lengths, one_cast)
         target_lengths_cast = g.op("Cast", target_lengths_clip, to_i=sym_help.cast_pytorch_to_onnx[log_probs.type().scalarType()])
         result = g.op("Div", result, target_lengths_cast)
         result = g.op("ReduceMean", result, keepdims_i=0)

@@ -33,7 +33,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     12, 12,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", BuildKernelDefConstraints<float, double, MLFloat16, int8_t, uint8_t, int64_t, uint64_t>()),
+        .TypeConstraint("T", BuildKernelDefConstraints<float, double, MLFloat16, int8_t, uint8_t, int32_t, int64_t, uint64_t>()),
     Clip);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -42,7 +42,7 @@ ONNX_OPERATOR_KERNEL_EX(
     13,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", BuildKernelDefConstraints<float, double, MLFloat16, int8_t, uint8_t, int64_t, uint64_t>()),
+        .TypeConstraint("T", BuildKernelDefConstraints<float, double, MLFloat16, int8_t, uint8_t, int32_t, int64_t, uint64_t>()),
     Clip);
 
 template <typename T>
@@ -115,7 +115,7 @@ Status Clip::ComputeInternal(OpKernelContext* ctx) const {
   const auto* max = ctx->Input<Tensor>(2);
   Tensor* Y = ctx->Output(0, X->Shape());
 
-  utils::MLTypeCallDispatcher<float, double, MLFloat16, int8_t, uint8_t, int64_t, uint64_t>
+  utils::MLTypeCallDispatcher<float, double, MLFloat16, int8_t, uint8_t, int32_t, int64_t, uint64_t>
       t_disp(X->GetElementType());
 
   t_disp.Invoke<ComputeImpl>(Stream(), X, min, max, Y);

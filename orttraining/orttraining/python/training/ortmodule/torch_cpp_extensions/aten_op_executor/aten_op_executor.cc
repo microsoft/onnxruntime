@@ -26,6 +26,18 @@ c10::IValue ToListIValue(const DLManagedTensor* dlpack, bool is_optional) {
   return is_optional ? c10::IValue(c10::optional<c10::List<T>>(list_value)) : c10::IValue(list_value);
 }
 
+template <>
+c10::IValue ToListIValue<int32_t>(const DLManagedTensor* dlpack, bool is_optional) {
+  TORCH_INTERNAL_ASSERT(dlpack->dl_tensor.ndim == 1);
+  const int32_t* p_data = reinterpret_cast<const int32_t*>(dlpack->dl_tensor.data);
+  c10::List<int64_t> list_value;
+  size_t len = static_cast<size_t>(dlpack->dl_tensor.shape[0]);
+  for (size_t i = 0; i < len; i++) {
+    list_value.emplace_back(static_cast<int64_t>(p_data[i]));
+  }
+  return is_optional ? c10::IValue(c10::optional<c10::List<int64_t>>(list_value)) : c10::IValue(list_value);
+}
+
 c10::IValue Int64ToBoolIValue(const DLManagedTensor* dlpack, bool is_list, bool is_optional) {
   if (is_list) {
     TORCH_INTERNAL_ASSERT(dlpack->dl_tensor.ndim == 1);
@@ -74,9 +86,14 @@ struct ATenOperator {
         i_value = is_optional ? c10::IValue(c10::optional<at::Tensor>(tensor)) : c10::IValue(tensor);
       } break;
       case c10::TypeKind::IntType: {
-        TORCH_INTERNAL_ASSERT(dlpack->dl_tensor.dtype.code == DLDataTypeCode::kDLInt &&
-                              dlpack->dl_tensor.dtype.bits == 64);
-        i_value = is_list ? ToListIValue<int64_t>(dlpack, is_optional) : ToIValue<int64_t>(dlpack, is_optional);
+        TORCH_INTERNAL_ASSERT(dlpack->dl_tensor.dtype.code == DLDataTypeCode::kDLInt);
+        if (dlpack->dl_tensor.dtype.bits == 64) {
+          i_value = is_list ? ToListIValue<int64_t>(dlpack, is_optional) : ToIValue<int64_t>(dlpack, is_optional);
+        } else if (dlpack->dl_tensor.dtype.bits == 32) {
+          i_value = is_list ? ToListIValue<int32_t>(dlpack, is_optional) : ToIValue<int32_t>(dlpack, is_optional);
+        } else {
+          TORCH_INTERNAL_ASSERT(false);
+        }
       } break;
       case c10::TypeKind::FloatType: {
         TORCH_INTERNAL_ASSERT(dlpack->dl_tensor.dtype.code == DLDataTypeCode::kDLFloat &&
