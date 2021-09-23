@@ -81,6 +81,22 @@ class TestFusion(unittest.TestCase):
 
         self.verify_fusion(optimized_model, 'attention_with_varied_qkv_opt.onnx')
 
+    def test_attention_fusion_for_varied_qkv_dimensions_with_wrong_opt_parameters(self):
+        model = create_bert_attention(input_hidden_size=16,
+                                      num_heads=2,
+                                      pruned_qk_hidden_size=24,
+                                      pruned_v_hidden_size=16)
+        dir = '.'
+        model_path = os.path.join(dir, "attention_with_varied_qkv.onnx")
+        onnx.save(model, model_path)
+
+        #wrong num_heads and hidden_size
+        optimized_model = optimize_model(model_path, 'bert', num_heads=8, hidden_size=8)
+
+        os.remove(model_path)
+
+        self.verify_fusion(optimized_model, 'attention_with_varied_qkv_opt.onnx')
+
     def test_3d_attention_fusion_tf2onnx_model(self):
         model = create_tf2onnx_attention_3d()
         dir = '.'
