@@ -71,7 +71,7 @@ class _SkipCheck(IntFlag):
 
 
 class GraphExecutionManager(GraphExecutionInterface):
-    def __init__(self, module, debug_options: DebugOptions, fallback_manager: _FallbackManager, custom_op_set):
+    def __init__(self, module, debug_options: DebugOptions, fallback_manager: _FallbackManager, custom_ops):
         """Manages construction and execution of ONNX graphs"""
 
         super(GraphExecutionManager, self).__init__(module._original_module)
@@ -175,7 +175,9 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Flag to re-export the model due to attribute change on original module.
         # Re-export will be avoided if _skip_check is enabled.
         self._original_model_has_changed = False
-        self._custom_op_set = custom_op_set
+        self._custom_ops = custom_ops
+        self._custom_op_names = None if custom_ops is None else [
+            op.__name__ for op in custom_ops]
 
         # Load ATenOp executor extension.
         load_aten_op_executor_cpp_extension()
@@ -383,7 +385,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                                   f,
                                   **required_export_kwargs,
                                   **self._export_extra_kwargs,
-                                  export_modules_as_functions=self._custom_op_set)
+                                  export_modules_as_functions=self._custom_ops)
         except Exception as e:
             raise wrap_exception(ORTModuleONNXModelException,
                                  RuntimeError(f'There was an error while exporting the PyTorch model to ONNX: '
