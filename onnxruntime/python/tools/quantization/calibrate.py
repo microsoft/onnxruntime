@@ -167,19 +167,14 @@ class MinMaxCalibrater(CalibraterBase):
             # When doing ReduceMax/ReduceMin, ORT can't reduce on dim with value of 0 if 'keepdims' is false.
             # To make the code simple, we always let keepdims to be 1.
             keepdims = 1
-            dim = value_infos[tensor].type.tensor_type.shape.dim
-            dim_len = 0
 
             # dim could be:
             #   [dim_param: "batch_size", dim_value: 256, dim_value: 36, dim_value: 64],
             #   [dim_value: 0],
             #   ...
             # Please see the definition of TensorShapeProto https://github.com/onnx/onnx/blob/master/onnx/onnx.proto#L651
-            for d in dim:
-                if d.WhichOneof('value') == 'dim_value':
-                    dim_len += 1
-
-            shape = (1,) if dim_len == 1 else tuple(1 for i in range(dim_len))
+            dim = value_infos[tensor].type.tensor_type.shape.dim
+            shape = (1,) if len(dim) == 1 else tuple(1 for i in range(len(dim)))
 
             # Adding ReduceMin nodes
             reduce_min_name = tensor + '_ReduceMin'
