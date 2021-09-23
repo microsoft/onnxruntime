@@ -79,7 +79,7 @@ const onProxyWorkerMessage = (ev: MessageEvent<OrtWasmMessage>): void => {
   }
 };
 
-const scriptSrc = isProxy() ? (document?.currentScript as HTMLScriptElement)?.src : undefined;
+const scriptSrc = typeof document !== 'undefined' ? (document?.currentScript as HTMLScriptElement)?.src : undefined;
 
 export const initWasm = async(): Promise<void> => {
   if (isProxy()) {

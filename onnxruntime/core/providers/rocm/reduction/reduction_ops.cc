@@ -208,14 +208,9 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
   else
     ORT_RETURN_IF_ERROR(reduce_desc.Set(miopen_reduce_op, miopen_type_X, ReduceTensorIndices));
 
-  // As of ROCm 4.2, miopenReduceTensor() requires alpha/beta to be the same data
-  // type as the input type. This differs from cudnnReduceTensor() and other
-  // MIOpen/cuDNN APIs where alpha/beta are float when input type is half (float16).
-  //
-  // NOTE: this workaround can be removed in ROCm 4.3:
-  //       https://github.com/ROCmSoftwarePlatform/MIOpen/pull/914
   const auto one = ReduceConsts<HipT>::One;
   const auto zero = ReduceConsts<HipT>::Zero;
+
   MiopenTensor input_tensor;
   MiopenTensor output_tensor;
   ORT_RETURN_IF_ERROR(input_tensor.Set(input_dims_miopen, miopen_type_X));
@@ -532,14 +527,9 @@ Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, Pr
     ORT_RETURN_IF_ERROR(reduce_desc.Set(miopen_reduce_op, miopen_type_X, ReduceTensorIndices));
   }
 
-  // As of ROCm 4.2, miopenReduceTensor() requires alpha/beta to be the same data
-  // type as the input type. This differs from cudnnReduceTensor() and other
-  // MIOpen/cuDNN APIs where alpha/beta are float when input type is half (float16).
-  //
-  // NOTE: this workaround can be removed in ROCm 4.3:
-  //       https://github.com/ROCmSoftwarePlatform/MIOpen/pull/914
   const auto one = ReduceConsts<HipT>::One;
   const auto zero = ReduceConsts<HipT>::Zero;
+
   MiopenTensor input_tensor;
   MiopenTensor output_tensor;
   ORT_RETURN_IF_ERROR(input_tensor.Set(input_dims_miopen, miopen_type_X));

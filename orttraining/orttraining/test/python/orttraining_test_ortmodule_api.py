@@ -310,6 +310,17 @@ class MyStrNet(torch.nn.Module):
             print('hi')
         return x
 
+@pytest.fixture(scope='session', autouse=True)
+def run_before_test_session(request):
+    def insert_disable_fallback_in_env():
+        os.environ["ORTMODULE_FALLBACK_POLICY"] = "FALLBACK_DISABLE"
+
+    def remove_disable_fallback_from_env():
+        del os.environ["ORTMODULE_FALLBACK_POLICY"]
+
+    insert_disable_fallback_in_env()
+    request.addfinalizer(remove_disable_fallback_from_env)
+
 # TODO: This is a workaround for the problem that pytest is still cleaning up the previous test
 # while the next task already start.
 @pytest.fixture(autouse=True)
@@ -655,6 +666,141 @@ def test_gradient_correctness_conv1d(use_fp16, input_requires_grad):
         else:
             _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-5)
             _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=5e-2, atol=4e-2)
+
+def _run_gradient_correctness_transpose(perm, shape):
+    class NeuralNetTranspose(torch.nn.Module):
+        def __init__(self, perm):
+            super(NeuralNetTranspose, self).__init__()
+            self.perm = perm
+
+        def forward(self, input):
+            out = torch.sin(input.permute(*self.perm))
+            return out
+
+    device = 'cuda'
+    pt_model = NeuralNetTranspose(perm).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction
+
+    x = torch.randn(*shape, device=device, requires_grad=True)
+    pt_prediction = run_step(pt_model, x)
+    ort_prediction = run_step(ort_model, x)
+
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+    _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+
+@pytest.mark.parametrize("perm", [
+    [0,1,2],      # no-op
+    [0,2,1],      # special handle by Transpose021
+    [1,0,2],      # handled as [0,2,1,3]
+    [1,2,0],      # coalesced to [1,0]
+    [2,0,1],      # coalesced to [1,0]
+    [2,1,0],      # handled as [0,3,2,1]
+])
+@pytest.mark.parametrize("shape", [
+    [245,1024,32],
+    [255,2272,32],
+    [246,2080,32],
+    [254,128,256],
+    [260,245,256],
+    [284,254,256],
+    [245,260,256],
+    [1024,1024,256],
+    [254,284,256],
+    [4,5,2944],
+    [4,28,3136],
+    [4,312,768],
+    [3,224,224],
+    [17,5,4],
+    [8,2080,32],
+    [8,2272,32],
+    [2,2,2],
+    [1024,245,32],
+    [2080,246,32],
+    [1024,254,32],
+    [2272,255,32],
+    [4,5,736],
+    [4,111,160],
+    [8,246,32],
+    [8,255,32],
+    [4,1,2],
+    [1,2,2],
+    [2,1,2],
+    [2,2,1],
+    [2,1,4],
+    [4,2,1],
+])
+def test_gradient_correctness_transpose3d(perm, shape):
+    _run_gradient_correctness_transpose(perm, shape)
+
+@pytest.mark.parametrize("perm", [
+    [0,1,2,3],
+    [0,1,3,2],
+    [0,2,1,3],
+    [0,2,3,1],
+    [0,3,1,2],
+    [0,3,2,1],
+    [1,0,2,3],
+    [1,0,3,2],
+    [1,2,0,3],
+    [1,2,3,0],
+    [1,3,0,2],
+    [1,3,2,0],
+    [2,0,1,3],
+    [2,0,3,1],
+    [2,1,0,3],
+    [2,1,3,0],
+    [2,3,0,1],
+    [2,3,1,0],
+    [3,0,1,2],
+    [3,0,2,1],
+    [3,1,0,2],
+    [3,1,2,0],
+    [3,2,0,1],
+    [3,2,1,0],
+])
+@pytest.mark.parametrize("shape", [
+    [1,245,1024,32],
+    [1,255,2272,32],
+    [1,246,2080,32],
+    [1,254,128,256],
+    [1,260,245,256],
+    [1,284,254,256],
+    [1,245,260,256],
+    [1,1024,1024,256],
+    [1,254,284,256],
+    [1,4,5,2944],
+    [1,4,28,3136],
+    [1,4,312,768],
+    [1,3,224,224],
+    [1,17,5,4],
+    [260,8,2080,32],
+    [284,8,2272,32],
+    [1,2,2,2],
+    [1,1024,245,32],
+    [1,2080,246,32],
+    [1,1024,254,32],
+    [1,2272,255,32],
+    [1,4,5,736],
+    [1,4,111,160],
+    [260,8,246,32],
+    [284,8,255,32],
+    [4,1,2,1],
+    [1,1,2,2],
+    [1,2,1,2],
+    [1,2,2,1],
+    [2,1,4,1],
+    [2,2,2,1],
+    [2,1,2,1],
+    [1,4,2,1],
+])
+def test_gradient_correctness_transpose4d(perm, shape):
+    _run_gradient_correctness_transpose(perm, shape)
 
 @pytest.mark.parametrize("device", ['cuda', 'cpu'])
 @pytest.mark.parametrize("padding_idx", [None, 1])
@@ -1558,7 +1704,7 @@ def test_exception_raised_for_custom_class_return_value_module(device):
     if _test_helpers.is_all_or_nothing_fallback_enabled(None, _FallbackPolicy.FALLBACK_UNSUPPORTED_DATA):
         # Fallback
         pt_out = pt_model(x, y, z)
-        ort_out = pt_model(x, y, z)
+        ort_out = ort_model(x, y, z)
         # Assert that the output from torch is the same as the one from ORTModule
         _test_helpers.assert_values_are_close(pt_out.out1, ort_out.out1)
         _test_helpers.assert_values_are_close(pt_out.out2, ort_out.out2)
@@ -1566,7 +1712,7 @@ def test_exception_raised_for_custom_class_return_value_module(device):
     else:
         # ORT backend
         with pytest.raises(_fallback.ORTModuleIOError) as runtime_error:
-            model(x, y, z)
+            ort_model(x, y, z)
         assert 'ORTModule does not support the following model output type' in str(runtime_error.value)
 
 def test_dynamic_axes_config():
@@ -1632,11 +1778,11 @@ def test_model_with_multiple_devices_to_to():
 
     pt_model = MultipleDeviceModel()
     x = torch.randn(20, 10)
-    ort_model = ORTModule(copy.deepcopy(pt_model))
     from onnxruntime.training.ortmodule._fallback import _FallbackPolicy
     if _test_helpers.is_all_or_nothing_fallback_enabled(None, _FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE):
         # Fallback
         with pytest.raises(RuntimeError) as runtime_error:
+            ort_model = ORTModule(copy.deepcopy(pt_model))
             ort_model(x)
         assert f"Expected all tensors to be on the same device, but found at least two devices" in str(runtime_error.value)
     else:
@@ -3700,3 +3846,21 @@ def test_ortmodule_skip_check_load_from_os_env(policy_str, policy):
         assert ort_model._torch_module._execution_manager(training_mode)._skip_check == policy
 
     del os.environ['ORTMODULE_SKIPCHECK_POLICY']
+
+@pytest.mark.parametrize("is_training,deterministic",
+                         list(itertools.product([True,False],repeat=2)))
+def test_ortmodule_determinism_flag(is_training,deterministic):
+
+    torch.use_deterministic_algorithms(deterministic)
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out)
+    model = ORTModule(model)
+    model.train(is_training)
+
+    for i in range(5):
+        x = torch.randn(N, D_in)
+        _ = model(x)
+
+        from onnxruntime.training.ortmodule import _are_deterministic_algorithms_enabled
+        assert _are_deterministic_algorithms_enabled() is torch.are_deterministic_algorithms_enabled()

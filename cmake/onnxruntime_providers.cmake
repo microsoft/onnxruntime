@@ -368,6 +368,10 @@ if (onnxruntime_USE_CUDA)
   set_target_properties(onnxruntime_providers_cuda PROPERTIES LINKER_LANGUAGE CUDA)
   set_target_properties(onnxruntime_providers_cuda PROPERTIES FOLDER "ONNXRuntime")
 
+  if (onnxruntime_ENABLE_NVTX_PROFILE)
+    target_link_libraries(onnxruntime_providers_cuda PRIVATE nvToolsExt)
+  endif()
+
   if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11)
     target_include_directories(onnxruntime_providers_cuda PRIVATE ${PROJECT_SOURCE_DIR}/external/cub)
   endif()

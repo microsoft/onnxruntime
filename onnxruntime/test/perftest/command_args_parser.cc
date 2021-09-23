@@ -59,7 +59,7 @@ namespace perftest {
       "\t    [OpenVINO only] [device_type]: Overrides the accelerator hardware type and precision with these values at runtime.\n"
       "\t    [OpenVINO only] [device_id]: Selects a particular hardware device for inference.\n"
       "\t    [OpenVINO only] [enable_vpu_fast_compile]: Optionally enabled to speeds up the model's compilation on VPU device targets.\n"
-      "\t    [OpenVINO only] [num_of_threads]: Overrides the accelerator hardware type and precision with these values at runtime.\n"
+      "\t    [OpenVINO only] [num_of_threads]: Overrides the accelerator default value of number of threads with this value at runtime. If this option is not explicitly set, default value of 8 is used during build time.\n"
       "\t    [OpenVINO only] [use_compiled_network]: Can be enabled to directly import pre-compiled blobs if exists. currently this feature is only supported on MyriadX(VPU) hardware device target.\n"
       "\t    [OpenVINO only] [blob_dump_path]: Explicitly specify the path where you would like to dump and load the blobs for the use_compiled_network(save/load blob) feature. This overrides the default path.\n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>'\n\n"

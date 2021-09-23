@@ -1284,8 +1284,10 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
 
   // Get output scale and zero point if this is QLinearAveragePool
-  float y_scale = 0.0f;
-  int32_t y_zero_point = 0;
+  // Otherwise we will use the scale and zero point of the input
+  const OperandType& input_operand_type = operand_types.at(input);
+  float y_scale = input_operand_type.operandType.scale;
+  int32_t y_zero_point = input_operand_type.operandType.zeroPoint;
   if (is_qlinear_average_pool) {
     const auto& initializers = model_builder.GetInitializerTensors();
     float x_scale = 0.0f;

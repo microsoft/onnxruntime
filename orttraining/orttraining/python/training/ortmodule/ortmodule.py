@@ -10,14 +10,19 @@ from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 from ._custom_gradient_registry import CustomGradientRegistry
 from . import _utils
 from .debug_options import DebugOptions
-from ._fallback import _FallbackManager, _FallbackPolicy, ORTModuleFallbackException, ORTModuleTorchModelException, wrap_exception
-from . import _FALLBACK_INIT_EXCEPTION, MINIMUM_RUNTIME_PYTORCH_VERSION_STR, ORTMODULE_FALLBACK_POLICY, ORTMODULE_FALLBACK_RETRY
+from ._fallback import (_FallbackManager,
+                        _FallbackPolicy,
+                        ORTModuleFallbackException)
+from . import (_FALLBACK_INIT_EXCEPTION,
+               ORTMODULE_FALLBACK_POLICY,
+               ORTMODULE_FALLBACK_RETRY)
+
 from onnxruntime.tools import pytorch_export_contrib_ops
 
 import functools
 import torch
-from typing import Iterator, Optional, Tuple, TypeVar, Set, Callable
-import warnings
+from typing import Iterator, Optional, Tuple, TypeVar, Callable
+
 
 # Needed to override PyTorch methods
 T = TypeVar('T', bound='Module')
@@ -59,7 +64,6 @@ class ORTModule(torch.nn.Module):
 
         try:
             # Read ORTModule module initialization status
-            global _FALLBACK_INIT_EXCEPTION
             if _FALLBACK_INIT_EXCEPTION:
                 raise _FALLBACK_INIT_EXCEPTION
 
@@ -296,8 +300,8 @@ class ORTModule(torch.nn.Module):
         yield from self._torch_module.named_modules(*args, **kwargs)
 
     def __getattr__(self, name: str):
-        if '_is_initialized' in self.__dict__ and self.__dict__['_is_initialized'] == True:
-            # If ORTModule is intitialized and attribute is not found in ORTModule,
+        if '_is_initialized' in self.__dict__ and self.__dict__['_is_initialized'] is True:
+            # If ORTModule is initialized and attribute is not found in ORTModule,
             # it must be present in the user's torch.nn.Module. Forward the call to
             # the user's model.
             assert '_torch_module' in self.__dict__, "ORTModule does not have a reference to the user's model"
@@ -311,7 +315,7 @@ class ORTModule(torch.nn.Module):
             # If the name is an attribute of ORTModule, update only ORTModule
             self.__dict__[name] = value
 
-        elif '_is_initialized' in self.__dict__ and self.__dict__['_is_initialized'] == True:
+        elif '_is_initialized' in self.__dict__ and self.__dict__['_is_initialized'] is True:
 
             assert '_torch_module' in self.__dict__, "ORTModule does not have a reference to the user's model"
 
