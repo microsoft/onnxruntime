@@ -79,15 +79,6 @@
       <Visible>false</Visible>
     </None>
 
-    <BuildEnvVars Include="OnnxRuntimeBuildDirectory=$(OnnxRuntimeBuildDirectory)" />
-
-    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\InferenceTest.netcore.cs">
-      <Link>InferenceTest.netcore.cs</Link>
-    </Compile>
-
-    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests\TestDataLoader.cs" />
-    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests\OnnxMl.cs" />
-
     <!-- test data as embedded resources for mobile scenarios -->
     <EmbeddedResource Include="..\..\testdata\*">
         <Link>TestData\%(Filename)%(Extension)</Link>
