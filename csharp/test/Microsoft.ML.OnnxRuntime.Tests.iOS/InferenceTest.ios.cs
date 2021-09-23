@@ -8,7 +8,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         public void TestPlatformSessionOptions()
         {
             var opt = new SessionOptions();
-            opt.AppendExecutionProvider_CoreML(COREMLFlags.COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE);
+            opt.AppendExecutionProvider_CoreML(CoreMLFlags.COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE);
             Assert.NotNull(opt);
         }
     }

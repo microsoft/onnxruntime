@@ -13,14 +13,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests.Devices
 
     public class TestResultSummary
     {
-        public int TestCount { get; private set; }
-        public int Succeeded { get; private set; }
-        public int Skipped { get; private set; }
-        public int Failed { get; private set; }
-        public int NotRun { get; private set; }
-        public IList<TestResult> TestResults { get; private set; }
+        public int TestCount { get; set; }
+        public int Succeeded { get; set; }
+        public int Skipped { get; set; }
+        public int Failed { get; set; }
+        public int NotRun { get; set; }
+        public IList<TestResult> TestResults { get; set; }
 
-        public TestResultSummary() {}
+        public TestResultSummary() { }
 
         public TestResultSummary(IList<TestResult> results)
         {
@@ -39,7 +39,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests.Devices
         public string TestId { get; set; }
         public string TestName { get; set; }
         public string Duration { get; set; }
-        public string Outcome => TestOutcome.ToString().ToUpper();
         public string Output { get; set; }
+
+        [Newtonsoft.Json.JsonIgnore]
+        public string Outcome => TestOutcome.ToString().ToUpper();
     }
 }

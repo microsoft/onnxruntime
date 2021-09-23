@@ -74,10 +74,10 @@
         <CodesignEntitlements>Entitlements.plist</CodesignEntitlements>
         <MtouchArch>ARM64</MtouchArch>
         <CodesignKey>iPhone Distribution</CodesignKey>
-        <MtouchLink>SdkOnly</MtouchLink>
+        <MtouchLink>Full</MtouchLink>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <MtouchUseLlvm>true</MtouchUseLlvm>
-        <MtouchExtraArgs>--nowarn:0109</MtouchExtraArgs>
+        <MtouchExtraArgs>--nowarn:0109 --linkskip=Microsoft.ML.OnnxRuntime.Tests.iOS --linkskip=Microsoft.ML.OnnxRuntime.Tests.Common --linkskip=Microsoft.ML.OnnxRuntime.Tests.Devices</MtouchExtraArgs>
     </PropertyGroup>
 
     <PropertyGroup>
@@ -178,13 +178,13 @@
     </ItemGroup>
 
     <ItemGroup Condition="('$(Platform)' == 'iPhoneSimulator' AND Exists('$(OnnxNativeFrameworkPathSimulator)')) OR ('$(Platform)' == 'iPhone' AND Exists('$(OnnxNativeFrameworkPathPhone)'))">
-        <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests\InferenceTest.cs">
+        <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\InferenceTest.cs">
           <Link>InferenceTest.cs</Link>
         </Compile>
-        <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests\OrtIoBindingAllocationTest.cs">
+        <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\OrtIoBindingAllocationTest.cs">
           <Link>OrtIoBindingAllocationTest.cs</Link>
         </Compile>
-        <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests\Tensors\TensorTests.cs">
+        <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Tensors\TensorTests.cs">
           <Link>TensorTests.cs</Link>
         </Compile>
         <Compile Include="InferenceTest.ios.cs" />
@@ -208,9 +208,9 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj">
+      <ProjectReference Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Microsoft.ML.OnnxRuntime.Tests.Common.csproj">
         <Project>{04FA49F0-AA23-4EE5-B455-6E12FFAD29E6}</Project>
-        <Name>Microsoft.ML.OnnxRuntime.Tests</Name>
+        <Name>Microsoft.ML.OnnxRuntime.Tests.Common</Name>
       </ProjectReference>
       <ProjectReference Include="..\Microsoft.ML.OnnxRuntime.Tests.Devices\Microsoft.ML.OnnxRuntime.Tests.Devices.csproj">
         <Project>{30431891-3929-4394-8049-75055B92315F}</Project>
