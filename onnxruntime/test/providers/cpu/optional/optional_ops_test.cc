@@ -89,7 +89,7 @@ TEST(OptionalOpTest, OptionalTensorHasElement_False) {
   OpTester test("OptionalHasElement", 15);
 
   // Input is an optional type and is None
-  test.AddOptionalTypeTensorInput<float>("A", {2}, nullptr);
+  test.AddOptionalTypeTensorInput<float>("A", {}, nullptr);
   test.AddOutput<bool>("Y", {}, {false});
 
   test.Run();

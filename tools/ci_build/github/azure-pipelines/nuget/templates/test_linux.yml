@@ -1,14 +1,16 @@
 parameters:
   AgentPool: 'Linux-CPU'
+  ArtifactSuffix: ''
+  NugetPackageName : ''
 
 jobs:
-- job: NuGet_Test_Linux
+- job: NuGet_Test_Linux_${{ parameters.ArtifactSuffix }}
   workspace:
     clean: all
   timeoutInMinutes:  120
   pool: ${{ parameters.AgentPool }}
   dependsOn:
-  - NuGet_Packaging
+  - NuGet_Packaging_${{ parameters.ArtifactSuffix }}
   condition: succeeded()
   variables:
   - name: OnnxRuntimeBuildDirectory
@@ -18,7 +20,7 @@ jobs:
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Signed NuGet'
     inputs:
-      artifactName: 'drop-signed-nuget'
+      artifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
   - task: DownloadPipelineArtifact@0
@@ -49,6 +51,7 @@ jobs:
       DisableContribOps: $(DisableContribOps)
       DisableMlOps: $(DisableMlOps)
       IsReleaseBuild: $(IsReleaseBuild)
+      PACKAGENAME: ${{ parameters.NugetPackageName }}
         
   - template: ../../templates/component-governance-component-detection-steps.yml
     parameters :

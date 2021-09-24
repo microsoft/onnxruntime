@@ -82,7 +82,7 @@ TEST(NnapiExecutionProviderTest, InternalUint8SupportTest) {
   const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/nnapi_internal_uint8_support.onnx");
 
 #if defined(__ANDROID__)
-  std::vector<int64_t> dims_x = {1, 3};
+  std::vector<int64_t> dims_x = {1, 1, 1, 3};
   std::vector<float> values_x = {0.0f, 256.0f, 512.0f};
   OrtValue ml_value_x;
   CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_x, values_x,

@@ -27,14 +27,14 @@ RUN apt-get update &&\
     apt-get install -y sudo git bash build-essential rocm-dev libpython3.6-dev python3-pip miopen-hip \
     rocblas half aria2
 
-RUN aria2c -q -d /tmp -o cmake-3.20.3-Linux-x86_64.tar.gz \
-https://github.com/Kitware/CMake/releases/download/v3.20.3/cmake-3.20.3-Linux-x86_64.tar.gz &&\ 
-tar -zxf /tmp/cmake-3.20.3-Linux-x86_64.tar.gz --strip=1 -C /usr
+RUN aria2c -q -d /tmp -o cmake-3.21.0-linux-x86_64.tar.gz \
+https://github.com/Kitware/CMake/releases/download/v3.21.0/cmake-3.21.0-linux-x86_64.tar.gz &&\ 
+tar -zxf /tmp/cmake-3.21.0-linux-x86_64.tar.gz --strip=1 -C /usr
 
 # Install rbuild
 RUN pip3 install https://github.com/RadeonOpenCompute/rbuild/archive/master.tar.gz
 
-ENV PATH /opt/miniconda/bin:/code/cmake-3.20.3-linux-x86_64/bin:${PATH}
+ENV PATH /opt/miniconda/bin:/code/cmake-3.21.0-linux-x86_64/bin:${PATH}
 
 # Install MIGraphX from source
 RUN mkdir -p /migraphx
@@ -52,4 +52,4 @@ RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXR
     /bin/sh ./build.sh --config Release --build_wheel --update --build --parallel --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER) --use_migraphx &&\
     pip install /code/onnxruntime/build/Linux/Release/dist/*.whl &&\
     cd .. &&\
-    rm -rf onnxruntime cmake-3.20.3-Linux-x86_64
+    rm -rf onnxruntime cmake-3.21.0-linux-x86_64

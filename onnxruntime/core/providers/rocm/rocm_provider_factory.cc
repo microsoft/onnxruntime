@@ -38,10 +38,11 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ROCM(c
 
 }  // namespace onnxruntime
 
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_ROCM, _In_ OrtSessionOptions* options, int device_id) {
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_ROCM, _In_ OrtSessionOptions* options,
+                    int device_id, size_t gpu_mem_limit) {
   ROCMExecutionProviderInfo info{};
   info.device_id = gsl::narrow<OrtDevice::DeviceId>(device_id);
-
+  info.gpu_mem_limit = gpu_mem_limit;
   options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_ROCM(info));
 
   return nullptr;
@@ -59,4 +60,3 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM,
 
   return nullptr;
 }
-

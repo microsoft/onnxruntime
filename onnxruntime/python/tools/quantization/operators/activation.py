@@ -40,11 +40,9 @@ class QLinearActivation(QuantOperatorBase):
         # only try to quantize when given quantization parameters for it
         data_found, output_scale_name, output_zp_name, _, _ = \
             self.quantizer._get_quantization_params(node.output[0], use_scale, use_zeropoint)
-        if not data_found:
-            super().quantize()
-            return
-
         quantized_input_names, zero_point_names, scale_names, nodes = self.quantizer.quantize_inputs(node, [0])
+        if not data_found or quantized_input_names is None:
+            return super().quantize()
 
         qlinear_activation_output = node.output[0] + "_quantized"
         qlinear_activation_name = ""

@@ -66,8 +66,6 @@
         "^test_mul_uint8_cpu",
         "^test_add_uint8_cpu",
         "^test_div_uint8_cpu",
-        // Following tests are for opset 15 ops and are not yet implemented in ORT
-        "^test_shape_*",
         // Optional operators are supported in ORT but the ONNX backend test runner
         // doesn't yet have capability to deal with optional type test data.
         // These tests have been validated using the in-house onnx_test_runner.

@@ -149,6 +149,7 @@ struct TTensorType {
 template <typename T>
 const TTypeProto<T> TTensorType<T>::s_type_proto;
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 struct TSparseTensorProto {
   explicit TSparseTensorProto(int32_t dtype, const std::vector<int64_t>* shape = nullptr) {
     proto.mutable_sparse_tensor_type()->set_elem_type(dtype);
@@ -165,6 +166,7 @@ struct TSparseTensorProto {
   }
   ONNX_NAMESPACE::TypeProto proto;
 };
+#endif
 
 // TypeProto for map<TKey, TVal>
 template <typename TKey, typename TVal>
@@ -303,6 +305,7 @@ class OpTester {
     AddData(input_data_, name, dims, p_values, size, is_initializer, false, dim_params);
   }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   // Useful to add boolean data
   template <typename T>
   void AddSparseCooInput(const char* name, const std::vector<int64_t>& dims,
@@ -402,6 +405,7 @@ class OpTester {
                               gsl::make_span(outer_indices),
                               dim_params);
   }
+#endif
 
   // Add other registered types, possibly experimental
   template <typename T>
@@ -513,6 +517,7 @@ class OpTester {
             sort_output, nullptr /* dim_params */, rel_error, abs_error);
   }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   template <typename T>
   void AddSparseCooOutput(const char* name, const std::vector<int64_t>& dims,
                           const std::initializer_list<T>& expected_values,
@@ -608,6 +613,7 @@ class OpTester {
                               gsl::make_span(expected_inner_indices),
                               gsl::make_span(expected_outer_indices));
   }
+#endif
 
   /*
   * Use this API to add an output *edge* to the node/op being tested that shouldn't have any 
@@ -821,8 +827,7 @@ class OpTester {
                     shape.Size());
       }
 
-      auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
-      std::unique_ptr<Tensor> p_tensor;
+      OrtValue value;
 
       // If it is an optional tensor type with no values (i.e.) None,
       // we won't even pass it in to Run() as part of the feeds,
@@ -830,27 +835,18 @@ class OpTester {
       // Conversely, if it is an optional tensor type with values,
       // we pass it in as a regular tensor.
       if (values || !is_optional_type_tensor) {
-        p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(), shape, allocator);
-      }
+        auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
+        Tensor::InitOrtValue(DataTypeImpl::GetType<T>(), shape, std::move(allocator), value);
 
-      if (p_tensor && values) {
-        auto* data_ptr = p_tensor->template MutableData<T>();
+        auto* data_ptr = value.GetMutable<Tensor>()->template MutableData<T>();
         for (int64_t i = 0; i < values_count; i++) {
           data_ptr[i] = values[i];
         }
       }
 
       std::vector<int64_t> dims_for_proto = GetDimsForProto(dims);
-
       TTypeProto<T> tensor_type_proto(add_shape_to_tensor_data_ ? &dims_for_proto : nullptr);
       OptionalTypeProto<T> optional_type_proto(tensor_type_proto.proto);
-
-      OrtValue value;
-
-      // If p_tensor is nullptr, it is a "None", we won't even include it as part of the feeds.
-      value.Init(p_tensor ? p_tensor.release() : nullptr, DataTypeImpl::GetType<Tensor>(),
-                 DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-
       auto node_arg = NodeArg(name, !is_optional_type_tensor ? &tensor_type_proto.proto : &optional_type_proto.proto);
 
       AddShapeToTensorData(node_arg, dims, dim_params);
@@ -939,6 +935,7 @@ class OpTester {
 
   void CopyDataToTensor(gsl::span<const gsl::byte> data, Tensor& dst);
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   NodeArg MakeSparseNodeArg(int32_t dtype, const char* name,
                             const std::vector<int64_t>& dims,
                             const std::vector<std::string>* dim_params);
@@ -980,6 +977,7 @@ class OpTester {
   void AddSparseTensorData(std::vector<Data>& data, NodeArg node_arg,
                            std::unique_ptr<SparseTensor> p_tensor,
                            const CheckParams& check_params);
+#endif
 
   const char* domain_;
   int opset_version_;

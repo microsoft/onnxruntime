@@ -41,8 +41,8 @@ steps:
 
   - powershell: |
      Write-Host "##vso[task.setvariable variable=BuildFlags]$(BuildFlags) --${{ parameters.BuildArch }}"
-    displayName: Add cross compilation flags
-    condition: ne('${{ parameters.BuildArch }}', 'x64')
+    displayName: Add cross compilation flags for ARM
+    condition: and(ne('${{ parameters.BuildArch }}', 'x64'), ne('${{ parameters.BuildArch }}', 'x86'))
 
   - powershell: |
      Write-Host "##vso[task.setvariable variable=BuildFlags]$(BuildFlags) --enable_wcos"

@@ -536,8 +536,10 @@ void UniDirectionalLstm<T>::GateComputations(
     // DumpMatrix("H" + row_str, pH, 1, hidden_size_);
   }
 
+#if defined(DUMP_MATRIXES)
   auto num_rows = local_fused_hidden_rows - row;
   std::string rows_str = " rows[" + std::to_string(row) + ".." + std::to_string(num_rows) + "]";
+#endif
 
   DumpMatrix("i" + rows_str, &*out, num_rows, hidden_size_, 0, hidden_size_x4);
   DumpMatrix("o" + rows_str, &*out, num_rows, hidden_size_, 1 * hidden_size_, hidden_size_x4);

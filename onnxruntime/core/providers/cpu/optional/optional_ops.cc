@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "optional_ops.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {

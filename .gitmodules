@@ -68,17 +68,13 @@
 [submodule "cmake/external/coremltools"]
 	path = cmake/external/coremltools
 	url = https://github.com/apple/coremltools.git
-[submodule "cmake/external/onnx-tensorrt"]
-	path = cmake/external/onnx-tensorrt
-	url = https://github.com/onnx/onnx-tensorrt.git
 [submodule "cmake/external/dlpack"]
 	path = cmake/external/dlpack
 	url = https://github.com/dmlc/dlpack.git
 [submodule "cmake/external/emsdk"]
 	path = cmake/external/emsdk
 	url = https://github.com/emscripten-core/emsdk.git
-	branch = 2.0.23
-	ignore = dirty
+	branch = 2.0.26
 [submodule "cmake/external/onnxruntime-extensions"]
 	path = cmake/external/onnxruntime-extensions
 	url = https://github.com/microsoft/onnxruntime-extensions.git
@@ -86,3 +82,6 @@
 	path = cmake/external/pytorch_cpuinfo
 	url = https://github.com/pytorch/cpuinfo.git
 
+[submodule "cmake/external/onnx-tensorrt"]
+	path = cmake/external/onnx-tensorrt
+	url = https://github.com/onnx/onnx-tensorrt.git

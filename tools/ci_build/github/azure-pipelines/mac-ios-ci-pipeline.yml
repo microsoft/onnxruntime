@@ -3,31 +3,43 @@ jobs:
   pool:
     vmImage: 'macOS-10.15'
   variables:
-    MACOSX_DEPLOYMENT_TARGET: '10.13'
-  timeoutInMinutes: 120
+    MACOSX_DEPLOYMENT_TARGET: '10.14'
+  timeoutInMinutes: 150
   steps:
     - script: |
+        /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
+          $(Build.SourcesDirectory) \
+          $(Build.BinariesDirectory)/protobuf \
+          $(Build.BinariesDirectory)/protobuf_install
+      displayName: Build Host Protoc
+
+    - script: |
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
-          --skip_submodule_sync --build_dir build/iOS_cpu \
+          --skip_submodule_sync \
+          --build_dir $(Build.BinariesDirectory)/iOS_cpu \
           --ios \
           --ios_sysroot iphonesimulator  \
           --osx_arch x86_64 \
-          --apple_deploy_target 12.1 \
+          --apple_deploy_target 11.0 \
           --use_xcode \
           --config RelWithDebInfo \
           --build_apple_framework \
+          --path_to_protoc_exe $(Build.BinariesDirectory)/protobuf_install/bin/protoc \
           --parallel
       displayName: (CPU EP) Build onnxruntime for iOS x86_64 and run tests using simulator
+
     - script: |
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
-          --skip_submodule_sync --build_dir build/iOS_coreml \
+          --skip_submodule_sync \
+          --build_dir $(Build.BinariesDirectory)/iOS_coreml \
           --use_coreml \
           --ios \
           --ios_sysroot iphonesimulator  \
           --osx_arch x86_64 \
-          --apple_deploy_target 12.1 \
+          --apple_deploy_target 11.0 \
           --use_xcode \
           --config RelWithDebInfo \
           --build_apple_framework \
+          --path_to_protoc_exe $(Build.BinariesDirectory)/protobuf_install/bin/protoc \
           --parallel
       displayName: (CoreML EP) Build onnxruntime for iOS x86_64 and run tests using simulator

@@ -30,8 +30,12 @@ def register_symbolic(name, domain=''):
 
 
 @register_symbolic('cross_entropy_loss')
-@parse_args('v', 'v', 'v', 'i', 'v')
-def cross_entropy_loss(g, self, target, weight, reduction, ignore_index):
+@parse_args('v', 'v', 'v', 'i', 'v', 'v')
+def cross_entropy_loss(g, self, target, weight, reduction, ignore_index, label_smoothing=0.0):
+    label_smoothing = sym_help._maybe_get_const(label_smoothing, "f")
+    if label_smoothing > 0.0:
+        raise RuntimeError("Unsupported: ONNX does not support label_smoothing")
+
     # reduction: 0->none, 1->mean, 2->sum
     reduction = sym_help._maybe_get_const(reduction, 'i')
     reduction_vals = ['none', 'mean', 'sum']
@@ -69,6 +73,12 @@ def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
     return output
 
 
+@register_symbolic('diagonal')
+def diagonal(g, self, offset, dim1, dim2):
+    return g.op("com.microsoft::ATenOp", self, offset, dim1, dim2,
+                name_s='aten::diagonal')
+
+
 @register_symbolic('max_pool2d')
 def max_pool2d(g, self, kernel_size, stride, padding, dilation, ceil_mode):
     return g.op("com.microsoft::ATenOp", self, kernel_size, stride, padding, dilation, ceil_mode,
@@ -83,3 +93,14 @@ def unfold(g, input, dimension, size, step):
 @register_symbolic('argmax')
 def argmax(g, input, dim, keepdim):
     return g.op("com.microsoft::ATenOp", input, dim, keepdim, name_s='aten::argmax')
+
+
+@register_symbolic('avg_pool2d')
+def avg_pool2d(g, self, kernel_size, stride, padding, ceil_mode, count_include_pad, divisor_override):
+    return g.op("com.microsoft::ATenOp", self, kernel_size, stride, padding, ceil_mode,
+                count_include_pad, divisor_override, name_s='aten::avg_pool2d')
+
+
+@register_symbolic('adaptive_avg_pool2d')
+def adaptive_avg_pool2d(g, self, output_size):
+    return g.op("com.microsoft::ATenOp", self, output_size, name_s='aten::_adaptive_avg_pool2d')

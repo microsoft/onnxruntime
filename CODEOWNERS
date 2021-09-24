@@ -1,5 +1,3 @@
-* @Microsoft/onnxruntime
-
 # Python frontend owners
 orttraining/*.py @thiagocrepaldi @tlh20 @BowenBao @liqunfu @baijumeswani @SherlockNoMad
 orttraining/orttraining/python/** @thiagocrepaldi @tlh20 @BowenBao @liqunfu @baijumeswani @SherlockNoMad

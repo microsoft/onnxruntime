@@ -226,6 +226,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
 SPECIALIZED_COMPUTE(float)
 SPECIALIZED_COMPUTE(double)
 SPECIALIZED_COMPUTE(MLFloat16)
+SPECIALIZED_COMPUTE(bool)
 
 }  // namespace cuda
 };  // namespace onnxruntime

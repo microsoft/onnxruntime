@@ -215,8 +215,8 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(allocator));
 
   auto Q = reinterpret_cast<T*>(gemm_data);
-  auto K = Q + batch_size * sequence_length * hidden_size;
-  auto V = K + batch_size * sequence_length * hidden_size;
+  auto K = Q + static_cast<int64_t>(batch_size) * sequence_length * hidden_size;
+  auto V = K + static_cast<int64_t>(batch_size) * sequence_length * hidden_size;
   T* QKV[3] = {Q, K, V};
 
   {
@@ -272,7 +272,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
         gemm_params.BIsPacked = true;
       } else {
         gemm_params.B = weights_data + weights_offset;
-        gemm_params.ldb = 3 * hidden_size;
+        gemm_params.ldb = static_cast<int64_t>(3) * hidden_size;
       }
       gemm_params.ZeroPointB = nullptr != weight_zp_data ? weight_zp_data + weights_zp_offset : &weight_zp_default;
       gemm_params.PerColumnZeroPoints = is_weight_zp_per_column;

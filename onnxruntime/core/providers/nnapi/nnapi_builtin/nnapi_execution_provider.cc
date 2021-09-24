@@ -30,23 +30,29 @@ constexpr std::array kDefaultPartitioningStopOps{
     "NonMaxSuppression",
 };
 
-std::unordered_set<std::string> GetPartitioningStopOps(const optional<std::unordered_set<std::string>>& partitioning_stop_ops) {
-  if (!partitioning_stop_ops.has_value()) {
+std::unordered_set<std::string> GetPartitioningStopOps(const optional<std::string>& partitioning_stop_ops_list) {
+  if (!partitioning_stop_ops_list.has_value()) {
     LOGS_DEFAULT(VERBOSE) << "Using default partitioning stop ops list.";
     return std::unordered_set<std::string>(kDefaultPartitioningStopOps.begin(), kDefaultPartitioningStopOps.end());
   }
 
-  LOGS_DEFAULT(INFO) << "Using partitioning stop ops list from configuration.";
-  return partitioning_stop_ops.value();
+  LOGS_DEFAULT(INFO) << "Using partitioning stop ops list from configuration: \""
+                     << partitioning_stop_ops_list.value() << "\".";
+  const auto stop_ops = utils::SplitString(partitioning_stop_ops_list.value(), ",");
+  std::unordered_set<std::string> stop_ops_set;
+  stop_ops_set.reserve(stop_ops.size());
+  std::transform(stop_ops.cbegin(), stop_ops.cend(), std::inserter(stop_ops_set, stop_ops_set.begin()),
+                 [](const std::string_view& sv) -> std::string { return std::string(sv); });
+  return stop_ops_set;
 }
 
 }  // namespace
 
 NnapiExecutionProvider::NnapiExecutionProvider(uint32_t nnapi_flags,
-                                               const optional<std::unordered_set<std::string>>& partitioning_stop_ops)
+                                               const optional<std::string>& partitioning_stop_ops_list)
     : IExecutionProvider{onnxruntime::kNnapiExecutionProvider, true},
       nnapi_flags_(nnapi_flags),
-      partitioning_stop_ops_(GetPartitioningStopOps(partitioning_stop_ops)) {
+      partitioning_stop_ops_(GetPartitioningStopOps(partitioning_stop_ops_list)) {
   AllocatorCreationInfo device_info(
       [](int) {
         return std::make_unique<CPUAllocator>(OrtMemoryInfo(NNAPI, OrtAllocatorType::OrtDeviceAllocator));
@@ -229,8 +235,15 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     nnapi::ModelBuilder builder(graph_viewer);
     builder.SetUseNCHW(nnapi_flags_ & NNAPI_FLAG_USE_NCHW);
     builder.SetUseFp16(nnapi_flags_ & NNAPI_FLAG_USE_FP16);
-    if (nnapi_flags_ & NNAPI_FLAG_CPU_DISABLED) {
+
+    bool cpu_disabled = nnapi_flags_ & NNAPI_FLAG_CPU_DISABLED;
+    bool cpu_only = nnapi_flags_ & NNAPI_FLAG_CPU_ONLY;
+    if (cpu_disabled && cpu_only) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Both NNAPI_FLAG_CPU_DISABLED and NNAPI_FLAG_CPU_ONLY are set");
+    } else if (cpu_disabled) {
       builder.SetTargetDeviceOption(nnapi::ModelBuilder::TargetDeviceOption::CPU_DISABLED);
+    } else if (cpu_only) {
+      builder.SetTargetDeviceOption(nnapi::ModelBuilder::TargetDeviceOption::CPU_ONLY);
     }
 
     std::unique_ptr<nnapi::Model> nnapi_model;

@@ -55,7 +55,9 @@ using VectorInt64 = std::vector<int64_t>;
 // Forward declarations
 class DataTypeImpl;
 class TensorTypeBase;
+#if !defined(DISABLE_SPARSE_TENSORS)
 class SparseTensorTypeBase;
+#endif
 class SequenceTensorTypeBase;
 class NonTensorTypeBase;
 class OptionalTypeBase;
@@ -123,10 +125,12 @@ class DataTypeImpl {
     return nullptr;
   }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   // Returns this if this is of sparse-tensor-type and null otherwise
   virtual const SparseTensorTypeBase* AsSparseTensorType() const {
     return nullptr;
   }
+#endif
 
   virtual const OptionalTypeBase* AsOptionalType() const {
     return nullptr;
@@ -153,9 +157,11 @@ class DataTypeImpl {
   template <typename elemT>
   static MLDataType GetSequenceTensorType();
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   // Return the MLDataType for a concrete sparse tensor type.
   template <typename elemT>
   static MLDataType GetSparseTensorType();
+#endif
 
   template <typename T, typename elemT>
   static MLDataType GetOptionalType();
@@ -170,8 +176,10 @@ class DataTypeImpl {
   static MLDataType TypeFromProto(const ONNX_NAMESPACE::TypeProto& proto);
 
   static const TensorTypeBase* TensorTypeFromONNXEnum(int type);
-  static const SparseTensorTypeBase* SparseTensorTypeFromONNXEnum(int type);
   static const SequenceTensorTypeBase* SequenceTensorTypeFromONNXEnum(int type);
+#if !defined(DISABLE_SPARSE_TENSORS)
+  static const SparseTensorTypeBase* SparseTensorTypeFromONNXEnum(int type);
+#endif
 
   static const char* ToString(MLDataType type);
   static std::vector<std::string> ToString(const std::vector<MLDataType>& types);
@@ -299,6 +307,7 @@ struct IsTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_
                                               double, uint32_t, uint64_t, BFloat16> {
 };
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 /// Use "IsSparseTensorContainedType<T>::value" to test if a type T
 /// is permitted as the element-type of a sparse-tensor.
 
@@ -307,6 +316,7 @@ struct IsSparseTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, u
                                                     int32_t, int64_t, std::string, bool, MLFloat16,
                                                     double, uint32_t, uint64_t, BFloat16> {
 };
+#endif
 
 /// Tells if the specified type is one of ORT types
 /// that can be contained within an optional struct.
@@ -494,6 +504,7 @@ class TensorType : public TensorTypeBase {
   }
 };
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 /// Common base-class for all sparse-tensors (with different element types).
 class SparseTensorTypeBase : public DataTypeImpl {
  public:
@@ -627,6 +638,7 @@ class OptionalType : public OptionalTypeBase {
     data_types_internal::SetOptionalType<T, elemT>::Set(MutableTypeProto());
   }
 };
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 /**
   * \brief Provide a specialization for your C++ Non-tensor type
@@ -980,6 +992,7 @@ class PrimitiveDataType : public PrimitiveDataTypeBase {
     return TensorType<ELEM_TYPE>::Type();               \
   }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 #define ORT_REGISTER_SPARSE_TENSOR_TYPE(ELEM_TYPE)            \
   template <>                                                 \
   MLDataType SparseTensorType<ELEM_TYPE>::Type() {            \
@@ -990,6 +1003,7 @@ class PrimitiveDataType : public PrimitiveDataTypeBase {
   MLDataType DataTypeImpl::GetSparseTensorType<ELEM_TYPE>() { \
     return SparseTensorType<ELEM_TYPE>::Type();               \
   }
+#endif
 
 #define ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, TYPE)             \
   template <>                                                  \

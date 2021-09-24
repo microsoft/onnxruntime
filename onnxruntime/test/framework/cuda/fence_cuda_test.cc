@@ -77,8 +77,8 @@ CREATE_INITIALIZER_FUNC(int64_t, TensorProto_DataType_INT64, add_int64_data)
 // TO DO: Figure out a way to enable it again
 TEST(CUDAFenceTests, DISABLED_PartOnCPU) {
   std::unique_ptr<onnxruntime::Model> model = std::make_unique<onnxruntime::Model>("test",
-                                                                                           false,
-                                                                                           DefaultLoggingManager().DefaultLogger());
+                                                                                   false,
+                                                                                   DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -108,15 +108,9 @@ TEST(CUDAFenceTests, DISABLED_PartOnCPU) {
   float data[4] = {-1, 2, 3, -4};
 
   //create fake ml value with owned buffer.
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(
-      element_type,
-      shape,
-      cpu_allocator);
-  memcpy(p_tensor->MutableData<float>(), data, sizeof(data));
   OrtValue value;
-  value.Init(p_tensor.release(),
-             DataTypeImpl::GetType<Tensor>(),
-             DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  Tensor::InitOrtValue(element_type, shape, cpu_allocator, value);
+  memcpy(value.GetMutable<Tensor>()->MutableData<float>(), data, sizeof(data));
 
   SessionOptions so;
   FenceCudaTestInferenceSession session(so, GetEnvironment());
@@ -161,16 +155,13 @@ TEST(CUDAFenceTests, TileWithInitializer) {
   float data[4] = {-1, 2, 3, -4};
 
   //create fake ml value with owned buffer.
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(
-      element_type,
-      shape,
-      cpu_allocator);
-  memcpy(p_tensor->MutableData<float>(), data, sizeof(data));
-
   OrtValue value;
-  value.Init(p_tensor.release(),
-             DataTypeImpl::GetType<Tensor>(),
-             DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  Tensor::InitOrtValue(element_type,
+                       shape,
+                       cpu_allocator,
+                       value);
+  memcpy(value.GetMutable<Tensor>()->MutableData<float>(), data, sizeof(data));
+
 
   SessionOptions so;
   FenceCudaTestInferenceSession session(so, GetEnvironment());
@@ -226,16 +217,12 @@ TEST(CUDAFenceTests, TileWithComputedInput) {
   float data[4] = {-1, 2, 3, -4};
 
   //create fake ml value with owned buffer.
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(
-      element_type,
-      shape,
-      cpu_allocator);
-  memcpy(p_tensor->MutableData<float>(), data, sizeof(data));
-
   OrtValue value;
-  value.Init(p_tensor.release(),
-             DataTypeImpl::GetType<Tensor>(),
-             DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  Tensor::InitOrtValue(element_type,
+                       shape,
+                       cpu_allocator,
+                       value);
+  memcpy(value.GetMutable<Tensor>()->MutableData<float>(), data, sizeof(data));
 
   SessionOptions so;
   FenceCudaTestInferenceSession session(so, GetEnvironment());
