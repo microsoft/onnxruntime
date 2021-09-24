@@ -142,6 +142,54 @@ bool FindCycleHelper(int i, const std::list<int>* adjacency_map, bool visited[],
   return false;
 }
 
+// Remove nodes with empty shape (for example [1, 0])
+SubGraphCollection_t RemoveEmptyShapeNodes(const onnxruntime::Provider_GraphViewer& graph) {
+  // Here only NonZero, NonMaxSuppression and TopK related empty shape nodes are removed, particularly for RCNN models.
+  // TODO: Remove the code if TensorRT fixed the issue in the future release, or find a better generic way here to work around
+  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
+  const std::vector<std::string> exclude_dim_names{"NonZero", "NonMaxSuppression", "TopK"};
+  SubGraphCollection_t parser_nodes_vector = {{{}, false}};
+  std::vector<size_t> nodes_vector(node_index.size());
+  std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
+  for (const auto& index : nodes_vector) {
+    // Check if node has empty input shape
+    const auto& node = graph.GetNode(node_index[index]);
+    bool exclude_node = false;
+    for (const auto& input : node->InputDefs()) {
+      const auto& input_shape = input->Shape();
+      if (input_shape) {
+        for (const auto& dim : input_shape->dim()) {
+          std::string dim_name = dim.dim_param();
+          if (!dim_name.empty()) {
+            for (const auto& exclude : exclude_dim_names) {
+              if (dim_name.find(exclude) != std::string::npos) {
+                exclude_node = true;
+                break;
+              }
+            }
+            if (exclude_node) {
+              break;
+            }
+          }
+        }
+      }
+
+      if (exclude_node) {
+        break;
+      }
+    }
+
+    // Remove the node with empty input shape
+    if (!exclude_node) {
+      parser_nodes_vector.back().first.push_back(index);
+    } else if (!parser_nodes_vector.back().first.empty()) {
+      parser_nodes_vector.push_back({{}, false});
+    }
+  }
+
+  return parser_nodes_vector;
+}
+
 /*
 * Read calibration table for INT8 quantization
 * Two kind of calibration tables are supported,
@@ -1089,11 +1137,12 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   strcpy(model_path_, path_string.c_str());
 #endif
 
+
+  // Remove nodes with empty shape
+  SubGraphCollection_t parser_nodes_vector = RemoveEmptyShapeNodes(graph);
   // Get supported node list from TensorRT parser
   const int number_of_ort_nodes = graph.NumberOfNodes();
-  std::vector<size_t> nodes_vector(number_of_ort_nodes);
-  std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
-  SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{nodes_vector, false}};
+  SubGraphCollection_t supported_nodes_vector;
   bool early_termination = false;
   supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
   if (early_termination) {
