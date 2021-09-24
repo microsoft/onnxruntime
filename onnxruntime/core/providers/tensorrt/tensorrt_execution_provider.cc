@@ -143,7 +143,7 @@ bool FindCycleHelper(int i, const std::list<int>* adjacency_map, bool visited[],
 }
 
 // Remove nodes with empty shape (for example [1, 0])
-SubGraphCollection_t RemoveEmptyShapeNodes(const onnxruntime::Provider_GraphViewer& graph) {
+SubGraphCollection_t RemoveEmptyShapeNodes(const GraphViewer& graph) {
   // Here only NonZero, NonMaxSuppression and TopK related empty shape nodes are removed, particularly for RCNN models.
   // TODO: Remove the code if TensorRT fixed the issue in the future release, or find a better generic way here to work around
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
