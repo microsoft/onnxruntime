@@ -162,6 +162,7 @@ def test_hierarchical_ortmodule():
             torch.allclose(y, y_ref)
 
     def trial(module_to_wrap, args, expected_num_ortmodule):
+        # Run baseline model.
         m = module_to_wrap
 
         y_ref = m(*args)
@@ -170,6 +171,9 @@ def test_hierarchical_ortmodule():
         for param in m.parameters():
             g_ref.append(param.grad.detach())
 
+        m.zero_grad()
+
+        # Run hierarchical ORTModule model.
         m = HierarchicalORTModule(m)
 
         y = m(*args)
