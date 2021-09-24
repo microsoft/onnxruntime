@@ -652,7 +652,8 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
                                                lines[i].find("block_x") != string::npos;
     }
   }
-#ifdef USE_CUDA
+
+#if defined(USE_CUDA) && !defined(ENABLE_TRAINING)
   ASSERT_TRUE(has_kernel_info);
 #endif
 }
