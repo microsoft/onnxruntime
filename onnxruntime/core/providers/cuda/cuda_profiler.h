@@ -8,7 +8,7 @@ namespace onnxruntime {
 namespace profiling {
 
 class CudaProfiler final : public EpProfiler {
- public
+ public:
   bool StartProfiling() override { return true; }
   void EndProfiling(TimePoint, Events&) override{};
   void Start(uint64_t) override{};
