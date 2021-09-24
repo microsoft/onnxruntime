@@ -399,6 +399,92 @@ ENDIF
 
         ENDM
 
+_text SEGMENT
+
+; ComputeBlockFma3By2 MACRO RowCount, VectorOffset, BroadcastOffset, PrefetchOffset
+ComputeBlockFma3By2_6_0_0_256 PROC
+
+        prefetcht0 [rdx+0+256]
+
+        vmovapf ymm0,YMMWORD PTR [rdx+0]
+        vmovapf ymm1,YMMWORD PTR [rdx+0+32]
+        vbroadcastsf ymm3,FgemmElementPtr [rcx+0]
+        vfmadd231pf ymm4,ymm3,ymm0
+        vfmadd231pf ymm5,ymm3,ymm1
+        vbroadcastsf ymm3,FgemmElementPtr [rcx+r10+0]
+        vfmadd231pf ymm6,ymm3,ymm0
+        vfmadd231pf ymm7,ymm3,ymm1
+        vbroadcastsf ymm3,FgemmElementPtr [rcx+r10*2+0]
+        vfmadd231pf ymm8,ymm3,ymm0
+        vfmadd231pf ymm9,ymm3,ymm1
+        vbroadcastsf ymm3,FgemmElementPtr [rbx+0]
+        vfmadd231pf ymm10,ymm3,ymm0
+        vfmadd231pf ymm11,ymm3,ymm1
+        vbroadcastsf ymm3,FgemmElementPtr [rbx+r10+0]
+        vfmadd231pf ymm12,ymm3,ymm0
+        vfmadd231pf ymm13,ymm3,ymm1
+        vbroadcastsf ymm3,FgemmElementPtr [rbx+r10*2+0]
+        vfmadd231pf ymm14,ymm3,ymm0
+        vfmadd231pf ymm15,ymm3,ymm1
+
+        ret
+ComputeBlockFma3By2_6_0_0_256 ENDP
+
+ComputeBlockLoopComputeBlockFma3By2RowCount6AdvanceMatrixAPlusRows PROC
+
+        ; LOCAL   ComputeBlockBy4Loop0
+        ; LOCAL   ProcessRemainingBlocks0
+        ; LOCAL   ComputeBlockBy1Loop0
+        ; LOCAL   OutputBlock0
+
+        mov     rdi,r9                      ; reload CountK
+        sub     rdi,4
+        jb      ProcessRemainingBlocks0
+
+ComputeBlockBy4Loop0:
+        ; ComputeBlockFma3By2 6, 0, FgemmElementSize*0, 64*4
+        call ComputeBlockFma3By2_6_0_0_256
+
+        ComputeBlockFma3By2 6, 2*32, FgemmElementSize*1, 64*4
+        add_immed rdx,2*2*32                ; advance matrix B by 128 bytes
+        ComputeBlockFma3By2 6, 0, FgemmElementSize*2, 64*4
+        ComputeBlockFma3By2 6, 2*32, FgemmElementSize*3, 64*4
+        add_immed rdx,2*2*32                ; advance matrix B by 128 bytes
+        add     rcx,4*FgemmElementSize      ; advance matrix A by 4 elements
+; IF AdvanceMatrixAPlusRows
+        add     rbx,4*FgemmElementSize      ; advance matrix A plus rows by 4 elements
+IF 6 GE 12
+        add     r13,4*FgemmElementSize
+        add     r14,4*FgemmElementSize
+ENDIF
+; ENDIF
+        sub     rdi,4
+        jae     ComputeBlockBy4Loop0
+
+ProcessRemainingBlocks0:
+        add     rdi,4                       ; correct for over-subtract above
+        jz      OutputBlock0
+
+ComputeBlockBy1Loop0:
+        ComputeBlockFma3By2 6, 0, 0
+        add     rdx,2*32                    ; advance matrix B by 64 bytes
+        add     rcx,FgemmElementSize        ; advance matrix A by 1 element
+; IF AdvanceMatrixAPlusRows
+        add     rbx,FgemmElementSize        ; advance matrix A plus rows by 1 element
+IF 6 GE 12
+        add     r13,FgemmElementSize
+        add     r14,FgemmElementSize
+ENDIF
+; ENDIF
+        dec     rdi
+        jne     ComputeBlockBy1Loop0
+
+OutputBlock0:
+        ret
+
+ComputeBlockLoopComputeBlockFma3By2RowCount6AdvanceMatrixAPlusRows ENDP
+_text ENDS
+
 ;
 ; Macro Description:
 ;
@@ -409,7 +495,7 @@ ENDIF
 ;   Type - Supplies the element type string for function tags.
 ;
 
-FgemmKernelFma3Function MACRO Type
+; FgemmKernelFma3Function MACRO Type
 
 ;++
 ;
@@ -452,7 +538,258 @@ FgemmKernelFma3Function MACRO Type
 ;
 ;--
 
-        NESTED_ENTRY MlasGemm&Type&KernelFma3, _TEXT
+        NESTED_ENTRY MlasGemmFloatKernelFma3, _TEXT
+
+        FgemmKernelEntry Fma3
+
+;
+; Process CountM rows of the matrices.
+;
+
+        cmp     r11,5
+        ja      ProcessCountM6
+        je      ProcessCountM5
+        cmp     r11,3
+        ja      ProcessCountM4
+        je      ProcessCountM3
+        cmp     r11,1
+        je      ProcessCountM1
+
+ProcessCountM2:
+        ProcessCountM 2
+
+ProcessCountM4:
+        ProcessCountM 4
+
+ProcessCountM6:
+        mov     r11d,6                      ; return 6 rows handled
+        ; ProcessCountM 6, Fallthrough
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; ProcessCountMRowCount6Fallthrough:
+
+        cmp     rbp,FgemmYmmElementCount
+        jbe     ProcessRemainingCountN
+
+ProcessNextColumnLoop2xN:
+        ; ComputeBlockFma3Loop ComputeBlockFma3By2, 6
+
+;;;;;;;;;;;;;;;;;;;;;;ComputeBlockFma3LoopComputeBlockFma3By2RowCount6
+
+; IF RowCount GT 3
+        lea     rbx,[r10*2+r10]
+        add     rbx,rcx                     ; compute matrix A plus 3 rows
+; ENDIF
+        ; ComputeBlockLoop ComputeBlockFma3By2, 6, <6 GT 3>
+        call ComputeBlockLoopComputeBlockFma3By2RowCount6AdvanceMatrixAPlusRows
+
+        vbroadcastsf ymm2,FgemmElementPtr FgemmKernelFrame.Alpha[rsp]
+; IF RowCount GT 3
+        lea     rbx,[rax*2+rax]
+        add     rbx,r8                      ; compute matrix C plus 3 rows
+; ENDIF
+;;;;;;;;;;;;;;;;;;;;;;ComputeBlockFma3LoopComputeBlockFma3By1RowCount6
+
+        prefetcht0 [r8+64]
+        prefetcht0 [r8+rax+64]
+        prefetcht0 [r8+rax*2+64]
+        prefetcht0 [rbx+64]
+        prefetcht0 [rbx+rax+64]
+        prefetcht0 [rbx+rax*2+64]
+        sub     rbp,2*FgemmYmmElementCount
+        jb      OutputMasked2xNBlock
+        test    r15b,r15b                   ; ZeroMode?
+        jnz     MultiplyAlpha2xNBlock
+        vfmadd213pf ymm4,ymm2,YMMWORD PTR [r8]
+        vfmadd213pf ymm5,ymm2,YMMWORD PTR [r8+32]
+        vfmadd213pf ymm6,ymm2,YMMWORD PTR [r8+rax]
+        vfmadd213pf ymm7,ymm2,YMMWORD PTR [r8+rax+32]
+        vfmadd213pf ymm8,ymm2,YMMWORD PTR [r8+rax*2]
+        vfmadd213pf ymm9,ymm2,YMMWORD PTR [r8+rax*2+32]
+        vfmadd213pf ymm10,ymm2,YMMWORD PTR [rbx]
+        vfmadd213pf ymm11,ymm2,YMMWORD PTR [rbx+32]
+        vfmadd213pf ymm12,ymm2,YMMWORD PTR [rbx+rax]
+        vfmadd213pf ymm13,ymm2,YMMWORD PTR [rbx+rax+32]
+        vfmadd213pf ymm14,ymm2,YMMWORD PTR [rbx+rax*2]
+        vfmadd213pf ymm15,ymm2,YMMWORD PTR [rbx+rax*2+32]
+        jmp     Store2xNBlock
+
+MultiplyAlpha2xNBlock:
+        vmulpf ymm4,ymm4,ymm2
+        vmulpf ymm5,ymm5,ymm2
+        vmulpf ymm6,ymm6,ymm2
+        vmulpf ymm7,ymm7,ymm2
+        vmulpf ymm8,ymm8,ymm2
+        vmulpf ymm9,ymm9,ymm2
+        vmulpf ymm10,ymm10,ymm2
+        vmulpf ymm11,ymm11,ymm2
+        vmulpf ymm12,ymm12,ymm2
+        vmulpf ymm13,ymm13,ymm2
+        vmulpf ymm14,ymm14,ymm2
+        vmulpf ymm15,ymm15,ymm2
+
+Store2xNBlock:
+        vmovupf YMMWORD PTR [r8],ymm4
+        vmovupf YMMWORD PTR [r8+32],ymm5
+        vmovupf YMMWORD PTR [r8+rax],ymm6
+        vmovupf YMMWORD PTR [r8+rax+32],ymm7
+        vmovupf YMMWORD PTR [r8+rax*2],ymm8
+        vmovupf YMMWORD PTR [r8+rax*2+32],ymm9
+        vmovupf YMMWORD PTR [rbx],ymm10
+        vmovupf YMMWORD PTR [rbx+32],ymm11
+        vmovupf YMMWORD PTR [rbx+rax],ymm12
+        vmovupf YMMWORD PTR [rbx+rax+32],ymm13
+        vmovupf YMMWORD PTR [rbx+rax*2],ymm14
+        vmovupf YMMWORD PTR [rbx+rax*2+32],ymm15
+        add     r8,2*32                     ; advance matrix C by 2 YMMWORDs
+        mov     rcx,rsi                     ; reload matrix A
+        vzeroall
+        cmp     rbp,FgemmYmmElementCount
+        ja      ProcessNextColumnLoop2xN
+        test    rbp,rbp
+        jz      ExitKernel
+
+ProcessRemainingCountN:
+        ; ComputeBlockFma3Loop ComputeBlockFma3By1, 6
+
+;;;;;;;;;;;;;;;;;;;;;;ComputeBlockFma3LoopComputeBlockFma3By1RowCount6
+
+; IF RowCount GT 3
+        lea     rbx,[r10*2+r10]
+        add     rbx,rcx                     ; compute matrix A plus 3 rows
+; ENDIF
+        ComputeBlockLoop ComputeBlockFma3By1, 6, <6 GT 3>
+
+        vbroadcastsf ymm2,FgemmElementPtr FgemmKernelFrame.Alpha[rsp]
+; IF RowCount GT 3
+        lea     rbx,[rax*2+rax]
+        add     rbx,r8                      ; compute matrix C plus 3 rows
+; ENDIF
+;;;;;;;;;;;;;;;;;;;;;;ComputeBlockFma3LoopComputeBlockFma3By1RowCount6
+
+        cmp     rbp,FgemmYmmElementCount
+        jb      OutputMasked1xNBlock
+        test    r15b,r15b                   ; ZeroMode?
+        jnz     MultiplyAlpha1xNBlock
+        vfmadd213pf ymm5,ymm2,YMMWORD PTR [r8]
+        vfmadd213pf ymm7,ymm2,YMMWORD PTR [r8+rax]
+        vfmadd213pf ymm9,ymm2,YMMWORD PTR [r8+rax*2]
+        vfmadd213pf ymm11,ymm2,YMMWORD PTR [rbx]
+        vfmadd213pf ymm13,ymm2,YMMWORD PTR [rbx+rax]
+        vfmadd213pf ymm15,ymm2,YMMWORD PTR [rbx+rax*2]
+        jmp     Store1xNBlock
+
+MultiplyAlpha1xNBlock:
+        vmulpf ymm5,ymm5,ymm2
+        vmulpf ymm7,ymm7,ymm2
+        vmulpf ymm9,ymm9,ymm2
+        vmulpf ymm11,ymm11,ymm2
+        vmulpf ymm13,ymm13,ymm2
+        vmulpf ymm15,ymm15,ymm2
+
+Store1xNBlock:
+        vmovupf YMMWORD PTR [r8],ymm5
+        vmovupf YMMWORD PTR [r8+rax],ymm7
+        vmovupf YMMWORD PTR [r8+rax*2],ymm9
+        vmovupf YMMWORD PTR [rbx],ymm11
+        vmovupf YMMWORD PTR [rbx+rax],ymm13
+        vmovupf YMMWORD PTR [rbx+rax*2],ymm15
+        jmp     ExitKernelAndZeroUpper
+
+OutputMasked2xNBlock:
+        test    r15b,r15b                   ; ZeroMode?
+        jnz     MultiplyAlphaMasked2xNBlock
+        vfmadd213pf ymm4,ymm2,YMMWORD PTR [r8]
+        vfmadd213pf ymm6,ymm2,YMMWORD PTR [r8+rax]
+        vfmadd213pf ymm8,ymm2,YMMWORD PTR [r8+rax*2]
+        vfmadd213pf ymm10,ymm2,YMMWORD PTR [rbx]
+        vfmadd213pf ymm12,ymm2,YMMWORD PTR [rbx+rax]
+        vfmadd213pf ymm14,ymm2,YMMWORD PTR [rbx+rax*2]
+        jmp     StoreMasked2xNBlock
+
+MultiplyAlphaMasked2xNBlock:
+        vmulpf ymm4,ymm4,ymm2
+        vmulpf ymm6,ymm6,ymm2
+        vmulpf ymm8,ymm8,ymm2
+        vmulpf ymm10,ymm10,ymm2
+        vmulpf ymm12,ymm12,ymm2
+        vmulpf ymm14,ymm14,ymm2
+
+StoreMasked2xNBlock:
+        vmovupf YMMWORD PTR [r8],ymm4
+        vmovupf YMMWORD PTR [r8+rax],ymm6
+        vmovupf YMMWORD PTR [r8+rax*2],ymm8
+        vmovupf YMMWORD PTR [rbx],ymm10
+        vmovupf YMMWORD PTR [rbx+rax],ymm12
+        vmovupf YMMWORD PTR [rbx+rax*2],ymm14
+        add     r8,32                       ; advance matrix C by YMMWORD
+; IF RowCount GT 3
+        add     rbx,32                      ; advance matrix C plus 3 rows by YMMWORD
+; ENDIF
+        add     rbp,FgemmYmmElementCount    ; correct for over-subtract above
+
+OutputMasked1xNBlock:
+        neg     rbp
+        lea     rcx,MlasMaskMoveTableAvx+8*4
+        vmovdqu ymm0,YMMWORD PTR [rcx+rbp*FgemmElementSize]
+        test    r15b,r15b                   ; ZeroMode?
+        jnz     MultiplyAlphaMasked1xNBlock
+        vmaskmovpf ymm4,ymm0,YMMWORD PTR [r8]
+        vmaskmovpf ymm6,ymm0,YMMWORD PTR [r8+rax]
+        vmaskmovpf ymm8,ymm0,YMMWORD PTR [r8+rax*2]
+        vmaskmovpf ymm10,ymm0,YMMWORD PTR [rbx]
+        vmaskmovpf ymm12,ymm0,YMMWORD PTR [rbx+rax]
+        vmaskmovpf ymm14,ymm0,YMMWORD PTR [rbx+rax*2]
+        vfmadd213pf ymm5,ymm2,ymm4
+        vfmadd213pf ymm7,ymm2,ymm6
+        vfmadd213pf ymm9,ymm2,ymm8
+        vfmadd213pf ymm11,ymm2,ymm10
+        vfmadd213pf ymm13,ymm2,ymm12
+        vfmadd213pf ymm15,ymm2,ymm14
+        jmp     StoreMasked1xNBlock
+
+MultiplyAlphaMasked1xNBlock:
+        vmulpf ymm5,ymm5,ymm2
+        vmulpf ymm7,ymm7,ymm2
+        vmulpf ymm9,ymm9,ymm2
+        vmulpf ymm11,ymm11,ymm2
+        vmulpf ymm13,ymm13,ymm2
+        vmulpf ymm15,ymm15,ymm2
+
+StoreMasked1xNBlock:
+        vmaskmovpf YMMWORD PTR [r8],ymm0,ymm5
+        vmaskmovpf YMMWORD PTR [r8+rax],ymm0,ymm7
+        vmaskmovpf YMMWORD PTR [r8+rax*2],ymm0,ymm9
+        vmaskmovpf YMMWORD PTR [rbx],ymm0,ymm11
+        vmaskmovpf YMMWORD PTR [rbx+rax],ymm0,ymm13
+        vmaskmovpf YMMWORD PTR [rbx+rax*2],ymm0,ymm15
+; IFB <Fallthrough>
+        jmp     ExitKernelAndZeroUpper
+; ENDIF
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ProcessCountMRowCount6Fallthrough
+
+;
+; Restore non-volatile registers and return.
+;
+
+ExitKernelAndZeroUpper:
+        vzeroupper
+
+ExitKernel:
+        FgemmKernelExit Fma3
+
+ProcessCountM1:
+        ProcessCountM 1
+
+ProcessCountM3:
+        ProcessCountM 3
+
+ProcessCountM5:
+        ProcessCountM 5
+
+        NESTED_END MlasGemmFloatKernelFma3, _TEXT
+
+
+        NESTED_ENTRY MlasGemmDoubleKernelFma3, _TEXT
 
         FgemmKernelEntry Fma3
 
@@ -498,6 +835,6 @@ ProcessCountM3:
 ProcessCountM5:
         ProcessCountM 5
 
-        NESTED_END MlasGemm&Type&KernelFma3, _TEXT
+        NESTED_END MlasGemmDoubleKernelFma3, _TEXT
 
-        ENDM
+;        ENDM

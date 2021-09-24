@@ -27,6 +27,6 @@ INCLUDE FgemmKernelFma3Common.inc
 ; Generate the GEMM kernel.
 ;
 
-FgemmKernelFma3Function Float
+; FgemmKernelFma3Function Float
 
         END

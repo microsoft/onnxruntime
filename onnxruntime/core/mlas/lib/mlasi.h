@@ -578,7 +578,13 @@ extern "C" {
     MLAS_QUANTIZE_LINEAR_S8_KERNEL MlasQuantizeLinearS8Kernel;
     MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8Kernel;
 #if defined(MLAS_TARGET_AMD64)
-    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernelFma3;
+    //MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernelFma3;
+    void __stdcall MlasErfKernelFma3(
+      const float* Input,
+      float* Output,
+      size_t N
+    );
+
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelFma3;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelAvx512F;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeLogisticF32KernelFma3;

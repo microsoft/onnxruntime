@@ -289,6 +289,8 @@ IF (ColumnCount EQ 16) AND (RowCount EQ 1)
         jb      ProcessRemainingBlocks
 
 ComputeBlockBy4Loop:
+        call MacroCheckpoint
+
         ComputeBlockU8S8&Isa& ColumnCount, RowCount, 0*64, 0
         ComputeBlockU8S8&Isa& ColumnCount, RowCount, 1*64, 4
         ComputeBlockU8S8&Isa& ColumnCount, RowCount, 2*64, 8
@@ -594,7 +596,16 @@ ENDIF
         jg      ProduceWithU8U8Avx2
 IF RowCount LE 4
         jl      ProduceWithU8S8AvxVnni
+
+IF ColumnCount EQ 16 AND RowCount EQ 4
+        ;call ComputeBlockLoopU8S8Avx2ColumnCount16RowCount4
         ComputeBlockLoopU8S8 Avx2, ColumnCount, RowCount
+        ;call MacroCheckpoint
+        ; checkpoint passed
+ELSE
+        ComputeBlockLoopU8S8 Avx2, ColumnCount, RowCount
+ENDIF
+
         jmp     ExitProduceOutputBlock
 ENDIF
 
@@ -665,7 +676,15 @@ ProcessCountM MACRO RowCount, Fallthrough
         jbe     ProcessRemainingCountN
 
 ProcessNextColumnLoop16xN:
+IF RowCount EQ 4
+        call ProduceOutputBlock16RowCount4
+        ;ProduceOutputBlock 16, RowCount
+        ;call MacroCheckpoint
+ELSE
         ProduceOutputBlock 16, RowCount
+ENDIF
+        
+
         sub     rbp,16
         jb      OutputMasked16xNBlock
         test    r10b,r10b                   ; ZeroMode?
@@ -781,6 +800,278 @@ SkipAccumulateOutputMasked8xNBlock:
         jmp     ExitProcessCountM
 
         ENDM
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+_text SEGMENT
+MacroCheckpoint PROC
+        ret
+MacroCheckpoint ENDP
+
+MultiplyAccumulateRowU8S8Avx2ColumnCount16Ymm4Ymm5 PROC
+
+        vpmaddubsw ymm3,ymm2,ymm0
+        vpmaddwd ymm3,ymm3,ymm12
+        vpaddd  ymm4,ymm4,ymm3
+        vpmaddubsw ymm2,ymm2,ymm1
+        vpmaddwd ymm2,ymm2,ymm12
+        vpaddd  ymm5,ymm5,ymm2
+
+        ret
+MultiplyAccumulateRowU8S8Avx2ColumnCount16Ymm4Ymm5 ENDP
+
+ComputeBlockU8S8Avx2ColumnCount16RowCount4VectorOffset0BroadcastOffset0 PROC
+
+        vmovdqu ymm0,YMMWORD PTR [rdx+0]
+        vmovdqu ymm1,YMMWORD PTR [rdx+0+32]
+        vpbroadcastd ymm2,DWORD PTR [rcx+0]
+        ; MultiplyAccumulateRowU8S8Avx2 16, ymm4, ymm5
+        call MultiplyAccumulateRowU8S8Avx2ColumnCount16Ymm4Ymm5
+        vpbroadcastd ymm2,DWORD PTR [rcx+r9+0]
+        MultiplyAccumulateRowU8S8Avx2 16, ymm6, ymm7
+        vpbroadcastd ymm2,DWORD PTR [rcx+r9*2+0]
+        MultiplyAccumulateRowU8S8Avx2 16, ymm8, ymm9
+        vpbroadcastd ymm2,DWORD PTR [rbx+0]
+        MultiplyAccumulateRowU8S8Avx2 16, ymm10, ymm11
+
+        ret
+ComputeBlockU8S8Avx2ColumnCount16RowCount4VectorOffset0BroadcastOffset0 ENDP
+
+
+ComputeBlockLoopU8S8Avx2ColumnCount16RowCount4 PROC
+
+        mov     rsi,r9                      ; reload row length remaining
+
+;IF (ColumnCount EQ 16) AND (RowCount EQ 1)
+;        sub     rsi,4*4
+;        jb      ProcessRemainingBlocks0
+;
+;ComputeBlockBy4Loop0:
+;        ComputeBlockU8S8&Isa& ColumnCount, RowCount, 0*64, 0
+;        ComputeBlockU8S8&Isa& ColumnCount, RowCount, 1*64, 4
+;        ComputeBlockU8S8&Isa& ColumnCount, RowCount, 2*64, 8
+;        ComputeBlockU8S8&Isa& ColumnCount, RowCount, 3*64, 12
+;        add     rcx,4*4                     ; advance matrix A by 4 quads
+;        add     rdx,4*64                    ; advance matrix B
+;        sub     rsi,4*4
+;        jae     ComputeBlockBy4Loop0
+;
+;ProcessRemainingBlocks0:
+;        add     rsi,4*4                     ; correct for over-subtract above
+;        jz      ComputeBlockLoopExit0
+;ENDIF
+
+ComputeBlockBy1Loop0:
+        call ComputeBlockU8S8Avx2ColumnCount16RowCount4VectorOffset0BroadcastOffset0
+
+        add     rcx,4                       ; advance matrix A by 1 quad
+;IF RowCount GT 3
+        add     rbx,4                       ; advance matrix A plus 3 rows by 1 quad
+;ENDIF
+        add     rdx,64                      ; advance matrix B
+        sub     rsi,4
+        jnz     ComputeBlockBy1Loop0
+
+ComputeBlockLoopExit0:
+        ret
+ComputeBlockLoopU8S8Avx2ColumnCount16RowCount4 ENDP
+
+ProduceOutputBlock16RowCount4 PROC
+
+;
+; Initialize the accumulators with the row and column sums.
+;
+
+        vpbroadcastd ymm5,DWORD PTR [r11]
+        vpbroadcastd ymm7,DWORD PTR [r11+4]
+        vpbroadcastd ymm9,DWORD PTR [r11+8]
+        vpbroadcastd ymm11,DWORD PTR [r11+12]
+;IF ColumnCount EQ 16
+        vmovdqu ymm0,YMMWORD PTR [r12]
+        vmovdqu ymm1,YMMWORD PTR [r12+32]
+        add     r12,16*4                    ; advance ColumnSumBuffer by 16 columns
+;ELSE
+;        vmovdqu ymm1,YMMWORD PTR [r12]
+;ENDIF
+        test    r13,r13                     ; per column zero points?
+        jz      SkipScaleByZeroPointB0
+;IF ColumnCount EQ 16
+        vmovdqu ymm2,YMMWORD PTR [r13]
+        vmovdqu ymm3,YMMWORD PTR [r13+32]
+        add     r13,16*4                    ; advance ZeroPointB by 16 columns
+;ELSE
+;        vmovdqu ymm3,YMMWORD PTR [r13]
+;ENDIF
+        vpmulld ymm4,ymm5,ymm2
+        vpmulld ymm5,ymm5,ymm3
+        vpaddd ymm4,ymm0,ymm4
+        vpaddd ymm5,ymm1,ymm5
+        vpmulld ymm6,ymm7,ymm2
+        vpmulld ymm7,ymm7,ymm3
+        vpaddd ymm6,ymm0,ymm6
+        vpaddd ymm7,ymm1,ymm7
+        vpmulld ymm8,ymm9,ymm2
+        vpmulld ymm9,ymm9,ymm3
+        vpaddd ymm8,ymm0,ymm8
+        vpaddd ymm9,ymm1,ymm9
+        vpmulld ymm10,ymm11,ymm2
+        vpmulld ymm11,ymm11,ymm3
+        vpaddd ymm10,ymm0,ymm10
+        vpaddd ymm11,ymm1,ymm11
+        jmp     AccumulatorsInitialized0
+
+SkipScaleByZeroPointB0:
+        vpaddd ymm4,ymm0,ymm5
+        vpaddd ymm5,ymm1,ymm5
+        vpaddd ymm6,ymm0,ymm7
+        vpaddd ymm7,ymm1,ymm7
+        vpaddd ymm8,ymm0,ymm9
+        vpaddd ymm9,ymm1,ymm9
+        vpaddd ymm10,ymm0,ymm11
+        vpaddd ymm11,ymm1,ymm11
+
+AccumulatorsInitialized0:
+
+;
+; Iterate over the length of a matrix A row to produce the output accumulators.
+;
+
+;IF RowCount GT 3
+        lea     rbx,[r9*2+r9]
+        add     rbx,rcx                     ; compute matrix A plus 3 rows
+;ENDIF
+        ; cmp     DWORD PTR GemmU8X8KernelFrame.PreviousP1Home[rsp],0
+        ; jg      ProduceWithU8U8Avx20
+;IF RowCount LE 4
+        ; jl      ProduceWithU8S8AvxVnni0
+        ; ComputeBlockLoopU8S8 Avx2, 16, 4
+        call ComputeBlockLoopU8S8Avx2ColumnCount16RowCount4
+        jmp     ExitProduceOutputBlock0
+;ENDIF
+
+ProduceWithU8S8AvxVnni0:
+        ComputeBlockLoopU8S8 AvxVnni, 16, 4
+        jmp     ExitProduceOutputBlock0
+
+ProduceWithU8U8Avx20:
+        ComputeBlockLoopU8U8 Avx2, 16, 4
+
+ExitProduceOutputBlock0:
+;IF RowCount GT 3
+        lea     rbx,[rax*2+rax]
+        add     rbx,r8                      ; compute matrix C plus 3 rows
+;ENDIF
+        ret
+ProduceOutputBlock16RowCount4 ENDP
+
+
+ProcessCountMRowCount4 PROC
+
+        cmp     rbp,8
+        jbe     ProcessRemainingCountN0
+
+ProcessNextColumnLoop16xN0:
+        ;ProduceOutputBlock 16, 4
+        call ProduceOutputBlock16RowCount4
+
+        sub     rbp,16
+        jb      OutputMasked16xNBlock0
+        test    r10b,r10b                   ; ZeroMode?
+        jnz     SkipAccumulateOutput16xNBlock0
+        vpaddd ymm4,ymm4,YMMWORD PTR [r8]
+        vpaddd ymm5,ymm5,YMMWORD PTR [r8+32]
+        vpaddd ymm6,ymm6,YMMWORD PTR [r8+rax]
+        vpaddd ymm7,ymm7,YMMWORD PTR [r8+rax+32]
+        vpaddd ymm8,ymm8,YMMWORD PTR [r8+rax*2]
+        vpaddd ymm9,ymm9,YMMWORD PTR [r8+rax*2+32]
+        vpaddd ymm10,ymm10,YMMWORD PTR [rbx]
+        vpaddd ymm11,ymm11,YMMWORD PTR [rbx+32]
+
+SkipAccumulateOutput16xNBlock0:
+        vmovdqu YMMWORD PTR [r8],ymm4
+        vmovdqu YMMWORD PTR [r8+32],ymm5
+        vmovdqu YMMWORD PTR [r8+rax],ymm6
+        vmovdqu YMMWORD PTR [r8+rax+32],ymm7
+        vmovdqu YMMWORD PTR [r8+rax*2],ymm8
+        vmovdqu YMMWORD PTR [r8+rax*2+32],ymm9
+        vmovdqu YMMWORD PTR [rbx],ymm10
+        vmovdqu YMMWORD PTR [rbx+32],ymm11
+        add     r8,16*4                     ; advance matrix C by 16 columns
+        mov     rcx,rdi                     ; reload matrix A
+        cmp     rbp,8
+        ja      ProcessNextColumnLoop16xN0
+        test    rbp,rbp
+        jnz     ProcessRemainingCountN0
+
+ExitProcessCountM0:
+        mov     eax,4
+        jmp     ExitKernel0
+
+ProcessRemainingCountN0:
+        ProduceOutputBlock 8, 4
+        cmp     rbp,8
+        jb      OutputMasked8xNBlock0
+        test    r10b,r10b                   ; ZeroMode?
+        jnz     SkipAccumulateOutput8xNBlock0
+        vpaddd ymm5,ymm5,YMMWORD PTR [r8]
+        vpaddd ymm7,ymm7,YMMWORD PTR [r8+rax]
+        vpaddd ymm9,ymm9,YMMWORD PTR [r8+rax*2]
+        vpaddd ymm11,ymm11,YMMWORD PTR [rbx]
+
+SkipAccumulateOutput8xNBlock0:
+        vmovdqu YMMWORD PTR [r8],ymm5
+        vmovdqu YMMWORD PTR [r8+rax],ymm7
+        vmovdqu YMMWORD PTR [r8+rax*2],ymm9
+        vmovdqu YMMWORD PTR [rbx],ymm11
+        jmp     ExitProcessCountM0
+
+OutputMasked16xNBlock0:
+        test    r10b,r10b                   ; ZeroMode?
+        jnz     SkipAccumulateOutputMasked16xNBlock0
+        vpaddd ymm4,ymm4,YMMWORD PTR [r8]
+        vpaddd ymm6,ymm6,YMMWORD PTR [r8+rax]
+        vpaddd ymm8,ymm8,YMMWORD PTR [r8+rax*2]
+        vpaddd ymm10,ymm10,YMMWORD PTR [rbx]
+
+SkipAccumulateOutputMasked16xNBlock0:
+        vmovdqu YMMWORD PTR [r8],ymm4
+        vmovdqu YMMWORD PTR [r8+rax],ymm6
+        vmovdqu YMMWORD PTR [r8+rax*2],ymm8
+        vmovdqu YMMWORD PTR [rbx],ymm10
+        add     r8,8*4                      ; advance matrix C by 8 columns
+IF 4 GT 3
+        add     rbx,8*4                     ; advance matrix C plus 3 rows by 8 columns
+ENDIF
+        add     rbp,8                       ; correct for over-subtract above
+
+OutputMasked8xNBlock0:
+        neg     rbp
+        lea     rcx,MlasMaskMoveTableAvx+8*4
+        vmovdqu ymm0,YMMWORD PTR [rcx+rbp*4]
+        test    r10b,r10b                   ; ZeroMode?
+        jnz     SkipAccumulateOutputMasked8xNBlock0
+        vpmaskmovd ymm4,ymm0,YMMWORD PTR [r8]
+        vpmaskmovd ymm6,ymm0,YMMWORD PTR [r8+rax]
+        vpmaskmovd ymm8,ymm0,YMMWORD PTR [r8+rax*2]
+        vpmaskmovd ymm10,ymm0,YMMWORD PTR [rbx]
+        vpaddd ymm5,ymm5,ymm4
+        vpaddd ymm7,ymm7,ymm6
+        vpaddd ymm9,ymm9,ymm8
+        vpaddd ymm11,ymm11,ymm10
+
+SkipAccumulateOutputMasked8xNBlock0:
+        vpmaskmovd YMMWORD PTR [r8],ymm0,ymm5
+        vpmaskmovd YMMWORD PTR [r8+rax],ymm0,ymm7
+        vpmaskmovd YMMWORD PTR [r8+rax*2],ymm0,ymm9
+        vpmaskmovd YMMWORD PTR [rbx],ymm0,ymm11
+        jmp     ExitProcessCountM0
+
+ExitKernel0:
+        ret
+ProcessCountMRowCount4 ENDP
+_text ENDS
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;
 ; Reduce code size for the various types of kernels by sharing the outer logic
@@ -917,7 +1208,9 @@ ProcessCountM2:
         ProcessCountM 2
 
 ProcessCountM4:
-        ProcessCountM 4
+        ;ProcessCountM 4
+        call ProcessCountMRowCount4
+        ;jmp     ExitKernel
 
 ProcessCountM6:
         ProcessCountM 6

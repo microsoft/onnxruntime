@@ -417,7 +417,7 @@ LErfProcess1x8:
         vbroadcastss ymm3,DWORD PTR ErfKernelFrame.CountN[rsp]
 
         vpcmpgtd ymm3,ymm3,YMMWORD PTR [MlasMaskMoveAvx]
-        vbroadcastss ymm15,ErfConstants.ErfNegZero[rax]
+        vbroadcastss ymm15,ErfConstants.ErfNegZero[rax]                 ; -0
         vmaskmovps ymm0,ymm3,YMMWORD PTR [rcx]  ; original input vx0
 
         vandps  ymm4,ymm0,ymm15                 ; vsign0

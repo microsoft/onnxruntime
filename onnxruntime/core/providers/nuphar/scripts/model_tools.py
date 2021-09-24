@@ -33,6 +33,42 @@ def extract_loop_outputs_as_model_outputs(model):
             # for debugging to make scan output as model graph output
             set_op_output_as_model_output(node, model.graph)
 
+import onnxruntime as ort
+import onnx
+from onnx import helper
+
+model = onnx.load(r"D:\LiqunWA-z440\CNTK\ONNX\CustomerModels2\Sayan\EOSsvd_20_10_10_500.clone_flattened.onnx")
+
+# def extract_scan_input_state_and_outputs(model):
+def set_op_inputs_as_model_outputs(node, graph):
+    for input_ in node.input:
+        print(input_)
+        for value_info in graph.value_info:
+            if value_info.name == input_:
+                print(value_info)
+                graph.value_info.remove(value_info)
+                input_value_info = graph.input.add()
+                input_value_info.CopyFrom(value_info)
+                break
+
+def set_op_outputs_as_model_outputs(node, graph):
+    for output in node.output:
+        for value_info in graph.value_info:
+            if value_info.name == output:
+                print(value_info)
+                graph.value_info.remove(value_info)
+                output_value_info = graph.output.add()
+                output_value_info.CopyFrom(value_info)
+                break
+
+for node in model.graph.node:
+    if node.op_type == 'Scan':
+        set_op_inputs_as_model_outputs(node, model.graph)
+        set_op_outputs_as_model_outputs(node, model.graph)
+
+onnx.save(model, r"D:\LiqunWA-z440\CNTK\ONNX\CustomerModels2\Sayan\EOSsvd_20_10_10_500.clone_flattened_state_extracted.onnx")
+
+
 def run_with_ort(model_path, symbolic_dims={}, feeds=None, ort_test_case_dir=None):
     _, feeds, outputs = ort_test.run_model(model_path, symbolic_dims=symbolic_dims,
         feeds=feeds, override_initializers=False)

@@ -17,16 +17,16 @@
 ;
 ;--
 
-        .xlist
-INCLUDE mlasi.inc
-INCLUDE DgemmKernelCommon.inc
-INCLUDE FgemmKernelFma3Common.inc
-        .list
+;        .xlist
+; INCLUDE mlasi.inc
+; INCLUDE DgemmKernelCommon.inc
+; INCLUDE FgemmKernelFma3Common.inc
+;        .list
 
 ;
 ; Generate the GEMM kernel.
 ;
 
-FgemmKernelFma3Function Double
+; FgemmKernelFma3Function Double
 
         END

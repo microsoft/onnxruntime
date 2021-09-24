@@ -1548,8 +1548,9 @@ Return Value:
 
         const float* B = (const float*)DataParams->B + RangeStartN * ((TransB == CblasNoTrans) ? 1 : ldb);
 
-        MlasSgemmOperation(TransA, TransB, RangeCountM, RangeCountN, K,
-            DataParams->alpha, A, lda, B, ldb, DataParams->beta, C, ldc);
+        for (int run = 0; run < 1000; run++)
+          MlasSgemmOperation(TransA, TransB, RangeCountM, RangeCountN, K,
+              DataParams->alpha, A, lda, B, ldb, DataParams->beta, C, ldc);
     }
 }
 
