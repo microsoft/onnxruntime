@@ -19,7 +19,8 @@ from . import _logger
 # for big models such as GPT-2. Exporting CheckpointFunction as PythonOp means
 # every transformer would be computed by Pytorch and ORT doesn't contribute
 # at all.
-BANNED_AUTOGRAD_FUNCTION_NAMES = set([torch.utils.checkpoint.CheckpointFunction.__name__])
+BANNED_AUTOGRAD_FUNCTION_NAMES = set(
+    [torch.utils.checkpoint.CheckpointFunction.__name__])
 
 
 def _export(g, n, *args, **kwargs):
@@ -31,7 +32,7 @@ def _export(g, n, *args, **kwargs):
     try:
         name = kwargs['name']
         if name in BANNED_AUTOGRAD_FUNCTION_NAMES:
-            raise Exception(f'The autograd.Function {name} shoule not be exported to ONNX. '
+            raise Exception(f'The autograd.Function {name} should not be exported to ONNX. '
                             'Please replace ORTModule with HierarchalORTModule to only'
                             'wrap exportable sub-nn.Module\'s as ORTModule.')
         inplace = kwargs['inplace']

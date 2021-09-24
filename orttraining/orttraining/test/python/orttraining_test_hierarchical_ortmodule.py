@@ -29,6 +29,7 @@ class B(nn.Module):
         self.a = A()
 
     def forward(self, x):
+
         def custom():
             def custom_forward(x_):
                 return self.a(x_)
@@ -101,6 +102,24 @@ class MainWithModuleList(nn.Module):
         return y
 
 
+class MainWithMultiModuleOutputs(nn.Module):
+    # Module with repeated sub-modules and producing
+    # multiple outputs.
+    def __init__(self):
+        super(MainWithMultiModuleOutputs, self).__init__()
+        self.layer_list1 = nn.ModuleList([D(), A(), B()])
+        self.layer_list2 = nn.ModuleList([C(), B(), D()])
+
+    def forward(self, x):
+        y1 = x
+        for layer in self.layer_list1:
+            y1 = layer(y1)
+        y2 = x
+        for layer in self.layer_list2:
+            y2 = layer(y2)
+        return y1, y2
+
+
 def test_hierarchical_ortmodule():
     def count_ortmodule(module):
         n = 1 if isinstance(module, ORTModule) else 0
@@ -108,19 +127,26 @@ def test_hierarchical_ortmodule():
             n = n + count_ortmodule(sub)
         return n
 
+    def call_backward(y):
+        if isinstance(y, tuple):
+            for ele in y:
+                ele.sum().backward()
+        else:
+            y.sum().backward()
+
     def trial(module_to_wrap, expected_num_ortmodule):
         x = torch.rand(2).requires_grad_()
         m = module_to_wrap
 
         y_ref = m(x)
-        y_ref.sum().backward()
+        call_backward(y_ref)
         g_ref = x.grad.detach()
 
         x.grad = None
         m = HierarchicalORTModule(m)
 
         y = m(x,)
-        y.sum().backward()
+        call_backward(y)
         g = x.grad.detach()
 
         # Some sub-modules become ORTModule.
@@ -133,6 +159,7 @@ def test_hierarchical_ortmodule():
     for i in range(num_trials):
         trial(Main(), 6)
         trial(MainWithModuleList(), 12)
+        trial(MainWithMultiModuleOutputs(), 10)
 
 
 if __name__ == '__main__':
