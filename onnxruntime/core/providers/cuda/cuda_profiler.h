@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 #include "core/common/profiler_common.h"
 
-#ifdef USE_ROCM
+#if defined(USE_ROCM) || defined(ENABLE_TRAINING)
 
 class CudaProfiler final : public EpProfiler {
  public

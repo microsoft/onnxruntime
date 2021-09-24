@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#ifndef USE_ROCM
+#if !(defined(USE_ROCM) || defined(ENABLE_TRAINING))
+
 #include "cuda_profiler.h"
 #include <map>
 #include <string>
@@ -20,7 +21,7 @@ std::unordered_map<uint32_t, uint64_t> CudaProfiler::id_map;
 #define ALIGN_SIZE (8)
 #define ALIGN_BUFFER(buffer, align) \
   (((uintptr_t)(buffer) & ((align)-1)) ? ((buffer) + (align) - ((uintptr_t)(buffer) & ((align)-1))) : (buffer))
-#define DUR(s, e) ((e-s)/1000)
+#define DUR(s, e) ((e - s) / 1000)
 
 static const char* GetMemcpyKindString(CUpti_ActivityMemcpyKind kind) {
   switch (kind) {
