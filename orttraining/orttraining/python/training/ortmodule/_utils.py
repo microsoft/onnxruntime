@@ -5,13 +5,14 @@
 
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi import _pybind_state as C
-from ._fallback import _FallbackManager, ORTModuleFallbackException, ORTModuleDeviceException, wrap_exception
+from ._fallback_exceptions import ORTModuleDeviceException, wrap_exception
 
 import os
 import copy
 import inspect
 import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
+import traceback
 from typing import List
 import types
 import warnings
@@ -199,3 +200,11 @@ def parse_os_env_skip_check_flags(env_name, default_skip_check_str):
     """Returns a list of SkipChecks as defined by os env variable env_name or default provided"""
 
     return os.getenv(env_name, default_skip_check_str).split('|')
+
+def get_exception_as_string(exception):
+    assert isinstance(exception, Exception), 'exception must be a `Exception`'
+
+    try:
+        raise exception
+    except:
+        return traceback.format_exc()
