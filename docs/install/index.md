@@ -76,7 +76,7 @@ dotnet add package Microsoft.AI.MachineLearning --version 1.8.1
 {: .no_toc }
 
 ```bash
-# install release version
+# install latest release version
 npm install onnxruntime-web
 
 # install nightly build dev version
@@ -87,6 +87,7 @@ npm install onnxruntime-web@dev
 {: .no_toc }
 
 ```bash
+# install latest release version
 npm install onnxruntime-node
 ```
 
@@ -94,6 +95,7 @@ npm install onnxruntime-node
 {: .no_toc }
 
 ```bash
+# install latest release version
 npm install onnxruntime-react-native
 ```
 
