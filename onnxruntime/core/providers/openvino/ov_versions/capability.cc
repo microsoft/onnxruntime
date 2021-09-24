@@ -48,6 +48,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
     return result;
   }
 
+#if defined(OPENVINO_2021_2) || defined(OPENVINO_2021_3)
   // Need access to model_path_
   for (const auto& tensor : graph_viewer_.GetAllInitializedTensors()) {
     if (tensor.second->has_data_location() && tensor.second->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
@@ -55,6 +56,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
       return result;
     }
   }
+#endif
 
   // This is a list of initializers that nGraph considers as constants. Example weights, reshape shape etc.
   std::unordered_set<std::string> ng_required_initializers;
