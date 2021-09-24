@@ -19,6 +19,7 @@ from collections import namedtuple
 from inspect import signature
 import tempfile
 import os
+from distutils.version import LooseVersion
 
 from onnxruntime.training.ortmodule import ORTModule, _utils, _io, DebugOptions, LogLevel, _fallback, _graph_execution_manager
 import _test_helpers
@@ -3827,7 +3828,8 @@ def test_ortmodule_ortmodule_method_attribute_copy():
 
     assert type(out1.grad_fn).__name__ == '_ORTModuleFunctionBackward'
     assert type(out2.grad_fn).__name__ == '_ORTModuleFunctionBackward'
-    assert type(out3.grad_fn).__name__ == 'AddmmBackward'
+    assert type(out3.grad_fn).__name__ == 'AddmmBackward0' if LooseVersion(
+        torch.__version__) >= LooseVersion('1.10.0') else 'AddmmBackward'
 
 @pytest.mark.parametrize("policy_str, policy",[
     ('SKIP_CHECK_DISABLED', _graph_execution_manager._SkipCheck.SKIP_CHECK_DISABLED),

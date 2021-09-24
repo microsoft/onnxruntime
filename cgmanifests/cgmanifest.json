@@ -464,7 +464,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "e1e11e0d555c08bec08a6c7773aa777dfcaae9da",
+               "commitHash": "277508879878e0a5b5b43599b1bea11f66eb3c6c",
                "repositoryUrl": "https://github.com/dmlc/dlpack.git"
             },
             "comments": "dlpack"
