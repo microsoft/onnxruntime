@@ -15,7 +15,7 @@ ONNX_OPERATOR_KERNEL_EX(
     NvtxPush,
     kMSDomain,
     1,
-    kCudaExecutionProvider,
+    kRocmExecutionProvider,
     (*KernelDefBuilder::Create()),
     NvtxPush);
 
@@ -23,16 +23,22 @@ ONNX_OPERATOR_KERNEL_EX(
     NvtxPop,
     kMSDomain,
     1,
-    kCudaExecutionProvider,
+    kRocmExecutionProvider,
     (*KernelDefBuilder::Create()),
     NvtxPop);
 
 Status NvtxPush::ComputeInternal(OpKernelContext* context) const {
+  std::cout << "executing nvtx push" << std::endl;
   roctxRangePushA("myrange");
+
+  return Status::OK();
 }
 
 Status NvtxPop::ComputeInternal(OpKernelContext* context) const {
+  std::cout << "executing nvtx pop" << std::endl;
   roctxRangePop();
+
+  return Status::OK();
 }
 
 }  // namespace rocm
