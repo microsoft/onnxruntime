@@ -422,6 +422,7 @@ class FusionAttention(Fusion):
         if is_distill:
             _, mask_nodes, _ = self.model.match_parent_paths(where_qk,
                                                              [(['Expand', 'Reshape', 'Equal'], [0, 0, 0]),
+                                                              (['Equal', 'Unsqueeze', 'Unsqueeze'], [0, 0, 0]),
                                                               (['Cast', 'Expand', 'Reshape', 'Equal'], [0, 0, 0, 0])],
                                                              output_name_to_node)
         elif is_distill_add:
