@@ -4,6 +4,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from collections.abc import Iterable
 from torch.utils.checkpoint import checkpoint
 from onnxruntime.training.ortmodule import ORTModule
 from onnxruntime.training.ortmodule.experimental.hierarchical_ortmodule import HierarchicalORTModule
@@ -76,6 +77,24 @@ class Main(nn.Module):
         return z
 
 
+class MainWithNonTensorInput(nn.Module):
+    # Module for testing non-tensor input.
+    def __init__(self):
+        super(MainWithNonTensorInput, self).__init__()
+        self.alpha = nn.Parameter(torch.tensor(0.941736), requires_grad=True)
+        self.a = A()
+        self.b = B()
+        self.c = C()
+        self.d = D()
+
+    def forward(self, x, case):
+        if case == 'reverse':
+            z = self.alpha * self.a(self.b(self.c(self.d(x))))
+        else:
+            z = self.alpha * self.d(self.c(self.b(self.a(x))))
+        return z
+
+
 class E(nn.Module):
     # Sub-modules are stored in nn.ModuleList.
     def __init__(self):
@@ -134,32 +153,47 @@ def test_hierarchical_ortmodule():
         else:
             y.sum().backward()
 
-    def trial(module_to_wrap, expected_num_ortmodule):
-        x = torch.rand(2).requires_grad_()
+    def call_allclose(y, y_ref):
+        assert type(y) == type(y_ref)
+        if isinstance(y, Iterable):
+            for ele, ele_ref in zip(y, y_ref):
+                torch.allclose(ele, ele_ref)
+        else:
+            torch.allclose(y, y_ref)
+
+    def trial(module_to_wrap, args, expected_num_ortmodule):
         m = module_to_wrap
 
-        y_ref = m(x)
+        y_ref = m(*args)
         call_backward(y_ref)
-        g_ref = x.grad.detach()
+        g_ref = []
+        for param in m.parameters():
+            g_ref.append(param.grad.detach())
 
-        x.grad = None
         m = HierarchicalORTModule(m)
 
-        y = m(x,)
+        y = m(*args)
         call_backward(y)
-        g = x.grad.detach()
+        g = []
+        for param in m.parameters():
+            g.append(param.grad.detach())
 
         # Some sub-modules become ORTModule.
         assert expected_num_ortmodule == count_ortmodule(m)
 
-        assert torch.allclose(y, y_ref)
-        assert torch.allclose(g, g_ref)
+        call_allclose(y, y_ref)
+        call_allclose(g, g_ref)
 
-    num_trials = 8
-    for i in range(num_trials):
-        trial(Main(), 6)
-        trial(MainWithModuleList(), 12)
-        trial(MainWithMultiModuleOutputs(), 10)
+    num_trials = 4
+    for _ in range(num_trials):
+        trial(Main(), [torch.rand(2).requires_grad_()], 6)
+        trial(MainWithModuleList(), [torch.rand(2).requires_grad_()], 12)
+        trial(MainWithMultiModuleOutputs(), [
+              torch.rand(2).requires_grad_()], 10)
+        trial(MainWithNonTensorInput(), [
+              torch.rand(2).requires_grad_(), 'reverse'], 6)
+        trial(MainWithNonTensorInput(), [
+              torch.rand(2).requires_grad_(), 'normal'], 6)
 
 
 if __name__ == '__main__':
