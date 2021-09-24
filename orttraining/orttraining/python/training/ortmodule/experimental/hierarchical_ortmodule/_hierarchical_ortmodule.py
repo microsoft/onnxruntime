@@ -14,11 +14,40 @@ class HierarchicalORTModule(torch.nn.Module):
     Supported computation is delegated to ONNX Runtime and unsupported computation is still done by PyTorch.
     Args:
         module (torch.nn.Module): User's PyTorch module that HierarchicalORTModule specializes.
+
+    Example::
+
+        import torch
+        from torch.utils.checkpoint import checkpoint
+        from onnxruntime.training.ortmodule.experimental.hierarchical_ortmodule import HierarchicalORTModule
+
+
+        class Foo(torch.nn.Module):
+            def __init__(self):
+                super(Foo, self).__init__()
+                self.l1 = torch.nn.Linear(2, 2)
+                self.l2 = torch.nn.Linear(2, 2)
+                self.l3 = torch.nn.Linear(2, 2)
+
+            def forward(self, x):
+                def custom():
+                    def custom_forward(x_):
+                        return self.l2(x_)
+                    return custom_forward
+                z = self.l1(checkpoint(custom(), self.l3(x)))
+                return z
+
+        x = torch.rand(2)
+        m = HierarchicalORTModule(Foo())
+        y = m(x)
+
     '''
-    def __init__(self, module):
+
+    def __init__(self, module, debug_options=None):
         super(HierarchicalORTModule, self).__init__()
         self._initialized = False
         self._original_module = module
+        self._debug_options = debug_options
 
     def _initialize(self, *args, **kwargs):
         handle_pool = []
@@ -140,13 +169,17 @@ class HierarchicalORTModule(torch.nn.Module):
                     # Let's wrap them one-by-one.
                     for name1, sub1 in sub._modules.items():
                         if is_supported(sub1):
-                            sub._modules[name1] = ORTModule(sub1)
+                            sub._modules[name1] = ORTModule(
+                                sub1,
+                                debug_options=self._debug_options)
                         else:
                             recursive_wrap(sub1)
                 else:
                     if is_supported(sub):
                         # Just wrap it as ORTModule when possible.
-                        sub_dict[name] = ORTModule(sub)
+                        sub_dict[name] = ORTModule(
+                            sub,
+                            debug_options=self._debug_options)
                     else:
                         # This sub-module is not exportable to ONNX
                         # Let's check its sub-modules.
