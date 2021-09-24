@@ -1,9 +1,7 @@
-#!/usr/bin/env python3
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
 import torch
-import torch.fx
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.checkpoint import checkpoint

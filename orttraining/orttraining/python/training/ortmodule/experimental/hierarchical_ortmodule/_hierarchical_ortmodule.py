@@ -4,19 +4,21 @@
 import tempfile
 import torch
 from ... import ORTModule
+from ... import ONNX_OPSET_VERSION
 
 
 class HierarchicalORTModule(torch.nn.Module):
-    # This class recursively wraps sub-modules of "self._wrapped_module"
-    # as ORTModule whenever it can. The actual wrapping happens in its
-    # first "forward(...)" call because we need to call Pytorch-to-ONNX
-    # exporter with actual inputs. Afterwards, supported computation
-    # will be delegated to ORT and unsupported computation is still
-    # done by Pytorch.
+    '''
+    Recursively wraps submodules of `module` as ORTModule whenever possible
+    Similarly to ORTModule, the actual wrapping happens in its first `forward` call during Pytorch-to-ONNX export.
+    Supported computation is delegated to ONNX Runtime and unsupported computation is still done by PyTorch.
+    Args:
+        module (torch.nn.Module): User's PyTorch module that HierarchicalORTModule specializes.
+    '''
     def __init__(self, module):
         super(HierarchicalORTModule, self).__init__()
         self._initialized = False
-        self._wrapped_module = module
+        self._original_module = module
 
     def _initialize(self, *args, **kwargs):
         handle_pool = []
@@ -58,7 +60,10 @@ class HierarchicalORTModule(torch.nn.Module):
                     try:
                         with tempfile.NamedTemporaryFile(prefix='sub-module') as temp:
                             torch.onnx.export(
-                                module, args, temp, opset_version=9)
+                                module, args, temp, opset_version=ONNX_OPSET_VERSION,
+                                do_constant_folding=False, export_params=False,
+                                keep_initializers_as_inputs=True,
+                                training=torch.onnx.TrainingMode.TRAINING)
                     except Exception as e:
                         exportable = False
 
@@ -89,7 +94,10 @@ class HierarchicalORTModule(torch.nn.Module):
                         try:
                             with tempfile.NamedTemporaryFile(prefix='sub-module') as temp:
                                 torch.onnx.export(
-                                    module, args, temp, opset_version=9)
+                                    module, args, temp, opset_version=ONNX_OPSET_VERSION,
+                                    do_constant_folding=False, export_params=False,
+                                    keep_initializers_as_inputs=True,
+                                    training=torch.onnx.TrainingMode.TRAINING)
                         except Exception as e:
                             # If this module is not exportable for one arg
                             # group, we say this module is not exportable.
@@ -102,11 +110,11 @@ class HierarchicalORTModule(torch.nn.Module):
                     return exportable_list[module]
 
         # Add a hook to record forward's input for all modules.
-        recursive_hook(self._wrapped_module)
+        recursive_hook(self._original_module)
 
         # Run forward with actual input to record all possible
         # inputs for all invoked modules.
-        y = self._wrapped_module(*args, **kwargs)
+        y = self._original_module(*args, **kwargs)
 
         # We already have "supported_modules" so
         # we no longer need those hooks in forward pass.
@@ -115,11 +123,10 @@ class HierarchicalORTModule(torch.nn.Module):
 
         # Try exporter on all module-input pairs. If a module can be exported with
         # all its recorded inputs, then it's exporable.
-        check_exportable(self._wrapped_module)
+        check_exportable(self._original_module)
 
         # A naive way of determining if ORT can run nn.Module
         def is_supported(module):
-            # This is what Yuan called GetCapability().
             return module in exportable_list and exportable_list[module]
 
         # Top-down wrapper to replace nn.Module's with ORTModule.
@@ -145,10 +152,10 @@ class HierarchicalORTModule(torch.nn.Module):
                         # Let's check its sub-modules.
                         recursive_wrap(sub)
 
-        recursive_wrap(self._wrapped_module)
+        recursive_wrap(self._original_module)
 
     def forward(self, *inputs, **kwargs):
         if not self._initialized:
             self._initialized = True
             self._initialize(*inputs, **kwargs)
-        return self._wrapped_module(*inputs, **kwargs)
+        return self._original_module(*inputs, **kwargs)
