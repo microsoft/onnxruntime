@@ -3,6 +3,9 @@
 #include "core/common/profiler_common.h"
 
 #if defined(USE_ROCM) || defined(ENABLE_TRAINING)
+namespace onnxruntime {
+
+namespace profiling {
 
 class CudaProfiler final : public EpProfiler {
  public
@@ -11,6 +14,9 @@ class CudaProfiler final : public EpProfiler {
   void Start(uint64_t) override{};
   void Stop(uint64_t) override{};
 };
+
+}
+}
 
 #else
 
