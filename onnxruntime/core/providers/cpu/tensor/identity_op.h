@@ -23,10 +23,20 @@ class IdentityOp final : public OpKernel {
   }
 
   Status Compute(OpKernelContext* context) const override {
-    auto X_ml_type = context->InputType(0);
-    if (X_ml_type == DataTypeImpl::GetType<Tensor>()) {
-      const auto* X = context->Input<Tensor>(0);
-      ORT_ENFORCE(X != nullptr);
+    const auto* input_ort_value = context->GetInputOrtValue(0);
+    if (!input_ort_value->HasValue()) {
+      if (input_ort_value->IsTensor()) {
+        context->OutputOptionalWithoutData<Tensor>(0);
+      } else if (input_ort_value->IsTensorSequence()) {
+        context->OutputOptionalWithoutData<TensorSeq>(0);
+      } else {
+        // Will never hit this
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported type for Identity op");
+      }
+    }
+
+    if (input_ort_value->IsTensor()) {
+      const auto* X = &input_ort_value->Get<Tensor>();
       const TensorShape& shape = X->Shape();
       Tensor* Y = context->Output(0, shape);
       auto X_type = X->DataType();
@@ -59,9 +69,8 @@ class IdentityOp final : public OpKernel {
           memset(mask_data, 0, mask->SizeInBytes());
         }
       }
-    } else {
-      const auto* X = context->Input<TensorSeq>(0);
-      ORT_ENFORCE(X != nullptr);
+    } else {  // Has to be TensorSeq
+      const auto* X = &input_ort_value->Get<TensorSeq>();
       TensorSeq* output = context->Output<TensorSeq>(0);
       output->SetType(X->DataType());
 

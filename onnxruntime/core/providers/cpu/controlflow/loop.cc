@@ -114,14 +114,21 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Loop,
                                        .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
                                    Loop);
 
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Loop,
+                                   13, 15,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                       .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
+                                   Loop);
+
 ONNX_CPU_OPERATOR_KERNEL(Loop,
-                         13,
+                         16,
                          KernelDefBuilder()
                              .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                              .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
+                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesAndOptionalTypes()),
                          Loop);
-
 Loop::Info::Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in)
     : subgraph(subgraph_in) {
   num_loop_carried_vars = static_cast<int>(node.InputDefs().size()) - 2;  // skip 'M' and 'cond'
@@ -494,43 +501,52 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
   // as we need the final shape.
   auto copy_mlvalue_to_output = [this](OrtValue& input, int output_idx, int64_t iter_num_value) {
     if (input.IsTensor()) {
-      const auto& data = input.Get<Tensor>();
-      Tensor* output = context_.Output(output_idx, data.Shape());
-      // Safely use the IDataTransfer abstraction as we only allow using
-      // Loop on CUDA if the copy stream is the same as the compute stream.
-      // So there is no explicit sync required between the compute and copy streams
-      // to avoid data races.
-      session_state_.GetDataTransferMgr().CopyTensor(input.Get<Tensor>(), *output);
-    } else if (input.IsTensorSequence()) {
-      if (iter_num_value != 0) {
-        // We can move the subgraph outputs directly into the Loop's outputs.
-        TensorSeq* output = context_.Output<TensorSeq>(output_idx);
-        *output = std::move(*input.GetMutable<TensorSeq>());
+      if (!input.HasValue()) {  // "None" tensor
+        context_.OutputOptionalWithoutData<Tensor>(0);
       } else {
-        // We can't move the Loop's inputs directly into the Loop's outputs
-        // as operator inputs are read-only. Hence, we need to make a copy.
-        std::vector<Tensor> tensors;
-
-        auto& data = input.Get<TensorSeq>();
+        const auto& data = input.Get<Tensor>();
+        Tensor* output = context_.Output(output_idx, data.Shape());
+        // Safely use the IDataTransfer abstraction as we only allow using
+        // Loop on CUDA if the copy stream is the same as the compute stream.
+        // So there is no explicit sync required between the compute and copy streams
+        // to avoid data races.
+        session_state_.GetDataTransferMgr().CopyTensor(input.Get<Tensor>(), *output);
+      }
+    } else if (input.IsTensorSequence()) {
+      if (!input.HasValue()) {  // "None" sequence of tensors
+        context_.OutputOptionalWithoutData<TensorSeq>(0);
+      } else {
         TensorSeq* output = context_.Output<TensorSeq>(output_idx);
-        output->SetType(data.DataType());
 
-        AllocatorPtr alloc;
-        auto status = context_.GetTempSpaceAllocator(&alloc);
-        if (!status.IsOK()) {
-          ORT_THROW("Unable to get an allocator");
-        }
-        for (auto it = data.begin(), end = data.end(); it != end; ++it) {
-          Tensor tmp(it->DataType(), onnxruntime::TensorShape(it->Shape()), alloc);
-          // Safely use the IDataTransfer abstraction as we only allow using
-          // Loop on CUDA if the copy stream is the same as the compute stream.
-          // So there is no explicit sync required between the compute and copy streams
-          // to avoid data races.
-          session_state_.GetDataTransferMgr().CopyTensor(*it, tmp);
-          tensors.push_back(std::move(tmp));
-        }
+        if (iter_num_value != 0) {
+          // We can move the subgraph outputs directly into the Loop's outputs.
+          *output = std::move(*input.GetMutable<TensorSeq>());
+        } else {
+          // We can't move the Loop's inputs directly into the Loop's outputs
+          // as operator inputs are read-only. Hence, we need to make a copy.
+          std::vector<Tensor> tensors;
 
-        output->SetElements(std::move(tensors));
+          auto& data = input.Get<TensorSeq>();
+
+          output->SetType(data.DataType());
+
+          AllocatorPtr alloc;
+          auto status = context_.GetTempSpaceAllocator(&alloc);
+          if (!status.IsOK()) {
+            ORT_THROW("Unable to get an allocator");
+          }
+          for (auto it = data.begin(), end = data.end(); it != end; ++it) {
+            Tensor tmp(it->DataType(), onnxruntime::TensorShape(it->Shape()), alloc);
+            // Safely use the IDataTransfer abstraction as we only allow using
+            // Loop on CUDA if the copy stream is the same as the compute stream.
+            // So there is no explicit sync required between the compute and copy streams
+            // to avoid data races.
+            session_state_.GetDataTransferMgr().CopyTensor(*it, tmp);
+            tensors.push_back(std::move(tmp));
+          }
+
+          output->SetElements(std::move(tensors));
+        }
       }
     }
   };

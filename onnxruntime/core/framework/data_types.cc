@@ -1140,6 +1140,20 @@ const std::vector<MLDataType>& DataTypeImpl::AllOptionalTypes() {
   return all_optional_types;
 }
 
+const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorTypesAndOptionalTypes() {
+  static std::vector<MLDataType> all_tensor_and_sequence_types_and_optional_types =
+      []() {
+        auto temp = AllTensorTypes();
+        const auto& seq = AllSequenceTensorTypes();
+        const auto& opt = AllOptionalTypes();
+        temp.insert(temp.end(), seq.begin(), seq.end());
+        temp.insert(temp.end(), opt.begin(), opt.end());
+        return temp;
+      }();
+
+  return all_tensor_and_sequence_types_and_optional_types;
+}
+
 // helper to stream. expected to only be used for error output, so any typeid lookup
 // cost should be fine. alternative would be to add a static string field to DataTypeImpl
 // that we set in the register macro to the type name, and output that instead.

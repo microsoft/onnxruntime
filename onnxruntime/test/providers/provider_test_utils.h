@@ -842,6 +842,9 @@ class OpTester {
         for (int64_t i = 0; i < values_count; i++) {
           data_ptr[i] = values[i];
         }
+      } else {  // None OrtValue. Initialize appropriately.
+        auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+        value.Init(nullptr, ml_tensor, ml_tensor->GetDeleteFunc());
       }
 
       std::vector<int64_t> dims_for_proto = GetDimsForProto(dims);
@@ -915,7 +918,7 @@ class OpTester {
     OrtValue value;
     auto mltype = DataTypeImpl::GetType<TensorSeq>();
 
-    // nullptr means None OrtValue which we will skip insering into the feeds
+    // nullptr means None OrtValue which we will skip inserting into the feeds
     value.Init(ptr ? ptr.release() : nullptr, mltype, mltype->GetDeleteFunc());
 
     SequenceTensorTypeProto<T> sequence_tensor_proto;

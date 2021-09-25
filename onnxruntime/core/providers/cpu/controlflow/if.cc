@@ -87,13 +87,21 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(If,
                                    If);
 
 // sequence tensors were also supported in addition to existing support for tensors in opset-13
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(If,
+                                   13,
+                                   15,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                       .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
+                                   If);
+
+// optional type is supported starting opset-16
 ONNX_CPU_OPERATOR_KERNEL(If,
-                         13,
+                         16,
                          KernelDefBuilder()
                              .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
+                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesAndOptionalTypes()),
                          If);
-
 If::Info::Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in) : subgraph(subgraph_in) {
   num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
   used_implicit_inputs = std::vector<bool>(num_implicit_inputs, true);
@@ -298,7 +306,7 @@ Status IfImpl::AllocateOutputTensors() {
       outputs_.push_back({AllocationType::IfOutput, *context_.GetOutputMLValue(index)});
     } else {
       // Shouldn't hit this
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only tensors or sequence of tensors are suppported");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only tensors or sequence of tensors are supported");
     }
 
     ++index;
