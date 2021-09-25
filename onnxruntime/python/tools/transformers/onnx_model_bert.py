@@ -13,6 +13,7 @@ from fusion_layernorm import FusionLayerNormalization, FusionLayerNormalizationT
 from fusion_skiplayernorm import FusionSkipLayerNormalization, FusionBiasSkipLayerNormalization
 from fusion_embedlayer import FusionEmbedLayerNormalization
 from fusion_attention import FusionAttention, AttentionMask
+from fusion_attention_offensive_v4 import FusionAttentionOffensiveV4
 from fusion_gelu import FusionGelu
 from fusion_fastgelu import FusionFastGelu
 from fusion_biasgelu import FusionBiasGelu
@@ -48,10 +49,12 @@ class BertOnnxModel(OnnxModel):
 
         self.attention_mask = AttentionMask(self)
         self.attention_fusion = FusionAttention(self, self.hidden_size, self.num_heads, self.attention_mask)
+        self.attention_fusion_offensive_v4 = FusionAttentionOffensiveV4(self, self.hidden_size, self.num_heads, self.attention_mask)
         self.utils = FusionUtils(self)
 
     def fuse_attention(self):
         self.attention_fusion.apply()
+        self.attention_fusion_offensive_v4.apply()
 
     def fuse_gelu(self):
         fusion = FusionGelu(self)
