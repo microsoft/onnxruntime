@@ -26,15 +26,13 @@ def megatron_lm_check(optimizer):
     return True
 
 
-def FP16_Optimizer(optimizer, get_tensor_model_parallel_rank=None, get_model_parallel_group=None):
+def FP16_Optimizer(optimizer, **kwargs):
     """
     Simple wrapper to replace inefficient FP16_Optimizer function calls implemented by library for example
         Apex, DeepSpeed, Megatron-LM.
 
     Args:
         optimizer: the FP16_Optimizer instance
-        get_tensor_model_parallel_rank (optional): function to get model parallel rank
-        get_model_parallel_group (optional): function to get model parallel group.
 
     Returns:
         the FP16_Optimizer instance
@@ -50,10 +48,40 @@ def FP16_Optimizer(optimizer, get_tensor_model_parallel_rank=None, get_model_par
     optimizer_full_name = get_full_qualified_type_name(optimizer)
     if optimizer_full_name == "megatron.fp16.fp16.FP16_Optimizer":
         if megatron_lm_check(optimizer):
+            # get_tensor_model_parallel_rank: function to get model parallel rank
+            # get_tensor_model_parallel_group: function to get model parallel group.
+            get_tensor_model_parallel_rank = kwargs["get_tensor_model_parallel_rank"]
+            get_tensor_model_parallel_group = kwargs["get_tensor_model_parallel_group"]
+            @nvtx.annotate(message="clip_grad_norm_fp32", color="red")
+            def clip_master_grads(self, max_norm, norm_type=2):
+                """
+                Clips fp32 master gradients via ``torch.nn.utils.clip_grad_norm``.
+
+                Args:
+                    max_norm (float or int): max norm of the gradients
+                    norm_type (float or int): type of the used p-norm. Can be ``'inf'`` for
+                        infinity norm.
+
+                Returns:
+                    Total norm of the current fp32 gradients (viewed as a single vector).
+
+                .. warning::
+                    Returns -1 if the most recently computed fp16 gradients overflowed (that is, if ``self.overflow`` is ``True``).
+                """
+                if not self.overflow:
+                    print("clip_grad_norm_fp32 called....................................")
+                    fp32_params = []
+                    for param_group in self.optimizer.param_groups:
+                        for param in param_group['params']:
+                            fp32_params.append(param)
+                    return clip_grad_norm_fp32(fp32_params, max_norm, norm_type, get_tensor_model_parallel_rank, get_tensor_model_parallel_group)
+                else:
+                    return -1
+
             optimizer._check_overflow = types.MethodType(_check_overflow, optimizer)
             optimizer.clip_master_grads = types.MethodType(clip_master_grads, optimizer)
         else:
-            raise RuntimeError("megatron.fp16.fp16.FP16_Optimizer wrapping failed.")
+            print("megatron.fp16.fp16.FP16_Optimizer wrapping failed.")
 
     return optimizer
 
@@ -78,7 +106,8 @@ def _check_overflow(self):
     return self.overflow 
 
 
-def clip_grad_norm_fp32(parameters, max_norm, norm_type):
+def clip_grad_norm_fp32(parameters, max_norm, norm_type,
+                        get_tensor_model_parallel_rank, get_tensor_model_parallel_group):
     from apex.multi_tensor_apply import multi_tensor_applier
     import amp_C
     def param_is_not_shared(param):
@@ -122,7 +151,7 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type):
         # Take max across all model-parallel GPUs.
         torch.distributed.all_reduce(total_norm_cuda,
                                     op=torch.distributed.ReduceOp.MAX,
-                                    group=get_model_parallel_group())
+                                    group=get_tensor_model_parallel_group())
         total_norm = total_norm_cuda[0].item()
 
     else:
@@ -149,33 +178,7 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type):
         # Sum across all model-parallel GPUs.
         torch.distributed.all_reduce(total_norm,
                                     op=torch.distributed.ReduceOp.SUM,
-                                    group=get_model_parallel_group())
+                                    group=get_tensor_model_parallel_group())
         total_norm = total_norm.item() ** (1.0 / norm_type)
 
     return total_norm
-
-@nvtx.annotate(message="clip_grad_norm_fp32", color="red")
-def clip_master_grads(self, max_norm, norm_type=2):
-    """
-    Clips fp32 master gradients via ``torch.nn.utils.clip_grad_norm``.
-
-    Args:
-        max_norm (float or int): max norm of the gradients
-        norm_type (float or int): type of the used p-norm. Can be ``'inf'`` for
-            infinity norm.
-
-    Returns:
-        Total norm of the current fp32 gradients (viewed as a single vector).
-
-    .. warning::
-        Returns -1 if the most recently computed fp16 gradients overflowed (that is, if ``self.overflow`` is ``True``).
-    """
-    if not self.overflow:
-        print("clip_grad_norm_fp32 called....................................")
-        fp32_params = []
-        for param_group in self.optimizer.param_groups:
-            for param in param_group['params']:
-                fp32_params.append(param)
-        return clip_grad_norm_fp32(fp32_params, max_norm, norm_type)
-    else:
-        return -1
