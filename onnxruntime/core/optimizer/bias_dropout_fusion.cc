@@ -76,7 +76,6 @@ void FuseResidualAddIfAny(Graph& graph, const Node& dropout_node,
 
 static bool IsSameShape(const TensorShapeProto& shape1, const TensorShapeProto& shape2) {
   // TODO: This should probably be defined to be the equality operator on TensorShapeProto.
-  namespace on = ONNX_NAMESPACE;
   int rank1 = shape1.dim_size();
   if (shape2.dim_size() != rank1) return false;
   for (int i = 0; i < rank1; i++) {
@@ -94,7 +93,6 @@ static bool IsSameShape(const TensorShapeProto& shape1, const TensorShapeProto& 
   }
   return true;
 };
-
 
 Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
@@ -129,11 +127,9 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       continue;
     }
 
-
-
-    bool same_rank = false;
     if (IsSameShape(*input1_shape, *input2_shape)) {
-      same_rank = true;
+      dropout_input.push_back(node.MutableInputDefs()[0]);  // dropout input
+      dropout_input.push_back(node.MutableInputDefs()[1]);  // bias
     } else {
       int last_dim_shape1 = input1_shape->dim_size() - 1;
       int last_dim_shape2 = input2_shape->dim_size() - 1;
@@ -142,12 +138,6 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
           input1_shape->dim(last_dim_shape1).dim_value() != input2_shape->dim(last_dim_shape2).dim_value()) {
         continue;
       }
-    }
-
-    if (same_rank) {
-      dropout_input.push_back(node.MutableInputDefs()[0]);  // dropout input
-      dropout_input.push_back(node.MutableInputDefs()[1]);  // bias
-    } else {
       if (input1_shape->dim_size() == 1) {
         dropout_input.push_back(node.MutableInputDefs()[1]);  // dropout input
         dropout_input.push_back(node.MutableInputDefs()[0]);  // bias
@@ -197,7 +187,7 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     const std::string op_type = "BiasDropout";
     Node& dropout_add_fusion_node = graph.AddNode(graph.GenerateNodeName(op_type),
                                                   op_type,
-                                                  "fused Add-Dropout-Add for " + dropout_node.Name(),
+                                                  "fused Add-Dropout-(Add) for " + dropout_node.Name(),
                                                   dropout_input,
                                                   dropout_output,
                                                   {},

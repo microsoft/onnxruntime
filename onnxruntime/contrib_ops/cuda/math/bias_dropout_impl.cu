@@ -81,7 +81,7 @@ __global__ void BiasDropoutKernel(
 
 
 template <typename T, bool has_residual>
-__global__ void BiasDropoutSameRankKernel(
+__global__ void BiasDropoutSameShapeKernel(
     const int64_t N,
     const float ratio,
     const std::pair<uint64_t, uint64_t> seeds,
@@ -113,9 +113,6 @@ __global__ void BiasDropoutSameRankKernel(
     for (CUDA_LONG i = 0; i < UNROLL; i++) {
       CUDA_LONG li = id + gridDim.x * blockDim.x * i;
       if (li < N) {
-        // int offset = fdm_dim.mod(li);
-        // float bias = float(bias_data[offset]);
-
         mask_data[li] = (&rand.x)[i] < p;
         float output_data = (float(X_data[li]) + float(bias_data[li])) * mask_data[li] * scale;
         if (has_residual) {
@@ -143,7 +140,7 @@ void BiasDropoutKernelImpl(
     const T* residual_data,
     T* Y_data,
     bool* mask_data,
-    bool bias_data_same_rank) {
+    bool bias_data_same_shape) {
   const int block_size = 256;
   const int blocks_per_sm = prop.maxThreadsPerMultiProcessor / block_size;
   const int grid_size = std::min(prop.multiProcessorCount * blocks_per_sm, static_cast<int>(CeilDiv(N, block_size * UNROLL)));
@@ -152,11 +149,11 @@ void BiasDropoutKernelImpl(
   const uint64_t counter_offset = static_cast<uint64_t>(((N - 1) / (block_size * grid_size * UNROLL) + 1) * UNROLL);
   auto seeds = generator.NextPhiloxSeeds(counter_offset);
 
-  if (bias_data_same_rank) {
+  if (bias_data_same_shape) {
     if (residual_data == nullptr) {
-      BiasDropoutSameRankKernel<T, false><<<grid_size, block_size, 0, stream>>>(N, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
+      BiasDropoutSameShapeKernel<T, false><<<grid_size, block_size, 0, stream>>>(N, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
     } else {
-      BiasDropoutSameRankKernel<T, true><<<grid_size, block_size, 0, stream>>>(N, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
+      BiasDropoutSameShapeKernel<T, true><<<grid_size, block_size, 0, stream>>>(N, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
     }
   } else {
     if (residual_data == nullptr) {
@@ -180,7 +177,7 @@ void BiasDropoutKernelImpl(
       const T* residual_data,       \
       T* Y_data,                    \
       bool* mask_data,              \
-      bool bias_data_same_rank);
+      bool bias_data_same_shape);
 
 
 SPECIALIZED_BIAS_DROPOUT_IMPL(float)

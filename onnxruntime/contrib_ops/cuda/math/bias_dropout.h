@@ -27,7 +27,7 @@ void BiasDropoutKernelImpl(
     const T* residual_data,
     T* Y_data,
     bool* mask_data,
-    bool bias_data_same_rank);
+    bool bias_data_same_shape);
 
 class BiasDropout final : public CudaKernel {
  public:

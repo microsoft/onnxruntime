@@ -37,7 +37,7 @@ struct BiasDropoutComputeImpl {
                     const Tensor* residual,
                     Tensor& Y,
                     bool* mask_data,
-                    bool bias_data_same_rank) const {
+                    bool bias_data_same_shape) const {
     typedef typename ToCudaType<T>::MappedType CudaT;
 
     const CudaT* X_data = reinterpret_cast<const CudaT*>(X.template Data<T>());
@@ -53,7 +53,7 @@ struct BiasDropoutComputeImpl {
 
     CudaT* Y_data = reinterpret_cast<CudaT*>(Y.template MutableData<T>());
 
-    BiasDropoutKernelImpl<CudaT>(prop, stream, N, fdm_dim, ratio_data, generator, X_data, bias_data, residual_data, Y_data, mask_data, bias_data_same_rank);
+    BiasDropoutKernelImpl<CudaT>(prop, stream, N, fdm_dim, ratio_data, generator, X_data, bias_data, residual_data, Y_data, mask_data, bias_data_same_shape);
 
     return Status::OK();
   }
@@ -71,18 +71,18 @@ Status BiasDropout::ComputeInternal(OpKernelContext* context) const {
   const Tensor* bias = context->Input<Tensor>(1);
   if (bias == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "Bias input of BiasDropout is not available.");
   const TensorShape& bias_shape = bias->Shape();
-  bool data_and_bias_have_same_rank = false;
+  const int64_t dim = bias_shape.GetDims().back();
+  bool data_and_bias_have_same_shape = false;
   if (bias_shape == x_shape) {
-    data_and_bias_have_same_rank = true;
+    data_and_bias_have_same_shape = true;
   } else {
     if (bias_shape.NumDimensions() != 1) {
       return Status(common::ONNXRUNTIME, common::FAIL, "Bias input is not a 1D tensor.");
     }
-  }
 
-  const int64_t dim = bias_shape.GetDims().back();
-  if (dim != x_shape.GetDims().back()) {
-    return Status(common::ONNXRUNTIME, common::FAIL, "Bias' dimension doesn't match input's last dimension.");
+    if (dim != x_shape.GetDims().back()) {
+      return Status(common::ONNXRUNTIME, common::FAIL, "Bias' dimension doesn't match input's last dimension.");
+    }
   }
 
   //Get residual_data
@@ -121,7 +121,7 @@ Status BiasDropout::ComputeInternal(OpKernelContext* context) const {
 
   utils::MLTypeCallDispatcher<ALL_IEEE_FLOAT_DATA_TYPES> t_disp(X->GetElementType());
   return t_disp.InvokeRet<Status, BiasDropoutComputeImpl>(
-      GetDeviceProp(), Stream(), N, fdm_dim, ratio_data, generator, *X, *bias, residual, *Y, mask_data, data_and_bias_have_same_rank);
+      GetDeviceProp(), Stream(), N, fdm_dim, ratio_data, generator, *X, *bias, residual, *Y, mask_data, data_and_bias_have_same_shape);
 }
 
 }  // namespace cuda
