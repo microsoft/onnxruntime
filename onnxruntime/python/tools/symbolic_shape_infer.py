@@ -902,7 +902,7 @@ class SymbolicShapeInference:
                     else:
                         self.sympy_data_[node.output[0]] = data[int(idx)]
                 else:
-                    assert idx == 0 || idx == -1
+                    assert idx == 0 or idx == -1
                     self.sympy_data_[node.output[0]] = data
 
     def _infer_GatherElements(self, node):
