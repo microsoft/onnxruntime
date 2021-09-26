@@ -4,6 +4,7 @@ from onnx import TensorProto, OperatorSetIdProto
 
 # inputs/outputs
 A = helper.make_tensor_value_info('A', TensorProto.FLOAT, ['unk_1', 'unk_2', 3072])
+A2 = helper.make_tensor_value_info('A2', TensorProto.FLOAT, ['unk_1', 'unk_2', 3072])
 B = helper.make_tensor_value_info('B', TensorProto.FLOAT, [3072])
 R = helper.make_tensor_value_info('R', TensorProto.FLOAT, ['unk_1', 'unk_2', 3072])
 C = helper.make_tensor_value_info('C', TensorProto.FLOAT, ['unk_1', 'unk_2', 3072])
@@ -133,3 +134,33 @@ graph = helper.make_graph(
 
 model = helper.make_model(graph, producer_name='onnx-example', **kwargs)
 onnx.save(model, 'bias_dropout_residual_fusion_multiple_consumers2.onnx')
+
+
+# Create the model (ModelProto)
+bias = helper.make_node("Add", ["A", "A2"], ["add0_out"], "add0")
+dropout_12 = helper.make_node("Dropout", ["add0_out", "ratio_const", "training_mode"], ["C", "mask"], "dropout0")
+
+graph = helper.make_graph(
+    [bias, dropout_12],
+    "Bias_Dropout_Fusion",  #name
+    [A, A2],
+    [C],
+    [ratio, training_mode])
+
+model = helper.make_model(graph, producer_name='onnx-example', **kwargs)
+onnx.save(model, 'bias_dropout_same_shape_fusion.onnx')
+
+# Create the model (ModelProto)
+bias = helper.make_node("Add", ["A", "A2"], ["add0_out"], "add0")
+dropout_12 = helper.make_node("Dropout", ["add0_out", "ratio_const", "training_mode"], ["dropout_out", "mask"], "dropout0")
+residual = helper.make_node("Add", ["dropout_out", "R"], ["C"], "add1")
+
+graph = helper.make_graph(
+    [bias, dropout_12, residual],
+    "Bias_Dropout_Fusion",  #name
+    [A, A2, R],
+    [C],
+    [ratio, training_mode])
+
+model = helper.make_model(graph, producer_name='onnx-example', **kwargs)
+onnx.save(model, 'bias_dropout_residual_same_shape_fusion.onnx')
