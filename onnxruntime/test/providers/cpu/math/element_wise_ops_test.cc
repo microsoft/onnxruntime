@@ -1088,10 +1088,12 @@ TEST(MathOpTest, SumMultipleInputsNoBroadcasting) {
   //   3-8: NoBroadcastBatchImplDispatchTarget(i)
   //   9: NoBroadcastBatchImplDispatchTarget(8) + BinaryImplDispatchTarget
   //   10: NoBroadcastBatchImplDispatchTarget(8) + NoBroadcastBatchImplDispatchTarget(3)
-  //   16: NoBroadcastBatchImplDispatchTarget(8) + NoBroadcastBatchImplDispatchTarget(8)
+  //   15: NoBroadcastBatchImplDispatchTarget(8) + NoBroadcastBatchImplDispatchTarget(8)
+  //   16: NoBroadcastBatchImplDispatchTarget(8) + NoBroadcastBatchImplDispatchTarget(8) + BinaryImplDispatchTarget
   for (size_t num_inputs = 2; num_inputs <= 10; ++num_inputs) {
     TestSumMultipleInputsNoBroadcasting<float>(num_inputs, shape);
   }
+  TestSumMultipleInputsNoBroadcasting<float>(15, shape);
   TestSumMultipleInputsNoBroadcasting<float>(16, shape);
 }
 
