@@ -101,9 +101,9 @@ Q: unittest fails on Debug build with debug info.
 
 1. Install NPM packages
 
-   1. in `<ORT_ROOT>/js/`, run `npm ci`.
-   2. in `<ORT_ROOT>/js/common/`, run `npm ci`.
-   3. in `<ORT_ROOT>/js/web/`, run `npm ci`.
+    1. in `<ORT_ROOT>/js/`, run `npm ci`.
+    2. in `<ORT_ROOT>/js/common/`, run `npm ci`.
+    3. in `<ORT_ROOT>/js/web/`, run `npm ci`.
 
 2. Prepare ONNX Runtime WebAssembly artifacts.
 
@@ -119,22 +119,22 @@ Q: unittest fails on Debug build with debug info.
 
    - Build WebAssembly artifacts.
 
-     1. Build ONNX Runtime WebAssembly
+         1. Build ONNX Runtime WebAssembly
 
-        Follow [instructions above](#build-onnx-runtime-for-webassembly) for building ONNX Runtime WebAssembly.
+            Follow [instructions above](#build-onnx-runtime-for-webassembly) for building ONNX Runtime WebAssembly.
 
-     2. Copy following files from build output folder to `<ORT_ROOT>/js/web/dist/` (create the folder if it does not exist):
+         2. Copy following files from build output folder to `<ORT_ROOT>/js/web/dist/` (create the folder if it does not exist):
 
-         * ort-wasm.wasm
-         * ort-wasm-threaded.wasm (build with flag '--enable_wasm_threads')
-         * ort-wasm-simd.wasm (build with flag '--enable_wasm_simd')
-         * ort-wasm-simd-threaded.wasm (build with flags '--enable_wasm_threads --enable_wasm_simd')
+             * ort-wasm.wasm
+             * ort-wasm-threaded.wasm (build with flag '--enable_wasm_threads')
+             * ort-wasm-simd.wasm (build with flag '--enable_wasm_simd')
+             * ort-wasm-simd-threaded.wasm (build with flags '--enable_wasm_threads --enable_wasm_simd')
 
-     3. Copy following files from build output folder to `<ORT_ROOT>/js/web/lib/wasm/binding/`:
+         3. Copy following files from build output folder to `<ORT_ROOT>/js/web/lib/wasm/binding/`:
 
-         * ort-wasm.js
-         * ort-wasm-threaded.js (build with flag '--enable_wasm_threads')
-         * ort-wasm-threaded.worker.js (build with flag '--enable_wasm_threads')
+             * ort-wasm.js
+             * ort-wasm-threaded.js (build with flag '--enable_wasm_threads')
+             * ort-wasm-threaded.worker.js (build with flag '--enable_wasm_threads')
 
 3. Use following command in folder `<ORT_ROOT>/js/web` to build:
    ```
