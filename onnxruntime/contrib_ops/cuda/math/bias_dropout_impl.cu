@@ -77,7 +77,6 @@ __global__ void BiasDropoutKernel(
       }
     }
 
-    __syncthreads();
   }
 
 }
@@ -145,7 +144,6 @@ __global__ void BiasDropoutVectorizedKernel(
     *(reinterpret_cast<LoadT*>(&Y_data[id])) = *reinterpret_cast<LoadT*>(&r[0]);
     *(reinterpret_cast<MaskLoadT*>(&mask_data[id])) = *reinterpret_cast<MaskLoadT*>(&mask[0]);
 
-    __syncthreads();
   }
 
 }
