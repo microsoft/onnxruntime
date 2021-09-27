@@ -55,7 +55,6 @@ jobs:
     clean: all
   timeoutInMinutes: 3000
   pool: 'Onnxruntime-Linux-GPU-TensorRT-Perf'
-    vmImage: 'onnxruntimewin2019largedisk'
   
   variables:
     - name: trt_dockerfile
@@ -83,6 +82,9 @@ jobs:
       value: $(environment) -e "$(epList)"
 
   steps:
+    - script: 'ls /data/'
+      displayName: 'print models'
+
     - ${{ if eq(parameters.BuildORT, true) }}:
 
       - ${{ if eq(parameters.RunDocker, true) }}: 
