@@ -67,7 +67,6 @@ class CudaProfiler final : public EpProfiler {
     int64_t stop_ = 0;
     uint32_t correlation_id = 0;
   };
-  static onnxruntime::OrtMutex mtx;
   static std::atomic_flag enabled;
   static std::vector<KernelStat> stats;
   static std::unordered_map<uint32_t, uint64_t> id_map;

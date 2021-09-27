@@ -61,7 +61,7 @@ void Profiler::StartProfiling(const std::basic_string<T>& file_name) {
 #endif
   profile_stream_file_ = ToMBString(file_name);
   profiling_start_time_ = std::chrono::high_resolution_clock::now();
-  for (auto& ep_profiler : ep_profilers_) {
+  for (const auto& ep_profiler : ep_profilers_) {
     ep_profiler->StartProfiling();
   }
 }
@@ -118,7 +118,7 @@ std::string Profiler::EndProfiling() {
   std::lock_guard<OrtMutex> lock(mutex_);
   profile_stream_ << "[\n";
 
-  for (auto& ep_profiler : ep_profilers_) {
+  for (const auto& ep_profiler : ep_profilers_) {
     ep_profiler->EndProfiling(profiling_start_time_, events_);
   }
 

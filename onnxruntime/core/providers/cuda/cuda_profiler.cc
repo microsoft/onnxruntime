@@ -12,7 +12,6 @@ namespace onnxruntime {
 namespace profiling {
 
 auto KEVENT = onnxruntime::profiling::KERNEL_EVENT;
-onnxruntime::OrtMutex CudaProfiler::mtx;
 std::atomic_flag CudaProfiler::enabled{0};
 std::vector<CudaProfiler::KernelStat> CudaProfiler::stats;
 std::unordered_map<uint32_t, uint64_t> CudaProfiler::id_map;
@@ -60,7 +59,6 @@ void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext, uint32_t, uint8_t* buffer
   CUptiResult status;
   CUpti_Activity* record = NULL;
   if (validSize > 0) {
-    std::lock_guard<onnxruntime::OrtMutex> lock(CudaProfiler::mtx);
     do {
       status = cuptiActivityGetNextRecord(buffer, validSize, &record);
       if (status == CUPTI_SUCCESS) {
@@ -115,7 +113,6 @@ void CudaProfiler::EndProfiling(TimePoint start_time, Events& events) {
   if (initialized_) {
     DisableEvents();
     cuptiActivityFlushAll(1);
-    std::lock_guard<onnxruntime::OrtMutex> lock(mtx);
     int64_t profiling_start = std::chrono::duration_cast<std::chrono::nanoseconds>(start_time.time_since_epoch()).count();
     for (const auto& stat : stats) {
       std::initializer_list<std::pair<std::string, std::string>> args = {{"op_name", ""},
