@@ -3,12 +3,13 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+from ._graph_execution_manager_factory import GraphExecutionManagerFactory
 from ._torch_module_factory import TorchModuleFactory
 from ._torch_module_pytorch import TorchModulePytorch
 from ._torch_module_ort import TorchModuleORT
 from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 from ._custom_gradient_registry import CustomGradientRegistry
-from . import _utils
+from . import _io, _utils
 from .debug_options import DebugOptions
 from ._fallback import (_FallbackManager,
                         _FallbackPolicy,
@@ -69,7 +70,13 @@ class ORTModule(torch.nn.Module):
 
             super(ORTModule, self).__init__()
 
-            self._torch_module = TorchModuleFactory()(module, debug_options, self._fallback_manager)
+            flattened_module = _io._FlattenedModule(module)
+            self._execution_manager = GraphExecutionManagerFactory(flattened_module,
+                                                                   debug_options,
+                                                                   self._fallback_manager)
+            self._torch_module = TorchModuleFactory()(module,
+                                                      flattened_module,
+                                                      self._execution_manager)
 
             # Create forward dynamically, so each ORTModule instance will have its own copy.
             # This is needed to be able to copy the forward signatures from the original PyTorch models

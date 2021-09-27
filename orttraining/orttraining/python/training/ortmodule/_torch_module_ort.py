@@ -2,11 +2,10 @@
 # Licensed under the MIT License.
 # _torch_module_ort.py
 
-from . import _io
-from .debug_options import DebugOptions
-from ._graph_execution_manager_factory import GraphExecutionManagerFactory
+from . _io import _FlattenedModule
+from ._graph_execution_manager import GraphExecutionManager
 from ._torch_module_interface import TorchModuleInterface
-from ._fallback import _FallbackManager, ORTModuleTorchModelException, wrap_exception
+from ._fallback import ORTModuleTorchModelException, wrap_exception
 from collections import OrderedDict
 import functools
 import torch
@@ -17,9 +16,11 @@ T = TypeVar('T', bound='torch.nn.Module')
 
 
 class TorchModuleORT(TorchModuleInterface):
-    def __init__(self, module: torch.nn.Module, debug_options: DebugOptions, fallback_manager: _FallbackManager):
+    def __init__(self,
+                 module: torch.nn.Module,
+                 flattened_module: _FlattenedModule,
+                 execution_manager: GraphExecutionManager):
         super().__init__(module)
-        self._flattened_module = _io._FlattenedModule(module)
 
         def _forward(self, *inputs, **kwargs):
             '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
@@ -37,7 +38,8 @@ class TorchModuleORT(TorchModuleInterface):
         functools.update_wrapper(
             self.forward.__func__, self._original_module.forward.__func__)
 
-        self._execution_manager = GraphExecutionManagerFactory(self._flattened_module, debug_options, fallback_manager)
+        self._execution_manager = execution_manager
+        self._flattened_module = flattened_module
 
     def _apply(self, fn):
         """Override original method to delegate execution to the flattened PyTorch user module"""
