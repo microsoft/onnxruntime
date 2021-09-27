@@ -5,6 +5,7 @@ import tempfile
 import torch
 from ... import ORTModule
 from ... import ONNX_OPSET_VERSION
+from ...debug_options import DebugOptions
 
 
 class HierarchicalORTModule(torch.nn.Module):
@@ -44,10 +45,11 @@ class HierarchicalORTModule(torch.nn.Module):
     '''
 
     def __init__(self, module, debug_options=None):
-        super(HierarchicalORTModule, self).__init__()
         self._initialized = False
+        super(HierarchicalORTModule, self).__init__()
         self._original_module = module
-        self._debug_options = debug_options
+        if not debug_options:
+            self._debug_options = DebugOptions()
 
     def _initialize(self, *args, **kwargs):
         handle_pool = []
@@ -143,7 +145,7 @@ class HierarchicalORTModule(torch.nn.Module):
 
         # Run forward with actual input to record all possible
         # inputs for all invoked modules.
-        y = self._original_module(*args, **kwargs)
+        _ = self._original_module(*args, **kwargs)
 
         # We already have "supported_modules" so
         # we no longer need those hooks in forward pass.
@@ -186,9 +188,11 @@ class HierarchicalORTModule(torch.nn.Module):
                         recursive_wrap(sub)
 
         recursive_wrap(self._original_module)
+        self._initialized = True
 
     def forward(self, *inputs, **kwargs):
         if not self._initialized:
-            self._initialized = True
             self._initialize(*inputs, **kwargs)
+        # forward can be run only after initialization is done.
+        assert self._initialized
         return self._original_module(*inputs, **kwargs)
