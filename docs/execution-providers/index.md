@@ -82,7 +82,7 @@ image = Image.fromarray(image)
 image.save("kite-with-objects.jpg")
 
 # Update EP priority to only CPUExecutionProvider
-sess.set_providers('CPUExecutionProvider')
+sess.set_providers(['CPUExecutionProvider'])
 
 cpu_detection = sess.run(...)
 
