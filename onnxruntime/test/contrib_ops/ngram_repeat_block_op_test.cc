@@ -37,5 +37,20 @@ TEST(NGramRepeatBlockTest, NGramSize_3) {
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+TEST(BifurcationDetectorTest, Test1) {
+  OpTester tester("BifurcationDetector", 1, onnxruntime::kMSDomain);
+
+  tester.AddInput<int64_t>("src_tokens", {4}, {1, 5, 3, 4});
+  tester.AddInput<int64_t>("cur_tokens", {1}, {2});
+  tester.AddInput<int64_t>("find_end_idx", {}, {0});
+  tester.AddInput<int64_t>("pred_tokens", {5}, {1, 5, 3, 4, 2});
+  tester.AddOutput<int64_t>("tokens", {6}, {2, 1, 5, 3, 4, 2});
+  tester.AddOutput<int64_t>("new_end_idx", {}, {-1});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
