@@ -21,9 +21,19 @@ import tempfile
 import os
 from distutils.version import LooseVersion
 
+<<<<<<< HEAD
 from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
 
 from onnxruntime.training.ortmodule import ORTModule, _utils, _io, DebugOptions, LogLevel, _fallback, _graph_execution_manager
+=======
+from onnxruntime.training.ortmodule import (ORTModule,
+                                            _utils,
+                                            _io,
+                                            DebugOptions,
+                                            LogLevel,
+                                            _fallback,
+                                            _graph_execution_manager)
+>>>>>>> Allow extra pytorch exporter arguments
 import _test_helpers
 
 # Import autocasting libs
@@ -3862,7 +3872,7 @@ def test_ortmodule_determinism_flag(is_training,deterministic):
     model = ORTModule(model)
     model.train(is_training)
 
-    for i in range(5):
+    for _ in range(5):
         x = torch.randn(N, D_in)
         _ = model(x)
 
@@ -3900,3 +3910,36 @@ def test_ortmodule_gradient_builder():
     ort_prediction = run_step(ort_model, ort_x)
     _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
     _test_helpers.assert_values_are_close(ort_x.grad, pt_x.grad )
+
+
+def test_override_pytorch_exporter_kwargs():
+    device = 'cuda'
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    ort_model = ORTModule(model)
+    ort_model._execution_manager(True)._export_extra_kwargs = {'_retain_param_name': None}
+    # Check that the original forward signature is preserved.
+    assert signature(model.forward) == signature(ort_model.forward)
+    x = torch.randn(N, D_in, device=device)
+    # Make sure model runs without any exception
+    prediction = ort_model(x)
+    assert prediction is not None
+    prediction = prediction.sum()
+    prediction.backward()
+
+
+def test_override_pytorch_exporter_kwargs__invalid():
+    device = 'cuda'
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    ort_model = ORTModule(model)
+    ort_model._execution_manager(True)._export_extra_kwargs = {'verbose': False}
+    # Check that the original forward signature is preserved.
+    assert signature(model.forward) == signature(ort_model.forward)
+    x = torch.randn(N, D_in, device=device)
+    # Make sure model runs without any exception
+    with pytest.raises(_fallback.ORTModuleONNXModelException) as type_error:
+        _ = ort_model(x)
+    assert "The following PyTorch exporter arguments cannot be specified: '{'verbose'}'." in str(type_error.value)
