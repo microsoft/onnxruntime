@@ -77,6 +77,17 @@ def FP16_Optimizer(optimizer, **kwargs):
                 else:
                     return -1
 
+            def _check_overflow(self):
+                params = []
+                for group in self.fp16_groups:
+                    for param in group:
+                        params.append(param)
+                for group in self.fp32_from_fp32_groups:
+                    for param in group:
+                        params.append(param)
+                self.overflow = check_overflow(params)
+                return self.overflow
+
             optimizer._check_overflow = types.MethodType(_check_overflow, optimizer)
             optimizer.clip_master_grads = types.MethodType(clip_master_grads, optimizer)
         else:
@@ -84,15 +95,7 @@ def FP16_Optimizer(optimizer, **kwargs):
 
     return optimizer
 
-def _check_overflow(self):
-    params = []
-    for group in self.fp16_groups:
-        for param in group:
-            params.append(param)
-    for group in self.fp32_from_fp32_groups:
-        for param in group:
-            params.append(param)
-
+def check_overflow(params):
     found_inf = torch.cuda.FloatTensor([0.0])
     scaler = torch.cuda.FloatTensor([1.0])
     grad_data = [p.grad.data for p in params if p.grad is not None]
@@ -100,8 +103,8 @@ def _check_overflow(self):
     torch._amp_foreach_non_finite_check_and_unscale_(grad_data, found_inf, scaler)
 
     # Check for nan.
-    self.overflow = (found_inf.item() > 0)
-    return self.overflow 
+    overflow = (found_inf.item() > 0)
+    return overflow 
 
 
 def clip_grad_norm_fp32(parameters, max_norm, norm_type,
