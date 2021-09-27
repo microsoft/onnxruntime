@@ -64,6 +64,7 @@ __global__ void DropoutKernel(
       }
     }
 
+    __syncthreads();
   }
 
 }
@@ -113,6 +114,7 @@ __global__ void DropoutVectorizedKernel(
     *(reinterpret_cast<LoadT*>(&Y_data[id])) = *reinterpret_cast<LoadT*>(&r[0]);
     *(reinterpret_cast<MaskLoadT*>(&mask_data[id])) = *reinterpret_cast<MaskLoadT*>(&mask[0]);
 
+    __syncthreads();
   }
 
 }
