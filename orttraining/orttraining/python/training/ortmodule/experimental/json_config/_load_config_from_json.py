@@ -286,7 +286,7 @@ def load_from_json(ortmodule, path=None):
 
     for training_mode in [True, False]:
         # update the debug config for both train and eval modes
-        ortmodule_config_accessor = ortmodule._torch_module._execution_manager(training_mode)
+        ortmodule_config_accessor = ortmodule._execution_manager(training_mode)
         # iterate over the json data instead of checking for keys in json to catch key errors
         for key, _ in data.__dict__.items():
             load_functions[key](ortmodule_config_accessor, data)

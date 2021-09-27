@@ -333,7 +333,7 @@ class ORTModule(torch.nn.Module):
             # Re-export will be avoided if _skip_check is enabled.
             if isinstance(self._torch_module, TorchModuleORT):
                 for training_mode in [False, True]:
-                    self._torch_module._execution_manager(training_mode).signal_model_changed()
+                    self._execution_manager(training_mode).signal_model_changed()
 
         else:
             # Setting any new attributes should be done on ORTModule only when 'torch_module' is not defined
