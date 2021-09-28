@@ -3886,8 +3886,7 @@ def test_ortmodule_gradient_builder():
                 ('Neg', ['Sin_X_Times_dY'], ['GI(0)'])]
 
     pt_model = Model().to(device)
-    debug_options = DebugOptions(save_onnx=True, onnx_prefix='cos')
-    ort_model = ORTModule(copy.deepcopy(pt_model), debug_options)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
 
     def run_step(model, x):
         prediction = model(x)
