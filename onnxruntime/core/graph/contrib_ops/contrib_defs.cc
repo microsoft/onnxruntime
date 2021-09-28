@@ -2863,27 +2863,21 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
           "input",
           "Input tensor",
           "V",
-          OpSchema::Single,
-          true,
-          1,
-          OpSchema::Differentiable)
+          OpSchema::Optional)
       .Output(
           0,
           "output",
           "Tensor to copy input into.",
           "V",
-          OpSchema::Single,
-          true,
-          1,
-          OpSchema::Differentiable)
+          OpSchema::Optional)
       .TypeConstraint(
           "V",
           [](){
             auto t = OpSchema::all_tensor_types_with_bfloat();
-            auto s = OpSchema::all_tensor_sequence_types();
-            auto o = OpSchema::all_optional_types();
-            t.insert(t.end(), s.begin(), s.end());
-            t.insert(t.end(), o.begin(), o.end());
+            // auto s = OpSchema::all_tensor_sequence_types();
+            // auto o = OpSchema::all_optional_types();
+            // t.insert(t.end(), s.begin(), s.end());
+            // t.insert(t.end(), o.begin(), o.end());
             return t;
           }(),
           "Constrain input and output types to all tensor, sequence, and optional types.")
@@ -2898,27 +2892,21 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
           "input",
           "Input tensor",
           "V",
-          OpSchema::Single,
-          true,
-          1,
-          OpSchema::Differentiable)
+          OpSchema::Optional)
       .Output(
           0,
           "output",
           "Tensor to copy input into.",
           "V",
-          OpSchema::Single,
-          true,
-          1,
-          OpSchema::Differentiable)
+          OpSchema::Optional)
       .TypeConstraint(
           "V",
           [](){
             auto t = OpSchema::all_tensor_types_with_bfloat();
-            auto s = OpSchema::all_tensor_sequence_types();
-            auto o = OpSchema::all_optional_types();
-            t.insert(t.end(), s.begin(), s.end());
-            t.insert(t.end(), o.begin(), o.end());
+            // auto s = OpSchema::all_tensor_sequence_types();
+            // auto o = OpSchema::all_optional_types();
+            // t.insert(t.end(), s.begin(), s.end());
+            // t.insert(t.end(), o.begin(), o.end());
             return t;
           }(),
           "Constrain input and output types to all tensor, sequence, and optional types.")

@@ -25,11 +25,12 @@ class NvtxOpTester {
   std::vector<int64_t> out_shape_;
   std::vector<float> out_data_;
 
+  std::string operation_;
   int64_t nelements_;
 
  public:
-  NvtxOpTester(std::vector<int64_t> in_shape) : 
-	  in_shape_(in_shape) {
+  NvtxOpTester(std::string operation, std::vector<int64_t> in_shape) : 
+	  in_shape_(in_shape), operation_(operation) {
 		  
     // element count
     nelements_ = std::accumulate(
@@ -58,7 +59,7 @@ class NvtxOpTester {
   }
 
   void RunComparison() {
-    OpTester tester("NvtxPush", 1, onnxruntime::kMSDomain);
+    OpTester tester(operation_.c_str(), 1, onnxruntime::kMSDomain);
 
     tester.AddInput<float>("input", in_shape_, in_data_);
     tester.AddOutput<float>("output", out_shape_, out_data_);
@@ -74,9 +75,13 @@ class NvtxOpTester {
   }
 };
 
-// broadcast is along dimensions [broadcast_axis, softmax_axis)
 TEST(NvtxOpTest, NvtxPushTest) {
-  NvtxOpTester test({2, 2, 2});
+  NvtxOpTester test("NvtxPush", {2, 2, 2});
+  test.RunComparison();
+}
+
+TEST(NvtxOpTest, NvtxPopTest) {
+  NvtxOpTester test("NvtxPop", {2, 2, 2});
   test.RunComparison();
 }
 
