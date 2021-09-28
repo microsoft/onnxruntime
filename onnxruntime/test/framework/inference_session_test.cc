@@ -643,11 +643,19 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
   ASSERT_TRUE(lines[size - 1].find("]") != string::npos);
   std::vector<std::string> tags = {"pid", "dur", "ts", "ph", "X", "name", "args"};
 
+  bool has_kernel_info = false;
   for (size_t i = 1; i < size - 1; ++i) {
     for (auto& s : tags) {
       ASSERT_TRUE(lines[i].find(s) != string::npos);
+      has_kernel_info = has_kernel_info || lines[i].find("Kernel") != string::npos &&
+                                               lines[i].find("stream") != string::npos &&
+                                               lines[i].find("block_x") != string::npos;
     }
   }
+
+#if defined(USE_CUDA) && !defined(ENABLE_TRAINING)
+  ASSERT_TRUE(has_kernel_info);
+#endif
 }
 
 TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
