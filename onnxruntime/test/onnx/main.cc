@@ -291,7 +291,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     double per_sample_tolerance = 1e-3;
     // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
     // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
-    double relative_per_sample_tolerance = enable_cuda ? 0.017 : enable_openvino ? 0.009 : 1e-3;
+    double relative_per_sample_tolerance = enable_cuda ? 0.017 : enable_openvino ? 0.009
+                                                                                 : 1e-3;
 
     Ort::SessionOptions sf;
 
@@ -309,16 +310,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
     if (enable_tensorrt) {
 #ifdef USE_TENSORRT
-      OrtCUDAProviderOptions cuda_options{
-          device_id,
-          OrtCudnnConvAlgoSearch::EXHAUSTIVE,
-          std::numeric_limits<size_t>::max(),
-          0,
-          true,
-          0,
-          nullptr,
-          nullptr};  // TODO: Support arena configuration for users of test runner
-
+      OrtCUDAProviderOptions cuda_options;
+      cuda_options.device_id=device_id;
+      cuda_options.do_copy_in_default_stream=true;
+      // TODO: Support arena configuration for users of test runner
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, device_id));
       sf.AppendExecutionProvider_CUDA(cuda_options);
 #else
@@ -338,15 +333,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_cuda) {
 #ifdef USE_CUDA
-      OrtCUDAProviderOptions cuda_options{
-          0,
-          OrtCudnnConvAlgoSearch::EXHAUSTIVE,
-          std::numeric_limits<size_t>::max(),
-          0,
-          true,
-          0,
-          nullptr,
-          nullptr};  // TODO: Support arena configuration for users of test runner
+      OrtCUDAProviderOptions cuda_options;
+      cuda_options.do_copy_in_default_stream=true;
+      // TODO: Support arena configuration for users of test runner
       sf.AppendExecutionProvider_CUDA(cuda_options);
 #else
       fprintf(stderr, "CUDA is not supported in this build");
@@ -480,8 +469,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             ORT_TSTR("operator_pow"),
             ORT_TSTR("bernoulli"),
             ORT_TSTR("bernoulli_double"),
-            ORT_TSTR("bernoulli_seed")
-        };
+            ORT_TSTR("bernoulli_seed")};
 
     static const ORTCHAR_T* cuda_flaky_tests[] = {
         ORT_TSTR("fp16_inception_v1"),
@@ -600,16 +588,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"bernoulli_seed", "By design. Test data is for informational purpose because the generator is non deterministic."},
       {"bernoulli_seed_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
       {"bernoulli_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
-      {"shape", "opset15 updates not supported yet."},
-      {"shape_clip_end", "opset15 updates not supported yet."},
-      {"shape_clip_start", "opset15 updates not supported yet."},
-      {"shape_end_1", "opset15 updates not supported yet."},
-      {"shape_end_negative_1", "opset15 updates not supported yet."},
-      {"shape_example", "opset15 updates not supported yet."},
-      {"shape_start_1", "opset15 updates not supported yet."},
-      {"shape_start_1_end_2", "opset15 updates not supported yet."},
-      {"shape_start_1_end_negative_1", "opset15 updates not supported yet."},
-      {"shape_start_negative_1", "opset15 updates not supported yet."},
       {"test_optional_get_element", "opset15 updates not supported yet."},
       {"test_optional_get_element_sequence", "opset15 updates not supported yet."},
       {"test_optional_has_element", "opset15 updates not supported yet."},

@@ -21,19 +21,11 @@
 #include <mutex>
 #include "core/common/cpuid_info.h"
 
-#if defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)
-
-#if defined(_MSC_VER) && defined(CPUIDINFO_ARCH_ARM)
-// pytorch cpu info does not work for Windows ARM
-// 1. msvc report syntax error in file src/arm/api.h
-// 2. features reporting micro-arch in Windows is missing
-#else
-
-#define CPUINFO_INCLUDED
-#include <cpuinfo.h>
-
+#if _WIN32
+#define HAS_WINDOWS_DESKTOP WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 #endif
-
+#if (defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)) && defined(CPUINFO_SUPPORTED) && (!_WIN32 || HAS_WINDOWS_DESKTOP)
+#include <cpuinfo.h>
 #endif
 
 namespace onnxruntime {
@@ -64,7 +56,7 @@ CPUIDInfo CPUIDInfo::instance_;
 
 
 CPUIDInfo::CPUIDInfo() {
-#ifdef CPUINFO_INCLUDED
+#if (defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)) && defined(CPUINFO_SUPPORTED)
     if (!cpuinfo_initialize()) {
       // Unfortunately we can not capture cpuinfo log!!
       ORT_THROW("Failed to initialize CPU info.");
@@ -103,7 +95,7 @@ CPUIDInfo::CPUIDInfo() {
     }
 #endif
 
-#if defined(CPUIDINFO_ARCH_ARM) && defined(CPUINFO_INCLUDED)
+#if defined(CPUIDINFO_ARCH_ARM) && defined(CPUINFO_SUPPORTED)
 
     // only works on ARM linux or android, does not work on Windows
     is_hybrid_ = cpuinfo_get_uarchs_count() > 1;

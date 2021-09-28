@@ -21,7 +21,7 @@ def find_transformers_source():
 
 def create_inputs(batch_size=1, sequence_length=1, hidden_size=768, float16=False, device=torch.device('cuda')):
     float_type = torch.float16 if float16 else torch.float32
-    input = torch.normal(mean=0.0, std=1.0, size=(batch_size, sequence_length, hidden_size)).to(float_type).to(device)
+    input = torch.normal(mean=0.0, std=10.0, size=(batch_size, sequence_length, hidden_size)).to(float_type).to(device)
     return input
 
 
@@ -47,13 +47,13 @@ def export_onnx(model, onnx_model_path, float16, hidden_size, device):
     print("exported:", onnx_model_path)
 
 
-def optimize_onnx(input_onnx_path, optimized_onnx_path, expected_op=None):
+def optimize_onnx(input_onnx_path, optimized_onnx_path, expected_op=None, use_gpu=False, opt_level=None):
     if find_transformers_source():
         from optimizer import optimize_model
     else:
         from onnxruntime.transformers.optimizer import optimize_model
 
-    onnx_model = optimize_model(input_onnx_path, model_type='gpt2')
+    onnx_model = optimize_model(input_onnx_path, model_type='gpt2', use_gpu=use_gpu, opt_level=opt_level)
     onnx_model.save_model_to_file(optimized_onnx_path)
 
     if expected_op is not None:
@@ -141,7 +141,7 @@ def run_parity(model,
         ort_outputs = onnxruntime_inference(ort_session, input_hidden_states)
 
         if tolerance is None:
-            tolerance = 1e-03 if float16 else 1e-05
+            tolerance = 2e-03 if float16 else 1e-05
         is_all_close, max_diff = compare_outputs(torch_outputs, ort_outputs, atol=tolerance, verbose=verbose)
         max_diffs.append(max_diff)
         if is_all_close:

@@ -161,6 +161,8 @@ def parse_arguments():
     parser.add_argument(
         "--enable_training_ops", action='store_true', help="Enable training ops in inference graph.")
     parser.add_argument(
+        "--enable_training_torch_interop", action='store_true', help="Enable training kernels interop with torch.")
+    parser.add_argument(
         "--disable_nccl", action='store_true', help="Disable Nccl.")
     parser.add_argument(
         "--mpi_home", help="Path to MPI installation dir")
@@ -344,6 +346,10 @@ def parse_arguments():
         "--disable_wasm_exception_catching", action='store_true',
         help="Disable exception catching in WebAssembly.")
     parser.add_argument(
+        "--enable_wasm_exception_throwing_override", action='store_true',
+        help="Enable exception throwing in WebAssembly, this will override default disabling exception throwing "
+        "behavior when disable exceptions.")
+    parser.add_argument(
         "--enable_wasm_threads", action='store_true',
         help="Enable WebAssembly multi-threads support")
     parser.add_argument(
@@ -352,12 +358,16 @@ def parse_arguments():
     parser.add_argument(
         "--wasm_malloc", default="dlmalloc", help="Specify memory allocator for WebAssembly")
     parser.add_argument(
-        "--emsdk_version", default="2.0.23", help="Specify version of emsdk")
+        "--emsdk_version", default="2.0.26", help="Specify version of emsdk")
 
     # Enable onnxruntime-extensions
     parser.add_argument(
-        "--enable_onnxruntime_extensions", action='store_true',
-        help="Enable custom operators in onnxruntime-extensions")
+        "--use_extensions", action='store_true',
+        help="Enable custom operators in onnxruntime-extensions, use git submodule onnxruntime-extensions "
+        "in path cmake/external/onnxruntime-extensions by default.")
+    parser.add_argument(
+        "--extensions_overridden_path", type=str,
+        help="Path to pre-pulled onnxruntime-extensions, will override default onnxruntime-extensions path.")
 
     # Arguments needed by CI
     parser.add_argument(
@@ -533,9 +543,19 @@ def parse_arguments():
     parser.add_argument(
         "--ms_experimental", action='store_true', help="Build microsoft experimental operators.")\
 
+    # eager mode
     parser.add_argument(
         "--build_eager_mode", action='store_true',
         help="Build ONNXRuntime micro-benchmarks.")
+    parser.add_argument('--eager_customop_module', default=None,
+                        help='Module containing custom op mappings for eager mode.')
+    parser.add_argument('--eager_customop_header', default=None,
+                        help='Header containing custom op definitions for eager mode.')
+
+    parser.add_argument(
+        "--enable_external_custom_op_schemas", action='store_true',
+        help="Enable registering user defined custom operation schemas at shared library load time.\
+              This feature is only supported/available on Ubuntu.")
 
     return parser.parse_args()
 
@@ -740,7 +760,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_MINIMAL_BUILD=" + ("ON" if args.minimal_build is not None else "OFF"),
         "-Donnxruntime_EXTENDED_MINIMAL_BUILD=" + ("ON" if args.minimal_build and 'extended' in args.minimal_build
                                                    else "OFF"),
-        "-Donnxruntime_MINIMAL_BUILD_CUSTOM_OPS=" + ("ON" if args.minimal_build and 'custom_ops' in args.minimal_build
+        "-Donnxruntime_MINIMAL_BUILD_CUSTOM_OPS=" + ("ON" if (args.minimal_build is not None and ('custom_ops' in
+                                                     args.minimal_build or args.use_extensions))
                                                      else "OFF"),
         "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if is_reduced_ops_build(args) else "OFF"),
         # enable pyop if it is nightly build
@@ -763,6 +784,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_NVTX_PROFILE=" + ("ON" if args.enable_nvtx_profile else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + ("ON" if args.enable_training else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING_OPS=" + ("ON" if args.enable_training_ops else "OFF"),
+        "-Donnxruntime_ENABLE_TRAINING_TORCH_INTEROP=" + ("ON" if args.enable_training_torch_interop else "OFF"),
         # Enable advanced computations such as AVX for some traininig related ops.
         "-Donnxruntime_ENABLE_CPU_FP16_OPS=" + ("ON" if args.enable_training else "OFF"),
         "-Donnxruntime_USE_NCCL=" + ("OFF" if args.disable_nccl else "ON"),
@@ -777,12 +799,14 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_WEBASSEMBLY_SIMD=" + ("ON" if args.enable_wasm_simd else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING=" + ("OFF" if args.disable_wasm_exception_catching
                                                                   else "ON"),
+        "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_THROWING=" + ("ON" if args.enable_wasm_exception_throwing_override
+                                                                  else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_WEBASSEMBLY_MALLOC=" + args.wasm_malloc,
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
-        # enable custom operators in onnxruntime-extensions
-        "-Donnxruntime_ENABLE_EXTENSION_CUSTOM_OPS=" + ("ON" if args.enable_onnxruntime_extensions else "OFF"),
+        "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS=" + ("ON" if args.enable_external_custom_op_schemas
+                                                              else "OFF"),
     ]
     # It should be default ON in CI build pipelines, and OFF in packaging pipelines.
     # And OFF for the people who are not actively developing onnx runtime.
@@ -914,8 +938,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             cmake_args += ["-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=" + args.xcode_code_signing_team_id]
 
     if args.use_coreml:
-        if not is_macOS():
-            raise BuildError("Build CoreML EP requires macOS")
         cmake_args += ["-Donnxruntime_USE_COREML=ON"]
 
     if args.ios:
@@ -1004,6 +1026,28 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             cmake_args += [
                 "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
             ]
+
+    # Append onnxruntime-extensions cmake options
+    if args.use_extensions:
+        cmake_args += ["-Donnxruntime_USE_EXTENSIONS=ON"]
+
+        # default path of onnxruntime-extensions, using git submodule
+        onnxruntime_extensions_path = os.path.join(cmake_dir, "external", "onnxruntime-extensions")
+
+        if args.extensions_overridden_path and os.path.exists(args.extensions_overridden_path):
+            # use absolute path here because onnxruntime-extensions is outside onnxruntime
+            onnxruntime_extensions_path = os.path.abspath(args.extensions_overridden_path)
+
+        cmake_args += [
+            "-Donnxruntime_EXTENSIONS_PATH=" + onnxruntime_extensions_path]
+        print('[onnxruntime-extensions] onnxruntime_extensions_path: ', onnxruntime_extensions_path)
+
+        if is_reduced_ops_build(args):
+            operators_config_file = os.path.abspath(args.include_ops_by_config)
+            cmake_tool_dir = os.path.join(onnxruntime_extensions_path, 'tools')
+
+            # generate _selectedoplist.cmake by operators config file
+            run_subprocess([sys.executable, 'gen_selectedops.py', operators_config_file], cwd=cmake_tool_dir)
 
     if path_to_protoc_exe:
         cmake_args += [
@@ -1134,6 +1178,7 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
         env = {}
         if args.android:
             env['ANDROID_SDK_ROOT'] = args.android_sdk_path
+            env['ANDROID_NDK_HOME'] = args.android_ndk_path
 
         run_subprocess(cmd_args, env=env)
 
@@ -1297,20 +1342,20 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
             adb_push('onnx_test_runner', device_dir, cwd=cwd)
             adb_shell('chmod +x {}/onnx_test_runner'.format(device_dir))
             run_adb_shell('{0}/onnxruntime_test_all'.format(device_dir))
+
             if args.build_java:
-                adb_install(
-                    os.path.join(
-                        get_config_build_dir(build_dir, config),
-                        "java", "androidtest", "android", "app", "build", "outputs", "apk",
-                        "debug", "app-debug.apk"))
-                adb_install(
-                    os.path.join(
-                        get_config_build_dir(build_dir, config),
-                        "java", "androidtest", "android", "app", "build", "outputs", "apk",
-                        "androidTest", "debug", "app-debug-androidTest.apk"))
-                adb_shell(
-                    'am instrument -w ai.onnxruntime.example.javavalidator.test/androidx.test.runner.AndroidJUnitRunner'
-                    )
+                gradle_executable = 'gradle'
+                # use the gradle wrapper if it exists, the gradlew should be setup under <repo root>/java
+                gradlew_path = os.path.join(source_dir, 'java',
+                                            'gradlew.bat' if is_windows() else 'gradlew')
+                if os.path.exists(gradlew_path):
+                    gradle_executable = gradlew_path
+                android_test_path = os.path.join(cwd, "java", "androidtest", "android")
+                run_subprocess([gradle_executable, '--no-daemon',
+                                '-DminSdkVer={}'.format(args.android_api),
+                                'clean', 'connectedDebugAndroidTest'],
+                               cwd=android_test_path)
+
             if args.use_nnapi:
                 adb_shell('cd {0} && {0}/onnx_test_runner -e nnapi {0}/test'.format(device_dir))
             else:
@@ -1407,6 +1452,9 @@ def run_training_python_frontend_tests(cwd):
 
     run_subprocess([
         sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_checkpoint_functions.py'], cwd=cwd)
+    # Not technically training related, but it needs torch to be installed.
+    run_subprocess([
+        sys.executable, '-m', 'pytest', '-sv', 'test_pytorch_export_contrib_ops.py'], cwd=cwd)
 
 
 def run_training_python_frontend_e2e_tests(cwd):
@@ -1690,7 +1738,7 @@ def build_python_wheel(
         elif use_armnn:
             args.append('--use_armnn')
         elif use_dml:
-            args.append('--use_dml')
+            args.append('--wheel_name_suffix=directml')
 
         run_subprocess(args, cwd=cwd)
 
@@ -1986,6 +2034,10 @@ def main():
     if args.use_openvino == "VAD-F_FP32":
         args.test = False
 
+    # Disabling unit tests for GPU and MYRIAD on nuget creation
+    if args.use_openvino != "CPU_FP32" and args.build_nuget:
+        args.test = False
+
     configs = set(args.config)
 
     # setup paths and directories
@@ -2096,32 +2148,10 @@ def main():
             emsdk_dir = os.path.join(source_dir, "cmake", "external", "emsdk")
             emsdk_file = os.path.join(emsdk_dir, "emsdk.bat") if is_windows() else os.path.join(emsdk_dir, "emsdk")
 
-            # apply patch to emsdk/emsdk.py
-            #
-            # Note: this patch fixes bug in emsdk to install a single emscripten tool.
-            #
-            #       should remove patch file and remove "ignore = dirty" in .gitmodules once the following PR get
-            #       merged and included in a new release:
-            #         https://github.com/emscripten-core/emsdk/pull/834
-            shutil.copy(
-                os.path.join(SCRIPT_DIR, "wasm", "emsdk.py.patch"),
-                os.path.join(emsdk_dir, "emsdk.py"))
-
             log.info("Installing emsdk...")
             run_subprocess([emsdk_file, "install", emsdk_version], cwd=emsdk_dir)
             log.info("Activating emsdk...")
             run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
-
-            # apply patch to file_packager.py
-            #
-            # Note: this patch enables file_packager.py to generate JavaScript code to support preload files in Node.js
-            #
-            #       should remove patch file once the following PR get merged and included in a new release:
-            #         https://github.com/emscripten-core/emscripten/pull/11785   (merged, not release yet)
-            #         https://github.com/emscripten-core/emscripten/pull/14372   (merged, not release yet)
-            shutil.copy(
-                os.path.join(SCRIPT_DIR, "wasm", "file_packager.py.patch"),
-                os.path.join(emsdk_dir, "upstream", "emscripten", "tools", "file_packager.py"))
 
         if (args.android or args.ios or args.enable_windows_store or args.build_wasm
                 or is_cross_compiling_on_apple(args)) and args.path_to_protoc_exe is None:
@@ -2153,21 +2183,58 @@ def main():
             args.rocm_version = ""
 
         if args.build_eager_mode:
-            # generate the ort aten backend code
-            def gen_ort_aten_ops(eager_root_dir):
-                gen_cpp_name = os.path.join(eager_root_dir, "ort_aten.g.cpp")
-                if os.path.exists(gen_cpp_name):
-                    os.remove(gen_cpp_name)
-                subprocess.check_call([
-                    sys.executable,
-                    os.path.join(eager_root_dir, 'opgen', 'opgen.py'),
-                    "--output_file",
-                    gen_cpp_name,
-                    "--use_preinstalled_torch"
-                ])
-
             eager_root_dir = os.path.join(source_dir, "orttraining", "orttraining", "eager")
-            gen_ort_aten_ops(eager_root_dir)
+            if args.eager_customop_module and not args.eager_customop_header:
+                raise Exception('eager_customop_header must be provided when eager_customop_module is')
+            elif args.eager_customop_header and not args.eager_customop_module:
+                raise Exception('eager_customop_module must be provided when eager_customop_header is')
+
+            def gen_ops(gen_cpp_name: str, header_file: str, ops_module: str, custom_ops: bool):
+                gen_cpp_scratch_name = gen_cpp_name + '.working'
+                print(f'Generating ORT ATen overrides (output_file: {gen_cpp_name}, header_file: {header_file},'
+                      f'ops_module: {ops_module}), custom_ops: {custom_ops}')
+
+                cmd = [sys.executable, os.path.join(os.path.join(eager_root_dir, 'opgen', 'opgen.py')),
+                       '--output_file', gen_cpp_scratch_name,
+                       '--ops_module', ops_module,
+                       '--header_file', header_file]
+
+                if custom_ops:
+                    cmd += ["--custom_ops"]
+
+                subprocess.check_call(cmd)
+
+                import filecmp
+                if (not os.path.isfile(gen_cpp_name) or
+                   not filecmp.cmp(gen_cpp_name, gen_cpp_scratch_name, shallow=False)):
+                    os.rename(gen_cpp_scratch_name, gen_cpp_name)
+                else:
+                    os.remove(gen_cpp_scratch_name)
+
+            def gen_ort_ops():
+                # generate native aten ops
+                import torch
+                regdecs_path = os.path.join(os.path.dirname(torch.__file__), 'include/ATen/RegistrationDeclarations.h')
+
+                ops_module = os.path.join(eager_root_dir, 'opgen/opgen/atenops.py')
+                gen_ops(os.path.join(eager_root_dir, 'ort_aten.g.cpp'), regdecs_path, ops_module, False)
+
+                # generate custom ops
+                if not args.eager_customop_header:
+                    args.eager_customop_header = os.path.realpath(os.path.join(
+                        eager_root_dir,
+                        "opgen",
+                        "CustomOpDeclarations.h"))
+
+                if not args.eager_customop_module:
+                    args.eager_customop_module = os.path.join(eager_root_dir, 'opgen/opgen/custom_ops.py')
+
+                gen_ops(os.path.join(eager_root_dir, 'ort_customops.g.cpp'),
+                        args.eager_customop_header, args.eager_customop_module, True)
+
+            gen_ort_ops()
+        if args.enable_external_custom_op_schemas and not is_linux():
+            raise BuildError("Registering external custom op schemas is only supported on Linux.")
 
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home, mpi_home, nccl_home,

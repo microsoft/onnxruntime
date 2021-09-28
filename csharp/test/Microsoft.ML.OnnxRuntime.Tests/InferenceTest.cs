@@ -30,6 +30,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact]
         public void TestSessionOptions()
         {
+            // get instance to setup logging 
+            var ortEnvInstance = OrtEnv.Instance();
+
             using (SessionOptions opt = new SessionOptions())
             {
                 Assert.NotNull(opt);
@@ -89,16 +92,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AddSessionConfigEntry("", "invalid key"); });
                 Assert.Contains("[ErrorCode:InvalidArgument] Config key is empty", ex.Message);
 
-                opt.AppendExecutionProvider_CPU(1);
-#if USE_DNNL
-                opt.AppendExecutionProvider_Dnnl(0);
-#endif
 #if USE_CUDA
                 opt.AppendExecutionProvider_CUDA(0);
 #endif
-#if USE_ROCM
-                opt.AppendExecutionProvider_ROCM(0);
-#endif
+
 #if USE_DML
                 // Explicitly set dll probe path so that the (potentially) stale system DirectML.dll
                 // doesn't get loaded by the test process when it is eventually delay loaded by onnruntime.dll
@@ -110,22 +107,37 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 // Restore the default dll search order
                 SetDllDirectory(null);
+#endif
 
+#if USE_DNNL
+                opt.AppendExecutionProvider_Dnnl(0);
 #endif
-#if USE_OPENVINO
-                opt.AppendExecutionProvider_OpenVINO();
-#endif
-#if USE_TENSORRT
-                opt.AppendExecutionProvider_Tensorrt(0);
-#endif
+
 #if USE_MIGRAPHX
                 opt.AppendExecutionProvider_MIGraphX(0);
 #endif
+
 #if USE_NNAPI
                 opt.AppendExecutionProvider_Nnapi(0);
 #endif
 
+#if USE_NUPHAR
+                opt.AppendExecutionProvider_Nuphar();
+#endif
 
+#if USE_OPENVINO
+                opt.AppendExecutionProvider_OpenVINO();
+#endif
+
+#if USE_ROCM
+                opt.AppendExecutionProvider_ROCM(0);
+#endif
+
+#if USE_TENSORRT
+                opt.AppendExecutionProvider_Tensorrt(0);
+#endif
+
+                opt.AppendExecutionProvider_CPU(1);
             }
         }
 

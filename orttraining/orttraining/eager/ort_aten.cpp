@@ -37,6 +37,19 @@ at::Tensor aten_tensor_from_ort(
     options));
 }
 
+const std::vector<at::Tensor> aten_tensor_from_ort(
+  std::vector<OrtValue>& ortvalues,
+  const at::TensorOptions& options) {
+    const size_t num_outputs = ortvalues.size();
+    std::vector<at::Tensor> atvalues = std::vector<at::Tensor>(num_outputs);
+    for (size_t i = 0; i < num_outputs; i++) {
+      atvalues[i] = at::Tensor(c10::make_intrusive<ORTTensorImpl>(
+        std::move(ortvalues[i]),
+        options));
+    }
+    return atvalues;
+}
+
 onnxruntime::MLDataType ort_scalar_type_from_aten(
   at::ScalarType dtype) {
   switch (dtype){
@@ -161,7 +174,6 @@ at::Tensor empty__memory_format(
 
   assert(dtype_opt.has_value());
   assert(device_opt.has_value());
-  assert(!layout_opt.has_value());
 
   // TODO: validate options and memory format
   // TODO: figure out how to get the correct element type.

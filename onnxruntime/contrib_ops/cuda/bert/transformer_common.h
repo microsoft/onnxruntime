@@ -15,9 +15,12 @@ class TransformerOptions {
 
   bool DisablePersistentSoftmax() const { return disable_persistent_softmax_; }
 
+  bool DisableHalf2() const { return disable_half2_; }
+
   void Initialize(int value) {
     is_precision_mode_ = (value & 0x01) > 0;
     disable_persistent_softmax_ = (value & 0x02) > 0;
+    disable_half2_ = (value & 0x04) > 0;
     initialized_ = true;
   }
 
@@ -27,6 +30,9 @@ class TransformerOptions {
 
   // Disable persistent softmax.
   bool disable_persistent_softmax_{false};
+
+  // Disable half2 kernel.
+  bool disable_half2_{false};
 
   bool initialized_{false};
 

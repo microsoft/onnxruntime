@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "inc/pch.h"
+#include "lib/Common/inc/pch.h"
 #if USE_DML
 #include <DirectML.h>
 #endif USE_DML

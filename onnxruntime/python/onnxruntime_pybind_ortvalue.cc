@@ -10,7 +10,7 @@
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
 #include <numpy/arrayobject.h>
 
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/tensor.h"
 #include "core/framework/sparse_tensor.h"
 #include "core/framework/TensorSeq.h"
@@ -87,39 +87,31 @@ void addOrtValueMethods(pybind11::module& m) {
           throw std::runtime_error("Creation of OrtValues is currently only supported from non-string numpy arrays");
         }
 
-        auto ml_value = std::make_unique<OrtValue>();
-
-        std::unique_ptr<Tensor> tensor;
-        // The tensor's memory is allocated on the CPU
+        AllocatorPtr allocator;
         if (strcmp(GetDeviceName(device), CPU) == 0) {
-          tensor = std::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, GetAllocator());
+          allocator = GetAllocator();
         } else if (strcmp(GetDeviceName(device), CUDA) == 0) {
-      // The tensor's memory is allocated on CUDA
 #ifdef USE_CUDA
           if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
             throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
           }
-
-          tensor = std::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, GetCudaAllocator(device.Id()));
+          allocator = GetCudaAllocator(device.Id());
 #else
-      throw std::runtime_error(
-          "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
-          "Please use the CUDA package of OnnxRuntime to use this feature.");
+          throw std::runtime_error(
+              "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
+              "Please use the CUDA package of OnnxRuntime to use this feature.");
 #endif
         } else {
           throw std::runtime_error("Unsupported device: Cannot place the OrtValue on this device");
         }
 
-        auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-        ml_value->Init(tensor.release(),
-                       ml_tensor,
-                       ml_tensor->GetDeleteFunc());
-
+        auto ml_value = std::make_unique<OrtValue>();
+        auto ml_type = NumpyTypeToOnnxRuntimeType(type_num);
+        Tensor::InitOrtValue(ml_type, shape, std::move(allocator), *ml_value);
         return ml_value;
       })
       // This will create a copy of OrtValue (cheap) and will return as a separate OrtValue object
-      .def_static("ort_value_from_sparse_tensor", 
-                  [](const PySparseTensor* py_sparse_tensor) -> std::unique_ptr<OrtValue> {
+      .def_static("ort_value_from_sparse_tensor", [](const PySparseTensor* py_sparse_tensor) -> std::unique_ptr<OrtValue> {
         return py_sparse_tensor->AsOrtValue();
       })
       // This will create a copy of OrtValue(cheap) and will return as a separate SparseTensor object

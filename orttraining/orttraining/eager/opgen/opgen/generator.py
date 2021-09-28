@@ -27,6 +27,7 @@ class AttrType:
   STRING = 'const char*'
   STRINGS = '<unsupported:STRINGS>'
   TENSOR = 'at::Tensor'
+  LONG = 'at::ScalarType::Long'
 
 class ONNXAttr:
   def __init__(self, value, type: AttrType=None):
@@ -77,35 +78,36 @@ class MakeFallthrough(ONNXOp):
 
 class FunctionGenerationError(NotImplementedError):
   def __init__(self, cpp_func: ast.FunctionDecl, message: str):
-    super().__init__(f'{message} (torch: {cpp_func.torch_func.torch_schema})')
+    super().__init__(f'{message} ({cpp_func.identifier})')
 
 class MappedOpFunction:
   def __init__(
     self,
-    torch_op_namespace: str,
-    torch_op_name: str,
+    op_namespace: str,
+    mapped_op_name: str,
     onnx_op: ONNXOp,
     cpp_func: ast.FunctionDecl,
-    torch_func: ast.FunctionDecl,
     signature_only: bool,
     make_fallthrough: bool):
-    self.torch_op_namespace = torch_op_namespace
-    self.torch_op_name = torch_op_name
+    self.op_namespace = op_namespace
+    self.mapped_op_name = mapped_op_name
     self.onnx_op = onnx_op
     self.cpp_func = cpp_func
-    self.torch_func = torch_func
     self.signature_only = signature_only
     self.make_fallthrough = make_fallthrough
 
 class ORTGen:
   _mapped_ops: Dict[str, ONNXOp]
+  _custom_ops: bool
 
   def __init__(
     self,
-    ops: Optional[Dict[str, ONNXOp]] = None):
-    self._mapped_ops = {}
+    ops: Optional[Dict[str, ONNXOp]] = None,
+    custom_ops : bool = False):
+    self._mapped_ops = {}    
     if ops:
       self.register_many(ops)
+    self._custom_ops = custom_ops      
 
   def register(self, aten_name: str, onnx_op: ONNXOp):
     self._mapped_ops[aten_name] = onnx_op
@@ -121,13 +123,13 @@ class ORTGen:
     current_ns = None
 
     for mapped_func in self._parse_mapped_function_decls(cpp_parser):
-      del self._mapped_ops[mapped_func.torch_func.identifier.value]
+      del self._mapped_ops[mapped_func.mapped_op_name]
       generated_funcs.append(mapped_func)
 
       if mapped_func.make_fallthrough:
         continue
 
-      ns = mapped_func.torch_op_namespace
+      ns = mapped_func.op_namespace
       if current_ns and current_ns != ns:
         current_ns = None
         writer.pop_namespace()
@@ -137,7 +139,8 @@ class ORTGen:
         writer.push_namespace(ns)
 
       writer.writeline()
-      writer.writeline(f'// {mapped_func.torch_func.torch_schema}')
+      if mapped_func.cpp_func.torch_func:
+        writer.writeline(f'// {mapped_func.cpp_func.torch_func.torch_schema}')
 
       self._write_function_signature(writer, mapped_func.cpp_func)
       if mapped_func.signature_only:
@@ -153,7 +156,10 @@ class ORTGen:
       current_ns = None
       writer.pop_namespace()
 
-    self._write_function_registrations(writer, generated_funcs)
+    if not self._custom_ops:
+      self._write_function_registrations(writer, generated_funcs)
+    else:
+      self._write_custom_ops_registrations(writer, generated_funcs)
     self._write_file_postlude(writer)
 
     if len(self._mapped_ops) > 0:
@@ -163,6 +169,8 @@ class ORTGen:
   def _write_file_prelude(self, writer: writer.SourceWriter):
     writer.writeline('// AUTO-GENERATED CODE! - DO NOT EDIT!')
     writer.writeline(f'// $ python {" ".join(sys.argv)}')
+    writer.writeline()
+    writer.writeline('#include "python/onnxruntime_pybind_state_common.h"')
     writer.writeline()
     writer.writeline('#include <torch/extension.h>')
     writer.writeline()
@@ -206,7 +214,7 @@ class ORTGen:
 
     assert(len(cpp_func.parameters) > 0)
 
-    return_alias_info = self._get_alias_info(cpp_func.torch_func.return_type)
+    return_alias_info = self._get_alias_info(cpp_func.torch_func.return_type) if cpp_func.torch_func else None
     if return_alias_info and not return_alias_info.is_writable:
       return_alias_info = None
     in_place_param: ast.ParameterDecl = None
@@ -225,16 +233,16 @@ class ORTGen:
     # Fetch the ORT invoker from an at::Tensor.device()
     # FIXME: find the first at::Tensor param anywhere in the signature
     # instead of simply the first parameter?
-    first_torch_param = cpp_func.torch_func.parameters[0].member
+    first_param = cpp_func.parameters[0].member
     if not isinstance(
-      first_torch_param.parameter_type.desugar(),
-      ast.TensorType):
+      first_param.parameter_type.desugar(),
+      ast.ConcreteType) or 'Tensor' not in first_param.parameter_type.desugar().identifier_tokens[0].value:
       raise FunctionGenerationError(
         cpp_func,
         'First parameter must be an at::Tensor')
 
     writer.write('auto& invoker = GetORTInvoker(')
-    writer.write(first_torch_param.identifier.value)
+    writer.write(first_param.identifier.value)
     writer.writeline('.device());')
     writer.writeline()
 
@@ -329,11 +337,15 @@ class ORTGen:
     # TODO: Handle mutliple results
     # TODO: Assert return type
 
-    if not return_alias_info:
+    if not return_alias_info:     
       writer.writeline('return aten_tensor_from_ort(')
       writer.push_indent()
-      writer.writeline(f'std::move({return_outputs}[0]),')
-      writer.writeline(f'{first_torch_param.identifier.value}.options());')
+      if isinstance(cpp_func.return_type, ast.TemplateType) and cpp_func.return_type.identifier_tokens[-1].value == 'std::vector':
+        writer.writeline(f'{return_outputs},')
+        writer.writeline(f'{first_param.identifier.value}.options());')
+      else:
+        writer.writeline(f'std::move({return_outputs}[0]),')
+        writer.writeline(f'{first_param.identifier.value}.options());')
       writer.pop_indent()
       return
 
@@ -354,13 +366,13 @@ class ORTGen:
     writer.writeline('ORT_LOG_DEBUG << "ATen init";')
 
     for mapped_func in generated_funcs:
-      cpp_func, torch_func = mapped_func.cpp_func, mapped_func.torch_func
+      cpp_func, torch_func = mapped_func.cpp_func, mapped_func.cpp_func.torch_func
 
       if mapped_func.make_fallthrough:
         reg_function_arg = 'torch::CppFunction::makeFallthrough()'
       else:
-        if mapped_func.torch_op_namespace:
-          reg_function_arg = f'{mapped_func.torch_op_namespace}::'
+        if mapped_func.op_namespace:
+          reg_function_arg = f'{mapped_func.op_namespace}::'
         else:
           reg_function_arg = ''
         reg_function_arg += cpp_func.identifier.value
@@ -375,6 +387,24 @@ class ORTGen:
     writer.writeline('}')
     writer.writeline()
 
+  def _write_custom_ops_registrations(
+    self,
+    writer: writer.SourceWriter,
+    generated_funcs: List[MappedOpFunction]):
+    writer.writeline()
+    writer.writeline('void GenerateCustomOpsBindings(pybind11::module_ m) {')
+    writer.push_indent()
+    writer.writeline('ORT_LOG_DEBUG << "GenerateCustomOpsBindings init";')
+
+    for mapped_func in generated_funcs:
+      cpp_func = mapped_func.cpp_func
+      writer.write('m.def(')
+      writer.writeline(f'"{cpp_func.identifier.value}", &{cpp_func.identifier.value});')
+
+    writer.pop_indent()
+    writer.writeline('}')
+    writer.writeline()
+
   def _get_alias_info(self, torch_type_or_param: Union[ast.Type, ast.ParameterDecl]):
     if isinstance(torch_type_or_param, ast.ParameterDecl):
       torch_type = torch_type_or_param.parameter_type
@@ -383,28 +413,32 @@ class ORTGen:
     return getattr(torch_type.desugar(), 'alias_info', None)
 
   def _parse_mapped_function_decls(self, cpp_parser: parser.CPPParser):
-    for cpp_func, torch_func in self._parse_function_decls(cpp_parser):
-      torch_op_name = torch_func.identifier.value
-      if torch_op_name not in self._mapped_ops:
-        continue
-      onnx_op = self._mapped_ops[torch_op_name]
+    for cpp_func in self._parse_function_decls(cpp_parser):
+      torch_func = cpp_func.torch_func
+      if not torch_func:
+        op_namespace = None
+        op_name = cpp_func.identifier.value
+      else:       
+        op_name = torch_func.identifier.value
+
+        try:
+          op_namespace = op_name[0:op_name.index('::')]
+          op_namewithoutnamespace = op_name[len(op_namespace) + 2:]
+        except:
+          op_namespace = None
+          op_namewithoutnamespace = op_name
+
+        cpp_func.identifier.value = op_namewithoutnamespace.replace('.', '__')
+
+      onnx_op = self._mapped_ops.get(op_name)
       if not onnx_op:
         continue
 
-      try:
-        torch_op_namespace = torch_op_name[0:torch_op_name.index('::')]
-        torch_op_name = torch_op_name[len(torch_op_namespace) + 2:]
-      except:
-        torch_op_namespace = None
-
-      cpp_func.identifier.value = torch_op_name.replace('.', '__')
-
       yield MappedOpFunction(
-        torch_op_namespace,
-        torch_op_name,
+        op_namespace,
+        op_name,
         onnx_op,
         cpp_func,
-        torch_func,
         isinstance(onnx_op, SignatureOnly),
         isinstance(onnx_op, MakeFallthrough))
 
@@ -415,7 +449,11 @@ class ORTGen:
     # Parse the Torch schema from the JSON comment that follows each C++ decl
     # and link associated Torch and C++ decls (functions, parameters, returns)
     for cpp_func in tu:
-      if cpp_func.semicolon and cpp_func.semicolon.trailing_trivia:
+      if self._custom_ops == True:
+        # customops don't have torch schema
+        cpp_func.torch_func = None
+        yield cpp_func
+      elif cpp_func.semicolon and cpp_func.semicolon.trailing_trivia:
         for trivia in cpp_func.semicolon.trailing_trivia:
           if trivia.kind == lexer.TokenKind.SINGLE_LINE_COMMENT:
             yield self._parse_and_link_torch_function_decl(cpp_func, trivia)
@@ -463,4 +501,4 @@ class ORTGen:
         torch_param = torch_func.parameters[i + j].member
         cpp_param.torch_param.append(torch_param)
 
-    return cpp_func, torch_func
+    return cpp_func

@@ -4,7 +4,7 @@
 #pragma once
 
 #include <torch/extension.h>
-#include <core/framework/ml_value.h>
+#include <core/framework/ort_value.h>
 
 #include "ort_util.h"
 #include "ort_ops.h"
@@ -15,6 +15,10 @@ namespace eager {
 
 at::Tensor aten_tensor_from_ort(
   OrtValue&& ot,
+  const at::TensorOptions& options);
+
+const std::vector<at::Tensor> aten_tensor_from_ort(
+  std::vector<OrtValue>& ortvalues,
   const at::TensorOptions& options);
 
 onnxruntime::MLDataType ort_scalar_type_from_aten(

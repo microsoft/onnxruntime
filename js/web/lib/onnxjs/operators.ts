@@ -1,15 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Attribute} from './attribute';
 import {InferenceHandler} from './backend';
 import {Graph} from './graph';
 import {Tensor} from './tensor';
 
+export type OperatorImplementation<T> = (inferenceHandler: InferenceHandler, inputs: Tensor[], context: T) => Tensor[];
+export type OperatorInitialization<T> = (node: Graph.Node, graph: Graph) => T;
+
 export interface Operator {
-  initialize(attributes: Attribute, node: Graph.Node, graph: Graph): void;
-  checkInputs(inputs: Tensor[]): boolean;
-  run(inferenceHandler: InferenceHandler, inputs: Tensor[]): Tensor[]|Promise<Tensor[]>;
+  readonly impl: OperatorImplementation<unknown>;
+  readonly context: Graph.Node|unknown;
 }
 
 export const NUMBER_TYPES: readonly Tensor.DataType[] =

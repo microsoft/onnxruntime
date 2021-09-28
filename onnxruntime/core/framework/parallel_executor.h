@@ -9,7 +9,7 @@
 #include "core/common/logging/logging.h"
 #include "core/framework/iexecutor.h"
 #include "core/framework/framework_common.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/session_state.h"
 #include "core/graph/graph_viewer.h"
 #include "core/platform/ort_mutex.h"

@@ -1,0 +1,92 @@
+parameters:
+- name: NpmPublish
+  displayName: 'NPM packages publish configuration'
+  type: string
+  values:
+  - 'nightly (@dev)'
+  - 'release candidate (@rc)'
+  - 'production (@latest)'
+  - 'custom'
+  default: 'nightly (@dev)'
+
+variables:
+  # pipeline should define the following varaibles
+  #   ExtraBuildArgs
+  #   VersionSuffix
+
+  ${{ if eq(parameters.NpmPublish, 'nightly (@dev)') }}:
+    VersionSuffix: '-dev.${YYYYMMDD}.${REV}'
+  ${{ if eq(parameters.NpmPublish, 'release candidate (@rc)') }}:
+    VersionSuffix: '-rc'
+  ${{ if eq(parameters.NpmPublish, 'production (@latest)') }}:
+    VersionSuffix: ''
+
+stages:
+- stage: Extract_commit
+  jobs:
+  - job: Extract_commit
+    pool: 'Win-CPU-2019'
+    timeoutInMinutes: 30
+    workspace:
+      clean: all
+    steps:
+    - checkout: none
+      fetchDepth: 1
+      submodules: false
+    - script: |
+        echo.$(Build.SourceVersion)
+        echo.$(Build.SourceVersion)>$(Build.ArtifactStagingDirectory)\__commit.txt
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish Pipeline Artifact'
+      inputs:
+        artifactName: '__commit'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+
+- stage: Build_wasm_Debug
+  dependsOn: Extract_commit
+  jobs:
+  - template: templates/win-wasm-ci.yml
+    parameters:
+      CommitOverride: true
+      BuildConfig: 'Debug'
+      ExtraBuildArgs: '$(ExtraBuildArgs)'
+
+- stage: Build_web_Debug
+  dependsOn: Build_wasm_Debug
+  jobs:
+  - template: templates/win-web-ci.yml
+    parameters:
+      CommitOverride: true
+      BuildConfig: 'Debug'
+
+- stage: Build_wasm_Release
+  dependsOn: Extract_commit
+  jobs:
+  - template: templates/win-wasm-ci.yml
+    parameters:
+      CommitOverride: true
+      BuildConfig: 'Release'
+      ExtraBuildArgs: '--skip_tests --disable_wasm_exception_catching --disable_rtti $(ExtraBuildArgs)'
+
+- stage: Build_web_Release
+  dependsOn: Build_wasm_Release
+  jobs:
+  - template: templates/win-web-ci.yml
+    parameters:
+      NpmVersionSuffix: '$(VersionSuffix)'
+      CommitOverride: true
+      BuildConfig: 'Release'
+
+- stage: Test_web_BrowserStack
+  dependsOn: Build_wasm_Release
+  jobs:
+  - template: templates/web-browserstack-ci.yml
+    parameters:
+      CommitOverride: true
+
+- stage: Test_web_MultiBrowsers
+  dependsOn: Build_wasm_Release
+  jobs:
+  - template: templates/win-web-multi-browsers.yml
+    parameters:
+      CommitOverride: true

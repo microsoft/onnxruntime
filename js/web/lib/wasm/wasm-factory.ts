@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {env} from 'onnxruntime-common';
+import {Env} from 'onnxruntime-common';
 import * as path from 'path';
 
 import {OrtWasmModule} from './binding/ort-wasm';
@@ -9,13 +9,18 @@ import {OrtWasmThreadedModule} from './binding/ort-wasm-threaded';
 import ortWasmFactoryThreaded from './binding/ort-wasm-threaded.js';
 import ortWasmFactory from './binding/ort-wasm.js';
 
-let wasm: OrtWasmModule;
+let wasm: OrtWasmModule|undefined;
 let initialized = false;
 let initializing = false;
 let aborted = false;
 
 const isMultiThreadSupported = (): boolean => {
   try {
+    // If 'SharedArrayBuffer' is not available, WebAssembly threads will not work.
+    if (typeof SharedArrayBuffer === 'undefined') {
+      return false;
+    }
+
     // Test for transferability of SABs (for browsers. needed for Firefox)
     // https://groups.google.com/forum/#!msg/mozilla.dev.platform/IHkBZlHETpA/dwsMNchWEQAJ
     if (typeof MessageChannel !== 'undefined') {
@@ -52,7 +57,7 @@ const getWasmFileName = (useSimd: boolean, useThreads: boolean) => {
   }
 };
 
-export const initializeWebAssembly = async(): Promise<void> => {
+export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise<void> => {
   if (initialized) {
     return Promise.resolve();
   }
@@ -66,18 +71,17 @@ export const initializeWebAssembly = async(): Promise<void> => {
   initializing = true;
 
   // wasm flags are already initialized
-  const timeout = env.wasm.initTimeout!;
-  const numThreads = env.wasm.numThreads!;
-  const simd = env.wasm.simd!;
+  const timeout = flags.initTimeout!;
+  const numThreads = flags.numThreads!;
+  const simd = flags.simd!;
 
   const useThreads = numThreads > 1 && isMultiThreadSupported();
   const useSimd = simd && isSimdSupported();
 
-  const wasmPrefixOverride = typeof env.wasm.wasmPaths === 'string' ? env.wasm.wasmPaths : undefined;
+  const wasmPrefixOverride = typeof flags.wasmPaths === 'string' ? flags.wasmPaths : undefined;
   const wasmFileName = getWasmFileName(false, useThreads);
   const wasmOverrideFileName = getWasmFileName(useSimd, useThreads);
-  const wasmPathOverride =
-      typeof env.wasm.wasmPaths === 'object' ? env.wasm.wasmPaths[wasmOverrideFileName] : undefined;
+  const wasmPathOverride = typeof flags.wasmPaths === 'object' ? flags.wasmPaths[wasmOverrideFileName] : undefined;
 
   let isTimeout = false;
 
@@ -151,7 +155,7 @@ export const initializeWebAssembly = async(): Promise<void> => {
 };
 
 export const getInstance = (): OrtWasmModule => {
-  if (initialized) {
+  if (initialized && wasm) {
     return wasm;
   }
 
@@ -163,6 +167,7 @@ export const dispose = (): void => {
     initializing = true;
 
     (wasm as OrtWasmThreadedModule).PThread?.terminateAllThreads();
+    wasm = undefined;
 
     initializing = false;
     initialized = false;

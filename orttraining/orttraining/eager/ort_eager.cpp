@@ -1,16 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <torch/extension.h>
-#include "torch/csrc/autograd/python_variable.h"
+#include "python/onnxruntime_pybind_state_common.h"
+#include "orttraining/core/framework/torch/dlpack_python.h"
+#include <core/session/provider_bridge_ort.h>
 #include "ort_backends.h"
 #include "ort_log.h"
 #include "ort_aten.h"
 #include "ort_backends.h"
 #include "orttraining/core/framework/ortmodule_graph_builder.h"
-#include "python/onnxruntime_pybind_state_common.h"
-#include "orttraining/core/framework/torch/dlpack_python.h"
-#include <core/session/provider_bridge_ort.h>
+#include "ort_customops.h"
+#include <torch/extension.h>
+#include "torch/csrc/autograd/python_variable.h"
 
 namespace onnxruntime{
 namespace python{
@@ -51,15 +52,6 @@ void addObjectMethodsForEager(py::module& m){
     return ORTTensor_FromDLPack(dlpack_tensor);
   });
 
-  m.def("_register_provider_lib", [](const std::string& name, 
-                                     const std::string& provider_shared_lib_path,
-                                     const std::string& provider_factory_entry) {
-    torch_ort::eager::GetORTBackendsManager().RegisterProviderLib(name, provider_shared_lib_path, provider_factory_entry);
-  },
-  py::arg("name"),
-  py::arg("provider_shared_lib_path"),
-  py::arg("provider_factory_entry") = kDefaultExecutionProviderEntry);
-
   m.def("set_device", [](size_t device_index, 
                                           const std::string& provider_type,
                                           const std::unordered_map<std::string, std::string>& arguments){
@@ -67,6 +59,12 @@ void addObjectMethodsForEager(py::module& m){
       if (!status.IsOK())
         throw std::runtime_error(status.ErrorMessage());
     });
+  m.def("get_ort_device", [](size_t torch_device_index){
+    return torch_ort::eager::GetORTBackendsManager().GetOrtDeviceInfo(torch_device_index);
+  });
+
+  auto customop_module = m.def_submodule("custom_ops");
+  torch_ort::eager::GenerateCustomOpsBindings(customop_module);
 }
 
 }

@@ -13,11 +13,10 @@ class QLinearBinaryOp(QuantOperatorBase):
 
         data_found, output_scale_name, output_zp_name, _, _ = \
             self.quantizer._get_quantization_params(node.output[0])
-        if (not data_found):  # only try to quantize when given quantization parameters for it
-            return super().quantize()
-
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
             self.quantizer.quantize_inputs(node, [0, 1], initializer_use_weight_qType=False)
+        if not data_found or quantized_input_names is None:
+            return super().quantize()
 
         qlinear_binary_math_output = node.output[0] + "_quantized"
         qlinear_binary_math_name = node.name + "_quant" if node.name != "" else ""

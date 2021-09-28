@@ -7,11 +7,12 @@
 import os
 import logging
 import torch
-import onnx
+import shutil
 import random
 import numpy
 import time
 import re
+import pickle
 from pathlib import Path
 from typing import List, Dict, Tuple, Union
 from transformers import GPT2Model, GPT2LMHeadModel, GPT2Config, TFGPT2Model
@@ -99,7 +100,9 @@ class MyGPT2LMHeadModel_NoPadding(GPT2LMHeadModel):
         super().__init__(config)
 
     def forward(self, input_ids, *past):
-        return super().forward(input_ids, past_key_values=past)
+        result = super().forward(input_ids, past_key_values=past, return_dict=False)
+
+        return MyGPT2Model.post_process(result, self.config.n_layer)
 
 
 # Maps model class name to a tuple of model class, name of first output and use padding or not
@@ -154,7 +157,7 @@ class Gpt2Helper:
         float_type = torch.float16 if float16 else torch.float32
         past_shape = [2, batch_size, num_attention_heads, past_sequence_length, int(hidden_size / num_attention_heads)]
 
-        past = [torch.rand(past_shape, dtype=float_type, device=device) for _ in range(num_layer)]
+        past = [(torch.rand(past_shape, dtype=float_type, device=device) * 2.0 - 1.0) for _ in range(num_layer)]
         input_ids = torch.randint(low=0,
                                   high=vocab_size - 1,
                                   size=(batch_size, sequence_length),
@@ -262,6 +265,53 @@ class Gpt2Helper:
         return is_all_close
 
     @staticmethod
+    def compare_outputs_v2(torch_outputs, ort_outputs, atol=1e-06):
+        """Compare outputs from PyTorch and OnnxRuntime
+
+        Args:
+            torch_outputs (Tuple[Torch.Tensor]): PyTorch model output
+            ort_outputs (List[numpy.ndarray]): OnnxRuntime output
+            atol (float, optional): Absolute tollerance. Defaults to 1e-06.
+
+        Returns:
+            is_all_close(bool): whether all elements are close.
+            max_abs_diff(float): maximum absolute difference.
+            messages(str): a list of debug message for each output
+        """
+        is_all_close = True
+        is_top1_matched = False
+        max_diffs = []
+        messages = []
+        for i in range(len(ort_outputs)):
+            ort_output = ort_outputs[i]
+            torch_output = (torch_outputs[0] if i == 0 else torch_outputs[1][i - 1]).cpu().numpy()
+            is_close = numpy.allclose(ort_output, torch_output, atol=atol, rtol=0)
+            max_diffs.append(numpy.amax(numpy.abs(torch_output - ort_output)))
+            is_all_close = is_all_close and is_close
+
+            if numpy.isnan(torch_output).any():
+                logger.debug(f'PyTorch output {i} has nan')
+            if numpy.isinf(torch_output).any():
+                logger.debug(f'PyTorch output {i} has inf')
+            if numpy.isnan(ort_output).any():
+                logger.debug(f'ORT output {i} has nan')
+            if numpy.isinf(ort_output).any():
+                logger.debug(f'ORT output {i} has inf')
+
+            diff = numpy.fabs(ort_output - torch_output)
+            idx = numpy.unravel_index(diff.argmax(), diff.shape)
+            messages.append(
+                f'diff={diff[idx]:.9f} index={idx} ort={ort_output[idx]:.9f} torch={float(torch_output[idx]):.9f}')
+
+            if i == 0:  # logits
+                ort_max_index = numpy.unravel_index(numpy.argmax(ort_output, axis=None), ort_output.shape)
+                torch_max_index = numpy.unravel_index(numpy.argmax(torch_output, axis=None), torch_output.shape)
+                is_top1_matched = numpy.array_equal(ort_max_index, torch_max_index)
+
+        max_diff_output_index = max_diffs.index(max(max_diffs))
+        return is_all_close, max(max_diffs), max_diff_output_index, messages, is_top1_matched
+
+    @staticmethod
     def export_onnx(model,
                     device,
                     onnx_model_path: str,
@@ -345,19 +395,31 @@ class Gpt2Helper:
                       is_float16,
                       num_attention_heads,
                       hidden_size,
-                      use_external_data_format=False):
+                      use_external_data_format=False,
+                      **kwargs):
         """ Optimize ONNX model with an option to convert it to use mixed precision.
         """
         from optimizer import optimize_model
+
+        from fusion_options import FusionOptions
+        optimization_options = FusionOptions('gpt2')
+        #optimization_options.enable_gelu = False
+        #optimization_options.enable_layer_norm = False
+        #optimization_options.enable_attention = False
         m = optimize_model(onnx_model_path,
                            model_type='gpt2',
                            num_heads=num_attention_heads,
                            hidden_size=hidden_size,
                            opt_level=0,
-                           optimization_options=None,
+                           optimization_options=optimization_options,
                            use_gpu=False)
+
         if is_float16:
-            m.convert_model_float32_to_float16(cast_input_output=False)
+            op_full_list = set([node.op_type for node in m.nodes()])
+            op_block_list = set(kwargs["op_block_list"]) if "op_block_list" in kwargs else set()
+            op_remain_list = op_full_list.difference(op_block_list)
+            logger.info(f"op_block_list={op_block_list} op_remain_list={op_remain_list}")
+            m.convert_float_to_float16(use_symbolic_shape_infer=True, **kwargs)
 
         m.save_model_to_file(optimized_model_path, use_external_data_format)
 
@@ -527,24 +589,43 @@ class Gpt2Helper:
         return ort_outputs, average_latency
 
     @staticmethod
+    def save_outputs(i, ort_outputs, torch_outputs):
+        with open(f'ort_outputs_{i}.pickle', 'wb') as f:
+            pickle.dump(ort_outputs, f)
+        logger.info(f"ORT output are saved to ort_outputs_{i}.pickle")
+
+        with open(f'torch_outputs_{i}.pickle', 'wb') as f:
+            pickle.dump(torch_outputs, f)
+        logger.info(f"Torch output are saved to torch_outputs_{i}.pickle")
+
+    @staticmethod
+    def save_inputs(i, dummy_inputs, ort_outputs, torch_outputs):
+        with open(f'dummy_inputs_{i}.pickle', 'wb') as f:
+            pickle.dump(dummy_inputs, f)
+        logger.info(f"inputs are saved to dummy_inputs_{i}.pickle")
+
+    @staticmethod
     def test_parity(ort_session,
                     model,
                     device,
                     is_float16=False,
                     rtol=5e-4,
                     atol=5e-4,
-                    total_test_cases=100,
+                    test_cases_per_run=10000,
+                    total_runs=1,
                     use_io_binding=True,
                     model_class="GPT2LMHeadModel",
                     has_position_ids=True,
-                    has_attention_mask=True):
+                    has_attention_mask=True,
+                    verbose=False,
+                    enable_pickle_output=False):
         """ Generate random inputs and compare the results of PyTorch and Onnx Runtime.
         """
 
         config: GPT2Config = model.config
 
         logger.info(
-            f"Running parity test (rtol={rtol}, atol={atol}, test_cases={total_test_cases}, use_io_binding={use_io_binding} model_class={model_class} is_float16={is_float16}) ..."
+            f"Running parity test (atol={atol}, test_cases={test_cases_per_run}, runs={total_runs}, use_io_binding={use_io_binding}, model_class={model_class}, is_float16={is_float16}) ..."
         )
 
         max_batch_size = 8
@@ -558,7 +639,13 @@ class Gpt2Helper:
             output_buffers = Gpt2Helper.get_output_buffers(max_output_shapes, device, is_float16)
 
         passed_test_cases = 0
-        for _ in range(total_test_cases):
+        top1_matched_cases = 0
+
+        max_abs_diff_list = []
+        top1_matched_cases_per_run = [0] * total_runs
+        total_test_cases = test_cases_per_run * total_runs
+        for i in range(total_test_cases):
+            run_id = int(i / test_cases_per_run)
             sequence_length = random.randint(1, max_seq_len)
             past_sequence_length = random.randint(0, max_past_seq_len)
             batch_size = random.randint(1, max_batch_size)
@@ -569,7 +656,6 @@ class Gpt2Helper:
                                                        config.num_attention_heads, config.hidden_size, config.n_layer,
                                                        config.vocab_size, device, is_float16, has_position_ids,
                                                        has_attention_mask)
-
             outputs = Gpt2Helper.pytorch_inference(model, dummy_inputs)
             if use_io_binding:
                 ort_outputs = Gpt2Helper.onnxruntime_inference(ort_session, dummy_inputs)
@@ -579,13 +665,86 @@ class Gpt2Helper:
                 ort_outputs = Gpt2Helper.onnxruntime_inference_with_binded_io(ort_session, dummy_inputs, output_buffers,
                                                                               output_shapes)
 
-            is_all_close = Gpt2Helper.compare_outputs(outputs, ort_outputs, rtol=rtol, atol=atol)
+            is_all_close, max_abs_diff, max_diff_output_index, messages, is_top1_matched = Gpt2Helper.compare_outputs_v2(
+                outputs, ort_outputs, atol=atol)
+            if not numpy.isnan(max_abs_diff):
+                max_abs_diff_list.append(max_abs_diff)
             if is_all_close:
                 passed_test_cases += 1
-        logger.info(f"Parity Test Cases={total_test_cases}; Passed={passed_test_cases}")
+            if is_top1_matched:
+                top1_matched_cases += 1
+                top1_matched_cases_per_run[run_id] += 1
+
+            if verbose and not is_all_close:
+                logger.info(
+                    f"test_case={i} batch_size={batch_size} past_sequence_length={past_sequence_length} sequence_length={sequence_length} MaxDiff={max_abs_diff}"
+                )
+                for i, message in enumerate(messages):
+                    logger.info(f"\t{i}: Name={ort_session.get_outputs()[i].name}, {message}")
+
+            # Collect data for debugging
+            if enable_pickle_output and (numpy.isnan(max_abs_diff) or max_abs_diff > 100 * atol):
+                Gpt2Helper.save_inputs(i, dummy_inputs)
+                Gpt2Helper.save_outputs(i, ort_outputs, outputs)
+
+        if max_abs_diff_list:
+            result = {
+                f"max_diff_percentile_{p}": "{:.5f}".format(numpy.percentile(max_abs_diff_list, p))
+                for p in [50, 90, 95, 99]
+            }
+        else:
+            result = {f"max_diff_percentile_{p}": "nan" for p in [50, 90, 95, 99]}
+
+        result["top1_match_rate"] = top1_matched_cases * 1.0 / total_test_cases
+        result["top1_match_rate_per_run"] = [x * 1.0 / test_cases_per_run for x in top1_matched_cases_per_run]
+        result["diff_pass_rate"] = passed_test_cases * 1.0 / total_test_cases
+        result["nan_rate"] = (total_test_cases - len(max_abs_diff_list)) * 1.0 / total_test_cases
+
+        logger.info(
+            f"Parity Test Cases={total_test_cases}; Passed={passed_test_cases}; Nan={total_test_cases-len(max_abs_diff_list)}; Top1_Matched={top1_matched_cases}"
+        )
+
         if passed_test_cases > 0.95 * total_test_cases:
             logger.info(f"Parity is good: passed rate={int(passed_test_cases*100/total_test_cases):.0f}%")
-        return passed_test_cases == total_test_cases
+
+        return result
+
+    @staticmethod
+    def test_performance(ort_session,
+                         model,
+                         device,
+                         is_float16=False,
+                         total_runs=100,
+                         use_io_binding=True,
+                         model_class="GPT2LMHeadModel",
+                         has_position_ids=True,
+                         has_attention_mask=True,
+                         batch_size=8,
+                         sequence_length=1,
+                         past_sequence_length=32):
+        """ Generate random inputs and measure average latency of Onnx Runtime.
+        """
+
+        config: GPT2Config = model.config
+
+        output_buffers = None
+        if use_io_binding:
+            output_shapes = Gpt2Helper.get_output_shapes(batch_size, past_sequence_length, sequence_length, config,
+                                                         model_class)
+            output_buffers = Gpt2Helper.get_output_buffers(output_shapes, device, is_float16)
+
+        dummy_inputs = Gpt2Helper.get_dummy_inputs(batch_size, past_sequence_length, sequence_length,
+                                                   config.num_attention_heads, config.hidden_size, config.n_layer,
+                                                   config.vocab_size, device, is_float16, has_position_ids,
+                                                   has_attention_mask)
+
+        if use_io_binding:
+            _, latency = Gpt2Helper.onnxruntime_inference(ort_session, dummy_inputs, total_runs)
+        else:
+            _, latency = Gpt2Helper.onnxruntime_inference_with_binded_io(ort_session, dummy_inputs, output_buffers,
+                                                                         output_shapes, total_runs)
+
+        return latency
 
     @staticmethod
     def torchscript(model, config, device, has_position_ids=True, has_attention_mask=True):
@@ -609,7 +768,8 @@ class Gpt2Helper:
                        model_name_or_path,
                        model_class: str = 'GPT2LMHeadModel',
                        has_past=True,
-                       new_folder=False):
+                       new_folder=False,
+                       remove_existing=["raw", "fp32", "fp16", "int8"]):
         """ Build a  path name for given model based on given attributes.
         """
         model_name = model_name_or_path
@@ -624,6 +784,20 @@ class Gpt2Helper:
             model_name += "_past"
 
         if new_folder:
+            suffix = {"raw": "", "fp32": "_fp32", "fp16": "_fp16", "int8": "_int8"}
+            # Remove the directories if existed.
+            for model_type in ["raw", "fp32", "fp16", "int8"]:
+                new_dir = os.path.join(output_dir, model_name + suffix[model_type])
+                if os.path.exists(new_dir):
+                    if (model_type in remove_existing):
+                        try:
+                            shutil.rmtree(new_dir)
+                            logger.info(f"Removed the existed directory: {new_dir}")
+                        except OSError as e:
+                            logger.info(f"Failed to remove the directory {new_dir}: {e.strerror}")
+                    else:
+                        logger.info(f"Directory for {model_type} existed: {new_dir}")
+
             # store each model to its own directory (for external data format).
             return {
                 "raw": os.path.join(os.path.join(output_dir, model_name), model_name + ".onnx"),

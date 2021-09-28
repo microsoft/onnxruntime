@@ -19,7 +19,7 @@ module.exports = function (config) {
   config.set({
     frameworks: ['mocha'],
     files: [
-      { pattern: distPrefix + 'ort.js' },
+      { pattern: distPrefix + 'ort.min.js' },
       { pattern: './common.js' },
       { pattern: TEST_MAIN },
       { pattern: './node_modules/onnxruntime-web/dist/*.wasm', included: false, nocache: true },
@@ -42,11 +42,11 @@ module.exports = function (config) {
     browsers: [],
     customLaunchers: {
       Chrome_default: {
-        base: 'Chrome',
+        base: 'ChromeHeadless',
         chromeDataDir: USER_DATA
       },
       Chrome_no_threads: {
-        base: 'Chrome',
+        base: 'ChromeHeadless',
         chromeDataDir: USER_DATA,
         // TODO: no-thread flags
       }

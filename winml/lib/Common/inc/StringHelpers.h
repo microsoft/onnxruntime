@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <winstring.h>
+
 // String Helpers
 namespace _winml::Strings {
 struct HStringBuilder {

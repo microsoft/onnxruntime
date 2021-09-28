@@ -729,7 +729,9 @@ static void Scenario21RunModel2ChainZ() {
   std::vector<int64_t> shape = {1, 3, 720, 720};
   auto outputValue = TensorFloat::Create(shape);  //   FeatureValueFromFeatureValueDescriptor(input, nullptr);
                                                   // now bind the(empty) output so we have a marker to chain with
-  binding1.Bind(output.Name(), outputValue);
+  PropertySet outputBindProperties;
+  outputBindProperties.Insert(L"DisableTensorCpuSync", wf::PropertyValue::CreateBoolean(true));
+  binding1.Bind(output.Name(), outputValue, outputBindProperties);
   // and leave the output unbound on the second model, we will fetch it later
   // run both models async
   WINML_EXPECT_NO_THROW(session1.EvaluateAsync(binding1, L""));

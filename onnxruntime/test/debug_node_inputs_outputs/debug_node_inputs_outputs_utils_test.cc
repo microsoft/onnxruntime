@@ -43,7 +43,7 @@ TEST(DebugNodeInputsOutputs, BasicFileOutput) {
           {env_vars::kDumpOutputData, "1"},
           {env_vars::kNameFilter, nullopt},
           {env_vars::kOpTypeFilter, nullopt},
-          {env_vars::kDumpDataToFiles, "1"},
+          {env_vars::kDumpDataDestination, "files"},
           {env_vars::kAppendRankToFileName, nullopt},
           {env_vars::kOutputDir, ToMBString(temp_dir.Path())},
           {env_vars::kDumpingDataToFilesForAllNodesIsOk, "1"},

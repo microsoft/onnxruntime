@@ -9,7 +9,7 @@ import numpy
 import os
 import torch
 from pathlib import Path
-from transformers import AutoConfig, AutoTokenizer, AutoModel, LxmertConfig, TransfoXLConfig
+from transformers import AutoConfig, AutoTokenizer, LxmertConfig, TransfoXLConfig
 from affinity_helper import AffinitySetting
 from benchmark_helper import create_onnxruntime_session, Precision
 from gpt2_helper import GPT2ModelNoPastState, PRETRAINED_GPT2_MODELS, TFGPT2ModelNoPastState
@@ -214,7 +214,7 @@ def optimize_onnx_model(model_name, onnx_model_path, optimized_model_path, model
         model_fusion_statistics[optimized_model_path] = opt_model.get_fused_operator_statistics()
 
         if Precision.FLOAT16 == precision:
-            opt_model.convert_model_float32_to_float16()
+            opt_model.convert_float_to_float16(keep_io_types=True)
 
         opt_model.save_model_to_file(optimized_model_path, use_external_data_format)
     else:

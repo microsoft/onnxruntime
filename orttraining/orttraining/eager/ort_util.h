@@ -36,9 +36,9 @@ inline void CopyVectorToTensor(onnxruntime::ORTInvoker& invoker,
     Ort::TypeToTensorType<T>::type,
     &ort_value));
 
-  execution_provider.GetDataTransfer()->CopyTensor(
+  ORT_THROW_IF_ERROR(execution_provider.GetDataTransfer()->CopyTensor(
     ort_value->Get<onnxruntime::Tensor>(),
-    tensor);
+    tensor));
 }
 
 // vector<bool> is specialized so we need to handle it separately

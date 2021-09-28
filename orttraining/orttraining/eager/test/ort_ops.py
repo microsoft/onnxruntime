@@ -61,5 +61,13 @@ class OrtOpTests(unittest.TestCase):
     ort_zeros = torch.zeros_like(ones.to(device))
     assert torch.allclose(cpu_zeros, ort_zeros.cpu())
 
+  def test_gemm(self):
+    device = self.get_device()
+    cpu_ones = torch.Tensor([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
+    ort_ones = cpu_ones.to(device)
+    cpu_ans = cpu_ones * 4
+    ort_ans = torch_ort.custom_ops.gemm(ort_ones, ort_ones, ort_ones, 1.0, 1.0, 0, 0)
+    assert torch.allclose(cpu_ans, ort_ans.cpu())
+
 if __name__ == '__main__':
   unittest.main()

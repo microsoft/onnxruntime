@@ -34,4 +34,3 @@ jobs:
     AdditionalBuildFlags: '--disable_contrib_ops --disable_ml_ops'
     AdditionalWinBuildFlags: '--enable_msvc_static_runtime'
     BuildVariant: 'default'
-    PublishingNuget: false

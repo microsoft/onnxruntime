@@ -67,7 +67,6 @@
         "^test_add_uint8_cpu",
         "^test_div_uint8_cpu",
         // Following tests are for opset 15 ops and are not yet implemented in ORT
-        "^test_shape_*",
         "^test_optional_*",
         //GPU failures
         "^test_batchnorm_epsilon_training_mode_cuda",

@@ -321,6 +321,9 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
         return false;
       }
     }
+    if (node.OpType() == "MatMulInteger" && inputs.size() > 2) {
+      return false;  // do not support MatMulInteger with zero points
+    }
     return true;
   };
   GraphPartitioner graph_partitioner(is_supported_func);
