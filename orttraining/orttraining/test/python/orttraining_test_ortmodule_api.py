@@ -21,6 +21,8 @@ import tempfile
 import os
 from distutils.version import LooseVersion
 
+from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
+
 from onnxruntime.training.ortmodule import ORTModule, _utils, _io, DebugOptions, LogLevel, _fallback, _graph_execution_manager
 import _test_helpers
 
@@ -3866,3 +3868,35 @@ def test_ortmodule_determinism_flag(is_training,deterministic):
 
         from onnxruntime.training.ortmodule import _are_deterministic_algorithms_enabled
         assert _are_deterministic_algorithms_enabled() is torch.are_deterministic_algorithms_enabled()
+
+
+def test_ortmodule_gradient_builder():
+    class Model(torch.nn.Module):
+        def __init__(self):
+            super(Model, self).__init__()
+        def forward(self, x):
+            return torch.cos(x)
+
+    device = 'cuda'
+
+    @register_gradient('', 'Cos')
+    def Cos_gradient():
+        return [('Constant', [], ['Const_0'], {'value': {'value': 0.0, 'dtype': 'float', 'is_tensor': True}}),
+                ('Sin', ['GO(0)'], ['Sin_X']),
+                ('Sub', ['Const_0', 'Sin_X'], ['GI(0)'])]
+
+    pt_model = Model().to(device)
+    debug_options = DebugOptions(save_onnx=True, onnx_prefix='cos')
+    ort_model = ORTModule(copy.deepcopy(pt_model), debug_options)
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction
+
+    x = torch.randn(2, 2, device=device, requires_grad=True, dtype=torch.float32)
+    pt_prediction = run_step(pt_model, x)
+    ort_prediction = run_step(ort_model, x)
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+    _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
