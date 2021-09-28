@@ -82,6 +82,8 @@ jobs:
       value: $(environment) -e "$(epList)"
 
   steps:
+    - script: 'ls /data/ep-perf-models/partner-models'
+      displayName: 'print models'
 
     - ${{ if eq(parameters.BuildORT, true) }}:
 
