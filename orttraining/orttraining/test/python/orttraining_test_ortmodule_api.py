@@ -3881,9 +3881,8 @@ def test_ortmodule_gradient_builder():
 
     @register_gradient('', 'Cos')
     def Cos_gradient():
-        return [('Constant', [], ['Const_0'], {'value': {'value': 0.0, 'dtype': 'float', 'is_tensor': True}}),
-                ('Sin', ['GO(0)'], ['Sin_X']),
-                ('Sub', ['Const_0', 'Sin_X'], ['GI(0)'])]
+        return [('Sin', ['GO(0)'], ['Sin_X']),
+                ('Neg', ['Sin_X'], ['GI(0)'])]
 
     pt_model = Model().to(device)
     debug_options = DebugOptions(save_onnx=True, onnx_prefix='cos')
