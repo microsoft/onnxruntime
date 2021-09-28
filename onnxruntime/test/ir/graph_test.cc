@@ -873,7 +873,7 @@ TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_CompressDecompr
         node_4 (Identity)  decompress (pri = LOCAL_LOW)
                       \       /
                       node_5 (Merge)
-                          |                   
+                          |
   */
 
   TypeProto tensor_int32;
@@ -943,8 +943,8 @@ TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_CompressDecompr
                     \           /                   |
                     node_8 (Merge)                  |
                            \                        /
-                                 node_9 (Merge)                
-                                      |                   
+                                 node_9 (Merge)
+                                      |
   */
 
   TypeProto tensor_int32;
@@ -1012,7 +1012,7 @@ TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_Recompute) {
         node_1 (Identity)  recompute_node_1 (pri = LOCAL_LOW)
                     |         |
         node_4 (Identity)     |
-                     \       /           
+                     \       /
                node_1_grad (Merge)
                         |
   */
@@ -1070,7 +1070,7 @@ TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_MultiLayerRecom
           loss (Identity) \   \        \        \
                     |     |    \         \        \
              1            |     |         \        \
-               \         /      |          \        | 
+               \         /      |          \        |
                 loss_grad  recom_node_3    |        |
                      \         /           |        |
                      node_3_grad      recom_node_2  |
@@ -1256,7 +1256,8 @@ TEST_F(GraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained) {
 
 // Validate that an unused initializer doesn't break graph loading/resolution
 // and is removed as expected.
-TEST_F(GraphTest, UnusedInitializerIsIgnored) {
+// Validate unused NodeArgs are removed as expected
+TEST_F(GraphTest, UnusedInitializerAndNodeArgsAreIgnored) {
   Model model("UnusedInitializerIsIgnored", false, *logger_);
   auto& graph = model.MainGraph();
 
@@ -1283,9 +1284,16 @@ TEST_F(GraphTest, UnusedInitializerIsIgnored) {
   graph.AddInitializedTensor(initializer_tensor);
   ASSERT_TRUE(graph.GetAllInitializedTensors().size() == 1);
 
+  // Add unused NodeArgs
+  const std::string unused_node_arg_name = graph.GenerateNodeArgName("UnusedNodeArg");
+  ASSERT_EQ(nullptr, graph.GetNodeArg(unused_node_arg_name));
+  graph.GetOrCreateNodeArg(unused_node_arg_name, nullptr);
+  ASSERT_NE(nullptr, graph.GetNodeArg(unused_node_arg_name));
+
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
   ASSERT_TRUE(graph.GetAllInitializedTensors().empty());
+  ASSERT_EQ(nullptr, graph.GetNodeArg(unused_node_arg_name));
 
   // serialize and reload so we check the loaded from proto path in SetGraphInputsOutputs
   auto proto = model.ToProto();
@@ -1304,6 +1312,7 @@ TEST_F(GraphTest, UnusedInitializerIsIgnored) {
   status = graph2.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   ASSERT_TRUE(graph.GetAllInitializedTensors().empty());
+  ASSERT_EQ(nullptr, graph.GetNodeArg(unused_node_arg_name));
 }
 
 #if !defined(DISABLE_SPARSE_TENSORS)

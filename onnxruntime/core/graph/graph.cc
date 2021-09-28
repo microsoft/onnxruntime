@@ -2678,7 +2678,7 @@ Status Graph::Resolve(const ResolveOptions& options) {
 
   // perform the final steps for this graph and all subgraphs
   auto finalize_func = [&options](Graph& graph) {
-            graph.CleanUnusedInitializers(options.initializer_names_to_preserve);
+            graph.CleanUnusedInitializersAndNodeArgs(options.initializer_names_to_preserve);
             graph.GraphResolveNeeded(false);
 
             // if we are resolving immediately after loading from a GraphProto, we don't need to
@@ -3345,7 +3345,7 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
   }
 }
 
-void Graph::CleanUnusedInitializers(const std::unordered_set<std::string>* initializer_names_to_preserve) {
+void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve) {
   std::unordered_set<std::string> used_args;
 
   // anything that provides a required graph input (GetInputs), an optional graph input (GetOverridableInitializers)
@@ -3426,6 +3426,16 @@ void Graph::CleanUnusedInitializers(const std::unordered_set<std::string>* initi
                     }
                   }
                 });
+
+  // Clear the unused NodeArgs
+  for (auto it = node_args_.cbegin(), node_args_end = node_args_.cend(); it != node_args_end; /* no increment */) {
+    auto current_entry = it++;
+    const auto& node_arg_name = current_entry->first;
+    if (!node_arg_name.empty() && used_args.find(node_arg_name) == end) {
+      LOGS(logger_, INFO) << "Removing NodeArg '" << node_arg_name << "'. It is no longer used by any node.";
+      it = node_args_.erase(current_entry);
+    }
+  }
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -3823,7 +3833,6 @@ Status Graph::InlineFunction(Node& node) {
     func_input_output_names.insert(output->Name());
   }
 
-  
   // create a uniq_identifier to append to every node name and intermediate input\outputs
   // to make sure there are no unintended duplicates
   std::stringstream ss;
