@@ -153,7 +153,7 @@ Status MatMulIntegerToFloatFusion::ApplyImpl(Graph& graph, bool& modified, int g
     }
   }
 
-  modified = !nodes_to_remove.empty();
+  modified = modified || !nodes_to_remove.empty();
 
   for (const auto& node : nodes_to_remove) {
     graph_utils::RemoveNodeOutputEdges(graph, node);

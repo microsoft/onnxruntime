@@ -9,7 +9,7 @@ namespace test {
 
 RandomValueGenerator::RandomValueGenerator(optional<RandomSeedType> seed)
     : random_seed_{
-          seed.has_value() ? seed.value() : static_cast<RandomSeedType>(GetTestRandomSeed())},
+          seed.has_value() ? *seed : static_cast<RandomSeedType>(GetTestRandomSeed())},
       generator_{random_seed_},
       output_trace_{__FILE__, __LINE__, "ORT test random seed: " + std::to_string(random_seed_)} {
 }

@@ -7,7 +7,7 @@ export interface OrtWasmModule extends EmscriptenModule {
   stackRestore(stack: number): void;
   stackAlloc(size: number): number;
 
-  UTF8ToString(offset: number): string;
+  UTF8ToString(offset: number, maxBytesToRead?: number): string;
   lengthBytesUTF8(str: string): number;
   stringToUTF8(str: string, offset: number, maxBytes: number): void;
   //#endregion
@@ -43,6 +43,8 @@ export interface OrtWasmModule extends EmscriptenModule {
   _OrtCreateRunOptions(logSeverityLevel: number, logVerbosityLevel: number, terminate: boolean, tag: number): number;
   _OrtAddRunConfigEntry(runOptionsHandle: number, configKey: number, configValue: number): number;
   _OrtReleaseRunOptions(runOptionsHandle: number): void;
+
+  _OrtEndProfiling(sessionHandle: number): number;
   //#endregion
 
   //#region config

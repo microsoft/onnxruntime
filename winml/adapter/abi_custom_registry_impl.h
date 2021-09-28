@@ -28,7 +28,6 @@ class AbiCustomRegistryImpl : public AbiCustomRegistry {
       bool can_alias_first_input,
       bool supports_graph,
       const uint32_t* required_input_count_for_graph = nullptr,
-      bool requires_float_formats_for_graph = false,
       bool supports_64bit_directly = false,
       bool allows_64bit_via_strides = false,
       bool allows_64bit_via_strides_from_any_ep = false,

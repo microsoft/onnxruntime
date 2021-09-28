@@ -39,7 +39,7 @@ static Node* GetTransposeNodeFromOutput(Graph& graph, NodeArg& node_arg) {
   }
 
   // if the node has Graph output, skip it too
-  if (!graph.GetNodeOutputsInGraphOutputs(*trans_node).empty()) {
+  if (graph.NodeProducesGraphOutput(*trans_node)) {
     return nullptr;
   }
 
@@ -117,9 +117,8 @@ static size_t UpdateConsumerCount(Graph& graph, NodeArg* target, std::unordered_
 *                              V
 */
 static Node* ReorderCastAndTranspose(Graph& graph, Node* cast,
-                                    std::unordered_map<NodeArg*, size_t>& consumer_count,
-                                    std::deque<onnxruntime::NodeIndex>& removed_nodes) {
-
+                                     std::unordered_map<NodeArg*, size_t>& consumer_count,
+                                     std::deque<onnxruntime::NodeIndex>& removed_nodes) {
   ORT_ENFORCE(cast != nullptr);
   auto transpose = GetTransposeNodeFromOutput(graph, *cast->MutableInputDefs()[0]);
   if (transpose == nullptr) {
@@ -138,18 +137,19 @@ static Node* ReorderCastAndTranspose(Graph& graph, Node* cast,
   new_cast_output_type_proto.mutable_tensor_type()->set_elem_type(element_type);
   auto& new_cast_output = graph.GetOrCreateNodeArg(cast_output->Name() + "_transformed", &new_cast_output_type_proto);
 
-  const std::vector<NodeArg*> new_cast_input_defs {transpose_input};
-  const std::vector<NodeArg*> new_cast_output_defs {&new_cast_output};
+  const std::vector<NodeArg*> new_cast_input_defs{transpose_input};
+  const std::vector<NodeArg*> new_cast_output_defs{&new_cast_output};
   const std::vector<NodeArg*> new_transpose_input_defs = {&new_cast_output};
   const std::vector<NodeArg*> new_transpose_output_defs = {cast_output};
 
-  (void) graph.AddNode(graph.GenerateNodeName(cast->Name() + "_transformed"),
-                                 cast->OpType(),
-                                 "Created a new Cast node to interchange Cast and Transpose nodes",
-                                 new_cast_input_defs,
-                                 new_cast_output_defs,
-                                 &cast->GetAttributes(),
-                                 cast->Domain());
+  Node& new_cast = graph.AddNode(graph.GenerateNodeName(cast->Name() + "_transformed"),
+                      cast->OpType(),
+                      "Created a new Cast node to interchange Cast and Transpose nodes",
+                      new_cast_input_defs,
+                      new_cast_output_defs,
+                      &cast->GetAttributes(),
+                      cast->Domain());
+  new_cast.SetExecutionProviderType(cast->GetExecutionProviderType());
 
   Node& new_transpose = graph.AddNode(graph.GenerateNodeName(transpose->Name() + "_transformed"),
                                       transpose->OpType(),
@@ -158,6 +158,7 @@ static Node* ReorderCastAndTranspose(Graph& graph, Node* cast,
                                       new_transpose_output_defs,
                                       &transpose->GetAttributes(),
                                       transpose->Domain());
+  new_transpose.SetExecutionProviderType(transpose->GetExecutionProviderType());
 
   size_t consumers = UpdateConsumerCount(graph, transpose->MutableOutputDefs()[0], consumer_count);
   graph_utils::RemoveNodeOutputEdges(graph, *cast);
@@ -169,8 +170,7 @@ static Node* ReorderCastAndTranspose(Graph& graph, Node* cast,
 }
 
 // Check whether the element_type is an allowed FusedMatMul data type or not.
-static bool IsAllowedFusedMatMulDataType(ONNX_NAMESPACE::TensorProto_DataType element_type)
-{
+static bool IsAllowedFusedMatMulDataType(ONNX_NAMESPACE::TensorProto_DataType element_type) {
   return element_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
          element_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
          element_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE ||

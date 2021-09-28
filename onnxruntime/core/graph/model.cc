@@ -45,7 +45,7 @@ Model::Model(const std::string& graph_name,
              const PathString& model_path,
              const IOnnxRuntimeOpSchemaRegistryList& local_registries,
              const std::unordered_map<std::string, int>& domain_to_version,
-             const std::vector<ONNX_NAMESPACE::FunctionProto>&,
+             const std::vector<ONNX_NAMESPACE::FunctionProto>& model_local_functions,
              const logging::Logger& logger)
     : model_path_(Path::Parse(model_path)) {
   model_proto_.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
@@ -82,10 +82,17 @@ Model::Model(const std::string& graph_name,
     opset_id_proto->set_version(domain.second);
   }
 
+  std::vector<const ONNX_NAMESPACE::FunctionProto*> model_functions;
+  for (auto& func : model_local_functions) {
+    auto func_ptr = model_proto_.add_functions();
+    func_ptr->CopyFrom(func);
+    model_functions.emplace_back(func_ptr);
+  }
+
   // need to call private ctor so can't use make_shared
   GSL_SUPPRESS(r .11)
   graph_.reset(new Graph(*this, model_proto_.mutable_graph(), *p_domain_to_version, IrVersion(), schema_registry,
-                         logger));
+                         model_functions, logger));
 }
 
 Model::Model(const ModelProto& model_proto, const PathString& model_path,
@@ -107,8 +114,14 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
         " specifies which version of the ONNX OperatorSet is being imported.");
   }
 
-  if (!model_proto.has_ir_version() || model_proto.ir_version() > ONNX_NAMESPACE::Version::IR_VERSION) {
-    ORT_THROW("Unknown model file format version.");
+  if (!model_proto.has_ir_version()) {
+    ORT_THROW("Missing model IR version.");
+  }
+
+  if (const auto ir_version = model_proto.ir_version();
+      ir_version > ONNX_NAMESPACE::Version::IR_VERSION) {
+    ORT_THROW("Unsupported model IR version: ", ir_version,
+              ", max supported IR version: ", ONNX_NAMESPACE::Version::IR_VERSION);
   }
 
   model_proto_ = std::move(model_proto);
@@ -170,9 +183,14 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
     }
   }
 
+  std::vector<const ONNX_NAMESPACE::FunctionProto*> model_local_functions;
+  for (auto& func : model_proto_.functions()) {
+    model_local_functions.emplace_back(&func);
+  }
+
   // create instance. need to call private ctor so can't use make_unique
   GSL_SUPPRESS(r .11)
-  graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry, logger));
+  graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry, model_local_functions, logger));
 }
 
 Version Model::IrVersion() const {
@@ -652,18 +670,34 @@ common::Status Model::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   }
   auto op_set_ids = builder.CreateVector(op_set_ids_vec);
 
+  flatbuffers::Offset<flatbuffers::Vector<
+      flatbuffers::Offset<onnxruntime::experimental::fbs::StringStringEntry>>>
+      metadata_props{0};
+
+  // We will not serialize an empty metadata_props
+  if (!model_metadata_.empty()) {
+    std::vector<flatbuffers::Offset<onnxruntime::experimental::fbs::StringStringEntry>> metadata_props_vec;
+    metadata_props_vec.reserve(model_metadata_.size());
+    for (const auto& prop : model_metadata_) {
+      metadata_props_vec.push_back(
+          fbs::CreateStringStringEntryDirect(builder, prop.first.c_str(), prop.second.c_str()));
+    }
+    metadata_props = builder.CreateVector(metadata_props_vec);
+  }
+
   flatbuffers::Offset<fbs::Graph> fbs_graph;
   ORT_RETURN_IF_ERROR(graph_->SaveToOrtFormat(builder, fbs_graph));
 
   fbs::ModelBuilder mb(builder);
-  mb.add_ir_version(model_proto_.ir_version());
+  mb.add_ir_version(IrVersion());
   mb.add_opset_import(op_set_ids);
   mb.add_producer_name(producer_name);
   mb.add_producer_version(producer_version);
   mb.add_domain(domain);
-  mb.add_model_version(model_proto_.model_version());
+  mb.add_model_version(ModelVersion());
   mb.add_doc_string(doc_string);
   mb.add_graph_doc_string(graph_doc_string);
+  mb.add_metadata_props(metadata_props);
   mb.add_graph(fbs_graph);
 
   // add graph
@@ -686,6 +720,18 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
                                         std::unique_ptr<Model>& model) {
   model.reset(new Model());
 
+  // Load the model metadata
+  if (const auto* fbs_metadata_props = fbs_model.metadata_props()) {
+    model->model_metadata_.reserve(fbs_metadata_props->size());
+    for (const auto* prop : *fbs_metadata_props) {
+      ORT_RETURN_IF(nullptr == prop, "Null entry in metadata_props. Invalid ORT format model.");
+      std::string key, value;
+      experimental::utils::LoadStringFromOrtFormat(key, prop->key());
+      experimental::utils::LoadStringFromOrtFormat(value, prop->value());
+      model->model_metadata_.insert({key, value});
+    }
+  }
+
 #if !defined(ORT_MINIMAL_BUILD)
   LOAD_STR_FROM_ORT_FORMAT(model->model_proto_, producer_name, fbs_model.producer_name());
   LOAD_STR_FROM_ORT_FORMAT(model->model_proto_, producer_version, fbs_model.producer_version());
@@ -702,6 +748,13 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
     for (const auto& schema_collection : *local_registries) {
       schema_registry->RegisterRegistry(schema_collection);
     }
+  }
+
+  // Populate the metadata to model_proto
+  for (auto& metadata : model->model_metadata_) {
+    const gsl::not_null<StringStringEntryProto*> prop{model->model_proto_.add_metadata_props()};
+    prop->set_key(metadata.first);
+    prop->set_value(metadata.second);
   }
 #else
   experimental::utils::LoadStringFromOrtFormat(model->producer_name_, fbs_model.producer_name());

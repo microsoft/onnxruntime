@@ -14,6 +14,8 @@ namespace graph_utils {
 //--- local helpers ---
 //---------------------
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 // check if an output edge provides an implicit input to the destination node
 static bool OutputEdgeProvidesImplicitInput(const Graph& graph, const GraphEdge& output_edge) {
   // we treat the explicit and implicit inputs as sequential, so if the destination arg index of an output edge
@@ -186,9 +188,13 @@ static void MoveAllNodeOutputs(Graph& graph, Node& src_node, Node& target_node) 
   GraphEdge::RemoveGraphEdges(graph, output_edges);
 }
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 //----------------------------
 //--- end of local helpers ---
 //----------------------------
+
+#if !defined(ORT_MINIMAL_BUILD)
 
 int GetIndexFromName(const Node& node, const std::string& name, bool is_input) {
   const auto& node_args = is_input ? node.InputDefs() : node.OutputDefs();
@@ -206,20 +212,6 @@ int GetNodeInputIndexFromInputName(const Node& node, const std::string& input_na
 
 int GetNodeOutputIndexFromOutputName(const Node& node, const std::string& output_name) {
   return GetIndexFromName(node, output_name, false);
-}
-
-const std::string& GetNodeInputName(const Node& node, int index) {
-  const auto& inputs = node.InputDefs();
-  ORT_ENFORCE(index >= 0 && static_cast<size_t>(index) < inputs.size(),
-              "Attempting to get an input that does not exist.");
-  return inputs[index]->Name();
-}
-
-const std::string& GetNodeOutputName(const Node& node, int index) {
-  const auto& outputs = node.OutputDefs();
-  ORT_ENFORCE(index >= 0 && static_cast<size_t>(index) < outputs.size(),
-              "Attempting to get an output that does not exist.");
-  return outputs[index]->Name();
 }
 
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
@@ -323,7 +315,7 @@ bool CanRemoveNode(const Graph& graph, const Node& node, const logging::Logger& 
   // This would allow removal of a node that is providing a graph output, as that output name would come from updating
   // the upstream node. This should also enable removal if CanUpdateImplicitInputNameInSubgraphs returns false.
 
-  if (!graph.GetNodeOutputsInGraphOutputs(node).empty()) {
+  if (graph.NodeProducesGraphOutput(node)) {
     return false;
   }
 
@@ -429,11 +421,6 @@ bool ReplaceNodeWithInitializer(Graph& graph, Node& node, NodeArg& replacement) 
 bool IsGraphInput(const Graph& graph, const NodeArg* input) {
   const std::vector<const NodeArg*>& graph_inputs = graph.GetInputsIncludingInitializers();
   return std::find(graph_inputs.begin(), graph_inputs.end(), input) != graph_inputs.end();
-}
-
-const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const Graph& graph, const std::string& initializer_name,
-                                                          bool check_outer_scope) {
-  return graph.GetConstantInitializer(initializer_name, check_outer_scope);
 }
 
 bool IsInitializer(const Graph& graph, const std::string& name, bool check_outer_scope) {
@@ -556,20 +543,6 @@ NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_ini
   }
 
   return graph.GetOrCreateNodeArg(new_initializer.name(), &new_type);
-}
-
-size_t RemoveNodeOutputEdges(Graph& graph, Node& node) {
-  std::vector<GraphEdge> output_edges = GraphEdge::GetNodeOutputEdges(node);
-  GraphEdge::RemoveGraphEdges(graph, output_edges);
-
-  return output_edges.size();
-}
-
-size_t RemoveNodeOutputEdges(Graph& graph, Node& node, int output_idx) {
-  std::vector<GraphEdge> output_edges = GraphEdge::GetNodeOutputEdges(node, output_idx);
-  GraphEdge::RemoveGraphEdges(graph, output_edges);
-
-  return output_edges.size();
 }
 
 void ReplaceDownstreamNodeInput(Graph& graph, Node& node, int output_idx, Node& replacement, int replacement_output_idx) {
@@ -762,7 +735,7 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
     // Each eligible node in the subgraph must have less than one output edge and no output should be
     // the graph output
     const Node& cur_node = *graph.GetNode(cur_node_index);
-    if (cur_node.GetOutputEdgesCount() > 1 || !graph.GetNodeOutputsInGraphOutputs(cur_node).empty()) {
+    if (cur_node.GetOutputEdgesCount() > 1 || graph.NodeProducesGraphOutput(cur_node)) {
       continue;
     }
 
@@ -799,6 +772,43 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
 
 NodeArg& CreateNodeArg(Graph& graph, const NodeArg& base_arg) {
   return graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(base_arg.Name()), base_arg.TypeAsProto());
+}
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+const std::string& GetNodeInputName(const Node& node, int index) {
+  const auto& inputs = node.InputDefs();
+  ORT_ENFORCE(index >= 0 && static_cast<size_t>(index) < inputs.size(),
+              "Attempting to get an input that does not exist.");
+  return inputs[index]->Name();
+}
+
+const std::string& GetNodeOutputName(const Node& node, int index) {
+  const auto& outputs = node.OutputDefs();
+  ORT_ENFORCE(index >= 0 && static_cast<size_t>(index) < outputs.size(),
+              "Attempting to get an output that does not exist.");
+  return outputs[index]->Name();
+}
+
+size_t RemoveNodeOutputEdges(Graph& graph, Node& node) {
+  std::vector<GraphEdge> output_edges = GraphEdge::GetNodeOutputEdges(node);
+  GraphEdge::RemoveGraphEdges(graph, output_edges);
+
+  return output_edges.size();
+}
+
+size_t RemoveNodeOutputEdges(Graph& graph, Node& node, int output_idx) {
+  std::vector<GraphEdge> output_edges = GraphEdge::GetNodeOutputEdges(node, output_idx);
+  GraphEdge::RemoveGraphEdges(graph, output_edges);
+
+  return output_edges.size();
+}
+
+const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const Graph& graph, const std::string& initializer_name,
+                                                          bool check_outer_scope) {
+  return graph.GetConstantInitializer(initializer_name, check_outer_scope);
 }
 
 GraphEdge::GraphEdge(NodeIndex src_node,
@@ -867,6 +877,8 @@ void GraphEdge::RemoveGraphEdges(Graph& graph, const std::vector<GraphEdge>& edg
                      edge_to_remove.dst_arg_index);
   }
 }
+
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 }  // namespace graph_utils
 }  // namespace onnxruntime

@@ -30,7 +30,9 @@ typedef std::shared_ptr<pyxir::graph::XGraph> XGraphHolder;
 typedef std::shared_ptr<pyxir::graph::XLayer> XLayerHolder;
 
 VitisAIExecutionProvider::VitisAIExecutionProvider(const VitisAIExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kVitisAIExecutionProvider}, backend_type_(info.backend_type), device_id_(info.device_id) {
+    : IExecutionProvider{onnxruntime::kVitisAIExecutionProvider}, backend_type_(info.backend_type),
+      device_id_(info.device_id), export_runtime_module_(info.export_runtime_module),
+      load_runtime_module_(info.load_runtime_module) {
   AllocatorCreationInfo default_memory_info{
       [](int) {
         return std::make_unique<CPUAllocator>(OrtMemoryInfo(VITISAI, OrtAllocatorType::OrtDeviceAllocator));
@@ -276,7 +278,8 @@ common::Status VitisAIExecutionProvider::Compile(const std::vector<onnxruntime::
   for (const auto& fused_node : fused_nodes) {
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [this, fused_node, logger = GetLogger()](ComputeContext* context, FunctionState* state) {
-      auto* p = new vitisai_ep::VitisAICustomOp(context, fused_node, backend_type_, logger);
+      auto* p = new vitisai_ep::VitisAICustomOp(context, fused_node, backend_type_, export_runtime_module_,
+                                                load_runtime_module_, logger);
       *state = p;
       return 0;
     };

@@ -60,6 +60,8 @@ class AdasumInterface {
 
   virtual const Communicator_type* GetReductionComms() = 0;
 
+  virtual ~AdasumInterface() = default;
+
  protected:
   // Communication primitives required for Adasum algorithm
   virtual void PointToPointSendRecv(void* input_data_buffer,

@@ -30,9 +30,12 @@ const WASM_BINDING_THREADED_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm-t
 const WASM_BINDING_THREADED_WORKER_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm-threaded.worker.js');
 const WASM_BINDING_THREADED_MIN_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm-threaded.min.js');
 const WASM_BINDING_THREADED_MIN_WORKER_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm-threaded.min.worker.js');
+
 const WASM_DIST_FOLDER = path.join(__dirname, '..', 'dist');
 const WASM_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm.wasm');
 const WASM_THREADED_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-threaded.wasm');
+const WASM_SIMD_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-simd.wasm');
+const WASM_SIMD_THREADED_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-simd-threaded.wasm');
 const WASM_THREADED_WORKER_JS_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-threaded.worker.js');
 const WASM_THREADED_JS_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-threaded.js');
 
@@ -58,6 +61,8 @@ if (WASM) {
     validateFile(WASM_BINDING_THREADED_WORKER_JS_PATH);
     validateFile(WASM_WASM_PATH);
     validateFile(WASM_THREADED_WASM_PATH);
+    validateFile(WASM_SIMD_WASM_PATH);
+    validateFile(WASM_SIMD_THREADED_WASM_PATH);
   } catch (e) {
     npmlog.error('Build', `WebAssembly files are not ready. build WASM first. ERR: ${e}`);
     throw e;

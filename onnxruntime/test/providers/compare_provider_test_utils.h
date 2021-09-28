@@ -20,7 +20,8 @@ class CompareOpTester : public OpTester {
   void CompareWithCPU(const std::string& target_provider_type,
                       double per_sample_tolerance = 1e-4,
                       double relative_per_sample_tolerance = 1e-4,
-                      const bool need_cpu_cast = false);
+                      const bool need_cpu_cast = false,
+                      const std::unordered_map<std::string, int>& extra_domain_to_version = {});
 };
 
 }  // namespace test

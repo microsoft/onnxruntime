@@ -349,43 +349,13 @@ constexpr T roundUp(T a, T b) {
   return divUp<T>(a, b) * b;
 }
 
-// Returns true if the given integer type is a power-of-2 (positive only)
-// Note(jiayq): windows reported an error per
-//     https://github.com/caffe2/caffe2/issues/997
-// and as a result will make it a macro.
-#ifdef _MSC_VER
-#define integerIsPowerOf2(v) ((v) && !((v) & ((v)-1)))
-#else   // _MSC_VER
-template <typename T>
-constexpr bool integerIsPowerOf2(T v) {
-  return (v && !(v & (v - 1)));
-}
-#endif  // _MSC_VER
-
-// Returns log2(n) for a positive integer type
-template <typename T>
-constexpr int integerLog2(T n, int p = 0) {
-  return (n <= 1) ? p : integerLog2(n / 2, p + 1);
-}
-
-// Returns the next highest power-of-2 for an integer type
-template <typename T>
-constexpr T integerNextHighestPowerOf2(T v) {
-  return (integerIsPowerOf2(v) ? (T)2 * v : ((T)1 << (integerLog2(v) + 1)));
-}
-
-// Rounds a up to the next highest multiple of b, which is power-of-2. User must be careful
-// to ensure that there is no overflow or underflow in the calculation
-// of divUp.
-template <typename T, T b>
-constexpr T roundUpPow2(T a) {
-  return (a + (b - 1)) & (~(b - 1));
-}
-
+// Converts a float32 to a float16 value.
 uint16_t floatToHalf(float f);
 
+// Converts a double (float64) to a float16 value.
 uint16_t doubleToHalf(double f);
 
+// Converts a float16 to a float32 value.
 float halfToFloat(uint16_t h);
 
 }  // namespace math

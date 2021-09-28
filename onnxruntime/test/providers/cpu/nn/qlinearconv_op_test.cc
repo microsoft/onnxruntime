@@ -736,6 +736,26 @@ TEST(QLinearConvTest, Conv2D_U8S8_Groups_PerChannel) {
   test.Run();
 }
 
+TEST(QLinearConvTest, Conv2D_U8S8_Groups_Pointwise) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({1, 12, 17, 13}, .03f, 7);
+  test.GenerateRandomWeights({15, 4, 1, 1}, .10f, 0);
+  test.GenerateRandomBias();
+  test.SetGroups(3);
+  test.SetOutputScaleAndZeroPoint(.26f, 88);
+  test.Run();
+}
+
+TEST(QLinearConvTest, Conv3D_U8S8_Groups_Pointwise) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({2, 4, 13, 17, 13}, .03f, 7);
+  test.GenerateRandomWeights({6, 2, 1, 1, 1}, .10f, 0);
+  test.GenerateRandomBias();
+  test.SetGroups(2);
+  test.SetOutputScaleAndZeroPoint(.26f, 88);
+  test.Run();
+}
+
 TEST(QLinearConvTest, Conv1D_U8S8_Depthwise) {
   for (int64_t channels : std::initializer_list<int64_t>{7, 8, 9, 16, 25, 64}) {
     QLinearConvOpTester<uint8_t, int8_t> test;
@@ -883,13 +903,9 @@ TEST(QLinearConvTest, SharedPrepackedWeights) {
   test.AddOutput<uint8_t>("y", {1, 1, 7, 7}, Y.quantized_);
 
   // W
-  auto W_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<uint8_t>(), TensorShape({1, 1, 1, 1}),
-                                           W.quantized_.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
-
   OrtValue W_ortvalue;
-
-  W_ortvalue.Init(W_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  Tensor::InitOrtValue(DataTypeImpl::GetType<uint8_t>(), TensorShape({1, 1, 1, 1}),
+                       W.quantized_.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), W_ortvalue);
 
   SessionOptions so;
 

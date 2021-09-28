@@ -6,12 +6,12 @@
 
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
+#include "core/common/optional.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/containers.h"
 #include "core/util/math.h"
 #endif
 #include "core/util/math_cpuonly.h"
-#include "core/common/optional.h"
 #include "core/platform/threadpool.h"
 #include "core/common/safeint.h"
 #include <cmath>
@@ -43,13 +43,13 @@ TensorOpCost ParallelReduceFastCost(int64_t n_row, int64_t n_col, int64_t elemen
   This only improves reduce function when reduced axes are contiguous:
   if len(shape) == 4, any single axis is ok, axes=(0, 1) or (1, 2) or (2, 3) is ok,
   axes=(0, 2) is not covered by this change, former implementation prevails.
-  In that case, the shape can be compressed into three cases: 
+  In that case, the shape can be compressed into three cases:
   (K = axis not reduced, R = reduced axis):
 
   *  KR - reduction on the last dimensions
   *  RK - reduction on the first dimensions
   *  KRK - reduction on the middle dimensions.
-   
+
   For these three configuration, the reduction may be optimized
   with vectors operations. Method WhichFastReduce() returns which case
   case be optimized for which aggregator.
@@ -630,7 +630,7 @@ class ReduceKernelBase {
     }
     int64_t keepdims = 1;
     if (keepdims_override.has_value()) {
-      keepdims = keepdims_override.value();
+      keepdims = *keepdims_override;
     } else {
       ORT_ENFORCE(info.GetAttr("keepdims", &keepdims).IsOK());
     }

@@ -5,9 +5,9 @@ import {readFile} from 'fs';
 import {Backend, env, InferenceSession, SessionHandler} from 'onnxruntime-common';
 import {cpus} from 'os';
 import {promisify} from 'util';
+import {initWasm} from './wasm/proxy-wrapper';
 
 import {OnnxruntimeWebAssemblySessionHandler} from './wasm/session-handler';
-import {initializeWebAssembly} from './wasm/wasm-factory';
 
 /**
  * This function initializes all flags for WebAssembly.
@@ -20,11 +20,18 @@ export const initializeFlags = (): void => {
     env.wasm.initTimeout = 0;
   }
 
-  if (typeof env.wasm.numThreads !== 'number' || !Number.isInteger(env.wasm.numThreads) || env.wasm.numThreads < 0) {
-    const numCpuLogicalCores = typeof navigator === 'undefined' ? cpus().length : navigator.hardwareConcurrency;
-    env.wasm.numThreads = Math.ceil((numCpuLogicalCores || 1) / 2);
+  if (typeof env.wasm.simd !== 'boolean') {
+    env.wasm.simd = true;
   }
-  env.wasm.numThreads = Math.min(4, env.wasm.numThreads);
+
+  if (typeof env.wasm.proxy !== 'boolean') {
+    env.wasm.proxy = false;
+  }
+
+  if (typeof env.wasm.numThreads !== 'number' || !Number.isInteger(env.wasm.numThreads) || env.wasm.numThreads <= 0) {
+    const numCpuLogicalCores = typeof navigator === 'undefined' ? cpus().length : navigator.hardwareConcurrency;
+    env.wasm.numThreads = Math.min(4, Math.ceil((numCpuLogicalCores || 1) / 2));
+  }
 };
 
 class OnnxruntimeWebAssemblyBackend implements Backend {
@@ -33,7 +40,7 @@ class OnnxruntimeWebAssemblyBackend implements Backend {
     initializeFlags();
 
     // init wasm
-    await initializeWebAssembly();
+    await initWasm();
   }
   createSessionHandler(path: string, options?: InferenceSession.SessionOptions): Promise<SessionHandler>;
   createSessionHandler(buffer: Uint8Array, options?: InferenceSession.SessionOptions): Promise<SessionHandler>;
@@ -55,7 +62,7 @@ class OnnxruntimeWebAssemblyBackend implements Backend {
     }
 
     const handler = new OnnxruntimeWebAssemblySessionHandler();
-    handler.loadModel(buffer, options);
+    await handler.loadModel(buffer, options);
     return Promise.resolve(handler);
   }
 }

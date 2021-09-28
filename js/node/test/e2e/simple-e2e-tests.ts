@@ -2,10 +2,9 @@
 // Licensed under the MIT License.
 
 import assert from 'assert';
-import {InferenceSession} from 'onnxruntime-common';
+import {InferenceSession, Tensor} from 'onnxruntime-common';
 import * as path from 'path';
 
-import {Tensor} from '../../lib';
 import {assertDataEqual, TEST_DATA_ROOT} from '../test-utils';
 
 

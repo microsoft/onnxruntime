@@ -22,8 +22,8 @@ using std::vector;
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer)
     : nnapi_(NnApiImplementation()), graph_viewer_(graph_viewer) {}
 
-int32_t ModelBuilder::GetAndroidSdkVer() const {
-  return nnapi_ ? nnapi_->android_sdk_version : 0;
+int32_t ModelBuilder::GetNNAPIFeatureLevel() const {
+  return nnapi_ ? nnapi_->nnapi_runtime_feature_level : 0;
 }
 
 // Scalar operand is copied into the model, no need to persist
@@ -78,7 +78,7 @@ static size_t GetPaddedByteSize(size_t size) {
 
 Status ModelBuilder::GetTargetDevices() {
   // GetTargetDevices is only supported on API 29+
-  if (GetAndroidSdkVer() < 29)
+  if (GetNNAPIFeatureLevel() < ANEURALNETWORKS_FEATURE_LEVEL_3)
     return Status::OK();
 
   if (target_device_option_ == TargetDeviceOption::ALL_DEVICES)
@@ -281,20 +281,16 @@ Status ModelBuilder::RegisterInitializers() {
     std::tie(index, size, padded_size) = initializers[i++];
     const uint8_t* src = nullptr;
     // uint8_t data need unpack, need a holder for free memory after copy
-    std::unique_ptr<uint8_t[]> unpacked_tensor;
+    std::vector<uint8_t> unpacked_tensor;
     switch (tensor.data_type()) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-        src = reinterpret_cast<const uint8_t*>(GetTensorFloatData(tensor));
-        break;
       case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-        size_t tensor_byte_size;
         ORT_RETURN_IF_ERROR(
-            onnxruntime::utils::UnpackInitializerData(tensor, graph_viewer_.ModelPath(),
-                                                      unpacked_tensor, tensor_byte_size));
-        ORT_RETURN_IF_NOT(size == tensor_byte_size,
-                          "initializer tensor: ", tensor.name(), "'s size: ", tensor_byte_size,
+            onnxruntime::utils::UnpackInitializerData(tensor, graph_viewer_.ModelPath(), unpacked_tensor));
+        ORT_RETURN_IF_NOT(size == unpacked_tensor.size(),
+                          "initializer tensor: ", tensor.name(), "'s size: ", unpacked_tensor.size(),
                           " should match the calculated size: ", size);
-        src = unpacked_tensor.get();
+        src = unpacked_tensor.data();
         break;
         // default:
         // We should not get anything else here since we already checked in the 1st pass
@@ -417,10 +413,10 @@ Status ModelBuilder::AddNewNNAPIOperand(const OperandType& operand_type, uint32_
   index = next_index_++;
 
   if (operand_type.channelQuant) {
-    if (GetAndroidSdkVer() < 29) {
+    if (GetNNAPIFeatureLevel() < ANEURALNETWORKS_FEATURE_LEVEL_3) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Per-channel quantization is only supported on Android API level 29+,",
-                             " system API level: ", GetAndroidSdkVer());
+                             " system NNAPI feature level: ", GetNNAPIFeatureLevel());
     }
 
     RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksModel_setOperandSymmPerChannelQuantParams(
@@ -535,7 +531,7 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
       "on identifyInputsAndOutputs");
 
   // relax fp32tofp16 is only available on API 28+
-  if (use_fp16_ && GetAndroidSdkVer() > 27) {
+  if (use_fp16_ && GetNNAPIFeatureLevel() > ANEURALNETWORKS_FEATURE_LEVEL_1) {
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
         nnapi_->ANeuralNetworksModel_relaxComputationFloat32toFloat16(
             nnapi_model_->model_, true),

@@ -194,6 +194,11 @@ table Graph{
   sparse_initializers:[SparseTensor];
 }
 
+table StringStringEntry {
+  key:string;
+  value:string;
+}
+
 table Model {
   ir_version:int64;
   opset_import:[OperatorSetId];
@@ -202,10 +207,11 @@ table Model {
   domain:string;
   model_version:int64;
   doc_string:string;
-  
+
   graph:Graph;
-  
+
   graph_doc_string:string;
+  metadata_props:[StringStringEntry];
 }
 
 table KernelCreateInfos {

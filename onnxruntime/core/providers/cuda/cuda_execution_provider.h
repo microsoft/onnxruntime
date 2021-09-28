@@ -63,6 +63,14 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes);
   }
 
+  template <typename T>
+  IAllocatorUniquePtr<T> GetTransientScratchBuffer(size_t count_or_bytes) const {
+    if (count_or_bytes == 0)
+      return nullptr;
+
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes, true);
+  }
+
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 
@@ -73,6 +81,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
   int GetDeviceId() const override { return info_.device_id; }
   const cudaDeviceProp& GetDeviceProp() const { return device_prop_; };
   int GetCudnnConvAlgo() const { return info_.cudnn_conv_algo_search; }
+  bool DoCopyOnDefaultStream() const { return info_.do_copy_in_default_stream; }
+  bool GetCudnnConvUseMaxWorkspace() const { return info_.cudnn_conv_use_max_workspace; }
 
   ProviderOptions GetProviderOptions() const override {
     return CUDAExecutionProviderInfo::ToProviderOptions(info_);
@@ -178,7 +188,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
           p.reset();
       });
     }
-    std::shared_ptr<PerThreadContextMap> p{std::make_shared<PerThreadContextMap>()};
+    std::shared_ptr<PerThreadContextMap> p = std::make_shared<PerThreadContextMap>();
   };
 
   static const std::shared_ptr<PerThreadContextMap>& PerThreadContextCache() {

@@ -197,9 +197,9 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
         return false;
       }
 
-      if (params.android_sdk_ver < 29) {
+      if (params.android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
         LOGS_DEFAULT(VERBOSE) << op_type << " only supports per-channel quantization on Android API 29+, "
-                              << "system API level: " << params.android_sdk_ver;
+                              << "system NNAPI feature level: " << params.android_feature_level;
         return false;
       }
 
@@ -281,12 +281,8 @@ bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, co
         return false;
       }
 
-      std::unique_ptr<uint8_t[]> unpacked_tensor;
-      size_t tensor_byte_size;
-      auto status = onnxruntime::utils::UnpackInitializerData(
-          zero_tensor,
-          node.ModelPath(),
-          unpacked_tensor, tensor_byte_size);
+      std::vector<uint8_t> unpacked_tensor;
+      auto status = onnxruntime::utils::UnpackInitializerData(zero_tensor, node.ModelPath(), unpacked_tensor);
       if (!status.IsOK()) {
         LOGS_DEFAULT(ERROR) << "Qlinear[Conv/MatMul] error when unpack zero tensor: " << zero_point_name
                             << ", error msg: " << status.ErrorMessage();
@@ -294,8 +290,8 @@ bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, co
       }
 
       // Verify all onnx weight zero point(s) are 0(s)
-      const int8_t* zero_points = reinterpret_cast<const int8_t*>(unpacked_tensor.get());
-      for (size_t i = 0; i < tensor_byte_size; i++) {
+      const int8_t* zero_points = reinterpret_cast<const int8_t*>(unpacked_tensor.data());
+      for (size_t i = 0; i < unpacked_tensor.size(); i++) {
         if (zero_points[i] != 0) {
           LOGS_DEFAULT(VERBOSE) << "u8s8 Qlinear[Conv/MatMul]  only support 0 as zero point, "
                                 << "zero_points[" << i << "] has value: " << zero_points[i];
@@ -308,21 +304,32 @@ bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, co
   return true;
 }
 
-float GetQuantizationScale(const InitializedTensorSet& initializers, const Node& node, size_t idx) {
-  const auto& scale_tensor = *initializers.at(node.InputDefs()[idx]->Name());
-  return GetTensorFloatData(scale_tensor)[0];
+common::Status GetQuantizationScale(const InitializedTensorSet& initializers, const Node& node,
+                                    size_t idx, float& scale) {
+  std::vector<uint8_t> unpacked_tensor;
+  const auto& name = node.InputDefs()[idx]->Name();
+  const auto& scale_tensor = *initializers.at(name);
+  ORT_RETURN_IF_ERROR(
+      onnxruntime::utils::UnpackInitializerData(scale_tensor, node.ModelPath(), unpacked_tensor));
+
+  // The scale should be one or more floats
+  ORT_RETURN_IF(unpacked_tensor.size() < 4, "The initializer [", name, "] should have one or more floats ",
+                "with size no less than 4, actual size: ", unpacked_tensor.size());
+  scale = reinterpret_cast<const float*>(unpacked_tensor.data())[0];
+  return Status::OK();
 }
 
 common::Status GetQuantizationZeroPoint(const InitializedTensorSet& initializers,
                                         const Node& node, size_t idx, int32_t& zero_point) {
-  std::unique_ptr<uint8_t[]> unpacked_tensor;
-  size_t tensor_byte_size;
-  const auto& zero_point_tensor = *initializers.at(node.InputDefs()[idx]->Name());
+  std::vector<uint8_t> unpacked_tensor;
+  const auto& name = node.InputDefs()[idx]->Name();
+  const auto& zero_point_tensor = *initializers.at(name);
   ORT_RETURN_IF_ERROR(
-      onnxruntime::utils::UnpackInitializerData(zero_point_tensor, node.ModelPath(),
-                                                unpacked_tensor, tensor_byte_size));
+      onnxruntime::utils::UnpackInitializerData(zero_point_tensor, node.ModelPath(), unpacked_tensor));
+
+  ORT_RETURN_IF(unpacked_tensor.empty(), "The initializer [", name, "] is empty");
   // Onnx quantization uses uint8 [int8 not yet supported], need to cast to int32_t used by NNAPI
-  zero_point = static_cast<int32_t>(unpacked_tensor.get()[0]);
+  zero_point = static_cast<int32_t>(unpacked_tensor[0]);
   return Status::OK();
 }
 
@@ -367,13 +374,9 @@ void GetFlattenOutputShape(const Node& node, const Shape& input_shape, int32_t& 
   dim_2 = std::accumulate(input_shape.cbegin() + axis, input_shape.cend(), 1, std::multiplies<int32_t>());
 }
 
-bool IsValidSupportedNodesGroup(const std::vector<size_t>& supported_node_group, const GraphViewer& graph_viewer) {
-  if (supported_node_group.empty())
-    return false;
-
-  if (supported_node_group.size() == 1) {
-    const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
-    const auto* node(graph_viewer.GetNode(node_indices[supported_node_group[0]]));
+bool IsValidSupportedNodeGroup(const std::vector<const Node*>& supported_node_partition) {
+  if (supported_node_partition.size() == 1) {
+    const auto* node = supported_node_partition[0];
     const auto& op = node->OpType();
     // It is not worth it to perform a single Reshape/Flatten/Identity operator
     // which is only copying the data in NNAPI
@@ -440,9 +443,9 @@ bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const Op
   return op_support_checker->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node, params);
 }
 
-bool IsNodeSupportedInternal(const Node& node, const GraphViewer& graph_viewer,
-                             const OpSupportCheckParams& params,
-                             const std::unordered_set<std::string>& node_outputs_in_group) {
+bool IsNodeSupportedInGroup(const Node& node, const GraphViewer& graph_viewer,
+                            const OpSupportCheckParams& params,
+                            const std::unordered_set<std::string>& node_outputs_in_group) {
   if (!IsNodeSupported(node, graph_viewer, params))
     return false;
 
@@ -459,7 +462,7 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name) {
   // We do not support input with no shape
   if (!shape_proto) {
     LOGS_DEFAULT(VERBOSE) << "Input [" << input_name << "] of [" << parent_name
-                          << "] has not shape";
+                          << "] has no shape";
     return false;
   }
 
@@ -474,59 +477,6 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name) {
   return true;
 }
 
-std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_viewer, const OpSupportCheckParams& params) {
-  std::vector<std::vector<size_t>> supported_node_groups;
-  if (params.android_sdk_ver < ORT_NNAPI_MIN_API_LEVEL) {
-    LOGS_DEFAULT(WARNING) << "All ops will fallback to CPU EP, because Android API level [" << params.android_sdk_ver
-                          << "] is lower than minimal supported API level [" << ORT_NNAPI_MIN_API_LEVEL
-                          << "] of this build for NNAPI";
-    return supported_node_groups;
-  }
-
-  // Disable NNAPI if the graph has input with dynamic shape
-  for (const auto* input : graph_viewer.GetInputs()) {
-    if (!IsInputSupported(*input, "graph")) {
-      return supported_node_groups;
-    }
-  }
-
-  // This holds the supported node's topological index
-  std::vector<size_t> supported_node_group;
-  // This holds the NodeIndex of the nodes in the above group
-  std::unordered_set<std::string> node_outputs_in_group;
-  const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
-  for (size_t i = 0; i < node_indices.size(); i++) {
-    const auto* node(graph_viewer.GetNode(node_indices[i]));
-    bool supported = IsNodeSupportedInternal(*node, graph_viewer, params, node_outputs_in_group);
-    LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node->OpType()
-                          << "] index: [" << i
-                          << "] name: [" << node->Name()
-                          << "] supported: [" << supported
-                          << "]";
-    if (supported) {
-      supported_node_group.push_back(i);
-
-      // We want to put all the output names of nodes in the current group for easy query
-      // See IsInternalQuantizationSupported()
-      for (const auto* output : node->OutputDefs()) {
-        node_outputs_in_group.insert(output->Name());
-      }
-    } else {
-      if (IsValidSupportedNodesGroup(supported_node_group, graph_viewer)) {
-        supported_node_groups.push_back(supported_node_group);
-      }
-
-      supported_node_group.clear();
-      node_outputs_in_group.clear();
-    }
-  }
-
-  if (IsValidSupportedNodesGroup(supported_node_group, graph_viewer))
-    supported_node_groups.push_back(supported_node_group);
-
-  return supported_node_groups;
-}
-
 std::string Shape2String(const std::vector<uint32_t>& shape) {
   std::ostringstream os;
   os << "[ ";
@@ -535,6 +485,16 @@ std::string Shape2String(const std::vector<uint32_t>& shape) {
 
   os << "]";
   return os.str();
+}
+
+bool CheckIsInitializer(const InitializedTensorSet& initializers, const Node& node,
+                        size_t input_idx, const char* input_name) {
+  if (!Contains(initializers, node.InputDefs()[input_idx]->Name())) {
+    LOGS_DEFAULT(VERBOSE) << input_name << " of " << node.OpType() << " must be an initializer tensor";
+    return false;
+  }
+
+  return true;
 }
 
 }  // namespace nnapi

@@ -46,6 +46,7 @@ master_doc = 'index'
 language = "en"
 exclude_patterns = []
 pygments_style = 'default'
+autoclass_content = 'both'
 
 # -- Options for HTML output -------------------------------------------------
 

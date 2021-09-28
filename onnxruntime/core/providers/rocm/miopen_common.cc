@@ -88,5 +88,34 @@ const float Consts<half>::Zero = 0;
 
 const float Consts<half>::One = 1;
 
+#if ROCM_VERSION >= 40300
+template <>
+const float ReduceConsts<half>::One = 1;
+
+template <>
+const float ReduceConsts<half>::Zero = 0;
+#else
+// Up until ROCm 4.2, miopenReduceTensor() required alpha/beta to be the same data
+// type as the input type. This differs from cudnnReduceTensor() and other
+// MIOpen/cuDNN APIs where alpha/beta are float when input type is half (float16).
+template <>
+const half ReduceConsts<half>::One = 1.f;
+
+template <>
+const half ReduceConsts<half>::Zero = 0.f;
+#endif
+
+template <>
+const float ReduceConsts<float>::One = 1;
+
+template <>
+const double ReduceConsts<double>::One = 1;
+
+template <>
+const float ReduceConsts<float>::Zero = 0;
+
+template <>
+const double ReduceConsts<double>::Zero = 0;
+
 }  // namespace rocm
 }  // namespace onnxruntime

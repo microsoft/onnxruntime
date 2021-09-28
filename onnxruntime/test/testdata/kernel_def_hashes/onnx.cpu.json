@@ -256,6 +256,14 @@
         17832136363477464736
     ],
     [
+        "BatchNormalization ai.onnx CPUExecutionProvider",
+        3016597991190826984
+    ],
+    [
+        "BatchNormalization ai.onnx CPUExecutionProvider",
+        9270095107043637928
+    ],
+    [
         "BitShift ai.onnx CPUExecutionProvider",
         4758677670685660688
     ],
@@ -1461,7 +1469,7 @@
     ],
     [
         "Pad ai.onnx CPUExecutionProvider",
-        9596174091174553032
+        12904240253005862936
     ],
     [
         "Pad ai.onnx CPUExecutionProvider",
@@ -1482,6 +1490,10 @@
     [
         "Pow ai.onnx CPUExecutionProvider",
         12963226513247425672
+    ],
+    [
+        "Pow ai.onnx CPUExecutionProvider",
+        16138602580714332296
     ],
     [
         "PRelu ai.onnx CPUExecutionProvider",
@@ -2158,6 +2170,10 @@
     [
         "Shape ai.onnx CPUExecutionProvider",
         14989007508280400584
+    ],
+    [
+        "Shape ai.onnx CPUExecutionProvider",
+        9917761852037658112
     ],
     [
         "Shrink ai.onnx CPUExecutionProvider",

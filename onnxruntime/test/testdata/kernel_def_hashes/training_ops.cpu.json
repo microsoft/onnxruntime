@@ -216,6 +216,22 @@
         16283082098560169504
     ],
     [
+        "SoftmaxCrossEntropyLossInternal com.microsoft CPUExecutionProvider",
+        265850656999021376
+    ],
+    [
+        "SoftmaxCrossEntropyLossInternal com.microsoft CPUExecutionProvider",
+        11233773279707270760
+    ],
+    [
+        "SoftmaxCrossEntropyLossInternalGrad com.microsoft CPUExecutionProvider",
+        5510696224816806976
+    ],
+    [
+        "SoftmaxCrossEntropyLossInternalGrad com.microsoft CPUExecutionProvider",
+        16653880432442754672
+    ],
+    [
         "SoftmaxGrad com.microsoft CPUExecutionProvider",
         4483165757863027152
     ],

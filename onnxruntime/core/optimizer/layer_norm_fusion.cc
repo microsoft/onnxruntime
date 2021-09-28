@@ -79,7 +79,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean_node, "ReduceMean", {1, 11, 13}) ||
         !graph_utils::IsSupportedProvider(reduce_mean_node, GetCompatibleExecutionProviders()) ||
         (reduce_mean_node.GetOutputEdgesCount() != 1 && reduce_mean_node.GetOutputEdgesCount() != 2) ||
-        !graph.GetNodeOutputsInGraphOutputs(reduce_mean_node).empty() ||
+        graph.NodeProducesGraphOutput(reduce_mean_node) ||
         !IsSupportedDataType(reduce_mean_node)) {
       continue;
     }
@@ -216,7 +216,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       const Node* p_sub2_node = graph_utils::FirstParentByType(nodes_to_remove.back(), "Sub");
       if (p_sub2_node != nullptr) {
         // Cast is between Sub and Pow
-        if (p_sub2_node != p_sub_node && p_sub2_node != p_sub_node_dup || !IsSupportedDataType(cast_node)) {
+        if ((p_sub2_node != p_sub_node && p_sub2_node != p_sub_node_dup) || !IsSupportedDataType(cast_node)) {
           continue;
         }
       }
@@ -377,7 +377,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow_node, "Pow", {7, 12, 13}) ||
         !graph_utils::IsSupportedProvider(pow_node, GetCompatibleExecutionProviders()) ||
         !optimizer_utils::CheckOutputEdges(graph, pow_node, 1) ||
-        !graph.GetNodeOutputsInGraphOutputs(pow_node).empty() ||
+        graph.NodeProducesGraphOutput(pow_node) ||
         !IsSupportedDataType(pow_node)) {
       continue;
     }

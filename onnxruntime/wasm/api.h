@@ -41,7 +41,7 @@ int EMSCRIPTEN_KEEPALIVE OrtInit(int num_threads, int logging_level);
  * @param enable_cpu_mem_arena enable or disable cpu memory arena
  * @param enable_mem_pattern enable or disable memory pattern
  * @param execution_mode sequential or parallel execution mode
- * @param enable_profiling enable or disable profiling. it's a no-op and for a future use.
+ * @param enable_profiling enable or disable profiling.
  * @param profile_file_prefix file prefix for profiling data. it's a no-op and for a future use.
  * @param log_id logger id for session output
  * @param log_severity_level verbose, info, warning, error or fatal
@@ -118,8 +118,8 @@ void EMSCRIPTEN_KEEPALIVE OrtFree(void* ptr);
 /**
  * create an instance of ORT tensor.
  * @param data_type data type defined in enum ONNXTensorElementDataType.
- * @param data a pointer to the tensor data.
- * @param data_length size of the tensor data in bytes.
+ * @param data for numeric tensor: a pointer to the tensor data buffer. for string tensor: a pointer to a C-Style null terminated string array.
+ * @param data_length size of the buffer 'data' in bytes.
  * @param dims a pointer to an array of dims. the array should contain (dims_length) element(s).
  * @param dims_length the length of the tensor's dimension
  * @returns a handle of the tensor.
@@ -130,10 +130,11 @@ ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateTensor(int data_type, void* da
  * get type, shape info and data of the specified tensor.
  * @param tensor handle of the tensor.
  * @param data_type [out] specify the memory to write data type
- * @param data [out] specify the memory to write the tensor data
+ * @param data [out] specify the memory to write the tensor data. for string tensor: an array of C-Style null terminated string.
  * @param dims [out] specify the memory to write address of the buffer containing value of each dimension.
  * @param dims_length [out] specify the memory to write dims length
- * @remarks a temporary buffer 'dims' is allocated during the call. Caller must release the buffer after use by calling OrtFree().
+ * @remarks following temporary buffers are allocated during the call. Caller must release the buffers after use by calling OrtFree():
+ *           'dims' (for all types of tensor), 'data' (only for string tensor)
  */
 int EMSCRIPTEN_KEEPALIVE OrtGetTensorData(ort_tensor_handle_t tensor, int* data_type, void** data, size_t** dims, size_t* dims_length);
 
@@ -184,4 +185,12 @@ int EMSCRIPTEN_KEEPALIVE OrtRun(ort_session_handle_t session,
                                 size_t output_count,
                                 ort_tensor_handle_t* outputs,
                                 ort_run_options_handle_t run_options);
+
+/**
+ * end profiling.
+ * @param session handle of the specified session
+ * @returns a pointer to a buffer which contains C-style string of profile filename.
+ * Caller must release the C style string after use by calling OrtFree().
+ */
+char* EMSCRIPTEN_KEEPALIVE OrtEndProfiling(ort_session_handle_t session);
 };

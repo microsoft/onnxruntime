@@ -222,7 +222,7 @@ static void Scenario5AsyncEval() {
 }
 
 //! Scenario6: use BindInputWithProperties - BitmapBounds, BitmapPixelFormat
-// apparently this scenario is cut for rs5. - not cut, just rewprked. move props
+// apparently this scenario is cut for rs5. - not cut, just reworked. move props
 // to the image value when that is checked in.
 static void Scenario6BindWithProperties() {
   // load a model
@@ -609,7 +609,7 @@ void SubmitEval(LearningModel model, SwapChainEntry* sessionBindings, int swapch
   // return without waiting for the submit to finish, setup the completion handler
 }
 
-//Scenario14:Load single model, run it mutliple times on a single gpu device using a fast swapchain pattern
+//Scenario14:Load single model, run it multiple times on a single gpu device using a fast swapchain pattern
 static void Scenario14RunModelSwapchain() {
   const int swapchainentrycount = 3;
   SwapChainEntry sessionBindings[swapchainentrycount];
@@ -729,7 +729,9 @@ static void Scenario21RunModel2ChainZ() {
   std::vector<int64_t> shape = {1, 3, 720, 720};
   auto outputValue = TensorFloat::Create(shape);  //   FeatureValueFromFeatureValueDescriptor(input, nullptr);
                                                   // now bind the(empty) output so we have a marker to chain with
-  binding1.Bind(output.Name(), outputValue);
+  PropertySet outputBindProperties;
+  outputBindProperties.Insert(L"DisableTensorCpuSync", wf::PropertyValue::CreateBoolean(true));
+  binding1.Bind(output.Name(), outputValue, outputBindProperties);
   // and leave the output unbound on the second model, we will fetch it later
   // run both models async
   WINML_EXPECT_NO_THROW(session1.EvaluateAsync(binding1, L""));

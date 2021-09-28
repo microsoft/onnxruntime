@@ -39,9 +39,8 @@ MODELS = {
     "gpt2-large": (["input_ids"], 11, True, "gpt2"),
     "gpt2-xl": (["input_ids"], 11, True, "gpt2"),
     "distilgpt2": (["input_ids"], 11, False, "gpt2"),
-    # Transformer-XL
-    "transfo-xl-wt103":
-    (["input_ids", "mems"], 12, False, "bert"),  # Models uses Einsum, which need opset version 12 and PyTorch 1.5.0 or above.
+    # Transformer-XL (Models uses Einsum, which need opset version 12 or later.)
+    "transfo-xl-wt103": (["input_ids", "mems"], 12, False, "bert"),
     # XLNet
     "xlnet-base-cased": (["input_ids"], 12, False, "bert"),
     "xlnet-large-cased": (["input_ids"], 12, False, "bert"),
@@ -88,10 +87,10 @@ MODELS = {
     "flaubert/flaubert_base_cased": (["input_ids"], 11, False, "bert"),
     #"flaubert/flaubert_large_cased": (["input_ids"], 11, False, "bert"),
     # Bart
-    "facebook/bart-large": (["input_ids"], 11, False, "bert"),
-    "facebook/bart-base": (["input_ids"], 11, False, "bert"),
-    "facebook/bart-large-mnli": (["input_ids"], 11, False, "bert"),
-    "facebook/bart-large-cnn": (["input_ids"], 11, False, "bert"),
+    "facebook/bart-large": (["input_ids", "attention_mask"], 11, False, "bart"),
+    "facebook/bart-base": (["input_ids", "attention_mask"], 11, False, "bart"),
+    "facebook/bart-large-mnli": (["input_ids", "attention_mask"], 11, False, "bart"),
+    "facebook/bart-large-cnn": (["input_ids", "attention_mask"], 11, False, "bart"),
 
     # DialoGPT
     "microsoft/DialoGPT-small": (["input_ids"], 11, False, "gpt2"),
@@ -121,7 +120,7 @@ MODELS = {
     # "funnel-transformer/large": (["input_ids"], 12, True, "bert"),
     # "funnel-transformer/large-base": (["input_ids"], 12, True, "bert"),
     # "funnel-transformer/xlarge": (["input_ids"], 12, True, "bert"),
-    # "funnel-transformer/xlarge-base": (["input_ids"], 12, True, "bert"),    
+    # "funnel-transformer/xlarge-base": (["input_ids"], 12, True, "bert"),
     # Layoutlm
     "microsoft/layoutlm-base-uncased": (["input_ids"], 11, False, "bert"),
     "microsoft/layoutlm-large-uncased": (["input_ids"], 11, False, "bert"),

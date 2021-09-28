@@ -137,15 +137,15 @@ inline Status ComputePadAndOutputShape(const int64_t in_dim,
   return Status::OK();
 }
 
-template <class Map, class Key>
-inline bool Contains(const Map& map, const Key& key) {
-  return map.find(key) != map.end();
+template <class AssociativeContainer, class Key>
+inline bool Contains(const AssociativeContainer& container, const Key& key) {
+  return container.find(key) != container.end();
 }
 
 // Note: This helper function will not have overflow protection
 template <template <typename...> class Container, typename T>
 T Product(const Container<T>& c) {
-  return accumulate(c.cbegin(), c.cend(), 1, std::multiplies<T>());
+  return accumulate(c.cbegin(), c.cend(), static_cast<T>(1), std::multiplies<T>());
 }
 
 }  // namespace onnxruntime

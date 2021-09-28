@@ -1,0 +1,12 @@
+platform :ios, '13.0'
+
+target 'ios_package_test' do
+  # Comment the next line if you don't want to use dynamic frameworks
+  use_frameworks!
+
+  target 'ios_package_testTests' do
+    inherit! :search_paths
+    pod 'onnxruntime-mobile-c', :podspec  => './onnxruntime-mobile-c.podspec'
+  end
+
+end

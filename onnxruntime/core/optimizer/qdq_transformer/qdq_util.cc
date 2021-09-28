@@ -19,24 +19,24 @@ bool IsQDQPairSupported(const Graph& graph, const Node& q_node, const Node& dq_n
 
   // Q/DQ contains optional input is not supported
   // non-scalar Q/DQ scale and zero point needs are not supported
-  if (dq_input_defs.size() != QDQInputIndex::TOTAL_COUNT ||
-      q_input_defs.size() != QDQInputIndex::TOTAL_COUNT ||
-      !optimizer_utils::IsScalar(*q_input_defs[QDQInputIndex::SCALE_ID]) ||
-      !optimizer_utils::IsScalar(*q_input_defs[QDQInputIndex::ZERO_POINT_ID]) ||
-      !optimizer_utils::IsScalar(*dq_input_defs[QDQInputIndex::SCALE_ID]) ||
-      !optimizer_utils::IsScalar(*dq_input_defs[QDQInputIndex::ZERO_POINT_ID])) {
+  if (dq_input_defs.size() != InputIndex::TOTAL_COUNT ||
+      q_input_defs.size() != InputIndex::TOTAL_COUNT ||
+      !optimizer_utils::IsScalar(*q_input_defs[InputIndex::SCALE_ID]) ||
+      !optimizer_utils::IsScalar(*q_input_defs[InputIndex::ZERO_POINT_ID]) ||
+      !optimizer_utils::IsScalar(*dq_input_defs[InputIndex::SCALE_ID]) ||
+      !optimizer_utils::IsScalar(*dq_input_defs[InputIndex::ZERO_POINT_ID])) {
     return false;
   }
 
   // if Q/DQ scale and zero point are not constant, return false
   const ONNX_NAMESPACE::TensorProto* dq_scale_tensor_proto =
-      graph_utils::GetConstantInitializer(graph, dq_input_defs[QDQInputIndex::SCALE_ID]->Name());
+      graph_utils::GetConstantInitializer(graph, dq_input_defs[InputIndex::SCALE_ID]->Name());
   const ONNX_NAMESPACE::TensorProto* q_scale_tensor_proto =
-      graph_utils::GetConstantInitializer(graph, q_input_defs[QDQInputIndex::SCALE_ID]->Name());
+      graph_utils::GetConstantInitializer(graph, q_input_defs[InputIndex::SCALE_ID]->Name());
   const ONNX_NAMESPACE::TensorProto* dq_zp_tensor_proto =
-      graph_utils::GetConstantInitializer(graph, dq_input_defs[QDQInputIndex::ZERO_POINT_ID]->Name());
+      graph_utils::GetConstantInitializer(graph, dq_input_defs[InputIndex::ZERO_POINT_ID]->Name());
   const ONNX_NAMESPACE::TensorProto* q_zp_tensor_proto =
-      graph_utils::GetConstantInitializer(graph, q_input_defs[QDQInputIndex::ZERO_POINT_ID]->Name());
+      graph_utils::GetConstantInitializer(graph, q_input_defs[InputIndex::ZERO_POINT_ID]->Name());
   if (nullptr == q_zp_tensor_proto ||
       nullptr == dq_zp_tensor_proto ||
       nullptr == q_scale_tensor_proto ||

@@ -21,8 +21,6 @@ struct GraphTransformerConfiguration {
       None = 0,
       InsertAndReduce = 1,
       FloodFill = 2,                   /* Propagate FP16 Cast operations up and FP32 operations down */
-      RemoveInputOutputUpDownCasts = 4 /* If all the floatingpoint inputs of a node are casted to FP32 and all the floatingpoint outputs
-                                          are casted to FP16. Then remove all input and output casts. */
     };
     using Strategy_t = std::underlying_type<Strategy>::type;
     friend constexpr Strategy operator|(const Strategy s1, const Strategy s2) {
@@ -51,7 +49,7 @@ struct GraphTransformerConfiguration {
       return (s1 == s2) == false;
     }
 
-    int level{-1}; /* -1 => no cast propagation,
+    int level{1}; /* -1 => no cast propagation,
                        0 => use user specified list of opcodes to allow moving cast operations,
                        1 => use ORT predefined list of level 1 opcodes in addition to the user specified allow opcodes
                        2 => use ORT predefined list of level 2 opcodes in addition to the user specified allow opcodes

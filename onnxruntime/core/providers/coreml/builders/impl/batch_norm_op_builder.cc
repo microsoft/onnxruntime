@@ -4,7 +4,9 @@
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/coreml/builders/helper.h"
+#ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
+#endif
 #include "core/providers/coreml/builders/op_builder_factory.h"
 
 #include "base_op_builder.h"
@@ -15,16 +17,18 @@ namespace coreml {
 
 class BatchNormalizationOpBuilder : public BaseOpBuilder {
   // Add operator related
+#ifdef __APPLE__
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+#endif
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 
   // BatchNormalization opset 6- has unsupported attributes
@@ -33,6 +37,7 @@ class BatchNormalizationOpBuilder : public BaseOpBuilder {
 
 // Add operator related
 
+#ifdef __APPLE__
 void BatchNormalizationOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   // skip everything except input0 for BatchNormalization
   const auto& input_defs = node.InputDefs();
@@ -45,7 +50,7 @@ void BatchNormalizationOpBuilder::AddInitializersToSkip(ModelBuilder& model_buil
 Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                           const Node& node,
                                                           const logging::Logger& /* logger */) const {
-  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(node);
+  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(model_builder, node);
 
   const auto& input_defs = node.InputDefs();
   const auto& initializers(model_builder.GetInitializerTensors());
@@ -75,10 +80,11 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
+#endif
 
 // Operator support related
 
-bool BatchNormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool BatchNormalizationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                                     const logging::Logger& logger) const {
   if (node.OutputDefs().size() != 1) {
     LOGS(logger, VERBOSE) << "Your onnx model may be in training mode, please export "
@@ -111,6 +117,7 @@ bool BatchNormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& 
   const auto& b_name = input_defs[2]->Name();
   const auto& mean_name = input_defs[3]->Name();
   const auto& var_name = input_defs[4]->Name();
+  const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
   if (!Contains(initializers, scale_name)) {
     LOGS(logger, VERBOSE) << "Scale of BN must be a constant initializer";
     return false;

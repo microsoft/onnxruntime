@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include "core/common/optional.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cpu/reduction/reduction_ops.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
@@ -137,7 +138,9 @@ class ReduceMax final : public ReduceKernel<true> {
 template <typename T>
 class ReduceMean final : public ReduceKernel<true> {
  public:
-  ReduceMean(const OpKernelInfo& info) : ReduceKernel<true>(info) {}
+  ReduceMean(const OpKernelInfo& info) : ReduceKernel<true>(info) {
+    fast_reduction_ = true;
+  }
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
     return ComputeImpl<T>(ctx, CUDNN_REDUCE_TENSOR_AVG);
@@ -181,6 +184,7 @@ class ReduceLogSum final : public ReduceKernel<true> {
  public:
   ReduceLogSum(const OpKernelInfo& info) : ReduceKernel<true>(info) {
     ReduceKernel<true>::calculate_log_ = true;
+    fast_reduction_ = true;
   }
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
@@ -193,6 +197,7 @@ class ReduceSumSquare final : public ReduceKernel<true> {
  public:
   ReduceSumSquare(const OpKernelInfo& info) : ReduceKernel<true>(info) {
     ReduceKernel<true>::calculate_sqt_ = true;
+    fast_reduction_ = true;
   }
 
   Status ComputeInternal(OpKernelContext* ctx) const override {

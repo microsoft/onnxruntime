@@ -168,7 +168,7 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
 
     bool is_implicit_input = false;
     auto process_inputs =
-        [this, &kci, &initializers_consumed, &is_implicit_input](const onnxruntime::NodeArg& arg, size_t index) {
+        [this, &node, &kci, &initializers_consumed, &is_implicit_input](const onnxruntime::NodeArg& arg, size_t index) {
           // check if this NodeArg is an initializer defined in current outer graph level
           const auto* initializer_tensor_proto = GetInitializer(graph_, arg.Name(), true);
           if (initializer_tensor_proto != nullptr) {
@@ -179,7 +179,7 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
           //   flow op (Loop, Scan, If) to do the necessary copy if the input crosses different provider.
           // PlannerImpl::ComputeUseCounts has matching logic so the allocation plan does the same thing
           if (!is_implicit_input) {
-            if (kci && kci->kernel_def->IsInputOnCpu(index)) {
+            if (utils::IsInputOnCpu(node, kci, index)) {
               non_provider_input_defs_.insert(&arg);
             } else {
               provider_input_defs_.insert(&arg);
@@ -251,7 +251,7 @@ void TransformerMemcpyImpl::BuildDefsMapping(const onnxruntime::NodeArg* arg, co
       const KernelCreateInfo* kci = nullptr;
       kernel_registries.SearchKernelRegistry(it, &kci);
       if (arg_input_index != -1) {
-        if (!kci || !kci->kernel_def->IsInputOnCpu(arg_input_index)) provider_input_nodes_[arg].insert(&it);
+        if (!kci || !utils::IsInputOnCpu(it, kci, arg_input_index)) provider_input_nodes_[arg].insert(&it);
       }
       if (arg_output_index != -1) {
         if (!kci || !kci->kernel_def->IsOutputOnCpu(arg_output_index)) provider_output_nodes_[arg].insert(&it);
@@ -338,8 +338,8 @@ bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& ker
     if (kci == nullptr) continue;
     if (kci->kernel_def == nullptr) continue;
     onnxruntime::Node::ForEachWithIndex(p_node->InputDefs(),
-                                        [kci, &dup_replacements](const onnxruntime::NodeArg& arg, size_t index) {
-                                          if (kci->kernel_def->IsInputOnCpu(index)) dup_replacements.erase(&arg);
+                                        [kci, &p_node, &dup_replacements](const onnxruntime::NodeArg& arg, size_t index) {
+                                          if (utils::IsInputOnCpu(*p_node, kci, index)) dup_replacements.erase(&arg);
                                           return Status::OK();
                                         });
 

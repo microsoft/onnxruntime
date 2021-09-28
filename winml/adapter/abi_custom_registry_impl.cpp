@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "pch.h"
+#include "adapter/pch.h"
 
 #ifdef USE_DML
 
@@ -55,7 +55,6 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistryImpl::RegisterOperatorKernel(
     bool canAliasFirstInput,
     bool supportsGraph,
     const uint32_t* requiredInputCountForGraph,
-    bool requiresFloatFormatsForGraph,
     bool supportedWith64BitTensorsVia32BitStrides,
     bool supportedWith64BitTensorsVia32BitStridesFromAnyEp,
     bool prefer64BitTensorsDirectly,
@@ -81,7 +80,6 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistryImpl::RegisterOperatorKernel(
       canAliasFirstInput,
       supportsGraph,
       requiredInputCountForGraph,
-      requiresFloatFormatsForGraph,
       supportedWith64BitTensorsVia32BitStrides,
       supportedWith64BitTensorsVia32BitStridesFromAnyEp,
       prefer64BitTensorsDirectly,

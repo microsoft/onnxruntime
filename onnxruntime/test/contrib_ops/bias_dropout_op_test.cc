@@ -5,7 +5,6 @@
 #pragma warning(disable : 4389)
 #endif
 
-
 #include <algorithm>
 #include <memory>
 #include <numeric>
@@ -23,7 +22,9 @@ namespace test {
 
 using namespace onnxruntime::test;
 
-enum TrainingMode { TrainingFalse, TrainingTrue, NoTraining };
+enum TrainingMode { TrainingFalse,
+                    TrainingTrue,
+                    NoTraining };
 
 // BiasDropout kernel is only implemented for CUDA/ROCM
 #if defined(USE_CUDA) || defined(USE_ROCM)
@@ -51,14 +52,14 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
     const std::vector<float> residual(residual_size, residual_value);
     t.AddInput("residual", input_shape, residual);
   } else {
-    t.AddMissingOptionalInput<float>();
+    t.AddOptionalInputEdge<float>();
   }
 
   if (ratio == -1.0f) {
     if (use_float16_ratio) {
-      t.AddMissingOptionalInput<MLFloat16>();
+      t.AddOptionalInputEdge<MLFloat16>();
     } else {
-      t.AddMissingOptionalInput<float>();
+      t.AddOptionalInputEdge<float>();
     }
     // set ratio to default value
     ratio = 0.5f;
@@ -85,7 +86,7 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
     mask_buffer = std::make_unique<bool[]>(input_size);
     t.AddOutput<bool>("mask", input_shape, mask_buffer.get(), input_size);
   } else {
-    t.AddMissingOptionalOutput<bool>();
+    t.AddOptionalOutputEdge<bool>();
   }
 
   auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
@@ -133,6 +134,19 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
 }
 }  // namespace
 
+
+// N % 4 != 0
+TEST(BiasDropoutTest, BasicAndNotVectorized) {
+  RunBiasDropoutTest(false, {10, 5, 5}, 0.75f);
+}
+TEST(BiasDropoutTest, BasicWithoutResidualAndNotVectorized) {
+  RunBiasDropoutTest(false, {10, 5, 5}, 0.75f, TrainingTrue, false, false);
+}
+TEST(BiasDropoutTest, MaskAndNotVectorized) {
+  RunBiasDropoutTest(true, {3, 5, 100}, 0.25f);
+}
+
+// N % 4 == 0
 TEST(BiasDropoutTest, Basic) {
   RunBiasDropoutTest(false, {10, 10, 10}, 0.75f);
 }

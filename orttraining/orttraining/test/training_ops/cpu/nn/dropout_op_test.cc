@@ -27,7 +27,9 @@ using namespace onnxruntime::test;
 namespace {
 constexpr auto k_dropout_opset_version = 12;
 
-enum TrainingMode { TrainingFalse, TrainingTrue, NoTraining };
+enum TrainingMode { TrainingFalse,
+                    TrainingTrue,
+                    NoTraining };
 
 void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape, float ratio = -1.0f,
                     TrainingMode training_mode = TrainingTrue, bool use_float16_ratio = false) {
@@ -44,9 +46,9 @@ void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape
 
   if (ratio == -1.0f) {
     if (use_float16_ratio) {
-      t.AddMissingOptionalInput<MLFloat16>();
+      t.AddOptionalInputEdge<MLFloat16>();
     } else {
-      t.AddMissingOptionalInput<float>();
+      t.AddOptionalInputEdge<float>();
     }
     // set ratio to default value
     ratio = 0.5f;
@@ -72,7 +74,7 @@ void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape
     mask_buffer = std::make_unique<bool[]>(input_size);
     t.AddOutput<bool>("mask", input_shape, mask_buffer.get(), input_size);
   } else {
-    t.AddMissingOptionalOutput<bool>();
+    t.AddOptionalOutputEdge<bool>();
   }
 
   auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
@@ -123,6 +125,15 @@ void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape
 
 // Dropout
 
+// N % 4 != 0
+TEST(DropoutTest, BasicAndNotVectorized) {
+  RunDropoutTest(false, {10, 5, 5}, 0.75f);
+}
+TEST(DropoutTest, MaskAndNotVectorized) {
+  RunDropoutTest(true, {250}, 0.25f);
+}
+
+// N % 4 == 0
 TEST(DropoutTest, Basic) {
   RunDropoutTest(false, {10, 10, 10}, 0.75f);
 }
@@ -183,9 +194,9 @@ void RunDropoutGradTest(float ratio, const std::vector<int64_t>& input_dims, boo
   if (!default_ratio) {
     test.AddInput<float>("ratio", {1}, ratio_data);
   } else {
-    test.AddMissingOptionalInput<float>();
+    test.AddOptionalInputEdge<float>();
   }
-  
+
   test.AddInput<bool>("training_mode", {}, {true});
   test.AddOutput<float>("dx", input_shape.GetDims(), dx_data);
   test.Run();
@@ -195,6 +206,11 @@ void RunDropoutGradTest(float ratio, const std::vector<int64_t>& input_dims, boo
 // DropoutGrad
 
 TEST(DropoutGradTest, Basic) {
+  // N % 4 != 0
+  //Ratio 0.3, 2D
+  RunDropoutGradTest(0.3f, {5, 6}, false);
+
+  // N %4 == 0
   //Ratio 0.2, 1D
   RunDropoutGradTest(0.2f, {16}, false);
 

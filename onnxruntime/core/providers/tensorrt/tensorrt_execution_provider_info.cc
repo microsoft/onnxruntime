@@ -69,6 +69,7 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
 }
 
 ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtExecutionProviderInfo& info) {
+
   const ProviderOptions options{
       {tensorrt::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
       {tensorrt::provider_option_names::kMaxPartitionIterations, MakeStringWithClassicLocale(info.max_partition_iterations)},
@@ -87,7 +88,34 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
       {tensorrt::provider_option_names::kDecryptionLibPath, MakeStringWithClassicLocale(info.engine_decryption_lib_path)},
       {tensorrt::provider_option_names::kForceSequentialEngineBuild, MakeStringWithClassicLocale(info.force_sequential_engine_build)},
   };
+  return options;
+}
 
+ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensorRTProviderOptions& info) {
+
+  auto empty_if_null = [](const char* s) { return s != nullptr ? std::string{s} : std::string{}; };
+  const std::string kInt8CalibTable_ = empty_if_null(info.trt_int8_calibration_table_name);
+  const std::string kCachePath_ = empty_if_null(info.trt_engine_cache_path);
+  const std::string kDecryptionLibPath_ = empty_if_null(info.trt_engine_decryption_lib_path);
+
+  const ProviderOptions options{
+      {tensorrt::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
+      {tensorrt::provider_option_names::kMaxPartitionIterations, MakeStringWithClassicLocale(info.trt_max_partition_iterations)},
+      {tensorrt::provider_option_names::kMinSubgraphSize, MakeStringWithClassicLocale(info.trt_min_subgraph_size)},
+      {tensorrt::provider_option_names::kMaxWorkspaceSize, MakeStringWithClassicLocale(info.trt_max_workspace_size)},
+      {tensorrt::provider_option_names::kFp16Enable, MakeStringWithClassicLocale(info.trt_fp16_enable)},
+      {tensorrt::provider_option_names::kInt8Enable, MakeStringWithClassicLocale(info.trt_int8_enable)},
+      {tensorrt::provider_option_names::kInt8CalibTable, kInt8CalibTable_},
+      {tensorrt::provider_option_names::kInt8UseNativeCalibTable, MakeStringWithClassicLocale(info.trt_int8_use_native_calibration_table)},
+      {tensorrt::provider_option_names::kDLAEnable, MakeStringWithClassicLocale(info.trt_dla_enable)},
+      {tensorrt::provider_option_names::kDLACore, MakeStringWithClassicLocale(info.trt_dla_core)},
+      {tensorrt::provider_option_names::kDumpSubgraphs, MakeStringWithClassicLocale(info.trt_dump_subgraphs)},
+      {tensorrt::provider_option_names::kEngineCacheEnable, MakeStringWithClassicLocale(info.trt_engine_cache_enable)},
+      {tensorrt::provider_option_names::kCachePath, kCachePath_},
+      {tensorrt::provider_option_names::kDecryptionEnable, MakeStringWithClassicLocale(info.trt_engine_decryption_enable)},
+      {tensorrt::provider_option_names::kDecryptionLibPath, kDecryptionLibPath_},
+      {tensorrt::provider_option_names::kForceSequentialEngineBuild, MakeStringWithClassicLocale(info.trt_force_sequential_engine_build)},
+  };
   return options;
 }
 }  // namespace onnxruntime

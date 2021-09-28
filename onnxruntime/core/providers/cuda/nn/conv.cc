@@ -45,36 +45,24 @@ const cudnnConvolutionFwdAlgo_t Conv<T>::kAllAlgos[] = {
     CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED,
 };
 
-cudnnStatus_t getWorkspaceSize(const CudnnConvState<cudnnConvolutionFwdAlgoPerf_t>& s,
-                               cudnnConvolutionFwdAlgo_t algo, size_t* sz) {
-  return cudnnGetConvolutionForwardWorkspaceSize(
-      s.handle,
-      s.x_tensor,
-      s.w_desc,
-      s.conv_desc,
-      s.y_tensor,
-      algo,
-      sz);
+cudnnStatus_t GetWorkspaceSize(const CudnnConvState<cudnnConvolutionFwdAlgoPerf_t>& s, cudnnConvolutionFwdAlgo_t algo,
+                               size_t* sz) {
+  return cudnnGetConvolutionForwardWorkspaceSize(s.handle, s.x_tensor, s.w_desc, s.conv_desc, s.y_tensor, algo, sz);
 }
 
-template <typename algo_t>
-size_t getMaxWorkspaceSize(const CudnnConvState<cudnnConvolutionFwdAlgoPerf_t>& s,
-                           const algo_t* algo, int n_algo) {
-  size_t max_ws_size = 0;
-
+size_t GetMaxWorkspaceSize(const CudnnConvState<cudnnConvolutionFwdAlgoPerf_t>& s,
+                           const cudnnConvolutionFwdAlgo_t* algo, int n_algo) {
   // TODO: get maximum available size from memory areana
-
   size_t free, total;
   CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
   // Assuming 10% of fragmentation
   free = static_cast<size_t>(static_cast<double>(free) * 0.9);
-
+  size_t max_ws_size = 0;
   for (int i = 0; i < n_algo; i++) {
     cudnnStatus_t err;
     size_t sz;
-    err = getWorkspaceSize(s, algo[i], &sz);
-    if (CUDNN_STATUS_SUCCESS != err || sz == 0 || sz < max_ws_size || sz > free)
-      continue;
+    err = GetWorkspaceSize(s, algo[i], &sz);
+    if (CUDNN_STATUS_SUCCESS != err || sz == 0 || sz < max_ws_size || sz > free) continue;
     max_ws_size = sz;
   }
   return max_ws_size;
@@ -261,9 +249,11 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       switch (cudnn_conv_algo) {
         case 0: {
           static constexpr int num_algos = CUDNN_CONVOLUTION_FWD_ALGO_COUNT;
-          size_t max_ws_size = getMaxWorkspaceSize(s_, kAllAlgos, num_algos);
-          IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(max_ws_size);
-
+          size_t max_ws_size = cuda_ep->GetCudnnConvUseMaxWorkspace() ? GetMaxWorkspaceSize(s_, kAllAlgos, num_algos)
+                                                                      : AlgoSearchWorkspaceSize;
+          // Use GetTransientScratchBuffer() so the workspace can be freed instead of cached.
+          // Because the benchmarking uses a huge amount of memory, e.g. a few GBs.
+          IAllocatorUniquePtr<void> algo_search_workspace = GetTransientScratchBuffer<void>(max_ws_size);
           CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionForwardAlgorithmEx(
               s_.handle,
               s_.x_tensor,
@@ -294,7 +284,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
 
         default:
           perf.algo = kDefaultConvAlgo;
-          CUDNN_RETURN_IF_ERROR(getWorkspaceSize(s_, perf.algo, &perf.memory));
+          CUDNN_RETURN_IF_ERROR(GetWorkspaceSize(s_, perf.algo, &perf.memory));
           if (std::is_same<T, MLFloat16>::value) {
             perf.mathType = CUDNN_TENSOR_OP_MATH;
           } else {

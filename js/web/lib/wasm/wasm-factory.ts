@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {env} from 'onnxruntime-common';
+import {Env} from 'onnxruntime-common';
 import * as path from 'path';
 
 import {OrtWasmModule} from './binding/ort-wasm';
@@ -9,13 +9,18 @@ import {OrtWasmThreadedModule} from './binding/ort-wasm-threaded';
 import ortWasmFactoryThreaded from './binding/ort-wasm-threaded.js';
 import ortWasmFactory from './binding/ort-wasm.js';
 
-let wasm: OrtWasmModule;
+let wasm: OrtWasmModule|undefined;
 let initialized = false;
 let initializing = false;
 let aborted = false;
 
 const isMultiThreadSupported = (): boolean => {
   try {
+    // If 'SharedArrayBuffer' is not available, WebAssembly threads will not work.
+    if (typeof SharedArrayBuffer === 'undefined') {
+      return false;
+    }
+
     // Test for transferability of SABs (for browsers. needed for Firefox)
     // https://groups.google.com/forum/#!msg/mozilla.dev.platform/IHkBZlHETpA/dwsMNchWEQAJ
     if (typeof MessageChannel !== 'undefined') {
@@ -33,7 +38,26 @@ const isMultiThreadSupported = (): boolean => {
   }
 };
 
-export const initializeWebAssembly = async(): Promise<void> => {
+const isSimdSupported = (): boolean => {
+  try {
+    // Test for WebAssembly SIMD capability (for both browsers and Node.js)
+    // This typed array is a WebAssembly program containing SIMD instructions.
+    return WebAssembly.validate(new Uint8Array(
+        [0, 97, 115, 109, 1, 0, 0, 0, 1, 4, 1, 96, 0, 0, 3, 2, 1, 0, 10, 9, 1, 7, 0, 65, 0, 253, 15, 26, 11]));
+  } catch (e) {
+    return false;
+  }
+};
+
+const getWasmFileName = (useSimd: boolean, useThreads: boolean) => {
+  if (useThreads) {
+    return useSimd ? 'ort-wasm-simd-threaded.wasm' : 'ort-wasm-threaded.wasm';
+  } else {
+    return useSimd ? 'ort-wasm-simd.wasm' : 'ort-wasm.wasm';
+  }
+};
+
+export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise<void> => {
   if (initialized) {
     return Promise.resolve();
   }
@@ -47,10 +71,18 @@ export const initializeWebAssembly = async(): Promise<void> => {
   initializing = true;
 
   // wasm flags are already initialized
-  const timeout = env.wasm.initTimeout!;
-  const numThreads = env.wasm.numThreads!;
+  const timeout = flags.initTimeout!;
+  const numThreads = flags.numThreads!;
+  const simd = flags.simd!;
 
   const useThreads = numThreads > 1 && isMultiThreadSupported();
+  const useSimd = simd && isSimdSupported();
+
+  const wasmPrefixOverride = typeof flags.wasmPaths === 'string' ? flags.wasmPaths : undefined;
+  const wasmFileName = getWasmFileName(false, useThreads);
+  const wasmOverrideFileName = getWasmFileName(useSimd, useThreads);
+  const wasmPathOverride = typeof flags.wasmPaths === 'object' ? flags.wasmPaths[wasmOverrideFileName] : undefined;
+
   let isTimeout = false;
 
   const tasks: Array<Promise<void>> = [];
@@ -68,7 +100,26 @@ export const initializeWebAssembly = async(): Promise<void> => {
   // promise for module initialization
   tasks.push(new Promise((resolve, reject) => {
     const factory = useThreads ? ortWasmFactoryThreaded : ortWasmFactory;
-    const config: Partial<OrtWasmModule> = {};
+    const config: Partial<OrtWasmModule> = {
+      locateFile: (fileName: string, scriptDirectory: string) => {
+        if (fileName.endsWith('.worker.js') && typeof Blob !== 'undefined') {
+          return URL.createObjectURL(new Blob(
+              [
+                // This require() function is handled by webpack to load file content of the corresponding .worker.js
+                // eslint-disable-next-line @typescript-eslint/no-require-imports
+                require('./binding/ort-wasm-threaded.worker.js')
+              ],
+              {type: 'text/javascript'}));
+        }
+
+        if (fileName === wasmFileName) {
+          const prefix: string = wasmPrefixOverride ?? scriptDirectory;
+          return wasmPathOverride ?? prefix + wasmOverrideFileName;
+        }
+
+        return scriptDirectory + fileName;
+      }
+    };
 
     if (useThreads) {
       if (typeof Blob === 'undefined') {
@@ -77,18 +128,6 @@ export const initializeWebAssembly = async(): Promise<void> => {
         const scriptSourceCode =
             `var ortWasmThreaded=(function(){var _scriptDir;return ${ortWasmFactoryThreaded.toString()}})();`;
         config.mainScriptUrlOrBlob = new Blob([scriptSourceCode], {type: 'text/javascript'});
-        config.locateFile = (fileName: string, scriptDirectory: string) => {
-          if (fileName.endsWith('.worker.js')) {
-            return URL.createObjectURL(new Blob(
-                [
-                  // This require() function is handled by webpack to load file content of the corresponding .worker.js
-                  // eslint-disable-next-line @typescript-eslint/no-require-imports
-                  require('./binding/ort-wasm-threaded.worker.js')
-                ],
-                {type: 'text/javascript'}));
-          }
-          return scriptDirectory + fileName;
-        };
       }
     }
 
@@ -116,7 +155,7 @@ export const initializeWebAssembly = async(): Promise<void> => {
 };
 
 export const getInstance = (): OrtWasmModule => {
-  if (initialized) {
+  if (initialized && wasm) {
     return wasm;
   }
 
@@ -128,6 +167,7 @@ export const dispose = (): void => {
     initializing = true;
 
     (wasm as OrtWasmThreadedModule).PThread?.terminateAllThreads();
+    wasm = undefined;
 
     initializing = false;
     initialized = false;

@@ -4,9 +4,6 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "onnxruntime_session_options_config_keys.h"
 #include "test/util/include/asserts.h"
-#ifdef USE_CUDA
-#include "core/providers/cuda/cuda_provider_factory.h"
-#endif
 #include <fstream>
 #include "test_fixture.h"
 #include "file_util.h"

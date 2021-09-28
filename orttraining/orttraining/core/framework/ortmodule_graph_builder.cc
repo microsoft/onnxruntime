@@ -52,7 +52,8 @@ Status OrtModuleGraphBuilder::Initialize(std::istream& model_istream,
   // Remove all the initializers from the graph and move them to graph inputs.
   for (const auto& initializer_name : config_.initializer_names) {
     const NodeArg* node_arg = graph.GetNodeArg(initializer_name);
-    ORT_ENFORCE(node_arg != nullptr);
+    ORT_ENFORCE(node_arg != nullptr, "node arg is nullptr for initializer name: ", initializer_name);
+
     input_args.emplace_back(node_arg);
     graph.RemoveInitializedTensor(initializer_name);
   }
@@ -88,11 +89,18 @@ Status OrtModuleGraphBuilder::Build(const std::vector<std::vector<int64_t>>* inp
 
   ORT_RETURN_IF_ERROR(BuildGradientGraph(x_node_arg_names));
 
+  if (config_.enable_caching) {
+    GetFrontierTensors();
+  }
+
   // Handle user outputs and output grads.
   HandleOutputsAndGrads();
 
   // Reorder outputs.
   ReorderOutputs();
+
+  // Find module outputs needed for backward computation
+  FindModuleOutputNeededForBackward();
 
   return Status::OK();
 }
@@ -183,7 +191,7 @@ Status OrtModuleGraphBuilder::BuildGradientGraph(const std::unordered_set<std::s
 
   // Build gradient graph.
   GradientGraphConfiguration gradient_graph_config{};
-  gradient_graph_config.use_invertible_layernorm_grad = config_.use_invertible_layernorm_grad;
+  gradient_graph_config.use_memory_efficient_gradient = config_.use_memory_efficient_gradient;
   gradient_graph_config.set_gradients_as_graph_outputs = true;
   std::unordered_set<std::string> y_node_arg_names(graph_info_.user_output_names.begin(),
                                                    graph_info_.user_output_names.end());
@@ -200,6 +208,21 @@ Status OrtModuleGraphBuilder::BuildGradientGraph(const std::unordered_set<std::s
   ORT_RETURN_IF_ERROR(grad_graph_builder.Build());
 
   return Status::OK();
+}
+
+void OrtModuleGraphBuilder::GetFrontierTensors() {
+  const Graph& graph = gradient_model_->MainGraph();
+  for (const auto& param : graph_info_.initializer_names_to_train) {
+    std::vector<const Node*> consumer_nodes = graph.GetConsumerNodes(param);
+    // Initial support is limited to caching Cast output. This can
+    // be extended to accomodate more ops whose result depends only
+    // on the weight tensor which is a WIP.
+    for (const Node* node : consumer_nodes) {
+      if (node != nullptr && node->OpType() == "Cast") {
+        graph_info_.frontier_node_arg_map[param] = node->OutputDefs()[0]->Name();
+      }
+    }
+  }
 }
 
 void OrtModuleGraphBuilder::HandleOutputsAndGrads() {
@@ -240,15 +263,15 @@ void OrtModuleGraphBuilder::HandleOutputsAndGrads() {
 
   // YieldOps non_differentiable_outputs attribute specifies the indices of outputs that are not differentiable
   const auto& non_differentiable_indices = graph_info_.output_grad_indices_non_differentiable;
+  const std::string non_differentiable_outputs_name = "non_differentiable_outputs";
+  ONNX_NAMESPACE::AttributeProto non_differentiable_outputs;
+  non_differentiable_outputs.set_name(non_differentiable_outputs_name);
+  non_differentiable_outputs.set_type(ONNX_NAMESPACE::AttributeProto::INTS);
+
   if (non_differentiable_indices.size() > 0) {
-    ONNX_NAMESPACE::AttributeProto non_differentiable_outputs;
-    const std::string non_differentiable_outputs_name = "non_differentiable_outputs";
-    non_differentiable_outputs.set_name(non_differentiable_outputs_name);
-    non_differentiable_outputs.set_type(ONNX_NAMESPACE::AttributeProto::INTS);
     for (auto index : non_differentiable_indices) {
       non_differentiable_outputs.add_ints(index);
     }
-    attributes.insert({non_differentiable_outputs_name, non_differentiable_outputs});
   }
 
   // YieldOps full_shape_outputs attribute specifies the indices of outputs that must be full shape.
@@ -280,7 +303,64 @@ void OrtModuleGraphBuilder::HandleOutputsAndGrads() {
       graph_info_.module_output_gradient_name.emplace_back(grad_name);
     }
   }
+
+  size_t input_count = yield_input_node_args.size();
+  for (auto& iter : graph_info_.frontier_node_arg_map) {
+    std::string name = iter.second;
+    yield_input_node_args.emplace_back(gradient_graph.GetNodeArg(name));
+    graph_info_.cached_node_arg_names.emplace_back(name);
+  }
+
+  const auto& frontier_tensors = graph_info_.frontier_node_arg_map;
+  if (frontier_tensors.size() > 0) {
+    for (size_t index = input_count; index < input_count + frontier_tensors.size(); index++) {
+      non_differentiable_outputs.add_ints(index);
+    }
+  }
+
+  // YieldOps non_differentiable_outputs /attribute specifies the indices of outputs that are not differentiable
+  if (non_differentiable_indices.size() > 0 || frontier_tensors.size() > 0) {
+    attributes.insert({non_differentiable_outputs_name, non_differentiable_outputs});
+  }
+
   attributes.insert({full_shape_outputs_name, full_shape_outputs});
+
+  // Handle potential duplciated output_gradient names
+  std::unordered_map<std::string, std::vector<size_t>> name_to_idx;
+  for (size_t i = 0; i < yield_output_node_args.size(); ++i) {
+    const std::string& name = yield_output_node_args[i]->Name();
+    auto it = name_to_idx.find(name);
+    if (it == name_to_idx.end()) {
+      name_to_idx.insert(std::make_pair(name, std::vector<size_t>{i}));
+    } else {
+      it->second.push_back(i);
+    }
+  }
+
+  for (auto& name_idx_pair : name_to_idx) {
+    // Only process if there is a duplicated name
+    if (name_idx_pair.second.size() > 1) {
+      const std::string& arg_name = name_idx_pair.first;
+      const std::vector<size_t>& indices = name_idx_pair.second;
+
+      // Replace duplicated names with indexed names
+      std::vector<NodeArg*> sum_input_node_args;
+      std::vector<NodeArg*> sum_output_node_arg;
+      sum_output_node_arg.push_back(gradient_graph.GetNodeArg(arg_name));
+
+      int duplicate_counter = 0;
+      for (size_t idx : indices) {
+        std::string indexed_arg_name = arg_name + "_" + std::to_string(duplicate_counter++);
+        auto& indexed_node_arg = gradient_graph.GetOrCreateNodeArg(indexed_arg_name, yield_output_node_args[idx]->TypeAsProto());
+        sum_input_node_args.push_back(&indexed_node_arg);
+        yield_output_node_args[idx] = &indexed_node_arg;
+      }
+
+      // Insert the Sum node to sum-up the duplicated gradients
+      gradient_graph.AddNode("Sum_for_" + arg_name, "Sum", "Sum up duplicated gradient",
+                             sum_input_node_args, sum_output_node_arg, {}, kOnnxDomain);
+    }
+  }
 
   gradient_graph.AddNode("YieldOp", "YieldOp", "Yield Op", yield_input_node_args, yield_output_node_args, &attributes,
                          kMSDomain);
@@ -323,6 +403,46 @@ void OrtModuleGraphBuilder::ReorderOutputs() {
   }
 
   gradient_graph.SetOutputs(new_output_args);
+}
+
+void OrtModuleGraphBuilder::FindModuleOutputNeededForBackward() {
+  Graph& gradient_graph = gradient_model_->MainGraph();
+  gradient_graph.Resolve();
+  GraphViewer gradient_graph_viewer(gradient_graph);
+  const auto& exec_order = gradient_graph_viewer.GetNodesInTopologicalOrder();
+
+  size_t yield_node_order = 0;
+  bool yield_node_found = false;
+  std::unordered_map<NodeIndex, size_t> id_to_exec_order;
+  for (size_t i = 0; i < exec_order.size(); ++i) {
+    if (gradient_graph_viewer.GetNode(exec_order[i])->OpType() == "YieldOp") {
+      yield_node_order = i;
+      yield_node_found = true;
+    }
+    id_to_exec_order.insert({exec_order[i], i});
+  }
+  ORT_ENFORCE(yield_node_found, "YieldOp is not found in the training graph");
+
+  const Node* yield_node = gradient_graph_viewer.GetNode(exec_order[yield_node_order]);
+  auto yield_input_node_args = yield_node->InputDefs();
+
+  for (size_t i = 0; i < yield_input_node_args.size(); ++i) {
+    const NodeArg* yield_input = yield_input_node_args[i];
+
+    const Node* producer_node = gradient_graph.GetProducerNode(yield_input->Name());
+    if (producer_node->OpType() == "Identity") {
+      yield_input = producer_node->InputDefs()[0];
+    }
+
+    std::vector<const Node*> consumer_nodes = gradient_graph.GetConsumerNodes(yield_input->Name());
+    for (const Node* n : consumer_nodes) {
+      // If a module output has a consumer that is executed after the YieldOp, marked it needed for backward
+      if (id_to_exec_order[n->Index()] > yield_node_order) {
+        graph_info_.module_output_indices_requires_save_for_backward.emplace_back(i);
+        break;
+      }
+    }
+  }
 }
 
 }  // namespace training

@@ -47,10 +47,11 @@ class TensorrtLogger : public nvinfer1::ILogger {
                                                                             : severity == Severity::kWARNING ? "WARNING"
                                                                             : severity == Severity::kINFO    ? "   INFO"
                                                                                                              : "UNKNOWN");
-      if (severity <= Severity::kERROR)
+      if (severity <= Severity::kERROR) {
         LOGS_DEFAULT(ERROR) << "[" << buf << " " << sevstr << "] " << msg;
-      else
+      } else {
         LOGS_DEFAULT(WARNING) << "[" << buf << " " << sevstr << "] " << msg;
+      }
     }
   }
 };
@@ -86,6 +87,7 @@ struct TensorrtFuncState {
   OrtMutex* tensorrt_mu_ptr = nullptr;
   bool fp16_enable;
   bool int8_enable;
+  bool int8_calibration_cache_available;
   bool dla_enable;
   int dla_core;
   size_t* max_workspace_size_ptr = nullptr;
@@ -98,6 +100,7 @@ struct TensorrtFuncState {
   std::unordered_map<std::string, float> dynamic_range_map;
   bool engine_decryption_enable;
   int (*engine_decryption)(const char*, char*, size_t*);
+  int (*engine_encryption)(const char*, char*, size_t);
 };
 
 // Logical device representation.
@@ -144,7 +147,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool dla_enable_ = false;
   int dla_core_ = 0;
   bool force_sequential_engine_build_ = false;
-  std::string int8_calibration_cache_name_ = "INT8_calibration_table";
+  std::string int8_calibration_cache_name_;
+  bool int8_calibration_cache_available_ = false;
   bool int8_use_native_tensorrt_calibration_table_ = false;
   bool dump_subgraphs_ = false;
   bool engine_cache_enable_ = false;
@@ -156,6 +160,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   mutable char model_path_[4096];  // Reserved for max path length
   bool engine_decryption_enable_ = false;
   int (*engine_decryption_)(const char*, char*, size_t*);
+  int (*engine_encryption_)(const char*, char*, size_t);
 
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>> engines_;

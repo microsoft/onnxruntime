@@ -71,6 +71,7 @@ size_t OperandType::GetElementByteSize() const {
       element_size = 1;
       break;
     case Type::TENSOR_FLOAT16:
+    case Type::FLOAT16:
       element_size = 2;
       break;
     case Type::TENSOR_FLOAT32:
@@ -80,15 +81,12 @@ size_t OperandType::GetElementByteSize() const {
     case Type::TENSOR_INT32:
       element_size = 4;
       break;
+    case Type::TENSOR_QUANT8_ASYMM:
+    case Type::TENSOR_QUANT8_ASYMM_SIGNED:
     case Type::TENSOR_QUANT8_SYMM_PER_CHANNEL:
       element_size = 1;
       break;
-    case Type::TENSOR_QUANT8_ASYMM:
-      element_size = 1;
-      break;
     case Type::TENSOR_QUANT16_SYMM:
-      element_size = 2;
-      break;
     case Type::TENSOR_QUANT16_ASYMM:
       element_size = 2;
       break;

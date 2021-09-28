@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <exception>
 #include <ctime>
+#include <exception>
+#include <type_traits>
 #include <utility>
 
 #include "core/common/exceptions.h"
@@ -105,9 +106,9 @@ LoggingManager::LoggingManager(std::unique_ptr<ISink> sink, Severity default_min
       ORT_THROW("Only one instance of LoggingManager created with InstanceType::Default can exist at any point in time.");
     }
 
-    // This assertion passes, so using the atomic to validate calls to Log should
+    // If the following assertion passes, using the atomic to validate calls to Log should
     // be reasonably economical.
-    // assert(DefaultLoggerManagerInstance().is_lock_free());
+    static_assert(std::remove_reference_t<decltype(DefaultLoggerManagerInstance())>::is_always_lock_free);
     DefaultLoggerManagerInstance().store(this);
 
     CreateDefaultLogger(*default_logger_id);
@@ -120,8 +121,11 @@ LoggingManager::~LoggingManager() {
   if (owns_default_logger_) {
     // lock mutex to reset DefaultLoggerManagerInstance() and free default logger from this instance.
     std::lock_guard<OrtMutex> guard(DefaultLoggerMutex());
-
+#if ((__cplusplus >= 201703L) || (defined(_MSVC_LANG) && (_MSVC_LANG >= 201703L)))
+    DefaultLoggerManagerInstance().store(nullptr, std::memory_order_release);
+#else
     DefaultLoggerManagerInstance().store(nullptr, std::memory_order::memory_order_release);
+#endif
 
     delete s_default_logger_;
     s_default_logger_ = nullptr;

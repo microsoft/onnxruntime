@@ -25,8 +25,9 @@ struct OrtModuleGraphBuilderConfiguration {
   std::vector<std::string> input_names_require_grad{};
 
   // Graph configuration.
-  bool use_invertible_layernorm_grad = false;
+  bool use_memory_efficient_gradient = false;
   bool build_gradient_graph = true;
+  bool enable_caching = false;
 
   // Graph transformer configuration
   TrainingGraphTransformerConfiguration graph_transformer_config{};
@@ -56,7 +57,15 @@ struct GraphInfo {
   // Indices of output grads that need to be materialized to full size all-0 tensor.
   // Otherwise, we can use scalar-0 tensor.
   std::vector<size_t> output_grad_indices_require_full_shape{};
+  // Indices of module output that are needed for backward computation
+  std::vector<size_t> module_output_indices_requires_save_for_backward{};
+  // Names of module outputs' gradient
   std::vector<std::string> module_output_gradient_name{};
+  // Names of the frontier tensor corresponding to param
+  std::unordered_map<std::string, std::string> frontier_node_arg_map{};
+  // Names of the frontier NodeArgs in the order in which they will 
+  // be retrieved in the forward pass
+  std::vector<std::string> cached_node_arg_names{};
 };
 
 class OrtModuleGraphBuilder {
@@ -105,11 +114,18 @@ class OrtModuleGraphBuilder {
   // Build gradient graph.
   Status BuildGradientGraph(const std::unordered_set<std::string>& x_node_arg_names);
 
+  // Get the "frontier" tensors- the the output of series of operations 
+  // that only depend on the param values, eg Casting a param
+  void GetFrontierTensors();
+
   // Handle user outputs and output grads.
   void HandleOutputsAndGrads();
 
   // Reorder gradient graph outputs.
   void ReorderOutputs();
+
+  // Find the module output that are needed for backward computation
+  void FindModuleOutputNeededForBackward();
 
   std::shared_ptr<onnxruntime::Model> model_;
   std::shared_ptr<onnxruntime::Model> inference_optimized_model_;

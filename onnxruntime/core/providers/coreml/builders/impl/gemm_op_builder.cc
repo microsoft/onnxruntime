@@ -2,35 +2,41 @@
 // Licensed under the MIT License.
 
 #include <core/common/safeint.h>
+#include <core/framework/tensorprotoutils.h>
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/coreml/builders/helper.h"
-#include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
+#ifdef __APPLE__
+#include "core/providers/coreml/builders/model_builder.h"
+#include "builder_utils.h"
+#endif
 
 #include "base_op_builder.h"
-#include "builder_utils.h"
 
 namespace onnxruntime {
 namespace coreml {
 
 class GemmOpBuilder : public BaseOpBuilder {
   // Add operator related
+#ifdef __APPLE__
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+#endif
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& /* node */,
+  bool IsOpSupportedImpl(const Node& /* node */, const OpBuilderInputParams& /* input_params */,
                          const logging::Logger& /* logger */) const override;
 };
 
 // Add operator related
 
+#ifdef __APPLE__
 void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   const auto& op = node.OpType();
   const auto& input_defs(node.InputDefs());
@@ -44,24 +50,27 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
 
 // This is an internal function, requires input tensor to be 2d float tensor
 // TODO, add support of other data types
-static std::vector<float> GetTensorFloatDataTransposed(const ONNX_NAMESPACE::TensorProto& tensor) {
-  const float* src_data = GetTensorFloatData(tensor);
+static Status GetTensorFloatDataTransposed(const ONNX_NAMESPACE::TensorProto& tensor,
+                                           std::vector<float>& transposed_data) {
+  std::vector<uint8_t> unpacked_tensor;
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(tensor, unpacked_tensor));
+  const float* src_data = reinterpret_cast<const float*>(unpacked_tensor.data());
   const auto& tensor_shape = tensor.dims();
   auto x_t = SafeInt<size_t>(tensor_shape[0]);
   auto y_t = SafeInt<size_t>(tensor_shape[1]);
-  std::vector<float> transposed_data(x_t * y_t);
+  transposed_data.resize(x_t * y_t);
   for (size_t x = 0; x < x_t; x++) {
     for (size_t y = 0; y < y_t; y++) {
       transposed_data[y * x_t + x] = src_data[x * y_t + y];
     }
   }
 
-  return transposed_data;
+  return Status::OK();
 }
 
 Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                             const logging::Logger& /* logger */) const {
-  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(node);
+  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(model_builder, node);
 
   const auto& op_type = node.OpType();
   const auto& input_defs = node.InputDefs();
@@ -77,7 +86,8 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     coreml_inner_product->set_inputchannels(b_shape[0]);
     coreml_inner_product->set_outputchannels(b_shape[1]);
     // Add weight (b of MatMul)
-    const auto b_transposed = GetTensorFloatDataTransposed(b_tensor);
+    std::vector<float> b_transposed;
+    ORT_RETURN_IF_ERROR(GetTensorFloatDataTransposed(b_tensor, b_transposed));
     CreateCoreMLWeight(*coreml_inner_product->mutable_weights(), b_transposed.data(), b_transposed.size());
   } else {  // Gemm
     NodeAttrHelper helper(node);
@@ -85,7 +95,8 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     if (transB == 0) {
       coreml_inner_product->set_inputchannels(b_shape[0]);
       coreml_inner_product->set_outputchannels(b_shape[1]);
-      const auto b_transposed = GetTensorFloatDataTransposed(b_tensor);
+      std::vector<float> b_transposed;
+      ORT_RETURN_IF_ERROR(GetTensorFloatDataTransposed(b_tensor, b_transposed));
       CreateCoreMLWeight(*coreml_inner_product->mutable_weights(), b_transposed.data(), b_transposed.size());
     } else {
       coreml_inner_product->set_inputchannels(b_shape[1]);
@@ -108,15 +119,17 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
+#endif
 
 // Operator support related
 
-bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool GemmOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                       const logging::Logger& logger) const {
   const auto& op_type = node.OpType();
   const auto& input_defs(node.InputDefs());
   size_t a_idx = 0, b_idx = 1, c_idx = 2;  // A*B+C
 
+  const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
   if (!Contains(initializers, input_defs[b_idx]->Name())) {
     LOGS(logger, VERBOSE) << "B of Gemm/Matmul must be an initializer tensor";
     return false;
@@ -225,9 +238,10 @@ void CreateGemmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
       };
 
   op_registrations.builders.push_back(std::make_unique<GemmOpBuilder>());
-  for (const auto& op_type : op_types) {
-    op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+  for (const auto& type : op_types) {
+    op_registrations.op_builder_map.emplace(type, op_registrations.builders.back().get());
   }
 }
+
 }  // namespace coreml
 }  // namespace onnxruntime

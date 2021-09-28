@@ -27,6 +27,7 @@
 #pragma GCC diagnostic ignored "-Wignored-attributes"
 #endif
 #pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wunused-result"
 #if __GNUC__ >= 7
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wint-in-bool-context"
@@ -34,23 +35,20 @@
 #pragma GCC diagnostic ignored "-Wdeprecated-copy"
 #endif
 #endif
-#else
+#elif defined(_MSC_VER)
 // build\windows\debug\external\eigen3\unsupported\eigen\cxx11\src/Tensor/Tensor.h(76):
 // warning C4554: '&': check operator precedence for possible error; use parentheses to clarify precedence
-// build\windows\debug\external\eigen3\unsupported\eigen\cxx11\src/Tensor/TensorStorage.h(65):
-// warning C4324: structure was padded due to alignment specifier
+
 // unsupported\eigen\cxx11\src\Tensor\TensorUInt128.h(150,0): Warning C4245: 'initializing': conversion from '__int64'
 // to 'uint64_t', signed/unsigned mismatch
 #pragma warning(push)
 #pragma warning(disable : 4554)
-#pragma warning(disable : 4324)
 #pragma warning(disable : 4245)
 #pragma warning(disable : 4127)
-#pragma warning(disable : 6255)
-#pragma warning(disable : 6294)
 #endif
 #include "Eigen/Core"
 #include "Eigen/Dense"
+#include "Eigen/Sparse"
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #else
@@ -77,6 +75,9 @@ using EigenVectorArrayMap = Eigen::Map<Eigen::Array<T, Eigen::Dynamic, 1>>;
 
 template <typename T>
 using ConstEigenMatrixMap = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>;
+
+template <class T>
+using ConstSparseMatrixMap = Eigen::Map<const Eigen::SparseMatrix<T, Eigen::RowMajor, int64_t>>;
 
 template <typename T>
 using ConstEigenArrayMap = Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, Eigen::Dynamic>>;

@@ -32,18 +32,18 @@
 #include "core/optimizer/matmul_scale_fusion.h"
 #include "core/optimizer/nchwc_transformer.h"
 #include "core/optimizer/nhwc_transformer.h"
+#include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
-#include "core/optimizer/shape_to_initializer.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
 #include "core/optimizer/qdq_transformer/qdq_propagation.h"
 #include "core/optimizer/qdq_transformer/qdq_s8_to_u8.h"
-#include "core/optimizer/qdq_transformer/qdq_transformer.h"
 #include "core/optimizer/qdq_transformer/relu_quantizelinear.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/optimizer/bias_dropout_fusion.h"
@@ -69,11 +69,11 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<EliminateDropout>());
       rules.push_back(std::make_unique<ExpandElimination>());
       rules.push_back(std::make_unique<CastElimination>());
+      rules.push_back(std::make_unique<NoopElimination>());
       rules.push_back(std::make_unique<DivMulFusion>());
       rules.push_back(std::make_unique<FuseReluClip>());
       rules.push_back(std::make_unique<GemmTransposeFusion>());
       rules.push_back(std::make_unique<NotWhereFusion>());
-      rules.push_back(std::make_unique<ShapeToInitializer>());
       rules.push_back(std::make_unique<ConvAddFusion>());
       rules.push_back(std::make_unique<ConvMulFusion>());
       rules.push_back(std::make_unique<ConvBNFusion>());
@@ -172,7 +172,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       if (!disable_quant_qdq) {
         transformers.emplace_back(std::make_unique<QDQS8ToU8Transformer>(cpu_ep));
         transformers.emplace_back(std::make_unique<QDQPropagationTransformer>(cpu_ep));
-        transformers.emplace_back(std::make_unique<QDQTransformer>());
+        transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>());
       }
 
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(cpu_ep));
