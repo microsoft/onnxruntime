@@ -134,6 +134,19 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
 }
 }  // namespace
 
+
+// N % 4 != 0
+TEST(BiasDropoutTest, BasicAndNotVectorized) {
+  RunBiasDropoutTest(false, {10, 5, 5}, 0.75f);
+}
+TEST(BiasDropoutTest, BasicWithoutResidualAndNotVectorized) {
+  RunBiasDropoutTest(false, {10, 5, 5}, 0.75f, TrainingTrue, false, false);
+}
+TEST(BiasDropoutTest, MaskAndNotVectorized) {
+  RunBiasDropoutTest(true, {3, 5, 100}, 0.25f);
+}
+
+// N % 4 == 0
 TEST(BiasDropoutTest, Basic) {
   RunBiasDropoutTest(false, {10, 10, 10}, 0.75f);
 }
