@@ -82,8 +82,6 @@ jobs:
       value: $(environment) -e "$(epList)"
 
   steps:
-    - script: 'ls /data/'
-      displayName: 'print models'
 
     - ${{ if eq(parameters.BuildORT, true) }}:
 
