@@ -40,6 +40,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.OptionalHasElement">com.microsoft.OptionalHasElement</a>
   * <a href="#com.microsoft.Pad">com.microsoft.Pad</a>
   * <a href="#com.microsoft.QAttention">com.microsoft.QAttention</a>
+  * <a href="#com.microsoft.QGemm">com.microsoft.QGemm</a>
   * <a href="#com.microsoft.QLinearAdd">com.microsoft.QLinearAdd</a>
   * <a href="#com.microsoft.QLinearAveragePool">com.microsoft.QLinearAveragePool</a>
   * <a href="#com.microsoft.QLinearConcat">com.microsoft.QLinearConcat</a>
@@ -1891,6 +1892,73 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>T4</tt> : tensor(int32)</dt>
 <dd>Constrain mask index to integer types</dd>
+</dl>
+
+
+### <a name="com.microsoft.QGemm"></a><a name="com.microsoft.qgemm">**com.microsoft.QGemm**</a>
+
+  Quantized Gemm
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>alpha</tt> : float</dt>
+<dd>Scalar multiplier for the product of input tensors A * B.</dd>
+<dt><tt>transA</tt> : int</dt>
+<dd>Whether A should be transposed</dd>
+<dt><tt>transB</tt> : int</dt>
+<dd>Whether B should be transposed</dd>
+</dl>
+
+#### Inputs (6 - 9)
+
+<dl>
+<dt><tt>A</tt> : TA</dt>
+<dd>Input tensor A. The shape of A should be (M, K) if transA is 0, or (K, M) if transA is non-zero.</dd>
+<dt><tt>a_scale</tt> : T</dt>
+<dd>Scale of quantized input 'A'. It is a scalar,which means a per-tensor quantization.</dd>
+<dt><tt>a_zero_point</tt> : TA</dt>
+<dd>Zero point tensor for input 'A'. It is a scalar.</dd>
+<dt><tt>B</tt> : TB</dt>
+<dd>Input tensor B. The shape of B should be (K, N) if transB is 0, or (N, K) if transB is non-zero.</dd>
+<dt><tt>b_scale</tt> : T</dt>
+<dd>Scale of quantized input 'B'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number of elements should be equal to the number of columns of input 'B'.</dd>
+<dt><tt>b_zero_point</tt> : TB</dt>
+<dd>Zero point tensor for input 'B'. It's optional and default value is 0.  It could be a scalar or a 1-D tensor, which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number of elements should be equal to the number of columns of input 'B'.</dd>
+<dt><tt>C</tt> (optional) : TC</dt>
+<dd>Optional input tensor C. If not specified, the computation is done as if C is a scalar 0. The shape of C should be unidirectional broadcastable to (M, N). Its type is int32_t and must be quantized with zero_point = 0 and scale = alpha / beta * a_scale * b_scale.</dd>
+<dt><tt>y_scale</tt> (optional) : T</dt>
+<dd>Scale of output 'Y'. It is a scalar, which means a per-tensor quantization. It is optional. The output is full precision(float32) if it is not provided. Or the output is quantized.</dd>
+<dt><tt>y_zero_point</tt> (optional) : TYZ</dt>
+<dd>Zero point tensor for output 'Y'. It is a scalar, which means a per-tensor quantization. It is optional. The output is full precision(float32) if it is not provided. Or the output is quantized.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : TY</dt>
+<dd>Output tensor of shape (M, N).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float)</dt>
+<dd>Constrain scale types to float tensors.</dd>
+<dt><tt>TA</tt> : tensor(uint8), tensor(int8)</dt>
+<dd>Constrain input A and its zero point types to 8 bit tensors.</dd>
+<dt><tt>TB</tt> : tensor(uint8), tensor(int8)</dt>
+<dd>Constrain input B and its zero point types to 8 bit tensors.</dd>
+<dt><tt>TC</tt> : tensor(int32)</dt>
+<dd>Constrain input C to 32 bit integer tensors.</dd>
+<dt><tt>TYZ</tt> : tensor(uint8), tensor(int8)</dt>
+<dd>Constrain output zero point types to 8 bit tensors.</dd>
+<dt><tt>TY</tt> : tensor(float), tensor(uint8), tensor(int8)</dt>
+<dd>Constrain output type to float32 or 8 bit tensors.</dd>
 </dl>
 
 

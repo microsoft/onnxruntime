@@ -3,6 +3,7 @@
 
 import logging
 import os
+import shlex
 import subprocess
 
 
@@ -31,8 +32,8 @@ def run(*args, cwd=None,
     """
     cmd = [*args]
 
-    _log.info("Running subprocess in '{0}'\n{1}".format(
-        cwd or os.getcwd(), cmd))
+    _log.info("Running subprocess in '{0}'\n  {1}".format(
+        cwd or os.getcwd(), " ".join([shlex.quote(arg) for arg in cmd])))
 
     def output(is_stream_captured):
         return subprocess.PIPE if is_stream_captured else \

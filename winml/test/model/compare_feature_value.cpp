@@ -1,7 +1,7 @@
 #include "testPch.h"
 #include "compare_feature_value.h"
 #include "StringHelpers.h"
-#include <core/framework/ml_value.h>
+#include <core/framework/ort_value.h>
 #include "ort_value_helper.h"
 
 using namespace winrt::Windows::Foundation::Collections;

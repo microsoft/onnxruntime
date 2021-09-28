@@ -862,6 +862,130 @@ Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` )DOC";
           output_shape->mutable_dim(axis)->set_dim_value(total_length);
         }
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QGemm)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("Quantized Gemm")
+      .Input(0,
+             "A",
+             "Input tensor A. "
+             "The shape of A should be (M, K) if transA is 0, "
+             "or (K, M) if transA is non-zero.",
+             "TA")
+      .Input(1,
+             "a_scale",
+             "Scale of quantized input 'A'. "
+             "It is a scalar,which means a per-tensor quantization.",
+             "T")
+      .Input(2,
+             "a_zero_point",
+             "Zero point tensor for input 'A'. It is a scalar.",
+             "TA")
+      .Input(3,
+             "B",
+             "Input tensor B. "
+             "The shape of B should be (K, N) if transB is 0, "
+             "or (N, K) if transB is non-zero.",
+             "TB")
+      .Input(4,
+             "b_scale",
+             "Scale of quantized input 'B'. It could be a scalar or a 1-D tensor, "
+             "which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number "
+             "of elements should be equal to the number of columns of input 'B'.",
+             "T")
+      .Input(5,
+             "b_zero_point",
+             "Zero point tensor for input 'B'. It's optional and default value is 0.  It could be a scalar or a 1-D tensor, "
+             "which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number "
+             "of elements should be equal to the number of columns of input 'B'.",
+             "TB")
+      .Input(6,
+             "C",
+             "Optional input tensor C. "
+             "If not specified, the computation is done as if C is a scalar 0. "
+             "The shape of C should be unidirectional broadcastable to (M, N). "
+             "Its type is int32_t and must be quantized with zero_point = 0 and "
+             "scale = alpha / beta * a_scale * b_scale.",
+             "TC",
+             OpSchema::Optional)
+      .Input(7,
+             "y_scale",
+             "Scale of output 'Y'. It is a scalar, which means a per-tensor quantization. "
+             "It is optional. The output is full precision(float32) if it is not provided. "
+             "Or the output is quantized.",
+             "T",
+             OpSchema::Optional)
+      .Input(8,
+             "y_zero_point",
+             "Zero point tensor for output 'Y'. It is a scalar, which means a per-tensor quantization. "
+             "It is optional. The output is full precision(float32) if it is not provided. "
+             "Or the output is quantized.",
+             "TYZ",
+             OpSchema::Optional)
+      .Output(0,
+              "Y",
+              "Output tensor of shape (M, N).",
+              "TY")
+      .Attr("transA",
+            "Whether A should be transposed",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
+      .Attr("transB",
+            "Whether B should be transposed",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
+      .Attr("alpha",
+            "Scalar multiplier for the product of input tensors A * B.",
+            AttributeProto::FLOAT,
+            1.0f)
+      .TypeConstraint("T",
+                      {"tensor(float)"},
+                      "Constrain scale types to float tensors.")
+      .TypeConstraint("TA",
+                      {"tensor(uint8)", "tensor(int8)"},
+                      "Constrain input A and its zero point types to 8 bit tensors.")
+      .TypeConstraint("TB",
+                      {"tensor(uint8)", "tensor(int8)"},
+                      "Constrain input B and its zero point types to 8 bit tensors.")
+      .TypeConstraint("TC",
+                      {"tensor(int32)"},
+                      "Constrain input C to 32 bit integer tensors.")
+      .TypeConstraint("TYZ",
+                      {"tensor(uint8)", "tensor(int8)"},
+                      "Constrain output zero point types to 8 bit tensors.")
+      .TypeConstraint("TY",
+                      {"tensor(float)", "tensor(uint8)", "tensor(int8)"},
+                      "Constrain output type to float32 or 8 bit tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        if (ctx.getNumInputs() == 9 && nullptr != ctx.getInputType(8)) {
+          propagateElemTypeFromInputToOutput(ctx, 8, 0);
+        } else {
+          updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::FLOAT);
+        }
+
+        if (hasInputShape(ctx, 0) && hasInputShape(ctx, 3)) {
+          auto transAAttr = ctx.getAttribute("transA");
+          bool transA =
+              transAAttr ? static_cast<int>(transAAttr->i()) != 0 : false;
+          auto transBAttr = ctx.getAttribute("transB");
+          bool transB =
+              transBAttr ? static_cast<int>(transBAttr->i()) != 0 : false;
+          auto& first_input_shape = getInputShape(ctx, 0);
+          auto& second_input_shape = getInputShape(ctx, 3);
+          if (first_input_shape.dim_size() != 2) {
+            fail_shape_inference("First input does not have rank 2");
+          }
+          if (second_input_shape.dim_size() != 2) {
+            fail_shape_inference("Second input does not have rank 2");
+          }
+          updateOutputShape(
+              ctx,
+              0,
+              {first_input_shape.dim(transA ? 1 : 0),
+               second_input_shape.dim(transB ? 0 : 1)});
+        }
+      });
 }
 
 }  // namespace contrib

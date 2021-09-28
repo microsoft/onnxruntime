@@ -61,6 +61,18 @@ static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "
 static const char* const kOrtSessionOptionsConfigAllowInterOpSpinning = "session.inter_op.allow_spinning";
 static const char* const kOrtSessionOptionsConfigAllowIntraOpSpinning = "session.intra_op.allow_spinning";
 
+// Key for using model bytes directly for ORT format
+// If a session is created using an input byte array contains the ORT format model data,
+// By default we will copy the model bytes at the time of session creation to ensure the model bytes
+// buffer is valid.
+// Setting this option to "1" will disable copy the model bytes, and use the model bytes directly. The caller
+// has to guarantee that the model bytes are valid until the ORT session using the model bytes is destroyed.
+static const char* const kOrtSessionOptionsConfigUseORTModelBytesDirectly = "session.use_ort_model_bytes_directly";
+
+// NNAPI EP keys begin
+// Note: These options should be specified prior to appending the NNAPI EP to the session options object in order for
+// them to take effect.
+
 // Specifies a list of stop op types. Nodes of a type in the stop op types and nodes downstream from them will not be
 // run by the NNAPI EP.
 // The value should be a ","-delimited list of op types. For example, "Add,Sub".

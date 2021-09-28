@@ -260,7 +260,15 @@
         1734858160766311432
     ],
     [
-        "QEmbedLayerNormalization com.microsoft CPUExecutionProvider",
-        9235385557940152248
+      "QEmbedLayerNormalization com.microsoft CPUExecutionProvider",
+      9235385557940152248
+    ],
+    [
+      "QGemm com.microsoft CPUExecutionProvider",
+      13737193491843065240
+    ],
+    [
+      "GridSample com.microsoft CPUExecutionProvider",
+      15019666093341768288
     ]
 ]

@@ -69,9 +69,9 @@ jobs:
         workingDirectory: $(Build.SourcesDirectory)
 
     - script: |
-       set -e -x       
+       set -e -x
        mkdir $(Build.ArtifactStagingDirectory)/testdata
-       cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata 
+       cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata
        ls -al $(Build.ArtifactStagingDirectory)
       displayName: 'Create Artifacts'
 
@@ -109,8 +109,8 @@ jobs:
   workspace:
     clean: all
   variables:
-    MACOSX_DEPLOYMENT_TARGET: '10.13'
-  pool: 
+    MACOSX_DEPLOYMENT_TARGET: '10.14'
+  pool:
     vmImage: 'macOS-10.15'
   timeoutInMinutes:  120
   steps:
@@ -141,7 +141,7 @@ jobs:
           commitId: $(OnnxRuntimeGitCommitHash)
 
     - script: |
-       set -e -x       
+       set -e -x
        mkdir $(Build.ArtifactStagingDirectory)/testdata
        cp $(Build.BinariesDirectory)/Release/libcustom_op_library.dylib $(Build.ArtifactStagingDirectory)/testdata
       displayName: 'Create Artifacts'
@@ -168,29 +168,84 @@ jobs:
       displayName: 'Clean Agent Directories'
       condition: always()
 
+- template: android-java-api-aar.yml
+  parameters:
+    buildConfig: 'Release'
+    buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/android/default_mobile_aar_build_settings.json'
+    includedOpsConfig: '$(Build.SourcesDirectory)/tools/ci_build/github/android/mobile_package.required_operators.config'
+    artifactName: 'onnxruntime-android-mobile-aar'
+    job_name_suffix: 'Mobile'
+
+- template: android-java-api-aar.yml
+  parameters:
+    buildConfig: 'Release'
+    buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/android/default_full_aar_build_settings.json'
+    artifactName: 'onnxruntime-android-full-aar'
+    job_name_suffix: 'Full'
+    publish_executables: '1'
+
+- job: iOS_Full_xcframework
+  workspace:
+    clean: all
+  pool:
+    vmImage: 'macOS-10.15'
+  timeoutInMinutes:  180
+  steps:
+    - template: set-version-number-variables-step.yml
+
+    - script: |
+        /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
+          $(Build.SourcesDirectory) \
+          $(Build.BinariesDirectory)/protobuf \
+          $(Build.BinariesDirectory)/protobuf_install
+      displayName: Build Host Protoc
+
+    - script: |
+        set -e -x
+        python3 tools/ci_build/github/apple/build_ios_framework.py \
+          --build_dir "$(Build.BinariesDirectory)/ios_framework" \
+          --path_to_protoc_exe $(Build.BinariesDirectory)/protobuf_install/bin/protoc \
+          tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
+        mkdir $(Build.BinariesDirectory)/artifacts
+        mkdir -p $(Build.BinariesDirectory)/artifacts_staging/onnxruntime-ios-xcframework-$(OnnxRuntimeVersion)
+        cp -R $(Build.BinariesDirectory)/ios_framework/framework_out/onnxruntime.xcframework \
+          $(Build.BinariesDirectory)/artifacts_staging/onnxruntime-ios-xcframework-$(OnnxRuntimeVersion)
+        pushd $(Build.BinariesDirectory)/artifacts_staging
+        zip -vr $(Build.BinariesDirectory)/artifacts/onnxruntime_xcframework.zip \
+          onnxruntime-ios-xcframework-$(OnnxRuntimeVersion)
+        popd
+      displayName: "Build iOS xcframework"
+
+    - script: |
+        python3 tools/ci_build/github/apple/test_ios_packages.py \
+          --fail_if_cocoapods_missing \
+          --framework_info_file "$(Build.BinariesDirectory)/ios_framework/framework_info.json" \
+          --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out"
+      displayName: "Test iOS framework"
+
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathtoPublish: '$(Build.BinariesDirectory)/artifacts'
+        artifactName: 'onnxruntime-ios-full-xcframework'
 
 - template: win-ci.yml
   parameters:
-    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
-    OrtNugetPackageId: ${{ parameters.OrtNugetPackageId }}
-    job_name_suffix: x86_${{ parameters.BuildVariant }}
+    job_name_suffix: CPU_x86_${{ parameters.BuildVariant }}
     EnvSetupScript: setup_env_x86.bat
     buildArch: x86
     msbuildPlatform: Win32
     packageName: x86
-    buildparameter: --x86 ${{ parameters.AdditionalBuildFlags }} ${{ parameters.AdditionalWinBuildFlags}}
+    buildparameter: ${{ parameters.AdditionalBuildFlags }} ${{ parameters.AdditionalWinBuildFlags}}
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: false
 
 - template: win-ci.yml
   parameters:
-    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
-    OrtNugetPackageId: ${{ parameters.OrtNugetPackageId }}
-    job_name_suffix: arm_${{ parameters.BuildVariant }}
+    job_name_suffix: CPU_arm_${{ parameters.BuildVariant }}
     EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: arm
@@ -201,11 +256,9 @@ jobs:
 
 - template: win-ci.yml
   parameters:
-    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
-    OrtNugetPackageId: ${{ parameters.OrtNugetPackageId }}
-    job_name_suffix: arm64_${{ parameters.BuildVariant }}
+    job_name_suffix: CPU_arm64_${{ parameters.BuildVariant }}
     EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: arm64
@@ -216,11 +269,9 @@ jobs:
 
 - template: win-ci.yml
   parameters:
-    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
-    OrtNugetPackageId: ${{ parameters.OrtNugetPackageId }}
-    job_name_suffix: x64_${{ parameters.BuildVariant }}
+    job_name_suffix: CPU_x64_${{ parameters.BuildVariant }}
     EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: x64
@@ -267,7 +318,7 @@ jobs:
       buildType: 'current'
       artifactName: 'drop-onnxruntime-java-osx-x64'
       targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-x64'
- 
+
   - task: PowerShell@2
     displayName: 'PowerShell Script'
     inputs:
@@ -298,7 +349,7 @@ jobs:
     displayName: 'Clean Agent Directories'
     condition: always()
 
-- job: NuGet_Packaging
+- job: NuGet_Packaging_CPU
   workspace:
     clean: all
   pool: 'Win-CPU-2021'
@@ -327,7 +378,7 @@ jobs:
     inputs:
       artifactName: 'onnxruntime-win-x86'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-      
+
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - NuGet'
     inputs:
@@ -369,12 +420,10 @@ jobs:
      dir
     workingDirectory: '$(Build.BinariesDirectory)/nuget-artifact'
     displayName: 'List artifacts'
-
   - script: |
      mklink /D /J models C:\local\models
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Create models link'
-
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 5.7.0
     inputs:
@@ -413,17 +462,18 @@ jobs:
       arguments: '--configuration RelWithDebInfo -t:CreatePackage -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-  - task: BatchScript@1
-    displayName: 'Bundle Native NuGet and other binaries'
+  - task: CopyFiles@2
+    displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
     inputs:
-      filename: $(Build.SourcesDirectory)\tools\ci_build\github\windows\bundle_dlls.bat
-      workingFolder: $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+      Contents: '*.nupkg'
+      TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
   - task: CopyFiles@2
     displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
     inputs:
-      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts'
-      Contents: '*.nupkg'
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+      Contents: '*.snupkg'
       TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
   - task: CopyFiles@2
@@ -439,24 +489,20 @@ jobs:
       FolderPath: '$(Build.ArtifactStagingDirectory)'
       DoEsrp: ${{ parameters.DoEsrp }}
 
-  - template: validate-nuget.yml
+  - template: validate-package.yml
     parameters:
-      NugetPath: '$(Build.ArtifactStagingDirectory)'
-      NugetPackage: 'Microsoft.ML.OnnxRuntime.*nupkg'
-      PlatformsSupported: 'win-x64,win-x86,linux-x64,osx-x64'
+      PackageType: 'nuget'
+      PackagePath: '$(Build.ArtifactStagingDirectory)'
+      PackageName: 'Microsoft.ML.OnnxRuntime.*nupkg'
+      PlatformsSupported: 'win-x64,win-x86,linux-x64,osx.10.14-x64'
       VerifyNugetSigning: false
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline NuGet Artifact'
     inputs:
-      artifactName: 'drop-signed-nuget'
+      artifactName: 'drop-signed-nuget-CPU'
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
-  - powershell: |
-     $counter = 0
-     Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.nupkg | foreach {7z x -y -o$counter $_.fullname;$counter++}
-    workingDirectory: '$(Build.ArtifactStagingDirectory)'
-    displayName: 'Unzip files to sanitize the PE files'
 
   - task: DotNetCoreCLI@2
     displayName: 'Build C#'
@@ -467,9 +513,6 @@ jobs:
       configuration: RelWithDebInfo
       arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-  - task: BinSkim@3
-    displayName: 'Run BinSkim'
 
   - task: RoslynAnalyzers@2
     displayName: 'Run Roslyn Analyzers'
@@ -487,7 +530,23 @@ jobs:
     displayName: 'Clean Agent Directories'
     condition: always()
 
-- template: ../nuget/templates/test_all_os.yml
+- template: ../nuget/templates/test_win.yml
+  parameters:
+    AgentPool : 'Win-CPU-2021'
+    Skipx86Tests : false
+    NugetPackageName : 'Microsoft.ML.OnnxRuntime'
+    ArtifactSuffix: 'CPU'
+
+- template: ../nuget/templates/test_linux.yml
+  parameters:
+    AgentPool : Linux-CPU
+    NugetPackageName : 'Microsoft.ML.OnnxRuntime'
+    ArtifactSuffix: 'CPU'
+
+- template: ../nuget/templates/test_macos.yml
+  parameters:
+    AgentPool : macOS-10.15
+    ArtifactSuffix: 'CPU'
 
 - job: Publish_NuGet_Package_And_Report
   workspace:
@@ -497,20 +556,20 @@ jobs:
   - name: GDN_CODESIGN_TARGETDIRECTORY
     value: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
   pool: 'Win-CPU-2021'
-  condition: and (succeeded(), and (${{ parameters.PublishingNuget }}, and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master'))))
+  condition: and (succeeded(), and (${{ parameters.PublishingNuget }}, eq(variables['Build.SourceBranch'], 'refs/heads/master')))
   dependsOn:
-  - NuGet_Test_Win
-  - NuGet_Test_Linux
+  - NuGet_Test_Win_CPU
+  - NuGet_Test_Linux_CPU
   - NuGet_Test_MacOS
   steps:
 
   - template: set-version-number-variables-step.yml
 
-  - template: ../nuget/templates/upload-binary-sizes-from-nuget-package.yml
-    parameters:
-      downloadPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
-      gitCommitHash: $(OnnxRuntimeGitCommitHashShort)
-      buildVariant: ${{ parameters.BuildVariant }}
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Signed NuGet Package'
+    inputs:
+      artifactName: 'drop-signed-nuget-CPU'
+      targetPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
 
   - template: ../nuget/templates/get-nuget-package-version-as-variable.yml
     parameters:
@@ -523,6 +582,41 @@ jobs:
       script: |
           $date = $(Get-Date -Format "yyyy-MM-dd")
           Write-Host "##vso[task.setvariable variable=CurrentDate]$date"
+
+  - task: CmdLine@2
+    displayName: 'Post binary sizes to the dashboard database using command line'
+    inputs:
+      script: |
+          python.exe -m pip install azure-kusto-data[pandas] azure-kusto-ingest[pandas]
+          echo changing directory to artifact download path
+          cd $(Build.BinariesDirectory)/nuget-artifact/final-package
+          echo processing nupkg
+          SETLOCAL EnableDelayedExpansion
+          FOR /R %%i IN (*.nupkg) do (
+           set filename=%%~ni
+           IF NOT "!filename:~25,7!"=="Managed" (
+            echo processing %%~ni.nupkg
+            copy %%~ni.nupkg %%~ni.zip
+            echo copied to zip
+            echo listing lib files in the zip
+            REM use a single .csv file to put the data
+            echo os,arch,build_config,size > $(Build.BinariesDirectory)\binary_size_data.txt
+            7z.exe l -slt %%~ni.zip runtimes\linux-x64\native\libonnxruntime.so | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo linux,x64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
+            7z.exe l -slt %%~ni.zip runtimes\linux-aarch64\native\libonnxruntime.so | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo linux,aarch64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
+            7z.exe l -slt %%~ni.zip runtimes\osx.10.14-x64\native\libonnxruntime.dylib | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo osx,x64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
+            7z.exe l -slt %%~ni.zip runtimes\win-x64\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
+            7z.exe l -slt %%~ni.zip runtimes\win-x86\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x86,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
+             )
+           )
+  - task: AzureCLI@2
+    displayName: 'Azure CLI'
+    inputs:
+      azureSubscription: AIInfraBuildOnnxRuntimeOSS
+      scriptLocation: inlineScript
+      scriptType: batch
+      inlineScript: |
+        python.exe $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=$(Build.SourceVersion) --size_data_file=binary_size_data.txt --build_project=Lotus --build_id=$(Build.BuildId)
+      workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: AzureFileCopy@3
     displayName: 'Copy Signed Native NuGet Package to Blob Store'
@@ -610,7 +704,7 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |
-        mkdir test 
+        mkdir test
         pushd test
         jar xf $(Build.BinariesDirectory)\final-jar\testing.jar
         popd
@@ -670,7 +764,7 @@ jobs:
 - job: Final_Jar_Testing_MacOs
   workspace:
     clean: all
-  pool: 
+  pool:
     vmImage: 'macOS-10.15'
   variables:
   - name: runCodesignValidationInjection
@@ -710,3 +804,10 @@ jobs:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
     condition: always()
+
+- template: android-java-api-aar-test.yml
+  parameters:
+    artifactName: 'onnxruntime-android-mobile-aar'
+    job_name_suffix: 'Mobile'
+
+

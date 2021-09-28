@@ -7,7 +7,7 @@
     "type": "git"
   },
   "author": "fs-eire",
-  "version": "1.8.1",
+  "version": "1.10.0",
   "keywords": [
     "ONNX",
     "ONNXRuntime",
@@ -20,7 +20,7 @@
     "rebuild": "tsc && node ./script/build --rebuild",
     "rebuildd": "tsc && node ./script/build --rebuild --config=Debug",
     "rebuildr": "tsc && node ./script/build --rebuild --config=RelWithDebInfo",
-    "install": "prebuild-install -r napi || (tsc && node ./script/build)",
+    "install": "prebuild-install -r napi || (tsc --build script && node ./script/build)",
     "prepare": "tsc --build script && tsc",
     "test": "tsc --build test && mocha ./test/test-main",
     "prepack": "node ./script/prepack"

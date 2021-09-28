@@ -9,6 +9,9 @@ namespace test {
 
 template <typename T>
 void RunTypedTest() {
+  // Skip tensorrt for INT8 tests
+  bool exclude_tensorrt = std::is_same<T, int8_t>::value;
+
   // int32_t indices - axis 0
   OpTester test1("GatherElements", 11);
 
@@ -18,7 +21,11 @@ void RunTypedTest() {
   test1.AddInput<int32_t>("indices", {1, 2}, {0, 1});
   test1.AddOutput<T>("output", {1, 2},
                      {0, 4});
-  test1.Run();
+  if (exclude_tensorrt) {
+    test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  } else {
+    test1.Run();
+  }
 
   // int32_t indices - axis 1
   OpTester test2("GatherElements", 11);
@@ -32,7 +39,11 @@ void RunTypedTest() {
   test2.AddOutput<T>("output", {2, 2},
                      {1, 1,
                       4, 3});
-  test2.Run();
+  if (exclude_tensorrt) {
+    test2.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  } else {
+    test2.Run();
+  }
 
   // int64_t indices - axis 1
   OpTester test3("GatherElements", 11);
@@ -46,7 +57,11 @@ void RunTypedTest() {
   test3.AddOutput<T>("output", {2, 2},
                      {1, 1,
                       4, 3});
-  test3.Run();
+  if (exclude_tensorrt) {
+    test3.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  } else {
+    test3.Run();
+  }
 
   // negative indices - axis 1
   OpTester test4("GatherElements", 11);
@@ -60,7 +75,8 @@ void RunTypedTest() {
   test4.AddOutput<T>("output", {2, 2},
                      {1, 1,
                       4, 4});
-  test4.Run();
+  // skip TensorRT because it doesn't support negative indices				  
+  test4.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 
   // indices out of bounds
   OpTester test5("GatherElements", 11);
@@ -77,9 +93,10 @@ void RunTypedTest() {
   // skip nuphar, which will not throw error message but will ensure no out-of-bound access
   // skip cuda as the cuda kernel won't throw the error message
   // skip openvino which will not throw error message but will ensure no out-of-bound access
+  // skip TensorRT because it doesn't support out of bounds indices
   test5.Run(OpTester::ExpectResult::kExpectFailure,
             "GatherElements op: Value in indices must be within bounds [-2 , 1]. Actual value is 2",
-            {kNupharExecutionProvider, kCudaExecutionProvider, kRocmExecutionProvider, kOpenVINOExecutionProvider});
+            {kNupharExecutionProvider, kCudaExecutionProvider, kRocmExecutionProvider, kOpenVINOExecutionProvider, kTensorrtExecutionProvider});
 
   // 3D input - axis 1
   OpTester test6("GatherElements", 11);
@@ -92,7 +109,11 @@ void RunTypedTest() {
   test6.AddInput<int64_t>("indices", {1, 2, 1},
                           {0, 1});
   test6.AddOutput<T>("output", {1, 2, 1}, {1, 3});
-  test6.Run();
+  if (exclude_tensorrt) {
+    test6.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  } else {
+    test6.Run();
+  }
 
   // 3D input - axis 2
   OpTester test7("GatherElements", 11);
@@ -105,7 +126,11 @@ void RunTypedTest() {
   test7.AddInput<int64_t>("indices", {1, 2, 1},
                           {0, 1});
   test7.AddOutput<T>("output", {1, 2, 1}, {1, 4});
-  test7.Run();
+  if (exclude_tensorrt) {
+    test7.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  } else {
+    test7.Run();
+  }
 
   // 2D input - axis 1
   OpTester test8("GatherElements", 11);
@@ -117,7 +142,11 @@ void RunTypedTest() {
   test8.AddInput<int64_t>("indices", {3, 2},
                           {1, 0, 0, 1, 0, 1});
   test8.AddOutput<T>("output", {3, 2}, {2, 1, 4, 5, 7, 8});
-  test8.Run();
+  if (exclude_tensorrt) {
+    test8.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  } else {
+    test8.Run();
+  }
 
   // 2D input - axis 1
   OpTester test9("GatherElements", 11);
@@ -129,7 +158,11 @@ void RunTypedTest() {
   test9.AddInput<int64_t>("indices", {3, 2},
                           {1, 0, 0, 1, 0, 1});
   test9.AddOutput<T>("output", {3, 2}, {4, 2, 1, 5, 1, 5});
-  test9.Run();
+  if (exclude_tensorrt) {
+    test9.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  } else {
+    test9.Run();
+  }
 
   // 1D input - axis 0
   OpTester test10("GatherElements", 11);
@@ -139,7 +172,11 @@ void RunTypedTest() {
   test10.AddInput<int64_t>("indices", {2},
                            {1, 0});
   test10.AddOutput<T>("output", {2}, {2, 1});
-  test10.Run();
+  if (exclude_tensorrt) {
+    test10.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  } else {
+    test10.Run();
+  }
 }
 
 template <>
@@ -269,6 +306,7 @@ void RunTypedTest<std::string>() {
   test8.Run();
 }
 
+// Disable TensorRT due to missing int8 calibrator
 TEST(GatherElementsOpTest, int8_t) {
   RunTypedTest<int8_t>();
 }

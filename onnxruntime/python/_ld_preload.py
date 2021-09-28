@@ -5,6 +5,3 @@
 
 # This file can be modified by setup.py when building a manylinux2010 wheel
 # When modified, it will preload some libraries needed for the python C extension
-# Do not remove or move the following comment
-
-# LD_PRELOAD_BEGIN_MARK

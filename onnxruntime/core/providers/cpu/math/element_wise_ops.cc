@@ -259,13 +259,27 @@ REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sqrt, 6, 12, double, Sqrt);
 REG_ELEMENTWISE_TYPED_KERNEL(Sqrt, 13, float, Sqrt);
 REG_ELEMENTWISE_TYPED_KERNEL(Sqrt, 13, double, Sqrt);
 
-REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Pow, 7, 11, Pow, BuildKernelDefConstraintsFromTypeList<Pow7Types>(), BuildKernelDefConstraintsFromTypeList<EnabledPow7Types>());
+REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Pow, 7, 11, Pow,
+                                      BuildKernelDefConstraintsFromTypeList<Pow7Types>(),
+                                      BuildKernelDefConstraintsFromTypeList<EnabledPow7Types>());
+
 REG_ELEMENTWISE_VERSIONED_KERNEL_NONT_2(Pow, 12, 12, Pow,
-                                        BuildKernelDefConstraintsFromTypeList<Pow12BaseTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledPow12BaseTypes>(),
-                                        BuildKernelDefConstraintsFromTypeList<Pow12ExpTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledPow12ExpTypes>());
-REG_ELEMENTWISE_KERNEL_NONT_2(Pow, 13, Pow,
-                              BuildKernelDefConstraintsFromTypeList<Pow12BaseTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledPow12BaseTypes>(),
-                              BuildKernelDefConstraintsFromTypeList<Pow12ExpTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledPow12ExpTypes>());
+                                        BuildKernelDefConstraintsFromTypeList<Pow12BaseTypes>(),
+                                        BuildKernelDefConstraintsFromTypeList<EnabledPow12BaseTypes>(),
+                                        BuildKernelDefConstraintsFromTypeList<Pow12ExpTypes>(),
+                                        BuildKernelDefConstraintsFromTypeList<EnabledPow12ExpTypes>());
+
+REG_ELEMENTWISE_VERSIONED_KERNEL_NONT_2(Pow, 13, 14, Pow,
+                                        BuildKernelDefConstraintsFromTypeList<Pow12BaseTypes>(),
+                                        BuildKernelDefConstraintsFromTypeList<EnabledPow12BaseTypes>(),
+                                        BuildKernelDefConstraintsFromTypeList<Pow12ExpTypes>(),
+                                        BuildKernelDefConstraintsFromTypeList<EnabledPow12ExpTypes>());
+
+REG_ELEMENTWISE_KERNEL_NONT_2(Pow, 15, Pow,
+                              BuildKernelDefConstraintsFromTypeList<Pow12BaseTypes>(),
+                              BuildKernelDefConstraintsFromTypeList<EnabledPow12BaseTypes>(),
+                              BuildKernelDefConstraintsFromTypeList<Pow12ExpTypes>(),
+                              BuildKernelDefConstraintsFromTypeList<EnabledPow12ExpTypes>());
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Exp, 6, 12, float, Exp);
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Exp, 6, 12, double, Exp);
@@ -884,7 +898,7 @@ Status Xor::Compute(OpKernelContext* context) const {
   ProcessBroadcastSpanFuncs funcs{
       [](BroadcastHelper& per_iter_bh) {
         bool input0 = per_iter_bh.ScalarInput0<bool>();
-        auto input1 = per_iter_bh.EigenInput0<bool>();
+        auto input1 = per_iter_bh.EigenInput1<bool>();
         auto output = per_iter_bh.OutputEigen<bool>();
         if (input0)
           output.array() = !input1.array();

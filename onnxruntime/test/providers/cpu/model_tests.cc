@@ -63,9 +63,11 @@ TEST_P(ModelTest, Run) {
   }
 
   std::unique_ptr<OnnxModelInfo> model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
-  if (model_info->GetONNXOpSetVersion() != 8 && provider_name == "tensorrt") {
+  if (model_info->GetONNXOpSetVersion() != 14 && model_info->GetONNXOpSetVersion() != 15 && provider_name == "tensorrt") {
     // TensorRT can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
+    // Besides saving CI build time, TRT isn’t able to support full ONNX ops spec and therefore some testcases will fail.
+    // That's one of reasons we skip those testcases and only test latest ONNX opsets.
     return;
   }
   if (model_info->GetONNXOpSetVersion() == 10 && provider_name == "dnnl") {
@@ -121,6 +123,34 @@ TEST_P(ModelTest, Run) {
       {"training_dropout_default", "result differs", {}},       // Temporary, subsequent PR will remove this.
       {"training_dropout_default_mask", "result differs", {}},  // Temporary, subsequent PR will remove this.
       {"training_dropout_mask", "result differs", {}},          // Temporary, subsequent PR will remove this.
+      {"batchnorm_epsilon_training_mode", "training only", {}},
+      {"batchnorm_example_training_mode", "training only", {}},
+      {"bernoulli", "type error", {}},
+      {"bernoulli_double", "type error", {}},
+      {"bernoulli_double_expanded", "type error", {}},
+      {"bernoulli_expanded", "type error", {}},
+      {"bernoulli_seed", "type error", {}},
+      {"bernoulli_seed_expanded", "type error", {}},
+      {"castlike_BFLOAT16_to_FLOAT", "type error", {}},
+      {"castlike_BFLOAT16_to_FLOAT_expanded", "type error", {}},
+      {"castlike_FLOAT_to_BFLOAT16", "type error", {}},
+      {"castlike_FLOAT_to_BFLOAT16_expanded", "type error", {}},
+      {"castlike_FLOAT_to_STRING", "type error", {}},
+      {"castlike_FLOAT_to_STRING_expanded", "type error", {}},
+      {"convtranspose_autopad_same", "type error", {}},
+      {"gru_batchwise", "type error", {}},
+      {"lstm_batchwise", "type error", {}},
+      {"optional_get_element", "type error", {}},
+      {"optional_get_element_sequence", "type error", {}},
+      {"optional_has_element", "type error", {}},
+      {"optional_has_element_empty", "type error", {}},
+      {"shape_end_1", "type error", {}},
+      {"shape_end_negative_1", "type error", {}},
+      {"shape_start_1", "type error", {}},
+      {"shape_start_1_end_2", "type error", {}},
+      {"shape_start_1_end_negative_1", "type error", {}},
+      {"shape_start_negative_1", "type error", {}},
+      {"simple_rnn_batchwise", "type error", {}},
 #ifdef ENABLE_TRAINING
       {"adagrad", "not a registered function/op", {}},                  // Op not registered.
       {"adagrad_multiple", "not a registered function/op", {}},         // Op not registered.
@@ -167,6 +197,11 @@ TEST_P(ModelTest, Run) {
       {"softmax_cross_entropy_mean_no_weight_ignore_index_4d", "type error", {"onnx170"}},
 #endif
       {"mask_rcnn_keras", "this model currently has an invalid contrib op version set to 10", {}}};
+
+  // Some EPs may fail to pass some specific testcases.
+  // For example TenosrRT EP may fail on FLOAT16 related testcases if GPU doesn't support float16.
+  // Instead of list all these testcases, we can use following keyword set to filter out testcases wchich contain specific keyword.
+  std::set<std::string> broken_tests_keyword_set = {};
 
   if (provider_name == "nuphar") {
     // https://msdata.visualstudio.com/Vienna/_workitems/edit/1000703
@@ -335,6 +370,31 @@ TEST_P(ModelTest, Run) {
     broken_tests.insert({"softmax_cross_entropy_sum_log_prob_expanded", "Shape mismatch"});
   }
 
+  if (provider_name == "tensorrt") {
+    broken_tests.insert({"convtranspose_with_kernel", "It causes segmentation fault"});
+    broken_tests.insert({"convtranspose_pad", "It causes segmentation fault"});
+    broken_tests.insert({"convtranspose_kernel_shape", "It causes segmentation fault"});
+    broken_tests.insert({"dynamicquantizelinear_expanded", "It causes segmentation fault"});
+    broken_tests.insert({"dynamicquantizelinear_min_adjusted_expanded", "It causes segmentation fault"});
+    broken_tests.insert({"dynamicquantizelinear_max_adjusted_expanded", "It causes segmentation fault"});
+
+    broken_tests.insert({"basic_conv_with_padding",
+                         "Cannot set more than one input unless network has Q/DQ layers. TensorRT EP could not build engine for fused node"});
+    broken_tests.insert({"basic_conv_without_padding",
+                         "Cannot set more than one input unless network has Q/DQ layers. TensorRT EP could not build engine for fused node"});
+    broken_tests.insert({"conv_with_strides_no_padding",
+                         "Cannot set more than one input unless network has Q/DQ layers. TensorRT EP could not build engine for fused node"});
+
+    broken_tests.insert({"conv_with_autopad_same", "Internal Error (node_of_y: Cannot set more than one input unless network has Q/DQ layers.)"});
+
+    // sce op is not supported
+    broken_tests_keyword_set.insert({"sce"});
+
+    // TensorRT EP CI uses Nvidia Tesla M60 which doesn't support fp16.
+    broken_tests_keyword_set.insert({"FLOAT16"});
+
+  }
+
   if (provider_name == "dml") {
     broken_tests.insert({"tinyyolov3", "The parameter is incorrect"});
     broken_tests.insert({"PixelShuffle", "Test requires 6D Reshape, which isn't supported by DirectML"});
@@ -485,6 +545,13 @@ TEST_P(ModelTest, Run) {
          iter->broken_versions_.find(model_version) != iter->broken_versions_.end())) {
       return;
     }
+
+    for (auto iter2 = broken_tests_keyword_set.begin(); iter2 != broken_tests_keyword_set.end(); ++iter2) {
+        std::string keyword = *iter2;
+        if (ToMBString(test_case_name).find(keyword) != std::string::npos) {
+          return;
+        }
+    }
   }
   bool is_single_node = !model_info->GetNodeName().empty();
   std::vector<ExecutionMode> execution_modes = {ExecutionMode::ORT_SEQUENTIAL};
@@ -524,7 +591,31 @@ TEST_P(ModelTest, Run) {
       } else if (provider_name == "nuphar") {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultNupharExecutionProvider()));
       } else if (provider_name == "tensorrt") {
-        ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
+        if (test_case_name.find(ORT_TSTR("FLOAT16")) != std::string::npos) {
+          OrtTensorRTProviderOptions params{
+              0,
+              0,
+              nullptr,
+              1000,
+              1,
+              1 << 30,
+              1, // enable fp16
+              0,
+              nullptr,
+              0,
+              0,
+              0,
+              0,
+              0,
+              nullptr,
+              0,
+              nullptr,
+              0};
+          ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(TensorrtExecutionProviderWithOptions(&params)));
+        } else {
+          ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
+        }
+        ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
       } else if (provider_name == "migraphx") {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultMIGraphXExecutionProvider()));
       } else if (provider_name == "openvino") {
@@ -774,7 +865,9 @@ TEST_P(ModelTest, Run) {
                                                    ORT_TSTR("mlperf_ssd_resnet34_1200"),
                                                    ORT_TSTR("convtranspose_1d"),
                                                    ORT_TSTR("convtranspose_3d"),
-                                                   ORT_TSTR("maxpool_2d_uint8")};
+                                                   ORT_TSTR("maxpool_2d_uint8"),
+                                                   ORT_TSTR("mul_uint8"),
+                                                   ORT_TSTR("div_uint8")};
   static const ORTCHAR_T* tensorrt_disabled_tests[] = {
       ORT_TSTR("udnie"), ORT_TSTR("rain_princess"),
       ORT_TSTR("pointilism"), ORT_TSTR("mosaic"),
@@ -853,7 +946,7 @@ TEST_P(ModelTest, Run) {
 #endif
 
 // TENSORRT/OpenVino has too many test failures in the single node tests
-#if !defined(_WIN32) && !defined(USE_TENSORRT) && !defined(USE_OPENVINO)
+#if !defined(_WIN32) && !defined(USE_OPENVINO)
     paths.push_back("/data/onnx");
 #endif
     while (!paths.empty()) {

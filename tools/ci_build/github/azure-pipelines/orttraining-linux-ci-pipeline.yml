@@ -9,6 +9,10 @@ jobs:
     clean: true
     submodules: recursive
 
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '12.16.3'
+
   - template: templates/get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
@@ -17,6 +21,7 @@ jobs:
       Repository: onnxruntimecpubuild
 
   - task: CmdLine@2
+    displayName: 'build'
     inputs:
       script: |
         mkdir -p $HOME/.onnx
@@ -24,23 +29,73 @@ jobs:
           --volume /data/onnx:/data/onnx:ro \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
-          --volume /data/models:/build/models:ro \
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuild \
-            /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+            /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
               --config Debug Release \
               --skip_submodule_sync \
               --build_shared_lib \
               --parallel \
-              --build_wheel \
-              --use_openmp \
+              --build_wheel --enable_training \
               --enable_onnx_tests \
-              --enable_pybind --build_java --build_nodejs --enable_training
+              --build_java --build_nodejs --update --build
       workingDirectory: $(Build.SourcesDirectory)
+
+  - task: CmdLine@2
+    displayName: 'Install python deps and run java tests'
+    inputs:
+      script: |
+         set -e -x
+         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
+         cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
+         #Test ORT with the latest ONNX release.
+         sed -i 's/git+http:\/\/github\.com\/onnx\/onnx.*/onnx==1.9.0/' $(Build.BinariesDirectory)/requirements.txt
+         python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
+         cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_cpu.txt $(Build.BinariesDirectory)/requirements_torch_cpu.txt
+         python3 -m pip install -r $(Build.BinariesDirectory)/requirements_torch_cpu.txt
+         ln -sf /data/models $(Build.BinariesDirectory)
+         cd $(Build.SourcesDirectory)/java
+         /usr/local/gradle/bin/gradle "cmakeCheck" "-DcmakeBuildDir=$(Build.BinariesDirectory)/Release"
+
+  - task: CmdLine@2
+    displayName: 'Install Release python package'
+    inputs:
+      script: |
+         rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
+         python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
+
+  - task: CmdLine@2
+    displayName: 'Run Release unit tests'
+    inputs:
+      script: |
+        cd /tmp
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --cmake_generator Ninja --config Release --test --skip_submodule_sync --build_shared_lib --parallel --build_wheel --enable_training --enable_onnx_tests --build_nodejs --ctest_path ""
+
+  - task: CmdLine@2
+    displayName: 'Install Debug python package'
+    inputs:
+      script: |
+         rm -rf $(Build.BinariesDirectory)/Debug/onnxruntime $(Build.BinariesDirectory)/Debug/pybind11
+         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
+         python3 -m pip install $(Build.BinariesDirectory)/Debug/dist/*.whl
+
+  - task: CmdLine@2
+    displayName: 'Run Debug unit tests'
+    inputs:
+      scriptPath: $(Build.SourcesDirectory)/tools/ci_build/build.py
+      arguments: --build_dir $(Build.BinariesDirectory) --cmake_generator Ninja --config Debug --test --skip_submodule_sync --build_shared_lib --parallel --build_wheel --enable_training --enable_onnx_tests --build_nodejs --ctest_path ""
+      workingDirectory: /tmp
+
+  - task: CmdLine@2
+    displayName: 'Symbolic shape infer'
+    inputs:
+      script: |
+        cd $(Build.BinariesDirectory)/Release
+        python3 $(Build.BinariesDirectory)/Release/onnxruntime_test_python_symbolic_shape_infer.py
 
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'

@@ -41,15 +41,13 @@ class FusionLayerNormalization(Fusion):
         if len(children) == 0 or len(children) > 2:
             return
 
-        parent = self.model.get_parent(node, 0, output_name_to_node)
-        if parent is None:
-            return
+        root_input = node.input[0]
 
-        if children[0].op_type != 'Sub' or self.model.get_parent(children[0], 0, output_name_to_node) != parent:
+        if children[0].op_type != 'Sub' or children[0].input[0] != root_input:
             return
 
         if len(children) == 2:
-            if children[1].op_type != 'Sub' or self.model.get_parent(children[1], 0, output_name_to_node) != parent:
+            if children[1].op_type != 'Sub' or children[1].input[0] != root_input:
                 return
 
         div_node = None

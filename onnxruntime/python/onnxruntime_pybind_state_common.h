@@ -5,6 +5,7 @@
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/cerr_sink.h"
+#include "core/common/optional.h"
 #include "core/framework/allocator.h"
 #include "core/framework/session_options.h"
 #include "core/session/environment.h"
@@ -203,6 +204,10 @@ class SparseTensor;
 #endif
 namespace python {
 
+using ExecutionProviderRegistrationFn = std::function<void(InferenceSession*, 
+                                                           const std::vector<std::string>&,
+                                                           const ProviderOptionsMap&)>;
+
 // TODO remove deprecated global config
 extern OrtDevice::DeviceId cuda_device_id;
 // TODO remove deprecated global config
@@ -389,6 +394,7 @@ Environment& GetEnv();
 // Initialize an InferenceSession.
 // Any provider_options should have entries in matching order to provider_types.
 void InitializeSession(InferenceSession* sess,
+                       ExecutionProviderRegistrationFn ep_registration_fn,
                        const std::vector<std::string>& provider_types = {},
                        const ProviderOptionsVector& provider_options = {},
                        const std::unordered_set<std::string>& disabled_optimizer_names = {});
@@ -448,7 +454,10 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISA
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(uint32_t flags);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(
+    uint32_t flags, const optional<std::string>& partitioning_stop_ops_list);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CoreML(uint32_t flags);
 
+constexpr const char* kDefaultExecutionProviderEntry = "GetProvider"; 
 }  // namespace onnxruntime

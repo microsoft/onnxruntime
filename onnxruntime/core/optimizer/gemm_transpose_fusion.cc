@@ -26,17 +26,37 @@ Status GemmTransposeFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& m
 
   // check if input A is a Transpose
   if (A_node_ptr != nullptr && A_node_ptr->OpType() == "Transpose") {
-    Node& A_node = *graph.GetNode(A_node_ptr->Index());
-    transA = !transA;
-    nodes_to_remove.push_back(A_node);
-    new_gemm_input_defs[0] = A_node.MutableInputDefs()[0];
+    // make sure all consumers are gemm nodes to avoid possible double transpose 
+    std::vector<const Node*> gemm_nodes = graph_utils::FindChildrenByType(*A_node_ptr, "Gemm");
+    if (gemm_nodes.size() == A_node_ptr->GetOutputEdgesCount()) {
+      Node& A_node = *graph.GetNode(A_node_ptr->Index());
+      transA = !transA;
+      if (A_node.GetOutputEdgesCount() > 1) {
+        // remove only the edge between the Transpose and Gemm nodes, the Transpose won't be removed 
+        // since it's still connected to other Gemm. When transformation for the last connected Gemm is
+        // being processed, it would fall into the else {} below to remove the Transpose node 
+        int output_idx = graph_utils::GetNodeOutputIndexFromOutputName(A_node, gemm_node.MutableInputDefs()[0]->Name());
+        graph.RemoveEdge(A_node.Index(), gemm_node.Index(), output_idx, 0);
+      } else {
+        nodes_to_remove.push_back(A_node);
+      }
+      new_gemm_input_defs[0] = A_node.MutableInputDefs()[0];
+    }
   }
   // check if input B is a Transpose
   if (B_node_ptr != nullptr && B_node_ptr->OpType() == "Transpose") {
-    Node& B_node = *graph.GetNode(B_node_ptr->Index());
-    transB = !transB;
-    nodes_to_remove.push_back(B_node);
-    new_gemm_input_defs[1] = B_node.MutableInputDefs()[0];
+    std::vector<const Node*> gemm_nodes = graph_utils::FindChildrenByType(*B_node_ptr, "Gemm");
+    if (gemm_nodes.size() == B_node_ptr->GetOutputEdgesCount()) {
+      Node& B_node = *graph.GetNode(B_node_ptr->Index());
+      transB = !transB;
+      if (B_node.GetOutputEdgesCount() > 1) {
+        int output_idx = graph_utils::GetNodeOutputIndexFromOutputName(B_node, gemm_node.MutableInputDefs()[1]->Name());
+        graph.RemoveEdge(B_node.Index(), gemm_node.Index(), output_idx, 1);
+      } else {
+        nodes_to_remove.push_back(B_node);
+      }
+      new_gemm_input_defs[1] = B_node.MutableInputDefs()[0];
+    }
   }
 
   nodes_to_remove.push_back(gemm_node);
@@ -82,11 +102,14 @@ bool GemmTransposeFusion::SatisfyCondition(const Graph& graph, const Node& node,
   // Fusion can be applied if there is a transpose at either of the inputs
   for (auto node_it = node.InputNodesBegin(); node_it != node.InputNodesEnd(); ++node_it) {
     if (graph_utils::IsSupportedOptypeVersionAndDomain(*node_it, "Transpose", {1, 13}) &&
-        node_it->GetOutputEdgesCount() == 1 &&
         !graph.NodeProducesGraphOutput(*node_it) &&
         // Make sure the two nodes do not span execution providers.
         node_it->GetExecutionProviderType() == node.GetExecutionProviderType()) {
-      return true;
+          // acceptable if all consumer(s) are gemm node(s) 
+          std::vector<const Node*> gemm_nodes = graph_utils::FindChildrenByType(*node_it, "Gemm");
+          if (gemm_nodes.size() == node_it->GetOutputEdgesCount()) {
+            return true;
+          }
     }
   }
 

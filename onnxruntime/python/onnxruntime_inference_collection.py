@@ -11,13 +11,15 @@ from onnxruntime.capi import _pybind_state as C
 
 
 def get_ort_device_type(device):
-    device = device.lower()
-    if device == 'cuda':
+    device_type = device if type(device) is str else device.type.lower()
+    if device_type == 'cuda':
         return C.OrtDevice.cuda()
-    elif device == 'cpu':
+    elif device_type == 'cpu':
         return C.OrtDevice.cpu()
+    elif device_type == 'ort':
+        return C.get_ort_device(device.index).device_type()
     else:
-        raise Exception('Unsupported device type: ' + device)
+        raise Exception('Unsupported device type: ' + device_type)
 
 
 def check_and_normalize_provider_args(providers, provider_options, available_provider_names):
@@ -205,7 +207,7 @@ class Session:
         :param input_feed: dictionary ``{ input_name: input_ort_value }``
          See ``OrtValue`` class how to create OrtValue from numpy array or SparseTensor
         :param run_options: See :class:`onnxruntime.RunOptions`.
-        :return an array of OrtValues
+        :return: an array of OrtValues
         ::
 
             sess.run([output_name], {input_name: x})
@@ -345,6 +347,13 @@ class InferenceSession(Session):
         providers, provider_options = check_and_normalize_provider_args(providers,
                                                                         provider_options,
                                                                         available_providers)
+
+        if providers == [] and len(available_providers) > 1:
+            warnings.warn("Deprecation warning. This ORT build has {} enabled. ".format(available_providers) +
+                          "The next release (ORT 1.10) will require explicitly setting the providers parameter " +
+                          "(as opposed to the current behavior of providers getting set/registered by default " +
+                          "based on the build flags) when instantiating InferenceSession."
+                          "For example, onnxruntime.InferenceSession(..., providers=[\"CUDAExecutionProvider\"], ...)")
 
         session_options = self._sess_options if self._sess_options else C.get_default_session_options()
         if self._model_path:
@@ -669,7 +678,7 @@ class SparseTensor:
          have a 1-D shape when it contains a linear index of non-zero values and its length must be equal to
          that of the values. It can also be of 2-D shape, in which has it contains pairs of coordinates for
          each of the nnz values and its length must be exactly twice of the values length.
-        :param ort_device - describes the backing memory owned by the supplied nummpy arrays. Only CPU memory is
+        :param ort_device: - describes the backing memory owned by the supplied nummpy arrays. Only CPU memory is
          suppored for non-numeric data types.
 
          For primitive types, the method will map values and coo_indices arrays into native memory and will use
@@ -693,7 +702,7 @@ class SparseTensor:
          Its length must be equal to that of the values.
         :param outer_indices:  contiguous 1-D numpy array(int64) that contains CSR outer indices for the tensor.
          Its length must be equal to the number of rows + 1.
-        :param ort_device - describes the backing memory owned by the supplied nummpy arrays. Only CPU memory is
+        :param ort_device: - describes the backing memory owned by the supplied nummpy arrays. Only CPU memory is
          suppored for non-numeric data types.
 
          For primitive types, the method will map values and indices arrays into native memory and will use them as
@@ -747,7 +756,7 @@ class SparseTensor:
     def to_cuda(self, ort_device):
         '''
         Returns a copy of this instance on the specified cuda device
-        :param ort_device with name 'cuda' and valid gpu device id
+        :param ort_device: with name 'cuda' and valid gpu device id
         The method will throw if:
         - this instance contains strings
         - this instance is already on GPU. Cross GPU copy is not supported
