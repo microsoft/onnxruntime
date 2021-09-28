@@ -152,7 +152,7 @@ std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::RunImpl() {
     // Expected output is not None
     if (expected_output_value != nullptr) {
       // Actual output is None
-      if (!actual_output_value->HasValue()) {
+      if (!actual_output_value->IsAllocated()) {
         ret = std::pair<COMPARE_RESULT, std::string>{
             COMPARE_RESULT::RESULT_DIFFERS,
             "Expected non-None output but received an OrtValue that is None"};
@@ -162,7 +162,7 @@ std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::RunImpl() {
                             relative_per_sample_tolerance, post_procesing);
       }
     } else {  // Expected output is None, ensure that the received output OrtValue is None as well
-      if (actual_output_value->HasValue()) {
+      if (actual_output_value->IsAllocated()) {
         ret = std::pair<COMPARE_RESULT, std::string>{
             COMPARE_RESULT::RESULT_DIFFERS,
             "Expected None output but received an OrtValue that is not None"};

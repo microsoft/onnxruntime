@@ -136,6 +136,13 @@ Loop::Info::Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in)
   num_subgraph_inputs = 2 + num_loop_carried_vars;  // iter_num, cond, loop carried vars
   num_outputs = static_cast<int>(node.OutputDefs().size());
 
+  // Hold the type for loop carried dependencies - we will use it later
+  const auto& node_input_types = node.InputDefs();
+  loop_carried_vars_types.reserve(num_subgraph_inputs);
+  for (int i = 0; i < num_loop_carried_vars; ++i) {
+    loop_carried_vars_types.push_back(node_input_types[i + 2]->TypeAsProto());
+  }
+
   auto& subgraph_inputs = subgraph.GetInputs();
   auto& subgraph_outputs = subgraph.GetOutputs();
 
@@ -499,54 +506,62 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
 
   // As the loop carried variables may change shape across iterations there's no way to avoid a copy
   // as we need the final shape.
-  auto copy_mlvalue_to_output = [this](OrtValue& input, int output_idx, int64_t iter_num_value) {
-    if (input.IsTensor()) {
-      if (!input.HasValue()) {  // "None" tensor
+  auto copy_mlvalue_to_output = [this](OrtValue& input, int output_idx,
+                                       int64_t iter_num_value, const TypeProto& tp) {
+    if (!input.IsAllocated()) {  // "None"
+      // We can't rely on the input OrtValue containing type information
+      // as it could be a main graph input which will be missing the type
+      // in the corresponding OrtValue for the "None" case because
+      // the user doesn't provide any input for the "None" case.
+
+      if (utils::HasOptionalTensorType(tp)) {
         context_.OutputOptionalWithoutData<Tensor>(0);
-      } else {
-        const auto& data = input.Get<Tensor>();
-        Tensor* output = context_.Output(output_idx, data.Shape());
-        // Safely use the IDataTransfer abstraction as we only allow using
-        // Loop on CUDA if the copy stream is the same as the compute stream.
-        // So there is no explicit sync required between the compute and copy streams
-        // to avoid data races.
-        session_state_.GetDataTransferMgr().CopyTensor(input.Get<Tensor>(), *output);
-      }
-    } else if (input.IsTensorSequence()) {
-      if (!input.HasValue()) {  // "None" sequence of tensors
+      } else if (utils::HasOptionalSequenceType(tp)) {
         context_.OutputOptionalWithoutData<TensorSeq>(0);
       } else {
-        TensorSeq* output = context_.Output<TensorSeq>(output_idx);
+        // Will never hit this
+        ORT_THROW(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported type for Loop op");
+      }
 
-        if (iter_num_value != 0) {
-          // We can move the subgraph outputs directly into the Loop's outputs.
-          *output = std::move(*input.GetMutable<TensorSeq>());
-        } else {
-          // We can't move the Loop's inputs directly into the Loop's outputs
-          // as operator inputs are read-only. Hence, we need to make a copy.
-          std::vector<Tensor> tensors;
+    } else if (input.IsTensor()) {
+      const auto& input_tensor = input.Get<Tensor>();
+      Tensor* output = context_.Output(output_idx, input_tensor.Shape());
+      // Safely use the IDataTransfer abstraction as we only allow using
+      // Loop on CUDA if the copy stream is the same as the compute stream.
+      // So there is no explicit sync required between the compute and copy streams
+      // to avoid data races.
+      session_state_.GetDataTransferMgr().CopyTensor(input_tensor, *output);
+    } else if (input.IsTensorSequence()) {
+      TensorSeq* output = context_.Output<TensorSeq>(output_idx);
 
-          auto& data = input.Get<TensorSeq>();
+      if (iter_num_value != 0) {
+        // We can move the subgraph outputs directly into the Loop's outputs.
+        *output = std::move(*input.GetMutable<TensorSeq>());
+      } else {
+        // We can't move the Loop's inputs directly into the Loop's outputs
+        // as operator inputs are read-only. Hence, we need to make a copy.
+        std::vector<Tensor> tensors;
 
-          output->SetType(data.DataType());
+        auto& data = input.Get<TensorSeq>();
 
-          AllocatorPtr alloc;
-          auto status = context_.GetTempSpaceAllocator(&alloc);
-          if (!status.IsOK()) {
-            ORT_THROW("Unable to get an allocator");
-          }
-          for (auto it = data.begin(), end = data.end(); it != end; ++it) {
-            Tensor tmp(it->DataType(), onnxruntime::TensorShape(it->Shape()), alloc);
-            // Safely use the IDataTransfer abstraction as we only allow using
-            // Loop on CUDA if the copy stream is the same as the compute stream.
-            // So there is no explicit sync required between the compute and copy streams
-            // to avoid data races.
-            session_state_.GetDataTransferMgr().CopyTensor(*it, tmp);
-            tensors.push_back(std::move(tmp));
-          }
+        output->SetType(data.DataType());
 
-          output->SetElements(std::move(tensors));
+        AllocatorPtr alloc;
+        auto status = context_.GetTempSpaceAllocator(&alloc);
+        if (!status.IsOK()) {
+          ORT_THROW("Unable to get an allocator");
         }
+        for (auto it = data.begin(), end = data.end(); it != end; ++it) {
+          Tensor tmp(it->DataType(), onnxruntime::TensorShape(it->Shape()), alloc);
+          // Safely use the IDataTransfer abstraction as we only allow using
+          // Loop on CUDA if the copy stream is the same as the compute stream.
+          // So there is no explicit sync required between the compute and copy streams
+          // to avoid data races.
+          session_state_.GetDataTransferMgr().CopyTensor(*it, tmp);
+          tensors.push_back(std::move(tmp));
+        }
+
+        output->SetElements(std::move(tensors));
       }
     }
   };
@@ -555,7 +570,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
   if (iter_num_value != 0) {
     for (int i = 0; i < info_.num_loop_carried_vars; ++i) {
       // need to allocate Loop output and copy OrtValue from fetches
-      copy_mlvalue_to_output(fetches[i + 1], i, iter_num_value);  // skip cond
+      copy_mlvalue_to_output(fetches[i + 1], i, iter_num_value, *info_.loop_carried_vars_types[i]);  // skip cond
     }
 
     for (int i = info_.num_loop_carried_vars; i < info_.num_outputs; ++i) {
@@ -569,7 +584,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
     // no iterations.
     // copy input loop carried vars to output.
     for (int i = 0; i < info_.num_loop_carried_vars; ++i) {
-      copy_mlvalue_to_output(feeds[i + 2], i, iter_num_value);  // skip iter# and cond
+      copy_mlvalue_to_output(feeds[i + 2], i, iter_num_value, *info_.loop_carried_vars_types[i]);  // skip iter# and cond
     }
 
     // create empty outputs for loop outputs using the subgraph output shapes for the rank

@@ -39,7 +39,7 @@ TEST(OptionalOpTest, OptionalTensorCreateFromTypeProto) {
 
   test.AddAttribute<onnx::TypeProto>("type", tp);
   // expected value is nullptr because we expect a "None" output
-  test.AddOptionalTypeTensorOutput<float>("Y", {2}, nullptr);
+  test.AddOptionalTypeTensorOutput<float>("Y", {}, nullptr);
 
   test.Run();
 }

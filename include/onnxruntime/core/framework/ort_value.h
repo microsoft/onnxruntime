@@ -43,13 +43,13 @@ struct OrtValue {
   }
 
   bool IsAllocated() const {
-    return HasValue() && type_;
+    return data_ != nullptr && type_;
   }
 
   template <typename T>
   const T& Get() const {
     ORT_ENFORCE(onnxruntime::DataTypeImpl::GetType<T>() == type_, onnxruntime::DataTypeImpl::GetType<T>(), " != ", type_);
-    ORT_ENFORCE(HasValue(), "OrtValue contains no data");
+    ORT_ENFORCE(IsAllocated(), "OrtValue contains no data");
     return *static_cast<T*>(data_.get());
   }
 
@@ -90,10 +90,6 @@ struct OrtValue {
 
   void ShareFenceWith(OrtValue& v) {
     fence_ = v.fence_;
-  }
-
-  bool HasValue() const noexcept {
-    return data_ != nullptr;
   }
 
  private:

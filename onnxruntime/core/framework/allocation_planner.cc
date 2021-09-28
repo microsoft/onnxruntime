@@ -447,6 +447,12 @@ class PlannerImpl {
         // TODO this should be an error case, needs more investigation
         continue;
       }
+      // Make sure optional types are not up for re-use as we aren't quite
+      // sure if the re-used tensor will be a None or otherwise. This cannot
+      // be determined statically.
+      if (IsOptionalType(*p_node_arg)) {
+        continue;
+      }
       auto& available_memory_info = AllocPlan(p_node_arg->Name()).location;
       if (!(available_memory_info == required_memory_info)) continue;
       auto p_available_buffer_shape = context_.GetShape(*p_node_arg);
@@ -898,7 +904,7 @@ class PlannerImpl {
 
       // determine if inputs of *pnode can be freed:
       for (auto node_input : pnode->InputDefs()) {
-        if (node_input->Exists() && !IsOptionalType(*node_input)) {
+        if (node_input->Exists()) {
           auto& sym = node_input->Name();
           auto original = Buffer(Index(sym));
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
@@ -920,7 +926,7 @@ class PlannerImpl {
       }
 
       for (auto node_input : pnode->ImplicitInputDefs()) {
-        if (node_input->Exists() && !IsOptionalType(*node_input)) {
+        if (node_input->Exists()) {
           auto& sym = node_input->Name();
           auto original = Buffer(Index(sym));
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
@@ -943,7 +949,7 @@ class PlannerImpl {
 
       // determine if any outputs of *pnode are unused and can be freed:
       for (auto node_output : pnode->OutputDefs()) {
-        if (node_output->Exists() && !IsOptionalType(*node_output)) {
+        if (node_output->Exists()) {
           auto& sym = node_output->Name();
           auto original = Buffer(Index(sym));
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.

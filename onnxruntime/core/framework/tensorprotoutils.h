@@ -128,6 +128,11 @@ inline bool HasOptionalTensorType(const ONNX_NAMESPACE::TypeProto& type_proto) {
          type_proto.optional_type().elem_type().value_case() == ONNX_NAMESPACE::TypeProto::kTensorType;
 }
 
+inline bool HasOptionalSequenceType(const ONNX_NAMESPACE::TypeProto& type_proto) {
+  return type_proto.value_case() == ONNX_NAMESPACE::TypeProto::kOptionalType &&
+         type_proto.optional_type().elem_type().value_case() == ONNX_NAMESPACE::TypeProto::kSequenceType;
+}
+
 // Does not check if the TypeProto contains an optional - the caller must validate that
 inline const ONNX_NAMESPACE::TypeProto& GetOptionalTypeProto(const ONNX_NAMESPACE::TypeProto& type_proto) {
   return type_proto.optional_type().elem_type();

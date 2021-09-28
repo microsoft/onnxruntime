@@ -18,9 +18,9 @@ TEST(Identity, FloatType) {
 TEST(Identity, StringType) {
   OpTester test("Identity", 10, kOnnxDomain);
   std::vector<int64_t> dims{2, 2};
-  test.AddInput<std::string>("X", dims, {"a" , "b", "x", "y"});
-  test.AddOutput<std::string>("Y", dims, {"a" , "b", "x", "y"});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//TensorRT: unsupported data type
+  test.AddInput<std::string>("X", dims, {"a", "b", "x", "y"});
+  test.AddOutput<std::string>("Y", dims, {"a", "b", "x", "y"});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: unsupported data type
 }
 
 TEST(Identity, SequenceType) {
@@ -30,6 +30,22 @@ TEST(Identity, SequenceType) {
   input.AddTensor({3, 3}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
   test.AddSeqInput("X", input);
   test.AddSeqOutput("Y", input);
+  test.Run();
+}
+
+TEST(Identity, OptionalType_NotNone) {
+  OpTester test("Identity", 16, kOnnxDomain);
+  std::initializer_list<float> data = {-1.0856307f, 0.99734545f};
+  test.AddOptionalTypeTensorInput<float>("A", {2}, &data);
+  test.AddOptionalTypeTensorOutput<float>("Y", {2}, &data);
+  test.Run();
+}
+
+TEST(Identity, OptionalType_None) {
+  OpTester test("Identity", 16, kOnnxDomain);
+  std::initializer_list<float> data = {-1.0856307f, 0.99734545f};
+  test.AddOptionalTypeTensorInput<float>("A", {}, nullptr);   // None
+  test.AddOptionalTypeTensorOutput<float>("Y", {}, nullptr);  // None
   test.Run();
 }
 

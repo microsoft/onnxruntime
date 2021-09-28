@@ -127,7 +127,7 @@ Status OptionalHasElement::Compute(OpKernelContext* ctx) const {
 
   // Output is a scalar
   auto* output_tensor = ctx->Output(0, {});
-  output_tensor->MutableData<bool>()[0] = input_ort_value->HasValue();
+  output_tensor->MutableData<bool>()[0] = input_ort_value->IsAllocated();
 
   return Status::OK();
 }
@@ -135,7 +135,7 @@ Status OptionalHasElement::Compute(OpKernelContext* ctx) const {
 Status OptionalGetElement::Compute(OpKernelContext* ctx) const {
   const auto* input_ort_value = ctx->GetInputOrtValue(0);
 
-  if (!input_ort_value->HasValue()) {
+  if (!input_ort_value->IsAllocated()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Trying to use OptionalGetElement on an optional type "
                            "OrtValue which contains no data");

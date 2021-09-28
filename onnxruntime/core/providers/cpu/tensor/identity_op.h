@@ -13,6 +13,7 @@
 #endif
 #include "core/framework/op_kernel.h"
 #include "core/framework/TensorSeq.h"
+#include "core/framework/tensorprotoutils.h"
 
 namespace onnxruntime {
 
@@ -24,15 +25,25 @@ class IdentityOp final : public OpKernel {
 
   Status Compute(OpKernelContext* context) const override {
     const auto* input_ort_value = context->GetInputOrtValue(0);
-    if (!input_ort_value->HasValue()) {
-      if (input_ort_value->IsTensor()) {
+
+    if (!input_ort_value->IsAllocated()) {
+      // We can't rely on the input OrtValue containing type information
+      // as it could be a main graph input which will be missing the type
+      // in the corresponding OrtValue for the "None" case because
+      // the user doesn't provide any input for the "None" case.
+
+      const auto* input_type = Node().InputDefs()[0]->TypeAsProto();
+
+      if (utils::HasOptionalTensorType(*input_type)) {
         context->OutputOptionalWithoutData<Tensor>(0);
-      } else if (input_ort_value->IsTensorSequence()) {
+      } else if (utils::HasOptionalSequenceType(*input_type)) {
         context->OutputOptionalWithoutData<TensorSeq>(0);
       } else {
         // Will never hit this
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported type for Identity op");
       }
+
+      return Status::OK();
     }
 
     if (input_ort_value->IsTensor()) {
