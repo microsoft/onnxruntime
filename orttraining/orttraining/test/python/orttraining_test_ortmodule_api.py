@@ -3881,8 +3881,9 @@ def test_ortmodule_gradient_builder():
 
     @register_gradient('', 'Cos')
     def Cos_gradient():
-        return [('Sin', ['GO(0)'], ['Sin_X']),
-                ('Neg', ['Sin_X'], ['GI(0)'])]
+        return [('Sin', ['I(0)'], ['Sin_X']),
+                ('Mul', ['Sin_X', 'GO(0)'], ['Sin_X_Times_dY']),
+                ('Neg', ['Sin_X_Times_dY'], ['GI(0)'])]
 
     pt_model = Model().to(device)
     debug_options = DebugOptions(save_onnx=True, onnx_prefix='cos')
@@ -3894,8 +3895,9 @@ def test_ortmodule_gradient_builder():
         loss.backward()
         return prediction
 
-    x = torch.randn(2, 2, device=device, requires_grad=True, dtype=torch.float32)
-    pt_prediction = run_step(pt_model, x)
-    ort_prediction = run_step(ort_model, x)
+    pt_x = torch.randn(2, 2, device=device, requires_grad=True, dtype=torch.float32)
+    ort_x = copy.deepcopy(pt_x)
+    pt_prediction = run_step(pt_model, pt_x)
+    ort_prediction = run_step(ort_model, ort_x)
     _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
-    _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+    _test_helpers.assert_values_are_close(ort_x.grad, pt_x.grad )
