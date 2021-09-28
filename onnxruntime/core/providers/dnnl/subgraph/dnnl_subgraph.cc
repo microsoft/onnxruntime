@@ -45,7 +45,7 @@ dnnl::memory::dims DnnlTensor::Dim() {
   return dnnl_dims;
 }
 
-dnnl::memory::data_type DnnlTensor::Type() {
+dnnl::memory::data_type DnnlTensor::Type() const {
   auto data_type = arg_->TypeAsProto()->tensor_type().elem_type();
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED:
