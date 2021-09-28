@@ -36,7 +36,7 @@ class IdentityOp final : public OpKernel {
 
       if (utils::HasOptionalTensorType(*input_type)) {
         context->OutputOptionalWithoutData<Tensor>(0);
-      } else if (utils::HasOptionalSequenceType(*input_type)) {
+      } else if (utils::HasOptionalTensorSequenceType(*input_type)) {
         context->OutputOptionalWithoutData<TensorSeq>(0);
       } else {
         // Will never hit this
@@ -83,22 +83,30 @@ class IdentityOp final : public OpKernel {
     } else {  // Has to be TensorSeq
       const auto* X = &input_ort_value->Get<TensorSeq>();
       TensorSeq* output = context->Output<TensorSeq>(0);
-      output->SetType(X->DataType());
 
-      AllocatorPtr alloc;
-      auto status = context->GetTempSpaceAllocator(&alloc);
-      if (!status.IsOK()) {
-        ORT_THROW("Unable to get an allocator");
-      }
-      std::vector<Tensor> tensors;
-      for (auto it = X->begin(), end = X->end(); it != end; ++it) {
-        Tensor tmp(it->DataType(), onnxruntime::TensorShape(it->Shape()), alloc);
-        size_t bytes = it->SizeInBytes();
-        memcpy(tmp.MutableDataRaw(), it->DataRaw(), bytes);
-        tensors.push_back(std::move(tmp));
-      }
+      // Check if the output is an alias of the input
+      // If so, there is nothing else to be done.
+      // Equivalent of checking if two buffer pointers are
+      // different before copying over the contents while
+      // processing Tensors.
+      if (X != output) {
+        output->SetType(X->DataType());
 
-      output->SetElements(std::move(tensors));
+        AllocatorPtr alloc;
+        auto status = context->GetTempSpaceAllocator(&alloc);
+        if (!status.IsOK()) {
+          ORT_THROW("Unable to get an allocator");
+        }
+        std::vector<Tensor> tensors;
+        for (auto it = X->begin(), end = X->end(); it != end; ++it) {
+          Tensor tmp(it->DataType(), onnxruntime::TensorShape(it->Shape()), alloc);
+          size_t bytes = it->SizeInBytes();
+          memcpy(tmp.MutableDataRaw(), it->DataRaw(), bytes);
+          tensors.push_back(std::move(tmp));
+        }
+
+        output->SetElements(std::move(tensors));
+      }
     }
 
     return Status::OK();

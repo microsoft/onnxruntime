@@ -128,9 +128,18 @@ inline bool HasOptionalTensorType(const ONNX_NAMESPACE::TypeProto& type_proto) {
          type_proto.optional_type().elem_type().value_case() == ONNX_NAMESPACE::TypeProto::kTensorType;
 }
 
-inline bool HasOptionalSequenceType(const ONNX_NAMESPACE::TypeProto& type_proto) {
-  return type_proto.value_case() == ONNX_NAMESPACE::TypeProto::kOptionalType &&
-         type_proto.optional_type().elem_type().value_case() == ONNX_NAMESPACE::TypeProto::kSequenceType;
+inline bool HasOptionalTensorSequenceType(const ONNX_NAMESPACE::TypeProto& type_proto) {
+  if (type_proto.value_case() != ONNX_NAMESPACE::TypeProto::kOptionalType) {
+    return false;
+  }
+
+  const auto& tp = type_proto.optional_type().elem_type();
+
+  if (tp.value_case() != ONNX_NAMESPACE::TypeProto::kSequenceType) {
+    return false;
+  }
+
+  return tp.sequence_type().elem_type().value_case() == ONNX_NAMESPACE::TypeProto::kTensorType;
 }
 
 // Does not check if the TypeProto contains an optional - the caller must validate that

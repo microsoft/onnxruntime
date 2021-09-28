@@ -516,7 +516,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
 
       if (utils::HasOptionalTensorType(tp)) {
         context_.OutputOptionalWithoutData<Tensor>(0);
-      } else if (utils::HasOptionalSequenceType(tp)) {
+      } else if (utils::HasOptionalTensorSequenceType(tp)) {
         context_.OutputOptionalWithoutData<TensorSeq>(0);
       } else {
         // Will never hit this

@@ -231,6 +231,12 @@ struct TypeProto_Optional final {
   PROVIDER_DISALLOW_ALL(TypeProto_Optional)
 };
 
+struct TypeProto_Sequence final {
+  const TypeProto& elem_type() const { return g_host->TypeProto_Sequence__elem_type(this); }
+  TypeProto* mutable_elem_type() { return g_host->TypeProto_Sequence__mutable_elem_type(this); }
+  PROVIDER_DISALLOW_ALL(TypeProto_Sequence)
+};
+
 struct TypeProto final {
   const TypeProto_Tensor& tensor_type() const { return g_host->TypeProto__tensor_type(this); }
   TypeProto_Tensor* mutable_tensor_type() { return g_host->TypeProto__mutable_tensor_type(this); }
@@ -242,6 +248,9 @@ struct TypeProto final {
 
   const TypeProto_Optional& optional_type() const { return g_host->TypeProto__optional_type(this); }
   TypeProto_Optional* mutable_optional_type() { return g_host->TypeProto__mutable_optional_type(this); }
+
+  const TypeProto_Sequence& sequence_type() const { return g_host->TypeProto__sequence_type(this); }
+  TypeProto_Sequence* mutable_sequence_type() { return g_host->TypeProto__mutable_sequence_type(this); }
 
   enum ValueCase {
     kTensorType = 1,

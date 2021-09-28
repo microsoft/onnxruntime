@@ -145,12 +145,17 @@ class IfImpl {
 
   enum class AllocationType {
     Delayed,  // allocation of If output will be done by subgraph execution
-    IfOutput,
-    Copy  // If's output will be copied from the corresponding subgraph output
+    IfOutput
   };
 
   // track where the fetches provided to subgraph execution were allocated.
   std::vector<std::pair<AllocationType, OrtValue>> outputs_;
+
+  // track which outputs are optional tensor types
+  std::vector<int> optional_tensor_type_subgraph_outputs_;
+
+  // track which outputs are optional tensor sequence types
+  std::vector<int> optional_tensor_sequence_type_subgraph_outputs_;
 };
 
 void If::Init(const OpKernelInfo& info) {
@@ -273,10 +278,20 @@ Status IfImpl::AllocateOutputTensors() {
   Status status = Status::OK();
   int index = 0;
 
-  for (auto& graph_output : info_.subgraph.GetOutputs()) {
+  const auto& graph_outputs = info_.subgraph.GetOutputs();
+
+  // The number of optional type outputs can be atmost the total
+  // number of subgraph outputs (it is okay to over-allocate)
+  optional_tensor_type_subgraph_outputs_.reserve(graph_outputs.size());
+  optional_tensor_sequence_type_subgraph_outputs_.reserve(graph_outputs.size());
+
+  for (auto& graph_output : graph_outputs) {
     const auto* graph_output_type = graph_output->TypeAsProto();
 
-    if (graph_output_type->has_tensor_type()) {
+    bool is_optional_tensor = utils::HasOptionalTensorType(*graph_output_type);
+    bool is_optional_tensor_sequence = utils::HasOptionalTensorSequenceType(*graph_output_type);
+
+    if (graph_output_type->has_tensor_type() || is_optional_tensor) {
       auto* graph_output_shape = graph_output->Shape();
       bool symbolic_dim_in_shape = false;
 
@@ -300,20 +315,21 @@ Status IfImpl::AllocateOutputTensors() {
         // we still need a value to put in the feeds we give to the execution frame, so just use an empty MLValue
         outputs_.push_back({AllocationType::Delayed, {}});
       }
-    } else if (graph_output_type->has_sequence_type()) {
+    } else if (graph_output_type->has_sequence_type() || is_optional_tensor_sequence) {
       auto* seq_tensor = context_.Output<TensorSeq>(index);
       if (!seq_tensor)
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for ", graph_output->Name());
       outputs_.push_back({AllocationType::IfOutput, *context_.GetOutputMLValue(index)});
-    } else if (graph_output_type->has_optional_type()) {
-      // Pass in the unallocated OrtValue,
-      // This will get filled in by the node producing the If's subgraph output.
-      // We cannot pre-allocate thie OrtValue for use within the sub-graph
-      // as we do not know whether it will be a None or not
-      outputs_.push_back({AllocationType::Copy, {}});
     } else {
       // Shouldn't hit this
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only tensors or sequence of tensors are supported");
+    }
+
+    // track optional type outputs - we will use them later
+    if (is_optional_tensor) {
+      optional_tensor_type_subgraph_outputs_.push_back(index);
+    } else if (is_optional_tensor_sequence) {
+      optional_tensor_sequence_type_subgraph_outputs_.push_back(index);
     }
 
     ++index;
@@ -383,48 +399,20 @@ Status IfImpl::Execute(const FeedsFetchesManager& ffm) {
 
   ORT_RETURN_IF_ERROR(status);
 
-  std::vector<const TypeProto*> subgraph_output_types;
-  subgraph_output_types.reserve(fetches.size());
-  for (auto& graph_output : info_.subgraph.GetOutputs()) {
-    subgraph_output_types.push_back(graph_output->TypeAsProto());
+  // Deal with Nones in fetches
+  for (auto& output_index : optional_tensor_type_subgraph_outputs_) {
+    // "None" - reflect Nones in the output of If
+    // For non-Nones, we would have directly used the custom allocator
+    // to directly write-into If's outputs.
+    if (!fetches[output_index].IsAllocated()) {
+      context_.OutputOptionalWithoutData<Tensor>(output_index);
+    }
   }
 
-  // Copy the fetches into the If's outputs where applicable
-  for (int i = 0; i < info_.num_outputs; ++i) {
-    if (outputs_[i].first == AllocationType::Copy) {
-      auto& fetch = fetches[i];
-      const auto& tp = *subgraph_output_types[i];
-
-      // "None"
-      if (!fetch.IsAllocated()) {
-        // We can't rely on the fetch OrtValue containing type information
-        // as it could be a main graph input propagated as the subgraph output
-        // which will be missing the type in the corresponding OrtValue for the
-        // "None" case because the user doesn't provide any input for the "None" case.
-
-        if (utils::HasOptionalTensorType(tp)) {
-          context_.OutputOptionalWithoutData<Tensor>(i);
-        } else if (utils::HasOptionalSequenceType(tp)) {
-          context_.OutputOptionalWithoutData<TensorSeq>(i);
-        } else {
-          // TODO: Needs investigation if it hits this
-          ORT_THROW(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported type for If op");
-        }
-      } else {  // Not "None" - copy over the fetch into the If's output
-
-        if (fetch.IsTensor()) {
-          const auto& input_tensor = fetch.Get<Tensor>();
-          Tensor* output = context_.Output(i, input_tensor.Shape());
-          session_state_.GetDataTransferMgr().CopyTensor(input_tensor, *output);
-        } else if (fetch.IsTensorSequence()) {
-          TensorSeq* output = context_.Output<TensorSeq>(i);
-          // We can move the subgraph output directly into the If's output.
-          *output = std::move(*fetch.GetMutable<TensorSeq>());
-        } else {
-          // TODO: Needs investigation if it hits this
-          ORT_THROW(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported type for If op");
-        }
-      }
+  for (auto& output_index : optional_tensor_sequence_type_subgraph_outputs_) {
+    // "None" - reflect Nones in the output of If
+    if (!fetches[output_index].IsAllocated()) {
+      context_.OutputOptionalWithoutData<TensorSeq>(output_index);
     }
   }
 

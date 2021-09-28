@@ -127,6 +127,7 @@ struct TensorShapeProto;
 struct TypeProto_Optional;
 struct TypeProto_Tensor;
 struct TypeProto_SparseTensor;
+struct TypeProto_Sequence;
 struct TypeProto;
 struct ValueInfoProto;
 struct ValueInfoProtos;  // RepeatedPtrField
