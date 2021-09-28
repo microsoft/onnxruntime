@@ -62,7 +62,7 @@ void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext, uint32_t, uint8_t* buffer
     do {
       status = cuptiActivityGetNextRecord(buffer, validSize, &record);
       if (status == CUPTI_SUCCESS) {
-        if (CUPTI_ACTIVITY_KIND_KERNEL == record->kind) {
+        if (CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL == record->kind) {
           CUpti_ActivityKernel3* kernel = (CUpti_ActivityKernel3*)record;
           stats.push_back({kernel->name, kernel->streamId,
                            kernel->gridX, kernel->gridY, kernel->gridZ,
@@ -93,7 +93,7 @@ bool CudaProfiler::StartProfiling() {
   if (!enabled.test_and_set()) {
     if (cuptiActivityEnable(CUPTI_ACTIVITY_KIND_RUNTIME) == CUPTI_SUCCESS &&
         cuptiActivityEnable(CUPTI_ACTIVITY_KIND_DRIVER) == CUPTI_SUCCESS &&
-        cuptiActivityEnable(CUPTI_ACTIVITY_KIND_KERNEL) == CUPTI_SUCCESS &&
+        cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL) == CUPTI_SUCCESS &&
         cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MEMCPY) == CUPTI_SUCCESS &&
         cuptiActivityEnable(CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION) == CUPTI_SUCCESS &&
         cuptiActivityRegisterCallbacks(BufferRequested, BufferCompleted) == CUPTI_SUCCESS) {
@@ -179,7 +179,7 @@ void CudaProfiler::Stop(uint64_t) {
 
 void CudaProfiler::DisableEvents() {
   cuptiActivityDisable(CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION);
-  cuptiActivityDisable(CUPTI_ACTIVITY_KIND_KERNEL);
+  cuptiActivityDisable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL);
   cuptiActivityDisable(CUPTI_ACTIVITY_KIND_MEMCPY);
   cuptiActivityDisable(CUPTI_ACTIVITY_KIND_DRIVER);
   cuptiActivityDisable(CUPTI_ACTIVITY_KIND_RUNTIME);
