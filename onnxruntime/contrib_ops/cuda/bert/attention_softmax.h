@@ -411,6 +411,28 @@ bool ComputeSoftmaxWithRawMask(cudaStream_t stream, const int all_sequence_lengt
   return CUDA_CALL(cudaPeekAtLastError());
 }
 
+template <typename T>
+__global__ void AdditionBeforeSoftmaxKernel(const int all_sequence_length,
+                                            const int sequence_length,
+                                            const int batch_size,
+                                            const int num_heads,
+                                            const T* extra_add,
+                                            T* input) {
+  int index = (blockIdx.y * gridDim.x + blockIdx.x) * all_sequence_length + threadIdx.x;
+  *(input + index) += *(extra_add + index);
+}
+
+template <typename T>
+bool AdditionBeforeSoftmax(cudaStream_t stream, const int all_sequence_length, const int sequence_length, const int batch_size, const int num_heads, const T* extra_add, T* input) {
+  const dim3 grid(sequence_length * num_heads, batch_size, 1);
+  const int blockSize = all_sequence_length;
+
+  // Inplace addition: input = input + extra_add
+  AdditionBeforeSoftmaxKernel<T><<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, batch_size, num_heads, extra_add, input);
+
+  return CUDA_CALL(cudaPeekAtLastError());
+}
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
