@@ -3431,7 +3431,9 @@ void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::str
   for (auto it = node_args_.cbegin(), node_args_end = node_args_.cend(); it != node_args_end; /* no increment */) {
     auto current_entry = it++;
     const auto& node_arg_name = current_entry->first;
-    if (!node_arg_name.empty() && used_args.find(node_arg_name) == end) {
+    if (!node_arg_name.empty() && used_args.find(node_arg_name) == end &&
+        (initializer_names_to_preserve == nullptr ||
+         initializer_names_to_preserve->find(node_arg_name) == initializer_names_to_preserve->cend())) {
       LOGS(logger_, INFO) << "Removing NodeArg '" << node_arg_name << "'. It is no longer used by any node.";
       it = node_args_.erase(current_entry);
     }
