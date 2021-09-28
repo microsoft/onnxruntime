@@ -183,7 +183,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
           is_unidirectional_,
           past_sequence_length,
           nullptr == past_tensor ? nullptr : past_tensor->template Data<T>(),
-          nullptr,
+          nullptr, // TODO: support add_qk in quantized attention
           nullptr == present_tensor ? nullptr : present_tensor->template MutableData<T>())) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());
