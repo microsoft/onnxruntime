@@ -179,6 +179,8 @@ class SymbolicShapeInference:
             # contrib ops:
             'Attention': self._infer_Attention,
             'BiasGelu': self._infer_BiasGelu,
+            'NvtxPush': self._infer_NvtxPush,
+            'NvtxPop': self._infer_NvtxPop,
             'EmbedLayerNormalization': self._infer_EmbedLayerNormalization,
             'FastGelu': self._infer_FastGelu,
             'Gelu': self._infer_Gelu,
@@ -389,7 +391,8 @@ class SymbolicShapeInference:
             'FastGelu', 'Gelu', 'LayerNormalization', \
             'LongformerAttention', \
             'SkipLayerNormalization', \
-            'PythonOp'
+            'PythonOp', \
+            'NvtxPush', 'NvtxPop'
         ]
 
         if not skip_infer:
@@ -1689,6 +1692,12 @@ class SymbolicShapeInference:
                     past_shape[3] = f"{past_shape[3]}+{input_shape[1]}"
                 vi = self.known_vi_[node.output[1]]
                 vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, past_shape))
+
+    def _infer_NvtxPush(self, node):
+        self._propagate_shape_and_type(node)
+
+    def _infer_NvtxPop(self, node):
+        self._propagate_shape_and_type(node)
 
     def _infer_BiasGelu(self, node):
         self._propagate_shape_and_type(node)

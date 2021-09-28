@@ -108,6 +108,8 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Identity", GetIdentityGradient);
   REGISTER_GRADIENT_BUILDER("PythonOp", GetPythonOpGradient);
   REGISTER_GRADIENT_BUILDER("ScatterND", GetScatterNDGradient);
+  REGISTER_GRADIENT_BUILDER("NvtxPush", GetNvtxPushGradient);
+  REGISTER_GRADIENT_BUILDER("NvtxPop", GetNvtxPopGradient);
 
   REGISTER_GRADIENT_BUILDER("ExternalGradient", GetExternalGradient);
 };

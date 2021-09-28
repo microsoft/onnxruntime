@@ -27,9 +27,14 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder().Alias(0, 0),
     NvtxPop);
 
+static std::map<int64_t, roctx_range_id_t> nvtx_ids;
+
+
 Status NvtxPush::ComputeInternal(OpKernelContext* context) const {
   std::cout << "executing nvtx push" << std::endl;
-  roctxRangePushA("myrange");
+  // roctxRangePushA("myrange");
+  auto id = roctxRangeStartA(label_.c_str());
+  nvtx_ids[correlationId_] = id;
 
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& shape = X->Shape();
@@ -49,7 +54,8 @@ Status NvtxPush::ComputeInternal(OpKernelContext* context) const {
 
 Status NvtxPop::ComputeInternal(OpKernelContext* context) const {
   std::cout << "executing nvtx pop" << std::endl;
-  roctxRangePop();
+  // roctxRangePop();
+  roctxRangeEnd(nvtx_ids[correlationId_]);
 
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& shape = X->Shape();
@@ -63,7 +69,6 @@ Status NvtxPop::ComputeInternal(OpKernelContext* context) const {
     // ORT_THROW("target != source");
     HIP_RETURN_IF_ERROR(hipMemcpyAsync(target, source, X->Shape().Size() * X->DataType()->Size(), hipMemcpyDeviceToDevice, Stream()));
   }
-
 
   return Status::OK();
 }

@@ -1474,6 +1474,16 @@ IMPLEMENT_GRADIENT_BUILDER(GetIdentityGradient) {
       NodeDef("Identity", {GO(0)}, {GI(0)})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetNvtxPushGradient) {
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"NvtxPop", kMSDomain, 1}, {GO(0)}, {GI(0)})};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetNvtxPopGradient) {
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"NvtxPush", kMSDomain, 1}, {GO(0)}, {GI(0)})};
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetFlattenGradient) {
   return std::vector<NodeDef>{
       NodeDef("Shape", {I(0)}, {IA("input_shape")}),
