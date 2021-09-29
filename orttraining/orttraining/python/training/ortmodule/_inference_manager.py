@@ -9,8 +9,7 @@ from . import (_utils,
                _are_deterministic_algorithms_enabled,
                _use_deterministic_algorithms)
 from ._graph_execution_manager import (GraphExecutionManager,
-                                       _RunStateInfo,
-                                       _SkipCheck)
+                                       _RunStateInfo)
 from ._execution_agent import InferenceAgent
 from .debug_options import DebugOptions
 from ._fallback import ORTModuleFallbackException, _FallbackPolicy, _FallbackManager
@@ -18,7 +17,6 @@ from ._fallback import ORTModuleFallbackException, _FallbackPolicy, _FallbackMan
 from onnxruntime.capi import _pybind_state as C
 import torch
 import warnings
-from functools import reduce
 
 
 class InferenceManager(GraphExecutionManager):
@@ -77,14 +75,14 @@ class InferenceManager(GraphExecutionManager):
                     and self._debug_options.logging.log_level <= _logger.LogLevel.WARNING:
                 self._first_skip_check_warning = False
                 warnings.warn(f"Fast path enabled - skipping checks."
-                              f"rebuild gradient graph: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT)},"
-                              f"execution agent recreation: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT)},"
-                              f"device check: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE)}", UserWarning)
+                              f"rebuild gradient graph: {self._skip_check.is_set(_utils._SkipCheck.SKIP_CHECK_BUILD_GRADIENT)},"
+                              f"execution agent recreation: {self._skip_check.is_set(_utils._SkipCheck.SKIP_CHECK_EXECUTION_AGENT)},"
+                              f"device check: {self._skip_check.is_set(_utils._SkipCheck.SKIP_CHECK_DEVICE)}", UserWarning)
 
             # If exporting module to ONNX for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
             build_graph = False
-            if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) is False or \
+            if self._skip_check.is_set(_utils._SkipCheck.SKIP_CHECK_BUILD_GRADIENT) is False or \
                 not self._onnx_models.exported_model:
                 # Exporting module to ONNX for the first time
                 build_graph = self._export_model(*inputs, **kwargs)
@@ -99,7 +97,7 @@ class InferenceManager(GraphExecutionManager):
             # If creating the execution agent for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
             create_execution_session = False
-            if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT) is False or \
+            if self._skip_check.is_set(_utils._SkipCheck.SKIP_CHECK_EXECUTION_AGENT) is False or \
                     not self._execution_agent:
                 module_device = _utils.get_device_from_module(
                     self._original_module)
@@ -116,7 +114,7 @@ class InferenceManager(GraphExecutionManager):
                 # Create execution session creates the inference_session
                 self._create_execution_agent()
 
-            if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) is False:
+            if self._skip_check.is_set(_utils._SkipCheck.SKIP_CHECK_DEVICE) is False:
                 # Assert that the input and model device match
                 _utils._check_same_device(self._device, "Input argument to forward", *inputs)
 
@@ -136,24 +134,17 @@ class InferenceManager(GraphExecutionManager):
                                              user_outputs)
         except ORTModuleFallbackException as e:
             # disable _SkipCheck, if not defined in os env, for retry 
-            self._skip_check = reduce(lambda x, y: x | y,
-                                      [_SkipCheck[name] for name in
-                                        _utils.parse_os_env_skip_check_flags('ORTMODULE_SKIPCHECK_POLICY',
-                                                                             _SkipCheck.SKIP_CHECK_DISABLED.name)])
+            self._skip_check = _utils.get_skip_check_flags(_utils._SkipCheck(_utils._SkipCheck.SKIP_CHECK_DISABLED))
             # Exceptions subject to fallback are handled here
             self._fallback_manager.handle_exception(exception=e,
                                                     log_level=self._debug_options.logging.log_level)
         except Exception as e:
             # disable _SkipCheck, if not defined in os env, for retry 
-            self._skip_check = reduce(lambda x, y: x | y,
-                                      [_SkipCheck[name] for name in
-                                        _utils.parse_os_env_skip_check_flags('ORTMODULE_SKIPCHECK_POLICY',
-                                                                             _SkipCheck.SKIP_CHECK_DISABLED.name)])
+            self._skip_check = _utils.get_skip_check_flags(_utils._SkipCheck(_utils._SkipCheck.SKIP_CHECK_DISABLED))
             # Catch-all FALLBACK_FORCE_TORCH_FORWARD fallback is handled here
             self._fallback_manager.handle_exception(exception=e,
                                                     log_level=self._debug_options.logging.log_level,
                                                     override_policy=_FallbackPolicy.FALLBACK_FORCE_TORCH_FORWARD)
-
         # Fallback to PyTorch due to failures *during* forward(),
         #  (e.g. export, model/input post-processing, forward, output processing, etc)
         if self._fallback_manager.is_pending():

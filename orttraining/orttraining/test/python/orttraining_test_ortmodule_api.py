@@ -2,7 +2,6 @@
 # Licensed under the MIT License.
 # orttraining_test_ortmodule_api.py
 
-from functools import reduce
 import itertools
 import math
 import random
@@ -21,7 +20,7 @@ import tempfile
 import os
 from distutils.version import LooseVersion
 
-from onnxruntime.training.ortmodule import ORTModule, _utils, _io, DebugOptions, LogLevel, _fallback, _graph_execution_manager
+from onnxruntime.training.ortmodule import ORTModule, _utils, _io, DebugOptions, LogLevel, _fallback
 import _test_helpers
 
 # Import autocasting libs
@@ -3881,10 +3880,10 @@ def test_ortmodule_ortmodule_method_attribute_copy():
         torch.__version__) >= LooseVersion('1.10.0') else 'AddmmBackward'
 
 @pytest.mark.parametrize("policy_str, policy",[
-    ('SKIP_CHECK_DISABLED', _graph_execution_manager._SkipCheck.SKIP_CHECK_DISABLED),
-    ('SKIP_CHECK_DEVICE', _graph_execution_manager._SkipCheck.SKIP_CHECK_DEVICE),
-    ('SKIP_CHECK_BUILD_GRADIENT', _graph_execution_manager._SkipCheck.SKIP_CHECK_BUILD_GRADIENT),
-    ('SKIP_CHECK_EXECUTION_AGENT', _graph_execution_manager._SkipCheck.SKIP_CHECK_EXECUTION_AGENT),
+    ('SKIP_CHECK_DISABLED', _utils._SkipCheck.SKIP_CHECK_DISABLED),
+    ('SKIP_CHECK_DEVICE', _utils._SkipCheck.SKIP_CHECK_DEVICE),
+    ('SKIP_CHECK_BUILD_GRADIENT', _utils._SkipCheck.SKIP_CHECK_BUILD_GRADIENT),
+    ('SKIP_CHECK_EXECUTION_AGENT', _utils._SkipCheck.SKIP_CHECK_EXECUTION_AGENT),
 ])
 def test_ortmodule_skip_check_load_from_os_env(policy_str, policy):
     device = 'cuda'

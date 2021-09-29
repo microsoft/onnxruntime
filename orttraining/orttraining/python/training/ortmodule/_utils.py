@@ -17,6 +17,29 @@ from typing import List
 import types
 import warnings
 from distutils.version import LooseVersion
+from enum import IntFlag
+from functools import reduce
+
+class _SkipCheck(IntFlag):
+    """Enumeration to specify which checks should be skipped, allowing faster execution"""
+
+    SKIP_CHECK_DISABLED = 1
+    SKIP_CHECK_DEVICE = 2
+    SKIP_CHECK_BUILD_GRADIENT = 4
+    SKIP_CHECK_EXECUTION_AGENT = 8
+
+    def is_set(self, check):
+        """Check whether `check` is set on the `_SkipCheck instance
+
+        SKIP_CHECK_DISABLED implies the check will return False
+        """
+
+        return not _SkipCheck.is_disabled(self) and check in self
+
+    def is_disabled(self):
+        """Check whether `_SkipCheck.SKIP_CHECK_DISABLED is set on the `_SkipCheck instance"""
+
+        return _SkipCheck.SKIP_CHECK_DISABLED in self
 
 def _ortvalue_from_torch_tensor(torch_tensor):
     # TODO: Current DLPack doesn't support bool and PyTorch disables converting bool tensor to DLPack in recent commit.
@@ -196,10 +219,18 @@ def check_for_name_collisions_and_bind_methods_to_ortmodule(ortmodule: torch.nn.
                     warnings.warn(f"User Module's attribute name {attribute_name} collides with ORTModule's attribute name. "
                     "User Module's attribute may not be returned when trying to retrieve the attribute through ORTModule.")
 
-def parse_os_env_skip_check_flags(env_name, default_skip_check_str):
-    """Returns a list of SkipChecks as defined by os env variable env_name or default provided"""
+def parse_os_env_skip_check_flags(env_name):
+    """Returns a list of SkipChecks as defined by os env variable env_name"""
+    return os.getenv(env_name).split('|')
 
-    return os.getenv(env_name, default_skip_check_str).split('|')
+def get_skip_check_flags(default_skip_check):
+    """Returns skipcheck flags as defined by os env variable env_name or default provided"""
+    if os.getenv('ORTMODULE_SKIPCHECK_POLICY') is None:
+        return default_skip_check
+
+    return reduce(lambda x, y: x | y,
+                 [_SkipCheck[name] for name in
+                  parse_os_env_skip_check_flags('ORTMODULE_SKIPCHECK_POLICY')])    
 
 def get_exception_as_string(exception):
     assert isinstance(exception, Exception), 'exception must be a `Exception`'

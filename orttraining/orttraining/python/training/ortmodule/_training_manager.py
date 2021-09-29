@@ -9,8 +9,7 @@ from . import (_utils,
                _are_deterministic_algorithms_enabled,
                _use_deterministic_algorithms)
 from ._graph_execution_manager import (GraphExecutionManager,
-                                       _RunStateInfo,
-                                       _SkipCheck)
+                                       _RunStateInfo)
 from ._execution_agent import TrainingAgent
 from .debug_options import DebugOptions
 from ._fallback import (ORTModuleFallbackException,
@@ -22,7 +21,6 @@ from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_typ
 
 import torch
 import warnings
-from functools import reduce
 
 
 class TrainingManager(GraphExecutionManager):
@@ -80,14 +78,14 @@ class TrainingManager(GraphExecutionManager):
                 # Only change this after the firs time a warning is issued.
                 self._first_skip_check_warning = False
                 warnings.warn(f"Fast path enabled - skipping checks."
-                              f" Rebuild graph: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT)},"
-                              f" Execution agent: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT)},"
-                              f" Device check: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE)}", UserWarning)
+                              f" Rebuild graph: {self._skip_check.is_set(_utils._SkipCheck.SKIP_CHECK_BUILD_GRADIENT)},"
+                              f" Execution agent: {self._skip_check.is_set(_utils._SkipCheck.SKIP_CHECK_EXECUTION_AGENT)},"
+                              f" Device check: {self._skip_check.is_set(_utils._SkipCheck.SKIP_CHECK_DEVICE)}", UserWarning)
 
             # If exporting module to ONNX for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
             build_gradient_graph = False
-            if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) is False or \
+            if self._skip_check.is_set(_utils._SkipCheck.SKIP_CHECK_BUILD_GRADIENT) is False or \
                     not self._onnx_models.exported_model:
                 build_gradient_graph = self._export_model(*inputs, **kwargs)
                 if build_gradient_graph:
@@ -116,7 +114,7 @@ class TrainingManager(GraphExecutionManager):
             # If creating the execution agent for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
             create_execution_session = False
-            if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT) is False or \
+            if self._skip_check.is_set(_utils._SkipCheck.SKIP_CHECK_EXECUTION_AGENT) is False or \
                     not self._execution_agent:
                 device = _utils.get_device_from_module(self._original_module) or \
                     _utils.get_device_from_inputs(inputs, kwargs)
@@ -152,7 +150,7 @@ class TrainingManager(GraphExecutionManager):
                     Module outputs are returned to the user
                     '''
 
-                    if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) is False:
+                    if self._skip_check.is_set(_utils._SkipCheck.SKIP_CHECK_DEVICE) is False:
                         # Assert that the input and model device match
                         _utils._check_same_device(self._device, "Input argument to forward", *inputs)
 
@@ -191,7 +189,7 @@ class TrainingManager(GraphExecutionManager):
                     '''Performs backward pass based on grad wrt module output'''
 
                     assert ctx.run_info is not None, 'forward() or __call__() methods must be called before backward()'
-                    if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) is False:
+                    if self._skip_check.is_set(_utils._SkipCheck.SKIP_CHECK_DEVICE) is False:
                         _utils._check_same_device(self._device, "Input argument to backward", *grad_outputs)
 
                     # Unpack saved_tensor to trigger version detection that catches inplace corruption
@@ -272,19 +270,14 @@ class TrainingManager(GraphExecutionManager):
                                                      self._device)))
         except ORTModuleFallbackException as e:
             # disable _SkipCheck, if not defined in os env, for retry 
-            self._skip_check = reduce(lambda x, y: x | y,
-                                      [_SkipCheck[name] for name in
-                                        _utils.parse_os_env_skip_check_flags('ORTMODULE_SKIPCHECK_POLICY',
-                                                                             _SkipCheck.SKIP_CHECK_DISABLED.name)])
+            self._skip_check = _utils.get_skip_check_flags(_utils._SkipCheck(_utils._SkipCheck.SKIP_CHECK_DISABLED))  
             # Exceptions subject to fallback are handled here
             self._fallback_manager.handle_exception(exception=e,
                                                     log_level=self._debug_options.logging.log_level)
+
         except Exception as e:
-            # disable _SkipCheck, if not defined in os env, for retry 
-            self._skip_check = reduce(lambda x, y: x | y,
-                                      [_SkipCheck[name] for name in
-                                        _utils.parse_os_env_skip_check_flags('ORTMODULE_SKIPCHECK_POLICY',
-                                                                             _SkipCheck.SKIP_CHECK_DISABLED.name)])                                                                           
+            # disable _SkipCheck, if not defined in os env, for retry     
+            self._skip_check = _utils.get_skip_check_flags(_utils._SkipCheck(_utils._SkipCheck.SKIP_CHECK_DISABLED))
             # Catch-all FALLBACK_FORCE_TORCH_FORWARD fallback is handled here
             self._fallback_manager.handle_exception(exception=e,
                                                     log_level=self._debug_options.logging.log_level,

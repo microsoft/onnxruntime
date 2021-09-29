@@ -11,7 +11,7 @@ from onnxruntime.capi import _pybind_state as C
 from functools import reduce
 from . import JSON_PATH_ENVIRONMENT_KEY
 from ..._fallback import _FallbackPolicy
-from ..._graph_execution_manager import _SkipCheck
+from ..._utils import _SkipCheck
 from ...debug_options import DebugOptions, LogLevel, _SaveOnnxOptions
 
 log = logging.getLogger(__name__)
