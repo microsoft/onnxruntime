@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if !defined(ORT_MINIMAL_BUILD)
-
 #pragma once
 #include "threadpool.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
@@ -81,5 +79,3 @@ class ThreadPoolLite : public ThreadPool {
 
 }  // namespace concurrency
 }  // namespace onnxruntime
-
-#endif
