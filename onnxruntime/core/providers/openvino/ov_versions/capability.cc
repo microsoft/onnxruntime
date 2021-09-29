@@ -117,7 +117,13 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
     openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph = true;
 
   } else {  // unsupported_nodes_idx.empty()
-   
+
+  #if defined(OPENVINO_DISABLE_GRAPH_PARTITION) // disable_graph_partition at build time
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DISABLE_GRAPH_PARTITION option is set";
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model is not fully supported by OpenVINO, so making the full model fall back to default CPU Execution Provider";
+    return result;
+  #endif
+
     std::vector<NodeIndex> modified_unsupported_nodes;
     for (const auto& node_idx : graph_viewer_.GetNodesInTopologicalOrder()) {
       if (find(unsupported_nodes.begin(), unsupported_nodes.end(), node_idx) != unsupported_nodes.end()) {
