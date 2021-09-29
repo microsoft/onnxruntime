@@ -12,6 +12,8 @@
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
+#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_selector_action_transformer.h"
+#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_selector_action_transformer.cc"
 #include "core/providers/partitioning_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
@@ -116,12 +118,23 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     }
   }
 
+  // TODO: Pre-Partition: add selection - checkQDQNodes -> select qdq structure pairs -> supported
+  for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
+    const auto* node = graph_viewer.GetNode(index);
+    NNAPISelectorActionTransformer nnapi_selector_action_transformer;
+    const auto node_group = nnapi_selector_action_transformer.Match(graph_viewer.GetGraph(), *node);
+   
+    // Get Node Group
+  }
+
   const auto excluded_nodes = utils::CreateExcludedNodeSet(graph_viewer, partitioning_stop_ops_);
   const bool check_excluded_nodes = !excluded_nodes.empty();
 
   std::unordered_set<std::string> node_outputs_in_current_group{};
-
+  
+  // Add a structure: std::vector<std::unique_ptr<NodesToOptimze>> node_groups
   const auto is_node_supported = [&](const Node& node) -> bool {
+    // target node: "node"
     const bool excluded = check_excluded_nodes && Contains(excluded_nodes, &node);
     const bool supported = !excluded &&
                            nnapi::IsNodeSupportedInGroup(node, graph_viewer, params,
@@ -155,6 +168,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     return MakeString(NNAPI, "_", model_hash, "_", metadef_id);
   };
 
+  // TOOD: if qdq:NTO -> is_qdq_node_supported,
   result = utils::CreateSupportedPartitions(graph_viewer, is_node_supported, on_group_closed,
                                             gen_metadef_name, NNAPI);
 
