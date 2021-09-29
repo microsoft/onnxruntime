@@ -83,6 +83,14 @@ jobs:
   timeoutInMinutes: 3000 
       
   steps:
+    - task: AzureCLI@2
+      displayName: 'Azure CLI'
+      inputs:
+        azureSubscription: AIInfraBuildOnnxRuntimeOSS
+        scriptLocation: inlineScript
+        scriptType: batch
+        inlineScript: |
+          python.exe $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r /home/hcsuser/pea112f1b3d8269e4edad4b17bfe690 -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=176317" -t 8.0.1.6 -b master
   
     - ${{ if eq(parameters.BuildORT, true) }}:
 
