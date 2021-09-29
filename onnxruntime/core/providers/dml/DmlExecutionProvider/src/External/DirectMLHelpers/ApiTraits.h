@@ -24,7 +24,7 @@ struct EnumTraits<DML_TENSOR_TYPE>
 template <>
 struct EnumTraits<DML_OPERATOR_TYPE>
 {
-    static constexpr auto ValueCount = 141;
+    static constexpr auto ValueCount = 153;
     static constexpr size_t ActivationFunctionCount = 20;
 };
 
@@ -86,7 +86,7 @@ struct EnumTraits<DML_FEATURE>
 template <>
 struct EnumTraits<DML_FEATURE_LEVEL>
 {
-    static constexpr auto ValueCount = 4;
+    static constexpr auto ValueCount = 8;
 };
 
 template <>
@@ -223,6 +223,24 @@ template <>
 struct OperatorDescTraits<DML_ELEMENT_WISE_CLIP_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ELEMENT_WISE_CLIP;
+};
+
+template <>
+struct OperatorDescTraits<DML_ELEMENT_WISE_CLIP1_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ELEMENT_WISE_CLIP1;
+};
+
+template <>
+struct OperatorDescTraits<DML_ELEMENT_WISE_CLIP_GRAD_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ELEMENT_WISE_CLIP_GRAD;
+};
+
+template <>
+struct OperatorDescTraits<DML_ELEMENT_WISE_CLIP_GRAD1_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ELEMENT_WISE_CLIP_GRAD1;
 };
 
 template <>
@@ -364,6 +382,18 @@ struct OperatorDescTraits<DML_ELEMENT_WISE_SQRT_OPERATOR_DESC>
 };
 
 template <>
+struct OperatorDescTraits<DML_ELEMENT_WISE_DIFFERENCE_SQUARE_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ELEMENT_WISE_DIFFERENCE_SQUARE;
+};
+
+template <>
+struct OperatorDescTraits<DML_ELEMENT_WISE_ATAN_YX_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ELEMENT_WISE_ATAN_YX;
+};
+
+template <>
 struct OperatorDescTraits<DML_ELEMENT_WISE_SUBTRACT_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ELEMENT_WISE_SUBTRACT;
@@ -484,6 +514,12 @@ struct OperatorDescTraits<DML_PADDING_OPERATOR_DESC>
 };
 
 template <>
+struct OperatorDescTraits<DML_PADDING1_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_PADDING1;
+};
+
+template <>
 struct OperatorDescTraits<DML_VALUE_SCALE_2D_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_VALUE_SCALE_2D;
@@ -532,6 +568,18 @@ struct OperatorDescTraits<DML_BATCH_NORMALIZATION_OPERATOR_DESC>
 };
 
 template <>
+struct OperatorDescTraits<DML_BATCH_NORMALIZATION_GRAD_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_BATCH_NORMALIZATION_GRAD;
+};
+
+template <>
+struct OperatorDescTraits<DML_BATCH_NORMALIZATION_TRAINING_GRAD_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_BATCH_NORMALIZATION_TRAINING_GRAD;
+};
+
+template <>
 struct OperatorDescTraits<DML_MEAN_VARIANCE_NORMALIZATION_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION;
@@ -541,6 +589,12 @@ template <>
 struct OperatorDescTraits<DML_LOCAL_RESPONSE_NORMALIZATION_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_LOCAL_RESPONSE_NORMALIZATION;
+};
+
+template <>
+struct OperatorDescTraits<DML_LOCAL_RESPONSE_NORMALIZATION_GRAD_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_LOCAL_RESPONSE_NORMALIZATION_GRAD;
 };
 
 template <>
@@ -577,6 +631,12 @@ template <>
 struct OperatorDescTraits<DML_ELEMENT_WISE_IS_NAN_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ELEMENT_WISE_IS_NAN;
+};
+
+template <>
+struct OperatorDescTraits<DML_ELEMENT_WISE_NEGATE_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ELEMENT_WISE_NEGATE;
 };
 
 template <>
@@ -715,6 +775,12 @@ template <>
 struct OperatorDescTraits<DML_CUMULATIVE_SUMMATION_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_CUMULATIVE_SUMMATION;
+};
+
+template <>
+struct OperatorDescTraits<DML_CUMULATIVE_PRODUCT_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_CUMULATIVE_PRODUCT;
 };
 
 template <>
@@ -892,6 +958,12 @@ struct OperatorDescTraits<DML_ROI_ALIGN_OPERATOR_DESC>
 };
 
 template <>
+struct OperatorDescTraits<DML_ROI_ALIGN1_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ROI_ALIGN1;
+};
+
+template <>
 struct OperatorDescTraits<DML_GATHER_ND1_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_GATHER_ND1;
@@ -907,6 +979,18 @@ template <>
 struct OperatorDescTraits<DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD;
+};
+
+template <>
+struct OperatorDescTraits<DML_ROI_ALIGN_GRAD_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ROI_ALIGN_GRAD;
+};
+
+template <>
+struct OperatorDescTraits<DML_BATCH_NORMALIZATION_TRAINING_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_BATCH_NORMALIZATION_TRAINING;
 };
 
 template <>
@@ -1084,6 +1168,24 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_CLIP>
 };
 
 template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_CLIP1>
+{
+    using DescType = DML_ELEMENT_WISE_CLIP1_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_CLIP_GRAD>
+{
+    using DescType = DML_ELEMENT_WISE_CLIP_GRAD_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_CLIP_GRAD1>
+{
+    using DescType = DML_ELEMENT_WISE_CLIP_GRAD1_OPERATOR_DESC;
+};
+
+template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_COS>
 {
     using DescType = DML_ELEMENT_WISE_COS_OPERATOR_DESC;
@@ -1222,6 +1324,18 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_SQRT>
 };
 
 template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_DIFFERENCE_SQUARE>
+{
+    using DescType = DML_ELEMENT_WISE_DIFFERENCE_SQUARE_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_ATAN_YX>
+{
+    using DescType = DML_ELEMENT_WISE_ATAN_YX_OPERATOR_DESC;
+};
+
+template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_SUBTRACT>
 {
     using DescType = DML_ELEMENT_WISE_SUBTRACT_OPERATOR_DESC;
@@ -1342,6 +1456,12 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_PADDING>
 };
 
 template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_PADDING1>
+{
+    using DescType = DML_PADDING1_OPERATOR_DESC;
+};
+
+template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_VALUE_SCALE_2D>
 {
     using DescType = DML_VALUE_SCALE_2D_OPERATOR_DESC;
@@ -1390,6 +1510,18 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_BATCH_NORMALIZATION>
 };
 
 template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_BATCH_NORMALIZATION_GRAD>
+{
+    using DescType = DML_BATCH_NORMALIZATION_GRAD_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_BATCH_NORMALIZATION_TRAINING_GRAD>
+{
+    using DescType = DML_BATCH_NORMALIZATION_TRAINING_GRAD_OPERATOR_DESC;
+};
+
+template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION>
 {
     using DescType = DML_MEAN_VARIANCE_NORMALIZATION_OPERATOR_DESC;
@@ -1399,6 +1531,12 @@ template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_LOCAL_RESPONSE_NORMALIZATION>
 {
     using DescType = DML_LOCAL_RESPONSE_NORMALIZATION_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_LOCAL_RESPONSE_NORMALIZATION_GRAD>
+{
+    using DescType = DML_LOCAL_RESPONSE_NORMALIZATION_GRAD_OPERATOR_DESC;
 };
 
 template <>
@@ -1435,6 +1573,12 @@ template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_IS_NAN>
 {
     using DescType = DML_ELEMENT_WISE_IS_NAN_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_NEGATE>
+{
+    using DescType = DML_ELEMENT_WISE_NEGATE_OPERATOR_DESC;
 };
 
 template <>
@@ -1573,6 +1717,12 @@ template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_CUMULATIVE_SUMMATION>
 {
     using DescType = DML_CUMULATIVE_SUMMATION_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_CUMULATIVE_PRODUCT>
+{
+    using DescType = DML_CUMULATIVE_PRODUCT_OPERATOR_DESC;
 };
 
 template <>
@@ -1750,6 +1900,12 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ROI_ALIGN>
 };
 
 template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ROI_ALIGN1>
+{
+    using DescType = DML_ROI_ALIGN1_OPERATOR_DESC;
+};
+
+template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_GATHER_ND1>
 {
     using DescType = DML_GATHER_ND1_OPERATOR_DESC;
@@ -1765,6 +1921,18 @@ template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD>
 {
     using DescType = DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ROI_ALIGN_GRAD>
+{
+    using DescType = DML_ROI_ALIGN_GRAD_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_BATCH_NORMALIZATION_TRAINING>
+{
+    using DescType = DML_BATCH_NORMALIZATION_TRAINING_OPERATOR_DESC;
 };
 
 template <>
@@ -1916,6 +2084,12 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_CEIL_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ELEMENT_WISE_CLIP:
         return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_CLIP_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ELEMENT_WISE_CLIP1:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_CLIP1_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ELEMENT_WISE_CLIP_GRAD:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_CLIP_GRAD_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ELEMENT_WISE_CLIP_GRAD1:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_CLIP_GRAD1_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ELEMENT_WISE_COS:
         return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_COS_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ELEMENT_WISE_DIVIDE:
@@ -1962,6 +2136,10 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_SIN_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ELEMENT_WISE_SQRT:
         return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_SQRT_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ELEMENT_WISE_DIFFERENCE_SQUARE:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_DIFFERENCE_SQUARE_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ELEMENT_WISE_ATAN_YX:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_ATAN_YX_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ELEMENT_WISE_SUBTRACT:
         return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_SUBTRACT_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ELEMENT_WISE_TAN:
@@ -2002,6 +2180,8 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_JOIN_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_PADDING:
         return std::invoke(std::forward<Visitor>(visitor), DML_PADDING_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_PADDING1:
+        return std::invoke(std::forward<Visitor>(visitor), DML_PADDING1_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_VALUE_SCALE_2D:
         return std::invoke(std::forward<Visitor>(visitor), DML_VALUE_SCALE_2D_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_UPSAMPLE_2D:
@@ -2018,10 +2198,16 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_TOP_K_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_BATCH_NORMALIZATION:
         return std::invoke(std::forward<Visitor>(visitor), DML_BATCH_NORMALIZATION_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_BATCH_NORMALIZATION_GRAD:
+        return std::invoke(std::forward<Visitor>(visitor), DML_BATCH_NORMALIZATION_GRAD_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_BATCH_NORMALIZATION_TRAINING_GRAD:
+        return std::invoke(std::forward<Visitor>(visitor), DML_BATCH_NORMALIZATION_TRAINING_GRAD_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION:
         return std::invoke(std::forward<Visitor>(visitor), DML_MEAN_VARIANCE_NORMALIZATION_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_LOCAL_RESPONSE_NORMALIZATION:
         return std::invoke(std::forward<Visitor>(visitor), DML_LOCAL_RESPONSE_NORMALIZATION_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_LOCAL_RESPONSE_NORMALIZATION_GRAD:
+        return std::invoke(std::forward<Visitor>(visitor), DML_LOCAL_RESPONSE_NORMALIZATION_GRAD_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_LP_NORMALIZATION:
         return std::invoke(std::forward<Visitor>(visitor), DML_LP_NORMALIZATION_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_RNN:
@@ -2034,6 +2220,8 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_SIGN_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ELEMENT_WISE_IS_NAN:
         return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_IS_NAN_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ELEMENT_WISE_NEGATE:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_NEGATE_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ELEMENT_WISE_ERF:
         return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_ERF_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ELEMENT_WISE_SINH:
@@ -2080,6 +2268,8 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_FILL_VALUE_SEQUENCE_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_CUMULATIVE_SUMMATION:
         return std::invoke(std::forward<Visitor>(visitor), DML_CUMULATIVE_SUMMATION_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_CUMULATIVE_PRODUCT:
+        return std::invoke(std::forward<Visitor>(visitor), DML_CUMULATIVE_PRODUCT_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_REVERSE_SUBSEQUENCES:
         return std::invoke(std::forward<Visitor>(visitor), DML_REVERSE_SUBSEQUENCES_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_GATHER_ELEMENTS:
@@ -2138,12 +2328,18 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_ADAM_OPTIMIZER_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ROI_ALIGN:
         return std::invoke(std::forward<Visitor>(visitor), DML_ROI_ALIGN_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ROI_ALIGN1:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ROI_ALIGN1_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_GATHER_ND1:
         return std::invoke(std::forward<Visitor>(visitor), DML_GATHER_ND1_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_DYNAMIC_QUANTIZE_LINEAR:
         return std::invoke(std::forward<Visitor>(visitor), DML_DYNAMIC_QUANTIZE_LINEAR_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD:
         return std::invoke(std::forward<Visitor>(visitor), DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ROI_ALIGN_GRAD:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ROI_ALIGN_GRAD_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_BATCH_NORMALIZATION_TRAINING:
+        return std::invoke(std::forward<Visitor>(visitor), DML_BATCH_NORMALIZATION_TRAINING_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_ELU:
         return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_ELU_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_CELU:
@@ -2204,6 +2400,9 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_ELEMENT_WISE_ATAN: return "DML_OPERATOR_ELEMENT_WISE_ATAN";
     case DML_OPERATOR_ELEMENT_WISE_CEIL: return "DML_OPERATOR_ELEMENT_WISE_CEIL";
     case DML_OPERATOR_ELEMENT_WISE_CLIP: return "DML_OPERATOR_ELEMENT_WISE_CLIP";
+    case DML_OPERATOR_ELEMENT_WISE_CLIP1: return "DML_OPERATOR_ELEMENT_WISE_CLIP1";
+    case DML_OPERATOR_ELEMENT_WISE_CLIP_GRAD: return "DML_OPERATOR_ELEMENT_WISE_CLIP_GRAD";
+    case DML_OPERATOR_ELEMENT_WISE_CLIP_GRAD1: return "DML_OPERATOR_ELEMENT_WISE_CLIP_GRAD1";
     case DML_OPERATOR_ELEMENT_WISE_COS: return "DML_OPERATOR_ELEMENT_WISE_COS";
     case DML_OPERATOR_ELEMENT_WISE_DIVIDE: return "DML_OPERATOR_ELEMENT_WISE_DIVIDE";
     case DML_OPERATOR_ELEMENT_WISE_EXP: return "DML_OPERATOR_ELEMENT_WISE_EXP";
@@ -2227,6 +2426,8 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_ELEMENT_WISE_RECIP: return "DML_OPERATOR_ELEMENT_WISE_RECIP";
     case DML_OPERATOR_ELEMENT_WISE_SIN: return "DML_OPERATOR_ELEMENT_WISE_SIN";
     case DML_OPERATOR_ELEMENT_WISE_SQRT: return "DML_OPERATOR_ELEMENT_WISE_SQRT";
+    case DML_OPERATOR_ELEMENT_WISE_DIFFERENCE_SQUARE: return "DML_OPERATOR_ELEMENT_WISE_DIFFERENCE_SQUARE";
+    case DML_OPERATOR_ELEMENT_WISE_ATAN_YX: return "DML_OPERATOR_ELEMENT_WISE_ATAN_YX";
     case DML_OPERATOR_ELEMENT_WISE_SUBTRACT: return "DML_OPERATOR_ELEMENT_WISE_SUBTRACT";
     case DML_OPERATOR_ELEMENT_WISE_TAN: return "DML_OPERATOR_ELEMENT_WISE_TAN";
     case DML_OPERATOR_ELEMENT_WISE_THRESHOLD: return "DML_OPERATOR_ELEMENT_WISE_THRESHOLD";
@@ -2247,6 +2448,7 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_SPLIT: return "DML_OPERATOR_SPLIT";
     case DML_OPERATOR_JOIN: return "DML_OPERATOR_JOIN";
     case DML_OPERATOR_PADDING: return "DML_OPERATOR_PADDING";
+    case DML_OPERATOR_PADDING1: return "DML_OPERATOR_PADDING1";
     case DML_OPERATOR_VALUE_SCALE_2D: return "DML_OPERATOR_VALUE_SCALE_2D";
     case DML_OPERATOR_UPSAMPLE_2D: return "DML_OPERATOR_UPSAMPLE_2D";
     case DML_OPERATOR_GATHER: return "DML_OPERATOR_GATHER";
@@ -2255,14 +2457,18 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_TILE: return "DML_OPERATOR_TILE";
     case DML_OPERATOR_TOP_K: return "DML_OPERATOR_TOP_K";
     case DML_OPERATOR_BATCH_NORMALIZATION: return "DML_OPERATOR_BATCH_NORMALIZATION";
+    case DML_OPERATOR_BATCH_NORMALIZATION_GRAD: return "DML_OPERATOR_BATCH_NORMALIZATION_GRAD";
+    case DML_OPERATOR_BATCH_NORMALIZATION_TRAINING_GRAD: return "DML_OPERATOR_BATCH_NORMALIZATION_TRAINING_GRAD";
     case DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION: return "DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION";
     case DML_OPERATOR_LOCAL_RESPONSE_NORMALIZATION: return "DML_OPERATOR_LOCAL_RESPONSE_NORMALIZATION";
+    case DML_OPERATOR_LOCAL_RESPONSE_NORMALIZATION_GRAD: return "DML_OPERATOR_LOCAL_RESPONSE_NORMALIZATION_GRAD";
     case DML_OPERATOR_LP_NORMALIZATION: return "DML_OPERATOR_LP_NORMALIZATION";
     case DML_OPERATOR_RNN: return "DML_OPERATOR_RNN";
     case DML_OPERATOR_LSTM: return "DML_OPERATOR_LSTM";
     case DML_OPERATOR_GRU: return "DML_OPERATOR_GRU";
     case DML_OPERATOR_ELEMENT_WISE_SIGN: return "DML_OPERATOR_ELEMENT_WISE_SIGN";
     case DML_OPERATOR_ELEMENT_WISE_IS_NAN: return "DML_OPERATOR_ELEMENT_WISE_IS_NAN";
+    case DML_OPERATOR_ELEMENT_WISE_NEGATE: return "DML_OPERATOR_ELEMENT_WISE_NEGATE";
     case DML_OPERATOR_ELEMENT_WISE_ERF: return "DML_OPERATOR_ELEMENT_WISE_ERF";
     case DML_OPERATOR_ELEMENT_WISE_SINH: return "DML_OPERATOR_ELEMENT_WISE_SINH";
     case DML_OPERATOR_ELEMENT_WISE_COSH: return "DML_OPERATOR_ELEMENT_WISE_COSH";
@@ -2286,6 +2492,7 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_FILL_VALUE_CONSTANT: return "DML_OPERATOR_FILL_VALUE_CONSTANT";
     case DML_OPERATOR_FILL_VALUE_SEQUENCE: return "DML_OPERATOR_FILL_VALUE_SEQUENCE";
     case DML_OPERATOR_CUMULATIVE_SUMMATION: return "DML_OPERATOR_CUMULATIVE_SUMMATION";
+    case DML_OPERATOR_CUMULATIVE_PRODUCT: return "DML_OPERATOR_CUMULATIVE_PRODUCT";
     case DML_OPERATOR_REVERSE_SUBSEQUENCES: return "DML_OPERATOR_REVERSE_SUBSEQUENCES";
     case DML_OPERATOR_GATHER_ELEMENTS: return "DML_OPERATOR_GATHER_ELEMENTS";
     case DML_OPERATOR_GATHER_ND: return "DML_OPERATOR_GATHER_ND";
@@ -2315,9 +2522,12 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_SLICE_GRAD: return "DML_OPERATOR_SLICE_GRAD";
     case DML_OPERATOR_ADAM_OPTIMIZER: return "DML_OPERATOR_ADAM_OPTIMIZER";
     case DML_OPERATOR_ROI_ALIGN: return "DML_OPERATOR_ROI_ALIGN";
+    case DML_OPERATOR_ROI_ALIGN1: return "DML_OPERATOR_ROI_ALIGN1";
     case DML_OPERATOR_GATHER_ND1: return "DML_OPERATOR_GATHER_ND1";
     case DML_OPERATOR_DYNAMIC_QUANTIZE_LINEAR: return "DML_OPERATOR_DYNAMIC_QUANTIZE_LINEAR";
     case DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD: return "DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD";
+    case DML_OPERATOR_ROI_ALIGN_GRAD: return "DML_OPERATOR_ROI_ALIGN_GRAD";
+    case DML_OPERATOR_BATCH_NORMALIZATION_TRAINING: return "DML_OPERATOR_BATCH_NORMALIZATION_TRAINING";
     default:
         assert(false);
         return "<unknown>";
