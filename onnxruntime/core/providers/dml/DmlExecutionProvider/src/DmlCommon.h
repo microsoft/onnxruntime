@@ -98,7 +98,7 @@ namespace Dml
     }
 
     template <typename T>
-    void CastToScalarUnion(DML_TENSOR_DATA_TYPE dataType, T value, DML_SCALAR_UNION* outputValue)
+    void CastToClampedScalarUnion(DML_TENSOR_DATA_TYPE dataType, T value, DML_SCALAR_UNION* outputValue)
     {
         switch (dataType)
         {

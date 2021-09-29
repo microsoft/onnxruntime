@@ -451,8 +451,8 @@ public:
         // logic for some corner test case
         // Same applies to min and max value.
         opDesc.MinMaxDataType = this->m_inputTensorDescs[0].GetDmlDataType();
-        CastToScalarUnion<double>(opDesc.MinMaxDataType, -FLT_MAX, /*out*/&opDesc.Min);
-        CastToScalarUnion<double>(opDesc.MinMaxDataType, FLT_MAX, /*out*/&opDesc.Max);
+        CastToClampedScalarUnion<double>(opDesc.MinMaxDataType, -DBL_MAX, /*out*/&opDesc.Min);
+        CastToClampedScalarUnion<double>(opDesc.MinMaxDataType, DBL_MAX, /*out*/&opDesc.Max);
 
         if (kernelInfo.IsInputValid(1))
         {
