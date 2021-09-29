@@ -13,7 +13,8 @@ from azure.kusto.ingest import (
 )
 
 # database connection strings 
-cluster = "https://ingest-onnxruntimedashboarddb.southcentralus.kusto.windows.net"
+cluster1 = "https://ingest-onnxruntimedashboarddb.southcentralus.kusto.windows.net"
+cluster = "https://onnxruntimedashboarddb.southcentralus.kusto.windows.net"
 database = "ep_perf_dashboard"
 
 # table names
