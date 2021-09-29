@@ -104,7 +104,7 @@ class TestOpSqueezeUnsqueeze(unittest.TestCase):
         # Verify QDQ mode
         data_reader.rewind()
         quantize_static(model_fp32_path, model_uint8_qdq_path, data_reader, quant_format=QuantFormat.QDQ)
-        qdqnode_counts = {'Conv': 3, 'QuantizeLinear': 8, 'DequantizeLinear': 11}
+        qdqnode_counts = {'Conv': 3, 'QuantizeLinear': 9, 'DequantizeLinear': 12}
         check_op_type_count(self, model_uint8_qdq_path, **qdqnode_counts)
         data_reader.rewind()
         check_model_correctness(self, model_fp32_path, model_uint8_qdq_path, data_reader.get_next(), rtol=0.01, atol=0.5)

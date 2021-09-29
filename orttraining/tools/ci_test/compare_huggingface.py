@@ -33,7 +33,7 @@ for i in range(logged_steps):
 success = all(loss_tail_matches) 
 
 # performance match
-threshold = 0.97
+threshold = 0.95
 is_performant = json_actual['samples_per_second'] >= threshold*json_expect['samples_per_second']
 success = success if is_performant else False
 print('samples_per_second actual {:.3f} expected {:.3f} in-range {}'.format(

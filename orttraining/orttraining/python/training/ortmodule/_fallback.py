@@ -7,11 +7,18 @@ from . import _logger
 
 import os
 import torch
-import traceback
 import warnings
 
 from enum import IntFlag
 from typing import Optional
+from ._fallback_exceptions import (ORTModuleFallbackException,
+                                   ORTModuleInitException,
+                                   ORTModuleDeviceException,
+                                   ORTModuleIOError,
+                                   ORTModuleTorchModelException,
+                                   ORTModuleONNXModelException,
+                                   wrap_exception)
+from . import _utils
 
 
 class _FallbackPolicy(IntFlag):
@@ -41,67 +48,6 @@ class _FallbackPolicy(IntFlag):
         '''Check whether `_FallbackPolicy.FALLBACK_DEVICE` is set on the `_FallbackPolicy` instance'''
 
         return _FallbackPolicy.FALLBACK_DISABLE in self
-
-
-class ORTModuleFallbackException(Exception):
-    '''Base exception class for fallback
-
-    Although it must be specialized for specific scenarios,
-    it can also be used for generic exception that require fallback
-    '''
-
-    pass
-
-
-class ORTModuleInitException(ORTModuleFallbackException):
-    '''Trigger fallback for ORTModule initialization related exceptions
-
-    This exception is triggered when an incompatible or missing requirements for ORTModule are detected,
-    including PyTorch version, missing ORTModule's PyTorch C++ extension binaries, etc.
-    '''
-
-    pass
-
-
-class ORTModuleDeviceException(ORTModuleFallbackException):
-    '''Trigger fallback for device related exceptions
-
-    NOTE: This exception is raised during device validation within ORTModule frontend.
-    Some device related exceptions can only be detected during PyTorch ONNX exporter execution.
-    This exception does not capture these scenarios.
-    '''
-
-    pass
-
-
-class ORTModuleIOError(ORTModuleFallbackException):
-    '''Trigger fallback for I/O related exceptions
-
-    NOTE: This exception is raised during I/O validation within ORTModule Frontend.
-    Some I/O related exceptions can only be detected during PyTorch ONNX exporter execution.
-    This exception does not capture these scenarios.
-    '''
-
-    pass
-
-
-class ORTModuleTorchModelException(ORTModuleFallbackException):
-    '''Trigger fallback for PyTorch modules related exceptions
-
-    This exception is raised during model validation within ORTModule frontend and is based on
-    checking type(model) over a hardcoded list of incompatible models.
-    '''
-
-    pass
-
-
-class ORTModuleONNXModelException(ORTModuleFallbackException):
-    '''Trigger fallback for ONNX model related exceptions
-
-    This exception is raised during model conversion to ONNX and post-processing validation within ORTModule frontend.
-    '''
-
-    pass
 
 
 class _FallbackManager(object):
@@ -210,28 +156,9 @@ class _FallbackManager(object):
             warnings.warn(
                 (f'Fallback to PyTorch due to exception {type(self._exception)} was triggered. '
                  'Report this issue with a minimal repro at https://www.github.com/microsoft/onnxruntime. '
-                 f'See details below:\n\n{get_exception_as_string(self._exception)}'), UserWarning)
+                 f'See details below:\n\n{_utils.get_exception_as_string(self._exception)}'), UserWarning)
 
         # Pending fallbacks are resetted to enforce retries
         if self.retry:
             self._exception = None
         return model(*inputs, **kwargs)
-
-
-def wrap_exception(new_exception: ORTModuleFallbackException, raised_exception: Exception) -> ORTModuleFallbackException:
-    '''Wraps `raised_exception` exception as cause for the returned `new_exception` exception'''
-
-    exception = None
-    try:
-        raise new_exception(raised_exception) from raised_exception
-    except Exception as e:
-        exception = e
-    return exception
-
-def get_exception_as_string(exception):
-    assert isinstance(exception, Exception), 'exception must be a `Exception`'
-
-    try:
-        raise exception
-    except:
-        return traceback.format_exc()
