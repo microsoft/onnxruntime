@@ -1,0 +1,9 @@
+{
+    "model":"model_files/",
+    "gpt2_type":"model_files/",
+    "num_suggestions": 8,
+    "num_words":8,
+    "num_beam":2,
+    "length_penalty":1.6,
+    "device":"cuda:0"
+  }
