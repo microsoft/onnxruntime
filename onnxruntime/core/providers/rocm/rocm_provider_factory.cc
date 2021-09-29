@@ -170,7 +170,7 @@ struct ROCM_Provider : Provider {
     info.device_id = gsl::narrow<OrtDevice::DeviceId>(params->device_id);
     info.gpu_mem_limit = params->gpu_mem_limit;
     info.arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(params->arena_extend_strategy);
-    info.cudnn_conv_algo_search = params->cudnn_conv_algo_search;
+    info.miopen_conv_exhaustive_search = params->miopen_conv_exhaustive_search;
     info.do_copy_in_default_stream = params->do_copy_in_default_stream;
     info.has_user_compute_stream = params->has_user_compute_stream;
     info.user_compute_stream = params->user_compute_stream;

@@ -104,7 +104,7 @@ bool GetProviderInstanceHash(const std::string& type,
     hash = static_cast<size_t>(info.device_id) ^
            info. gpu_mem_limit ^
            (static_cast<size_t>(info.arena_extend_strategy) << 16) ^
-           (static_cast<size_t>(info.cudnn_conv_algo_search) << 18) ^
+           (static_cast<size_t>(info.miopen_conv_exhaustive_search) << 18) ^
            (static_cast<size_t>(info.do_copy_in_default_stream) << 20) ^
            (static_cast<size_t>(info.has_user_compute_stream) << 22);
     return true;

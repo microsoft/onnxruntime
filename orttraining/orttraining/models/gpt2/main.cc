@@ -368,16 +368,9 @@ void setup_training_params(GPT2Parameters& params) {
 
 #ifdef USE_ROCM
   {
-    OrtROCMProviderOptions info{
-        gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank()),
-        OrtCudnnConvAlgoSearch::EXHAUSTIVE,
-        std::numeric_limits<size_t>::max(),
-        0,
-        true,
-        0,
-        nullptr,
-        nullptr};
-
+    OrtROCMProviderOptions info;
+    info.device_id=gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
+    info.do_copy_in_default_stream=true;
     params.providers.emplace(kRocmExecutionProvider, CreateExecutionProviderFactory_Rocm(&info));
     params.input_allocator = CreateROCMPinnedAllocator(info.device_id, CUDA_PINNED);
   }

@@ -72,8 +72,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
   int GetDeviceId() const override { return info_.device_id; }
   const hipDeviceProp_t& GetDeviceProp() const { return device_prop_; };
-  // TODO MIOpen integration
-  // int GetMiopenConvAlgo() const { return info_.cudnn_conv_algo_search; }
+  int GetMiopenConvExhaustiveSearch() const { return info_.miopen_conv_exhaustive_search; }
   bool DoCopyOnDefaultStream() const { return info_.do_copy_in_default_stream; }
 
   ProviderOptions GetProviderOptions() const override {

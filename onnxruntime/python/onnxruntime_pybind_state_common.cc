@@ -36,7 +36,7 @@ onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExten
 
 #ifdef USE_ROCM
 // TODO remove deprecated global config
-OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE;
+int miopen_conv_exhaustive_search = 0;
 // TODO remove deprecated global config
 bool do_copy_in_default_stream = true;
 onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info{};

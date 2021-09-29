@@ -15,7 +15,7 @@ namespace provider_option_names {
 constexpr const char* kDeviceId = "device_id";
 constexpr const char* kMemLimit = "gpu_mem_limit";
 constexpr const char* kArenaExtendStrategy = "arena_extend_strategy";
-constexpr const char* kCudnnConvAlgoSearch = "cudnn_conv_algo_search";
+constexpr const char* kMiopenConvExhaustiveSearch = "miopen_conv_exhaustive_search";
 constexpr const char* kDoCopyInDefaultStream = "do_copy_in_default_stream";
 constexpr const char* kGpuExternalAlloc = "gpu_external_alloc";
 constexpr const char* kGpuExternalFree = "gpu_external_free";
@@ -24,12 +24,6 @@ constexpr const char* kGpuExternalEmptyCache = "gpu_external_empty_cache";
 }  // namespace rocm
 
 namespace {
-const DeleteOnUnloadPtr<EnumNameMapping<OrtCudnnConvAlgoSearch>> ort_cudnn_conv_algo_search_mapping = new EnumNameMapping<OrtCudnnConvAlgoSearch>{
-    {OrtCudnnConvAlgoSearch::EXHAUSTIVE, "EXHAUSTIVE"},
-    {OrtCudnnConvAlgoSearch::HEURISTIC, "HEURISTIC"},
-    {OrtCudnnConvAlgoSearch::DEFAULT, "DEFAULT"},
-};
-
 const DeleteOnUnloadPtr<EnumNameMapping<ArenaExtendStrategy>> arena_extend_strategy_mapping = new EnumNameMapping<ArenaExtendStrategy>{
     {ArenaExtendStrategy::kNextPowerOfTwo, "kNextPowerOfTwo"},
     {ArenaExtendStrategy::kSameAsRequested, "kSameAsRequested"},
@@ -85,9 +79,7 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
           .AddAssignmentToEnumReference(
               rocm::provider_option_names::kArenaExtendStrategy,
               *arena_extend_strategy_mapping, info.arena_extend_strategy)
-          .AddAssignmentToEnumReference(
-              rocm::provider_option_names::kCudnnConvAlgoSearch,
-              *ort_cudnn_conv_algo_search_mapping, info.cudnn_conv_algo_search)
+          .AddAssignmentToReference(rocm::provider_option_names::kMiopenConvExhaustiveSearch, info.miopen_conv_exhaustive_search)
           .AddAssignmentToReference(rocm::provider_option_names::kDoCopyInDefaultStream, info.do_copy_in_default_stream)
           .Parse(options));
 
@@ -105,8 +97,7 @@ ProviderOptions ROCMExecutionProviderInfo::ToProviderOptions(const ROCMExecution
       {rocm::provider_option_names::kGpuExternalEmptyCache, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.empty_cache))},
       {rocm::provider_option_names::kArenaExtendStrategy,
        EnumToName(*arena_extend_strategy_mapping, info.arena_extend_strategy)},
-      {rocm::provider_option_names::kCudnnConvAlgoSearch,
-       EnumToName(*ort_cudnn_conv_algo_search_mapping, info.cudnn_conv_algo_search)},
+      {rocm::provider_option_names::kMiopenConvExhaustiveSearch, MakeStringWithClassicLocale(info.miopen_conv_exhaustive_search)},
       {rocm::provider_option_names::kDoCopyInDefaultStream, MakeStringWithClassicLocale(info.do_copy_in_default_stream)},
   };
 

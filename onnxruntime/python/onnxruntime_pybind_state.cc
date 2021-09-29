@@ -332,7 +332,7 @@ const ROCMExecutionProviderInfo GetRocmExecutionProviderInfo(ProviderInfo_ROCM* 
     info.device_id = cuda_device_id;
     info.gpu_mem_limit = gpu_mem_limit;
     info.arena_extend_strategy = arena_extend_strategy;
-    info.cudnn_conv_algo_search = cudnn_conv_algo_search;
+    info.miopen_conv_exhaustive_search = miopen_conv_exhaustive_search;
     info.do_copy_in_default_stream = do_copy_in_default_stream;
     info.external_allocator_info = external_allocator_info;
   }

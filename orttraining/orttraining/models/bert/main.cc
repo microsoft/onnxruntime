@@ -627,20 +627,14 @@ void setup_training_params(BertParameters& params) {
 
 #ifdef USE_ROCM
   {
-    OrtROCMProviderOptions info{
-        gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank()),
-        OrtCudnnConvAlgoSearch::EXHAUSTIVE,
-        std::numeric_limits<size_t>::max(),
-        0,
-        true,
-        0,
-        nullptr,
-        nullptr};
+    OrtROCMProviderOptions info;
+    info.device_id = gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
+    info.do_copy_in_default_stream = true;
 
     if (params.gpu_mem_limit_in_gb > 0) {
       info.gpu_mem_limit = gsl::narrow<size_t>(params.gpu_mem_limit_in_gb * 1024 * 1024 * 1024);
     }
-    info.cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE;
+    info.miopen_conv_exhaustive_search = 1; // true, exhaustive search (slow)
 
     params.providers.emplace(kRocmExecutionProvider, CreateExecutionProviderFactory_Rocm(&info));
     params.input_allocator = CreateROCMPinnedAllocator(info.device_id, CUDA_PINNED);
