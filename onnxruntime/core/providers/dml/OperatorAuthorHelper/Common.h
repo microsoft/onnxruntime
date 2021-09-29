@@ -4,28 +4,49 @@
 #pragma once
 
 #define ML_CHECK_VALID_ARGUMENT(x, ...)\
-  {\
-    if ((x) == false) {\
-      THROW_HR(E_INVALIDARG);\
-    }\
-  }
+    {\
+        if ((x) == false)\
+        {\
+            THROW_HR(E_INVALIDARG);\
+        }\
+    }
 
 #define ML_INVALID_ARGUMENT(msg)\
-      THROW_HR(E_INVALIDARG);\
+    THROW_HR(E_INVALIDARG);\
 
 #define ML_CHECK_HRESULT(hr, ...)\
-  {\
-    if (FAILED(hr)) {\
-      THROW_HR(E_INVALIDARG);\
-    }\
-  }
+    {\
+        if (FAILED(hr))\
+        {\
+            THROW_HR(E_INVALIDARG);\
+        }\
+    }
 
 namespace OperatorHelper
 {
-    template<typename T, typename I> T clamp_cast(I input)
+    // Clamp the input value to the maximum range of the output, before casting to the output type.
+    //
+    // e.g. int32(300) would yield int8(255) rather than int8(44).
+    //      float32(-42) would yield uint32(0) rather than a huge positive number.
+    template<typename OutputType, typename InputType> OutputType clamp_cast(InputType input)
     {
-      return static_cast<T>(std::clamp<I>(input, std::numeric_limits<T>::lowest(), std::numeric_limits<T>::max()));
+        // Determine the larger type to decide which numeric limits to clamp to.
+        using InputLimits = std::numeric_limits<InputType>;
+        using OutputLimits = std::numeric_limits<OutputType>;
+        constexpr int inputMaxDigits = std::max(InputLimits::max_exponent, InputLimits::digits);
+        constexpr int outputMaxDigits = std::max(OutputLimits::max_exponent, OutputLimits::digits);
+        constexpr bool isEitherTypeUnsigned = std::is_unsigned_v<InputType> || std::is_unsigned_v<OutputType>;
+        constexpr bool isOutputTypeLarger = outputMaxDigits > inputMaxDigits;
+
+        InputType lowestValue  = isEitherTypeUnsigned ? static_cast<InputType>(0) :
+                                 isOutputTypeLarger ? InputLimits::lowest() :
+                                 static_cast<InputType>(OutputLimits::lowest());
+        InputType highestValue = isOutputTypeLarger ? InputLimits::max() :
+                                 static_cast<InputType>(OutputLimits::max());
+
+        return static_cast<OutputType>(std::clamp<InputType>(input, lowestValue, highestValue));
     }
+
     enum TensorAxis { N, C, H, W, DoNotCoerce = UINT_MAX, LeftAligned = INT_MAX, RightAligned = INT_MIN, NoPlacementAdjustment = 0 };
     enum BroadcastMode { NoBroadcast, UnidirectionalBroadcast, MultidirectionalBroadcast };
 

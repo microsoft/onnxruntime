@@ -72,9 +72,9 @@ public:
         // logic for some corner test case (like opsetVersion >= 11, but no validInput at index 2)
         // Same applies to paddingValue.
         paddingDesc.PaddingValueDataType = this->m_inputTensorDescs[0].GetDmlDataType();
-        CastToScalarUnion<float>(paddingDesc.PaddingValueDataType, 0.0f, /*out*/&paddingDesc.PaddingValue);
+        CastToClampedScalarUnion<float>(paddingDesc.PaddingValueDataType, 0.0f, /*out*/&paddingDesc.PaddingValue);
         
-		// Read the constant value which can come from an attribute or tensor.
+        // Read the constant value which can come from an attribute or tensor.
         if (opsetVersion >= 11)
         {
             if (kernelInfo.IsInputValid(2))
@@ -86,7 +86,7 @@ public:
         else
         {
             auto value = kernelInfo.GetOptionalAttribute<float>(AttrName::Value, 0.0f);
-            CastToScalarUnion<float>(paddingDesc.PaddingValueDataType, value, /*out*/&paddingDesc.PaddingValue);
+            CastToClampedScalarUnion<float>(paddingDesc.PaddingValueDataType, value, /*out*/&paddingDesc.PaddingValue);
         }
 
         DML_OPERATOR_DESC opDesc = { DML_OPERATOR_PADDING1, &paddingDesc };
