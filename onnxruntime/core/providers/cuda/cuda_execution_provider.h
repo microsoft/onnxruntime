@@ -92,6 +92,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
   static AllocatorPtr CreateCudaAllocator(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy,
                                           CUDAExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
 
+  std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
+
  private:
   CUDAExecutionProviderInfo info_;
   cudaDeviceProp device_prop_;
