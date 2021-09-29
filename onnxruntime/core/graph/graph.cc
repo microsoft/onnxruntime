@@ -3428,6 +3428,14 @@ void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::str
                 });
 
   // Clear the unused NodeArgs
+  // We also want to scan the output NodeArgs of each node
+  // In case one output of a node is neither used as an input of another node nor an output of graph
+  for (const auto& node : Nodes()) {
+    for (const auto* def : node.OutputDefs()) {
+      ORT_IGNORE_RETURN_VALUE(used_args.insert(def->Name()));
+    }
+  }
+
   for (auto it = node_args_.cbegin(), node_args_end = node_args_.cend(); it != node_args_end; /* no increment */) {
     auto current_entry = it++;
     const auto& node_arg_name = current_entry->first;
@@ -3435,6 +3443,8 @@ void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::str
         (initializer_names_to_preserve == nullptr ||
          initializer_names_to_preserve->find(node_arg_name) == initializer_names_to_preserve->cend())) {
       LOGS(logger_, INFO) << "Removing NodeArg '" << node_arg_name << "'. It is no longer used by any node.";
+      // Need to remove the NodeArg from both value_info_ and node_args_
+      value_info_.erase(current_entry->second.get());
       it = node_args_.erase(current_entry);
     }
   }
