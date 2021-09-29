@@ -73,14 +73,14 @@ public:
         // Same applies to paddingValue.
         paddingDesc.PaddingValueDataType = this->m_inputTensorDescs[0].GetDmlDataType();
         CastToScalarUnion<float>(paddingDesc.PaddingValueDataType, 0.0f, /*out*/&paddingDesc.PaddingValue);
-		
+        
 		// Read the constant value which can come from an attribute or tensor.
         if (opsetVersion >= 11)
         {
             if (kernelInfo.IsInputValid(2))
             {
                 MLOperatorTensor constantPaddingValueTensor = kernelInfo.GetConstantInputTensor(2);
-                ReadScalarTensorData(kernelInfo.GetConstantInputTensor(2), /*out*/ &paddingDesc.PaddingValue.Bytes, sizeof(paddingDesc.PaddingValue.Bytes));
+                ReadScalarTensorData(constantPaddingValueTensor, /*out*/ &paddingDesc.PaddingValue.Bytes, sizeof(paddingDesc.PaddingValue.Bytes));
             }
         }
         else
