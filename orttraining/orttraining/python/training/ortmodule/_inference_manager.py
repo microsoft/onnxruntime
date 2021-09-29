@@ -18,6 +18,7 @@ from ._fallback import ORTModuleFallbackException, _FallbackPolicy, _FallbackMan
 from onnxruntime.capi import _pybind_state as C
 import torch
 import warnings
+from functools import reduce
 
 
 class InferenceManager(GraphExecutionManager):

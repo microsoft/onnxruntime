@@ -1331,6 +1331,8 @@ def test_bert_inputs_with_dynamic_shape():
 
 @pytest.mark.parametrize("device", ['cuda', 'cpu'])
 def test_changes_input_requires_grad_reinitializes_module_gradient_graph_builder(device):
+    os.environ['ORTMODULE_SKIPCHECK_POLICY'] = 'SKIP_CHECK_DISABLED'
+
     N, D_in, H, D_out = 32, 784, 500, 10
     model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
     model = ORTModule(model)
@@ -1347,6 +1349,8 @@ def test_changes_input_requires_grad_reinitializes_module_gradient_graph_builder
     assert y.grad is not None
     assert module_gradient_graph_builder_training != \
         model._torch_module._execution_manager(model._is_training())._graph_builder
+
+    del os.environ['ORTMODULE_SKIPCHECK_POLICY']
 
 @pytest.mark.parametrize("device", ['cuda'])
 def test_input_requires_grad_backward_creates_input_grad_as_required0(device):
@@ -1697,6 +1701,7 @@ def test_named_tuple_return_value_module(device):
 
 @pytest.mark.parametrize("device", ['cpu', 'cuda'])
 def test_exception_raised_for_custom_class_return_value_module(device):
+    os.environ['ORTMODULE_SKIPCHECK_POLICY'] = 'SKIP_CHECK_DISABLED'
 
     N, D_in, H, D_out = 64, 784, 500, 10
     pt_model = NeuralNetCustomClassOutput(D_in, H, D_out).to(device)
@@ -1719,6 +1724,8 @@ def test_exception_raised_for_custom_class_return_value_module(device):
         with pytest.raises(_fallback.ORTModuleIOError) as runtime_error:
             ort_model(x, y, z)
         assert 'ORTModule does not support the following model output type' in str(runtime_error.value)
+    
+    del os.environ['ORTMODULE_SKIPCHECK_POLICY']
 
 def test_dynamic_axes_config():
     device = 'cuda'

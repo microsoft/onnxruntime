@@ -22,6 +22,7 @@ from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_typ
 
 import torch
 import warnings
+from functools import reduce
 
 
 class TrainingManager(GraphExecutionManager):
