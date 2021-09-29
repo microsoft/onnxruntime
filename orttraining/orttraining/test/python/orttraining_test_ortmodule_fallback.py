@@ -9,7 +9,7 @@ import torch
 import pytest
 import warnings
 
-from onnxruntime.training.ortmodule import ORTModule, _fallback, TORCH_CPP_DIR, _graph_execution_manager
+from onnxruntime.training.ortmodule import ORTModule, _fallback, TORCH_CPP_DIR, _utils
 from onnxruntime.training.ortmodule.torch_cpp_extensions import is_installed as is_torch_cpp_extensions_installed
 import _test_helpers
 from _orttraining_ortmodule_models import (NeuralNetSinglePositionalArgument,
@@ -592,19 +592,19 @@ def test_ortmodule_fallback_with_skipcheck_reset(is_training, fallback_enabled, 
     pt_model.train(is_training)
 
     assert ort_model._torch_module._execution_manager(is_training)._skip_check == \
-        (_graph_execution_manager._SkipCheck.SKIP_CHECK_DEVICE | _graph_execution_manager._SkipCheck.SKIP_CHECK_BUILD_GRADIENT | 
-        _graph_execution_manager._SkipCheck.SKIP_CHECK_EXECUTION_AGENT)
+        (_utils._SkipCheck.SKIP_CHECK_DEVICE | _utils._SkipCheck.SKIP_CHECK_BUILD_GRADIENT | 
+        _utils._SkipCheck.SKIP_CHECK_EXECUTION_AGENT)
 
     for i in range(3):
         if fallback_enabled:
             if matching_policy:
                 ort_out = ort_model(inputs, 'hello')
-                assert ort_model._torch_module._execution_manager(is_training)._skip_check == _graph_execution_manager._SkipCheck.SKIP_CHECK_DISABLED
+                assert ort_model._torch_module._execution_manager(is_training)._skip_check == _utils._SkipCheck.SKIP_CHECK_DISABLED
             else:
                 with pytest.raises(_fallback.ORTModuleIOError) as ex_info:
                     _ = ort_model(torch.randn(1, 2), 'hello')
-                assert ort_model._torch_module._execution_manager(is_training)._skip_check == _graph_execution_manager._SkipCheck.SKIP_CHECK_DISABLED
+                assert ort_model._torch_module._execution_manager(is_training)._skip_check == _utils._SkipCheck.SKIP_CHECK_DISABLED
         else:
             with pytest.raises(_fallback.ORTModuleIOError) as ex_info:
                 _ = ort_model(torch.randn(1, 2), 'hello')
-            assert ort_model._torch_module._execution_manager(is_training)._skip_check == _graph_execution_manager._SkipCheck.SKIP_CHECK_DISABLED
+            assert ort_model._torch_module._execution_manager(is_training)._skip_check == _utils._SkipCheck.SKIP_CHECK_DISABLED
