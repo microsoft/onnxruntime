@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#if !(defined(USE_ROCM) || defined(ENABLE_TRAINING)) && defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+#if !(defined(USE_ROCM) || defined(ENABLE_TRAINING))
 
 #include "cuda_profiler.h"
 #include <map>
@@ -15,6 +15,8 @@ auto KEVENT = onnxruntime::profiling::KERNEL_EVENT;
 std::atomic_flag CudaProfiler::enabled{0};
 std::vector<CudaProfiler::KernelStat> CudaProfiler::stats;
 std::unordered_map<uint32_t, uint64_t> CudaProfiler::id_map;
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 
 #define BUF_SIZE (32 * 1024)
 #define ALIGN_SIZE (8)
@@ -193,6 +195,20 @@ void CudaProfiler::Clear() {
     enabled.clear();
   }
 }
+
+#else // for cuda 10.x, no profiling
+
+void CUPTIAPI CudaProfiler::BufferRequested(uint8_t**, size_t*, size_t*) {}
+void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext, uint32_t, uint8_t*, size_t, size_t) {}
+bool CudaProfiler::StartProfiling() { return false; }
+void CudaProfiler::EndProfiling(TimePoint, Events&) {}
+CudaProfiler::~CudaProfiler() {}
+void CudaProfiler::Start(uint64_t) {}
+void CudaProfiler::Stop(uint64_t) {}
+void CudaProfiler::DisableEvents() {}
+void CudaProfiler::Clear() {}
+
+#endif
 
 }  // namespace profiling
 }  // namespace onnxruntime

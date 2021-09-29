@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 #include "core/common/profiler_common.h"
 
-#if !(defined(USE_ROCM) || defined(ENABLE_TRAINING)) && defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+#if !(defined(USE_ROCM) || defined(ENABLE_TRAINING))
 
 #include "core/platform/ort_mutex.h"
 #include <cupti.h>
