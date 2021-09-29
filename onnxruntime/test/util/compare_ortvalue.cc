@@ -453,9 +453,17 @@ std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::Val
     // TODO: CXX API doesn't have IsTensorSequence() supported for Ort::Value
     // TODO: Repeat whatever we did for Tensor above in a loop ?
     return std::make_pair(COMPARE_RESULT::SUCCESS, "");
-  }
+  } else if (v.type().has_optional_type()) {
+    const auto& tp = v.type().optional_type().elem_type();
 
-  else {
+    if (tp.has_tensor_type() && !o.IsTensor()) {
+      return std::make_pair(COMPARE_RESULT::TYPE_MISMATCH, "");
+    }
+
+    // TODO: Deal with sequences the same way we choose to deal with it
+    // in the above else if()
+
+  } else {
     // Cannot do this check for tensor/sequence of tensor type.
     // For tensor type, o.Type() is TensorTypeBase*, but p points to a subclass of TensorTypeBase
     // For sequences of tensor type, o.Type() is SequenceTensorTypeBase*, but p points to a subclass of SequenceTensorTypeBase

@@ -1296,13 +1296,15 @@ void Graph::InitializeStateFromModelFileGraphProto() {
   }
 
   for (const auto& node : Nodes()) {
+    const auto& node_name = node.Name();
+    ORT_IGNORE_RETURN_VALUE(node_name);
     for (const auto* output_def : node.OutputDefs()) {
       nodes_outputs.insert({output_def->Name(), output_def});
     }
   }
 
   // Set graph outputs.
-  // Graph outputs specified in the model must be nodes' outputs, initializer or graph inputs.
+  // Graph outputs specified in the model must be nodes' outputs, initializers or graph inputs.
   for (auto& graph_output : graph_proto_->output()) {
     auto& graph_output_name = graph_output.name();
     auto iter = nodes_outputs.find(graph_output_name);
