@@ -442,23 +442,28 @@ public:
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
-        float minValue = -FLT_MAX;
-        float maxValue = FLT_MAX;
-        if (kernelInfo.IsInputValid(1))
-        {
-          minValue = static_cast<float>(ReadScalarTensorCastToFloat64(kernelInfo.GetConstantInputTensor(1)));
-        }
-        if (kernelInfo.IsInputValid(2)) {
-          maxValue = static_cast<float>(ReadScalarTensorCastToFloat64(kernelInfo.GetConstantInputTensor(2)));
-        }
-
-        DML_ELEMENT_WISE_CLIP_OPERATOR_DESC opDesc = {};
+        DML_ELEMENT_WISE_CLIP1_OPERATOR_DESC opDesc = {};
         opDesc.InputTensor = inputDescs.data();
         opDesc.OutputTensor = outputDescs.data();
-        opDesc.Min = minValue;
-        opDesc.Max = maxValue;
+        // MinMaxDataType will always be equal to inputDataTensorDataType
+        // Assigning minMaxDataType to inputDataTensorDataType because this field
+        // has to be assigned even if program does not go through below conditional 
+        // logic for some corner test case
+        // Same applies to min and max value.
+        opDesc.MinMaxDataType = this->m_inputTensorDescs[0].GetDmlDataType();
+        CastToScalarUnion<double>(opDesc.MinMaxDataType, -FLT_MAX, /*out*/&opDesc.Min);
+        CastToScalarUnion<double>(opDesc.MinMaxDataType, FLT_MAX, /*out*/&opDesc.Max);
 
-        SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_CLIP, &opDesc}, kernelInfo);
+        if (kernelInfo.IsInputValid(1))
+        {
+            ReadScalarTensorData(kernelInfo.GetConstantInputTensor(1), /*out*/ &opDesc.Min.Bytes, sizeof(opDesc.Min.Bytes));
+        }
+        if (kernelInfo.IsInputValid(2)) 
+        {
+            ReadScalarTensorData(kernelInfo.GetConstantInputTensor(2), /*out*/ &opDesc.Max.Bytes, sizeof(opDesc.Max.Bytes));
+        }
+
+        SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_CLIP1, &opDesc}, kernelInfo);
     }
 };
 

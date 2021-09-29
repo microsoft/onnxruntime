@@ -56,34 +56,40 @@ public:
             ML_INVALID_ARGUMENT("Unknown Pad mode attribute.");
         }
 
-        // Read the constant value which can come from an attribute or tensor.
-        float value = 0.0f;
+        std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
+        std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
+
+        DML_PADDING1_OPERATOR_DESC paddingDesc = {};
+        paddingDesc.InputTensor = inputDescs.data();
+        paddingDesc.OutputTensor = outputDescs.data();
+        paddingDesc.PaddingMode = mode;
+        paddingDesc.DimensionCount = gsl::narrow_cast<uint32_t>(m_startPadding.size());
+        paddingDesc.StartPadding = m_startPadding.data();
+        paddingDesc.EndPadding = m_endPadding.data();
+        // PaddingValueDataType will always be equal to inputDataTensorDataType
+        // Assigning paddingValueDataType to inputDataTensorDataType because this field
+        // has to be assigned even if program does not go through below conditional 
+        // logic for some corner test case (like opsetVersion >= 11, but no validInput at index 2)
+        // Same applies to paddingValue.
+        paddingDesc.PaddingValueDataType = this->m_inputTensorDescs[0].GetDmlDataType();
+        CastToScalarUnion<float>(paddingDesc.PaddingValueDataType, 0.0f, /*out*/&paddingDesc.PaddingValue);
+		
+		// Read the constant value which can come from an attribute or tensor.
         if (opsetVersion >= 11)
         {
             if (kernelInfo.IsInputValid(2))
             {
-                auto valueTensor = kernelInfo.GetConstantInputTensor(2);
-                value = static_cast<float>(ReadScalarTensorCastToFloat64(valueTensor));
+                MLOperatorTensor constantPaddingValueTensor = kernelInfo.GetConstantInputTensor(2);
+                ReadScalarTensorData(kernelInfo.GetConstantInputTensor(2), /*out*/ &paddingDesc.PaddingValue.Bytes, sizeof(paddingDesc.PaddingValue.Bytes));
             }
         }
         else
         {
-             value = kernelInfo.GetOptionalAttribute<float>(AttrName::Value, 0.0f);
+            auto value = kernelInfo.GetOptionalAttribute<float>(AttrName::Value, 0.0f);
+            CastToScalarUnion<float>(paddingDesc.PaddingValueDataType, value, /*out*/&paddingDesc.PaddingValue);
         }
 
-        std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
-        std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
-
-        DML_PADDING_OPERATOR_DESC paddingDesc = {};
-        paddingDesc.InputTensor = inputDescs.data();
-        paddingDesc.OutputTensor = outputDescs.data();
-        paddingDesc.PaddingMode = mode;
-        paddingDesc.PaddingValue = value;
-        paddingDesc.DimensionCount = gsl::narrow_cast<uint32_t>(m_startPadding.size());
-        paddingDesc.StartPadding = m_startPadding.data();
-        paddingDesc.EndPadding = m_endPadding.data();
-
-        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_PADDING, &paddingDesc };
+        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_PADDING1, &paddingDesc };
 
         SetDmlOperatorDesc(opDesc, kernelInfo);
     }
