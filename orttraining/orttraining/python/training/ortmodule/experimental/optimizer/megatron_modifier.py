@@ -5,7 +5,8 @@
 
 import torch
 import types
-from .fp16_optimizer import FP16OptimizerModifier, check_overflow, clip_grad_norm_fp32
+from numpy import inf
+from .modifier import FP16OptimizerModifier, check_overflow, clip_grad_norm_fp32
 
 class LegacyMegatronLMModifier(FP16OptimizerModifier):
     def __init__(self, optimizer, **kwargs) -> None:
@@ -21,8 +22,8 @@ class LegacyMegatronLMModifier(FP16OptimizerModifier):
         except Exception as error:
             # Error handling
             return False
-        _check_overflow_function = getattr(self.optimizer, "_check_overflow", None)
-        clip_master_grads_function = getattr(self.optimizer, "clip_master_grads", None)
+        _check_overflow_function = getattr(self._optimizer, "_check_overflow", None)
+        clip_master_grads_function = getattr(self._optimizer, "clip_master_grads", None)
         if not _check_overflow_function or not callable(_check_overflow_function):
             return False
         if not clip_master_grads_function or not callable(clip_master_grads_function):
@@ -30,7 +31,7 @@ class LegacyMegatronLMModifier(FP16OptimizerModifier):
         return True
 
     def override_function(self):
-        def clip_master_grads(self_, max_norm, norm_type=2):
+        def clip_master_grads(target, max_norm, norm_type=2):
             """
             Clips fp32 master gradients via ``torch.nn.utils.clip_grad_norm``.
 
@@ -45,9 +46,9 @@ class LegacyMegatronLMModifier(FP16OptimizerModifier):
             .. warning::
                 Returns -1 if the most recently computed fp16 gradients overflowed (that is, if ``self.overflow`` is ``True``).
             """
-            if not self_.overflow:
+            if not target.overflow:
                 fp32_params = []
-                for param_group in self_.optimizer.param_groups:
+                for param_group in target.optimizer.param_groups:
                     for param in param_group['params']:
                         fp32_params.append(param)
                 return clip_grad_norm_fp32(fp32_params, max_norm, norm_type, 
@@ -56,16 +57,16 @@ class LegacyMegatronLMModifier(FP16OptimizerModifier):
             else:
                 return -1
 
-        def _check_overflow(self_):
+        def _check_overflow(target):
             params = []
-            for group in self_.fp16_groups:
+            for group in target.fp16_groups:
                 for param in group:
                     params.append(param)
-            for group in self_.fp32_from_fp32_groups:
+            for group in target.fp32_from_fp32_groups:
                 for param in group:
                     params.append(param)
-            self_.overflow = check_overflow(params)
-            return self_.overflow
+            target.overflow = check_overflow(params)
+            return target.overflow
 
-        self.optimizer._check_overflow = types.MethodType(_check_overflow, self.optimizer)
-        self.optimizer.clip_master_grads = types.MethodType(clip_master_grads, self.optimizer)
+        self._optimizer._check_overflow = types.MethodType(_check_overflow, self._optimizer)
+        self._optimizer.clip_master_grads = types.MethodType(clip_master_grads, self._optimizer)

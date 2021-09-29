@@ -10,11 +10,9 @@ class FP16OptimizerModifier(object):
         super().__init__()
         self._optimizer = optimizer
 
-    def check_requirements(self):
-        return self.can_be_modified()
-
     def apply(self):
-        self.override_function()
+        if self.can_be_modified():
+            self.override_function()
 
 def check_overflow(params):
     grad_data = [p.grad.data for p in params if p.grad is not None]

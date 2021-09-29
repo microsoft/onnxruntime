@@ -2,14 +2,14 @@
 # Licensed under the MIT License.
 # __init__.py
 
-from .megatron_modifier import MegatronLMModifier
 from .ds_modifier import DeepSpeedZeROModifier
+from .megatron_modifier import LegacyMegatronLMModifier
 
 LEAGCY_MEGATRON_LM_OPTIMIZER_NAME = "megatron.fp16.fp16.FP16_Optimizer"
 DEEPSPEED_ZERO1_AND_ZERO2_OPTIMIZER_NAME = "deepspeed.runtime.zero.stage2.FP16_DeepSpeedZeroOptimizer"
 
 OptimizerModifierTypeRegistry = {
-    LEAGCY_MEGATRON_LM_OPTIMIZER_NAME: MegatronLMModifier,
+    LEAGCY_MEGATRON_LM_OPTIMIZER_NAME: LegacyMegatronLMModifier,
     DEEPSPEED_ZERO1_AND_ZERO2_OPTIMIZER_NAME : DeepSpeedZeROModifier,
 }
 
