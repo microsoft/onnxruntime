@@ -568,6 +568,8 @@ def test_model_and_input_without_device():
     out is not None
 
 def test_model_with_different_devices_same_session():
+    os.environ['ORTMODULE_SKIPCHECK_POLICY'] = 'SKIP_CHECK_DISABLED'
+
     N, D_in, H, D_out = 64, 784, 500, 10
     model = NeuralNetSinglePositionalArgument(D_in, H, D_out)
     model = ORTModule(model)
@@ -581,6 +583,8 @@ def test_model_with_different_devices_same_session():
         model.to(device)
         x = torch.randn(N, D_in, device=device)
         y = model(x)
+
+    del os.environ['ORTMODULE_SKIPCHECK_POLICY']
 
 @pytest.mark.parametrize("device", ['cuda', 'cpu'])
 def test_input_requires_grad_saved(device):
@@ -2013,6 +2017,8 @@ def test_nested_return_value_module(device):
 )
 def test_forward_data_and_model_on_different_devices(data_device, model_device):
 
+    os.environ['ORTMODULE_SKIPCHECK_POLICY'] = 'SKIP_CHECK_DISABLED'
+
     N, D_in, H, D_out = 64, 784, 500, 10
     model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(model_device)
     ort_model = ORTModule(model)
@@ -2033,6 +2039,8 @@ def test_forward_data_and_model_on_different_devices(data_device, model_device):
         with pytest.raises(ORTModuleDeviceException) as runtime_error:
             ort_model(x)
         assert f"Input argument to forward found on device {torch.device(x.device)}, but expected it to be on module device {ort_model._torch_module._execution_manager(ort_model._is_training())._device}." in str(runtime_error.value)
+
+    del os.environ['ORTMODULE_SKIPCHECK_POLICY']
 
 def test_forward_returns_none_type_as_output():
     class NeuralNetNoneTypeOutput(torch.nn.Module):
