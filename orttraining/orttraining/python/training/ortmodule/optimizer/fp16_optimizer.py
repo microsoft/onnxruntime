@@ -3,7 +3,6 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import functools
 import torch
 import types
 from numpy import inf
@@ -24,6 +23,26 @@ def megatron_lm_check(optimizer):
         return False
     return True
 
+def deepspeed_zero1_and_zero2_check(optimizer):
+    try:
+        from apex.multi_tensor_apply import multi_tensor_applier
+        import amp_C
+        _ = torch._amp_foreach_non_finite_check_and_unscale_
+    except Exception as error:
+        # Error handling
+        return False
+    has_overflow_serial_function = getattr(optimizer, "has_overflow_serial", None)
+    get_grad_norm_direct_function = getattr(optimizer, "get_grad_norm_direct", None)
+    has_overflow_partitioned_grads_serial = getattr(optimizer, "has_overflow_partitioned_grads_serial", None)
+    if not has_overflow_serial_function or not callable(has_overflow_serial_function):
+        return False
+    if not get_grad_norm_direct_function or not callable(get_grad_norm_direct_function):
+        return False
+    if not has_overflow_partitioned_grads_serial or not callable(has_overflow_partitioned_grads_serial):
+        return False
+    return True
+
+
 def FP16_Optimizer(optimizer, **kwargs):
     """
     Simple wrapper to replace inefficient FP16_Optimizer function calls implemented by library for example
@@ -33,14 +52,14 @@ def FP16_Optimizer(optimizer, **kwargs):
         optimizer: the FP16_Optimizer instance
 
     Returns:
-        the FP16_Optimizer instance
+        The FP16_Optimizer instance
 
     """
     def get_full_qualified_type_name(o):
         klass = o.__class__
         module = klass.__module__
         if module == 'builtins':
-            return klass.__qualname__ # avoid outputs like 'builtins.str'
+            return klass.__qualname__
         return module + '.' + klass.__qualname__
 
     optimizer_full_name = get_full_qualified_type_name(optimizer)
@@ -66,7 +85,6 @@ def FP16_Optimizer(optimizer, **kwargs):
                     Returns -1 if the most recently computed fp16 gradients overflowed (that is, if ``self.overflow`` is ``True``).
                 """
                 if not self.overflow:
-                    print("clip_grad_norm_fp32 called....................................")
                     fp32_params = []
                     for param_group in self.optimizer.param_groups:
                         for param in param_group['params']:
@@ -92,20 +110,101 @@ def FP16_Optimizer(optimizer, **kwargs):
             optimizer.clip_master_grads = types.MethodType(clip_master_grads, optimizer)
         else:
             print("megatron.fp16.fp16.FP16_Optimizer wrapping failed.")
+    elif optimizer_full_name == "deepspeed.runtime.zero.stage2.FP16_DeepSpeedZeroOptimizer":
+        if deepspeed_zero1_and_zero2_check(optimizer):
+            def get_grad_norm_direct(self, gradients, params, norm_type=2):
+                from apex.multi_tensor_apply import multi_tensor_applier
+                import amp_C
+                def is_model_parallel_parameter(p):
+                    return hasattr(p, 'model_parallel') and p.model_parallel
+
+                norm_type = float(norm_type)
+                if norm_type == inf:
+                    total_norm = max(g.data.abs().max() for g in gradients)
+                    total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+                    torch.distributed.all_reduce(total_norm_cuda,
+                                                op=torch.distributed.ReduceOp.MAX,
+                                                group=self.dp_process_group)
+
+                    # Take max across all GPUs.
+                    self._model_parallel_all_reduce(tensor=total_norm_cuda,
+                                                    op=torch.distributed.ReduceOp.MAX)
+                    total_norm = total_norm_cuda[0].item()
+                else:
+                    total_norm = 0.0
+                    grads_for_norm = []
+                    for g, p in zip(gradients, params):
+                        if is_model_parallel_parameter(p) or (self.model_parallel_rank == 0):
+                            # deepspeed original give a double type conversion here, not sure whether this is impacting some models.
+                            # https://github.com/microsoft/DeepSpeed/blob/9e5c0c5c3ecabb68b7e9dffac0e9b8d167e3cab8/deepspeed/runtime/zero/stage2.py#L1501
+                            # grads_for_norm.append(g.data.double())
+                            grads_for_norm.append(g.data)
+
+                    if len(grads_for_norm) > 0:
+                        dummy_overflow_buf = torch.cuda.IntTensor([0])
+                        # Use apex's multi-tensor applier for efficiency reasons.
+                        # Multi-tensor applier takes a function and a list of list
+                        # and performs the operation on that list all in one kernel.
+                        grad_norm, _ = multi_tensor_applier(
+                            amp_C.multi_tensor_l2norm,
+                            dummy_overflow_buf,
+                            [grads_for_norm],
+                            False # no per-parameter norm
+                        )
+                        # Since we will be summing across data parallel groups,
+                        # we need the pow(norm-type).
+                        total_norm_cuda = grad_norm ** norm_type
+                    else:
+                        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+
+                    # Sum across all model parallel GPUs.
+                    torch.distributed.all_reduce(total_norm_cuda,
+                                                op=torch.distributed.ReduceOp.SUM,
+                                                group=self.dp_process_group)
+
+                    self._model_parallel_all_reduce(tensor=total_norm_cuda,
+                                                    op=torch.distributed.ReduceOp.SUM)
+
+                    total_norm = total_norm_cuda[0].item()**(1. / norm_type)
+
+                if total_norm == float(
+                        'inf') or total_norm == -float('inf') or total_norm != total_norm:
+                    total_norm = -1
+
+                return total_norm
+
+            def has_overflow_serial(self, params, is_grad_list=False):
+                return check_overflow(params)
+
+            def has_overflow_partitioned_grads_serial(self):
+                for i in range(len(self.fp16_groups)):
+                    grad_data = [grad.data for grad in self.averaged_gradients[i] if grad is not None]
+                    if check_overflow_for_grads(grad_data):
+                        return True
+                return False
+
+            optimizer.has_overflow_serial = types.MethodType(has_overflow_serial, optimizer)
+            optimizer.get_grad_norm_direct = types.MethodType(get_grad_norm_direct, optimizer)
+            # zero1 should not call into following function, is this a deepspeed bug?
+            optimizer.has_overflow_partitioned_grads_serial = types.MethodType(has_overflow_partitioned_grads_serial, optimizer)
+        else:
+            print("deepspeed.runtime.zero.stage2.FP16_DeepSpeedZeroOptimizer wrapping failed.")
 
     return optimizer
 
 def check_overflow(params):
+    grad_data = [p.grad.data for p in params if p.grad is not None]
+    return check_overflow_for_grads(grad_data) 
+
+def check_overflow_for_grads(grad_data):
     found_inf = torch.cuda.FloatTensor([0.0])
     scaler = torch.cuda.FloatTensor([1.0])
-    grad_data = [p.grad.data for p in params if p.grad is not None]
     # Unscale and set found inf/nan
     torch._amp_foreach_non_finite_check_and_unscale_(grad_data, found_inf, scaler)
 
     # Check for nan.
     overflow = (found_inf.item() > 0)
     return overflow 
-
 
 def clip_grad_norm_fp32(parameters, max_norm, norm_type,
                         get_horizontal_model_parallel_rank=None, get_horizontal_model_parallel_group=None):
@@ -190,3 +289,4 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type,
         total_norm = total_norm.item() ** (1.0 / norm_type)
 
     return total_norm
+
