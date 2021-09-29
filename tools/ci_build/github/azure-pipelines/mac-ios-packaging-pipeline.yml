@@ -64,8 +64,8 @@ jobs:
 
   - script: |
       python tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
-        --build-root-dir "$(Build.BinariesDirectory)/ios_framework" \
-        --staging-root-dir "$(Build.BinariesDirectory)/staging" \
+        --build-dir "$(Build.BinariesDirectory)/ios_framework" \
+        --staging-dir "$(Build.BinariesDirectory)/staging" \
         --pod-version "${ORT_POD_VERSION}" \
         --test \
         --build-settings-file tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json \
