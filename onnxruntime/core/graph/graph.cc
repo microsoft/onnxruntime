@@ -3366,16 +3366,16 @@ void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::str
   const auto& overridable_initializers = GetOverridableInitializers();
   const auto& outputs = GetOutputs();
 
-  std::for_each(inputs.cbegin(), inputs.cend(), [&](const NodeArg* input) {
+  std::for_each(inputs.cbegin(), inputs.cend(), [&used_args](const NodeArg* input) {
     ORT_IGNORE_RETURN_VALUE(used_args.insert(input));
   });
 
   std::for_each(overridable_initializers.cbegin(), overridable_initializers.cend(),
-                [&](const NodeArg* input) {
+                [&used_args](const NodeArg* input) {
                   ORT_IGNORE_RETURN_VALUE(used_args.insert(input));
                 });
 
-  std::for_each(outputs.cbegin(), outputs.cend(), [&](const NodeArg* output) {
+  std::for_each(outputs.cbegin(), outputs.cend(), [&used_args](const NodeArg* output) {
     ORT_IGNORE_RETURN_VALUE(used_args.insert(output));
   });
 
@@ -3390,12 +3390,12 @@ void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::str
   }
 
   std::vector<std::string> erase_list;
-  auto end = used_args.end();
+  auto used_args_end = used_args.cend();
   for (const auto& pv : name_to_initial_tensor_) {
     const std::string& name = pv.first;
     const auto* initializer_node_arg = GetNodeArg(name);
     ORT_ENFORCE(initializer_node_arg != nullptr, "Cannot find NodeArgs for [", name, "]");
-    if (used_args.find(initializer_node_arg) == end &&
+    if (used_args.find(initializer_node_arg) == used_args_end &&
         node_args_to_preserve.find(initializer_node_arg) == node_args_to_preserve.cend()) {
       // on the first call to Graph::Resolve we are removing unnecessary initializers that should be removed
       // from the model.
@@ -3456,12 +3456,13 @@ void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::str
     ORT_IGNORE_RETURN_VALUE(node_args_to_preserve.insert(outer_scope_node_arg));
   }
 
+  auto node_args_to_preserve_end = node_args_to_preserve.cend();
   for (auto it = node_args_.cbegin(), node_args_end = node_args_.cend(); it != node_args_end; /* no increment */) {
     auto current_entry = it++;
     const auto* current_node_arg = current_entry->second.get();
     const auto& node_arg_name = current_entry->first;
-    if (!node_arg_name.empty() && used_args.find(current_node_arg) == end &&
-        node_args_to_preserve.find(current_node_arg) == node_args_to_preserve.cend()) {
+    if (!node_arg_name.empty() && used_args.find(current_node_arg) == used_args_end &&
+        node_args_to_preserve.find(current_node_arg) == node_args_to_preserve_end) {
       LOGS(logger_, INFO) << "Removing NodeArg '" << node_arg_name << "'. It is no longer used by any node.";
       // Need to remove the NodeArg from both value_info_ and node_args_
       value_info_.erase(current_node_arg);
