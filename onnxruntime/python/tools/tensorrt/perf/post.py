@@ -4,7 +4,7 @@ import os
 import pandas as pd
 import time
 from datetime import datetime, timedelta
-from azure.kusto.data import KustoConnectionStringBuilder
+from azure.kusto.data import KustoClient, KustoConnectionStringBuilder
 from azure.kusto.ingest import (
     IngestionProperties,
     DataFormat,
@@ -137,7 +137,12 @@ def main():
     
     # connect to database
     kcsb = KustoConnectionStringBuilder.with_az_cli_authentication(cluster)
+    client = KustoClient(kcsb) 
+    from azure.kusto.data.helpers import dataframe_from_result_table 
+    print(dataframe_from_result_table(client.execute_query(database, 'ep_model_fail')))
+    return 
     client = QueuedIngestClient(kcsb)
+    
     
     datetime = get_time()
 
