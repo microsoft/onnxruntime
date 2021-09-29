@@ -1276,16 +1276,18 @@ TEST_F(GraphTest, UnusedInitializerAndNodeArgsAreIgnored) {
   graph.AddNode("a", "Identity_Fake", "a", inputs, outputs);
 
   TensorProto initializer_tensor;
-  initializer_tensor.set_name("unused");
+  const std::string unused_initializer_name = "unused_initializer";
+  initializer_tensor.set_name(unused_initializer_name);
   initializer_tensor.add_dims(1);
   initializer_tensor.add_float_data(1.f);
   initializer_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
   graph.AddInitializedTensor(initializer_tensor);
   ASSERT_TRUE(graph.GetAllInitializedTensors().size() == 1);
+  ASSERT_NE(nullptr, graph.GetNodeArg(unused_initializer_name));
 
   // Add unused NodeArgs
-  const std::string unused_node_arg_name = graph.GenerateNodeArgName("UnusedNodeArg");
+  const std::string unused_node_arg_name = graph.GenerateNodeArgName("unused_node_arg");
   ASSERT_EQ(nullptr, graph.GetNodeArg(unused_node_arg_name));
   graph.GetOrCreateNodeArg(unused_node_arg_name, nullptr);
   ASSERT_NE(nullptr, graph.GetNodeArg(unused_node_arg_name));
@@ -1294,6 +1296,8 @@ TEST_F(GraphTest, UnusedInitializerAndNodeArgsAreIgnored) {
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
   ASSERT_TRUE(graph.GetAllInitializedTensors().empty());
   ASSERT_EQ(nullptr, graph.GetNodeArg(unused_node_arg_name));
+  // Verify NodeArg from the unused initializer is deleted as well
+  ASSERT_EQ(nullptr, graph.GetNodeArg(unused_initializer_name));
 
   // serialize and reload so we check the loaded from proto path in SetGraphInputsOutputs
   auto proto = model.ToProto();
@@ -1313,6 +1317,7 @@ TEST_F(GraphTest, UnusedInitializerAndNodeArgsAreIgnored) {
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   ASSERT_TRUE(graph.GetAllInitializedTensors().empty());
   ASSERT_EQ(nullptr, graph.GetNodeArg(unused_node_arg_name));
+  ASSERT_EQ(nullptr, graph.GetNodeArg(unused_initializer_name));
 }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
