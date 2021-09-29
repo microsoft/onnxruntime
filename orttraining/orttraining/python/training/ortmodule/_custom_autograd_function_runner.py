@@ -105,7 +105,7 @@ def call_python_forward_function(
                 #    output_1, output_2   --- shared_ptr<PyNode> ---                            ↑
                 #             ↓                                                       previous gradient function
 
-                # We remove the edges starting between current autograd.Function's gradient function and 
+                # We remove the edges starting between current autograd.Function's gradient function and
                 # it's input's gradient function (e.g. AccumulateGrad gradient function), then
                 # AccumulateGrad gradient function will be destroyed, releasing the reference to input_1
                 # (https://github.com/pytorch/pytorch/blob/15532595209d2daf34d35e10f8d3d3b64966aea2/torch/csrc/autograd/functions/accumulate_grad.cpp#L21).
