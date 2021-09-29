@@ -26,7 +26,7 @@ Status ComputeQLinearGlobalAvgPool(
     int64_t image_size,
     bool channels_last,
     concurrency::ThreadPool* tp) {
-  static constexpr int64_t kMiniChannelGroup = 64;
+  static constexpr int64_t kMiniChannelGroup = 256;
 
   if (!channels_last || C == 1) {
     auto worker = [=](std::ptrdiff_t first, std::ptrdiff_t last) {
