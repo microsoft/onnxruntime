@@ -3436,6 +3436,11 @@ void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::str
     }
   }
 
+  // We also need to check the Outer Scope NodeArgs
+  for (const auto& outer_scope_node_arg_name : outer_scope_node_arg_names_) {
+    ORT_IGNORE_RETURN_VALUE(used_args.insert(outer_scope_node_arg_name));
+  }
+
   for (auto it = node_args_.cbegin(), node_args_end = node_args_.cend(); it != node_args_end; /* no increment */) {
     auto current_entry = it++;
     const auto& node_arg_name = current_entry->first;
@@ -3445,7 +3450,7 @@ void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::str
       LOGS(logger_, INFO) << "Removing NodeArg '" << node_arg_name << "'. It is no longer used by any node.";
       // Need to remove the NodeArg from both value_info_ and node_args_
       value_info_.erase(current_entry->second.get());
-      it = node_args_.erase(current_entry);
+      node_args_.erase(current_entry);
     }
   }
 }
