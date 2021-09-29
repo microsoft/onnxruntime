@@ -75,28 +75,28 @@ DLDataType GetDlpackDataType(const OrtValue& ort_value) {
   return dtype;
 }
 
-DLContext GetDlpackContext(const OrtValue& ort_value, const int64_t& device_id) {
+DLDevice GetDlpackDevice(const OrtValue& ort_value, const int64_t& device_id) {
   ORT_ENFORCE(ort_value.IsTensor(), "Only OrtValues that are Tensors are currently supported");
-  DLContext ctx;
-  ctx.device_id = static_cast<int>(device_id);
+  DLDevice device;
+  device.device_id = static_cast<int>(device_id);
   const Tensor& tensor = ort_value.Get<Tensor>();
   const auto& location = tensor.Location();
   switch (location.device.Type()) {
     case OrtDevice::CPU:
-      ctx.device_type = DLDeviceType::kDLCPU;
+      device.device_type = DLDeviceType::kDLCPU;
       break;
     case OrtDevice::GPU:
 #ifdef USE_ROCM
-      ctx.device_type = DLDeviceType::kDLROCM;
+      device.device_type = DLDeviceType::kDLROCM;
 #else
-      ctx.device_type = DLDeviceType::kDLGPU;
+      device.device_type = DLDeviceType::kDLCUDA;
 #endif
       break;
     default:
       ORT_THROW("Cannot pack tensors on this device.");
   }
 
-  return ctx;
+  return device;
 }
 
 struct OrtDLManagedTensor {
@@ -106,13 +106,13 @@ struct OrtDLManagedTensor {
 
 void DlpackDeleter(DLManagedTensor* arg) { delete static_cast<OrtDLManagedTensor*>(arg->manager_ctx); }
 
-OrtDevice GetOrtDevice(const DLContext& ctx) {
-  switch (ctx.device_type) {
+OrtDevice GetOrtDevice(const DLDevice& device) {
+  switch (device.device_type) {
     case DLDeviceType::kDLCPU:
       return OrtDevice();
-    case DLDeviceType::kDLGPU:
+    case DLDeviceType::kDLCUDA:
     case DLDeviceType::kDLROCM:
-      return OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(ctx.device_id));
+      return OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(device.device_id));
     default:
       ORT_THROW("Unsupported device type");
   }
@@ -208,7 +208,7 @@ DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
   ort_dlmanaged_tensor->tensor.manager_ctx = ort_dlmanaged_tensor;
   ort_dlmanaged_tensor->tensor.deleter = &DlpackDeleter;
   ort_dlmanaged_tensor->tensor.dl_tensor.data = (tensor.MutableDataRaw());
-  ort_dlmanaged_tensor->tensor.dl_tensor.ctx = GetDlpackContext(ort_value, tensor.Location().device.Id());
+  ort_dlmanaged_tensor->tensor.dl_tensor.device = GetDlpackDevice(ort_value, tensor.Location().device.Id());
   ort_dlmanaged_tensor->tensor.dl_tensor.ndim = static_cast<int>(tensor.Shape().NumDimensions());
   ort_dlmanaged_tensor->tensor.dl_tensor.dtype = GetDlpackDataType(ort_value);
   ort_dlmanaged_tensor->tensor.dl_tensor.shape =
@@ -221,7 +221,7 @@ DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
 OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {
   // ORT only supports contiguous tensor for now.
   ORT_ENFORCE(IsContiguousTensor(dlpack->dl_tensor), "ORT only supports contiguous tensor for now.");
-  OrtDevice device = GetOrtDevice(dlpack->dl_tensor.ctx);
+  OrtDevice device = GetOrtDevice(dlpack->dl_tensor.device);
   MLDataType data_type = GetOrtValueDataType(dlpack->dl_tensor.dtype, is_bool_tensor);
   OrtMemoryInfo info(GetOrtDeviceName(device), OrtDeviceAllocator, device, device.Id());
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(

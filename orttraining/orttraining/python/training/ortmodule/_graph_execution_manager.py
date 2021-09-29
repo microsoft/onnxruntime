@@ -368,7 +368,8 @@ class GraphExecutionManager(GraphExecutionInterface):
                                   keep_initializers_as_inputs=True)
         except Exception as e:
             raise wrap_exception(ORTModuleONNXModelException,
-                                 RuntimeError(f'There was an error while exporting the PyTorch model to ONNX: {e}'))
+                                 RuntimeError(f'There was an error while exporting the PyTorch model to ONNX: '
+                                              f'\n\n{_utils.get_exception_as_string(e)}'))
         exported_model = onnx.load_model_from_string(f.getvalue())
 
         exported_model = _post_process_after_export(exported_model,
