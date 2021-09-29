@@ -33,6 +33,18 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T2", BuildKernelDefSparseConstraintsFromTypeList<element_type_lists::All>()),
     MakeCooSparse);
 
+namespace {
+Status VerifyFlatIndices(gsl::span<const int64_t> indices_span, int64_t dense_values_count) {
+  ORT_RETURN_IF_NOT(std::is_sorted(indices_span.cbegin(), indices_span.cend()),
+                    "COO indices must be sorted in ascending order");
+  for (auto idx : indices_span) {
+    ORT_RETURN_IF_NOT(idx < dense_values_count,
+                      "Index: ", idx, " out of bounds. Dense shape count: ", dense_values_count);
+  }
+  return Status::OK();
+}
+}
+
 Status MakeCooSparse::Compute(OpKernelContext* ctx) const {
   const Tensor& dense_shape_input = *ctx->Input<Tensor>(0);
   const Tensor& values_input = *ctx->Input<Tensor>(1);
@@ -52,29 +64,30 @@ Status MakeCooSparse::Compute(OpKernelContext* ctx) const {
   ORT_RETURN_IF(indices_ndims > dense_ndims,
                 "indices must not have more dimensions than dense_shape");
   if (indices_ndims == 1) {
-    ORT_RETURN_IF_NOT(std::is_sorted(indices_span.cbegin(), indices_span.cend()),
-                      "COO indices must be sorted in ascending order");
-    for (auto idx : indices_span) {
-      ORT_RETURN_IF_NOT(idx < dense_values_count,
-                        "Index: ", idx, " out of bounds. Dense shape count: ", dense_values_count);
-    }
+    VerifyFlatIndices(indices_span, dense_values_count);
   } else if (indices_ndims == 2) {
-    ORT_RETURN_IF_NOT(dense_ndims == 2, "Dense shape must be 2-D for 2-D indices");
-    ORT_RETURN_IF_NOT(indices_span.size() == nnz_values_count * 2,
-                      "Expecting indices have 2x entries as NNZ values");
-    const auto rows = dense_shape.GetDims()[0];
-    const auto cols = dense_shape.GetDims()[1];
-    for (size_t i = 0, limit = indices_span.size(); i < limit; i += 2) {
-      ORT_RETURN_IF_NOT(indices_span[i] < rows,
-                        "Indices row is out of bounds: ", indices_span[i], " rows: ", rows);
-      ORT_RETURN_IF_NOT(indices_span[i + 1] < cols,
-                        "Indices col is out of bounds: ", indices_span[i + 1], " cols: ", cols);
+    // Sometimes we get indices with a shape {nnz, 1} which is really a 1-D indices
+    // so we want to check for that.
+    if (indices_span.size() == nnz_values_count) {
+      VerifyFlatIndices(indices_span, dense_values_count);
+    } else {
+      ORT_RETURN_IF_NOT(dense_ndims == 2, "Dense shape must be 2-D for 2-D indices");
+      ORT_RETURN_IF_NOT(indices_span.size() == nnz_values_count * 2,
+                        "Expecting indices have 2x entries as NNZ values");
+      const auto rows = dense_shape.GetDims()[0];
+      const auto cols = dense_shape.GetDims()[1];
+      for (size_t i = 0, limit = indices_span.size(); i < limit; i += 2) {
+        ORT_RETURN_IF_NOT(indices_span[i] < rows,
+                          "Indices row is out of bounds: ", indices_span[i], " rows: ", rows);
+        ORT_RETURN_IF_NOT(indices_span[i + 1] < cols,
+                          "Indices col is out of bounds: ", indices_span[i + 1], " cols: ", cols);
+      }
+      std::vector<int64_t> flat_indices;
+      flat_indices.resize(indices_span.size() / 2);
+      ORT_RETURN_IF_ERROR(sparse_utils::Convert2DCooIndicesTo1D(cols, indices_span, gsl::make_span(flat_indices)));
+      ORT_RETURN_IF_NOT(std::is_sorted(flat_indices.cbegin(), flat_indices.cend()),
+                        "COO indices must be sorted in ascending order");
     }
-    std::vector<int64_t> flat_indices;
-    flat_indices.resize(indices_span.size() / 2);
-    ORT_RETURN_IF_ERROR(sparse_utils::Convert2DCooIndicesTo1D(cols, indices_span, gsl::make_span(flat_indices)));
-    ORT_RETURN_IF_NOT(std::is_sorted(flat_indices.cbegin(), flat_indices.cend()),
-                      "COO indices must be sorted in ascending order");
   }
 
   SparseTensor& output = *ctx->OutputSparse(0, dense_shape);

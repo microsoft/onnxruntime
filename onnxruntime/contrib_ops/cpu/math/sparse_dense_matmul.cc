@@ -351,7 +351,7 @@ struct SparseToSparseCoo {
 Status SparseToSparseMatMul::Compute(OpKernelContext*) const {
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Gemm sparse not supported on 32-bit builds");
 #else
-  Status SparseToSparseMatMul::Compute(OpKernelContext * ctx) const {
+Status SparseToSparseMatMul::Compute(OpKernelContext * ctx) const {
   const SparseTensor& input_A = *ctx->Input<SparseTensor>(0);
   const SparseTensor& input_B = *ctx->Input<SparseTensor>(1);
 

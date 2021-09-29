@@ -22,6 +22,21 @@ TEST(SparseMakeCoo, TestFlatIndices) {
   tester.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
+// Special request, pass flat indices with {nnz, 1} shape
+TEST(SparseMakeCoo, Test2DFlatIndices) {
+  const std::vector<int64_t> dense_shape{4, 2};
+  const std::vector<float> values{3.f, 5.f, 7.f};
+  const std::vector<int64_t> flat_indices{3, 5, 7};
+
+  OpTester tester("MakeCooSparse", 1, onnxruntime::kMSDomain);
+  tester.AddInput("DenseShape", {2}, dense_shape);
+  tester.AddInput("Values", {3}, values);
+  tester.AddInput("Indices", {3, 1}, flat_indices);
+  tester.AddSparseCooOutput("Output", dense_shape, gsl::make_span(values), flat_indices);
+  tester.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+
 TEST(SparseMakeCoo, Test2DIndices) {
   const std::vector<int64_t> dense_shape{4, 2};
   const std::vector<float> values{3.f, 5.f, 7.f};
