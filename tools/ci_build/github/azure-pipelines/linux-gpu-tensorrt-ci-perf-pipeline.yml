@@ -86,7 +86,7 @@ jobs:
     - task: AzureCLI@2
       displayName: 'Azure CLI'
       inputs:
-        azureSubscription: AIInfraBuildOnnxRuntimeOSS
+        azureSubscription: AIInfraBuild
         scriptLocation: inlineScript
         scriptType: batch
         inlineScript: |
