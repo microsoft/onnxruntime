@@ -9,7 +9,7 @@ import torch
 import pytest
 import warnings
 
-from onnxruntime.training.ortmodule import ORTModule, _fallback, TORCH_CPP_DIR
+from onnxruntime.training.ortmodule import ORTModule, _fallback, TORCH_CPP_DIR, _graph_execution_manager
 from onnxruntime.training.ortmodule.torch_cpp_extensions import is_installed as is_torch_cpp_extensions_installed
 import _test_helpers
 from _orttraining_ortmodule_models import (NeuralNetSinglePositionalArgument,
@@ -148,6 +148,7 @@ def test_ortmodule_fallback_device__mismatch(is_training, fallback_enabled, matc
         policy = 'FALLBACK_DISABLE'
     os.environ['ORTMODULE_FALLBACK_POLICY'] = policy
     os.environ['ORTMODULE_FALLBACK_RETRY'] = str(not persist_fallback)
+    os.environ['ORTMODULE_SKIPCHECK_POLICY'] = 'SKIP_CHECK_DISABLED'
 
     data_device = 'cuda'
     N, D_in, H, D_out = 64, 784, 500, 10
@@ -169,6 +170,7 @@ def test_ortmodule_fallback_device__mismatch(is_training, fallback_enabled, matc
             if matching_policy:
                 with pytest.raises(RuntimeError) as e:
                     ort_model(inputs)
+                # Note: the exception value is different in Torch 1.8, thus could cause failure
                 assert ("Expected all tensors to be on the same device, but found at least two devices, cpu and cuda:0!"
                         in str(e.value))
             else:
@@ -182,6 +184,7 @@ def test_ortmodule_fallback_device__mismatch(is_training, fallback_enabled, matc
             assert (f"Input argument to forward found on device {input_device}, "
                     f"but expected it to be on module device {ort_model_device}." in str(e.value))
 
+    del os.environ['ORTMODULE_SKIPCHECK_POLICY']
 
 @pytest.mark.parametrize("is_training,fallback_enabled,matching_policy,persist_fallback",
                          list(itertools.product([True, False], repeat=4)))
@@ -539,6 +542,7 @@ def test_ortmodule_fallback_warn_message(is_training, persist_fallback):
     policy = 'FALLBACK_UNSUPPORTED_DEVICE'
     os.environ['ORTMODULE_FALLBACK_POLICY'] = policy
     os.environ['ORTMODULE_FALLBACK_RETRY'] = str(not persist_fallback)
+    os.environ['ORTMODULE_SKIPCHECK_POLICY'] = 'SKIP_CHECK_DISABLED'
 
     data_device = 'cuda'
     N, D_in, H, D_out = 64, 784, 500, 10
@@ -558,3 +562,49 @@ def test_ortmodule_fallback_warn_message(is_training, persist_fallback):
             with pytest.warns(UserWarning) as warning_record:
                 ort_model(inputs)
         assert "Fallback to PyTorch due to exception" in str(warning_record[0].message.args[0])
+
+    del os.environ['ORTMODULE_SKIPCHECK_POLICY']
+
+
+@pytest.mark.parametrize("is_training,fallback_enabled,matching_policy,persist_fallback",
+                         list(itertools.product([True, False], repeat=4)))
+def test_ortmodule_fallback_with_skipcheck_reset(is_training, fallback_enabled, matching_policy, persist_fallback):
+    # is_training: True for torch.nn.Module training model, eval mode otherwise
+    # fallback_enabled: True PyTorch executes the forward graph instead of ORT backend
+    # matching_policy: True matches FALLBACK_UNSUPPORTED_DATA policy to ORTModuleDeviceException exception.
+    #   Otherwise, an incorrect policy (FALLBACK_UNSUPPORTED_DEVICE) is used to verify that the fallback does not happen
+
+    if fallback_enabled:
+        if matching_policy:
+            policy = 'FALLBACK_UNSUPPORTED_DATA'
+        else:
+            policy = 'FALLBACK_UNSUPPORTED_DEVICE'
+    else:
+        policy = 'FALLBACK_DISABLE'
+    os.environ['ORTMODULE_FALLBACK_POLICY'] = policy
+    os.environ['ORTMODULE_FALLBACK_RETRY'] = str(not persist_fallback)
+
+    pt_model = MyStrNet()
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    inputs = torch.randn(1, 2)
+
+    ort_model.train(is_training)
+    pt_model.train(is_training)
+
+    assert ort_model._torch_module._execution_manager(is_training)._skip_check == \
+        (_graph_execution_manager._SkipCheck.SKIP_CHECK_DEVICE | _graph_execution_manager._SkipCheck.SKIP_CHECK_BUILD_GRADIENT | 
+        _graph_execution_manager._SkipCheck.SKIP_CHECK_EXECUTION_AGENT)
+
+    for i in range(3):
+        if fallback_enabled:
+            if matching_policy:
+                ort_out = ort_model(inputs, 'hello')
+                assert ort_model._torch_module._execution_manager(is_training)._skip_check == _graph_execution_manager._SkipCheck.SKIP_CHECK_DISABLED
+            else:
+                with pytest.raises(_fallback.ORTModuleIOError) as ex_info:
+                    _ = ort_model(torch.randn(1, 2), 'hello')
+                assert ort_model._torch_module._execution_manager(is_training)._skip_check == _graph_execution_manager._SkipCheck.SKIP_CHECK_DISABLED
+        else:
+            with pytest.raises(_fallback.ORTModuleIOError) as ex_info:
+                _ = ort_model(torch.randn(1, 2), 'hello')
+            assert ort_model._torch_module._execution_manager(is_training)._skip_check == _graph_execution_manager._SkipCheck.SKIP_CHECK_DISABLED

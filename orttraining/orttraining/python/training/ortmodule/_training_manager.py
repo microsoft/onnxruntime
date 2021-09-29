@@ -270,10 +270,20 @@ class TrainingManager(GraphExecutionManager):
                                                      kwargs,
                                                      self._device)))
         except ORTModuleFallbackException as e:
+            # disable _SkipCheck, if not defined in os env, for retry 
+            self._skip_check = reduce(lambda x, y: x | y,
+                                      [_SkipCheck[name] for name in
+                                        _utils.parse_os_env_skip_check_flags('ORTMODULE_SKIPCHECK_POLICY',
+                                                                             _SkipCheck.SKIP_CHECK_DISABLED.name)])
             # Exceptions subject to fallback are handled here
             self._fallback_manager.handle_exception(exception=e,
                                                     log_level=self._debug_options.logging.log_level)
         except Exception as e:
+            # disable _SkipCheck, if not defined in os env, for retry 
+            self._skip_check = reduce(lambda x, y: x | y,
+                                      [_SkipCheck[name] for name in
+                                        _utils.parse_os_env_skip_check_flags('ORTMODULE_SKIPCHECK_POLICY',
+                                                                             _SkipCheck.SKIP_CHECK_DISABLED.name)])                                                                           
             # Catch-all FALLBACK_FORCE_TORCH_FORWARD fallback is handled here
             self._fallback_manager.handle_exception(exception=e,
                                                     log_level=self._debug_options.logging.log_level,

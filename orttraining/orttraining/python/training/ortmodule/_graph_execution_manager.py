@@ -98,10 +98,12 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._execution_agent = None
 
         # indicators of some logic have been executed previously thus could be skipped for faster training
+        # default is enabled, if not define in os env; but will be disabled with any exception
+        skip_check_enabled = _SkipCheck.SKIP_CHECK_DEVICE.name + '|' + _SkipCheck.SKIP_CHECK_BUILD_GRADIENT.name + '|' + _SkipCheck.SKIP_CHECK_EXECUTION_AGENT.name
         self._skip_check = reduce(lambda x, y: x | y,
                                   [_SkipCheck[name] for name in
                                     _utils.parse_os_env_skip_check_flags('ORTMODULE_SKIPCHECK_POLICY',
-                                                                         _SkipCheck.SKIP_CHECK_DISABLED.name)])
+                                                                         skip_check_enabled)])   
         self._first_skip_check_warning = True
 
         # Graph transformer config
