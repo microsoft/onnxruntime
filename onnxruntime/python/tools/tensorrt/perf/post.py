@@ -4,7 +4,7 @@ import os
 import pandas as pd
 import time
 from datetime import datetime, timedelta
-from azure.kusto.data import KustoClient, KustoConnectionStringBuilder
+from azure.kusto.data import KustoConnectionStringBuilder
 from azure.kusto.data.helpers import dataframe_from_result_table 
 from azure.kusto.ingest import (
     IngestionProperties,
@@ -14,7 +14,6 @@ from azure.kusto.ingest import (
 )
 
 # database connection strings 
-cluster = "https://onnxruntimedashboarddb.southcentralus.kusto.windows.net"
 cluster_ingest = "https://ingest-onnxruntimedashboarddb.southcentralus.kusto.windows.net"
 database = "ep_perf_dashboard"
 
@@ -108,42 +107,29 @@ def get_status(status, model_group):
     status = adjust_columns(status, status_columns, status_db_columns, model_group)
     return status
     
-def delete_old_records(upload_time, table):
-    older_than = datetime.datetime.strptime(upload_time, time_string_format) - timedelta(days=30)   
-    condition = table['UploadTime'].apply(lambda x: datetime.datetime.strptime(x,'%Y-%m-%d %H:%M:%S')) > older_than
-    return table[condition]
-
-def write_table(client, ingest_client, table, table_name, trt_version, upload_time):
-    reponse = client.execute_query(database, table_name)
-    curr_table = dataframe_from_result_table(response.primary_results[0]))
-    new_table = delete_old_records(upload_time, curr_table)
+def write_table(ingest_client, table, table_name, trt_version, upload_time):
     if table.empty:
         return
     table = table.assign(TrtVersion=trt_version) # add TrtVersion
     table = table.assign(UploadTime=upload_time) # add UploadTime
-    table = table.append(new_table)
-    print(table) 
-    return 
     ingestion_props = IngestionProperties(
       database=database,
       table=table_name,
       data_format=DataFormat.CSV,
       report_level=ReportLevel.FailuresAndSuccesses
     )
- 
-    client.ingest_from_dataframe(table, ingestion_properties=ingestion_props)
+    # append rows
+    ingest_client.ingest_from_dataframe(table, ingestion_properties=ingestion_props)
 
 def get_time():   
-    datetime = time.strftime()
-    return datetime
+    date_time = time.strftime(time_string_format)
+    return date_time
             
 def main():
     
     args = parse_arguments()
     
     # connect to database
-    kcsb = KustoConnectionStringBuilder.with_az_cli_authentication(cluster)
-    client = KustoClient(kcsb) 
     kcsb_ingest = KustoConnectionStringBuilder.with_az_cli_authentication(cluster_ingest)
     client_ingest = QueuedIngestClient(kcsb_ingest)
     date_time = get_time()
@@ -176,7 +162,7 @@ def main():
         for table in tables: 
             print('writing ' + table + ' over time to database')
             db_table_name = 'ep_model_' + table
-            write_table(client, ingest_client, table_results[table], db_table_name, args.trt_version, datetime)
+            write_table(ingest_client, table_results[table], db_table_name, args.trt_version, date_time)
 
     except BaseException as e: 
         print(str(e))
