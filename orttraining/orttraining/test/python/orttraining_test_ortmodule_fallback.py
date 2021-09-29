@@ -170,9 +170,9 @@ def test_ortmodule_fallback_device__mismatch(is_training, fallback_enabled, matc
             if matching_policy:
                 with pytest.raises(RuntimeError) as e:
                     ort_model(inputs)
-                # Note: the exception value is different in Torch 1.8, thus could cause failure
-                assert ("Expected all tensors to be on the same device, but found at least two devices, cpu and cuda:0!"
-                        in str(e.value))
+                assert \
+                    ("Tensor for argument #1 'self' is on CPU, but expected them to be on GPU (while checking arguments for addmm)" in str(e.value)) \
+                    or ("Expected all tensors to be on the same device, but found at least two devices, cpu and cuda:0!" in str(e.value))
             else:
                 with pytest.raises(_fallback.ORTModuleDeviceException) as e:
                     ort_model(inputs)
