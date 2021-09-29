@@ -25,7 +25,7 @@ export const initOrt = (numThreads: number, loggingLevel: number): void => {
  */
 type SessionMetadata = [number, number[], number[]];
 
-const activeSessions: Array<SessionMetadata|undefined> = [];
+const activeSessions = new Map<number, SessionMetadata>();
 
 /**
  * create an instance of InferenceSession.
@@ -77,14 +77,14 @@ export const createSession =
         outputNames.push(wasm.UTF8ToString(name));
       }
 
-      activeSessions.push([sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded]);
-      return [activeSessions.length - 1, inputNames, outputNames];
+      activeSessions.set(sessionHandle, [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded]);
+      return [sessionHandle, inputNames, outputNames];
     };
 
 export const releaseSession = (sessionId: number): void => {
   const wasm = getInstance();
-  const session = activeSessions[sessionId];
-  if (!Number.isSafeInteger(sessionId) || !session) {
+  const session = activeSessions.get(sessionId);
+  if (!session) {
     throw new Error('invalid session id');
   }
   const sessionHandle = session[0];
@@ -94,7 +94,7 @@ export const releaseSession = (sessionId: number): void => {
   inputNamesUTF8Encoded.forEach(wasm._OrtFree);
   outputNamesUTF8Encoded.forEach(wasm._OrtFree);
   wasm._OrtReleaseSession(sessionHandle);
-  activeSessions[sessionId] = undefined;
+  activeSessions.delete(sessionId);
 };
 
 /**
@@ -223,7 +223,7 @@ export const run =
     (sessionId: number, inputIndices: number[], inputs: SerializableTensor[], outputIndices: number[],
      options: InferenceSession.RunOptions): SerializableTensor[] => {
       const wasm = getInstance();
-      const session = activeSessions[sessionId];
+      const session = activeSessions.get(sessionId);
       if (!session) {
         throw new Error('invalid session id');
       }
@@ -390,7 +390,7 @@ export const run =
  */
 export const endProfiling = (sessionId: number): void => {
   const wasm = getInstance();
-  const session = activeSessions[sessionId];
+  const session = activeSessions.get(sessionId);
   if (!session) {
     throw new Error('invalid session id');
   }
