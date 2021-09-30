@@ -50,7 +50,7 @@ class GradientGraphBuilderTest(unittest.TestCase):
         example_labels = torch.tensor([1])
 
         export_gradient_graph(
-            model, loss_fn, example_input, example_labels, intermediate_graph_path, gradient_graph_path)
+            model, loss_fn, example_input, example_labels, gradient_graph_path, intermediate_graph_path)
 
         onnx_model = onnx.load(str(gradient_graph_path))
         onnx.checker.check_model(onnx_model)

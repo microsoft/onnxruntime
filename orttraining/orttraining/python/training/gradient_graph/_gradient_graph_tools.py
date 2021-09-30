@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Callable, Union
+from typing import Any, Callable, Optional, Union
 
 import torch
 from onnxruntime.capi._pybind_state import GradientGraphBuilder
@@ -13,20 +13,27 @@ def export_gradient_graph(
         loss_fn: Callable[[Any, Any], Any],
         example_input: torch.Tensor,
         example_labels: torch.Tensor,
-        intermediate_graph_path: Union[Path, str],
-        gradient_graph_path: Union[Path, str]):
+        gradient_graph_path: Union[Path, str], intermediate_graph_path: Optional[Union[Path, str]] = None):
     r"""
-    Build a gradient graph for `model`.
+    Build a gradient graph for `model` so that you can output gradients when given a specific input and labels.
 
     Args:
         model (torch.nn.Module): A gradient will be built for this model.
-        TODO Documents arguments.
+        loss_fn (Callable[[Any, Any], Any]): A function to compute the loss given the model's output and the `example_labels`.
+        example_input (torch.Tensor): Example input that you would give your model for inference/prediction.
+        example_labels (torch.Tensor): The expected labels for `example_input`.
+            This could be the output of your model when given `example_input` but it might be different if your loss function expects labels to be different (e.g. when using CrossEntropyLoss).
+        gradient_graph_path (Union[Path, str]): The path to where you would like to save the gradient graph.
+        intermediate_graph_path (Optional[Union[Path, str]): The path to where you would like to save any intermediate graphs that are needed to make the gradient graph. Defaults to `gradient_graph_path` and it will be overwritten if this function executes successfully.
     """
 
     model.train()
 
     # Make sure that loss nodes that expect multiple outputs are set up.
     CustomOpSymbolicRegistry.register_all()
+
+    if intermediate_graph_path is None:
+        intermediate_graph_path = gradient_graph_path
 
     if not isinstance(intermediate_graph_path, str):
         intermediate_graph_path = str(intermediate_graph_path)
@@ -67,7 +74,7 @@ def export_gradient_graph(
         # Should we check `if _.requires_grad:` first?
         nodes_needing_gradients.add(name)
 
-    # 'model.' will be prepended to nodes because we wrapped `model` with a member called `model`.
+    # 'model.' will be prepended to nodes because we wrapped `model` using a member called `model`.
     nodes_needing_gradients = set(
         'model.' + name for name in nodes_needing_gradients)
 
