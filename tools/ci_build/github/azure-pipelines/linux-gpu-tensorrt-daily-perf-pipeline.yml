@@ -159,19 +159,19 @@ jobs:
         inputs:
           artifact: 'result-$(Build.BuildNumber)'
 
-      # - task: AzureCLI@2
-      #   displayName: 'Azure CLI Post to Dashboard'
-      #   inputs:
-      #     azureSubscription: AIInfraBuild
-      #     scriptLocation: inlineScript
-      #     scriptType: bash
-      #     inlineScript: |
-      #       python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Pipeline.Workspace)/result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" -t ${{ parameters.TrtVersion }} -b $(branch)
+      - task: AzureCLI@2
+        displayName: 'Azure CLI Post to Dashboard'
+        inputs:
+          azureSubscription: AIInfraBuildOnnxRuntimeOSS
+          scriptLocation: inlineScript
+          scriptType: bash
+          inlineScript: |
+            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Pipeline.Workspace)/result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" -t ${{ parameters.TrtVersion }} -b $(branch)
     
-    - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Pipeline.Workspace)/result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" -t ${{ parameters.TrtVersion }} -b $(branch)'
-      displayName: 'Post to Dashboard'
-      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
-      env: 
-        TENANT_ID: $(tenant-id)
+    # - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Pipeline.Workspace)/result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" -t ${{ parameters.TrtVersion }} -b $(branch)'
+    #   displayName: 'Post to Dashboard'
+    #   workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+    #   env: 
+    #     TENANT_ID: $(tenant-id)
     
     - template: templates/clean-agent-build-directory-step.yml
