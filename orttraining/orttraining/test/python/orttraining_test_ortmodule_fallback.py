@@ -9,7 +9,7 @@ import torch
 import pytest
 import warnings
 
-from onnxruntime.training.ortmodule import ORTModule, _fallback, TORCH_CPP_DIR
+from onnxruntime.training.ortmodule import ORTModule, _fallback, ORTMODULE_TORCH_CPP_DIR
 from onnxruntime.training.ortmodule.torch_cpp_extensions import is_installed as is_torch_cpp_extensions_installed
 import _test_helpers
 from _orttraining_ortmodule_models import (NeuralNetSinglePositionalArgument,
@@ -387,7 +387,7 @@ def test_ortmodule_fallback_init__missing_cpp_extensions(is_training, fallback_e
     # matching_policy: True matches FALLBACK_UNSUPPORTED_TORCH_MODEL policy to ORTModuleDeviceException exception.
     #   Otherwise, an incorrect policy (FALLBACK_UNSUPPORTED_DEVICE) is used to verify that the fallback does not happen
 
-    if is_torch_cpp_extensions_installed(TORCH_CPP_DIR):
+    if is_torch_cpp_extensions_installed(ORTMODULE_TORCH_CPP_DIR):
         warnings.warn('Skipping test_ortmodule_fallback_init__missing_cpp_extensions.'
                       f' It requires PyTorch CPP extensions to be missing')
     else:

@@ -653,7 +653,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
     }
   }
 
-#if defined(USE_CUDA) && !defined(ENABLE_TRAINING)
+#if defined(USE_CUDA) && !defined(ENABLE_TRAINING) && defined(CUDA_VERSION) && CUDA_VERSION >= 11000
   ASSERT_TRUE(has_kernel_info);
 #endif
 }
