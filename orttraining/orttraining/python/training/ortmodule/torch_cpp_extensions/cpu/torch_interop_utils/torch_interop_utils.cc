@@ -90,10 +90,8 @@ void clear_grad_fns_for_next_edges(at::Tensor target, std::vector<at::Tensor> sa
         // skip the edges that connect to saved_tensors. Because when unpack ctx.saved_tensors (using input, = ctx.saved_tensors) in backward,
         // there is such a check : if the saved tensor is a leaf and requires grad, it it should have grad accumulator.
         // If we clean the edge, then an exception "RuntimeError: No grad accumulator for a saved leaf!" will be thrown
-        TORCH_WARN("Find a AccumulateGrad node, but skip it because the owned tensor is in saved_tensors.");
         continue;
       } else {
-        TORCH_WARN("Find a AccumulateGrad node, and planned to clean the edge to it.");
         edge.function.reset();
       }
     }
