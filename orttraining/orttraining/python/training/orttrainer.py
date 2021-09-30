@@ -545,7 +545,6 @@ class ORTTrainer(object):
                            output_names=[output.name for output in self.model_desc.outputs],
                            opset_version=self.options._internal_use.onnx_opset_version,
                            dynamic_axes=dynamic_axes,
-                           _retain_param_name=True,
                            example_outputs=tuple(sample_outputs),
                            do_constant_folding=False,
                            training=torch.onnx.TrainingMode.TRAINING)
