@@ -11,7 +11,7 @@ nav_order: 4
 
 Creating a custom 'minimal' build of ONNX Runtime gives you control over what is included in order to minimize the binary size whilst satisfying the needs of your scenario. 
 
-The configuration file that was generated during [model conversion](model-conversion) is used to specify the operators (and potentially the types) that the build will support.
+The configuration file that was generated during [model conversion](./model-conversion.md) is used to specify the operators (and potentially the types) that the build will support.
 
 The general ONNX Runtime inferencing [build instructions](../../build/inferencing.md#build-instructions) apply, with additional options being specified to reduce the binary size.
 
