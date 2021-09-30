@@ -893,16 +893,17 @@ class SymbolicShapeInference:
                                           data_shape[:axis] + indices_shape + data_shape[axis + 1:]))
         # for 1D input, do some sympy compute
         if node.input[0] in self.sympy_data_ and len(data_shape) == 1 and 0 == get_attribute(node, 'axis', 0):
-            idx = self._get_value(node, 1)
-            data = self.sympy_data_[node.input[0]]
-            if type(data) == list:
-                if type(idx) == np.ndarray and len(idx.shape) == 1:
-                    self.sympy_data_[node.output[0]] = [data[int(i)] for i in idx]
+            idx = self._try_get_value(node, 1)
+            if idx is not None:
+                data = self.sympy_data_[node.input[0]]
+                if type(data) == list:
+                    if type(idx) == np.ndarray and len(idx.shape) == 1:
+                        self.sympy_data_[node.output[0]] = [data[int(i)] for i in idx]
+                    else:
+                        self.sympy_data_[node.output[0]] = data[int(idx)]
                 else:
-                    self.sympy_data_[node.output[0]] = data[int(idx)]
-            else:
-                assert idx == 0
-                self.sympy_data_[node.output[0]] = data
+                    assert idx == 0 or idx == -1
+                    self.sympy_data_[node.output[0]] = data
 
     def _infer_GatherElements(self, node):
         indices_shape = self._get_shape(node, 1)

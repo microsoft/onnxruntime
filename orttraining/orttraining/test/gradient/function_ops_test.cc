@@ -171,7 +171,6 @@ TEST_F(FunExpansionTest, DropoutGrad_WithRatio2) {
 
 template <typename T, bool RunTest = true>
 void TestUnaryOpGrad(const char* opname) {
-  
   FunctionTestCase testCase(opname);
   std::vector<int64_t> shape{16, 4};
   testCase.AddInput<T, RunTest>("dY", shape);
@@ -197,6 +196,39 @@ TEST_F(FunExpansionTest, FastGeluGrad) {
   TestUnaryOpGrad<float, true>("FastGeluGrad");
   TestUnaryOpGrad<BFloat16, false>("FastGeluGrad");
   TestUnaryOpGrad<MLFloat16, false>("FastGeluGrad");
+}
+
+template <typename T, typename U, bool RunTest = true>
+void TestLayerNormGrad(std::vector<int64_t> prefix_shape, std::vector<int64_t> suffix_shape) {
+  FunctionTestCase testCase("LayerNormalizationGrad");
+  std::vector<int64_t> input_shape(prefix_shape);
+  for (auto d : suffix_shape)
+    input_shape.push_back(d);
+  std::vector<int64_t> stats_shape(prefix_shape);
+  for (auto d : suffix_shape) {
+    (void)d;
+    stats_shape.push_back(1);
+  }
+  testCase.AddInput<T, RunTest>("Y_grad", input_shape);
+  testCase.AddInput<T, RunTest>("X", input_shape);
+  testCase.AddInput<T, RunTest>("scale", suffix_shape);
+  testCase.AddInput<U, RunTest>("mean", stats_shape);
+  testCase.AddInput<U, RunTest>("inv_std_dev", stats_shape);
+  testCase.AddOutput("X_grad");
+  testCase.AddOutput("scale_grad");
+  testCase.AddOutput("bias_grad");
+  testCase.AddAttribute("axis", prefix_shape.size());
+  if (RunTest)
+    testCase.RunTest();
+  else
+    // Test only expanded model creation and model checking.
+    testCase.CreateModel(true);
+}
+
+TEST_F(FunExpansionTest, LayerNormalizationGrad) {
+  TestLayerNormGrad<float, float, true>({4, 1}, {8, 4});
+  TestLayerNormGrad<float, float, true>({}, {8, 4});
+  TestLayerNormGrad<BFloat16, float, false>({}, {8, 4});
 }
 
 }  // namespace test
