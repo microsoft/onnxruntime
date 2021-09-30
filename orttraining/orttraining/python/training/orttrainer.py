@@ -540,7 +540,7 @@ class ORTTrainer(object):
             pytorch_export_contrib_ops.unregister()
 
         # Export torch.nn.Module to ONNX
-        torch.onnx._export(model, tuple(sample_inputs_copy), f,
+        torch.onnx.export(model, tuple(sample_inputs_copy), f,
                            input_names=[input.name for input in self.model_desc.inputs],
                            output_names=[output.name for output in self.model_desc.outputs],
                            opset_version=self.options._internal_use.onnx_opset_version,
