@@ -591,7 +591,7 @@ void ThreadPool::ParallelFor(std::ptrdiff_t n, const TensorOpCost& c,
   auto d_of_p = DegreeOfParallelism(this);
   // Compute small problems directly in the caller thread.
   if ((!ShouldParallelizeLoop(n)) ||
-      (d_of_p = CostModel::numThreads(static_cast<double>(n), cost, d_of_p)) == 1) {
+      CostModel::numThreads(static_cast<double>(n), cost, d_of_p) == 1) {
     f(0, n);
     return;
   }
