@@ -24,11 +24,11 @@ EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 
 static std::wstring CurrentModulePath() {
     WCHAR path[MAX_PATH];
-    GetModuleFileNameW((HINSTANCE)&__ImageBase, path, _countof(path));
+    FAIL_FAST_IF(0 == GetModuleFileNameW((HINSTANCE)&__ImageBase, path, _countof(path)));
 
     WCHAR absolute_path[MAX_PATH];
     WCHAR* name;
-    GetFullPathNameW(path, _countof(path), absolute_path, &name);
+    FAIL_FAST_IF(0 == GetFullPathNameW(path, _countof(path), absolute_path, &name));
 
     auto idx = std::distance(absolute_path, name);
     auto out_path = std::wstring(absolute_path);
