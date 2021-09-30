@@ -276,6 +276,7 @@ if (onnxruntime_ENABLE_TRAINING)
   )
   file(GLOB onnxruntime_python_ortmodule_experimental_optimizer_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/experimental/optimizer/*.py"
+  )
   file(GLOB onnxruntime_python_ortmodule_experimental_hierarchical_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/experimental/hierarchical_ortmodule/*.py"
   )
