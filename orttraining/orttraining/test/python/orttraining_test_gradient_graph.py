@@ -40,49 +40,63 @@ class GradientGraphBuilderTest(unittest.TestCase):
         model = NeuralNet(input_size=input_size, hidden_size=5,
                           num_classes=2)
         directory_path = Path(os.path.dirname(__file__)).resolve()
-        intermediate_graph_path = directory_path / \
-            'gradient_graph_builder_test_model.onnx'
-        gradient_graph_path = directory_path/'gradient_graph_model.onnx'
+        for config in [{
+            'input_weights': True,
+        }, {
+            'input_weights': False,
+        }]:
+            input_weights = config['input_weights']
+            intermediate_graph_path = directory_path / \
+                'gradient_graph_builder_test_model.onnx'
+            gradient_graph_path = directory_path/'gradient_graph_model.onnx'
 
-        batch_size = 1
-        example_input = torch.randn(
-            batch_size, input_size, requires_grad=True)
-        example_labels = torch.tensor([1])
+            batch_size = 1
+            example_input = torch.randn(
+                batch_size, input_size, requires_grad=True)
+            example_labels = torch.tensor([1])
 
-        export_gradient_graph(
-            model, loss_fn, example_input, example_labels, gradient_graph_path, intermediate_graph_path)
+            export_gradient_graph(
+                model, loss_fn, example_input, example_labels, gradient_graph_path, intermediate_graph_path,
+                input_weights=input_weights)
 
-        onnx_model = onnx.load(str(gradient_graph_path))
-        onnx.checker.check_model(onnx_model)
+            onnx_model = onnx.load(str(gradient_graph_path))
+            onnx.checker.check_model(onnx_model)
 
-        torch_out = model(example_input)
-        ort_session = onnxruntime.InferenceSession(str(gradient_graph_path))
-        inputs = ort_session.get_inputs()
-        ort_inputs = {
-            inputs[0].name: to_numpy(example_input),
-            inputs[1].name: to_numpy(example_labels),
-        }
-        ort_outs = ort_session.run(None, ort_inputs)
-        onnx_output_names = [node.name for node in onnx_model.graph.output]
-        onnx_name_to_output = dict(zip(onnx_output_names, ort_outs))
-        self.assertEqual(6, len(onnx_name_to_output))
+            torch_out = model(example_input)
+            ort_session = onnxruntime.InferenceSession(
+                str(gradient_graph_path))
+            inputs = ort_session.get_inputs()
+            ort_inputs = {
+                inputs[0].name: to_numpy(example_input),
+                inputs[1].name: to_numpy(example_labels),
+            }
 
-        ort_output = onnx_name_to_output['output']
-        np.testing.assert_allclose(
-            to_numpy(torch_out), ort_output, rtol=1e-03, atol=1e-05)
+            if input_weights:
+                # TODO Update ort_inputs
+                pass
 
-        torch_loss = loss_fn(torch_out, example_labels)
-        ort_loss = onnx_name_to_output['loss']
-        np.testing.assert_allclose(
-            to_numpy(torch_loss), ort_loss, rtol=1e-03, atol=1e-05)
+            ort_outs = ort_session.run(None, ort_inputs)
+            onnx_output_names = [node.name for node in onnx_model.graph.output]
+            onnx_name_to_output = dict(zip(onnx_output_names, ort_outs))
+            self.assertEqual(6, len(onnx_name_to_output))
 
-        # Make sure the gradients have the right shape.
-        model_param_names = tuple(name for name, _ in model.named_parameters())
-        self.assertEqual(4, len(model_param_names))
+            ort_output = onnx_name_to_output['output']
+            np.testing.assert_allclose(
+                to_numpy(torch_out), ort_output, rtol=1e-03, atol=1e-05)
 
-        for name, param in model.named_parameters():
-            grad = onnx_name_to_output['model.' + name + '_grad']
-            self.assertEqual(param.size(), grad.shape)
+            torch_loss = loss_fn(torch_out, example_labels)
+            ort_loss = onnx_name_to_output['loss']
+            np.testing.assert_allclose(
+                to_numpy(torch_loss), ort_loss, rtol=1e-03, atol=1e-05)
+
+            # Make sure the gradients have the right shape.
+            model_param_names = tuple(
+                name for name, _ in model.named_parameters())
+            self.assertEqual(4, len(model_param_names))
+
+            for name, param in model.named_parameters():
+                grad = onnx_name_to_output['model.' + name + '_grad']
+                self.assertEqual(param.size(), grad.shape)
 
 
 if __name__ == '__main__':

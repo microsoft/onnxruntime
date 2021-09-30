@@ -13,7 +13,9 @@ def export_gradient_graph(
         loss_fn: Callable[[Any, Any], Any],
         example_input: torch.Tensor,
         example_labels: torch.Tensor,
-        gradient_graph_path: Union[Path, str], intermediate_graph_path: Optional[Union[Path, str]] = None):
+        gradient_graph_path: Union[Path, str], intermediate_graph_path: Optional[Union[Path, str]] = None,
+        # FIXME Use a clearer name that involes "parameters". `use_parameters_as_input`?
+        input_weights=True):
     r"""
     Build a gradient graph for `model` so that you can output gradients when given a specific input and labels.
 
@@ -25,6 +27,7 @@ def export_gradient_graph(
             This could be the output of your model when given `example_input` but it might be different if your loss function expects labels to be different (e.g. when using CrossEntropyLoss).
         gradient_graph_path (Union[Path, str]): The path to where you would like to save the gradient graph.
         intermediate_graph_path (Optional[Union[Path, str]): The path to where you would like to save any intermediate graphs that are needed to make the gradient graph. Defaults to `gradient_graph_path` and it will be overwritten if this function executes successfully.
+        input_weights (bool): `True` if the gradient graph should have inputs for the model weights. Useful if TODO...
     """
 
     model.train()
@@ -51,22 +54,39 @@ def export_gradient_graph(
             loss = loss_fn(output, expected_labels)
             return output, loss
 
-    wrapped_model = WrapperModule(model)
+    dynamic_axes = {
+        'input': {0: 'batch_size', },
+        'labels': {0: 'batch_size', },
+        'output': {0: 'batch_size', },
+    }
+
+    if input_weights:
+        # FIXME Probably need to expand the list of model params.
+        class WeightsWrapperModule(WrapperModule):
+            def forward(self, model_input, model_params, expected_labels):
+                for param, set_param in zip(model.parameters(), model_params):
+                    param.data = set_param.data
+                output = self.model(model_input)
+                loss = loss_fn(output, expected_labels)
+                return output, loss
+        wrapped_model = WeightsWrapperModule(model)
+        args = (example_input, tuple(model.parameters()), example_labels)
+        input_names = ['input', 'model_params', 'labels']
+        dynamic_axes['model_params'] = {0: 'batch_size', }
+    else:
+        wrapped_model = WrapperModule(model)
+        args = (example_input, example_labels)
+        input_names = ['input', 'labels']
 
     torch.onnx.export(
-        wrapped_model, (example_input, example_labels),
+        wrapped_model, args,
         intermediate_graph_path,
         export_params=True,
         opset_version=12, do_constant_folding=False,
         training=TrainingMode.TRAINING,
-        # TODO Allow customizing.
-        input_names=['input', 'labels'],
+        input_names=input_names,
         output_names=['output', 'loss'],
-        dynamic_axes={
-            'input': {0: 'batch_size', },
-            'labels': {0: 'batch_size', },
-            'output': {0: 'batch_size', },
-        })
+        dynamic_axes=dynamic_axes)
 
     # TODO Allow customizing.
     nodes_needing_gradients = set()
