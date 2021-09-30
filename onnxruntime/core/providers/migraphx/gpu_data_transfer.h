@@ -5,8 +5,6 @@
 
 #include "migraphx_inc.h"
 #include "core/framework/data_transfer.h"
-#include "core/framework/ortdevice.h"
-#include "core/common/common.h"
 
 namespace onnxruntime {
 

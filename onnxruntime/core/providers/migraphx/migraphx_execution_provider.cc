@@ -6,28 +6,14 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/safeint.h"
 #include "migraphx_execution_provider.h"
+#include "hip_allocator.h"
+#include "hip_fence.h"
+#include "gpu_data_transfer.h"
+#include "migraphx_call.h"
 #include "core/framework/ortdevice.h"
 #include "core/framework/provider_options.h"
 #include "core/session/onnxruntime_c_api.h"
 
-// #include "core/framework/ortdevice.h"
-//#include "core/framework/provider_options.h"
-//#include "core/session/onnxruntime_c_api.h"
-
-// #include "core/common/common.h"
-// #include "core/common/logging/logging.h"
-// #include "core/framework/compute_capability.h"
-// #include "core/framework/allocatormgr.h"
-// #include "core/framework/kernel_registry.h"
-// #include "core/framework/memcpy.h"
-// #include "core/graph/graph_viewer.h"
-// #include "core/graph/model.h"
-// #include "core/graph/graph_utils.h"
-// #include "core/platform/env.h"
-
-#include "migraphx_call.h"
-#include "hip_allocator.h"
-#include "gpu_data_transfer.h"
 #include <fstream>
 #include <algorithm>
 #include <iterator>

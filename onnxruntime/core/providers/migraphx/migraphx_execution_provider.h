@@ -3,14 +3,18 @@
 
 #pragma once
 
+#include "core/framework/allocatormgr.h"
+#include "core/framework/arena_extend_strategy.h"
+#include "core/framework/execution_provider.h"
+#include "core/platform/ort_mutex.h"
+
 #include "core/framework/ortdevice.h"
 #include "core/framework/provider_options.h"
 #include "core/session/onnxruntime_c_api.h"
 
 // #include "core/framework/execution_provider.h"
 // #include "core/graph/indexed_sub_graph.h"
-#include "core/providers/shared_library/provider_api.h"
-#include "core/platform/ort_mutex.h"
+// #include "core/providers/shared_library/provider_api.h"
 #include <map>
 #include "migraphx_inc.h"
 
