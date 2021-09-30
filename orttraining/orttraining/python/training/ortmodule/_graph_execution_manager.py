@@ -7,9 +7,9 @@ from .debug_options import DebugOptions, LogLevel
 from . import (_utils,
                _io,
                _logger,
-               torch_cpp_extensions as _cpp_ext,
                _onnx_models,
                _are_deterministic_algorithms_enabled)
+from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension_if_needed
 from ._custom_autograd_function import custom_autograd_function_enabler
 from ._custom_autograd_function_exporter import _post_process_after_export
 from ._graph_execution_interface import GraphExecutionInterface
@@ -302,8 +302,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._set_device_from_module(inputs, kwargs)
         self._onnx_models.exported_model = self._get_exported_model(
             schema, *inputs, **kwargs)
-        _cpp_ext._load_aten_op_executor_cpp_extension_if_needed(
-            self._onnx_models.exported_model)
+        load_aten_op_executor_cpp_extension_if_needed(self._onnx_models.exported_model)
         if self._debug_options.save_onnx_models.save:
             self._onnx_models.save_exported_model(self._debug_options.save_onnx_models.path,
                                                   self._debug_options.save_onnx_models.name_prefix,
