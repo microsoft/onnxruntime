@@ -99,7 +99,7 @@ struct ExtentAxisCounters {
     axis_ = indices_.size();
 
     // If a tensor has a shape, but one of the axes is 0 in size, there are no elements, so nothing to iterate
-    if (std::find(extents.cbegin(), extents.cend(), 0) != extents.cend())
+    if (std::find(extents.begin(), extents.end(), 0) != extents.end())
       running_ = false;
   }
 

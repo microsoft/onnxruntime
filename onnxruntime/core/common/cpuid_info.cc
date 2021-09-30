@@ -31,17 +31,17 @@
 namespace onnxruntime {
 
 #if defined(CPUIDINFO_ARCH_X86)
-static inline void GetCPUID(int function_id, int data[4]) {  // NOLINT
+static inline void GetCPUID(int function_id, std::array<int,4> data) noexcept {  // NOLINT
 #if defined(_MSC_VER)
-  __cpuid(reinterpret_cast<int*>(data), function_id);
+  __cpuid(data.data(), function_id);
 #elif defined(__GNUC__)
   __cpuid(function_id, data[0], data[1], data[2], data[3]);
 #endif
 }
 
-static inline int XGETBV() {
+static inline int XGETBV() noexcept{
 #if defined(_MSC_VER)
-  return static_cast<int>(_xgetbv(0));
+  return gsl::narrow_cast<int>(_xgetbv(0));
 #elif defined(__GNUC__)
   int eax, edx;
   __asm__ volatile("xgetbv"
@@ -54,7 +54,6 @@ static inline int XGETBV() {
 
 CPUIDInfo CPUIDInfo::instance_;
 
-
 CPUIDInfo::CPUIDInfo() {
 #if (defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)) && defined(CPUINFO_SUPPORTED)
     if (!cpuinfo_initialize()) {
@@ -64,22 +63,21 @@ CPUIDInfo::CPUIDInfo() {
 #endif
 
 #if defined(CPUIDINFO_ARCH_X86)
-    int data[4] = {-1};
+    std::array<int, 4> data{-1, -1, -1, -1};
     GetCPUID(0, data);
-
-    int num_IDs = data[0];
+    const int num_IDs = data[0];
     if (num_IDs >= 1) {
       GetCPUID(1, data);
       if (data[2] & (1 << 27)) {
-        const int AVX_MASK = 0x6;
-        const int AVX512_MASK = 0xE6;
-        int value = XGETBV();
-        bool has_sse2 = (data[3] & (1 << 26));
+        constexpr int AVX_MASK = 0x6;
+        constexpr int AVX512_MASK = 0xE6;
+        const int value = XGETBV();
+        const bool has_sse2 = (data[3] & (1 << 26));
         has_sse3_ = (data[2] & 0x1);
         has_sse4_1_ = (data[2] & (1 << 19));
-        bool has_ssse3 = (data[2] & (1 << 9));
+        const bool has_ssse3 = (data[2] & (1 << 9));
         has_avx_ = has_sse2 && has_ssse3 && (data[2] & (1 << 28)) && ((value & AVX_MASK) == AVX_MASK);
-        bool has_avx512 = (value & AVX512_MASK) == AVX512_MASK;
+        const bool has_avx512 = (value & AVX512_MASK) == AVX512_MASK;
         has_f16c_ = has_avx_ && (data[2] & (1 << 29)) && (data[3] & (1 << 26));
 
         if (num_IDs >= 7) {

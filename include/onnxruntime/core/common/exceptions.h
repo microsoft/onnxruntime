@@ -9,7 +9,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
-
+#include <gsl/gsl>
 #include "core/common/common.h"
 #include "core/common/code_location.h"
 
@@ -17,19 +17,21 @@ namespace onnxruntime {
 
 class NotImplementedException : public std::logic_error {
  public:
-  explicit NotImplementedException(const char* _Message = "Function not yet implemented") noexcept : std::logic_error(_Message){};
-  explicit NotImplementedException(const std::string& _Message = "Function not yet implemented") noexcept : std::logic_error(_Message){};
+  GSL_SUPPRESS(f .6)
+  explicit NotImplementedException(const char* _Message = "Function not yet implemented") : std::logic_error(_Message){};
+  GSL_SUPPRESS(f .6)
+  explicit NotImplementedException(const std::string& _Message = "Function not yet implemented") : std::logic_error(_Message){};
 };
 
 class TypeMismatchException : public std::logic_error {
  public:
-  TypeMismatchException() noexcept : logic_error("Type mismatch"){};
+  GSL_SUPPRESS(f .6)
+  TypeMismatchException() : logic_error("Type mismatch"){};
 };
 
 class OnnxRuntimeException : public std::exception {
  public:
-  OnnxRuntimeException(const CodeLocation& location, const std::string& msg) noexcept
-      : OnnxRuntimeException(location, nullptr, msg) {
+  OnnxRuntimeException(const CodeLocation& location, const std::string& msg) : OnnxRuntimeException(location, nullptr, msg) {
   }
 
   /**

@@ -1,0 +1,29 @@
+diff --git a/include/gsl/gsl_util b/include/gsl/gsl_util
+index d4f5563..d35c6ca 100644
+--- a/include/gsl/gsl_util
++++ b/include/gsl/gsl_util
+@@ -99,6 +99,12 @@ namespace details
+     };
+ } // namespace details
+ 
++#ifdef ORT_NO_EXCEPTIONS
++#define THROW_NARROW_ERROR std::terminate()
++#else
++#define THROW_NARROW_ERROR throw narrowing_error{}
++#endif
++
+ // narrow() : a checked version of narrow_cast() that throws if the cast changed the value
+ template <class T, class U>
+ GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
+@@ -107,9 +113,9 @@ constexpr
+ T narrow(U u) noexcept(false)
+ {
+     T t = narrow_cast<T>(u);
+-    if (static_cast<U>(t) != u) throw narrowing_error{};
++    if (static_cast<U>(t) != u) THROW_NARROW_ERROR;
+     if (!details::is_same_signedness<T, U>::value && ((t < T{}) != (u < U{})))
+-        throw narrowing_error{};
++        THROW_NARROW_ERROR;
+     return t;
+ }
+ 

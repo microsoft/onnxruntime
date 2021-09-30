@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <ostream>
 #include <string>
+#include <gsl/gsl>
 #ifdef _WIN32
 #include <winerror.h>
 #endif
@@ -121,10 +122,11 @@ class Status {
   Status(StatusCategory category, int code, const char* msg);
 
   Status(StatusCategory category, int code);
-
+  GSL_SUPPRESS(r .11)
   Status(const Status& other)
       : state_((other.state_ == nullptr) ? nullptr : new State(*other.state_)) {}
 
+  GSL_SUPPRESS(r .11)
   Status& operator=(const Status& other) {
     if (state_ != other.state_) {
       if (other.state_ == nullptr) {
@@ -140,7 +142,7 @@ class Status {
   Status& operator=(Status&&) = default;
   ~Status() = default;
 
-  bool IsOK() const {
+  bool IsOK() const noexcept {
     return (state_ == nullptr);
   }
 
@@ -160,7 +162,7 @@ class Status {
     return !(*this == other);
   }
 
-  static Status OK() {
+  static Status OK() noexcept{
     return Status();
   }
 

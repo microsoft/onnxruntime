@@ -867,7 +867,7 @@ static Status CopySparseData(size_t n_sparse_elements,
         ORT_RETURN_IF_NOT(indices.raw_data().size() == (elements * sizeof(int64_t)),
                           "Sparse Indices raw data size does not match expected.");
         ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
-        indices_data = gsl::make_span(unpack_buffer).as_span<const int64_t>();
+        indices_data = gsl::make_span<const int64_t>(reinterpret_cast<const int64_t*>(unpack_buffer.data()), unpack_buffer.size() / sizeof(const int64_t));
       } else {
         ORT_RETURN_IF_NOT(indices.int64_data_size() == static_cast<int64_t>(elements), "Sparse indices int64 data size does not match expected");
         indices_data = gsl::make_span(indices.int64_data().data(), elements);
@@ -878,8 +878,8 @@ static Status CopySparseData(size_t n_sparse_elements,
         ORT_RETURN_IF_NOT(indices.raw_data().size() == (elements * sizeof(int32_t)),
                           "Sparse Indices raw data size does not match expected.");
         ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
-        auto int32_span = gsl::make_span(unpack_buffer).as_span<const int32_t>();
-        indices_values.insert(indices_values.cend(), int32_span.cbegin(), int32_span.cend());
+        auto int32_span = gsl::make_span<const int32_t>(reinterpret_cast<const int32_t*>(unpack_buffer.data()), unpack_buffer.size() / sizeof(const int32_t));
+        indices_values.insert(indices_values.cend(), int32_span.begin(), int32_span.end());
         unpack_buffer.clear();
         unpack_buffer.shrink_to_fit();
       } else {
@@ -894,8 +894,8 @@ static Status CopySparseData(size_t n_sparse_elements,
         ORT_RETURN_IF_NOT(indices.raw_data().size() == (elements * sizeof(int16_t)),
                           "Sparse Indices raw data size does not match expected.");
         ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
-        auto int16_span = gsl::make_span(unpack_buffer).as_span<const int16_t>();
-        indices_values.insert(indices_values.cend(), int16_span.cbegin(), int16_span.cend());
+        auto int16_span = gsl::make_span<const int16_t>(reinterpret_cast<const int16_t*>(unpack_buffer.data()), unpack_buffer.size() / sizeof(const int16_t));
+        indices_values.insert(indices_values.cend(), int16_span.begin(), int16_span.end());
         indices_data = gsl::make_span(indices_values);
         unpack_buffer.clear();
         unpack_buffer.shrink_to_fit();
@@ -910,8 +910,8 @@ static Status CopySparseData(size_t n_sparse_elements,
         ORT_RETURN_IF_NOT(indices.raw_data().size() == elements,
                           "Sparse Indices raw data size does not match expected.");
         ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
-        auto int8_span = gsl::make_span(unpack_buffer).as_span<const int8_t>();
-        indices_values.insert(indices_values.cend(), int8_span.cbegin(), int8_span.cend());
+        auto int8_span = gsl::make_span<const int8_t>(reinterpret_cast<const int8_t*>(unpack_buffer.data()), unpack_buffer.size() / sizeof(const int8_t));
+        indices_values.insert(indices_values.cend(), int8_span.begin(), int8_span.end());
         indices_data = gsl::make_span(indices_values);
         unpack_buffer.clear();
         unpack_buffer.shrink_to_fit();
@@ -959,7 +959,7 @@ static Status CopySparseData(size_t n_sparse_elements,
       cur_index += rank;
     }
 
-    ORT_ENFORCE(cur_index == &*indices_data.cend());
+    ORT_ENFORCE(cur_index == indices_data.data() + indices_data.size());
   } else {
     status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Invalid SparseTensor indices. Should be rank 0 or 1. Got:",
                              indices_shape);

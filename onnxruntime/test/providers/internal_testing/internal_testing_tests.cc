@@ -21,7 +21,11 @@ using namespace onnxruntime::logging;
 namespace onnxruntime {
 
 namespace test {
-
+template <typename T>
+static std::vector<T> TensorDataAsVector(const Tensor& input) {
+  const T* data = input.Data<T>();
+  return std::vector<T>(data, data + static_cast<size_t>(input.Shape().Size()));
+}
 static void CreateSession(const SessionOptions& so, std::unique_ptr<InferenceSessionWrapper>& session,
                           const ORTCHAR_T* model_path = ORT_TSTR("testdata/mnist.onnx"),  // arbitrary test model
                           bool enable_custom_ep = true,
@@ -69,13 +73,13 @@ static void ExecuteMnist(InferenceSessionWrapper& session, bool custom_ep_enable
     // downstream operations should still result in zeros for this model
     // OR it should equal the bias in the final Add operation, which is in the Parameter194 initializer
     const auto& t = fetches[0].Get<Tensor>();
-    const auto data = t.DataAsSpan<float>();
+    const auto data = TensorDataAsVector<float>(t);
 
     int idx = 0;
     const auto& session_state = session.GetSessionState();
     ASSERT_STATUS_OK(session_state.GetOrtValueNameIdxMap().GetIdx("Parameter194", idx));
     const auto& initializer = session_state.GetConstantInitializedTensors().at(idx);
-    const auto expected = initializer.Get<Tensor>().DataAsSpan<float>();
+    const auto expected = TensorDataAsVector<float>(initializer.Get<Tensor>());
 
     ASSERT_THAT(data, ::testing::ContainerEq(expected));
   }

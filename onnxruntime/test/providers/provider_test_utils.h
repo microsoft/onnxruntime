@@ -2,9 +2,15 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <gsl/gsl>
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 
 #include "core/common/logging/logging.h"
 #include "core/common/optional.h"
+#include "core/graph/graph_viewer.h"
+#include "core/graph/model.h"
+
 #include "core/framework/allocatormgr.h"
 #include "core/framework/customregistry.h"
 #include "core/framework/execution_frame.h"
@@ -13,19 +19,16 @@
 #include "core/framework/session_state.h"
 #include "core/framework/tensor.h"
 #include "core/framework/prepacked_weights_container.h"
-#include "core/graph/graph_viewer.h"
-#include "core/graph/model.h"
 #include "core/framework/data_types.h"
-#include "test/test_environment.h"
-#include "test/framework/TestAllocatorManager.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/session_options.h"
 #include "core/providers/providers.h"
-#include "test/util/include/asserts.h"
+#include "asserts.h"
+#include "test/framework/test_utils.h"
+#include "test/test_environment.h"
+#include "test/framework/TestAllocatorManager.h"
 
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
-#include <gsl/gsl>
+
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
@@ -305,7 +308,7 @@ class OpTester {
                          const std::vector<std::string>* dim_params = nullptr) {
     auto ml_type = DataTypeImpl::GetType<T>();
     AddSparseCooTensorData(input_data_, ml_type, name, dims,
-                           gsl::make_span(values).as_bytes(),
+                           SpanAsBytes(gsl::make_span(values)),
                            gsl::make_span(indices),
                            CheckParams(), dim_params);
   }
@@ -316,7 +319,7 @@ class OpTester {
                          const std::vector<std::string>* dim_params = nullptr) {
     auto ml_type = DataTypeImpl::GetType<T>();
     AddSparseCooTensorData(input_data_, ml_type, name, dims,
-                           gsl::make_span(values).as_bytes(),
+                           SpanAsBytes(gsl::make_span(values)),
                            gsl::make_span(indices),
                            CheckParams(), dim_params);
   }
@@ -328,7 +331,7 @@ class OpTester {
                          const std::vector<std::string>* dim_params = nullptr) {
     auto ml_type = DataTypeImpl::GetType<T>();
     AddSparseCooTensorData(input_data_, ml_type, name, dims,
-                           values_span.as_bytes(),
+                           SpanAsBytes(values_span),
                            gsl::make_span(indices),
                            CheckParams(), dim_params);
   }
@@ -352,7 +355,7 @@ class OpTester {
                          const std::vector<std::string>* dim_params = nullptr) {
     auto ml_type = DataTypeImpl::GetType<T>();
     AddSparseCsrTensorData(input_data_, ml_type, name, dims,
-                           gsl::make_span(values).as_bytes(),
+                           SpanAsBytes(gsl::make_span(values)),
                            gsl::make_span(inner_indices),
                            gsl::make_span(outer_indices),
                            CheckParams(), dim_params);
@@ -366,7 +369,7 @@ class OpTester {
                          const std::vector<std::string>* dim_params = nullptr) {
     auto ml_type = DataTypeImpl::GetType<T>();
     AddSparseCsrTensorData(input_data_, ml_type, name, dims,
-                           gsl::make_span(values).as_bytes(),
+                           SpanAsBytes(gsl::make_span(values)),
                            gsl::make_span(inner_indices),
                            gsl::make_span(outer_indices),
                            CheckParams(), dim_params);
@@ -380,7 +383,7 @@ class OpTester {
                          const std::vector<std::string>* dim_params = nullptr) {
     auto ml_type = DataTypeImpl::GetType<T>();
     AddSparseCsrTensorData(input_data_, ml_type, name, dims,
-                           values_span.as_bytes(),
+                           SpanAsBytes(values_span),
                            gsl::make_span(inner_indices),
                            gsl::make_span(outer_indices),
                            CheckParams(), dim_params);
@@ -488,7 +491,7 @@ class OpTester {
                           const CheckParams& check_params = CheckParams()) {
     auto ml_type = DataTypeImpl::GetType<T>();
     AddSparseCooTensorData(output_data_, ml_type, name, dims,
-                           gsl::make_span(expected_values).as_bytes(),
+                           SpanAsBytes(expected_values),
                            gsl::make_span(expected_indices),
                            check_params, nullptr /*dim_params*/);
   }
@@ -500,7 +503,7 @@ class OpTester {
                           const CheckParams& check_params = CheckParams()) {
     auto ml_type = DataTypeImpl::GetType<T>();
     AddSparseCooTensorData(output_data_, ml_type, name, dims,
-                           gsl::make_span(expected_values).as_bytes(),
+                           SpanAsBytes(expected_values),
                            gsl::make_span(expected_indices),
                            check_params, nullptr /*dim_params*/);
   }
@@ -512,7 +515,7 @@ class OpTester {
                           const CheckParams& check_params = CheckParams()) {
     auto ml_type = DataTypeImpl::GetType<T>();
     AddSparseCooTensorData(output_data_, ml_type, name, dims,
-                           expected_values_span.as_bytes(),
+                           SpanAsBytes(expected_values_span),
                            gsl::make_span(expected_indices),
                            check_params, nullptr /*dim_params*/);
   }
@@ -561,7 +564,7 @@ class OpTester {
                           const CheckParams& check_params = CheckParams()) {
     auto ml_type = DataTypeImpl::GetType<T>();
     AddSparseCsrTensorData(output_data_, ml_type, name, dims,
-                           expected_values_span.as_bytes(),
+                           SpanAsBytes(expected_values_span),
                            gsl::make_span(expected_inner_indices),
                            gsl::make_span(expected_outer_indices),
                            check_params, nullptr /*dim_params*/);

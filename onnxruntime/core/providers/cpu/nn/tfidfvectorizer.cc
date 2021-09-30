@@ -191,11 +191,11 @@ TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), imp
   ORT_ENFORCE(status.IsOK() && !impl_->ngram_indexes_.empty(), "Non-empty ngram_indexes is required");
   {
     // Check that all are positive
-    ORT_ENFORCE(std::all_of(impl_->ngram_indexes_.cbegin(), impl_->ngram_indexes_.cend(),
+    ORT_ENFORCE(std::all_of(impl_->ngram_indexes_.begin(), impl_->ngram_indexes_.end(),
                             [](int64_t i) { return i >= 0; }),
                 "Negative ngram_indexes values are not allowed");
     // Set output size to max output index + 1;
-    auto greatest_hit = std::max_element(impl_->ngram_indexes_.cbegin(), impl_->ngram_indexes_.cend());
+    auto greatest_hit = std::max_element(impl_->ngram_indexes_.begin(), impl_->ngram_indexes_.end());
     impl_->output_size_ = *greatest_hit + 1;
   }
 

@@ -251,7 +251,7 @@ class PosixEnv : public Env {
     return getpid();
   }
 
-  Status GetFileLength(const PathChar* file_path, size_t& length) const override {
+  Status GetFileLength(gsl::not_null<gsl::basic_zstring<const ORTCHAR_T> > file_path, size_t& length) const override {
     ScopedFileDescriptor file_descriptor{open(file_path, O_RDONLY)};
     return GetFileLength(file_descriptor.Get(), length);
   }
@@ -280,7 +280,7 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  Status ReadFileIntoBuffer(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+  Status ReadFileIntoBuffer(gsl::not_null<gsl::basic_zstring<const ORTCHAR_T> > file_path, FileOffsetType offset, size_t length,
                             gsl::span<char> buffer) const override {
     ORT_RETURN_IF_NOT(file_path, "file_path == nullptr");
     ORT_RETURN_IF_NOT(offset >= 0, "offset < 0");
@@ -325,7 +325,7 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  Status MapFileIntoMemory(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+  Status MapFileIntoMemory(gsl::not_null<gsl::basic_zstring<const ORTCHAR_T> > file_path, FileOffsetType offset, size_t length,
                            MappedMemoryPtr& mapped_memory) const override {
     ORT_RETURN_IF_NOT(file_path, "file_path == nullptr");
     ORT_RETURN_IF_NOT(offset >= 0, "offset < 0");
@@ -358,7 +358,8 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  static common::Status ReportSystemError(const char* operation_name, const std::string& path) {
+  template <typename PathType>
+  static common::Status ReportSystemError(const char* operation_name, const PathType& path) {
     auto[err_no, err_msg] = GetSystemError();
     std::ostringstream oss;
     oss << operation_name << " file \"" << path << "\" failed: " << err_msg;

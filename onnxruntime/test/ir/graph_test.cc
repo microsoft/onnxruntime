@@ -256,8 +256,8 @@ static void ValidateSparseTensorProto(const SparseTensorProto& proto) {
   // Can't use ContainerEq on float
   EXPECT_EQ(actual_values.size(), sparse_details::values.size());
   // std::equal() with a predicate is only in C++20
-  auto actual_begin = actual_values.cbegin();
-  const auto actual_end = actual_values.cend();
+  auto actual_begin = actual_values.begin();
+  const auto actual_end = actual_values.end();
   auto expected_begin = sparse_details::values.cbegin();
   while (actual_begin != actual_end) {
     auto diff = *actual_begin - *expected_begin;
@@ -271,9 +271,9 @@ static void ValidateSparseTensorProto(const SparseTensorProto& proto) {
   SparseIndicesChecker(indices, expected_indices);
   // check shape
   const auto& dims = proto.dims();
-  auto actual_shape = gsl::make_span<const int64_t>(dims.data(), dims.size());
-  auto expected_shape = gsl::make_span(sparse_details::shape);
-  EXPECT_THAT(actual_shape, testing::ContainerEq(expected_shape));
+  TensorShape actual_shape(dims.data(), dims.size());
+  TensorShape expected_shape(sparse_details::shape);
+  ASSERT_EQ(actual_shape, expected_shape);
 }
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 

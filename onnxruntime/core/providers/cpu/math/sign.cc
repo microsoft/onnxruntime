@@ -79,7 +79,7 @@ struct CallSignImpl<MLFloat16> {
   void operator()(const Tensor* input, Tensor* output) const {
     auto span = gsl::make_span(input->Data<MLFloat16>(), input->Shape().Size());
     auto output_data = output->template MutableData<MLFloat16>();
-    std::transform(span.cbegin(), span.cend(), output_data, [](const MLFloat16& val) {
+    std::transform(span.begin(), span.end(), output_data, [](const MLFloat16& val) {
       float fl = math::halfToFloat(val.val);
       return MLFloat16(math::floatToHalf(FloatingImpl(fl)));
     });
@@ -91,7 +91,7 @@ struct CallSignImpl<BFloat16> {
   void operator()(const Tensor* input, Tensor* output) const {
     auto span = gsl::make_span(input->Data<BFloat16>(), input->Shape().Size());
     auto output_data = output->template MutableData<BFloat16>();
-    std::transform(span.cbegin(), span.cend(), output_data, [](const BFloat16& val) {
+    std::transform(span.begin(), span.end(), output_data, [](const BFloat16& val) {
       float fl = val.ToFloat();
       return BFloat16(FloatingImpl(fl));
     });

@@ -7,15 +7,15 @@
 #include <random>
 #include <utility>
 #include <vector>
+#include <gsl/gsl>
+#include <gtest/gtest.h>
+
 
 #ifndef _WIN32
 #include <unistd.h>  // for sysconf() and _SC_PAGESIZE
 #endif
 
-#include "gsl/gsl"
-
-#include "gtest/gtest.h"
-
+#include "test/framework/test_utils.h"
 #include "test/util/include/file_util.h"
 
 namespace onnxruntime {
@@ -93,10 +93,10 @@ TEST(FileIoTest, ReadFileIntoBuffer) {
     ASSERT_TRUE(status.IsOK())
         << "ReadFileIntoBuffer failed for offset " << offset << " and length " << length
         << " with error: " << status.ErrorMessage();
-
+    auto const_buffer_span = gsl::make_span<const char>(buffer_span.data(), buffer_span.size());  
     auto expected_data_span = gsl::make_span(expected_data.data() + offset, length);
 
-    ASSERT_EQ(buffer_span, expected_data_span);
+    ASSERT_EQ(const_buffer_span, expected_data_span);
   }
 
   // invalid - negative offset
@@ -134,7 +134,7 @@ TEST(FileIoTest, MapFileIntoMemory) {
 
     auto expected_data_span = gsl::make_span(expected_data.data() + offset, length);
 
-    ASSERT_EQ(mapped_span, expected_data_span);
+    AssertSpanEquals(mapped_span, expected_data_span);
   }
 
   {

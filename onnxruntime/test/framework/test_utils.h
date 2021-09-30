@@ -4,13 +4,15 @@
 
 #include <map>
 #include <string>
+#include <gtest/gtest.h>
+#include <gsl/gsl>
 
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/framework/ort_value.h"
 
-#include "gsl/gsl"
+
 
 #ifdef USE_CUDA
 #include "core/providers/providers.h"
@@ -32,6 +34,18 @@ namespace onnxruntime {
 class Graph;
 
 namespace test {
+template <typename T>
+gsl::span<const gsl::byte> SpanAsBytes(gsl::span<const T> src_span) {
+  return gsl::make_span<const gsl::byte>(reinterpret_cast<const gsl::byte*>(src_span.data()), src_span.size_bytes());
+}
+template <typename T1, typename T2>
+void AssertSpanEquals(const T1& left, const T2& right) {
+  ASSERT_EQ(left.size(), right.size());
+  size_t len = left.size();
+  for (size_t i = 0; i != len; ++i) {
+    ASSERT_EQ(left[i], right[i]);
+  }
+}
 // Doesn't work with ExecutionProviders class and KernelRegistryManager
 IExecutionProvider* TestCPUExecutionProvider();
 

@@ -48,7 +48,7 @@ inline std::vector<std::reference_wrapper<const Tensor>> MakeListConst(const T&.
 void CopyStrings(const Tensor& src_t, Tensor& dst_t) {
   auto src_span = src_t.DataAsSpan<std::string>();
   std::string* dst = dst_t.MutableData<std::string>();
-  std::copy(src_span.cbegin(), src_span.cend(), dst);
+  std::copy(src_span.begin(), src_span.end(), dst);
 }
 
 Status CopyData(const IDataTransfer* data_transfer,

@@ -34,14 +34,14 @@ inline void MakeStringImpl(std::ostringstream& ss, const T& t) noexcept {
 }
 
 template <typename T, typename... Args>
-inline void MakeStringImpl(std::ostringstream& ss, const T& t, const Args&... args) noexcept {
+inline void MakeStringImpl(std::ostringstream& ss, const T& t, const Args&... args) {
   MakeStringImpl(ss, t);
   MakeStringImpl(ss, args...);
 }
 
 // see MakeString comments for explanation of why this is necessary
 template <typename... Args>
-inline std::string MakeStringImpl(const Args&... args) noexcept {
+inline std::string MakeStringImpl(const Args&... args) {
   std::ostringstream ss;
   MakeStringImpl(ss, args...);
   return ss.str();

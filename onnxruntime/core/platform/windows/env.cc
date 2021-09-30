@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <Shlwapi.h>
 #include <Windows.h>
-
+#include <filesystem>
 #include <fstream>
 #include <string>
 #include <thread>
@@ -41,9 +41,9 @@ namespace onnxruntime {
 
 namespace {
 
-std::wstring Basename(const std::wstring& path) {
-  auto basename_index = path.find_last_of(L"/\\") + 1;  // results in 0 if no separator is found
-  return path.substr(basename_index);
+std::wstring Basename(gsl::not_null<gsl::basic_zstring<const ORTCHAR_T> > path) {
+  std::filesystem::path p(path.get());
+  return p.parent_path();  
 }
 
 class WindowsThread : public EnvThread {
@@ -119,7 +119,7 @@ class WindowsThread : public EnvThread {
 
 class WindowsEnv : public Env {
  public:
-  EnvThread* CreateThread(_In_opt_z_ const ORTCHAR_T* name_prefix, int index,
+  EnvThread* CreateThread(gsl::basic_zstring<const ORTCHAR_T> name_prefix, int index,
                           unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param),
                           Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) {
     return new WindowsThread(name_prefix, index, start_address, param, thread_options);
@@ -187,7 +187,7 @@ class WindowsEnv : public Env {
     return GetCurrentProcessId();
   }
 
-  Status GetFileLength(_In_z_ const ORTCHAR_T* file_path, size_t& length) const override {
+  Status GetFileLength(gsl::not_null<gsl::basic_zstring<const ORTCHAR_T> > file_path, size_t& length) const override {
 #if WINVER >= _WIN32_WINNT_WIN8
     wil::unique_hfile file_handle{
         CreateFile2(file_path, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, OPEN_EXISTING, NULL)};
@@ -235,7 +235,7 @@ class WindowsEnv : public Env {
     return Status::OK();
   }
 
-  Status ReadFileIntoBuffer(_In_z_ const ORTCHAR_T* const file_path, const FileOffsetType offset, const size_t length,
+  Status ReadFileIntoBuffer(gsl::not_null<gsl::basic_zstring<const ORTCHAR_T> > const file_path, const FileOffsetType offset, const size_t length,
                             const gsl::span<char> buffer) const override {
     ORT_RETURN_IF_NOT(file_path, "file_path == nullptr");
     ORT_RETURN_IF_NOT(offset >= 0, "offset < 0");
@@ -286,7 +286,7 @@ class WindowsEnv : public Env {
     return Status::OK();
   }
 
-  Status MapFileIntoMemory(_In_z_ const ORTCHAR_T*, FileOffsetType, size_t, MappedMemoryPtr&) const override {
+  Status MapFileIntoMemory(gsl::not_null<gsl::basic_zstring<const ORTCHAR_T> >, FileOffsetType, size_t, MappedMemoryPtr&) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "MapFileIntoMemory is not implemented on Windows.");
   }
 
@@ -353,7 +353,7 @@ class WindowsEnv : public Env {
               const auto error_code = GetLastError();
               final_status = ORT_MAKE_STATUS(
                   ONNXRUNTIME, FAIL,
-                  "DeleteFile() failed - path: ", ToMBString(Basename(child_path)),
+                  "DeleteFile() failed - path: ", ToMBString(Basename(child_path.c_str())),
                   ", error code: ", error_code, " - ", std::system_category().message(error_code));
             }
           }
@@ -367,7 +367,7 @@ class WindowsEnv : public Env {
       const auto error_code = GetLastError();
       final_status = ORT_MAKE_STATUS(
           ONNXRUNTIME, FAIL,
-          "RemoveDirectory() failed - path: ", ToMBString(Basename(path)),
+          "RemoveDirectory() failed - path: ", ToMBString(Basename(path.c_str())),
           ", error code: ", error_code, " - ", std::system_category().message(error_code));
     }
 
@@ -441,7 +441,7 @@ class WindowsEnv : public Env {
 
     if (file_handle.get() == INVALID_HANDLE_VALUE) {
       const auto error_code = GetLastError();
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToMBString(Basename(path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToMBString(Basename(path.c_str())), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
     }
 
     constexpr DWORD initial_buffer_size = MAX_PATH;

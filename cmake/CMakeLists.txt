@@ -230,7 +230,14 @@ endif()
 if (onnxruntime_ENABLE_MEMORY_PROFILE)
   add_definitions(-DORT_MEMORY_PROFILE=1)
 endif()
-
+include(FetchContent)
+FetchContent_Declare(
+    MS_GSL
+    URL https://github.com/microsoft/GSL/archive/refs/tags/v3.1.0.zip
+    PATCH_COMMAND git init && git apply ${CMAKE_SOURCE_DIR}/patches/gsl.patch
+)
+FetchContent_MakeAvailable(MS_GSL)
+include_directories(${GSL_SOURCE_DIR}/include)
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
 set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)

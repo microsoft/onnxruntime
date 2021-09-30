@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <string>
 #include <cstring>
+#include <gsl/gsl>
 #include "onnxruntime_config.h"
 
 namespace onnxruntime {
@@ -37,6 +38,9 @@ class TensorShape : private std::vector<int64_t> {
   TensorShape(const std::initializer_list<int64_t>& dims) : std::vector<int64_t>(dims) {}
 
   TensorShape(const int64_t* dimension_sizes, size_t dimension_count);
+  explicit TensorShape(const gsl::span<const int64_t>& dimension_sizes) : TensorShape(dimension_sizes.data(),dimension_sizes.size()){
+
+  }
 
   TensorShape(const std::vector<int64_t>& dims, size_t start, size_t end);
 

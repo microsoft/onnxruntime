@@ -260,7 +260,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
   // DumpMatrix("Input", inputs.data(), seq_length_, batch_size_ * input_size_);
 
   // Calculate the max and min length
-  const auto min_max_pair = std::minmax_element(sequence_lengths.cbegin(), sequence_lengths.cend());
+  const auto min_max_pair = std::minmax_element(sequence_lengths.begin(), sequence_lengths.end());
   int max_sequence_length = *min_max_pair.second;
   int min_sequence_length = std::min(seq_length_, *min_max_pair.first);
 
@@ -274,10 +274,10 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
   AllocateQuantizeBuffers<WeightT>(max_sequence_length);
 
   // apply the weights to all the inputs and save to output_IOFC
-  ComputeGemm(total_rows, hidden_size_x4, input_size_, alpha, inputs.cbegin(), inputs.cend(),
+  ComputeGemm(total_rows, hidden_size_x4, input_size_, alpha, inputs.data(), inputs.data() + inputs.size(),
               input_weights,
-              beta, output_iofc_.begin(), output_iofc_.end(), hidden_size_x4,
-              quantized_input_or_a_.begin(),
+              beta, output_iofc_.data(), output_iofc_.data() + output_iofc_.size(), hidden_size_x4,
+              quantized_input_or_a_.data(),
               nullptr,
               thread_pool_);
 
@@ -301,7 +301,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
 
   // lambda to do all processing on num_seq_to_compute sequences
   auto sequences_calculator = [&](int seq_start, onnxruntime::concurrency::ThreadPool* ttp) {
-    span_T_const_iter previous_state_end = batched_hidden_state_one_step.cend();
+    T* previous_state_end = batched_hidden_state_one_step.data() + batched_hidden_state_one_step.size();
 
     // handling boundaries
     int num_seq_to_compute_adjusted = num_seq_to_compute;
@@ -314,7 +314,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
 
     // hidden state can be provided as input for first step, so need to special case that.
     // after the first step this will switch to the output from the previous step
-    span_T_const_iter previous_state = batched_hidden_state_one_step.cbegin() + seq_start * hidden_size_;
+    T* previous_state = batched_hidden_state_one_step.data() + seq_start * hidden_size_;
 
     // run through steps sequentially
     for (int step = 0; step < max_sequence_length; step++) {
@@ -323,34 +323,41 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
 #endif
 
       span_T_iter step_out_IOFC = output_iofc_.begin() + (step * batch_size_ + seq_start) * hidden_size_x4;
+      T* step_out_IOFC_ptr = output_iofc_.data() + (step * batch_size_ + seq_start) * hidden_size_x4;
 
       // calculate Xt*(W[iofc]^T) + Ht-t*R[iofc]
       // Do it sequentially to avoid nested parallelism
       ComputeGemm(num_seq_to_compute_adjusted, hidden_size_x4, hidden_size_, alpha,
-                  previous_state, previous_state_end,       // Ht-1
+                  previous_state, previous_state_end,   // Ht-1
                   recurrent_weights,                        // R[iofc]
-                  beta, step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
+                  beta, step_out_IOFC_ptr, output_iofc_.data() + output_iofc_.size(),  // input contains Xt*(W[iofc]^T)
                   hidden_size_x4,
-                  quantized_input_or_a_.begin() + (seq_start * hidden_size_),
-                  quantized_C_buffer_.begin() + (seq_start * hidden_size_x4),
+                  quantized_input_or_a_.data() + (seq_start * hidden_size_),
+                  quantized_C_buffer_.data() + (seq_start * hidden_size_x4),
                   ttp);
 
-      DumpMatrix("Xt*(W[iofc]^T) + Ht-t*R[iofc]" + row_str, &*step_out_IOFC, num_seq_to_compute_adjusted, hidden_size_x4);
+      DumpMatrix("Xt*(W[iofc]^T) + Ht-t*R[iofc]" + row_str, step_out_IOFC_ptr, num_seq_to_compute_adjusted, hidden_size_x4);
 
-      span_T_iter batched_output;
-      span_T_iter batched_output_end;
+      T* batched_output;
+      span_T_iter batched_output_iter;
+      T* batched_output_end;
+      span_T_iter batched_output_end_iter;
       if (output_sequence) {
-        batched_output = outputs.begin() + step * output_step_length;
-        batched_output_end = outputs.end();
+        batched_output = outputs.data() + step * output_step_length;
+        batched_output_iter = outputs.begin() + step * output_step_length;
+        batched_output_end = outputs.data() + outputs.size();
+        batched_output_end_iter = outputs.end();
 
       } else {
-        batched_output = final_hidden_state.begin();
-        batched_output_end = final_hidden_state.end();
+        batched_output = final_hidden_state.data();
+        batched_output_iter = final_hidden_state.begin();
+        batched_output_end = final_hidden_state.data() + final_hidden_state.size();
+        batched_output_end_iter = final_hidden_state.end();
       }
 
       span_T_iter step_out_IOFC_end = step_out_IOFC + num_seq_to_compute_adjusted * hidden_size_x4;
       GateComputations(step_out_IOFC, step_out_IOFC_end, c_prev, C_prev_end, c_prev_clipped, C_prev_clipped_end,
-                       batched_output, batched_output_end, sequence_lengths, min_sequence_length, step, seq_start,
+                       batched_output_iter, batched_output_end_iter, sequence_lengths, min_sequence_length, step, seq_start,
                        num_seq_to_compute_adjusted, output_sequence);
 
       // copy last row to final_cell_state

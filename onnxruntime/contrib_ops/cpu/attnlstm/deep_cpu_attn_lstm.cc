@@ -198,7 +198,7 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
 
   if (!output.empty() && !sequence_lens_span.empty()) {
     // clear tailing outputs
-    int32_t max_seq_this_batch = *std::max_element(sequence_lens_span.cbegin(), sequence_lens_span.cend());
+    int32_t max_seq_this_batch = *std::max_element(sequence_lens_span.begin(), sequence_lens_span.end());
     if (max_seq_this_batch >= 0 && max_seq_this_batch < seq_length) {
       auto start = max_seq_this_batch * hidden_output_size_per_direction * num_directions_;
       std::fill(output.begin() + start, output.end(), T{});
@@ -420,8 +420,8 @@ static Status ValidateRnnInputsWithExtraInputFromState(
     }
 
     auto sequence_len_entries = sequence_lens->DataAsSpan<int>();
-    if (std::any_of(sequence_len_entries.cbegin(),
-                    sequence_len_entries.cend(),
+    if (std::any_of(sequence_len_entries.begin(),
+                    sequence_len_entries.end(),
                     [seq_length](int len) { return len <= 0 || len > seq_length; })) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT,
@@ -468,9 +468,9 @@ Status DeepCpuAttnLstmOp::ValidateInputs(
     }
     const gsl::span<const int> mem_seq_lens_span = attn_memory_seq_lens->DataAsSpan<int>();
     auto item_not_in_range = std::find_if(
-        mem_seq_lens_span.cbegin(), mem_seq_lens_span.cend(),
+        mem_seq_lens_span.begin(), mem_seq_lens_span.end(),
         [max_memory_step](int len) { return len <= 0 || len > max_memory_step; });
-    if (item_not_in_range != mem_seq_lens_span.cend()) {
+    if (item_not_in_range != mem_seq_lens_span.end()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Attention mechanism memory sequence lengths value must in (0, ",
                              max_memory_step, "], while ", *item_not_in_range, " found!");

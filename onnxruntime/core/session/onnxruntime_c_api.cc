@@ -319,7 +319,7 @@ ORT_API_STATUS_IMPL(OrtApis::FillSparseTensorCoo, _Inout_ OrtValue* ort_value, _
 }
 
 ORT_API_STATUS_IMPL(OrtApis::FillSparseTensorCsr, _Inout_ OrtValue* ort_value, _In_ const OrtMemoryInfo* data_mem_info,
-                    _In_ const int64_t* values_shape, size_t values_shape_len, _In_ const void* values,
+                    _In_ const int64_t* values_shape, size_t values_shape_len, const void* values,
                     _In_ const int64_t* inner_indices_data, size_t inner_indices_num,
                     _In_ const int64_t* outer_indices_data, size_t outer_indices_num) {
   API_IMPL_BEGIN
@@ -552,7 +552,7 @@ namespace {
 // provider either model_path, or modal_data + model_data_length.
 static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
                                                 _In_ const OrtEnv* env,
-                                                _In_opt_z_ const ORTCHAR_T* model_path,
+                                                gsl::basic_zstring<const ORTCHAR_T> model_path,
                                                 _In_opt_ const void* model_data,
                                                 size_t model_data_length,
 
@@ -1454,7 +1454,7 @@ ORT_STATUS_PTR PopulateTensorWithData(Tensor& tensor, bool is_string, _In_ const
     const std::string* strings = reinterpret_cast<const std::string*>(data_elem);
     auto str_span = gsl::make_span(strings, num_elems);
     auto* dst = tensor.MutableData<std::string>();
-    std::copy(str_span.cbegin(), str_span.cend(), dst);
+    std::copy(str_span.begin(), str_span.end(), dst);
   }
   return nullptr;
 }

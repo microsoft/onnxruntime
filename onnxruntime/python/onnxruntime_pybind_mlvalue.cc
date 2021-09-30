@@ -77,15 +77,13 @@ bool IsNumericDType(const py::dtype& dtype) {
 static TensorShape GetArrayShape(PyArrayObject* pyObject) {
   const int ndim = PyArray_NDIM(pyObject);
   const npy_intp* npy_dims = PyArray_DIMS(pyObject);
-  auto span = gsl::make_span(npy_dims, ndim);
-  std::vector<int64_t> dims(span.cbegin(), span.cend());
+  std::vector<int64_t> dims(npy_dims, npy_dims + ndim);
   TensorShape shape(std::move(dims));
   return shape;
 }
 
 TensorShape GetShape(const py::array& arr) {
-  auto span = gsl::make_span(arr.shape(), arr.ndim());
-  std::vector<int64_t> dims(span.cbegin(), span.cend());
+    std::vector<int64_t> dims(arr.shape(), arr.shape() + arr.ndim());
   TensorShape shape(std::move(dims));
   return shape;
 }

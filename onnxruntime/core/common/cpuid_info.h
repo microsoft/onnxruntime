@@ -14,19 +14,21 @@ class CPUIDInfo {
     return cpuid_info;
   }
 
-  bool HasAVX() const { return has_avx_; }
-  bool HasAVX2() const { return has_avx2_; }
-  bool HasAVX512f() const { return has_avx512f_; }
-  bool HasAVX512Skylake() const { return has_avx512_skylake_; }
-  bool HasF16C() const { return has_f16c_; }
-  bool HasSSE3() const { return has_sse3_; }
-  bool HasSSE4_1() const { return has_sse4_1_; }
-  bool IsHybrid() const { return is_hybrid_; }
+  bool HasAVX() const noexcept { return has_avx_; }
+  bool HasAVX2() const noexcept { return has_avx2_; }
+  bool HasAVX512f() const noexcept { return has_avx512f_; }
+  bool HasAVX512Skylake() const noexcept { return has_avx512_skylake_; }
+  bool HasF16C() const noexcept { return has_f16c_; }
+  bool HasSSE3() const noexcept { return has_sse3_; }
+  bool HasSSE4_1() const noexcept { return has_sse4_1_; }
+  bool IsHybrid() const noexcept { return is_hybrid_; }
 
   // ARM 
-  bool HasArmNeonDot() const { return has_arm_neon_dot_; }
+  bool HasArmNeonDot() const noexcept { return has_arm_neon_dot_; }
 
  private:
+  GSL_SUPPRESS(f .6)
+  GSL_SUPPRESS(bounds .4)
   CPUIDInfo();
   bool has_avx_{false};
   bool has_avx2_{false};
@@ -38,7 +40,7 @@ class CPUIDInfo {
   bool is_hybrid_{false};
 
   bool has_arm_neon_dot_{false};
-
+  //TODO: the constructor shouldn't throw
   static CPUIDInfo instance_;
 };
 

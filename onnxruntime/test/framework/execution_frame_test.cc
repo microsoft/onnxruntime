@@ -447,7 +447,7 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
     ASSERT_STATUS_OK(session.Run(ro, {}, {}, {"values"}, &results, nullptr));
 
     EXPECT_EQ(results[0].Get<Tensor>().DataRaw(), orig_buffer);
-    EXPECT_THAT(results[0].Get<Tensor>().DataAsSpan<float>(), ::testing::ContainerEq(gsl::make_span(expected)));
+    AssertSpanEquals(results[0].Get<Tensor>().DataAsSpan<float>(), gsl::make_span(expected));
   }
 
   // test that if no pre-allocated fetch is provided a new OrtValue is allocated for the results
@@ -463,7 +463,7 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
     // output buffer should not be the same as the initializer in SessionState
     const auto& initializers = session.GetSessionState().GetInitializedTensors();
     EXPECT_NE(results[0].Get<Tensor>().DataRaw(), initializers.at(0).Get<Tensor>().DataRaw());
-    EXPECT_THAT(results[0].Get<Tensor>().DataAsSpan<float>(), ::testing::ContainerEq(gsl::make_span(expected)));
+    AssertSpanEquals(results[0].Get<Tensor>().DataAsSpan<float>(), gsl::make_span(expected));
   }
 }
 
@@ -502,11 +502,11 @@ TEST(ExecutionFrameTestInit, SparseInitializerAsOutput) {
     ASSERT_TRUE(results[0].IsSparseTensor());
     const SparseTensor& result = results[0].Get<SparseTensor>();
     ASSERT_EQ(result.DataType(), DataTypeImpl::GetType<float>());
-    EXPECT_THAT(result.DenseShape().GetDims(), ::testing::ContainerEq(dense_shape));
+    AssertSpanEquals(result.DenseShape().GetDims(), dense_shape);
     ASSERT_EQ(result.NumValues(), 3U);
-    EXPECT_THAT(result.Values().DataAsSpan<float>(), ::testing::ContainerEq(gsl::make_span(expected_values)));
+    AssertSpanEquals(result.Values().DataAsSpan<float>(), gsl::make_span(expected_values));
     auto coo_view = result.AsCoo();
-    EXPECT_THAT(coo_view.Indices().DataAsSpan<int64_t>(), ::testing::ContainerEq(gsl::make_span(expected_linear_indices)));
+    AssertSpanEquals(coo_view.Indices().DataAsSpan<int64_t>(), gsl::make_span(expected_linear_indices));
   }
 }
 #endif // !defined(DISABLE_SPARSE_TENSORS)

@@ -241,9 +241,9 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
   }
 
   // Calculate the max and min length
-  int32_t max_sequence_length = *std::max_element(sequence_lengths.cbegin(), sequence_lengths.cend());
-  int32_t min_sequence_length = std::min(seq_length_, *std::min_element(sequence_lengths.cbegin(),
-                                                                        sequence_lengths.cend()));
+  int32_t max_sequence_length = *std::max_element(sequence_lengths.begin(), sequence_lengths.end());
+  int32_t min_sequence_length = std::min(seq_length_, *std::min_element(sequence_lengths.begin(),
+                                                                        sequence_lengths.end()));
 
   ///**************************LSTM Calculations****************************/
   const int hidden_size_x4 = 4 * hidden_size_;
@@ -251,9 +251,9 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
 
   // apply the weights to all the inputs and save to output_IOFC
   ComputeGemm(total_rows, hidden_size_x4, input_size_, T{1.0},
-              inputs.cbegin(), inputs.cend(),
+              inputs.begin(), inputs.end(),
               input_size_,
-              input_weights.cbegin(), input_weights.cend(),  // W[iofc]^T
+              input_weights.begin(), input_weights.end(),  // W[iofc]^T
               input_size_ + attention_size_, T{0.0},
               output_iofc_.begin(), output_iofc_.end(),
               hidden_size_x4, ttp_);
@@ -270,7 +270,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
   // logic errors causing bounds violations.
   span_T_iter C_prev_end = batched_internal_state_prev_one_step.end();
   span_T_iter C_prev_clipped_end = batched_internal_state_clipped_one_step.end();
-  span_T_const_iter previous_state_end = batched_hidden_state_one_step.end();
+  span_T_iter previous_state_end = batched_hidden_state_one_step.end();
 
   {
     span_T_iter c_prev = batched_internal_state_prev_one_step.begin();
@@ -278,7 +278,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
 
     // hidden state can be provided as input for first step, so need to special case that.
     // after the first step this will switch to the output from the previous step
-    span_T_const_iter previous_state = batched_hidden_state_one_step.cbegin();
+    span_T_iter previous_state = batched_hidden_state_one_step.begin();
 
     //run through steps sequentially
     for (int step = 0; step < max_sequence_length; step++) {
@@ -293,9 +293,9 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
 
       // Xt*(W[iofc]^T) = INPUTt * W[iofc]^T + At-1 * WA[iofc]
       ComputeGemm(batch_size_, hidden_size_x4, attention_size_, T{1.0},
-                  attention.cbegin(), attention.cend(),  // At-1
+                  attention.begin(), attention.end(),  // At-1
                   attention_size_,
-                  input_weights.cbegin() + input_size_, input_weights.cend(),  // WA[iofc]
+                  input_weights.begin() + input_size_, input_weights.end(),  // WA[iofc]
                   input_size_ + attention_size_, T{1.0},
                   step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
                   hidden_size_x4, ttp_);
@@ -304,7 +304,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
       ComputeGemm(batch_size_, hidden_size_x4, hidden_size_, T{1.0},
                   previous_state, previous_state_end,  // Ht-1
                   hidden_size_,
-                  recurrent_weights.cbegin(), recurrent_weights.cend(),  // R[iofc]
+                  recurrent_weights.begin(), recurrent_weights.end(),  // R[iofc]
                   hidden_size_, T{1.0},
                   step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
                   hidden_size_x4, ttp_);

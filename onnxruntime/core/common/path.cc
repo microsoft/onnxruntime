@@ -22,7 +22,7 @@ constexpr PathChar k_preferred_path_separator = ORT_TSTR('/');
 constexpr std::array<PathChar, 2> k_valid_path_separators{
     ORT_TSTR('/'), ORT_TSTR('\\')};
 
-bool IsPreferredPathSeparator(PathChar c) {
+constexpr bool IsPreferredPathSeparator(PathChar c) {
   return c == k_preferred_path_separator;
 }
 
