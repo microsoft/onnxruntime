@@ -160,6 +160,10 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
     file(GLOB_RECURSE mlas_platform_srcs
       "${MLAS_SRC_DIR}/wasm_simd/*.cpp"
     )
+    set(mlas_platform_srcs
+      ${mlas_platform_srcs}
+      ${MLAS_SRC_DIR}/qgemm_kernel_wasmsimd.cpp
+    )
   else()
     file(GLOB_RECURSE mlas_platform_srcs
       "${MLAS_SRC_DIR}/wasm/*.cpp"
