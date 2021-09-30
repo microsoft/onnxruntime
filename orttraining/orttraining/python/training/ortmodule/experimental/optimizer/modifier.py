@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------
 
 import torch
+from numpy import inf
 
 class FP16OptimizerModifier(object):
     def __init__(self, optimizer) -> None:
