@@ -28,7 +28,7 @@ namespace cuda {
 
 constexpr int UNROLL = 4;
 
-template <typename T, bool has_residual>
+template <typename T, bool has_same_shape_bias, bool has_residual>
 __global__ void BiasDropoutKernel(
     const int64_t N,
     const fast_divmod fdm_dim,
@@ -61,60 +61,17 @@ __global__ void BiasDropoutKernel(
   #pragma unroll
     for (CUDA_LONG i = 0; i < UNROLL; i++) {
       CUDA_LONG li = id + gridDim.x * blockDim.x * i;
+      float bias;
       if (li < N) {
-        int offset = fdm_dim.mod(li);
-        float bias = float(bias_data[offset]);
+        if (has_same_shape_bias) {
+          bias = float(bias_data[li]);
+        } else {
+          int offset = fdm_dim.mod(li);
+          bias = float(bias_data[offset]);
+        }
 
         mask_data[li] = (&rand.x)[i] < p;
         float output_data = (float(X_data[li]) + bias) * mask_data[li] * scale;
-        if (has_residual) {
-          output_data += float(residual_data[li]);
-        }
-
-        Y_data[li] = T(output_data);
-      }
-    }
-
-    __syncthreads();
-  }
-}
-
-
-template <typename T, bool has_residual>
-__global__ void BiasDropoutSameShapeKernel(
-    const int64_t N,
-    const float ratio,
-    const std::pair<uint64_t, uint64_t> seeds,
-    const T* X_data,
-    const T* bias_data,
-    const T* residual_data,
-    T* Y_data,
-    bool* mask_data) {
-  const float p = 1.0f - ratio;
-  const float scale = 1.0f / p;
-
-  CUDA_LONG idx = blockDim.x * blockIdx.x + threadIdx.x;
-  CUDA_LONG step_size = gridDim.x * blockDim.x * UNROLL;
-  CUDA_LONG rounded_size = ((N - 1) / step_size + 1) * step_size;
-
-  curandStatePhilox4_32_10_t state;
-  curand_init(seeds.first, idx, seeds.second, &state);
-
-  // We ensure every thread generates the same number of random numbers (by rounding
-  // up the size) and at the same timestep (by syncing threads).
-  // From CUDA curand documentation:
-  //   The Philox_4x32_10 algorithm is closely tied to the thread and block count.
-  //   Each thread computes 4 random numbers in the same time thus the most efficient
-  //   use of Philox_4x32_10 is to generate a multiple of 4 times number of threads.
-  for (CUDA_LONG id = idx; id < rounded_size; id += step_size) {
-    float4 rand = curand_uniform4(&state);
-
-  #pragma unroll
-    for (CUDA_LONG i = 0; i < UNROLL; i++) {
-      CUDA_LONG li = id + gridDim.x * blockDim.x * i;
-      if (li < N) {
-        mask_data[li] = (&rand.x)[i] < p;
-        float output_data = (float(X_data[li]) + float(bias_data[li])) * mask_data[li] * scale;
         if (has_residual) {
           output_data += float(residual_data[li]);
         }
@@ -151,15 +108,15 @@ void BiasDropoutKernelImpl(
 
   if (bias_data_same_shape) {
     if (residual_data == nullptr) {
-      BiasDropoutSameShapeKernel<T, false><<<grid_size, block_size, 0, stream>>>(N, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
+      BiasDropoutKernel<T, true, false><<<grid_size, block_size, 0, stream>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
     } else {
-      BiasDropoutSameShapeKernel<T, true><<<grid_size, block_size, 0, stream>>>(N, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
+      BiasDropoutKernel<T, true, true><<<grid_size, block_size, 0, stream>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
     }
   } else {
     if (residual_data == nullptr) {
-      BiasDropoutKernel<T, false><<<grid_size, block_size, 0, stream>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
+      BiasDropoutKernel<T, false, false><<<grid_size, block_size, 0, stream>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
     } else {
-      BiasDropoutKernel<T, true><<<grid_size, block_size, 0, stream>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
+      BiasDropoutKernel<T, false, true><<<grid_size, block_size, 0, stream>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
     }
   }
 }

@@ -10,6 +10,18 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
+static bool IsSameShape(const TensorShapeProto& shape1, const TensorShapeProto& shape2) {
+  int rank1 = shape1.dim_size();
+  if (rank1 != shape2.dim_size()) {
+    return false;
+  }
+  bool same_shape = true;
+  for (int i = 0; i < rank1; ++i) {
+    same_shape &= ONNX_NAMESPACE::operator==(shape1.dim(i), shape2.dim(i));
+  }
+  return same_shape;
+}
+
 void FuseResidualAddIfAny(Graph& graph, const Node& dropout_node,
                           std::vector<NodeArg*>& dropout_input,
                           std::vector<NodeArg*>& dropout_output,
@@ -37,17 +49,12 @@ void FuseResidualAddIfAny(Graph& graph, const Node& dropout_node,
         if (input1_shape == nullptr ||
             input2_shape == nullptr ||
             input1_shape->dim_size() < 1 ||
-            input2_shape->dim_size() < 1 ||
-            input1_shape->dim_size() != input2_shape->dim_size()) {
+            input2_shape->dim_size() < 1) {
           continue;
         }
 
         // Inputs of Residual Add must match in shape
-        bool match = true;
-        for (int i = 0; i < input1_shape->dim_size(); ++i) {
-          match &= ONNX_NAMESPACE::operator==(input1_shape->dim(i), input2_shape->dim(i));
-        }
-        if (!match) {
+        if (!IsSameShape(*input1_shape, *input2_shape)) {
           continue;
         }
 
@@ -73,26 +80,6 @@ void FuseResidualAddIfAny(Graph& graph, const Node& dropout_node,
     dropout_input.push_back(&dummy);  // add a dummy residual
   }
 }
-
-static bool IsSameShape(const TensorShapeProto& shape1, const TensorShapeProto& shape2) {
-  // TODO: This should probably be defined to be the equality operator on TensorShapeProto.
-  int rank1 = shape1.dim_size();
-  if (shape2.dim_size() != rank1) return false;
-  for (int i = 0; i < rank1; i++) {
-    const auto& val1 = shape1.dim(i);
-    const auto& val2 = shape2.dim(i);
-    if (utils::HasDimValue(val1) && utils::HasDimValue(val2) &&
-        (val1.dim_value() == val2.dim_value()))
-      continue;  // same known dimension
-    if (utils::HasDimParam(val1) && utils::HasDimParam(val2)) {
-      const auto& val1_param = val1.dim_param();
-      if (val1_param == val2.dim_param() && !val1_param.empty())
-        continue;  // same unknown dimension
-    }
-    return false;
-  }
-  return true;
-};
 
 Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
