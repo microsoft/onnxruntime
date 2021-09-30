@@ -576,9 +576,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         }
       }
     }
+    auto p = onnxruntime::CreateExecutionProviderFactory_OpenVINO(&params)->CreateProvider();
     // Reset global variables config to avoid it being accidentally passed on to the next session
     openvino_device_type.clear();
-    return onnxruntime::CreateExecutionProviderFactory_OpenVINO(&params)->CreateProvider();
+    return p;
 #endif
   } else if (type == kNupharExecutionProvider) {
 #if USE_NUPHAR

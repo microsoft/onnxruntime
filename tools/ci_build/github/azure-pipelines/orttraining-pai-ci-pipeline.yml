@@ -12,8 +12,8 @@ variables:
 
 # generated from tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile 
 container: 
-  image: onnxruntimebuildcache.azurecr.io/rocm-ci-pipeline-env
-  endpoint: onnxruntimebuildcache
+  image: onnxruntimecibuildenvironment.azurecr.io/rocm-ci-pipeline-env
+  endpoint: onnxruntimecibuildenvironmentforamd
   options: --privileged -e HIP_VISIBLE_DEVICES --security-opt seccomp=unconfined --device=/dev/kfd --device=/dev/dri  --group-add $(video) --group-add $(render)
 
 steps:
