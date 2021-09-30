@@ -22,6 +22,10 @@ inline static FunctionBodyHelper::NodeDef Const(const std::string& name, double 
       {name}, "Constant", {}, {{"value", ToTensor(value, elem_type)}}};
 }
 
+inline static AttributeProto ValueAttr(double value, TensorProto_DataType elem_type) {
+  return MakeAttribute("value", ToTensor(value, elem_type));
+}
+
 class FunctionBuilder {
  public:
   FunctionBuilder(FunctionProto& funProto_) : funProto(funProto_) {}
