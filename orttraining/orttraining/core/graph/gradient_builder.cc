@@ -1475,13 +1475,32 @@ IMPLEMENT_GRADIENT_BUILDER(GetIdentityGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetNvtxPushGradient) {
-  return std::vector<NodeDef>{
-      NodeDef(OpDef{"NvtxPop", kMSDomain, 1}, {GO(0)}, {GI(0)})};
+  auto attributes = SrcNodeAttributes();
+  auto label = attributes.at("label").s() + "-backward";
+  auto cid = -attributes.at("cid").i();
+
+  std::vector<AttributeProto> attr;
+  attr.push_back(MakeAttribute("label", label));
+  attr.push_back(MakeAttribute("cid", cid));
+
+  std::vector<NodeDef> result;
+  result.push_back(NodeDef(OpDef{"NvtxPop", kMSDomain, 1}, {GO(0)}, {GI(0)}, attr));
+  return result;
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetNvtxPopGradient) {
-  return std::vector<NodeDef>{
-      NodeDef(OpDef{"NvtxPush", kMSDomain, 1}, {GO(0)}, {GI(0)})};
+  auto attributes = SrcNodeAttributes();
+  auto label = attributes.at("label").s() + "-backward";
+  auto cid = -attributes.at("cid").i();
+
+  std::vector<AttributeProto> attr;
+  attr.push_back(MakeAttribute("label", label));
+  attr.push_back(MakeAttribute("cid", cid));
+
+
+  std::vector<NodeDef> result;
+  result.push_back(NodeDef(OpDef{"NvtxPush", kMSDomain, 1}, {GO(0)}, {GI(0)}, attr));
+  return result;
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetFlattenGradient) {

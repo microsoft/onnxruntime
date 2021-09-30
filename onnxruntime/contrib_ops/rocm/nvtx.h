@@ -16,11 +16,11 @@ class NvtxPush final : public RocmKernel {
  public:
   NvtxPush(const OpKernelInfo& info) : RocmKernel(info) {
     info.GetAttr("label", &label_);
-    info.GetAttr("correlation_id", &correlationId_);
+    info.GetAttr("cid", &correlationId_);
   }
   Status ComputeInternal(OpKernelContext* context) const override;
 
-  private:
+ private:
   std::string label_;
   int64_t correlationId_;
 };
@@ -29,11 +29,11 @@ class NvtxPop final : public RocmKernel {
  public:
   NvtxPop(const OpKernelInfo& info) : RocmKernel(info) { 
     info.GetAttr("label", &label_);
-    info.GetAttr("correlation_id", &correlationId_);
+    info.GetAttr("cid", &correlationId_);
   }
   Status ComputeInternal(OpKernelContext* context) const override;
  private:
-  std:::string label_;
+  std::string label_;
   int64_t correlationId_;
 };
 

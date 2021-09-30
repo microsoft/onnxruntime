@@ -2863,7 +2863,7 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
           "Nvtx Range Label",
           AttributeProto::STRING,
           std::string("myrange"))
-      .Attr("correlation_id",
+      .Attr("cid",
             "correlate push with pop.",
             AttributeProto::INT, static_cast<int64_t>(-1))
       .Input(
@@ -2900,7 +2900,7 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
           "Nvtx Range Label",
           AttributeProto::STRING,
           std::string("myrange"))
-      .Attr("correlation_id",
+      .Attr("cid",
             "correlate push with pop.",
             AttributeProto::INT, static_cast<int64_t>(-1))
       .Input(

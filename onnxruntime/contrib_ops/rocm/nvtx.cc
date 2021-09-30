@@ -27,14 +27,17 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder().Alias(0, 0),
     NvtxPop);
 
-static std::map<int64_t, roctx_range_id_t> nvtx_ids;
+static std::unordered_map<int64_t, roctx_range_id_t> nvtx_ids;
 
 
 Status NvtxPush::ComputeInternal(OpKernelContext* context) const {
-  std::cout << "executing nvtx push" << std::endl;
-  // roctxRangePushA("myrange");
-  auto id = roctxRangeStartA(label_.c_str());
-  nvtx_ids[correlationId_] = id;
+  if (correlationId_ > 0) {
+    if (nvtx_ids.find(correlationId_) == nvtx_ids.end()) {
+      auto id = roctxRangeStartA(label_.c_str());
+      nvtx_ids[correlationId_] = id;
+      std::cout << "executing nvtx push label " << label_.c_str() << " cid " << correlationId_ << " rid " << id << std::endl;
+    }
+  }
 
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& shape = X->Shape();
@@ -45,7 +48,6 @@ Status NvtxPush::ComputeInternal(OpKernelContext* context) const {
   void* target = Y->MutableDataRaw(X_type);
   printf("%p %p\n", source, target);
   if (target != source) {
-    // ORT_THROW("target != source");
     HIP_RETURN_IF_ERROR(hipMemcpyAsync(target, source, X->Shape().Size() * X->DataType()->Size(), hipMemcpyDeviceToDevice, Stream()));
   }
 
@@ -53,9 +55,15 @@ Status NvtxPush::ComputeInternal(OpKernelContext* context) const {
 }
 
 Status NvtxPop::ComputeInternal(OpKernelContext* context) const {
-  std::cout << "executing nvtx pop" << std::endl;
-  // roctxRangePop();
-  roctxRangeEnd(nvtx_ids[correlationId_]);
+  if (correlationId_ > 0) {
+    auto got = nvtx_ids.find(correlationId_);
+    if (got != nvtx_ids.end()) {
+      auto id = nvtx_ids[correlationId_];
+      std::cout << "executing nvtx pop label " << label_.c_str() << " cid " << correlationId_ << " rid " << id << std::endl;
+      roctxRangeStop(id);
+      nvtx_ids.erase(got);
+    }
+  }
 
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& shape = X->Shape();
@@ -66,7 +74,6 @@ Status NvtxPop::ComputeInternal(OpKernelContext* context) const {
   void* target = Y->MutableDataRaw(X_type);
   printf("%p %p\n", source, target);
   if (target != source) {
-    // ORT_THROW("target != source");
     HIP_RETURN_IF_ERROR(hipMemcpyAsync(target, source, X->Shape().Size() * X->DataType()->Size(), hipMemcpyDeviceToDevice, Stream()));
   }
 
