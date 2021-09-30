@@ -27,10 +27,8 @@ class ContribFunExpansionTest : public ::testing::Test {
 };
 
 template <typename T, typename U, bool RunTest>
-void CheckLayerNorm(bool compute_mean = true, bool compute_isd = true) {
+void CheckLayerNorm(bool compute_mean = true, bool compute_isd = true, std::vector<int64_t> shape1 = {8, 16}, std::vector<int64_t> shape2 = {16}, int64_t axis = -1) {
   FunctionTestCase testCase("LayerNormalization", kOnnxDomain);
-  std::vector<int64_t> shape1{8, 16};
-  std::vector<int64_t> shape2{16};
 
   testCase.AddInput<T, RunTest>("x", shape1);
   testCase.AddInput<T, RunTest>("scale", shape2);
@@ -39,6 +37,8 @@ void CheckLayerNorm(bool compute_mean = true, bool compute_isd = true) {
   testCase.AddOutput(compute_mean ? "mean" : "");
   testCase.AddOutput(compute_isd ? "invstddev" : "");
   testCase.AddAttribute("stash_type", data_types_internal::ToTensorDataType<U>());
+  if (axis != -1)
+    testCase.AddAttribute("axis", axis);
   if (RunTest)
     testCase.RunTest();
   else
@@ -57,6 +57,11 @@ TEST_F(ContribFunExpansionTest, LayerNorm_OptionalOutputs) {
   CheckLayerNorm<float, float, true>(false, false);
   CheckLayerNorm<float, float, true>(false, true);
   CheckLayerNorm<float, float, true>(true, false);
+}
+
+TEST_F(ContribFunExpansionTest, LayerNorm_OtherShapes) {
+  // Test expand-and-run
+  CheckLayerNorm<float, float, true>(true, true, {4, 2, 8}, {2, 8}, 1);
 }
 
 template <typename T>
