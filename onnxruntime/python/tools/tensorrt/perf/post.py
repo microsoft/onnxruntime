@@ -130,9 +130,7 @@ def main():
     args = parse_arguments()
     
     # connect to database
-    #kcsb_ingest = KustoConnectionStringBuilder.with_az_cli_authentication(cluster_ingest)
-    tenant_id = os.environ.get('TENANT_ID')
-    kcsb_ingest = KustoConnectionStringBuilder.with_aad_device_authentication(cluster_ingest, tenant_id)
+    kcsb_ingest = KustoConnectionStringBuilder.with_az_cli_authentication(cluster_ingest)
     ingest_client = QueuedIngestClient(kcsb_ingest)
     date_time = get_time()
 
