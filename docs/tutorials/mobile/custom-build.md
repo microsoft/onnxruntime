@@ -13,7 +13,7 @@ Creating a custom 'minimal' build of ONNX Runtime gives you control over what is
 
 The configuration file that was generated during [model conversion](model-conversion) is used to specify the operators (and potentially the types) that the build will support.
 
-The general ONNX Runtime inferencing [build instructions](../build/inferencing#build-instructions) apply, with additional options being specified to reduce the binary size.
+The general ONNX Runtime inferencing [build instructions](../../build/inferencing.md#build-instructions) apply, with additional options being specified to reduce the binary size.
 
 ## Contents
 {: .no_toc}
@@ -31,17 +31,17 @@ The follow options can be used to reduce the build size:
     - A minimal build will ONLY support loading and executing ORT format models
     - RTTI is disabled by default in this build, unless the Python bindings (`--build_wheel`) are enabled.
     - If you wish to enable execution providers that compile kernels such as NNAPI or CoreML specify `--minimal_build extended`.
-      - See [here](using-nnapi-coreml-with-ort-mobile) for details on using NNAPI and CoreML with ONNX Runtime Mobile
+      - See [here](./using-nnapi-coreml-with-ort-mobile.md) for details on using NNAPI and CoreML with ONNX Runtime Mobile
 
 ##### Reduce build to required operator kernels
   - `--include_ops_by_config` [REQUIRED] 
     - Add `--include_ops_by_config <config file produced during model conversion> --skip_tests` to the build parameters.
-    - See the documentation on the [Reduced Operator Kernel build](../build/reduced) for more information on how this works. 
+    - See the documentation on the [Reduced Operator Kernel build](../../build/reduced.md) for more information on how this works.
       - NOTE: Building will edit some of the ONNX Runtime source files to exclude unused kernels. If you wish to go back to creating a full build, or wish to change the operator kernels included, you MUST run `git reset --hard` or `git checkout HEAD -- ./onnxruntime/core/providers` from the root directory of your local ONNX Runtime repository to undo these changes.
 
 ##### Reduce types supported by the required operators
   - `--enable_reduced_operator_type_support` [OPTIONAL]
-    - Enables [operator type reduction](model-conversion#enable-type-reduction).
+    - Enables [operator type reduction](./model-conversion.md#enable-type-reduction).
         - NOTE: Requires ONNX Runtime version 1.7 or higher and for type reduction to have been enabled during model conversion
 
 ##### Disable exceptions
@@ -93,4 +93,4 @@ The wheel can be installed using `pip`. Adjust the following command for your pl
 
 ------
 
-Next: [Model execution](model-execution)
+Next: [Model execution](./model-execution.md)
