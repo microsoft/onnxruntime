@@ -76,8 +76,8 @@ function prepareWasmPathOverrideFiles() {
 async function testAllNodejsCases() {
   await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-main-no-threads.js');
   await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-main.js');
-  await runInShell('node --experimental-wasm-threads --experimental-wasm-bulk-memory ./node_modules/mocha/bin/mocha ./node-test-main-no-threads.js');
-  await runInShell('node --experimental-wasm-threads --experimental-wasm-bulk-memory ./node_modules/mocha/bin/mocha ./node-test-main.js');
+  await runInShell('node --experimental-wasm-threads ./node_modules/mocha/bin/mocha ./node-test-main-no-threads.js');
+  await runInShell('node --experimental-wasm-threads ./node_modules/mocha/bin/mocha ./node-test-main.js');
   await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-wasm-path-override-filename.js');
   await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-wasm-path-override-prefix.js');
 }

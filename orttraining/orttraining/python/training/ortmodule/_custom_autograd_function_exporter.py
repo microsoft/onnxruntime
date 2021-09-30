@@ -5,12 +5,23 @@
 
 import sys
 import torch
+import torch.utils.checkpoint
 import warnings
 from torch.onnx import symbolic_helper
 
 from onnxruntime.capi._pybind_state import register_torch_autograd_function
 from ._fallback import _FallbackManager, ORTModuleONNXModelException, ORTModuleTorchModelException, wrap_exception
 from . import _logger
+
+# Some autograd.Function's shouldn't be exported as PythonOp.
+# If CheckpointFunction is exported as PythonOp, the checkpointed computation
+# may be computed by Pytorch, not ORT. This situation is especially important
+# for big models such as GPT-2. Exporting CheckpointFunction as PythonOp means
+# every transformer would be computed by Pytorch and ORT doesn't contribute
+# at all.
+BANNED_AUTOGRAD_FUNCTION_NAMES = set(
+    [torch.utils.checkpoint.CheckpointFunction.__name__])
+
 
 def _export(g, n, *args, **kwargs):
     '''
@@ -20,6 +31,10 @@ def _export(g, n, *args, **kwargs):
     '''
     try:
         name = kwargs['name']
+        if name in BANNED_AUTOGRAD_FUNCTION_NAMES:
+            raise Exception(f'The autograd.Function {name} should not be exported to ONNX. '
+                            'Please replace ORTModule with HierarchalORTModule to only'
+                            'wrap exportable sub-nn.Module\'s as ORTModule.')
         inplace = kwargs['inplace']
         training_mode = symbolic_helper._training_mode
         cconv = n.cconv()

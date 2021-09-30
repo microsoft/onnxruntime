@@ -1,0 +1,148 @@
+trigger: none
+
+parameters:
+  - name: AnyBuildExtraArgs
+    type: string
+    default: --Epoch 0
+
+  - name: OnnxBuildOptions
+    type: string
+    default: --cmake_generator Ninja --skip_submodule_sync --build_shared_lib --config Debug Release
+
+variables:
+  # the location from where the AnyBuild client is downloaded
+  AnyBuildSource: https://anybuild.azureedge.net/clientreleases
+
+  # the AnyBuild cluster url (contains 8 4-core machines)
+  AnyBuildClusterId: https://westus2.anybuild.microsoft.com/clusters/964acefe-3118-4838-8221-380dece043b9
+
+  # set parallelism to 2 * total_number_of_cores_in_the_cluster (= 2 * 8 * 4)
+  AnyBuildDegreeOfParallelism: 64
+
+  # how many cache lookups to run in parallel (the default value below works well for a 2-core machine)
+  AnyBuildMaxParallelLookups: 15
+
+  # just a symbolic name for a local Docker image (this pipeline build this image, then uses it to run a build in a container; it never pushes this image)
+  DockerImageTag: manylinux-onnxr:latest
+
+  # directory where the onnxruntime sources are checked out
+  OnnxSourcesDir: $(Build.SourcesDirectory)/onnxruntime
+
+  # App used for authentication
+  # https://ms.portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/Overview/appId/ef5b3365-5c24-4e2e-b79d-6382a48d7436/isMSAApp/
+  OnnxPrincipalAppId: ef5b3365-5c24-4e2e-b79d-6382a48d7436
+
+
+
+jobs:
+- job: 
+  displayName: Linux
+
+  pool: onnxruntime-linux-cpu-westus2
+
+  timeoutInMinutes: 60
+
+  steps:
+  - checkout: none
+
+  - bash: |
+      set -euo pipefail
+      git clone --recursive --depth 1 https://github.com/Microsoft/onnxruntime.git "$(OnnxSourcesDir)"
+
+      cd "$(OnnxSourcesDir)"
+      git log -1
+    displayName: Checkout
+
+  - bash: |
+      set -euo pipefail
+
+      cat > AnyBuild.json <<_EOF_
+      {
+        "ActionCache": {
+          "MaxParallelLookups": $(AnyBuildMaxParallelLookups),
+          "IgnoredEnvVars": [ "SNAP", "HOSTNAME" ]
+        }
+      }
+      _EOF_
+
+      echo "Write AnyBuild.json in $(pwd)"
+      cat AnyBuild.json
+
+    displayName: Configure AnyBuild
+    workingDirectory: $(OnnxSourcesDir)
+
+  - bash: |
+      set -euo pipefail
+      if ! which docker; then
+        sudo apt-get install apt-transport-https ca-certificates curl software-properties-common
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+        sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+        sudo apt-get update
+        sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+      fi
+    displayName: Setup Docker Engine
+
+  - bash: |
+      set -euo pipefail
+      mkdir -p onnx-docker
+      cd onnx-docker
+
+      echo "Writing Dockerfile"
+      cat > Dockerfile <<_EOF_
+      FROM quay.io/pypa/manylinux2014_x86_64
+      RUN yum install -y python3
+      RUN yum install -y ninja-build
+      _EOF_
+
+      echo "Building Docker image from"
+      cat Dockerfile
+      docker image build --tag $(DockerImageTag) .
+    displayName: Build Docker Image
+
+  - script: |
+      set -euo pipefail
+      curl -s -S --retry 5 --retry-connrefused $(AnyBuildSource)/bootstrapper.sh | bash
+    displayName: Install AnyBuild Client
+
+  - script: |
+      set -eo pipefail
+
+      readonly ANYBUILD_HOME="$HOME/.local/share/Microsoft/AnyBuild"
+  
+      docker run                                       \
+        --rm --net=host                                \
+        -e APP_PASSWD="$(OnnxPrincipalPassword)"       \
+        -e DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1     \
+        -v ${ANYBUILD_HOME}:/AnyBuild                  \
+        -v "$(OnnxSourcesDir)":/src                    \
+        -w /src                                        \
+        $(DockerImageTag)                              \
+        /AnyBuild/AnyBuild.sh                          \
+        --RemoteExecServiceUri "$(AnyBuildClusterId)"  \
+        --ClientApplicationId "$(OnnxPrincipalAppId)"  \
+        --ClientSecretEnvironmentVariable "APP_PASSWD" \
+        --LogDir AnyBuildLogs --NoSessionLogDir        \
+        --WhyCacheMiss                                 \
+        --WhyCacheMissOptions CacheDataStoreKey=onnxr  \
+        ${{ parameters.AnyBuildExtraArgs }}            \
+        --                                             \
+        ./build.sh ${{ parameters.OnnxBuildOptions }} --parallel $(AnyBuildDegreeOfParallelism)
+    displayName: Build
+
+  - bash: |
+      set -euo pipefail
+
+      readonly logFile="AnyBuildLogs/AnyBuild.log"
+      if [[ -f "$logFile" ]]; then
+        sed -n '/Session telemetry: Finished/,$ p' "$logFile"
+      fi
+    continueOnError: true
+    condition: always()
+    workingDirectory: "$(OnnxSourcesDir)"
+    displayName: Print AnyBuild Stats
+
+  - publish: "$(OnnxSourcesDir)/AnyBuildLogs"
+    artifact: AnyBuildLogs
+    continueOnError: true
+    condition: always()
+    displayName: Publish AnyBuild Logs
