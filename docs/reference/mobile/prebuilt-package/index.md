@@ -9,3 +9,4 @@ has_children: false
 | Version | ONNX Opsets | Details |
 |---|---|---|
 | 1.8 | 12, 13 | [Supported Operators and Types](1.8 ORTMobilePackageOperatorTypeSupport) |
+| 1.9 | 12, 13 | [Supported Operators and Types](1.9 ORTMobilePackageOperatorTypeSupport) |
