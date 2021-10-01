@@ -974,138 +974,147 @@ class ORTTrainer(object):
         """Returns a dictionary with model, and optionally, optimizer states
 
         The returned dictionary contains the following information:
+
         - Model and optimizer states
         - Required ORTTrainerOptions settings
         - Distributed training information, such as but not limited to ZeRO
 
         Structure of the returned dictionary:
+
         - When `pytorch_format = False`
-        schema:
-        {
-            "model":
-            {
-                type: dict,
+
+            ::
+
                 schema:
                 {
-                    "full_precision":
+                    "model":
+                    {
+                        type: dict,
+                        schema:
+                        {
+                            "full_precision":
+                            {
+                                type: dict,
+                                schema:
+                                {
+                                    model_weight_name:
+                                    {
+                                        type: array
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "optimizer":
                     {
                         type: dict,
                         schema:
                         {
                             model_weight_name:
                             {
-                                type: array
+                                type: dict,
+                                schema:
+                                {
+                                    "Moment_1":
+                                    {
+                                        type: array
+                                    },
+                                    "Moment_2":
+                                    {
+                                        type: array
+                                    },
+                                    "Update_Count":
+                                    {
+                                        type: array,
+                                        optional: True # present if optimizer is adam, absent otherwise
+                                    }
+                                }
+                            },
+                            "shared_optimizer_state":
+                            {
+                                type: dict,
+                                optional: True, # present optimizer is shared, absent otherwise.
+                                schema:
+                                {
+                                    "step":
+                                    {
+                                        type: array,
+                                    }
+                                }
                             }
                         }
-                    }
-                }
-            },
-            "optimizer":
-            {
-                type: dict,
-                schema:
-                {
-                    model_weight_name:
+                    },
+                    "trainer_options":
                     {
                         type: dict,
                         schema:
                         {
-                            "Moment_1":
+                            "mixed_precision":
                             {
-                                type: array
+                                type: bool
                             },
-                            "Moment_2":
+                            "zero_stage":
                             {
-                                type: array
+                                type: int
                             },
-                            "Update_Count":
+                            "world_rank":
                             {
-                                type: array,
-                                optional: True # present if optimizer is adam, absent otherwise
-                            }
-                        }
-                    },
-                    "shared_optimizer_state":
-                    {
-                        type: dict,
-                        optional: True, # present optimizer is shared, absent otherwise.
-                        schema:
-                        {
-                            "step":
-                            {
-                                type: array,
-                            }
-                        }
-                    }
-                }
-            },
-            "trainer_options":
-            {
-                type: dict,
-                schema:
-                {
-                    "mixed_precision":
-                    {
-                        type: bool
-                    },
-                    "zero_stage":
-                    {
-                        type: int
-                    },
-                    "world_rank":
-                    {
-                        type: int
-                    },
-                    "world_size":
-                    {
-                        type: int
-                    },
-                    "optimizer_name":
-                    {
-                        type: str
-                    },
-                    "data_parallel_size":
-                    {
-                        type: int
-                    },
-                    "horizontal_parallel_size":
-                    {
-                        type: int
-                    }
-                }
-            },
-            "partition_info":
-            {
-                type: dict,
-                optional: True, # present if states partitioned, else absent
-                schema:
-                {
-                    model_weight_name:
-                    {
-                        type: dict,
-                        schema:
-                        {
-                            "original_dim":
-                            {
-                                type: array
+                                type: int
                             },
-                            "megatron_row_partition":
+                            "world_size":
+                            {
+                                type: int
+                            },
+                            "optimizer_name":
+                            {
+                                type: str
+                            },
+                            "data_parallel_size":
+                            {
+                                type: int
+                            },
+                            "horizontal_parallel_size":
                             {
                                 type: int
                             }
                         }
+                    },
+                    "partition_info":
+                    {
+                        type: dict,
+                        optional: True, # present if states partitioned, else absent
+                        schema:
+                        {
+                            model_weight_name:
+                            {
+                                type: dict,
+                                schema:
+                                {
+                                    "original_dim":
+                                    {
+                                        type: array
+                                    },
+                                    "megatron_row_partition":
+                                    {
+                                        type: int
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
-            }
-        }
+
         - When `pytorch_format = True`
-        schema:
-        {
-            model_weight_name:
-            {
-                type: tensor
-            }
-        }
+
+            ::
+
+                schema:
+                {
+                    model_weight_name:
+                    {
+                        type: tensor
+                    }
+                }
 
         Args:
             pytorch_format: boolean flag to select either ONNX Runtime or PyTorch state schema

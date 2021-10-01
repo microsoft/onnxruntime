@@ -1,16 +1,16 @@
 This document describes ORTModule PyTorch frontend API for the ONNX Runtime (aka ORT) training acelerator.
 
-What is new
+Overview
 ===========
 
-Version 0.1
------------
+.. contents::
+    :local:
 
-#. Initial version
+Overview of ORTModule
++++++++++++++++++++++
 
-Overview
-========
-The aim of ORTModule is to provide a drop-in replacement for one or more torch.nn.Module objects in a user’s PyTorch program,
+The aim of *ORTModule* is to provide a drop-in replacement for one or more
+:class:`torch.nn.Module` objects in a user's PyTorch program,
 and execute the forward and backward passes of those modules using ORT.
 
 As a result, the user will be able to accelerate their training script gradually using ORT,
@@ -43,12 +43,3 @@ in the simple case where the entire model can be offloaded to ONNX Runtime:
         loss = criterion(output, target)
         loss.backward()
         optimizer.step()
-
-API
-===
-
-.. automodule:: onnxruntime.training.ortmodule.ortmodule
-    :members:
-    :show-inheritance:
-    :member-order: bysource
-    :inherited-members:

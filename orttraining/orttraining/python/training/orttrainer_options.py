@@ -24,297 +24,297 @@ class ORTTrainerOptions(object):
 
     .. code-block:: python
 
-    schema = {
-                'batch' : {
-                    'type' : 'dict',
-                    'required': False,
-                    'default' : {},
-                    'schema' : {
-                        'gradient_accumulation_steps' : {
-                            'type' : 'integer',
-                            'min' : 1,
-                            'default' : 1
+        schema = {
+                    'batch' : {
+                        'type' : 'dict',
+                        'required': False,
+                        'default' : {},
+                        'schema' : {
+                            'gradient_accumulation_steps' : {
+                                'type' : 'integer',
+                                'min' : 1,
+                                'default' : 1
+                            }
+                        },
+                    },
+                    'device' : {
+                        'type' : 'dict',
+                        'required': False,
+                        'default' : {},
+                        'schema' : {
+                            'id' : {
+                                'type' : 'string',
+                                'default' : 'cuda'
+                            },
+                            'mem_limit' : {
+                                'type' : 'integer',
+                                'min' : 0,
+                                'default' : 0
+                            }
                         }
                     },
-                },
-                'device' : {
-                    'type' : 'dict',
-                    'required': False,
-                    'default' : {},
-                    'schema' : {
-                        'id' : {
-                            'type' : 'string',
-                            'default' : 'cuda'
-                        },
-                        'mem_limit' : {
-                            'type' : 'integer',
-                            'min' : 0,
-                            'default' : 0
-                        }
-                    }
-                },
-                'distributed': {
-                    'type': 'dict',
-                    'default': {},
-                    'required': False,
-                    'schema': {
-                        'world_rank': {
-                            'type': 'integer',
-                            'min': 0,
-                            'default': 0
-                        },
-                        'world_size': {
-                            'type': 'integer',
-                            'min': 1,
-                            'default': 1
-                        },
-                        'local_rank': {
-                            'type': 'integer',
-                            'min': 0,
-                            'default': 0
-                        },
-                        'data_parallel_size': {
-                            'type': 'integer',
-                            'min': 1,
-                            'default': 1
-                        },
-                        'horizontal_parallel_size': {
-                            'type': 'integer',
-                            'min': 1,
-                            'default': 1
-                        },
-                        'pipeline_parallel' : {
-                            'type': 'dict',
-                            'default': {},
-                            'required': False,
-                            'schema': {
-                                'pipeline_parallel_size': {
-                                    'type': 'integer',
-                                    'min': 1,
-                                    'default': 1
-                                },
-                                'num_pipeline_micro_batches': {
-                                    'type': 'integer',
-                                    'min': 1,
-                                    'default': 1
-                                },
-                                'pipeline_cut_info_string': {
-                                    'type': 'string',
-                                    'default': ''
-                                },
-                                'sliced_schema': {
-                                    'type': 'dict',
-                                    'default': {},
-                                    'keysrules': {'type': 'string'},
-                                    'valuesrules': {
+                    'distributed': {
+                        'type': 'dict',
+                        'default': {},
+                        'required': False,
+                        'schema': {
+                            'world_rank': {
+                                'type': 'integer',
+                                'min': 0,
+                                'default': 0
+                            },
+                            'world_size': {
+                                'type': 'integer',
+                                'min': 1,
+                                'default': 1
+                            },
+                            'local_rank': {
+                                'type': 'integer',
+                                'min': 0,
+                                'default': 0
+                            },
+                            'data_parallel_size': {
+                                'type': 'integer',
+                                'min': 1,
+                                'default': 1
+                            },
+                            'horizontal_parallel_size': {
+                                'type': 'integer',
+                                'min': 1,
+                                'default': 1
+                            },
+                            'pipeline_parallel' : {
+                                'type': 'dict',
+                                'default': {},
+                                'required': False,
+                                'schema': {
+                                    'pipeline_parallel_size': {
+                                        'type': 'integer',
+                                        'min': 1,
+                                        'default': 1
+                                    },
+                                    'num_pipeline_micro_batches': {
+                                        'type': 'integer',
+                                        'min': 1,
+                                        'default': 1
+                                    },
+                                    'pipeline_cut_info_string': {
+                                        'type': 'string',
+                                        'default': ''
+                                    },
+                                    'sliced_schema': {
+                                        'type': 'dict',
+                                        'default': {},
+                                        'keysrules': {'type': 'string'},
+                                        'valuesrules': {
+                                            'type': 'list',
+                                            'schema': {'type': 'integer'}
+                                        }
+                                    },
+                                    'sliced_axes': {
+                                        'type': 'dict',
+                                        'default': {},
+                                        'keysrules': {'type': 'string'},
+                                        'valuesrules': {'type': 'integer'}
+                                    },
+                                    'sliced_tensor_names': {
                                         'type': 'list',
-                                        'schema': {'type': 'integer'}
+                                        'schema': {'type': 'string'},
+                                        'default': []
                                     }
-                                },
-                                'sliced_axes': {
-                                    'type': 'dict',
-                                    'default': {},
-                                    'keysrules': {'type': 'string'},
-                                    'valuesrules': {'type': 'integer'}
-                                },
-                                'sliced_tensor_names': {
-                                    'type': 'list',
-                                    'schema': {'type': 'string'},
-                                    'default': []
                                 }
-                            }
-                        },
-                        'allreduce_post_accumulation': {
-                            'type': 'boolean',
-                            'default': False
-                        },
-                        'deepspeed_zero_optimization': {
-                            'type': 'dict',
-                            'default': {},
-                            'required': False,
-                            'schema': {
-                                'stage': {
-                                    'type': 'integer',
-                                    'min': 0,
-                                    'max': 1,
-                                    'default': 0
-                                },
-                            }
-                        },
-                        'enable_adasum': {
-                            'type': 'boolean',
-                            'default': False
-                        }
-                    }
-                },
-                'lr_scheduler' : {
-                    'type' : 'optim.lr_scheduler',
-                    'nullable' : True,
-                    'default' : None
-                },
-                'mixed_precision' : {
-                    'type' : 'dict',
-                    'required': False,
-                    'default' : {},
-                    'schema' : {
-                        'enabled' : {
-                            'type' : 'boolean',
-                            'default' : False
-                        },
-                        'loss_scaler' : {
-                            'type' : 'amp.loss_scaler',
-                            'nullable' : True,
-                            'default' : None
-                        }
-                    }
-                },
-                'graph_transformer': {
-                    'type': 'dict',
-                    'required': False,
-                    'default': {},
-                    'schema': {
-                        'attn_dropout_recompute': {
-                            'type': 'boolean',
-                            'default': False
-                        },
-                        'gelu_recompute': {
-                            'type': 'boolean',
-                            'default': False
-                        },
-                        'transformer_layer_recompute': {
-                            'type': 'boolean',
-                            'default': False
-                        },
-                        'number_recompute_layers': {
-                            'type': 'integer',
-                            'min': 0,
-                            'default': 0
-                        },
-                        'propagate_cast_ops_config': {
-                            'type': 'dict',
-                            'required': False,
-                            'default': {},
-                            'schema': {
-                                'propagate_cast_ops_strategy': {
-                                    'type': 'onnxruntime.training.PropagateCastOpsStrategy',
-                                    'default': PropagateCastOpsStrategy.NONE
-                                },
-                                'propagate_cast_ops_level': {
-                                    'type': 'integer',
-                                    'default': 1
-                                },
-                                'propagate_cast_ops_allow': {
-                                    'type': 'list',
-                                    'schema': {'type': 'string'},
-                                    'default': []
+                            },
+                            'allreduce_post_accumulation': {
+                                'type': 'boolean',
+                                'default': False
+                            },
+                            'deepspeed_zero_optimization': {
+                                'type': 'dict',
+                                'default': {},
+                                'required': False,
+                                'schema': {
+                                    'stage': {
+                                        'type': 'integer',
+                                        'min': 0,
+                                        'max': 1,
+                                        'default': 0
+                                    },
                                 }
+                            },
+                            'enable_adasum': {
+                                'type': 'boolean',
+                                'default': False
                             }
-                        },
-                        'allow_layer_norm_mod_precision': {
-                            'type': 'boolean',
-                            'default': False
                         }
-                    }
-                },
-                'utils' : {
-                    'type' : 'dict',
-                    'required': False,
-                    'default' : {},
-                    'schema' : {
-                        'frozen_weights' : {
-                            'type' : 'list',
-                            'default' : []
-                        },
-                        'grad_norm_clip' : {
-                            'type' : 'boolean',
-                            'default' : True
-                        },
-                        'memory_efficient_gradient' : {
-                            'type' : 'boolean',
-                            'default' : False
-                        },
-                        'run_symbolic_shape_infer' : {
-                            'type' : 'boolean',
-                            'default' : False
-                        }
-                    }
-                },
-                'debug' : {
-                    'type' : 'dict',
-                    'required': False,
-                    'default' : {},
-                    'schema' : {
-                        'deterministic_compute' : {
-                            'type' : 'boolean',
-                            'default' : False
-                        },
-                        'check_model_export' : {
-                            'type' : 'boolean',
-                            'default' : False
-                        },
-                        'graph_save_paths' : {
-                            'type' : 'dict',
-                            'default': {},
-                            'required': False,
-                            'schema': {
-                                'model_after_graph_transforms_path': {
-                                    'type': 'string',
-                                    'default': ''
-                                },
-                                'model_with_gradient_graph_path':{
-                                    'type': 'string',
-                                    'default': ''
-                                },
-                                'model_with_training_graph_path': {
-                                    'type': 'string',
-                                    'default': ''
-                                },
-                                'model_with_training_graph_after_optimization_path': {
-                                    'type': 'string',
-                                    'default': ''
-                                },
+                    },
+                    'lr_scheduler' : {
+                        'type' : 'optim.lr_scheduler',
+                        'nullable' : True,
+                        'default' : None
+                    },
+                    'mixed_precision' : {
+                        'type' : 'dict',
+                        'required': False,
+                        'default' : {},
+                        'schema' : {
+                            'enabled' : {
+                                'type' : 'boolean',
+                                'default' : False
+                            },
+                            'loss_scaler' : {
+                                'type' : 'amp.loss_scaler',
+                                'nullable' : True,
+                                'default' : None
                             }
-                        },
-                    }
-                },
-                '_internal_use' : {
-                    'type' : 'dict',
-                    'required': False,
-                    'default' : {},
-                    'schema' : {
-                        'enable_internal_postprocess' : {
-                            'type' : 'boolean',
-                            'default' : True
-                        },
-                        'extra_postprocess' : {
-                            'type' : 'callable',
-                            'nullable' : True,
-                            'default' : None
-                        },
-                        'onnx_opset_version': {
-                            'type': 'integer',
-                            'min' : 12,
-                            'max' : 13,
-                            'default': 12
-                        },
-                        'enable_onnx_contrib_ops' : {
-                            'type' : 'boolean',
-                            'default' : True
                         }
-                    }
-                },
-                'provider_options':{
-                    'type': 'dict',
-                    'default': {},
-                    'required': False,
-                    'schema': {}
-                },
-                'session_options': {
-                    'type': 'SessionOptions',
-                    'nullable': True,
-                    'default': None
-                },
-             }
+                    },
+                    'graph_transformer': {
+                        'type': 'dict',
+                        'required': False,
+                        'default': {},
+                        'schema': {
+                            'attn_dropout_recompute': {
+                                'type': 'boolean',
+                                'default': False
+                            },
+                            'gelu_recompute': {
+                                'type': 'boolean',
+                                'default': False
+                            },
+                            'transformer_layer_recompute': {
+                                'type': 'boolean',
+                                'default': False
+                            },
+                            'number_recompute_layers': {
+                                'type': 'integer',
+                                'min': 0,
+                                'default': 0
+                            },
+                            'propagate_cast_ops_config': {
+                                'type': 'dict',
+                                'required': False,
+                                'default': {},
+                                'schema': {
+                                    'propagate_cast_ops_strategy': {
+                                        'type': 'onnxruntime.training.PropagateCastOpsStrategy',
+                                        'default': PropagateCastOpsStrategy.NONE
+                                    },
+                                    'propagate_cast_ops_level': {
+                                        'type': 'integer',
+                                        'default': 1
+                                    },
+                                    'propagate_cast_ops_allow': {
+                                        'type': 'list',
+                                        'schema': {'type': 'string'},
+                                        'default': []
+                                    }
+                                }
+                            },
+                            'allow_layer_norm_mod_precision': {
+                                'type': 'boolean',
+                                'default': False
+                            }
+                        }
+                    },
+                    'utils' : {
+                        'type' : 'dict',
+                        'required': False,
+                        'default' : {},
+                        'schema' : {
+                            'frozen_weights' : {
+                                'type' : 'list',
+                                'default' : []
+                            },
+                            'grad_norm_clip' : {
+                                'type' : 'boolean',
+                                'default' : True
+                            },
+                            'memory_efficient_gradient' : {
+                                'type' : 'boolean',
+                                'default' : False
+                            },
+                            'run_symbolic_shape_infer' : {
+                                'type' : 'boolean',
+                                'default' : False
+                            }
+                        }
+                    },
+                    'debug' : {
+                        'type' : 'dict',
+                        'required': False,
+                        'default' : {},
+                        'schema' : {
+                            'deterministic_compute' : {
+                                'type' : 'boolean',
+                                'default' : False
+                            },
+                            'check_model_export' : {
+                                'type' : 'boolean',
+                                'default' : False
+                            },
+                            'graph_save_paths' : {
+                                'type' : 'dict',
+                                'default': {},
+                                'required': False,
+                                'schema': {
+                                    'model_after_graph_transforms_path': {
+                                        'type': 'string',
+                                        'default': ''
+                                    },
+                                    'model_with_gradient_graph_path':{
+                                        'type': 'string',
+                                        'default': ''
+                                    },
+                                    'model_with_training_graph_path': {
+                                        'type': 'string',
+                                        'default': ''
+                                    },
+                                    'model_with_training_graph_after_optimization_path': {
+                                        'type': 'string',
+                                        'default': ''
+                                    },
+                                }
+                            },
+                        }
+                    },
+                    '_internal_use' : {
+                        'type' : 'dict',
+                        'required': False,
+                        'default' : {},
+                        'schema' : {
+                            'enable_internal_postprocess' : {
+                                'type' : 'boolean',
+                                'default' : True
+                            },
+                            'extra_postprocess' : {
+                                'type' : 'callable',
+                                'nullable' : True,
+                                'default' : None
+                            },
+                            'onnx_opset_version': {
+                                'type': 'integer',
+                                'min' : 12,
+                                'max' : 13,
+                                'default': 12
+                            },
+                            'enable_onnx_contrib_ops' : {
+                                'type' : 'boolean',
+                                'default' : True
+                            }
+                        }
+                    },
+                    'provider_options':{
+                        'type': 'dict',
+                        'default': {},
+                        'required': False,
+                        'schema': {}
+                    },
+                    'session_options': {
+                        'type': 'SessionOptions',
+                        'nullable': True,
+                        'default': None
+                    },
+                 }
 
     Keyword arguments:
         batch (dict):
@@ -448,23 +448,24 @@ class ORTTrainerOptions(object):
             a key-value pairs, like {'EP1' : {'key1' : 'val1'}, ....}
 
     Example:
-        .. code-block:: python
 
-            opts = ORTTrainerOptions({
-                               'batch' : {
-                                   'gradient_accumulation_steps' : 128
-                               },
-                               'device' : {
-                                   'id' : 'cuda:0',
-                                   'mem_limit' : 2*1024*1024*1024,
-                               },
-                               'lr_scheduler' : optim.lr_scheduler.LinearWarmupLRScheduler(),
-                               'mixed_precision' : {
-                                   'enabled': True,
-                                   'loss_scaler': amp.LossScaler(loss_scale=float(1 << 16))
-                               }
-            })
-            fp16_enabled = opts.mixed_precision.enabled
+    .. code-block:: python
+
+        opts = ORTTrainerOptions({
+                           'batch' : {
+                               'gradient_accumulation_steps' : 128
+                           },
+                           'device' : {
+                               'id' : 'cuda:0',
+                               'mem_limit' : 2*1024*1024*1024,
+                           },
+                           'lr_scheduler' : optim.lr_scheduler.LinearWarmupLRScheduler(),
+                           'mixed_precision' : {
+                               'enabled': True,
+                               'loss_scaler': amp.LossScaler(loss_scale=float(1 << 16))
+                           }
+        })
+        fp16_enabled = opts.mixed_precision.enabled
      """
 
     def __init__(self, options={}):
