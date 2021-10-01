@@ -3,14 +3,15 @@
 
 """
 
-.. _l-orttraining-linreg-cpu:
+.. _l-orttraining-linreg-gpu:
 
-Train a linear regression with onnxruntime-training
-===================================================
+Train a linear regression with onnxruntime-training on GPU
+==========================================================
 
-This example explores how *onnxruntime-training* can be used to
-train a simple linear regression using a gradient descent.
-It compares the results with those obtained by :class:`sklearn.linear_model.LinearRegression`.
+This example follows the same steps introduced in example
+:ref:`l-orttraining-linreg-cpu` but on GPU.
+
+**to be completed**
 
 .. contents::
     :local:
@@ -32,17 +33,12 @@ import matplotlib.pyplot as plt
 from pyquickhelper.helpgen.graphviz_helper import plot_graphviz
 from sklearn.datasets import make_regression
 from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
 from tqdm import tqdm
 
 X, y = make_regression(n_features=2, bias=2)
 X = X.astype(np.float32)
 y = y.astype(np.float32)
 X_train, X_test, y_train, y_test = train_test_split(X, y)
-
-lr = LinearRegression()
-lr.fit(X, y)
-print(lr.predict(X[:5]))
 
 
 ###################################
@@ -82,8 +78,9 @@ def onnx_linear_regression(coefs, intercept):
     return model_def
 
 
-onx = onnx_linear_regression(lr.coef_.astype(np.float32),
-                             lr.intercept_.astype(np.float32))
+onx = onnx_linear_regression(
+    np.random.randn(2).astype(np.float32),
+    np.random.randn(1).astype(np.float32))
 
 ########################################
 # Let's visualize it.
@@ -96,14 +93,6 @@ def plot_dot(model):
     
 plot_dot(onx)
 
-###################################
-# We check it produces the same outputs.
-
-sess = InferenceSession(onx.SerializeToString())
-print(sess.run(None, {'X': X[:5]})[0])
-
-#####################################
-# It works.
 
 #####################################
 # Training with onnxruntime-training
@@ -159,8 +148,8 @@ def onnx_linear_regression_training(coefs, intercept):
 # We create a graph with random coefficients.
 
 onx_train = onnx_linear_regression_training(
-    np.random.randn(*lr.coef_.shape).astype(np.float32),
-    np.random.randn(*lr.intercept_.reshape((-1, )).shape).astype(np.float32))
+    np.random.randn(2).astype(np.float32),
+    np.random.randn(1).astype(np.float32))
 
 plot_dot(onx_train)
 
@@ -209,8 +198,8 @@ for i, batch in enumerate(data_loader):
 
 
 #########################################
-# First iterations of training
-# ++++++++++++++++++++++++++++
+# First iterations of training on GPU
+# ++++++++++++++++++++++++++++++++++++
 #
 # Prediction needs an instance of class *InferenceSession*,
 # the training needs an instance of class *TrainingSession*.
@@ -407,7 +396,6 @@ df.set_index('iteration').plot(title="Training loss", logy=True)
 # Let's compare scikit-learn trained coefficients and the coefficients
 # obtained with onnxruntime and check they are very close.
 
-print("scikit-learn", lr.coef_, lr.intercept_)
 print("onnxruntime", trainer.trained_coef_)
 
 ####################################################
@@ -455,7 +443,6 @@ print(after)
 
 print(after - before)
 
-
 ################################################
 # Next example will show how to train a linear regression on GPU:
-# :ref:`l-orttraining-linreg-gpu`.
+# :ref:`l-orttraining-linreg-cpu`.
