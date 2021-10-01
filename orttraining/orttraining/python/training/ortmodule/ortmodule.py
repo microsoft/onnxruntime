@@ -4,18 +4,29 @@
 # --------------------------------------------------------------------------
 
 from ._torch_module_factory import TorchModuleFactory
+from ._torch_module_pytorch import TorchModulePytorch
+from ._torch_module_ort import TorchModuleORT
 from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 from ._custom_gradient_registry import CustomGradientRegistry
+from . import _utils
 from .debug_options import DebugOptions
+from ._fallback import (_FallbackManager,
+                        _FallbackPolicy,
+                        ORTModuleFallbackException)
+from . import (_FALLBACK_INIT_EXCEPTION,
+               ORTMODULE_FALLBACK_POLICY,
+               ORTMODULE_FALLBACK_RETRY)
 
-from onnxruntime.training import register_custom_ops_pytorch_exporter
+from onnxruntime.tools import pytorch_export_contrib_ops
 
 import functools
 import torch
-from typing import Iterator, Optional, Tuple, TypeVar, Set, Callable
+from typing import Iterator, Optional, Tuple, TypeVar, Callable
+
 
 # Needed to override PyTorch methods
 T = TypeVar('T', bound='Module')
+
 
 class ORTModule(torch.nn.Module):
     """Extends user's :class:`torch.nn.Module` model to leverage ONNX Runtime super fast training engine.
@@ -29,45 +40,119 @@ class ORTModule(torch.nn.Module):
     """
 
     def __init__(self, module, debug_options=None):
-        # Python default arguments are evaluated on function definintion
+
+        # NOTE: torch.nn.Modules that call setattr on their internal attributes regularly
+        #       (for example PyTorch Lightning), will trigger regular re-exports. This is
+        #       because ORTModule auto detects such setattrs on the original module and
+        #       marks the model as stale. This is a known limitation. To disable repeated
+        #       re-export checks when not required, please set the environment variable
+        #       ORTMODULE_SKIPCHECK_POLICY to SKIP_CHECK_BUILD_GRADIENT|SKIP_CHECK_EXECUTION_AGENT
+
+        # Set _is_initialized attribute first which starts off as False.
+        # This variable will be used for comparing strings in __setattr__ and __getattr__
+        # NOTE: Do not rename/move.
+        self._is_initialized = False
+        # Python default arguments are evaluated on function definition
         # and not on function invocation. So, if debug_options is not provided,
         # instantiate it inside the function.
         if not debug_options:
             debug_options = DebugOptions()
-        self._torch_module = TorchModuleFactory()(module, debug_options)
 
-        # Create forward dynamically, so each ORTModule instance will have its own copy.
-        # This is needed to be able to copy the forward signatures from the original PyTorch models
-        # and possibly have different signatures for different instances.
-        def _forward(self, *inputs, **kwargs):
-            '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
+        # Fallback settings
+        self._fallback_manager = _FallbackManager(policy=ORTMODULE_FALLBACK_POLICY,
+                                                  retry=ORTMODULE_FALLBACK_RETRY)
 
-            ONNX model is exported the first time this method is executed.
-            Next, we build a full training graph with module_gradient_graph_builder.
-            Finally, we instantiate the ONNX Runtime InferenceSession.
-            '''
+        try:
+            # Read ORTModule module initialization status
+            if _FALLBACK_INIT_EXCEPTION:
+                raise _FALLBACK_INIT_EXCEPTION
 
-            return self._torch_module.forward(*inputs, **kwargs)
+            super(ORTModule, self).__init__()
 
-        # Bind the forward method.
-        self.forward = _forward.__get__(self)
-        # Copy the forward signature from the _torch_module's forward signature.
-        functools.update_wrapper(
-            self.forward.__func__, self._torch_module.forward.__func__)
+            self._torch_module = TorchModuleFactory()(module, debug_options, self._fallback_manager)
 
-        super(ORTModule, self).__init__()
+            # Create forward dynamically, so each ORTModule instance will have its own copy.
+            # This is needed to be able to copy the forward signatures from the original PyTorch models
+            # and possibly have different signatures for different instances.
+            def _forward(self, *inputs, **kwargs):
+                '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
 
-        # Support contrib OPs
-        register_custom_ops_pytorch_exporter.register_custom_op()
-        CustomOpSymbolicRegistry.register_all()
-        CustomGradientRegistry.register_all()
+                ONNX model is exported the first time this method is executed.
+                Next, we build a full training graph with module_gradient_graph_builder.
+                Finally, we instantiate the ONNX Runtime InferenceSession.
+                '''
+
+                return self._torch_module.forward(*inputs, **kwargs)
+
+            # Bind the forward method.
+            self.forward = _forward.__get__(self)
+            # Copy the forward signature from the _torch_module's forward signature.
+            functools.update_wrapper(
+                self.forward.__func__, self._torch_module.forward.__func__)
+
+            # Support contrib OPs
+            pytorch_export_contrib_ops.register()
+            CustomOpSymbolicRegistry.register_all()
+            CustomGradientRegistry.register_all()
+
+            # Warn user if there are name collisions between user model's and ORTModule attributes
+            # And if there are custom methods defined on the user's model, copy and bind them to
+            # ORTModule.
+            _utils.check_for_name_collisions_and_bind_methods_to_ortmodule(self, module)
+
+        except ORTModuleFallbackException as e:
+            self._torch_module = TorchModulePytorch(module)
+            # TODO: Rework by implementing the "__getattribute__" method.
+            #       Assigning all default attributes from user's original torch.nn.Module into ORTModule
+            self._backward_hooks = module._backward_hooks
+            self._forward_hooks = module._forward_hooks
+            self._forward_pre_hooks = module._forward_pre_hooks
+            self._parameters = module._parameters
+            self._buffers = module._buffers
+            self._non_persistent_buffers_set = module._non_persistent_buffers_set
+            self._is_full_backward_hook = module._is_full_backward_hook
+            self._state_dict_hooks = module._state_dict_hooks
+            self._load_state_dict_pre_hooks = module._load_state_dict_pre_hooks
+            self._modules = module._modules
+            self.forward = module.forward
+
+            # Exceptions subject to fallback are handled here
+            self._fallback_manager.handle_exception(exception=e,
+                                                    log_level=debug_options.logging.log_level)
+        except Exception as e:
+            self._torch_module = TorchModulePytorch(module)
+            # Catch-all FALLBACK_FORCE_TORCH_FORWARD fallback is handled here
+            self._fallback_manager.handle_exception(exception=e,
+                                                    log_level=debug_options.logging.log_level,
+                                                    override_policy=_FallbackPolicy.FALLBACK_FORCE_TORCH_FORWARD)
+
+        # Finally, ORTModule initialization is complete.
+        # Assign self._is_initialized to True after all the ORTModule class attributes have been assigned
+        # else, they will be assigned to self._torch_module.original_module instead.
+        self._is_initialized = True
 
     # IMPORTANT: DO NOT add code here
     # This declaration is for automatic document generation purposes only
     # The actual forward implementation is bound during ORTModule initialization
     def forward(self, *inputs, **kwargs):
-        '''Dummy documentation for forward method'''
-        ...
+        '''Delegate the :meth:`~torch.nn.Module.forward` pass of PyTorch training to
+        ONNX Runtime.
+
+        The first call to forward performs setup and checking steps. During this call,
+        ORTModule determines whether the module can be trained with ONNX Runtime. For
+        this reason, the first forward call execution takes longer than subsequent calls.
+        Execution is interupted if ONNX Runtime cannot process the model for training.
+
+        Args:
+            *inputs and **kwargs represent the positional, variable positional, keyword
+            and variable keyword arguments defined in the user's PyTorch module's forward
+            method. Values can be torch tensors and primitive types.
+
+        Returns:
+            The output as expected from the forward method defined by the user's
+            PyTorch module. Output values supported include tensors, nested sequences
+            of tensors and nested dictionaries of tensor values.
+        '''
 
     def _replicate_for_data_parallel(self):
         """Raises a NotImplementedError exception since ORTModule is not compatible with torch.nn.DataParallel
@@ -85,13 +170,12 @@ class ORTModule(torch.nn.Module):
         which does not need model replication and is also recommended by torch to use instead.
         """
 
-        raise NotImplementedError("ORTModule is not compatible with torch.nn.DataParallel. "
-                                  "Please use torch.nn.parallel.DistributedDataParallel instead.")
+        return self._torch_module._replicate_for_data_parallel()
 
     def add_module(self, name: str, module: Optional['Module']) -> None:
-        """Raises a NotImplementedError exception since ORTModule does not support adding modules to it"""
+        """Raises a ORTModuleTorchModelException exception since ORTModule does not support adding modules to it"""
 
-        raise NotImplementedError("ORTModule does not support adding modules to it.")
+        self._torch_module.add_module(name, module)
 
     @property
     def module(self):
@@ -120,7 +204,7 @@ class ORTModule(torch.nn.Module):
         return self
 
     def apply(self: T, fn: Callable[['Module'], None]) -> T:
-        """Override original method to delegate execution to the flattened PyTorch user module"""
+        """Override :meth:`~torch.nn.Module.apply` to delegate execution to ONNX Runtime"""
 
         self._torch_module.apply(fn)
         return self
@@ -129,7 +213,7 @@ class ORTModule(torch.nn.Module):
         return self._torch_module.is_training()
 
     def train(self: T, mode: bool = True) -> T:
-        """Override original method to delegate execution to the flattened PyTorch user module"""
+        """Override :meth:`~torch.nn.Module.train` to delegate execution to ONNX Runtime"""
 
         self.training = mode
         # In a torch.nn.Module, _modules stores all dependent modules (sub-modules) of the current module.
@@ -142,75 +226,108 @@ class ORTModule(torch.nn.Module):
         return self
 
     def state_dict(self, destination=None, prefix='', keep_vars=False):
-        """Override original method to delegate execution to the original PyTorch user module"""
+        """Override :meth:`~torch.nn.Module.state_dict` to delegate execution to ONNX Runtime"""
 
         return self._torch_module.state_dict(
             destination=destination, prefix=prefix, keep_vars=keep_vars)
 
     def load_state_dict(self, state_dict: 'OrderedDict[str, Tensor]',
                         strict: bool = True):
-        """Override original method to delegate execution to the original PyTorch user module"""
+        """Override :meth:`~torch.nn.Module.load_state_dict` to delegate execution to ONNX Runtime"""
 
         return self._torch_module.load_state_dict(state_dict, strict=strict)
 
     def register_buffer(self, name: str, tensor: Optional[torch.Tensor], persistent: bool = True) -> None:
-        """Override original method to delegate execution to the original PyTorch user module"""
+        """Override :meth:`~torch.nn.Module.register_buffer`"""
 
         self._torch_module.register_buffer(name, tensor, persistent=persistent)
 
     def register_parameter(self, name: str, param: Optional[torch.nn.Parameter]) -> None:
-        """Override original method to delegate execution to the original PyTorch user module"""
+        """Override :meth:`~torch.nn.Module.register_parameter`"""
 
         self._torch_module.register_parameter(name, param)
 
     def get_parameter(self, target: str) -> torch.nn.Parameter:
-        """Override original method to delegate execution to the original PyTorch user module"""
+        """Override :meth:`~torch.nn.Module.get_parameter`"""
 
         return self._torch_module.get_parameter(target)
 
     def get_buffer(self, target: str) -> torch.Tensor:
-        """Override original method to delegate execution to the original PyTorch user module"""
+        """Override :meth:`~torch.nn.Module.get_buffer`"""
 
         return self._torch_module.get_buffer(target)
 
     def parameters(self, recurse: bool = True) -> Iterator[torch.nn.Parameter]:
-        """Override original method to delegate execution to the original PyTorch user module"""
+        """Override :meth:`~torch.nn.Module.parameters`"""
 
         yield from self._torch_module.parameters(recurse=recurse)
 
     def named_parameters(self, prefix: str = '', recurse: bool = True) -> Iterator[Tuple[str, torch.nn.Parameter]]:
-        """Override original method to delegate execution to the original PyTorch user module"""
+        """Override :meth:`~torch.nn.Module.named_parameters`"""
 
         yield from self._torch_module.named_parameters(prefix=prefix, recurse=recurse)
 
     def buffers(self, recurse: bool = True) -> Iterator[torch.Tensor]:
-        """Override original method to delegate execution to the original PyTorch user module"""
+        """Override :meth:`~torch.nn.Module.buffers`"""
 
         yield from self._torch_module.buffers(recurse=recurse)
 
     def named_buffers(self, prefix: str = '', recurse: bool = True) -> Iterator[Tuple[str, torch.Tensor]]:
-        """Override original method to delegate execution to the original PyTorch user module"""
+        """Override :meth:`~torch.nn.Module.named_buffers`"""
 
         yield from self._torch_module.named_buffers(prefix=prefix, recurse=recurse)
 
     def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
-                                missing_keys, unexpected_keys, error_msgs):
+                              missing_keys, unexpected_keys, error_msgs):
         """Override original method to delegate execution to the original PyTorch user module"""
 
         self._torch_module._load_from_state_dict(state_dict, prefix, local_metadata, strict,
-                                                   missing_keys, unexpected_keys, error_msgs)
+                                                 missing_keys, unexpected_keys, error_msgs)
 
     def named_children(self) -> Iterator[Tuple[str, 'Module']]:
-        """Override original method to delegate execution to the original PyTorch user module"""
+        """Override :meth:`~torch.nn.Module.named_children`"""
 
         yield from self._torch_module.named_children()
 
     def modules(self) -> Iterator['Module']:
-        """Override original method to delegate execution to the original PyTorch user module"""
+        """Override :meth:`~torch.nn.Module.modules`"""
 
         yield from self._torch_module.modules()
 
     def named_modules(self, *args, **kwargs):
-        """Override original method to delegate execution to the original PyTorch user module"""
+        """Override :meth:`~torch.nn.Module.named_modules`"""
 
         yield from self._torch_module.named_modules(*args, **kwargs)
+
+    def __getattr__(self, name: str):
+        if '_is_initialized' in self.__dict__ and self.__dict__['_is_initialized'] is True:
+            # If ORTModule is initialized and attribute is not found in ORTModule,
+            # it must be present in the user's torch.nn.Module. Forward the call to
+            # the user's model.
+            assert '_torch_module' in self.__dict__, "ORTModule does not have a reference to the user's model"
+            return getattr(self.module, name)
+        else:
+            return super(ORTModule, self).__getattr__(name)
+
+    def __setattr__(self, name: str, value) -> None:
+
+        if name in self.__dict__:
+            # If the name is an attribute of ORTModule, update only ORTModule
+            self.__dict__[name] = value
+
+        elif '_is_initialized' in self.__dict__ and self.__dict__['_is_initialized'] is True:
+
+            assert '_torch_module' in self.__dict__, "ORTModule does not have a reference to the user's model"
+
+            # If the name is an attribute of user model, or is a new attribute, update there.
+            # Set the attribute on the user's original module
+            setattr(self.module, name, value)
+            # Signal to execution manager to re-export the model.
+            # Re-export will be avoided if _skip_check is enabled.
+            if isinstance(self._torch_module, TorchModuleORT):
+                for training_mode in [False, True]:
+                    self._torch_module._execution_manager(training_mode).signal_model_changed()
+
+        else:
+            # Setting any new attributes should be done on ORTModule only when 'torch_module' is not defined
+            self.__dict__[name] = value

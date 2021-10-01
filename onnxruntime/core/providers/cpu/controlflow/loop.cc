@@ -492,31 +492,46 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
 
   // As the loop carried variables may change shape across iterations there's no way to avoid a copy
   // as we need the final shape.
-  auto copy_tensor_from_mlvalue_to_output = [this](const OrtValue& input, int output_idx) {
-    auto type = input.Type();
-    if (type == DataTypeImpl::GetType<Tensor>()) {
-      auto& data = input.Get<Tensor>();
+  auto copy_mlvalue_to_output = [this](OrtValue& input, int output_idx, int64_t iter_num_value) {
+    if (input.IsTensor()) {
+      const auto& data = input.Get<Tensor>();
       Tensor* output = context_.Output(output_idx, data.Shape());
+      // Safely use the IDataTransfer abstraction as we only allow using
+      // Loop on CUDA if the copy stream is the same as the compute stream.
+      // So there is no explicit sync required between the compute and copy streams
+      // to avoid data races.
       session_state_.GetDataTransferMgr().CopyTensor(input.Get<Tensor>(), *output);
-    } else if (type == DataTypeImpl::GetType<TensorSeq>()) {
-      std::vector<Tensor> tensors;
+    } else if (input.IsTensorSequence()) {
+      if (iter_num_value != 0) {
+        // We can move the subgraph outputs directly into the Loop's outputs.
+        TensorSeq* output = context_.Output<TensorSeq>(output_idx);
+        *output = std::move(*input.GetMutable<TensorSeq>());
+      } else {
+        // We can't move the Loop's inputs directly into the Loop's outputs
+        // as operator inputs are read-only. Hence, we need to make a copy.
+        std::vector<Tensor> tensors;
 
-      auto& data = input.Get<TensorSeq>();
-      TensorSeq* output = context_.Output<TensorSeq>(output_idx);
-      output->SetType(data.DataType());
+        auto& data = input.Get<TensorSeq>();
+        TensorSeq* output = context_.Output<TensorSeq>(output_idx);
+        output->SetType(data.DataType());
 
-      AllocatorPtr alloc;
-      auto status = context_.GetTempSpaceAllocator(&alloc);
-      if (!status.IsOK()) {
-        ORT_THROW("Unable to get an allocator");
+        AllocatorPtr alloc;
+        auto status = context_.GetTempSpaceAllocator(&alloc);
+        if (!status.IsOK()) {
+          ORT_THROW("Unable to get an allocator");
+        }
+        for (auto it = data.begin(), end = data.end(); it != end; ++it) {
+          Tensor tmp(it->DataType(), onnxruntime::TensorShape(it->Shape()), alloc);
+          // Safely use the IDataTransfer abstraction as we only allow using
+          // Loop on CUDA if the copy stream is the same as the compute stream.
+          // So there is no explicit sync required between the compute and copy streams
+          // to avoid data races.
+          session_state_.GetDataTransferMgr().CopyTensor(*it, tmp);
+          tensors.push_back(std::move(tmp));
+        }
+
+        output->SetElements(std::move(tensors));
       }
-      for (auto it = data.begin(), end = data.end(); it != end; ++it) {
-        Tensor tmp(it->DataType(), onnxruntime::TensorShape(it->Shape()), alloc);
-        session_state_.GetDataTransferMgr().CopyTensor(*it, tmp);
-        tensors.push_back(std::move(tmp));
-      }
-
-      output->SetElements(std::move(tensors));
     }
   };
 
@@ -524,7 +539,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
   if (iter_num_value != 0) {
     for (int i = 0; i < info_.num_loop_carried_vars; ++i) {
       // need to allocate Loop output and copy OrtValue from fetches
-      copy_tensor_from_mlvalue_to_output(fetches[i + 1], i);  // skip cond
+      copy_mlvalue_to_output(fetches[i + 1], i, iter_num_value);  // skip cond
     }
 
     for (int i = info_.num_loop_carried_vars; i < info_.num_outputs; ++i) {
@@ -538,7 +553,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
     // no iterations.
     // copy input loop carried vars to output.
     for (int i = 0; i < info_.num_loop_carried_vars; ++i) {
-      copy_tensor_from_mlvalue_to_output(feeds[i + 2], i);  // skip iter# and cond
+      copy_mlvalue_to_output(feeds[i + 2], i, iter_num_value);  // skip iter# and cond
     }
 
     // create empty outputs for loop outputs using the subgraph output shapes for the rank

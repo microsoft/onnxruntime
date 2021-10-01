@@ -1,11 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(DISABLE_SPARSE_TENSORS)
+
 #pragma once
 
 #include "core/framework/data_types.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensor.h"
+
+struct OrtValue;
 
 namespace onnxruntime {
 
@@ -13,7 +17,7 @@ class IDataTransfer;
 class DataTransferManager;
 
 /**
- * @brief This is a Sparse Format enumeration representing bitflags
+ * @brief This is a Sparse Format enumeration
  * 
  * 
  */
@@ -59,8 +63,8 @@ class SparseTensor final {
   /// </summary>
   /// <param name="elt_type">MlDataType</param>
   /// <param name="dense_shape">a shape of original tensor in dense form</param>
-  /// <param name="values_shape">shape for user supplied values</param>
-  /// <param name="values_data">a pointer to values</param>
+  /// <param name="values_shape">shape for user supplied values. Use {0} shape for fully sparse tensors.</param>
+  /// <param name="values_data">a pointer to values. Use nullptr for fully sparse tensors.</param>
   /// <param name="location">description of the user allocated memory</param>
   SparseTensor(MLDataType elt_type,
                const TensorShape& dense_shape,
@@ -70,7 +74,7 @@ class SparseTensor final {
 
   /// <summary>
   /// Use this constructor to hold sparse data in the buffer
-  /// allocated with the specificed allocator. Use Make*() methods
+  /// allocated with the specified allocator. Use Make*() methods
   /// to populate the instance with data which will be copied into the
   /// allocated buffer.
   /// </summary>
@@ -86,6 +90,57 @@ class SparseTensor final {
   ~SparseTensor();
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(SparseTensor);
+
+  /// <summary>
+  /// The factory function creates an instance of SparseTensor on the heap
+  /// using appropriate constructor and initializes OrtValue instance wit it.
+  /// </summary>
+  /// <param name="elt_type">element data type</param>
+  /// <param name="dense_shape">dense shape of the sparse tensor</param>
+  /// <param name="values_shape">values shape. Use {0} for fully sparse tensors.</param>
+  /// <param name="values_data">pointer to a user allocated buffer. Use nullptr for fully sparse tensors.</param>
+  /// <param name="location">description of the user allocated buffer</param>
+  /// <param name="ort_value">default constructed input/output ort_value</param>
+  static void InitOrtValue(MLDataType elt_type,
+                           const TensorShape& dense_shape,
+                           const TensorShape& values_shape,
+                           void* values_data,
+                           const OrtMemoryInfo& location,
+                           OrtValue& ort_value);
+
+  /// <summary>
+  /// The factory function creates an instance of SparseTensor on the heap
+  /// using appropriate constructor and initializes OrtValue instance wit it.
+  /// </summary>
+  /// <param name="elt_type">element data type</param>
+  /// <param name="dense_shape">dense shape of the sparse tensor</param>
+  /// <param name="allocator">allocator to use</param>
+  /// <param name="ort_value">default constructed input/output ort_value</param>
+  static void InitOrtValue(MLDataType elt_type,
+                           const TensorShape& dense_shape,
+                           std::shared_ptr<IAllocator> allocator,
+                           OrtValue& ort_value);
+
+  /// <summary>
+  /// The function will check if the OrtValue is allocated
+  /// fetch the containing SparseTensor instance or throw if it
+  /// does not contain one. It will check that the SparseTensor has
+  /// sparse format set (i.e. fully constructed).
+  /// </summary>
+  /// <param name="v">OrtValue instance</param>
+  /// <returns>const SparseTensor Reference</returns>
+  static const SparseTensor& GetSparseTensorFromOrtValue(const OrtValue& v);
+
+  /// <summary>
+  /// /// The function will check if the OrtValue is allocated
+  /// fetch the containing SparseTensor instance or throw if it
+  /// does not contain one. It will check that the SparseTensor does not
+  /// have sparse format set and will return non-const ref to so indices
+  /// can be added to it.
+  /// </summary>
+  /// <param name="v">OrtValue</param>
+  /// <returns>non-const reference to SparseTensor</returns>
+  static SparseTensor& GetSparseTensorFromOrtValue(OrtValue& v);
 
   /// <summary>
   // Returns the number of non-zero values (aka "NNZ")
@@ -195,7 +250,7 @@ class SparseTensor final {
   /// index shape would be 1-D (values_count) or it must be twice the number of values
   /// in which case its shape would be 2-D (values_count, 2)
   /// </summary>
-  /// <param name="indices">user allocated buffer span</param>
+  /// <param name="indices">user allocated buffer span. Use empty span for fully sparse tensors.</param>
   /// <returns>Status</returns>
   Status UseCooIndices(gsl::span<int64_t> indices);
 
@@ -209,12 +264,24 @@ class SparseTensor final {
   ///
   /// Values shape is supplied at construction time and its Size() must match values_count.
   /// </summary>
-  /// <param name="values_count"></param>
-  /// <param name="values_data"></param>
+  /// <param name="values_count">Use 0 for fully sparse tensors.</param>
+  /// <param name="values_data">pointer to a buffer to be copied. Use nullptr for fully sparse tensors.</param>
   /// <param name="indices"></param>
   /// <returns></returns>
   Status MakeCooData(const IDataTransfer& data_transfer, const OrtMemoryInfo& data_location,
                      size_t values_count, const void* values_data, gsl::span<const int64_t> indices);
+
+  /// <summary>
+  /// The method allocates a single contiguous buffer and creates instances of std::strings in it, with
+  /// copies of the supplied zero-terminated strings followed by COO indices.
+  /// All data is assumed to be on CPU and the allocator supplied must be
+  /// a CPU based allocator.
+  /// </summary>
+  /// <param name="string_count">use 0 for fully sparse tensors</param>
+  /// <param name="strings">array of char* pointers. use nullptr for fully sparse tensors</param>
+  /// <param name="indices">span of indices. Use empty span for fully sparse tensors.</param>
+  /// <returns>Status</returns>
+  Status MakeCooStrings(size_t string_count, const char* const* strings, gsl::span<const int64_t> indices);
 
   /// <summary>
   /// Gives mutable access to Coo buffers so they can be populated
@@ -234,8 +301,8 @@ class SparseTensor final {
   /// Allocates memory for values and index and returns a mutator so
   /// data can be copied into the buffer.
   /// </summary>
-  /// <param name="values_count"></param>
-  /// <param name="index_count"></param>
+  /// <param name="values_count">use 0 for fully sparse tensors</param>
+  /// <param name="index_count">use 0 for fully sparse tensors</param>
   /// <returns></returns>
   CooMutator MakeCooData(size_t values_count, size_t index_count);
 
@@ -255,17 +322,17 @@ class SparseTensor final {
   };
 
   /// <summary>
-  /// Returns Csr indices readonly view
+  /// Returns Csr indices read only view
   /// </summary>
   /// <returns></returns>
   CsrView AsCsr() const;
 
   /// <summary>
   /// This function will use Csr indices contained within the user allocated buffers.
-  /// The lifespan of the buffers must exclipse the lifespan of sparse tensor instance.
+  /// The lifespan of the buffers must eclipse the lifespan of sparse tensor instance.
   /// </summary>
-  /// <param name="inner_index"></param>
-  /// <param name="outer_index"></param>
+  /// <param name="inner_index">User allocated buffer span. use empty span for fully sparse tensors</param>
+  /// <param name="outer_index">User allocated buffer span. Use empty span for fully sparse tensors</param>
   /// <returns></returns>
   Status UseCsrIndices(gsl::span<int64_t> inner_index, gsl::span<int64_t> outer_index);
 
@@ -275,16 +342,31 @@ class SparseTensor final {
   /// </summary>
   /// <param name="data_transfer"></param>
   /// <param name="data_location"></param>
-  /// <param name="values_count"></param>
-  /// <param name="values_data"></param>
-  /// <param name="inner_index"></param>
-  /// <param name="outer_index"></param>
+  /// <param name="values_count">use 0 for fully sparse tensors</param>
+  /// <param name="values_data">pointer to data to be copied. Use nullptr for fully sparse tensors.</param>
+  /// <param name="inner_index">inner index to be copied. Use empty span for fully sparse tensors.</param>
+  /// <param name="outer_index">outer index to be copied. Use empty span for fully sparse tensors.</param>
   /// <returns></returns>
   Status MakeCsrData(const IDataTransfer& data_transfer,
                      const OrtMemoryInfo& data_location,
                      size_t values_count, const void* values_data,
                      gsl::span<const int64_t> inner_index,
                      gsl::span<const int64_t> outer_index);
+
+  /// <summary>
+  /// The method allocates a single contiguous buffer and creates instances of std::strings in it, with
+  /// copies of the supplied zero-terminated strings followed by COO indices.
+  /// All data is assumed to be on CPU and the allocator supplied must be
+  /// a CPU based allocator
+  /// </summary>
+  /// <param name="string_count"></param>
+  /// <param name="strings">array of char* pointers</param>
+  /// <param name="inner_index">inner index to be copied. Use empty span for fully sparse tensors.</param>
+  /// <param name="outer_index">outer index to be copied. Use empty span for fully sparse tensors.</param>
+  /// <returns></returns>
+  Status MakeCsrStrings(size_t string_count, const char* const* strings,
+                        gsl::span<const int64_t> inner_index,
+                        gsl::span<const int64_t> outer_index);
 
   /// <summary>
   /// Give writable access to Csr values and indices
@@ -307,9 +389,9 @@ class SparseTensor final {
   /// Allocates memory for values and index and returns mutator so
   /// data can be populated.
   /// </summary>
-  /// <param name="values_count"></param>
-  /// <param name="inner_index_count"></param>
-  /// <param name="outer_index_count"></param>
+  /// <param name="values_count">Use 0 for fully sparse tensors.</param>
+  /// <param name="inner_index_count">Use 0 for fully sparse tensors.</param>
+  /// <param name="outer_index_count">Use 0 for fully sparse tensors.</param>
   /// <returns></returns>
   CsrMutator MakeCsrData(size_t values_count, size_t inner_index_count, size_t outer_index_count);
 
@@ -338,8 +420,8 @@ class SparseTensor final {
   /// were supplied to the constructor. The supplied buffer lifespan must eclipse the life
   /// of sparse tensor instance.
   /// </summary>
-  /// <param name="indices_shape"></param>
-  /// <param name="indices_data"></param>
+  /// <param name="indices_shape">Use {0} for fully sparse tensors.</param>
+  /// <param name="indices_data">Ptr to user allocated buffer. Use nullptr for fully spare tensors.</param>
   /// <returns></returns>
   Status UseBlockSparseIndices(const TensorShape& indices_shape, int32_t* indices_data);
 
@@ -350,19 +432,34 @@ class SparseTensor final {
   ///
   // The shape of the index is must be at least 2-D and must contain one tuple per each of
   // the value blocks that  were supplied to the constructor. Each index tuple is a
-  // (row, col) coordindate of the values block in a dense matrix.
+  // (row, col) coordinates of the values block in a dense matrix.
   /// </summary>
   /// <param name="data_transfer"></param>
   /// <param name="data_location"></param>
-  /// <param name="values_shape"></param>
-  /// <param name="values_data"></param>
-  /// <param name="indices_shape"></param>
-  /// <param name="indices_data"></param>
+  /// <param name="values_shape">The shape is expected to be at least 3-D. However, use {0} for fully sparse tensors.</param>
+  /// <param name="values_data">Pointer to a data to be copied. Use nullptr for fully sparse tensors.</param>
+  /// <param name="indices_shape">The shape is expected to be 2-D. However, you can use {0} for fully sparse tensors.</param>
+  /// <param name="indices_data">Pointer to index data to be copied. Use nullptr for fully sparse tensors.</param>
   /// <returns></returns>
   Status MakeBlockSparseData(const IDataTransfer& data_transfer,
                              const OrtMemoryInfo& data_location,
                              const TensorShape& values_shape, const void* values_data,
                              const TensorShape& indices_shape, const int32_t* indices_data);
+
+
+  /// <summary>
+  /// The method allocates a single contiguous buffer and creates instances of std::strings in it, with
+  /// copies of the supplied zero-terminated strings followed by COO indices.
+  /// All data is assumed to be on CPU and the allocator supplied must be
+  /// a CPU based allocator.
+  /// </summary>
+  /// <param name="values_shape">Use {0} shape for fully sparse tensors</param>
+  /// <param name="strings">array of char* ptrs, use nullptr for fully sparse tensor</param>
+  /// <param name="indices_shape">Use {0} for fully sparse tensors</param>
+  /// <param name="indices_data">use nullptr for fully sparse tensors</param>
+  /// <returns></returns>
+  Status MakeBlockSparseStrings(const TensorShape& values_shape, const char* const* strings,
+                                const TensorShape& indices_shape, const int32_t* indices_data);
 
   /// <summary>
   /// Mutable data access
@@ -383,8 +480,8 @@ class SparseTensor final {
   /// Allocates memory for values and index and returns mutator so
   /// data can be populated
   /// </summary>
-  /// <param name="values_shape"></param>
-  /// <param name="indices_shape"></param>
+  /// <param name="values_shape">Shape is expected to be 3-D, use {0} for fully sparse tensors</param>
+  /// <param name="indices_shape">Shape is expected to be 2-D, use {0} for fully sparse tensors </param>
   /// <returns></returns>
   BlockSparseMutator MakeBlockSparseData(const TensorShape& values_shape, const TensorShape& indices_shape);
 
@@ -416,6 +513,7 @@ class SparseTensor final {
 
   Status ValidateCsrIndices(size_t values_count, size_t inner_size, size_t outer_size) const;
   void InitCsrIndices(size_t inner_size, const int64_t* inner, size_t outer_size, const int64_t* outer);
+  void InitBlockSparseIndices(const TensorShape& indices_shape, int32_t* indices_data);
 
   SparseFormat format_;                        // sparse format enum value
   TensorShape dense_shape_;                    // a shape of a corresponding dense tensor
@@ -432,3 +530,5 @@ class SparseTensor final {
 };
 
 }  // namespace onnxruntime
+
+#endif

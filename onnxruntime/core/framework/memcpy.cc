@@ -25,7 +25,9 @@ Status Memcpy::Compute(OpKernelContext* ctx) const {
                                                " Input shape:", X->Shape(), " Output shape:", Y->Shape(),
                                                " X data:", X->DataRaw(), " Y data:", Y->DataRaw());
     }
-  } else if (input_type_0->IsSparseTensorType()) {
+  }
+#if !defined(DISABLE_SPARSE_TENSORS)
+  else if (input_type_0->IsSparseTensorType()) {
     const auto* X = ctx->Input<SparseTensor>(0);
     SparseTensor* Y = ctx->OutputSparse(0, X->DenseShape());
     retval = X->Copy(Info().GetDataTransferManager(), Info().GetKernelDef().ExecQueueId(), *Y);
@@ -35,7 +37,9 @@ Status Memcpy::Compute(OpKernelContext* ctx) const {
                                                " to ", Node().OutputDefs()[0]->Name(),
                                                " Input shape:", X->DenseShape(), " Output shape:", Y->DenseShape());
     }
-  } else {
+  }
+#endif
+  else {
     ORT_NOT_IMPLEMENTED("Input type not supported: ", DataTypeImpl::ToString(input_type_0));
   }
 

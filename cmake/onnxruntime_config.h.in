@@ -3,8 +3,8 @@
 
 #pragma once
 
+#cmakedefine HAS_UNUSED_BUT_SET_PARAMETER
 #cmakedefine HAS_UNUSED_BUT_SET_VARIABLE
-#cmakedefine HAS_UNUSED_PARAMETER
 #cmakedefine HAS_UNUSED_VARIABLE
 #cmakedefine HAS_CAST_FUNCTION_TYPE
 #cmakedefine HAS_PARENTHESES
@@ -18,4 +18,5 @@
 #cmakedefine HAS_CLASS_MEMACCESS
 #cmakedefine HAS_MAYBE_UNINITIALIZED
 #cmakedefine HAS_DEPRECATED_DECLARATIONS
+#cmakedefine HAS_FORMAT_TRUNCATION
 #cmakedefine ORT_VERSION "@ORT_VERSION@"

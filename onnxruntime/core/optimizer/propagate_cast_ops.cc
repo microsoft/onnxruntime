@@ -66,8 +66,8 @@ static std::string GetName(const std::pair<const NodeArg*, std::vector<Node*>>& 
 */
 static std::vector<std::unordered_set<std::string>> fp16_allow_ops = {
     /* Level 0 */ {},
-    /* Level 1 */ {"Transpose", "Relu", "Reshape", "Split", "Tanh"},
-    /* Level 2 */ {"BiasGelu", "Dropout", "FastGelu", "Gather", "Gelu", "LayerNormalization", "Where"}};
+    /* Level 1 */ {"Expand", "Transpose", "Relu", "Reshape", "Split", "Tanh", "Squeeze", "Unsqueeze"},
+    /* Level 2 */ {"Add", "BiasGelu", "Dropout", "FastGelu", "Gather", "Gelu", "LayerNormalization", "Where"}};
 
 /*
 *  The following two maps specify the opcode to input and opcode to output mappings to list the inputs/outputs to consider while propagating
@@ -79,14 +79,20 @@ static std::unordered_map<std::string, std::vector<int>> opcode_to_input_map = {
     {"Gather", {0}},
     {"Reshape", {0}},
     {"Dropout", {0}},
+    {"Expand", {0}},
     {"LayerNormalization", {0, 1, 2}},
+    {"Squeeze", {0}},
+    {"Unsqueeze", {0}}
 };
 
 static std::unordered_map<std::string, std::vector<int>> opcode_to_output_map = {
     {"Gather", {0}},
     {"Reshape", {0}},
     {"Dropout", {0}},
+    {"Expand", {0}},
     {"LayerNormalization", {0}},
+    {"Squeeze", {0}},
+    {"Unsqueeze", {0}}
 };
 
 static std::unordered_set<std::string> inserted_node_names;   // Names of the nodes inserted
@@ -127,12 +133,16 @@ static bool IsFP16Allow(const std::string& op_type, size_t level) {
   return fp16_allow;
 }
 
-// Check whether the node is cast operation to the specified data type
+// Check whether the node is a cast operation from float16/float to the specified data_type.
 static bool IsCastTo(const Node* node, TensorProto_DataType data_type) {
   if (node->OpType() == "Cast") {
     const NodeAttributes& attributes = node->GetAttributes();
     ORT_ENFORCE(attributes.find("to") != attributes.end());
-    return attributes.at("to").i() == static_cast<int64_t>(data_type);
+    const NodeArg* input = node->InputDefs()[0];
+    auto input_data_type = static_cast<TensorProto_DataType>(input->TypeAsProto()->tensor_type().elem_type());
+    // Allow cast nodes with same input and output type float/float16 to eliminate such casts.
+    return (input_data_type == TensorProto::FLOAT16 || input_data_type == TensorProto::FLOAT) &&
+           attributes.at("to").i() == static_cast<int64_t>(data_type);
   }
   return false;
 }
@@ -382,14 +392,15 @@ static Status RemoveCastNodesChain(Graph& graph, std::vector<Node*> casts, std::
 *                         |__________|
 *                              |
 *                         _____V______                         ____________
-*                         | Cast FP16|                         | Opcode 1 |  
-*                         |__________|                         |__________|
-*                              |                                    |
+*                         | Cast     |                         | Opcode 1 |
+*                         |FP16->FP32|                         |__________|
+*                         |__________|                              |
 *                              |                                    |
 *                              |                  ---\         _____V______
 *                              |                  ---/         | Opcode2  |
 *                         _____V______                         |__________|
-*                         | Cast FP32|
+*                         | Cast     |
+                          |FP32->Fp16|
 *                         |__________|
 *                              |
 *                         _____V______
@@ -403,14 +414,15 @@ static Status RemoveCastNodesChain(Graph& graph, std::vector<Node*> casts, std::
 *                         |__________|
 *                              |
 *                         _____V______                         ____________
-*                         | Cast FP32|                         | Opcode 1 |  
-*                         |__________|                         |__________|
-*                              |                                    |
+*                         | Cast     |                         | Opcode 1 |
+*                         |FP16->FP32|                         |__________|
+*                         |__________|                              |
 *                              |                                    |
 *                              |                  ---\         _____V______
 *                              |                  ---/         | Cast FP32|
 *                         _____V______                         |__________|
-*                         | Cast FP32|                              |
+*                         | Cast     |                              |
+*                         |FP32->FP32|                              |
 *                         |__________|                         _____V______
 *                              |                               | Opcode2  |
 *                         _____V______                         |__________|
@@ -525,9 +537,9 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg, Node* dst_node,
   // Do not traverse up the graph if the node produces a graph output as well as feeds other nodes
   // or if the node has more than one consumers.
   if (level < 2 && (consumer_node_count > 1 ||
-                    nullptr != node &&
-                        consumer_node_count > 0 &&
-                        graph.IsOutput(node_arg))) {
+                    (nullptr != node &&
+                     consumer_node_count > 0 &&
+                     graph.IsOutput(node_arg)))) {
     require_cast[node_arg].push_back(dst_node);
   } else if (node == nullptr) {
     // The graph inputs don't have the producer nodes
@@ -1094,141 +1106,6 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
 }
 
 /*
-* RemoveInputOutputUpDownCasts
-* When all the floatingpoint inputs on a node with ANY opcode are FP32 Cast outputs and
-* all the outputs are casted to FP16, remove the input FP32 casts and output FP16 casts.
-* This transformation only makes difference to opcodes not listed in FP16 allowed opcodes.
-* This transformation is less aggressive than adding all such opcodes that can benefit form
-* this transformation to FP16 allowed opcodes.
-*
-*        Input0/NodeArg  Input1/NodeArg
-*               |             |
-*          _____V____    _____V______                         
-*          |Cast FP32|   | Cast FP32| 
-*          |_________|   |__________|                        
-*               |              |             
-*             __V______________V___                         
-*            |       Opcode        |
-*            |(operation performed |
-*            |    in float32)      |
-*            |_____________________|                               
-*               |               |
-*          _____V____      _____V______                         
-*          |Cast FP16|     | Cast FP16| 
-*          |_________|     |__________|                        
-*                |              |         
-*                V              V
-*
-*
-*        Input0/NodeArg  Input1/NodeArg
-*               |              |
-*             __V______________V___                         
-*            |       Opcode        |
-*            |(operation performed |
-*            |    in float16)      |
-*            |_____________________|                               
-*               |               |
-*               |               |         
-*               V               V
-*/
-static bool RemoveInputOutputUpDownCasts(Graph& graph, Node* node,
-                                      std::deque<NodeIndex>& removed_nodes,
-                                      size_t level,
-                                      const logging::Logger& logger) {
-  bool modified = false;
-  bool has_float_outputs = false;
-  bool has_float_inputs = false;
-  bool all_float_outputs_have_casts = true;
-  bool all_float_inputs_have_casts = true;
-  std::vector<Node*> input_casts;
-  std::vector<Node*> output_casts;
-  std::vector<NodeArg*>& outputs = node->MutableOutputDefs();
-  std::vector<NodeArg*>& inputs = node->MutableInputDefs();
-  std::unordered_set<NodeArg*> require_type_change;
-  NodeArgToConsumerMap non_cast_consumers_map;
-  NodeArgToConsumerMap non_cast_producers_map;
-  for (auto iter = outputs.begin(); iter != outputs.end() && (level >= 2 || all_float_outputs_have_casts); ++iter) {
-    NodeArg* output = *iter;
-    if (!IsType(*output, TensorProto::FLOAT) || !IsRelevantOutput(node, output)) {
-      continue;
-    }
-    has_float_outputs = true;
-    std::vector<Node*> consumers = graph.GetMutableConsumerNodes(output->Name());
-    for (auto node_iter = consumers.begin(); node_iter != consumers.end() && (level >= 2 || all_float_outputs_have_casts); ++node_iter) {
-      Node* consumer = *node_iter;
-      if (nullptr != consumer &&
-          std::find(removed_nodes.begin(), removed_nodes.end(), consumer->Index()) == removed_nodes.end()) {
-        if (IsCastTo(consumer, TensorProto::FLOAT16)) {
-          output_casts.push_back(consumer);
-        } else {
-          non_cast_consumers_map[output].push_back(consumer);
-          all_float_outputs_have_casts = false;
-        }
-      }
-    }
-    if (graph.IsOutput(output) && non_cast_consumers_map.find(output) == non_cast_consumers_map.end()) {
-      non_cast_consumers_map[output] = std::vector<Node*>();
-    }
-    if (non_cast_consumers_map.empty()) {
-      require_type_change.insert(output);
-    }
-  }
-  for (auto iter = inputs.begin(); iter != inputs.end() && (level >= 2 || all_float_inputs_have_casts); ++iter) {
-    NodeArg* input = *iter;
-    if (!IsType(*input, TensorProto::FLOAT) || !IsRelevantInput(node, input)) {
-      continue;
-    }
-    has_float_inputs = true;
-    Node* producer = graph.GetMutableProducerNode(input->Name());
-    if (nullptr != producer) {
-      if (std::find(removed_nodes.begin(), removed_nodes.end(), producer->Index()) == removed_nodes.end()) {
-        if (IsCastTo(producer, TensorProto::FLOAT) &&
-            producer->GetOutputEdgesCount() == 1 &&
-            !graph.IsOutput(input)) {
-          input_casts.push_back(producer);
-          require_type_change.insert(input);
-        } else {
-          non_cast_producers_map[input].push_back(node);
-          all_float_inputs_have_casts = false;
-        }
-      }
-    } else if (graph_utils::IsGraphInput(graph, input)) {
-      non_cast_producers_map[input].push_back(node);
-      all_float_inputs_have_casts = false;
-    }
-  }
-  if (has_float_outputs && has_float_inputs &&
-      (level >= 2 || (all_float_outputs_have_casts && all_float_inputs_have_casts)) &&
-      (input_casts.size() > 0 && output_casts.size() > 0)) {
-    if (non_cast_consumers_map.size() > 0) {
-      InsertCastNodes(graph, non_cast_consumers_map, false, removed_nodes);
-      LOGS(logger, VERBOSE) << "RemoveInputOutputUpDownCasts: Inserted FP32 Cast node to "
-                            << ConcatNames<NodeArgToConsumerMap>(non_cast_consumers_map, GetName);
-    }
-    for (Node* cast : input_casts) {
-      RemoveCastNodesChain(graph, {cast}, removed_nodes);
-    }
-    LOGS(logger, VERBOSE) << "RemoveInputOutputUpDownCasts: Removed Cast nodes "
-                          << ConcatNames<std::vector<Node*>>(input_casts)
-                          << " feeding from the same compute node " << node->Name();
-    if (non_cast_producers_map.size() > 0) {
-      InsertCastNodes(graph, non_cast_producers_map, true, removed_nodes);
-      LOGS(logger, VERBOSE) << "RemoveInputOutputUpDownCasts: Inserted FP16 Cast node to "
-                            << ConcatNames<NodeArgToConsumerMap>(non_cast_producers_map, GetName);
-    }
-    for (Node* cast : output_casts) {
-      RemoveCastNodesChain(graph, {cast}, removed_nodes);
-    }
-    LOGS(logger, VERBOSE) << "RemoveInputOutputUpDownCasts: Removed Cast nodes "
-                          << ConcatNames<std::vector<Node*>>(output_casts)
-                          << " feeding the same compute node " << node->Name();
-    ChangeTypeToFP16(graph, require_type_change, false, logger);
-    modified = true;
-  }
-  return modified;
-}
-
-/*
 *  CreateCast
 *  Create a cast node based on the node_arg for the given data type. If the node_arg is a graph output is_graph_outut is set.
 *  If the node_arg is not a graph output then the node_arg is the input of the new cast node. Otherwise the node_arg is the output
@@ -1501,18 +1378,6 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
         if (nullptr != node &&
             std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end()) {
           local_modified |= PropagateFP32CastsFromInputsToOutputs(graph, node, removed_nodes, level_, logger);
-        }
-      }
-
-      // Eliminate FP32 input casts and FP16 output casts
-      if ((strategy_ & GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::RemoveInputOutputUpDownCasts) !=
-          GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::None) {
-        for (auto node_index : node_topology_list) {
-          Node* node = graph.GetNode(node_index);
-          if (nullptr != node &&
-              std::find(removed_nodes.begin(), removed_nodes.end(), node->Index()) == removed_nodes.end()) {
-            local_modified |= RemoveInputOutputUpDownCasts(graph, node, removed_nodes, level_, logger);
-          }
         }
       }
 

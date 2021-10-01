@@ -660,7 +660,9 @@ extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchSse41;
 extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchAvx2;
 extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8U8DispatchAvx2;
 extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchNeon;
+extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmS8S8DispatchNeon;
 extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchUdot;
+extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchWasmSimd;
 extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchDefault;
 
 //
@@ -1332,7 +1334,7 @@ MlasStoreLowHalfFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector)
 #elif defined(MLAS_SSE2_INTRINSICS)
     _mm_storel_pi((__m64*)Buffer, Vector);
 #elif defined(MLAS_VSX_INTRINSICS)
-    *((int64_t*)Buffer) = ((__vector int64_t)Vector)[0];
+    *((long long*)Buffer) = ((__vector long long)Vector)[0];
 #else
     MlasStoreLaneFloat32x4<0>(&Buffer[0], Vector);
     MlasStoreLaneFloat32x4<1>(&Buffer[1], Vector);
@@ -1554,6 +1556,8 @@ MlasGreaterThanFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
     return _mm_cmpgt_ps(Vector1, Vector2);
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_f32x4_gt(Vector1, Vector2);
+#elif defined(MLAS_VSX_INTRINSICS)
+    return MLAS_FLOAT32X4(vec_cmpgt(Vector1, Vector2));
 #else
     return Vector1 > Vector2;
 #endif
@@ -1627,7 +1631,7 @@ MlasMaximumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_max_ps(Vector1, Vector2);
 #elif defined(MLAS_VSX_INTRINSICS)
-    return vec_sel(Vector2, Vector1, vec_cmpgt(Vector1, Vector2));
+    return vec_sel(vec_sel(vec_sel(Vector2, Vector1, vec_cmpgt(Vector1, Vector2)), Vector1, vec_cmpne(Vector1, Vector1)), Vector2, vec_cmpne(Vector2, Vector2));
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_f32x4_max(Vector1, Vector2);
 #else
@@ -1644,7 +1648,7 @@ MlasMinimumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_min_ps(Vector1, Vector2);
 #elif defined(MLAS_VSX_INTRINSICS)
-    return vec_sel(Vector2, Vector1, vec_cmpgt(Vector2, Vector1));
+    return vec_sel(vec_sel(vec_sel(Vector2, Vector1, vec_cmpgt(Vector2, Vector1)), Vector1, vec_cmpne(Vector1, Vector1)), Vector2, vec_cmpne(Vector2, Vector2));
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_f32x4_min(Vector1, Vector2);
 #else
@@ -1680,7 +1684,7 @@ MlasReduceAddFloat32x4(MLAS_FLOAT32X4 Vector)
     VectorLow = vpadd_f32(VectorLow, VectorHigh);
     return vget_lane_f32(VectorLow, 0);
 #elif defined(MLAS_VSX_INTRINSICS)
-    Vector = MlasAddFloat32x4(Vector, MLAS_FLOAT32X4(vec_splat((__vector int64_t)Vector, 1)));
+    Vector = MlasAddFloat32x4(Vector, MLAS_FLOAT32X4(vec_splat((__vector long long)Vector, 1)));
     Vector = MlasAddFloat32x4(Vector, vec_splat(Vector, 1));
     return Vector[0];
 #else
@@ -1703,7 +1707,7 @@ MlasReduceMaximumFloat32x4(MLAS_FLOAT32X4 Vector)
     VectorLow = vpmax_f32(VectorLow, VectorHigh);
     return vget_lane_f32(VectorLow, 0);
 #elif defined(MLAS_VSX_INTRINSICS)
-    Vector = MlasMaximumFloat32x4(Vector, MLAS_FLOAT32X4(vec_splat((__vector int64_t)Vector, 1)));
+    Vector = MlasMaximumFloat32x4(Vector, MLAS_FLOAT32X4(vec_splat((__vector long long)Vector, 1)));
     Vector = MlasMaximumFloat32x4(Vector, vec_splat(Vector, 1));
     return Vector[0];
 #else
@@ -1726,7 +1730,7 @@ MlasReduceMinimumFloat32x4(MLAS_FLOAT32X4 Vector)
     VectorLow = vpmin_f32(VectorLow, VectorHigh);
     return vget_lane_f32(VectorLow, 0);
 #elif defined(MLAS_VSX_INTRINSICS)
-    Vector = MlasMinimumFloat32x4(Vector, MLAS_FLOAT32X4(vec_splat((__vector int64_t)Vector, 1)));
+    Vector = MlasMinimumFloat32x4(Vector, MLAS_FLOAT32X4(vec_splat((__vector long long)Vector, 1)));
     Vector = MlasMinimumFloat32x4(Vector, vec_splat(Vector, 1));
     return Vector[0];
 #else

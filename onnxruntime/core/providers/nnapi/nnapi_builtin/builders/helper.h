@@ -110,7 +110,8 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
 bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, const Node& node,
                                     const std::vector<size_t>& indices);
 
-float GetQuantizationScale(const InitializedTensorSet& initializers, const Node& node, size_t idx);
+common::Status GetQuantizationScale(const InitializedTensorSet& initializers, const Node& node,
+                                    size_t idx, float& scale);
 
 common::Status GetQuantizationZeroPoint(const InitializedTensorSet& initializers,
                                         const Node& node, size_t idx, int32_t& zero_point) ORT_MUST_USE_RESULT;

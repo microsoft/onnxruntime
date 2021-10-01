@@ -216,7 +216,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       const Node* p_sub2_node = graph_utils::FirstParentByType(nodes_to_remove.back(), "Sub");
       if (p_sub2_node != nullptr) {
         // Cast is between Sub and Pow
-        if (p_sub2_node != p_sub_node && p_sub2_node != p_sub_node_dup || !IsSupportedDataType(cast_node)) {
+        if ((p_sub2_node != p_sub_node && p_sub2_node != p_sub_node_dup) || !IsSupportedDataType(cast_node)) {
           continue;
         }
       }

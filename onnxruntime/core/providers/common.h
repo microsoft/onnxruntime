@@ -145,7 +145,7 @@ inline bool Contains(const AssociativeContainer& container, const Key& key) {
 // Note: This helper function will not have overflow protection
 template <template <typename...> class Container, typename T>
 T Product(const Container<T>& c) {
-  return accumulate(c.cbegin(), c.cend(), 1, std::multiplies<T>());
+  return accumulate(c.cbegin(), c.cend(), static_cast<T>(1), std::multiplies<T>());
 }
 
 }  // namespace onnxruntime

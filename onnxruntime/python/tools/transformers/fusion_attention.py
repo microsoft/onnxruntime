@@ -12,16 +12,10 @@ from onnx import helper, numpy_helper, TensorProto, NodeProto
 from onnx_model import OnnxModel
 from fusion_base import Fusion
 from fusion_utils import FusionUtils, NumpyHelper
+from fusion_options import AttentionMaskFormat
 from shape_infer_helper import SymbolicShapeInferenceHelper, get_shape_from_type_proto
 
 logger = getLogger(__name__)
-
-
-class AttentionMaskFormat:
-    MaskIndexEnd = 0
-    MaskIndexEndAndStart = 1
-    AttentionMask = 2
-    NoMask = 3
 
 
 class AttentionMask():
@@ -94,6 +88,10 @@ class FusionAttention(Fusion):
         self.num_heads = num_heads
         self.attention_mask = attention_mask
 
+        # Flags to show warning only once
+        self.num_heads_warning = True
+        self.hidden_size_warning = True
+
     def get_num_heads_and_hidden_size(self, reshape_q: NodeProto) -> Tuple[int, int]:
         """ Detect num_heads and hidden_size from a reshape node.
 
@@ -120,10 +118,15 @@ class FusionAttention(Fusion):
         hidden_size = num_heads * head_size
 
         if self.num_heads > 0 and num_heads != self.num_heads:
-            logger.warn(f"--num_heads is {self.num_heads}. Detected value is {num_heads}. Using detected value.")
+            if self.num_heads_warning:
+                logger.warning(f"--num_heads is {self.num_heads}. Detected value is {num_heads}. Using detected value.")
+                self.num_heads_warning = False  # Do not show the warning more than once
 
         if self.hidden_size > 0 and hidden_size != self.hidden_size:
-            logger.warn(f"--hidden_size is {self.hidden_size}. Detected value is {hidden_size}. Using detected value.")
+            if self.hidden_size_warning:
+                logger.warning(
+                    f"--hidden_size is {self.hidden_size}. Detected value is {hidden_size}. Using detected value.")
+                self.hidden_size_warning = False  # Do not show the warning more than once
 
         return num_heads, hidden_size
 
@@ -199,10 +202,9 @@ class FusionAttention(Fusion):
         assert qw_in_size == kw_in_size == vw_in_size
 
         if hidden_size > 0 and hidden_size != qw_in_size:
-            logger.debug(
+            logger.warning(
                 f"Input hidden size {hidden_size} is not same as weight matrix dimension of q,k,v paths {qw_in_size}, provide correct input hidden size or pass 0"
             )
-            return None
 
         is_qkv_diff_dims = False
         if qw.shape != vw.shape:
@@ -358,7 +360,7 @@ class FusionAttention(Fusion):
             logger.debug("fuse_attention: failed to match v path")
             return
         (_, _, add_v, matmul_v) = v_nodes
- 
+
         is_distill = False
         is_distill_add = False
         qk_paths = {
@@ -448,8 +450,8 @@ class FusionAttention(Fusion):
             # number of heads are same for all the paths, hence to create attention node, we pass the q_num_heads
             # the input_hidden_size represents the input hidden size, this is used as needed but hidden sizes for Q, K are extracted appropriately
             new_node = self.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v, add_q, add_k, add_v,
-                                                  q_num_heads, self.hidden_size, root_input,
-                                                  attention_last_node.output[0], add_qk_str)
+                                                  q_num_heads, q_hidden_size, root_input, attention_last_node.output[0],
+                                                  add_qk_str)
             if new_node is None:
                 return
 

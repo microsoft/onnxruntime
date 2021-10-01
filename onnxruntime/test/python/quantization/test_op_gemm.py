@@ -143,8 +143,8 @@ class TestOpGEMM(unittest.TestCase):
         data_reader.rewind()
         quant_nodes = {'MatMul' : 2,
                        'Add' : 2,
-                       'QuantizeLinear' : 4,
-                       'DequantizeLinear' : 8}
+                       'QuantizeLinear' : 5,
+                       'DequantizeLinear' : 9}
         check_op_type_count(self, model_int8_path, **quant_nodes)
         check_model_correctness(self, model_fp32_path, model_int8_path, data_reader.get_next())
 
