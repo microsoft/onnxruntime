@@ -165,9 +165,8 @@ Status SigmoidGrad<T>::Compute(OpKernelContext* context) const {
   ConstEigenVectorArrayMap<float> xm = ConstEigenVectorArrayMap<float>(X.template Data<T>(), X.Shape().Size());
   ConstEigenVectorArrayMap<float> dy = ConstEigenVectorArrayMap<float>(dY.template Data<T>(), dY.Shape().Size());
   dx = 1 / (1. + (-xm.abs()).exp());
-  dx = (xm >= 0).select(dx, 1 - dx); // calculate sigmoid(X)
-  dx = dx * (1-dx);  // calculate derivative sigmoid(X) * (1-sigmoid(X))
-  dx = dx * dy;    // calculate the output
+  dx *= 1-dx;  // calculate derivative sigmoid(X) * (1-sigmoid(X))
+  dx *= dy;    // calculate the output
   return Status::OK();
 }
 }  // namespace contrib
