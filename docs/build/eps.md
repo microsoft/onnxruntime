@@ -302,6 +302,11 @@ A minimum of two device's should be specified for a valid HETERO or Multi-Device
 Example's: HETERO:MYRIAD,CPU or HETERO:HDDL,GPU,CPU or MULTI:MYRIAD,GPU,CPU
 ```
 
+#### Disable subgraph partition Feature
+* `--disable_graph_partition` builds the OpenVINO Execution Provider in ONNX Runtime with sub graph partitioning disabled.
+
+With this option enabled. Fully supported models run on OpenVINO Execution Provider else they completely fall back to default CPU EP.
+
 For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document [OpenVINO-ExecutionProvider](../execution-providers/OpenVINO-ExecutionProvider.md)
 
 ---
