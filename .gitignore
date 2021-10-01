@@ -29,6 +29,7 @@ onnxruntime_profile*.json
 /docs/python/inference/media/*
 /docs/python/inference/examples/*.onnx
 /docs/python/inference/examples/graph.*
+/docs/python/training/auto_examples/*
 /docs/python/*_LICENSE
 /LICENSE.txt
 /csharp/**/obj/

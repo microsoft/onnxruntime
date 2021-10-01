@@ -251,8 +251,6 @@ def create_training_session(training_onnx, weights_to_train, loss_output_name='l
 
     session = TrainingSession(
         training_onnx.SerializeToString(), ort_parameters, session_options)
-    train_io_binding = session.io_binding()
-    eval_io_binding = session.io_binding()
     return session
 
 

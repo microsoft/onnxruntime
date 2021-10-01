@@ -142,17 +142,17 @@ TrainingGraphTransformerConfiguration
 Functions
 +++++++++
 
-.. autofunc:: onnxruntime.capi._pybind_state.register_aten_op_executor
+.. autofunction:: onnxruntime.capi._pybind_state.register_aten_op_executor
 
-.. autofunc:: onnxruntime.capi._pybind_state.register_backward_runner
+.. autofunction:: onnxruntime.capi._pybind_state.register_backward_runner
 
-.. autofunc:: onnxruntime.capi._pybind_state.register_forward_runner
+.. autofunction:: onnxruntime.capi._pybind_state.register_forward_runner
 
-.. autofunc:: onnxruntime.capi._pybind_state.register_torch_autograd_function
+.. autofunction:: onnxruntime.capi._pybind_state.register_torch_autograd_function
 
-.. autofunc:: onnxruntime.capi._pybind_state.register_gradient_definition
+.. autofunction:: onnxruntime.capi._pybind_state.register_gradient_definition
 
-.. autofunc:: onnxruntime.capi._pybind_state.unregister_python_functions
+.. autofunction:: onnxruntime.capi._pybind_state.unregister_python_functions
 
 TrainingSession
 +++++++++++++++

@@ -19,6 +19,9 @@ This example follows the same steps introduced in example
 A simple linear regression with scikit-learn
 ++++++++++++++++++++++++++++++++++++++++++++
 
+This code begins like example :ref:`l-orttraining-linreg-gpu`.
+It creates a graph to train a linear regression initialized
+with random coefficients.
 """
 import os
 from pprint import pprint
@@ -27,7 +30,7 @@ from pandas import DataFrame
 from onnx import helper, numpy_helper, TensorProto, ModelProto
 from onnx.tools.net_drawer import GetPydotGraph, GetOpNodeProducer
 from onnxruntime import (
-    InferenceSession, __version__ as ort_version,
+    InferenceSession, __version__ as ort_version, get_device, OrtValue,
     TrainingParameters, SessionOptions, TrainingSession)
 import matplotlib.pyplot as plt
 from pyquickhelper.helpgen.graphviz_helper import plot_graphviz
@@ -41,70 +44,12 @@ y = y.astype(np.float32)
 X_train, X_test, y_train, y_test = train_test_split(X, y)
 
 
-###################################
-# An equivalent ONNX graph.
-# +++++++++++++++++++++++++
-#
-# This graph can be obtained with *sklearn-onnx` as we need to
-# modify it for training, it is easier to create an explicit one.
-
-
-def onnx_linear_regression(coefs, intercept):
-    if len(coefs.shape) == 1:
-        coefs = coefs.reshape((1, -1))
-    coefs = coefs.T
-
-    X = helper.make_tensor_value_info(
-        'X', TensorProto.FLOAT, [None, coefs.shape[0]])
-    Y = helper.make_tensor_value_info(
-        'Y', TensorProto.FLOAT, [None, coefs.shape[1]])
-
-    # inference
-    node_matmul = helper.make_node('MatMul', ['X', 'coefs'], ['y1'], name='N1')
-    node_add = helper.make_node('Add', ['y1', 'intercept'], ['Y'], name='N2')
-
-    # initializer
-    init_coefs = numpy_helper.from_array(coefs, name="coefs")
-    init_intercept = numpy_helper.from_array(intercept, name="intercept")
-
-    # graph
-    graph_def = helper.make_graph(
-        [node_matmul, node_add], 'lr', [X], [Y],
-        [init_coefs, init_intercept])
-    model_def = helper.make_model(
-        graph_def, producer_name='orttrainer', ir_version=7,
-        producer_version=ort_version,
-        opset_imports=[helper.make_operatorsetid('', 14)])
-    return model_def
-
-
-onx = onnx_linear_regression(
-    np.random.randn(2).astype(np.float32),
-    np.random.randn(1).astype(np.float32))
-
-########################################
-# Let's visualize it.
-
 def plot_dot(model):
     pydot_graph = GetPydotGraph(
         model.graph, name=model.graph.name, rankdir="TB",
         node_producer=GetOpNodeProducer("docstring"))
     return plot_graphviz(pydot_graph.to_string())
     
-plot_dot(onx)
-
-
-#####################################
-# Training with onnxruntime-training
-# ++++++++++++++++++++++++++++++++++
-#
-# It is possible only if the graph to train has a gradient.
-# Then the model can be trained with a gradient descent algorithm.
-# The previous graph only predicts, a new graph needs to be created
-# to compute the loss as well. In our case, it is a square loss.
-# The new graph requires another input for the label
-# and another output for the loss value.
-
 
 def onnx_linear_regression_training(coefs, intercept):
     if len(coefs.shape) == 1:
@@ -144,58 +89,11 @@ def onnx_linear_regression_training(coefs, intercept):
         opset_imports=[helper.make_operatorsetid('', 14)])
     return model_def
 
-#######################################
-# We create a graph with random coefficients.
-
 onx_train = onnx_linear_regression_training(
     np.random.randn(2).astype(np.float32),
     np.random.randn(1).astype(np.float32))
 
 plot_dot(onx_train)
-
-################################################
-# DataLoader
-# ++++++++++
-#
-# Next class draws consecutive random observations from a dataset
-# by batch.
-
-
-class DataLoader:
-    
-    def __init__(self, X, y, batch_size=20):
-        self.X, self.y = X, y
-        self.batch_size = batch_size
-        if len(self.y.shape) == 1:
-            self.y = self.y.reshape((-1, 1))
-        if self.X.shape[0] != self.y.shape[0]:
-            raise VaueError(
-                "Shape mismatch X.shape=%r, y.shape=%r." % (self.X.shape, self.y.shape))
-    
-    def __len__(self):
-        return self.X.shape[0]
-    
-    def __iter__(self):
-        N = 0
-        b = len(self) - self.batch_size
-        while N < len(self):
-            i = np.random.randint(0, b)
-            N += self.batch_size
-            yield (self.X[i:i+self.batch_size], self.y[i:i+self.batch_size])
-
-    @property
-    def data(self):
-        return self.X, self.y
-
-
-data_loader = DataLoader(X_train, y_train, batch_size=2)
-
-
-for i, batch in enumerate(data_loader):
-    if i >= 2:
-        break
-    print("batch %r: %r" % (i, batch))
-
 
 #########################################
 # First iterations of training on GPU
@@ -205,9 +103,12 @@ for i, batch in enumerate(data_loader):
 # the training needs an instance of class *TrainingSession*.
 # Next function creates this one.
 
+device = "cuda" if get_device() == 'GPU' else 'cpu'
+
 
 def create_training_session(training_onnx, weights_to_train, loss_output_name='loss',
-                            training_optimizer_name='SGDOptimizer'):
+                            training_optimizer_name='SGDOptimizer',
+                            device='cpu'):
     
     ort_parameters = TrainingParameters()
     ort_parameters.loss_output_name = loss_output_name
@@ -238,29 +139,25 @@ def create_training_session(training_onnx, weights_to_train, loss_output_name='l
     session_options = SessionOptions()
     session_options.use_deterministic_compute = True
 
+    if device == 'cpu':
+        provider = ['CPUExecutionProvider']
+    elif device.startswith("cuda"):
+        provider = ['CUDAExecutionProvider']
+    else:
+        raise ValueError("Unexpected device %r." % device)
+        
+
     session = TrainingSession(
-        training_onnx.SerializeToString(), ort_parameters, session_options)
-    train_io_binding = session.io_binding()
-    eval_io_binding = session.io_binding()
+        training_onnx.SerializeToString(), ort_parameters, session_options,
+        providers=provider)
     return session
 
 
 train_session = create_training_session(onx_train, ['coefs', 'intercept'])
 print(train_session)
 
-######################################
-# Let's look into the expected inputs and outputs.
-
-for i in train_session.get_inputs():
-    print("+input: %s (%s%s)" % (i.name, i.type, i.shape))
-for o in train_session.get_outputs():
-    print("output: %s (%s%s)" % (o.name, o.type, o.shape))
-
-######################################
-# A third parameter `Learning_Rate` was added.
-# The training updates the weight with a gradient multiplied
-# by this parameter. Let's see now how to 
-# retrieve the trained coefficients.
+##########################################
+# The coefficients.
 
 state_tensors = train_session.get_state()
 pprint(state_tensors)
@@ -268,43 +165,98 @@ pprint(state_tensors)
 ######################################
 # We can now check the coefficients are updated after one iteration.
 
-inputs = {'X': X_train[:1],
-          'label': y_train[:1].reshape((-1, 1)),
-          'Learning_Rate': np.array([0.001], dtype=np.float32)}
+bind_x = OrtValue.ortvalue_from_numpy(X_train[:1], device, 0)
+bind_y = OrtValue.ortvalue_from_numpy(y_train[:1].reshape((-1, 1)), device, 0)
+bind_lr = OrtValue.ortvalue_from_numpy(np.array([0.01], dtype=np.float32), device, 0)
 
-train_session.run(None, inputs)
+bind = train_session.io_binding()
+
+bind.bind_input(
+    name='X', device_type=bind_x.device_name(), device_id=0,
+    element_type=np.float32, shape=bind_x.shape(),
+    buffer_ptr=bind_x.data_ptr())
+
+bind.bind_input(
+    name='label', device_type=bind_y.device_name(), device_id=0,
+    element_type=np.float32, shape=bind_y.shape(),
+    buffer_ptr=bind_y.data_ptr())
+
+bind.bind_input(
+    name='Learning_Rate', device_type=bind_lr.device_name(), device_id=0,
+    element_type=np.float32, shape=bind_lr.shape(),
+    buffer_ptr=bind_lr.data_ptr())
+
+bind.bind_output('loss')
+bind.bind_output('Y')
+
+train_session.run_with_iobinding(bind)
+
+outputs = bind.copy_outputs_to_cpu()
+print(outputs)
+
+##########################################
+# We check the coefficients have changed.
+
 state_tensors = train_session.get_state()
 pprint(state_tensors)
 
-######################################
-# They changed. Another iteration to be sure.
-
-inputs = {'X': X_train[:1],
-          'label': y_train[:1].reshape((-1, 1)),
-          'Learning_Rate': np.array([0.001], dtype=np.float32)}
-res = train_session.run(None, inputs)
-state_tensors = train_session.get_state()
-pprint(state_tensors)
-
-#####################################
-# It works. The training loss can be obtained by looking into the results.
-
-pprint(res)
-
-######################################
-# Training
-# ++++++++
+##########################################
+# Training on GPU
+# +++++++++++++++
 #
-# We need to implement a gradient descent.
+# We still need to implement a gradient descent.
 # Let's wrap this into a class similar following scikit-learn's API.
 
+class DataLoaderDevice:
+    
+    def __init__(self, X, y, batch_size=20, device='cpu'):
+        if len(y.shape) == 1:
+            y = y.reshape((-1, 1))
+        if X.shape[0] != y.shape[0]:
+            raise VaueError(
+                "Shape mismatch X.shape=%r, y.shape=%r." % (X.shape, y.shape))
+        self.X = np.ascontiguousarray(X)
+        self.y = np.ascontiguousarray(y)
+        self.batch_size = batch_size
+        self.device = device
+    
+    def __len__(self):
+        return self.X.shape[0]
+    
+    def __iter__(self):
+        N = 0
+        b = len(self) - self.batch_size
+        while N < len(self):
+            i = np.random.randint(0, b)
+            N += self.batch_size
+            yield (
+                OrtValue.ortvalue_from_numpy(
+                    self.X[i:i+self.batch_size], self.device, 0),
+                OrtValue.ortvalue_from_numpy(
+                    self.y[i:i+self.batch_size], self.device, 0))
+
+    @property
+    def data(self):
+        return self.X, self.y
+
+
+data_loader = DataLoaderDevice(X_train, y_train, batch_size=2)
+
+
+for i, batch in enumerate(data_loader):
+    if i >= 2:
+        break
+    print("batch %r: %r" % (i, batch))
+
+##########################################
+# The training algorithm.
 
 class CustomTraining:
 
     def __init__(self, model_onnx, weights_to_train, loss_output_name='loss',
                  max_iter=100, training_optimizer_name='SGDOptimizer', batch_size=10, 
                  eta0=0.01, alpha=0.0001, power_t=0.25, learning_rate='invscaling',
-                 verbose=0):
+                 device='cpu', verbose=0):
         # See https://scikit-learn.org/stable/modules/generated/
         # sklearn.linear_model.SGDRegressor.html
         self.model_onnx = model_onnx
@@ -318,6 +270,7 @@ class CustomTraining:
         self.alpha = alpha
         self.power_t = power_t
         self.learning_rate = learning_rate.lower()
+        self.device = device
 
     def _init_learning_rate(self):
         eta0 = self.eta0
@@ -345,18 +298,24 @@ class CustomTraining:
         self.train_session_ = create_training_session(
             self.model_onnx, self.weights_to_train,
             loss_output_name=self.loss_output_name,
-            training_optimizer_name=self.training_optimizer_name)
+            training_optimizer_name=self.training_optimizer_name,
+            device=self.device)
         
-        data_loader = DataLoader(X, y, batch_size=self.batch_size)
+        data_loader = DataLoaderDevice(
+            X, y, batch_size=self.batch_size, device=self.device)
         lr = self._init_learning_rate()
         self.input_names_ = [i.name for i in self.train_session_.get_inputs()]
         self.output_names_ = [o.name for o in self.train_session_.get_outputs()]
         self.loss_index_ = self.output_names_.index(self.loss_output_name)
+        
+        bind = self.train_session_.io_binding()
     
         loop = tqdm(range(self.max_iter)) if self.verbose else range(max_iter)
         train_losses = []
         for it in loop:
-            loss = self._iteration(data_loader, lr)
+            bind_lr = OrtValue.ortvalue_from_numpy(
+                np.array([lr], dtype=np.float32), device, 0)
+            loss = self._iteration(data_loader, bind_lr, bind)
             lr = self._update_learning_rate(it, lr)
             if self.verbose > 1:
                 loop.set_description("loss=%1.3g lr=%1.3g" % (loss, lr))
@@ -365,18 +324,31 @@ class CustomTraining:
         self.trained_coef_ = self.train_session_.get_state()
         return self
         
-    def _iteration(self, data_loader, learning_rate):
+    def _iteration(self, data_loader, learning_rate, bind):
         actual_losses = []
-        lr = np.array([learning_rate], dtype=np.float32)
         for batch_idx, (data, target) in enumerate(data_loader):
-            if len(target.shape) == 1:
-                target = target.reshape((-1, 1))
                 
-            inputs = {self.input_names_[0]: data,
-                      self.input_names_[1]: target,
-                      self.input_names_[2]: lr}
-            res = self.train_session_.run(None, inputs)
-            actual_losses.append(res[self.loss_index_])
+            bind.bind_input(
+                name=self.input_names_[0], device_type=data.device_name(), device_id=0,
+                element_type=np.float32, shape=data.shape(),
+                buffer_ptr=data.data_ptr())
+
+            bind.bind_input(
+                name=self.input_names_[1], device_type=target.device_name(), device_id=0,
+                element_type=np.float32, shape=target.shape(),
+                buffer_ptr=target.data_ptr())
+
+            bind.bind_input(
+                name=self.input_names_[2],
+                device_type=learning_rate.device_name(), device_id=0,
+                element_type=np.float32, shape=learning_rate.shape(),
+                buffer_ptr=learning_rate.data_ptr())
+
+            bind.bind_output('loss')
+
+            self.train_session_.run_with_iobinding(bind)
+            outputs = bind.copy_outputs_to_cpu()
+            actual_losses.append(outputs[self.loss_index_])
         return np.array(actual_losses).mean()
 
 ###########################################
@@ -398,51 +370,3 @@ df.set_index('iteration').plot(title="Training loss", logy=True)
 
 print("onnxruntime", trainer.trained_coef_)
 
-####################################################
-# It works. We could stop here or we could update the weights
-# in the training model or the first model. That requires to
-# update the constants in an ONNX graph. We could also compares
-# the algorithm processing time to *scikit-learn* or *pytorch*.
-#
-# Update weights in an ONNX graph
-# +++++++++++++++++++++++++++++++
-#
-# Let's first check the output of the first model in ONNX.
-
-sess = InferenceSession(onx.SerializeToString())
-before = sess.run(None, {'X': X[:5]})[0]
-print(before)
-
-#################################
-# Let's replace the initializer.
-
-def update_onnx_graph(model_onnx, new_weights):
-    replace_weights = []
-    replace_indices = []
-    for i, w in enumerate(model_onnx.graph.initializer):
-        if w.name in new_weights:
-            replace_weights.append(numpy_helper.from_array(new_weights[w.name], w.name))
-            replace_indices.append(i)
-    replace_indices.sort(reverse=True)
-    for w_i in replace_indices:
-        del model_onnx.graph.initializer[w_i]
-    model_onnx.graph.initializer.extend(replace_weights)    
-
-
-update_onnx_graph(onx, trainer.trained_coef_)
-
-########################################
-# Let's compare with the previous output.
-
-sess = InferenceSession(onx.SerializeToString())
-after = sess.run(None, {'X': X[:5]})[0]
-print(after)
-
-######################################
-# It looks almost the same but slighly different.
-
-print(after - before)
-
-################################################
-# Next example will show how to train a linear regression on GPU:
-# :ref:`l-orttraining-linreg-cpu`.
