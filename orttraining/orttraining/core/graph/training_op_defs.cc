@@ -2095,7 +2095,7 @@ Example 4:
       .Input(1, "X", "Input data tensor from the forward path", "T")
       .Input(2, "scale", "Scale tensor.", "T")
       .Input(3, "mean", "mean of X.", "U")
-      .Input(4, "inv_std_var", "inverse std variance of X.", "U")
+      .Input(4, "inv_std_dev", "inverse std deviation of X.", "U")
       .Output(0, "X_grad", "Gradient of the input.", "T")
       .Output(1, "scale_grad", "Gradient of the scale.", "T")
       .Output(2, "bias_grad", "Gradient of the bias.", "T")
@@ -2115,7 +2115,59 @@ Example 4:
         // The bias tensor has the same shape of the scale tensor.
         propagateElemTypeFromInputToOutput(ctx, 2, 2);
         propagateShapeFromInputToOutput(ctx, 2, 2);
-      });
+      })
+      .SetContextDependentFunctionBodyBuilder(
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            FunctionBuilder builder(functionProto);
+
+            auto* tp = ctx.getInputType(0);
+            if ((tp == nullptr) || (!tp->has_tensor_type()))
+              return false;
+            int64_t T = tp->tensor_type().elem_type();
+
+            // Requirements/assumptions:
+            // Inputs Y_grad and X are of shape [d[0], ..., d[axis-1], d[axis], ..., d[rank-1]] and type T
+            // Input scale is of shape [d[axis], ..., d[rank-1]] and type U
+            // Inputs mean and inv_std_dev are of shape [d[0], ..., d[axis-1], 1, ..., 1] (same rank as X)
+            // and type U.
+            //
+            auto axis_ref_attr = MakeRefAttribute("axis", AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
+            builder
+                .AddOpset("", 15)
+                .Add("cast_mean = Cast (mean)", "to", T)
+                .Add("cast_inv_std_dev = Cast(inv_std_dev)", "to", T)
+                .Add("x_2d = Flatten (X)", axis_ref_attr)
+                .Add("Y_grad_2d = Flatten (Y_grad)", axis_ref_attr)
+                .Add("mean_2d = Flatten (cast_mean)", axis_ref_attr)
+                .Add("inv_std_dev_2d = Flatten (cast_inv_std_dev)", axis_ref_attr)
+                .Add(R"ONNX(
+                  shape_x = Shape (X)
+                  bias_scale_shape = Shape (scale)
+                  scale_2d = Flatten <axis = 0> (scale)
+
+                  axis_0 = Constant <value = int64[1] {0}> ()
+                  bias_grad_2d = ReduceSum (Y_grad_2d, axis_0)
+                  bias_grad = Reshape (bias_grad_2d, bias_scale_shape)
+
+                  deviation = Sub (x_2d, mean_2d)
+                  normalized_deviation = Mul(deviation, inv_std_dev_2d)
+                  scale_grad_rows = Mul (Y_grad_2d, normalized_deviation)
+                  scale_grad_2d = ReduceSum (scale_grad_rows, axis_0)
+                  scale_grad = Reshape (scale_grad_2d, bias_scale_shape)
+                  normalized_layer_grad = Mul (Y_grad_2d, scale_2d)
+
+                  B = Mul (normalized_layer_grad, inv_std_dev_2d)
+                  C = Mul (B, normalized_deviation)
+                  mean_B = ReduceMean <axes = [1]> (B)
+                  mean_C = ReduceMean <axes = [1]> (C)
+                  nd_mean_C = Mul (normalized_deviation, mean_C)
+                  mean_diff_B = Sub (B, mean_B)
+                  X_grad_2D = Sub (mean_diff_B, nd_mean_C)
+                  X_grad = Reshape (X_grad_2D, shape_x)
+                )ONNX");
+            schema.BuildFunction(functionProto);
+            return true;
+          });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SimplifiedLayerNormalizationGrad)
       .SetDomain(kMSDomain)

@@ -6,23 +6,22 @@
 import os
 import sys
 import torch
+from packaging import version
 
 from onnxruntime import set_seed
-from packaging import version
+from onnxruntime.capi import build_and_package_info as ort_info
 from ._fallback import (_FallbackPolicy,
                         ORTModuleFallbackException,
                         ORTModuleInitException,
                         wrap_exception)
 from .torch_cpp_extensions import is_installed as is_torch_cpp_extensions_installed
 
-
 ################################################################################
 # All global constant goes here, before ORTModule is imported ##################
 ################################################################################
 ONNX_OPSET_VERSION = 12
 MINIMUM_RUNTIME_PYTORCH_VERSION_STR = '1.8.1'
-TORCH_CPP_DIR = os.path.join(os.path.dirname(__file__),
-                             'torch_cpp_extensions')
+ORTMODULE_TORCH_CPP_DIR = os.path.join(os.path.dirname(__file__), 'torch_cpp_extensions')
 _FALLBACK_INIT_EXCEPTION = None
 ORTMODULE_FALLBACK_POLICY = _FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE |\
                             _FallbackPolicy.FALLBACK_UNSUPPORTED_DATA |\
@@ -31,6 +30,9 @@ ORTMODULE_FALLBACK_POLICY = _FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE |\
                             _FallbackPolicy.FALLBACK_BAD_INITIALIZATION
 ORTMODULE_FALLBACK_RETRY = False
 ORTMODULE_IS_DETERMINISTIC = torch.are_deterministic_algorithms_enabled()
+
+ONNXRUNTIME_CUDA_VERSION = ort_info.cuda_version if hasattr(ort_info, 'cuda_version') else ''
+ONNXRUNTIME_ROCM_VERSION = ort_info.rocm_version if hasattr(ort_info, 'rocm_version') else ''
 
 # Verify minimum PyTorch version is installed before proceding to ONNX Runtime initialization
 try:
@@ -51,12 +53,12 @@ except ImportError as e:
                        'installed in order to run ONNX Runtime ORTModule frontend!') from e
 
 # Verify whether PyTorch C++ extensions are already compiled
-
-if not is_torch_cpp_extensions_installed(TORCH_CPP_DIR) and '-m' not in sys.argv:
+# TODO: detect when installed extensions are outdated and need reinstallation. Hash? Version file?
+if not is_torch_cpp_extensions_installed(ORTMODULE_TORCH_CPP_DIR) and '-m' not in sys.argv:
     _FALLBACK_INIT_EXCEPTION = wrap_exception(
         ORTModuleInitException,
         EnvironmentError(
-            f"ORTModule's extensions were not detected at '{TORCH_CPP_DIR}' folder. "
+            f"ORTModule's extensions were not detected at '{ORTMODULE_TORCH_CPP_DIR}' folder. "
             "Run `python -m torch_ort.configure` before using `ORTModule` frontend."))
 
 # Initalized ORT's random seed with pytorch's initial seed
