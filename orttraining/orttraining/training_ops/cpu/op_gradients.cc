@@ -148,5 +148,27 @@ Status LogSoftmaxGrad<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
+ONNX_OPERATOR_KERNEL_EX(
+    SigmoidGrad,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    SigmoidGrad<float>);
+
+template <typename T>
+Status SigmoidGrad<T>::Compute(OpKernelContext* context) const {
+  auto& dY = *context->Input<Tensor>(0);
+  auto& X = *context->Input<Tensor>(1);
+  auto& dX = *context->Output(0, dY.Shape());
+  EigenVectorArrayMap<float> dx = EigenVectorArrayMap<float>(dX.template MutableData<T>(), dX.Shape().Size());
+  ConstEigenVectorArrayMap<float> xm = ConstEigenVectorArrayMap<float>(X.template Data<T>(), X.Shape().Size());
+  ConstEigenVectorArrayMap<float> dy = ConstEigenVectorArrayMap<float>(dY.template Data<T>(), dY.Shape().Size());
+  dx = 1 / (1. + (-xm.abs()).exp());
+  dx = (xm >= 0).select(dx, 1 - dx); // calculate sigmoid(X)
+  dx = dx * (1-dx);  // calculate derivative sigmoid(X) * (1-sigmoid(X))
+  dx = dx * dy;    // calculate the output
+  return Status::OK();
+}
 }  // namespace contrib
 }  // namespace onnxruntime

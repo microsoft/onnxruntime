@@ -53,6 +53,12 @@ void TestElementwiseGradientOp(
 float ReluGrad(float dy, float x) {
   return x > 0 ? dy : 0;
 }
+
+float SigmoidGrad(float dy, float x) {
+  auto sigmoid_x = 1. / (1. + std::exp(-std::abs(x)));
+  return dy * sigmoid_x * (1-sigmoid_x);
+}
+
 }
 #endif
 
@@ -280,6 +286,22 @@ TEST(ReluGradInferenceTest, Basic) {
         const auto dy = params[0], x = params[1];
 
         return ReluGrad(dy, x);
+      },
+      {}, 1, kMSDomain);
+}
+
+TEST(SigmoidGradInferenceTest, Basic) {
+  const std::vector<float> x_vals = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
+  const std::vector<float> dY(7, 1.0f);
+
+  TestElementwiseGradientOp(
+      "SigmoidGrad",
+      {{"dY", dY}, {"X", x_vals}},
+      [](const std::vector<float>& params) {
+        ORT_ENFORCE(params.size() == 2);
+        const auto dy = params[0], x = params[1];
+
+        return SigmoidGrad(dy, x);
       },
       {}, 1, kMSDomain);
 }
