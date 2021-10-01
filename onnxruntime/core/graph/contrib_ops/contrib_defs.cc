@@ -790,7 +790,7 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
         onnx_opset_13.set_domain("");
         onnx_opset_13.set_version(13);
 
-        return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+        return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SkipLayerNormalization)
@@ -2441,13 +2441,15 @@ Example 4:
         if (ctx.getNumOutputs() > 1) {
           auto saved_mean_shape = ctx.getOutputType(1)->mutable_tensor_type()->mutable_shape();
           saved_mean_shape->CopyFrom(input_shape);
-          saved_mean_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(1);
+          for (int d = static_cast<int>(axis); d < input_ndim; ++d)
+            saved_mean_shape->mutable_dim(d)->set_dim_value(1);
         }
 
         if (ctx.getNumOutputs() > 2) {
           auto saved_inv_std_dev_shape = ctx.getOutputType(2)->mutable_tensor_type()->mutable_shape();
           saved_inv_std_dev_shape->CopyFrom(input_shape);
-          saved_inv_std_dev_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(1);
+          for (int d = static_cast<int>(axis); d < input_ndim; ++d)
+            saved_inv_std_dev_shape->mutable_dim(d)->set_dim_value(1);
         }
       })
       .SetContextDependentFunctionBodyBuilder(
@@ -2507,10 +2509,16 @@ Example 4:
                 {{"Deviation"}, "Sub", {"XU", "Mean2D"}},
                 {{"Normalized"}, "Div", {"Deviation", "StdDev"}},
                 {{"NormalizedT"}, "Cast", {"Normalized"}, {{"to", T}}},
-                {{"Scaled"}, "Mul", {"NormalizedT", "Scale"}},
-                {{"Biased"}, "Add", {"Scaled", "B"}},
-                {{"Y"}, "Reshape", {"Biased", "XShape"}},
-                {{"InvStdDev2D"}, "Reciprocal", {"StdDev"}}};
+                {{"Scale2D"}, "Flatten", {"Scale"}, {{"axis", int64_t(0)}}},
+                {{"Scaled"}, "Mul", {"NormalizedT", "Scale2D"}}};
+            if (ctx.hasInput(2)) {
+              body.push_back({{"B2D"}, "Flatten", {"B"}, {{"axis", int64_t(0)}}});
+              body.push_back({{"Biased"}, "Add", {"Scaled", "B2D"}});
+            } else {
+              body.push_back({{"Biased"}, "Identity", {"Scaled"}});
+            }
+            body.push_back({{"Y"}, "Reshape", {"Biased", "XShape"}});
+            body.push_back({{"InvStdDev2D"}, "Reciprocal", {"StdDev"}});
             if (ctx.hasOutput(1))
               body.push_back({{"Mean"}, "Reshape", {"Mean2D", "ReducedShape"}});
             if (ctx.hasOutput(2))
@@ -2520,7 +2528,7 @@ Example 4:
             onnx_opset_13.set_domain("");
             onnx_opset_13.set_version(13);
 
-            return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+            return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
           });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SimplifiedLayerNormalization)
@@ -2613,7 +2621,7 @@ inputs by their magnitude, rather than gates inputs by their sign as in ReLUs.)D
         onnx_opset_13.set_domain("");
         onnx_opset_13.set_version(13);
 
-        return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+        return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
       });
 
   static const char* BiasGelu_ver1_doc =

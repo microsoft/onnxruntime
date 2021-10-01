@@ -4,7 +4,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/providers/common.h"
-#include "core/quantization/quant_util.h"
+#include "core/quantization/quantization.h"
 
 namespace onnxruntime {
 
@@ -95,8 +95,8 @@ class MatMulIntegerBase : public OpKernel {
   bool IsBQuantParamSupported(const TensorShape& B_quant_param_shape, const TensorShape& B_shape) const {
     int64_t B_quant_param_rank = B_quant_param_shape.NumDimensions();
     int64_t B_shape_rank = B_shape.NumDimensions();
-    if (B_quant_param_rank == 0 ||                                     //scalar
-        B_quant_param_rank == 1 && B_quant_param_shape.Size() == 1) {  // 1D tensor with size 1
+    if (B_quant_param_rank == 0 ||                                       //scalar
+        (B_quant_param_rank == 1 && B_quant_param_shape.Size() == 1)) {  // 1D tensor with size 1
       return true;
     }
 

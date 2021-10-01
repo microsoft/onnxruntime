@@ -40,7 +40,7 @@ struct Capture final {
   void operator=(const Capture&) = delete;
 };
 }  // namespace logging
-}
+}  // namespace onnxruntime
 
 namespace ONNX_NAMESPACE {
 
@@ -80,13 +80,17 @@ struct AttributeProto final {
   static constexpr AttributeType STRING = AttributeProto_AttributeType_STRING;
   static constexpr AttributeType TENSOR = AttributeProto_AttributeType_TENSOR;
   static constexpr AttributeType GRAPH = AttributeProto_AttributeType_GRAPH;
+#if !defined(DISABLE_SPARSE_TENSORS)
   static constexpr AttributeType SPARSE_TENSOR = AttributeProto_AttributeType_SPARSE_TENSOR;
+#endif
   static constexpr AttributeType FLOATS = AttributeProto_AttributeType_FLOATS;
   static constexpr AttributeType INTS = AttributeProto_AttributeType_INTS;
   static constexpr AttributeType STRINGS = AttributeProto_AttributeType_STRINGS;
   static constexpr AttributeType TENSORS = AttributeProto_AttributeType_TENSORS;
   static constexpr AttributeType GRAPHS = AttributeProto_AttributeType_GRAPHS;
+#if !defined(DISABLE_SPARSE_TENSORS)
   static constexpr AttributeType SPARSE_TENSORS = AttributeProto_AttributeType_SPARSE_TENSORS;
+#endif
 
   AttributeProto() = delete;
   AttributeProto(const AttributeProto&) = delete;
@@ -210,6 +214,7 @@ struct TypeProto_Tensor final {
   PROVIDER_DISALLOW_ALL(TypeProto_Tensor)
 };
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 struct TypeProto_SparseTensor final {
   bool has_shape() const { return g_host->TypeProto_SparseTensor__has_shape(this); }
   const TensorShapeProto& shape() const { return g_host->TypeProto_SparseTensor__shape(this); }
@@ -218,13 +223,16 @@ struct TypeProto_SparseTensor final {
 
   PROVIDER_DISALLOW_ALL(TypeProto_SparseTensor)
 };
+#endif
 
 struct TypeProto final {
   const TypeProto_Tensor& tensor_type() const { return g_host->TypeProto__tensor_type(this); }
   TypeProto_Tensor* mutable_tensor_type() { return g_host->TypeProto__mutable_tensor_type(this); }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   const TypeProto_SparseTensor& sparse_tensor_type() const { return g_host->TypeProto__sparse_tensor_type(this); }
   TypeProto_SparseTensor* mutable_sparse_tensor_type() { return g_host->TypeProto__mutable_sparse_tensor_type(this); }
+#endif
 
   enum ValueCase {
     kTensorType = 1,
@@ -291,9 +299,11 @@ struct ComputeCapability final {
 struct DataTransferManager final {
   Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const { return g_host->DataTransferManager__CopyTensor(this, src, dst, exec_queue_id); }
   Status CopyTensor(const Tensor& src, Tensor& dst) const { return g_host->DataTransferManager__CopyTensor(this, src, dst); }
+#if !defined(DISABLE_SPARSE_TENSORS)
   Status CopySparseTensor(const SparseTensor& src, SparseTensor& dst) const { return g_host->DataTransferManager__CopySparseTensor(this, src, dst); }
   Status CopySparseTensor(const SparseTensor& src, SparseTensor& dst, int exec_queue_id) const { return g_host->DataTransferManager__CopySparseTensor(this, src, dst, exec_queue_id); }
   Status CopySparseTensors(const std::vector<IDataTransfer::SparseSrcDstPair>& src_dst_pairs) const { return g_host->DataTransferManager__CopySparseTensors(this, src_dst_pairs); }
+#endif
   const IDataTransfer* GetDataTransfer(const OrtDevice& src_device, const OrtDevice& dst_device) const { return g_host->DataTransferManager__GetDataTransfer(this, src_device, dst_device); }
 
   PROVIDER_DISALLOW_ALL(DataTransferManager)
@@ -466,14 +476,18 @@ class DataTypeImpl final {
   static MLDataType GetType();
   template <typename elemT>
   static MLDataType GetTensorType();
+#if !defined(DISABLE_SPARSE_TENSORS)
   template <typename elemT>
   static MLDataType GetSparseTensorType();
+#endif
 
   static MLDataType GetTypeFromOnnxType(int);
 
   bool IsTensorType() const { return g_host->DataTypeImpl__IsTensorType(this); }
   bool IsTensorSequenceType() const { return g_host->DataTypeImpl__IsTensorSequenceType(this); }
+#if !defined(DISABLE_SPARSE_TENSORS)
   bool IsSparseTensorType() const { return g_host->DataTypeImpl__IsSparseTensorType(this); }
+#endif
   DeleteFunc GetDeleteFunc() const { return g_host->DataTypeImpl__GetDeleteFunc(this); }
 
   static const std::vector<MLDataType>& AllFixedSizeTensorTypes() { return g_host->DataTypeImpl__AllFixedSizeTensorTypes(); }
@@ -680,7 +694,9 @@ struct OpKernelContext final {
   T* Output(int index);
 
   Tensor* Output(int index, const TensorShape& shape) { return g_host->OpKernelContext__Output(this, index, shape); }
-  SparseTensor* OutputSparse(int index, const TensorShape& shape) { return g_host->OpKernelContext__OutputSparse(this, index, shape); } 
+#if !defined(DISABLE_SPARSE_TENSORS)
+  SparseTensor* OutputSparse(int index, const TensorShape& shape) { return g_host->OpKernelContext__OutputSparse(this, index, shape); }
+#endif
   int OutputCount() const { return g_host->OpKernelContext__OutputCount(this); }
 
   Status GetTempSpaceAllocator(AllocatorPtr* output) const { return g_host->OpKernelContext__GetTempSpaceAllocator(this, output); }
@@ -698,10 +714,12 @@ inline const Tensor* OpKernelContext::Input<Tensor>(int index) const {
   return g_host->OpKernelContext__Input_Tensor(this, index);
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 template <>
 inline const SparseTensor* OpKernelContext::Input<SparseTensor>(int index) const {
   return g_host->OpKernelContext__Input_SparseTensor(this, index);
 }
+#endif
 
 template <>
 inline const TensorSeq* OpKernelContext::Input<TensorSeq>(int index) const {
@@ -792,10 +810,18 @@ class SessionState {
 };
 
 struct Tensor final {
-  static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) { return g_host->Tensor__construct(p_type, shape, allocator); }
+  static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) { return g_host->Tensor__construct(p_type, shape, std::move(allocator)); }
   static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc, ptrdiff_t offset = 0) { return g_host->Tensor__construct(p_type, shape, p_data, alloc, offset); }
 
   static void operator delete(void* p) { g_host->Tensor__operator_delete(reinterpret_cast<Tensor*>(p)); }
+
+  static void InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, OrtValue& ort_value) {
+    g_host->Tensor__InitOrtValue(elt_type, shape, std::move(allocator), ort_value);
+  }
+
+  static void InitOrtValue(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& location, OrtValue& ort_value) {
+    g_host->Tensor__InitOrtValue(p_type, shape, p_data, location, ort_value);
+  }
 
   template <typename T>
   T* MutableData();
@@ -911,10 +937,12 @@ template <>
 inline const MLFloat16* Tensor::Data<MLFloat16>() const { return g_host->Tensor__Data_MLFloat16(this); }
 
 // SparseTensor
+#if !defined(DISABLE_SPARSE_TENSORS)
 struct SparseTensor final {
   const TensorShape& DenseShape() const noexcept { return g_host->SparseTensor__DenseShape(this); }
   Status Copy(const DataTransferManager& dtm, int exec_q_id, SparseTensor& dst) const { return g_host->SparseTensor__Copy(this, dtm, exec_q_id, dst); }
 };
+#endif
 
 //TensorSeq
 struct TensorSeq final {
@@ -923,9 +951,10 @@ struct TensorSeq final {
   size_t Size() const noexcept { return g_host->TensorSeq__Size(this); }
   const Tensor& Get(size_t i) const { return g_host->TensorSeq__Get(this, i); }
   void Add(Tensor&& tensor) { g_host->TensorSeq__Add(this, std::move(tensor)); }
+  void Reserve(size_t capacity) { g_host->TensorSeq__Reserve(this, capacity); }
 };
 
 template <>
 inline gsl::span<const int64_t> Tensor::DataAsSpan() const { return g_host->Tensor__DataAsSpan_int64(this); }
 
-}
+}  // namespace onnxruntime

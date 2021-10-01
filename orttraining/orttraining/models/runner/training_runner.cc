@@ -99,7 +99,7 @@ Status TrainingRunner::Initialize() {
   config.weight_names_to_not_train = params_.weights_not_to_train;
   config.immutable_weights = params_.immutable_weights;
 
-  config.gradient_graph_config.use_invertible_layernorm_grad = params_.use_invertible_layernorm_grad;
+  config.gradient_graph_config.use_memory_efficient_gradient = params_.use_memory_efficient_gradient;
   config.gradient_graph_config.set_gradients_as_graph_outputs = false;
 
   config.gradient_accumulation_steps = params_.gradient_accumulation_steps;

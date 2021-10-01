@@ -7,6 +7,7 @@ import contextlib
 import glob
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -160,6 +161,8 @@ def parse_arguments():
     parser.add_argument(
         "--enable_training_ops", action='store_true', help="Enable training ops in inference graph.")
     parser.add_argument(
+        "--enable_training_torch_interop", action='store_true', help="Enable training kernels interop with torch.")
+    parser.add_argument(
         "--disable_nccl", action='store_true', help="Disable Nccl.")
     parser.add_argument(
         "--mpi_home", help="Path to MPI installation dir")
@@ -265,21 +268,26 @@ def parse_arguments():
     parser.add_argument(
         "--target",
         help="Build a specific target, e.g. winml_dll")
+    # This flag is needed when :
+    # 1. The OS is 64 bits Windows
+    # 2. And the target binary is for 32 bits Windows
+    # 3. And the python used for running this script is 64 bits.
+    # But if you can get a 32 bits python, the build will run better and you won't need this flag.
     parser.add_argument(
         "--x86", action='store_true',
-        help="Create x86 makefiles. Requires --update and no existing cache "
+        help="[cross-compiling] Create Windows x86 makefiles. Requires --update and no existing cache "
         "CMake setup. Delete CMakeCache.txt if needed")
     parser.add_argument(
         "--arm", action='store_true',
-        help="Create ARM makefiles. Requires --update and no existing cache "
+        help="[cross-compiling] Create ARM makefiles. Requires --update and no existing cache "
         "CMake setup. Delete CMakeCache.txt if needed")
     parser.add_argument(
         "--arm64", action='store_true',
-        help="Create ARM64 makefiles. Requires --update and no existing cache "
+        help="[cross-compiling] Create ARM64 makefiles. Requires --update and no existing cache "
         "CMake setup. Delete CMakeCache.txt if needed")
     parser.add_argument(
         "--arm64ec", action='store_true',
-        help="Create ARM64EC makefiles. Requires --update and no existing cache "
+        help="[cross-compiling] Create ARM64EC makefiles. Requires --update and no existing cache "
         "CMake setup. Delete CMakeCache.txt if needed")
     parser.add_argument(
         "--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
@@ -330,8 +338,6 @@ def parse_arguments():
         help="Specify the minimum version of the target platform "
         "(e.g. macOS or iOS)"
         "This is only supported on MacOS")
-    parser.add_argument("--apple_disable_bitcode", action='store_true',
-                        help="Disable bitcode for iOS, bitcode is by default enabled for iOS.")
 
     # WebAssembly build
     parser.add_argument("--build_wasm", action='store_true', help="Build for WebAssembly")
@@ -339,6 +345,10 @@ def parse_arguments():
     parser.add_argument(
         "--disable_wasm_exception_catching", action='store_true',
         help="Disable exception catching in WebAssembly.")
+    parser.add_argument(
+        "--enable_wasm_exception_throwing_override", action='store_true',
+        help="Enable exception throwing in WebAssembly, this will override default disabling exception throwing "
+        "behavior when disable exceptions.")
     parser.add_argument(
         "--enable_wasm_threads", action='store_true',
         help="Enable WebAssembly multi-threads support")
@@ -348,12 +358,16 @@ def parse_arguments():
     parser.add_argument(
         "--wasm_malloc", default="dlmalloc", help="Specify memory allocator for WebAssembly")
     parser.add_argument(
-        "--emsdk_version", default="2.0.23", help="Specify version of emsdk")
+        "--emsdk_version", default="2.0.26", help="Specify version of emsdk")
 
     # Enable onnxruntime-extensions
     parser.add_argument(
-        "--enable_onnxruntime_extensions", action='store_true',
-        help="Enable custom operators in onnxruntime-extensions")
+        "--use_extensions", action='store_true',
+        help="Enable custom operators in onnxruntime-extensions, use git submodule onnxruntime-extensions "
+        "in path cmake/external/onnxruntime-extensions by default.")
+    parser.add_argument(
+        "--extensions_overridden_path", type=str,
+        help="Path to pre-pulled onnxruntime-extensions, will override default onnxruntime-extensions path.")
 
     # Arguments needed by CI
     parser.add_argument(
@@ -529,9 +543,19 @@ def parse_arguments():
     parser.add_argument(
         "--ms_experimental", action='store_true', help="Build microsoft experimental operators.")\
 
+    # eager mode
     parser.add_argument(
         "--build_eager_mode", action='store_true',
         help="Build ONNXRuntime micro-benchmarks.")
+    parser.add_argument('--eager_customop_module', default=None,
+                        help='Module containing custom op mappings for eager mode.')
+    parser.add_argument('--eager_customop_header', default=None,
+                        help='Header containing custom op definitions for eager mode.')
+
+    parser.add_argument(
+        "--enable_external_custom_op_schemas", action='store_true',
+        help="Enable registering user defined custom operation schemas at shared library load time.\
+              This feature is only supported/available on Ubuntu.")
 
     return parser.parse_args()
 
@@ -574,7 +598,7 @@ def get_config_build_dir(build_dir, config):
 
 
 def run_subprocess(args, cwd=None, capture_stdout=False, dll_path=None,
-                   shell=False, env={}):
+                   shell=False, env={}, python_path=None):
     if isinstance(args, str):
         raise ValueError("args should be a sequence of strings, not a string")
 
@@ -587,6 +611,14 @@ def run_subprocess(args, cwd=None, capture_stdout=False, dll_path=None,
                 my_env["LD_LIBRARY_PATH"] += os.pathsep + dll_path
             else:
                 my_env["LD_LIBRARY_PATH"] = dll_path
+    if python_path:
+        if is_windows():
+            my_env["PYTHONPATH"] = python_path + os.pathsep + my_env["PYTHONPATH"]
+        else:
+            if "PYTHONPATH" in my_env:
+                my_env["PYTHONPATH"] += os.pathsep + python_path
+            else:
+                my_env["PYTHONPATH"] = python_path
 
     my_env.update(env)
 
@@ -653,7 +685,17 @@ def use_dev_mode(args):
         return 'OFF'
     if args.ios and is_macOS():
         return 'OFF'
+    SYSTEM_COLLECTIONURI = os.getenv('SYSTEM_COLLECTIONURI')
+    if SYSTEM_COLLECTIONURI and not SYSTEM_COLLECTIONURI == 'https://dev.azure.com/onnxruntime/':
+        return 'OFF'
     return 'ON'
+
+
+def add_cmake_define_without_override(cmake_extra_defines, key, value):
+    for x in cmake_extra_defines:
+        if x.startswith(key + "="):
+            return cmake_extra_defines
+    cmake_extra_defines.append(key + "=" + value)
 
 
 def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home,
@@ -666,7 +708,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
         "-Donnxruntime_BUILD_WINML_TESTS=" + ("OFF" if args.skip_winml_tests else "ON"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
-        "-Donnxruntime_DEV_MODE=" + use_dev_mode(args),
         # There are two ways of locating python C API header file. "find_package(PythonLibs 3.5 REQUIRED)"
         # and "find_package(Python 3.5 COMPONENTS Development.Module)". The first one is deprecated and it
         # depends on the "PYTHON_EXECUTABLE" variable. The second needs "Python_EXECUTABLE". Here we set both
@@ -719,7 +760,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_MINIMAL_BUILD=" + ("ON" if args.minimal_build is not None else "OFF"),
         "-Donnxruntime_EXTENDED_MINIMAL_BUILD=" + ("ON" if args.minimal_build and 'extended' in args.minimal_build
                                                    else "OFF"),
-        "-Donnxruntime_MINIMAL_BUILD_CUSTOM_OPS=" + ("ON" if args.minimal_build and 'custom_ops' in args.minimal_build
+        "-Donnxruntime_MINIMAL_BUILD_CUSTOM_OPS=" + ("ON" if (args.minimal_build is not None and ('custom_ops' in
+                                                     args.minimal_build or args.use_extensions))
                                                      else "OFF"),
         "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if is_reduced_ops_build(args) else "OFF"),
         # enable pyop if it is nightly build
@@ -742,6 +784,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_NVTX_PROFILE=" + ("ON" if args.enable_nvtx_profile else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + ("ON" if args.enable_training else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING_OPS=" + ("ON" if args.enable_training_ops else "OFF"),
+        "-Donnxruntime_ENABLE_TRAINING_TORCH_INTEROP=" + ("ON" if args.enable_training_torch_interop else "OFF"),
         # Enable advanced computations such as AVX for some traininig related ops.
         "-Donnxruntime_ENABLE_CPU_FP16_OPS=" + ("ON" if args.enable_training else "OFF"),
         "-Donnxruntime_USE_NCCL=" + ("OFF" if args.disable_nccl else "ON"),
@@ -756,27 +799,37 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_WEBASSEMBLY_SIMD=" + ("ON" if args.enable_wasm_simd else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING=" + ("OFF" if args.disable_wasm_exception_catching
                                                                   else "ON"),
+        "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_THROWING=" + ("ON" if args.enable_wasm_exception_throwing_override
+                                                                  else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_WEBASSEMBLY_MALLOC=" + args.wasm_malloc,
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
-        # enable custom operators in onnxruntime-extensions
-        "-Donnxruntime_ENABLE_EXTENSION_CUSTOM_OPS=" + ("ON" if args.enable_onnxruntime_extensions else "OFF"),
+        "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS=" + ("ON" if args.enable_external_custom_op_schemas
+                                                              else "OFF"),
     ]
+    # It should be default ON in CI build pipelines, and OFF in packaging pipelines.
+    # And OFF for the people who are not actively developing onnx runtime.
+    add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_DEV_MODE", use_dev_mode(args))
     if args.use_cuda:
-        cmake_args += ["-Donnxruntime_USE_CUDA=ON", "-Donnxruntime_CUDA_VERSION=" + args.cuda_version,
-                       "-Donnxruntime_CUDA_HOME="+cudnn_home,
-                       "-Donnxruntime_CUDNN_HOME="+cudnn_home]
-    if args.enable_msvc_static_runtime:
-        cmake_args += ["-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>",
-                       "-DONNX_USE_MSVC_STATIC_RUNTIME=ON",
-                       "-Dprotobuf_MSVC_STATIC_RUNTIME=ON",
-                       "-Dgtest_force_shared_crt=OFF"]
-    else:
-        cmake_args += ["-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>DLL",
-                       "-DONNX_USE_MSVC_STATIC_RUNTIME=OFF",
-                       "-Dprotobuf_MSVC_STATIC_RUNTIME=OFF",
-                       "-Dgtest_force_shared_crt=ON"]
+        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_USE_CUDA", "ON")
+        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_CUDA_VERSION", args.cuda_version)
+        # TODO: this variable is not really needed
+        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_CUDA_HOME", cuda_home)
+        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_CUDNN_HOME", cudnn_home)
+
+    if is_windows():
+        if args.enable_msvc_static_runtime:
+            add_cmake_define_without_override(cmake_extra_defines, "CMAKE_MSVC_RUNTIME_LIBRARY",
+                                              "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+            add_cmake_define_without_override(cmake_extra_defines, "ONNX_USE_MSVC_STATIC_RUNTIME", "ON")
+            add_cmake_define_without_override(cmake_extra_defines, "protobuf_MSVC_STATIC_RUNTIME", "ON")
+            add_cmake_define_without_override(cmake_extra_defines, "gtest_force_shared_crt", "OFF")
+        else:
+            # CMAKE_MSVC_RUNTIME_LIBRARY is default to MultiThreaded$<$<CONFIG:Debug>:Debug>DLL
+            add_cmake_define_without_override(cmake_extra_defines, "ONNX_USE_MSVC_STATIC_RUNTIME", "OFF")
+            add_cmake_define_without_override(cmake_extra_defines, "protobuf_MSVC_STATIC_RUNTIME", "OFF")
+            add_cmake_define_without_override(cmake_extra_defines, "gtest_force_shared_crt", "ON")
 
     if acl_home and os.path.exists(acl_home):
         cmake_args += ["-Donnxruntime_ACL_HOME=" + acl_home]
@@ -877,8 +930,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             cmake_args += ["-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=" + args.xcode_code_signing_team_id]
 
     if args.use_coreml:
-        if not is_macOS():
-            raise BuildError("Build CoreML EP requires macOS")
         cmake_args += ["-Donnxruntime_USE_COREML=ON"]
 
     if args.ios:
@@ -909,7 +960,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 "-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target,
                 # we do not need protoc binary for ios cross build
                 "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF",
-                "-Donnxruntime_ENABLE_BITCODE=" + ("OFF" if args.apple_disable_bitcode else "ON"),
                 "-DCMAKE_TOOLCHAIN_FILE=" + (
                     args.ios_toolchain_file if args.ios_toolchain_file
                     else "../cmake/onnxruntime_ios.toolchain.cmake")
@@ -969,6 +1019,28 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
             ]
 
+    # Append onnxruntime-extensions cmake options
+    if args.use_extensions:
+        cmake_args += ["-Donnxruntime_USE_EXTENSIONS=ON"]
+
+        # default path of onnxruntime-extensions, using git submodule
+        onnxruntime_extensions_path = os.path.join(cmake_dir, "external", "onnxruntime-extensions")
+
+        if args.extensions_overridden_path and os.path.exists(args.extensions_overridden_path):
+            # use absolute path here because onnxruntime-extensions is outside onnxruntime
+            onnxruntime_extensions_path = os.path.abspath(args.extensions_overridden_path)
+
+        cmake_args += [
+            "-Donnxruntime_EXTENSIONS_PATH=" + onnxruntime_extensions_path]
+        print('[onnxruntime-extensions] onnxruntime_extensions_path: ', onnxruntime_extensions_path)
+
+        if is_reduced_ops_build(args):
+            operators_config_file = os.path.abspath(args.include_ops_by_config)
+            cmake_tool_dir = os.path.join(onnxruntime_extensions_path, 'tools')
+
+            # generate _selectedoplist.cmake by operators config file
+            run_subprocess([sys.executable, 'gen_selectedops.py', operators_config_file], cwd=cmake_tool_dir)
+
     if path_to_protoc_exe:
         cmake_args += [
             "-DONNX_CUSTOM_PROTOC_EXECUTABLE=%s" % path_to_protoc_exe]
@@ -986,9 +1058,13 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "-Donnxruntime_USE_FULL_PROTOBUF=ON"]
 
     if args.gen_doc:
-        cmake_args += ["-Donnxruntime_PYBIND_EXPORT_OPSCHEMA=ON"]
+        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "ON")
     else:
-        cmake_args += ["-Donnxruntime_PYBIND_EXPORT_OPSCHEMA=OFF"]
+        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "OFF")
+
+    if args.build_eager_mode:
+        import torch
+        cmake_args += ["-Donnxruntime_PREBUILT_PYTORCH_PATH=%s" % os.path.dirname(torch.__file__)]
 
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
@@ -1094,6 +1170,7 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
         env = {}
         if args.android:
             env['ANDROID_SDK_ROOT'] = args.android_sdk_path
+            env['ANDROID_NDK_HOME'] = args.android_ndk_path
 
         run_subprocess(cmd_args, env=env)
 
@@ -1257,20 +1334,20 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
             adb_push('onnx_test_runner', device_dir, cwd=cwd)
             adb_shell('chmod +x {}/onnx_test_runner'.format(device_dir))
             run_adb_shell('{0}/onnxruntime_test_all'.format(device_dir))
+
             if args.build_java:
-                adb_install(
-                    os.path.join(
-                        get_config_build_dir(build_dir, config),
-                        "java", "androidtest", "android", "app", "build", "outputs", "apk",
-                        "debug", "app-debug.apk"))
-                adb_install(
-                    os.path.join(
-                        get_config_build_dir(build_dir, config),
-                        "java", "androidtest", "android", "app", "build", "outputs", "apk",
-                        "androidTest", "debug", "app-debug-androidTest.apk"))
-                adb_shell(
-                    'am instrument -w ai.onnxruntime.example.javavalidator.test/androidx.test.runner.AndroidJUnitRunner'
-                    )
+                gradle_executable = 'gradle'
+                # use the gradle wrapper if it exists, the gradlew should be setup under <repo root>/java
+                gradlew_path = os.path.join(source_dir, 'java',
+                                            'gradlew.bat' if is_windows() else 'gradlew')
+                if os.path.exists(gradlew_path):
+                    gradle_executable = gradlew_path
+                android_test_path = os.path.join(cwd, "java", "androidtest", "android")
+                run_subprocess([gradle_executable, '--no-daemon',
+                                '-DminSdkVer={}'.format(args.android_api),
+                                'clean', 'connectedDebugAndroidTest'],
+                               cwd=android_test_path)
+
             if args.use_nnapi:
                 adb_shell('cd {0} && {0}/onnx_test_runner -e nnapi {0}/test'.format(device_dir))
             else:
@@ -1367,6 +1444,9 @@ def run_training_python_frontend_tests(cwd):
 
     run_subprocess([
         sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_checkpoint_functions.py'], cwd=cwd)
+    # Not technically training related, but it needs torch to be installed.
+    run_subprocess([
+        sys.executable, '-m', 'pytest', '-sv', 'test_pytorch_export_contrib_ops.py'], cwd=cwd)
 
 
 def run_training_python_frontend_e2e_tests(cwd):
@@ -1458,7 +1538,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                          '-ConfigFile', os.path.join(source_dir, 'NuGet.config'),
                          '-PackagesDirectory', cwd])
                 cwd2 = os.path.join(cwd, config)
-                executables = ['onnxruntime_test_all.exe']
+                executables = ['onnxruntime_test_all.exe', 'onnxruntime_mlas_test.exe']
                 if args.build_shared_lib:
                     executables.append('onnxruntime_shared_lib_test.exe')
                     executables.append('onnxruntime_global_thread_pools_test.exe')
@@ -1471,7 +1551,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                          source_dir, 'cmake\\codeconv.runsettings')] + executables,
                     cwd=cwd2, dll_path=dll_path)
             else:
-                executables = ['onnxruntime_test_all']
+                executables = ['onnxruntime_test_all', 'onnxruntime_mlas_test']
                 if args.build_shared_lib:
                     executables.append('onnxruntime_shared_lib_test')
                     executables.append('onnxruntime_global_thread_pools_test')
@@ -1521,6 +1601,11 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 # run basic frontend tests
                 run_training_python_frontend_tests(cwd=cwd)
 
+            if args.build_eager_mode:
+                # run eager mode test
+                args_list = [sys.executable, os.path.join(cwd, 'eager_test')]
+                run_subprocess(args_list, cwd=cwd, dll_path=dll_path, python_path=cwd)
+
             try:
                 import onnx  # noqa
                 onnx_test = True
@@ -1536,15 +1621,15 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                                    cwd=cwd, dll_path=dll_path)
                     if args.enable_transformers_tool_test:
                         import numpy
+                        import google.protobuf
                         numpy_init_version = numpy.__version__
+                        pb_init_version = google.protobuf.__version__
                         run_subprocess([sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt'],
                                        cwd=SCRIPT_DIR)
                         run_subprocess([sys.executable, '-m', 'pytest', 'transformers'], cwd=cwd)
-                        # Restore initial environment
-                        run_subprocess([sys.executable, '-m', 'pip', 'uninstall', '-r', 'requirements.txt', '-y'],
-                                       cwd=SCRIPT_DIR)
-                        # Restore initial numpy version in case other tests use it
+                        # Restore initial numpy/protobuf version in case other tests use it
                         run_subprocess([sys.executable, '-m', 'pip', 'install', 'numpy==' + numpy_init_version])
+                        run_subprocess([sys.executable, '-m', 'pip', 'install', 'protobuf==' + pb_init_version])
 
                 if not args.disable_ml_ops:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_backend_mlops.py'],
@@ -1645,7 +1730,7 @@ def build_python_wheel(
         elif use_armnn:
             args.append('--use_armnn')
         elif use_dml:
-            args.append('--use_dml')
+            args.append('--wheel_name_suffix=directml')
 
         run_subprocess(args, cwd=cwd)
 
@@ -1863,6 +1948,8 @@ def generate_documentation(source_dir, build_dir, configs, validate):
 
 
 def main():
+    log.debug("Command line arguments:\n  {}".format(" ".join(shlex.quote(arg) for arg in sys.argv[1:])))
+
     args = parse_arguments()
     cmake_extra_defines = (args.cmake_extra_defines
                            if args.cmake_extra_defines else [])
@@ -1939,6 +2026,10 @@ def main():
     if args.use_openvino == "VAD-F_FP32":
         args.test = False
 
+    # Disabling unit tests for GPU and MYRIAD on nuget creation
+    if args.use_openvino != "CPU_FP32" and args.build_nuget:
+        args.test = False
+
     configs = set(args.config)
 
     # setup paths and directories
@@ -1972,7 +2063,8 @@ def main():
     # if using rocm, setup rocm paths
     rocm_home = setup_rocm_build(args, configs)
 
-    os.makedirs(build_dir, exist_ok=True)
+    if args.update or args.build:
+        os.makedirs(build_dir, exist_ok=True)
 
     log.info("Build started")
     if args.update:
@@ -1981,19 +2073,16 @@ def main():
         if not args.skip_submodule_sync:
             update_submodules(source_dir)
         if is_windows():
+            cpu_arch = platform.architecture()[0]
             if args.build_wasm:
                 cmake_extra_args = ['-G', 'Ninja']
             elif args.cmake_generator == 'Ninja':
-                if args.x86 or args.arm or args.arm64 or args.arm64ec:
+                if cpu_arch == '32bit' or args.arm or args.arm64 or args.arm64ec:
                     raise BuildError(
                         "To cross-compile with Ninja, load the toolset "
                         "environment for the target processor (e.g. Cross "
                         "Tools Command Prompt for VS)")
                 cmake_extra_args = ['-G', args.cmake_generator]
-            elif args.x86:
-                cmake_extra_args = [
-                    '-A', 'Win32', '-T', 'host=x64', '-G', args.cmake_generator
-                ]
             elif args.arm or args.arm64 or args.arm64ec:
                 # Cross-compiling for ARM(64) architecture
                 # First build protoc for host to use during cross-compilation
@@ -2014,20 +2103,12 @@ def main():
                         "Cannot test on host build machine for cross-compiled "
                         "ARM(64) builds. Will skip test running after build.")
                     args.test = False
+            elif cpu_arch == '32bit' or args.x86:
+                cmake_extra_args = [
+                    '-A', 'Win32', '-T', 'host=x64', '-G', args.cmake_generator
+                ]
             else:
-                if (args.msvc_toolset == '14.16' and
-                        args.cmake_generator == 'Visual Studio 16 2019'):
-                    # CUDA 10.0 requires _MSC_VER >= 1700 and
-                    # _MSC_VER < 1920, aka Visual Studio version
-                    # in [2012, 2019). In VS2019, we have to use
-                    # Side-by-side minor version MSVC toolsets from
-                    # Visual Studio 2017 14.16 is MSVC version
-                    # 141 is MSVC Toolset Version
-                    # Cuda VS extension should be installed to
-                    # C:\Program Files (x86)\Microsoft Visual
-                    # Studio\2019\Enterprise\MSBuild\Microsoft\VC\v160\BuildCustomizations  # noqa
-                    toolset = 'v141,host=x64,version=' + args.msvc_toolset
-                elif args.msvc_toolset:
+                if args.msvc_toolset:
                     toolset = 'host=x64,version=' + args.msvc_toolset
                 else:
                     toolset = 'host=x64'
@@ -2037,11 +2118,11 @@ def main():
                     '-A', 'x64', '-T', toolset, '-G', args.cmake_generator
                 ]
             if args.enable_windows_store:
-                cmake_extra_args.append(
-                    '-DCMAKE_TOOLCHAIN_FILE=' + os.path.join(
+                cmake_extra_defines.append(
+                    'CMAKE_TOOLCHAIN_FILE=' + os.path.join(
                         source_dir, 'cmake', 'store_toolchain.cmake'))
             if args.enable_wcos:
-                cmake_extra_args.append('-DCMAKE_USER_MAKE_RULES_OVERRIDE=wcos_rules_override.cmake')
+                cmake_extra_defines.append('CMAKE_USER_MAKE_RULES_OVERRIDE=wcos_rules_override.cmake')
         elif args.cmake_generator is not None and not (is_macOS() and args.use_xcode):
             cmake_extra_args += ['-G', args.cmake_generator]
         elif is_macOS():
@@ -2059,32 +2140,10 @@ def main():
             emsdk_dir = os.path.join(source_dir, "cmake", "external", "emsdk")
             emsdk_file = os.path.join(emsdk_dir, "emsdk.bat") if is_windows() else os.path.join(emsdk_dir, "emsdk")
 
-            # apply patch to emsdk/emsdk.py
-            #
-            # Note: this patch fixes bug in emsdk to install a single emscripten tool.
-            #
-            #       should remove patch file and remove "ignore = dirty" in .gitmodules once the following PR get
-            #       merged and included in a new release:
-            #         https://github.com/emscripten-core/emsdk/pull/834
-            shutil.copy(
-                os.path.join(SCRIPT_DIR, "wasm", "emsdk.py.patch"),
-                os.path.join(emsdk_dir, "emsdk.py"))
-
             log.info("Installing emsdk...")
             run_subprocess([emsdk_file, "install", emsdk_version], cwd=emsdk_dir)
             log.info("Activating emsdk...")
             run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
-
-            # apply patch to file_packager.py
-            #
-            # Note: this patch enables file_packager.py to generate JavaScript code to support preload files in Node.js
-            #
-            #       should remove patch file once the following PR get merged and included in a new release:
-            #         https://github.com/emscripten-core/emscripten/pull/11785   (merged, not release yet)
-            #         https://github.com/emscripten-core/emscripten/pull/14372   (merged, not release yet)
-            shutil.copy(
-                os.path.join(SCRIPT_DIR, "wasm", "file_packager.py.patch"),
-                os.path.join(emsdk_dir, "upstream", "emscripten", "tools", "file_packager.py"))
 
         if (args.android or args.ios or args.enable_windows_store or args.build_wasm
                 or is_cross_compiling_on_apple(args)) and args.path_to_protoc_exe is None:
@@ -2115,6 +2174,60 @@ def main():
         if args.use_rocm and args.rocm_version is None:
             args.rocm_version = ""
 
+        if args.build_eager_mode:
+            eager_root_dir = os.path.join(source_dir, "orttraining", "orttraining", "eager")
+            if args.eager_customop_module and not args.eager_customop_header:
+                raise Exception('eager_customop_header must be provided when eager_customop_module is')
+            elif args.eager_customop_header and not args.eager_customop_module:
+                raise Exception('eager_customop_module must be provided when eager_customop_header is')
+
+            def gen_ops(gen_cpp_name: str, header_file: str, ops_module: str, custom_ops: bool):
+                gen_cpp_scratch_name = gen_cpp_name + '.working'
+                print(f'Generating ORT ATen overrides (output_file: {gen_cpp_name}, header_file: {header_file},'
+                      f'ops_module: {ops_module}), custom_ops: {custom_ops}')
+
+                cmd = [sys.executable, os.path.join(os.path.join(eager_root_dir, 'opgen', 'opgen.py')),
+                       '--output_file', gen_cpp_scratch_name,
+                       '--ops_module', ops_module,
+                       '--header_file', header_file]
+
+                if custom_ops:
+                    cmd += ["--custom_ops"]
+
+                subprocess.check_call(cmd)
+
+                import filecmp
+                if (not os.path.isfile(gen_cpp_name) or
+                   not filecmp.cmp(gen_cpp_name, gen_cpp_scratch_name, shallow=False)):
+                    os.rename(gen_cpp_scratch_name, gen_cpp_name)
+                else:
+                    os.remove(gen_cpp_scratch_name)
+
+            def gen_ort_ops():
+                # generate native aten ops
+                import torch
+                regdecs_path = os.path.join(os.path.dirname(torch.__file__), 'include/ATen/RegistrationDeclarations.h')
+
+                ops_module = os.path.join(eager_root_dir, 'opgen/opgen/atenops.py')
+                gen_ops(os.path.join(eager_root_dir, 'ort_aten.g.cpp'), regdecs_path, ops_module, False)
+
+                # generate custom ops
+                if not args.eager_customop_header:
+                    args.eager_customop_header = os.path.realpath(os.path.join(
+                        eager_root_dir,
+                        "opgen",
+                        "CustomOpDeclarations.h"))
+
+                if not args.eager_customop_module:
+                    args.eager_customop_module = os.path.join(eager_root_dir, 'opgen/opgen/custom_ops.py')
+
+                gen_ops(os.path.join(eager_root_dir, 'ort_customops.g.cpp'),
+                        args.eager_customop_header, args.eager_customop_module, True)
+
+            gen_ort_ops()
+        if args.enable_external_custom_op_schemas and not is_linux():
+            raise BuildError("Registering external custom op schemas is only supported on Linux.")
+
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home, mpi_home, nccl_home,
             tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
@@ -2143,6 +2256,10 @@ def main():
             nodejs_binding_dir = os.path.normpath(os.path.join(source_dir, "js", "node"))
             run_nodejs_tests(nodejs_binding_dir)
 
+    # Build packages after running the tests.
+    # NOTE: if you have a test that rely on a file which only get copied/generated during packaging step, it could
+    # fail unexpectedly. Similar, if your packaging step forgot to copy a file into the package, we don't know it
+    # either.
     if args.build:
         if args.build_wheel:
             nightly_build = bool(os.getenv('NIGHTLY_BUILD') == '1')

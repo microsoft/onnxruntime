@@ -15,6 +15,9 @@ struct CUDAExecutionProviderExternalAllocatorInfo;
 namespace cuda {
 class INcclService;
 }
+namespace profile {
+  class NvtxRangeCreator;
+}
 
 struct ProviderInfo_CUDA {
   virtual OrtStatus* SetCurrentGpuDeviceId(_In_ int device_id) = 0;
@@ -26,6 +29,8 @@ struct ProviderInfo_CUDA {
 
   virtual void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) = 0;
   virtual void cuda__Impl_Cast(void* stream, const int32_t* input_data, int64_t* output_data, size_t count) = 0;
+  virtual void cuda__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) = 0;
+  virtual void cuda__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) = 0;
 
   virtual bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
   virtual bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
@@ -38,6 +43,11 @@ struct ProviderInfo_CUDA {
 
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
   virtual onnxruntime::cuda::INcclService& GetINcclService() = 0;
+#endif
+
+#ifdef ENABLE_NVTX_PROFILE
+  virtual void NvtxRangeCreator__BeginImpl(profile::NvtxRangeCreator *p) = 0;
+  virtual void NvtxRangeCreator__EndImpl(profile::NvtxRangeCreator* p) = 0;
 #endif
 
   virtual std::shared_ptr<onnxruntime::IExecutionProviderFactory> CreateExecutionProviderFactory(const onnxruntime::CUDAExecutionProviderInfo& info) = 0;

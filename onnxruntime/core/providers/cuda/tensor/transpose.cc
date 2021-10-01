@@ -60,6 +60,7 @@ Status TransposeWithCublas(cudaStream_t stream, cublasHandle_t cublas_handle, co
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
   const CudaT* input_data = reinterpret_cast<const CudaT*>(input.Data<T>());
   CudaT* output_data = reinterpret_cast<CudaT*>(output.MutableData<T>());
+
   CUBLAS_RETURN_IF_ERROR(
       cublasTransposeHelper(stream,
                             cublas_handle,
@@ -88,24 +89,6 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
   // special case when there is a dim value of 0 in the shape.
   if (output.Shape().Size() == 0)
     return Status::OK();
-
-  auto element_type = input.GetElementType();
-  if (element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ||
-      element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE ||
-      element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
-    auto mn = TryTransposeWithCublas(permutations, input_shape_override ? *input_shape_override : input.Shape());
-    int M = std::get<0>(mn);
-    int N = std::get<1>(mn);
-    if (M != 0 && N != 0) {
-      if (element_type == utils::GetONNXTensorElementDataType<float>()) {
-        return TransposeWithCublas<float>(stream, cublas_handle, input, output, M, N);
-      } else if (element_type == utils::GetONNXTensorElementDataType<double>()) {
-        return TransposeWithCublas<double>(stream, cublas_handle, input, output, M, N);
-      } else {
-        return TransposeWithCublas<MLFloat16>(stream, cublas_handle, input, output, M, N);
-      }
-    }
-  }
 
   const std::vector<int64_t>& input_dims = input_shape_override ? input_shape_override->GetDims() : input.Shape().GetDims();
   const std::vector<int64_t>& output_dims = output.Shape().GetDims();
@@ -155,37 +138,72 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
   new_input_dims.resize(new_rank);
   new_output_dims.resize(new_rank);
 
+  auto element_type = input.GetElementType();
+  size_t element_size = input.DataType()->Size();
+  if (element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ||
+      element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE ||
+      element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
+    auto mn = TryTransposeWithCublas(new_permutations, new_input_dims);
+    int M = std::get<0>(mn);
+    int N = std::get<1>(mn);
+    if (M != 0 && N != 0) {
+      if (element_type == utils::GetONNXTensorElementDataType<float>()) {
+        return TransposeWithCublas<float>(stream, cublas_handle, input, output, M, N);
+      } else if (element_type == utils::GetONNXTensorElementDataType<double>()) {
+        return TransposeWithCublas<double>(stream, cublas_handle, input, output, M, N);
+      } else {
+        return TransposeWithCublas<MLFloat16>(stream, cublas_handle, input, output, M, N);
+      }
+    }
+  }
+
+  // Transpose021 has a specialized Transpose3DImpl kernel
+  dim3 grid_size, block_size;
+  if (CanDoTranspose3D(prop, new_rank, new_input_dims, new_permutations, grid_size, block_size)) {
+    TensorPitches new_input_strides(new_input_dims);
+    return Transpose3DImpl(stream, element_size, new_input_dims, new_input_strides,
+                           input.DataRaw(), output.MutableDataRaw(), output.Shape().Size(), grid_size, block_size);
+  }
+
+  // 3D-Transpose can treated as a special case of 4D-Transpose with first dimension being 1.
+  if (new_rank == 3) {
+    new_permutations[0]++;
+    new_permutations[1]++;
+    new_permutations[2]++;
+    new_permutations.insert(new_permutations.begin(), 0);
+    new_input_dims.insert(new_input_dims.begin(), 1);
+    new_output_dims.insert(new_output_dims.begin(), 1);
+    new_rank = 4;
+  }
+
   TensorPitches new_input_strides(new_input_dims);
   TensorPitches new_output_strides(new_output_dims);
-
-  // Optimize the permutation of 3D/4D tensor
   TArray<int64_t> input_shape(new_input_dims);
   TArray<int64_t> tmp_input_strides(new_input_strides);
 
-  size_t element_size = input.DataType()->Size();
-  if (CanDoTranspose3D(new_rank, new_input_dims, new_permutations)) {
-    return Transpose3DImpl(stream, element_size, input_shape, tmp_input_strides,
-                           input.DataRaw(), output.MutableDataRaw(), output.Shape().Size());
-  } else if (CanDoTranspose4DParallelizeMultipleElementsPerThreadInInnermostDim(
-                 prop, element_size, new_rank, new_input_dims, new_permutations)) {
+  if (CanDoTranspose4DParallelizeMultipleElementsPerThreadInInnermostDim(
+          prop, element_size, new_rank, new_input_dims, new_permutations,
+          grid_size, block_size)) {
     TArray<int64_t> tmp_output_strides(new_rank);
     for (auto i = 0; i < new_rank; i++) {
-      tmp_output_strides[i] = new_output_strides[new_permutations[i]];
+      tmp_output_strides[static_cast<int32_t>(new_permutations[i])] = new_output_strides[i];
     }
     return Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim(
         stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
-        tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()));
+        tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()),
+        grid_size, block_size);
   } else if (CanDoTranspose4DParallelizeOneElementPerThread(
-                 prop, element_size, new_rank, new_input_dims, new_permutations)) {
+                 prop, element_size, new_rank, new_input_dims, new_permutations, grid_size, block_size)) {
     // Trying to see if we can still do (best effort) more optimized transposing
     // for the 4-D case before falling back to the generic case
     TArray<int64_t> tmp_output_strides(new_rank);
     for (auto i = 0; i < new_rank; i++) {
-      tmp_output_strides[i] = new_output_strides[new_permutations[i]];
+      tmp_output_strides[static_cast<int32_t>(new_permutations[i])] = new_output_strides[i];
     }
     return Transpose4DParallelizeOneElementPerThread(
         stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
-        tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()));
+        tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()),
+        grid_size, block_size);
   }
 
   // General cases

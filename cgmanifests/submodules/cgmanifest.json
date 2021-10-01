@@ -17,8 +17,8 @@
         "Type": "other",
         "other": {
           "Name": "automake",
-          "Version": "1.16.3",
-          "DownloadUrl": "http://ftp.gnu.org/gnu/automake/automake-1.16.3.tar.gz"
+          "Version": "1.16.4",
+          "DownloadUrl": "http://ftp.gnu.org/gnu/automake/automake-1.16.4.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -39,8 +39,8 @@
         "Type": "other",
         "other": {
           "Name": "patchelf",
-          "Version": "0.12",
-          "DownloadUrl": "https://github.com/NixOS/patchelf/archive/0.12.tar.gz"
+          "Version": "0.13",
+          "DownloadUrl": "https://github.com/NixOS/patchelf/archive/0.13.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -50,8 +50,8 @@
         "Type": "other",
         "other": {
           "Name": "libxcrypt",
-          "Version": "4.4.17",
-          "DownloadUrl": "https://github.com/besser82/libxcrypt/archive/v4.4.17.tar.gz"
+          "Version": "4.4.23",
+          "DownloadUrl": "https://github.com/besser82/libxcrypt/archive/v4.4.23.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -61,19 +61,8 @@
         "Type": "other",
         "other": {
           "Name": "git",
-          "Version": "2.31.1",
-          "DownloadUrl": "https://www.kernel.org/pub/software/scm/git/git-2.31.1.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "cmake",
-          "Version": "3.20.2",
-          "DownloadUrl": "https://github.com/Kitware/CMake/releases/download/v3.20.2/cmake-3.20.2.tar.gz"
+          "Version": "2.32.0",
+          "DownloadUrl": "https://www.kernel.org/pub/software/scm/git/git-2.32.0.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -94,8 +83,8 @@
         "Type": "other",
         "other": {
           "Name": "sqlite_autoconf",
-          "Version": "3350500",
-          "DownloadUrl": "https://www.sqlite.org/2021/sqlite-autoconf-3350500.tar.gz"
+          "Version": "3360000",
+          "DownloadUrl": "https://www.sqlite.org/2021/sqlite-autoconf-3360000.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -195,7 +184,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "e1e11e0d555c08bec08a6c7773aa777dfcaae9da",
+          "commitHash": "277508879878e0a5b5b43599b1bea11f66eb3c6c",
           "repositoryUrl": "https://github.com/dmlc/dlpack.git"
         },
         "comments": "git submodule at cmake/external/dlpack"
@@ -205,7 +194,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "1f4c0311cda3403999b702c996898af5707973a9",
+          "commitHash": "d10b27fe37736d2944630ecd7557cefa95cf87c9",
           "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
         },
         "comments": "git submodule at cmake/external/eigen"
@@ -305,7 +294,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "d75fb0502c9d8fef817d82c15223b4aaae8e8b6e",
+          "commitHash": "1f63dcb7fcc3a8bf5c3c8e326867ecd6f5c43f35",
           "repositoryUrl": "https://github.com/onnx/onnx"
         },
         "comments": "git submodule at cmake/external/onnx"
@@ -335,7 +324,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "99296a4462ffc0a8a4a9635e51382277bec68979",
+          "commitHash": "1f416bb462689f3ef9e3f1057a113d9c6aba6972",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "git submodule at cmake/external/onnx-tensorrt"
@@ -385,7 +374,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "b708aeaaf44416bba84b87206fb550196fc60d5a",
+          "commitHash": "d4b2aff0c890ae38bad87c20f5731333db2a2cc1",
           "repositoryUrl": "https://github.com/microsoft/onnxruntime-extensions.git"
         },
         "comments": "git submodule at cmake/external/onnxruntime-extensions"
@@ -435,6 +424,16 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "5916273f79a21551890fd3d56fc5375a78d1598d",
+          "repositoryUrl": "https://github.com/pytorch/cpuinfo.git"
+        },
+        "comments": "git submodule at cmake/external/pytorch_cpuinfo"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "4244cd1cb492fa1d10986ec67f862964c073f844",
           "repositoryUrl": "https://github.com/google/re2.git"
         },
@@ -455,7 +454,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "eab844a87298d500f1924f8a7cadb4cbee426093",
+          "commitHash": "a1241a967ec7920310a696a6c22ae2426752e135",
           "repositoryUrl": "https://github.com/microsoft/onnxruntime-tvm.git"
         },
         "comments": "git submodule at cmake/external/tvm"
@@ -519,16 +518,6 @@
           "repositoryUrl": "https://github.com/gabime/spdlog.git"
         },
         "comments": "git submodule at server/external/spdlog"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "5916273f79a21551890fd3d56fc5375a78d1598d",
-          "repositoryUrl": "https://github.com/pytorch/cpuinfo.git"
-        },
-        "comments": "git submodule at cmake/external/pytorch_cpuinfo"
       }
     }
   ]

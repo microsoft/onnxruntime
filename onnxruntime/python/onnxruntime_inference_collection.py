@@ -11,13 +11,15 @@ from onnxruntime.capi import _pybind_state as C
 
 
 def get_ort_device_type(device):
-    device = device.lower()
-    if device == 'cuda':
+    device_type = device if type(device) is str else device.type.lower()
+    if device_type == 'cuda':
         return C.OrtDevice.cuda()
-    elif device == 'cpu':
+    elif device_type == 'cpu':
         return C.OrtDevice.cpu()
+    elif device_type == 'ort':
+        return C.get_ort_device(device.index).device_type()
     else:
-        raise Exception('Unsupported device type: ' + device)
+        raise Exception('Unsupported device type: ' + device_type)
 
 
 def check_and_normalize_provider_args(providers, provider_options, available_provider_names):
@@ -345,6 +347,13 @@ class InferenceSession(Session):
         providers, provider_options = check_and_normalize_provider_args(providers,
                                                                         provider_options,
                                                                         available_providers)
+
+        if providers == [] and len(available_providers) > 1:
+            warnings.warn("Deprecation warning. This ORT build has {} enabled. ".format(available_providers) +
+                          "The next release (ORT 1.10) will require explicitly setting the providers parameter " +
+                          "(as opposed to the current behavior of providers getting set/registered by default " +
+                          "based on the build flags) when instantiating InferenceSession."
+                          "For example, onnxruntime.InferenceSession(..., providers=[\"CUDAExecutionProvider\"], ...)")
 
         session_options = self._sess_options if self._sess_options else C.get_default_session_options()
         if self._model_path:

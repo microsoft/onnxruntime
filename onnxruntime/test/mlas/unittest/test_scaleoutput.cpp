@@ -52,7 +52,7 @@ class MlasScaleOutputTest : public MlasTestBase {
     constexpr float epsilon = 1e-6f;
 
     for (size_t n = 0; n < M * N; n++) {
-      float diff = std::fabs(Output[n] - OutputRef[n]);
+      float diff = std::fabs((Output[n] - OutputRef[n]) / OutputRef[n]);
       ASSERT_LE(diff, epsilon)
           << " @[" << n / N << "," << n % N << "], total:[" << M << "," << N << "], got:"
           << Output[n] << ", expecting:" << OutputRef[n];

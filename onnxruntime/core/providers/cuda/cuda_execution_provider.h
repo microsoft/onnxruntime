@@ -63,6 +63,14 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes);
   }
 
+  template <typename T>
+  IAllocatorUniquePtr<T> GetTransientScratchBuffer(size_t count_or_bytes) const {
+    if (count_or_bytes == 0)
+      return nullptr;
+
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes, true);
+  }
+
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 
@@ -73,6 +81,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
   int GetDeviceId() const override { return info_.device_id; }
   const cudaDeviceProp& GetDeviceProp() const { return device_prop_; };
   int GetCudnnConvAlgo() const { return info_.cudnn_conv_algo_search; }
+  bool DoCopyOnDefaultStream() const { return info_.do_copy_in_default_stream; }
+  bool GetCudnnConvUseMaxWorkspace() const { return info_.cudnn_conv_use_max_workspace; }
 
   ProviderOptions GetProviderOptions() const override {
     return CUDAExecutionProviderInfo::ToProviderOptions(info_);
@@ -81,6 +91,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
   void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
   static AllocatorPtr CreateCudaAllocator(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy,
                                           CUDAExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
+
+  std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
  private:
   CUDAExecutionProviderInfo info_;
