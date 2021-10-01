@@ -23,6 +23,7 @@ if (args.f || args.force || !fs.existsSync(TEST_DATA_NODE)) {
    ['v10', 'rel-1.5.0'],
    ['v11', 'rel-1.6.1'],
    ['v12', 'rel-1.7.0'],
+   ['v13', 'rel-1.8.1'],
   ].forEach(v => {
     const version = v[0];
     const commit = v[1];

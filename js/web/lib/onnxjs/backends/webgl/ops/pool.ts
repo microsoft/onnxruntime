@@ -49,10 +49,11 @@ const createAveragePoolProgramInfo =
     (inputs: Tensor[], metadata: ProgramMetadata, isGlobalOperator: boolean, attributes: AveragePoolAttributes):
         ProgramInfo => {
           const inputShape = inputs[0].dims.slice();
+          const dilations: number[] = [];
           PoolConvUtil.adjustPoolAttributes(
-              isGlobalOperator, inputShape, attributes.kernelShape, attributes.strides, attributes.pads);
+              isGlobalOperator, inputShape, attributes.kernelShape, attributes.strides, dilations, attributes.pads);
           const outputShape = PoolConvUtil.computePoolOutputShape(
-              isGlobalOperator, inputShape, attributes.strides, attributes.kernelShape, attributes.pads,
+              isGlobalOperator, inputShape, attributes.strides, dilations, attributes.kernelShape, attributes.pads,
               attributes.autoPad);
           const kernelSize = ShapeUtil.size(attributes.kernelShape);
           const op1 = 'value += _X(x);';
@@ -96,6 +97,7 @@ export const parseGlobalAveragePoolAttributes: OperatorInitialization<AveragePoo
 
 export interface MaxPoolAttributes extends AveragePoolAttributes {
   readonly storageOrder: number;
+  readonly dilations: number[];
 }
 
 export const maxPool: OperatorImplementation<MaxPoolAttributes> =
@@ -116,6 +118,7 @@ export const parseMaxPoolAttributes: OperatorInitialization<MaxPoolAttributes> =
       const strides = node.attributes.getInts('strides', []);
       const pads = node.attributes.getInts('pads', []);
       const storageOrder = node.attributes.getInt('storage_order', 0);
+      const dilations = node.attributes.getInts('dilations', []);
 
       // TODO: support attribute 'ceil_mode' and 'storage_order'
       if (storageOrder !== 0) {
@@ -126,7 +129,7 @@ export const parseMaxPoolAttributes: OperatorInitialization<MaxPoolAttributes> =
       }
 
       return createAttributeWithCacheKey(
-          {autoPad, ceilMode, countIncludePad: false, kernelShape, strides, pads, storageOrder});
+          {autoPad, ceilMode, countIncludePad: false, kernelShape, strides, pads, storageOrder, dilations});
     };
 
 const createMaxPoolProgramInfo =
@@ -134,10 +137,11 @@ const createMaxPoolProgramInfo =
         ProgramInfo => {
           const inputShape = inputs[0].dims.slice();
           PoolConvUtil.adjustPoolAttributes(
-              isGlobalOperator, inputShape, attributes.kernelShape, attributes.strides, attributes.pads);
+              isGlobalOperator, inputShape, attributes.kernelShape, attributes.strides, attributes.dilations,
+              attributes.pads);
           const outputShape = PoolConvUtil.computePoolOutputShape(
-              isGlobalOperator, inputShape, attributes.strides, attributes.kernelShape, attributes.pads,
-              attributes.autoPad);
+              isGlobalOperator, inputShape, attributes.strides, attributes.dilations, attributes.kernelShape,
+              attributes.pads, attributes.autoPad);
           const op1 = `
       value = max(_X(x), value);
     `;
@@ -161,6 +165,7 @@ const globalMaxPoolAttributes = {
   strides: [],
   pads: [],
   storageOrder: 0,
+  dilations: [],
   cacheKey: ''
 };
 
