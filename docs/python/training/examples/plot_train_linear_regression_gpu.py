@@ -49,7 +49,7 @@ def plot_dot(model):
         model.graph, name=model.graph.name, rankdir="TB",
         node_producer=GetOpNodeProducer("docstring"))
     return plot_graphviz(pydot_graph.to_string())
-    
+
 
 def onnx_linear_regression_training(coefs, intercept):
     if len(coefs.shape) == 1:
@@ -105,11 +105,15 @@ plot_dot(onx_train)
 
 device = "cuda" if get_device() == 'GPU' else 'cpu'
 
+print("device=%r get_device()=%r" % (device, get_device()))
+
+#######################################
+# Function creating the training session.
 
 def create_training_session(training_onnx, weights_to_train, loss_output_name='loss',
                             training_optimizer_name='SGDOptimizer',
                             device='cpu'):
-    
+
     ort_parameters = TrainingParameters()
     ort_parameters.loss_output_name = loss_output_name
     ort_parameters.use_mixed_precision = False
@@ -145,7 +149,6 @@ def create_training_session(training_onnx, weights_to_train, loss_output_name='l
         provider = ['CUDAExecutionProvider']
     else:
         raise ValueError("Unexpected device %r." % device)
-        
 
     session = TrainingSession(
         training_onnx.SerializeToString(), ort_parameters, session_options,
@@ -153,7 +156,8 @@ def create_training_session(training_onnx, weights_to_train, loss_output_name='l
     return session
 
 
-train_session = create_training_session(onx_train, ['coefs', 'intercept'])
+train_session = create_training_session(
+    onx_train, ['coefs', 'intercept'], device=device)
 print(train_session)
 
 ##########################################
@@ -208,7 +212,7 @@ pprint(state_tensors)
 # Let's wrap this into a class similar following scikit-learn's API.
 
 class DataLoaderDevice:
-    
+
     def __init__(self, X, y, batch_size=20, device='cpu'):
         if len(y.shape) == 1:
             y = y.reshape((-1, 1))
@@ -219,10 +223,10 @@ class DataLoaderDevice:
         self.y = np.ascontiguousarray(y)
         self.batch_size = batch_size
         self.device = device
-    
+
     def __len__(self):
         return self.X.shape[0]
-    
+
     def __iter__(self):
         N = 0
         b = len(self) - self.batch_size
@@ -288,7 +292,7 @@ class CustomTraining:
         elif self.learning_rate == "invscaling":
             eta = self.eta0_ / np.power(t + 1, self.power_t)
         return eta
-        
+
     def fit(self, X, y):
         """
         Trains the model.
@@ -300,14 +304,14 @@ class CustomTraining:
             loss_output_name=self.loss_output_name,
             training_optimizer_name=self.training_optimizer_name,
             device=self.device)
-        
+
         data_loader = DataLoaderDevice(
             X, y, batch_size=self.batch_size, device=self.device)
         lr = self._init_learning_rate()
         self.input_names_ = [i.name for i in self.train_session_.get_inputs()]
         self.output_names_ = [o.name for o in self.train_session_.get_outputs()]
         self.loss_index_ = self.output_names_.index(self.loss_output_name)
-        
+
         bind = self.train_session_.io_binding()
     
         loop = tqdm(range(self.max_iter)) if self.verbose else range(max_iter)
@@ -323,11 +327,11 @@ class CustomTraining:
         self.train_losses_ = train_losses
         self.trained_coef_ = self.train_session_.get_state()
         return self
-        
+
     def _iteration(self, data_loader, learning_rate, bind):
         actual_losses = []
         for batch_idx, (data, target) in enumerate(data_loader):
-                
+
             bind.bind_input(
                 name=self.input_names_[0], device_type=data.device_name(), device_id=0,
                 element_type=np.float32, shape=data.shape(),
@@ -356,17 +360,16 @@ class CustomTraining:
 # that it would be done with *scikit-learn*.
 
 trainer = CustomTraining(onx_train, ['coefs', 'intercept'], verbose=1,
-                         max_iter=10)
+                         max_iter=10, device=device)
 trainer.fit(X, y)
-print(trainer.train_losses_)
+print("training losses:", trainer.train_losses_)
 
 df = DataFrame({"iteration": np.arange(len(trainer.train_losses_)),
                 "loss": trainer.train_losses_})
 df.set_index('iteration').plot(title="Training loss", logy=True)
 
 ######################################################
-# Let's compare scikit-learn trained coefficients and the coefficients
-# obtained with onnxruntime and check they are very close.
+# The final coefficients.
 
 print("onnxruntime", trainer.trained_coef_)
 

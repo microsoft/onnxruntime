@@ -182,10 +182,10 @@ class DataLoader:
         if self.X.shape[0] != self.y.shape[0]:
             raise VaueError(
                 "Shape mismatch X.shape=%r, y.shape=%r." % (self.X.shape, self.y.shape))
-    
+
     def __len__(self):
         return self.X.shape[0]
-    
+
     def __iter__(self):
         N = 0
         b = len(self) - self.batch_size
@@ -219,7 +219,7 @@ for i, batch in enumerate(data_loader):
 
 def create_training_session(training_onnx, weights_to_train, loss_output_name='loss',
                             training_optimizer_name='SGDOptimizer'):
-    
+
     ort_parameters = TrainingParameters()
     ort_parameters.loss_output_name = loss_output_name
     ort_parameters.use_mixed_precision = False
@@ -355,13 +355,13 @@ class CustomTraining:
             self.model_onnx, self.weights_to_train,
             loss_output_name=self.loss_output_name,
             training_optimizer_name=self.training_optimizer_name)
-        
+
         data_loader = DataLoader(X, y, batch_size=self.batch_size)
         lr = self._init_learning_rate()
         self.input_names_ = [i.name for i in self.train_session_.get_inputs()]
         self.output_names_ = [o.name for o in self.train_session_.get_outputs()]
         self.loss_index_ = self.output_names_.index(self.loss_output_name)
-    
+
         loop = tqdm(range(self.max_iter)) if self.verbose else range(max_iter)
         train_losses = []
         for it in loop:
@@ -373,14 +373,14 @@ class CustomTraining:
         self.train_losses_ = train_losses
         self.trained_coef_ = self.train_session_.get_state()
         return self
-        
+
     def _iteration(self, data_loader, learning_rate):
         actual_losses = []
         lr = np.array([learning_rate], dtype=np.float32)
         for batch_idx, (data, target) in enumerate(data_loader):
             if len(target.shape) == 1:
                 target = target.reshape((-1, 1))
-                
+
             inputs = {self.input_names_[0]: data,
                       self.input_names_[1]: target,
                       self.input_names_[2]: lr}
@@ -395,7 +395,7 @@ class CustomTraining:
 trainer = CustomTraining(onx_train, ['coefs', 'intercept'], verbose=1,
                          max_iter=10)
 trainer.fit(X, y)
-print(trainer.train_losses_)
+print("training losses:", trainer.train_losses_)
 
 df = DataFrame({"iteration": np.arange(len(trainer.train_losses_)),
                 "loss": trainer.train_losses_})
