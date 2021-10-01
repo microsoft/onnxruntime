@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/optimizer/selectors_actions/selector_action_transformer.h"
+#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selector_helper.h"
 #include "core/optimizer/selectors_actions/helpers.h"
 
 namespace onnxruntime {
@@ -13,7 +14,7 @@ class Node;
 
 struct NNAPIQDQNodeSelector {
   // Select one or more qdq nodes structure for NNAPI EP to determine support capabilities
-  virtual bool Select(const Graph& graph, const Node& node, std::unique_ptr<NodesToOptimize>& selection) const = 0;
+  virtual bool Select(const Graph& graph, const Node& node, std::unique_ptr<ConstNodesToOptimize>& selection) const = 0;
   virtual ~NNAPIQDQNodeSelector() = default;
 
  protected:
@@ -64,13 +65,11 @@ class NNAPISelectorActionTransformer {
 
   NNAPISelectorActionTransformer(const std::string& name, NNAPIQDQSelectorsAndActions&& nnapi_qdq_selectors_and_actions);
 
-  virtual ~NNAPISelectorActionTransformer() = default;
-
   // TODO: Match + Process in SAT Re-impl
   const std::string name_;
   NNAPIQDQSelectorsAndActions nnapi_qdq_selectors_and_actions_;
 
-  std::unique_ptr<NodesToOptimize> Match(const Graph& graph, const Node& node) const;
+  std::unique_ptr<ConstNodesToOptimize> Match(const Graph& graph, const Node& node) const;
 
   // TODO: See if we really do need this map here
   std::unordered_map<std::string, const NNAPIQDQSelectorAndAction*> op_type_to_nnapi_qdq_sat_;

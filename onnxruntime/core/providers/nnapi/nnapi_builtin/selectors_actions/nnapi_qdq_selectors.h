@@ -8,17 +8,18 @@
 #include "core/optimizer/selectors_actions/selector_action_transformer.h"
 #include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_selector_action_transformer.h"
 #include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selector_action_transformer.h"
+#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selector_helper.h"
 
 namespace onnxruntime {
 class Graph;
 class Node;
 
-namespace QDQ {
+namespace NNAPIQDQ {
 // Base QDQ checker. Finds and provides the DQ and Q nodes to the operator specific checkers, as the QDQ optimizations
 // always involve those nodes.
 class BaseSelector : public NNAPIQDQNodeSelector {
  public:
-  bool Select(const Graph& graph, const Node& node, std::unique_ptr<NodesToOptimize>& selection) const override;
+  bool Select(const Graph& graph, const Node& node, std::unique_ptr<ConstNodesToOptimize>& selection) const override;
 
  protected:
   BaseSelector() = default;
@@ -39,7 +40,7 @@ class BaseSelector : public NNAPIQDQNodeSelector {
   // override if you need to adjust the values in NodesToOptimize.
   // e.g. add entries for missing optional DQ inputs or set num_inputs to handle variadic inputs
   // Called post-Check, if Check returned `true`
-  virtual void UpdateBuilder(NodesToOptimizeBuilder&) const {}
+  virtual void UpdateBuilder(ConstNodesToOptimizeBuilder&) const {}
 };
 
 // Single DQ -> node that does not change data -> Q.
@@ -76,7 +77,7 @@ class VariadicSelector : public BaseSelector {
   bool Check(const Graph& graph, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
-  void UpdateBuilder(NodesToOptimizeBuilder&) const override;
+  void UpdateBuilder(ConstNodesToOptimizeBuilder&) const override;
 };
 
 // DQ nodes for X, W and optionally B -> node -> Q
@@ -85,7 +86,7 @@ class ConvSelector : public BaseSelector {
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 
-  void UpdateBuilder(NodesToOptimizeBuilder&) const override;
+  void UpdateBuilder(ConstNodesToOptimizeBuilder&) const override;
 };
 
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
@@ -94,7 +95,7 @@ class MatMulSelector : public BaseSelector {
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 };
-}  // namespace QDQ
+}  // namespace NNAPIQDQ
 }  // namespace onnxruntime
 
 #endif  // !defined(ORT_MINIMAL_BUILD)

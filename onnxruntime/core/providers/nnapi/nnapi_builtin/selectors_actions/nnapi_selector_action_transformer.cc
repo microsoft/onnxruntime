@@ -31,14 +31,14 @@ void NNAPIQDQSelectorsAndActions::RegisterSelector(const std::string& name,
   ORT_IGNORE_RETURN_VALUE(nnapi_selectors_and_actions_map_.emplace(name, std::move(entry)));
 }
 
-std::unique_ptr<NodesToOptimize>
+std::unique_ptr<ConstNodesToOptimize>
 NNAPISelectorActionTransformer::Match(const Graph& graph, const Node& node) const {
-  std::unique_ptr<NodesToOptimize> node_group;
+  std::unique_ptr<ConstNodesToOptimize> node_group;
 
   // TODO: some nnapi specific checks?
   auto op_rule = op_type_to_nnapi_qdq_sat_.find(node.OpType());
   if (op_rule == op_type_to_nnapi_qdq_sat_.cend()) {
-    std::cout << "op_rule is not found" << node.OpType() << std::endl;
+    std::cout << "op_rule is not found:  " << node.OpType() << std::endl;
     return node_group;
   }
 

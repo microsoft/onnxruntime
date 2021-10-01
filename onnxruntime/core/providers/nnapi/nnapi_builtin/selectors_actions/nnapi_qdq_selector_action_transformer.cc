@@ -7,36 +7,14 @@
 
 namespace onnxruntime {
 
-using NTO = onnxruntime::NodesToOptimize;
-
-// create rules for ops that don't change the data
-void DropQDQNodesRules(NNAPIQDQSelectorsAndActions& nnapi_qdq_selectors_and_actions) {
-  // 3 nodes. DQ, target, Q. Merge into target and remove DQ and Q.
-  const std::string action_name{"drop"};
-  NTO::NodeLocation dq{NTO::NodeType::kInput, 0};
-  NTO::NodeLocation q{NTO::NodeType::kOutput, 0};
-
-  // Move DQ input 0 to target input 0.
-  // Move Q output 0 to target output 0.j
-  std::vector<NodeAndMoveInfo> moves{
-      MoveToSlot(dq, ArgType::kInput, 0, ArgType::kInput, 0),
-      MoveToSlot(q, ArgType::kOutput, 0, ArgType::kOutput, 0)};
-
-  std::unique_ptr<NNAPIQDQNodeSelector> selector(new QDQ::DropDQDNodesSelector());
-  nnapi_qdq_selectors_and_actions.RegisterSelector(action_name,
-                                                   NNAPIQDQSelectorAndAction::OpVersionsMap{{"Gather", {}},
-                                                                                            {"Reshape", {}},
-                                                                                            {"Transpose", {}},
-                                                                                            {"MaxPool", {12}}},
-                                                   std::move(selector));
-}
+using NTO = onnxruntime::ConstNodesToOptimize;
 
 void UnaryOpQDQRules(NNAPIQDQSelectorsAndActions& nnapi_qdq_selectors_and_actions) {
   // 3 nodes. DQ, target, Q
   // Replace with internal QLinear version of operator. Delete all original nodes.
   const std::string action_name{"1DQ"};
 
-  std::unique_ptr<NNAPIQDQNodeSelector> selector(new QDQ::UnarySelector());
+  std::unique_ptr<NNAPIQDQNodeSelector> selector(new NNAPIQDQ::UnarySelector());
   nnapi_qdq_selectors_and_actions.RegisterSelector(action_name,
                                                    NNAPIQDQSelectorAndAction::OpVersionsMap{{"AveragePool", {}}},
                                                    std::move(selector));
@@ -47,7 +25,7 @@ void BinaryOpQDQRules(NNAPIQDQSelectorsAndActions& nnapi_qdq_selectors_and_actio
   // Replace with internal QLinear version of operator. Delete all original nodes.
   const std::string action_name{"2DQ"};
 
-  std::unique_ptr<NNAPIQDQNodeSelector> selector(new QDQ::BinarySelector());
+  std::unique_ptr<NNAPIQDQNodeSelector> selector(new NNAPIQDQ::BinarySelector());
   nnapi_qdq_selectors_and_actions.RegisterSelector(action_name,
                                                    NNAPIQDQSelectorAndAction::OpVersionsMap{{"Add", {}},
                                                                                             {"Mul", {}}},
@@ -59,7 +37,7 @@ void VariadicOpQDQRules(NNAPIQDQSelectorsAndActions& nnapi_qdq_selectors_and_act
   // Replace with QLinear version of operator. Delete all original nodes.
   const std::string action_name{"*DQ"};
 
-  std::unique_ptr<NNAPIQDQNodeSelector> selector(new QDQ::VariadicSelector());
+  std::unique_ptr<NNAPIQDQNodeSelector> selector(new NNAPIQDQ::VariadicSelector());
 
   nnapi_qdq_selectors_and_actions.RegisterSelector(action_name,
                                                    NNAPIQDQSelectorAndAction::OpVersionsMap{{"Concat", {}}},
@@ -73,7 +51,7 @@ void ConvQDQRules(NNAPIQDQSelectorsAndActions& nnapi_qdq_selectors_and_actions) 
   // Delete all original nodes
   const std::string action_name{"Conv"};
 
-  std::unique_ptr<NNAPIQDQNodeSelector> selector(new QDQ::ConvSelector());
+  std::unique_ptr<NNAPIQDQNodeSelector> selector(new NNAPIQDQ::ConvSelector());
 
   nnapi_qdq_selectors_and_actions.RegisterSelector(action_name,
                                                    NNAPIQDQSelectorAndAction::OpVersionsMap{{"Conv", {}}},
@@ -88,7 +66,7 @@ void MatMulQDQRules(NNAPIQDQSelectorsAndActions& nnapi_qdq_selectors_and_actions
 
   //std::unique_ptr<Action> action(new QDQ::MatMulReplaceWithQLinear());
 
-  std::unique_ptr<NNAPIQDQNodeSelector> selector(new QDQ::MatMulSelector());
+  std::unique_ptr<NNAPIQDQNodeSelector> selector(new NNAPIQDQ::MatMulSelector());
   nnapi_qdq_selectors_and_actions.RegisterSelector(action_name,
                                                    NNAPIQDQSelectorAndAction::OpVersionsMap{{"MatMul", {}}},
                                                    std::move(selector));
@@ -97,7 +75,6 @@ void MatMulQDQRules(NNAPIQDQSelectorsAndActions& nnapi_qdq_selectors_and_actions
 NNAPIQDQSelectorsAndActions CreateNNAPISelectorsAndActions() {
   NNAPIQDQSelectorsAndActions nnapi_qdq_selectors_and_actions;
 
-  DropQDQNodesRules(nnapi_qdq_selectors_and_actions);
   UnaryOpQDQRules(nnapi_qdq_selectors_and_actions);
   BinaryOpQDQRules(nnapi_qdq_selectors_and_actions);
   VariadicOpQDQRules(nnapi_qdq_selectors_and_actions);
