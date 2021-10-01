@@ -72,8 +72,11 @@ class GradientGraphBuilderTest(unittest.TestCase):
             }
 
             if input_weights:
-                # FIXME Update ort_inputs
-                pass
+                node_name_prefix = ''
+                for name, param in model.named_parameters():
+                    ort_inputs[name] = to_numpy(param.data)
+            else:
+                node_name_prefix = 'model.'
 
             ort_outs = ort_session.run(None, ort_inputs)
             onnx_output_names = [node.name for node in onnx_model.graph.output]
@@ -95,7 +98,7 @@ class GradientGraphBuilderTest(unittest.TestCase):
             self.assertEqual(4, len(model_param_names))
 
             for name, param in model.named_parameters():
-                grad = onnx_name_to_output['model.' + name + '_grad']
+                grad = onnx_name_to_output[node_name_prefix + name + '_grad']
                 self.assertEqual(param.size(), grad.shape)
 
 
