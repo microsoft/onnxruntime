@@ -931,7 +931,7 @@ def run_onnxruntime(args, models):
             logger.info("[Initialize]  model = {}, ep = {} ...".format(name, ep))
            
             # use float16.py for cuda fp16 only
-            if "cuda_fp16" in ep: 
+            if cuda_fp16 in ep: 
                 
                 # handle model
                 if "model_path_fp16" in model_info:
@@ -950,6 +950,9 @@ def run_onnxruntime(args, models):
                 if "test_data_path_fp16" in model_info:
                     test_data_dir = model_info["test_data_path_fp16"]
                     fp16 = False 
+            
+            if standalone_trt_fp16 in ep: 
+                fp16 = True
             
             inputs, ref_outputs = get_test_data(fp16, test_data_dir, all_inputs_shape)
 
