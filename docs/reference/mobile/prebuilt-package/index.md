@@ -8,5 +8,5 @@ has_children: false
 
 | Version | ONNX Opsets | Details |
 |---|---|---|
-| 1.8 | 12, 13 | [Supported Operators and Types](1.8 ORTMobilePackageOperatorTypeSupport) |
-| 1.9 | 12, 13 | [Supported Operators and Types](1.9 ORTMobilePackageOperatorTypeSupport) |
+| 1.8 | 12, 13 | [Supported Operators and Types](./mobile_package_op_type_support_1.8.md) |
+| 1.9 | 12, 13 | [Supported Operators and Types](./mobile_package_op_type_support_1.9.md) |
