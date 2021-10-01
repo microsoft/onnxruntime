@@ -73,6 +73,15 @@ class TensorShape : private std::vector<int64_t> {
   }
 
   /**
+     Copy dims from a specific start dim into an array with given size
+     `start_dim` is expected to be in the inclusive range [0, NumDimensions() - 1]
+     and this function does no checks to ensure that
+  */
+  void CopyDims(int64_t* dims, size_t start_dim, size_t num_dims) const {
+    memcpy(dims, data() + start_dim, sizeof(value_type) * std::min(num_dims, NumDimensions() - start_dim));
+  }
+
+  /**
      Return underlying vector representation.
   */
   const std::vector<int64_t>& GetDims() const { return *this; }

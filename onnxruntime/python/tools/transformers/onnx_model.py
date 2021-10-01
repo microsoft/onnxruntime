@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 import numpy as np
 from collections import deque
-from onnx import onnx_pb, AttributeProto, ModelProto, TensorProto, numpy_helper, helper, external_data_helper, save_model
+from onnx import onnx_pb, AttributeProto, ModelProto, TensorProto, NodeProto, numpy_helper, helper, external_data_helper, save_model
 from shape_infer_helper import SymbolicShapeInferenceHelper
 
 logger = logging.getLogger(__name__)
@@ -18,6 +18,9 @@ logger = logging.getLogger(__name__)
 
 class OnnxModel:
     def __init__(self, model):
+        self.initialize(model)
+
+    def initialize(self, model):
         self.model = model
         self._node_name_suffix: Dict[str, int] = {}  # key is node name prefix, value is the last suffix generated
         self.shape_infer_helper = None
@@ -80,6 +83,20 @@ class OnnxModel:
                             assert (isinstance(g, onnx_pb.GraphProto))
                             graph_queue.append(g)
         return self.all_graphs
+
+    def get_graphs_input_names(self):
+        input_names = []
+        for graph in self.graphs():
+            for input in graph.input:
+                input_names.append(input.name)
+        return input_names
+
+    def get_graphs_output_names(self):
+        output_names = []
+        for graph in self.graphs():
+            for output in graph.output:
+                output_names.append(output.name)
+        return output_names
 
     def get_graph_by_node(self, node):
         for graph in self.graphs():
@@ -450,108 +467,119 @@ class OnnxModel:
                 shape_list.append("?")  # shall not happen
         return shape_list
 
-    def change_input_output_float32_to_float16(self):
-        """ Change graph input and output data type from FLOAT to FLOAT16
-        """
-        original_opset_version = self.model.opset_import[0].version
-        graph = self.graph()
+    def get_dtype(self, input_or_output: str):
+        """Try get data type given a name (could be initializer, graph input or output)."""
+        tensor_type_map = {obj.name: obj.type for obj in self.model.graph.value_info}
 
-        new_graph_inputs = []
-        for input in graph.input:
-            if input.type.tensor_type.elem_type == TensorProto.FLOAT:
-                new_graph_inputs.append(
-                    helper.make_tensor_value_info(input.name, TensorProto.FLOAT16,
-                                                  self.tensor_shape_to_list(input.type.tensor_type)))
-            else:
-                new_graph_inputs.append(input)
+        if input_or_output in tensor_type_map:
+            return tensor_type_map[input_or_output].tensor_type.elem_type
 
-        new_graph_outputs = []
-        for output in graph.output:
-            if output.type.tensor_type.elem_type == TensorProto.FLOAT:
-                new_graph_outputs.append(
-                    helper.make_tensor_value_info(output.name, TensorProto.FLOAT16,
-                                                  self.tensor_shape_to_list(output.type.tensor_type)))
-            else:
-                new_graph_outputs.append(output)
+        graph_input = self.find_graph_input(input_or_output)
+        if graph_input:
+            return graph_input.type.tensor_type.elem_type
 
-        graph_def = helper.make_graph(graph.node,
-                                      'float16 inputs and outputs',
-                                      new_graph_inputs,
-                                      new_graph_outputs,
-                                      initializer=graph.initializer,
-                                      value_info=graph.value_info)
+        graph_output = self.find_graph_output(input_or_output)
+        if graph_output:
+            return graph_output.type.tensor_type.elem_type
 
-        self.model = helper.make_model(graph_def, producer_name='onnxruntime-tools')
+        return None
 
-        # restore opset version
-        self.model.opset_import[0].version = original_opset_version
+    @staticmethod
+    def get_node_attribute(node: NodeProto, attribute_name: str):
+        for attr in node.attribute:
+            if attr.name == attribute_name:
+                value = helper.get_attribute_value(attr)
+                return value
+        return None
 
     def convert_model_float32_to_float16(self, cast_input_output=True):
-        """Convert a graph to FLOAT16. By default, we will keep data types of inputs and outputs.
-           For decoder model with past_key_values, it is recommended to set cast_input_output=False for better performance.
+        logger.warning(
+            'The function convert_model_float32_to_float16 is deprecated. Use convert_float_to_float16 instead!')
+        self.convert_float_to_float16(use_symbolic_shape_infer=True, keep_io_types=cast_input_output)
+
+    def convert_float_to_float16(self, use_symbolic_shape_infer=True, **kwargs):
+        """Convert a model to half (default) or mixed precision.
+           To use mixed precision, user need specify which graph inputs, outputs, operator type or list of nodes shall keep in float32.
+           By default, we use symbolic shape inference to get shape and type information. If not, ONNX shape inference will be used.
+           Note that symbolic/ONNX shape inference might fail, and the conversion might not proceed without shape and type information.
+
         Args:
-            cast_input_output (bool, optional): keep data type of inputs and outputs, and add Cast nodes to convert float32 inputs to float16, and float16 to float32 for outputs. Defaults to True.
+            use_symbolic_shape_infer (bool, optional): use symbolic shape inference instead of onnx shape inference. Defaults to True.
+            keep_io_types (Union[bool, List[str]], optional): It could be boolean or a list of float32 input/output names. 
+                                                              If True, model inputs/outputs should be left as float32. Defaults to False.
+            op_block_list (List[str], optional): List of operator types to leave as float32.
+                                                 Defaults to None, which will use `float16.DEFAULT_OP_BLOCK_LIST` as default.
+            node_block_list (List[str], optional): List of node names to leave as float32. Defaults to None.
+            force_fp16_initializers(bool): force converting all float initializers to float16.
+                                           Default to false, which will convert only the one needed to avoid precision loss.
+            min_positive_val (float, optional): minimal positive value. Defaults to 1e-7.
+            max_finite_val (float, optional): maximal finite value. Defaults to 1e4.
         """
-        from packaging.version import Version
-        import onnxconverter_common as oc
-        if Version(oc.__version__) > Version("1.7.0"):
+        if "keep_io_types" not in kwargs:
+            kwargs["keep_io_types"] = True
+
+        def float_to_float16_func():
+            # TODO: import from onnxconverter_common when it is stable
+            #try:
+            #    import onnxconverter_common as oc
+            #    from packaging.version import Version
+            #    if Version(oc.__version__) > Version("1.9.0"):
+            #        from onnxconverter_common.float16 import convert_float_to_float16
+            #        return convert_float_to_float16
+            #except ImportError:
+            #    pass
+
+            from float16 import convert_float_to_float16
+            return convert_float_to_float16
+
+        convert_float_to_float16 = float_to_float16_func()
+
+        model = self.model
+        if use_symbolic_shape_infer:
             # Use symbolic shape inference since custom operators (like Gelu, SkipLayerNormalization etc) are not recognized by onnx shape inference.
-            shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
-            model_with_shape = shape_infer_helper.infer_shapes(self.model, auto_merge=True, guess_output_rank=False)
-            self.model = oc.float16.convert_float_to_float16(model_with_shape,
-                                                             keep_io_types=cast_input_output,
-                                                             disable_shape_infer=True)
-            return
+            shape_infer_helper = SymbolicShapeInferenceHelper(model)
+            model = shape_infer_helper.infer_shapes(model, auto_merge=True, guess_output_rank=False)
 
-        graph = self.model.graph
-        initializers = graph.initializer
+        parameters = {'disable_shape_infer': use_symbolic_shape_infer}
+        parameters.update({
+            key: kwargs[key]
+            for key in [
+                'keep_io_types', 'min_positive_val', 'max_finite_val', 'op_block_list', 'node_block_list',
+                'force_fp16_initializers'
+            ] if key in kwargs
+        })
 
-        for initializer in initializers:
-            if initializer.data_type == 1:
-                initializer.CopyFrom(
-                    numpy_helper.from_array(numpy_helper.to_array(initializer).astype(np.float16), initializer.name))
+        fp16_model = convert_float_to_float16(model, **parameters)
+        self.initialize(fp16_model)
 
-        for node in graph.node:
-            if node.op_type in ['Constant', 'ConstantOfShape']:
-                for att in node.attribute:
-                    if att.name == 'value' and att.t.data_type == 1:
-                        att.CopyFrom(
-                            helper.make_attribute(
-                                "value", numpy_helper.from_array(numpy_helper.to_array(att.t).astype(np.float16))))
-            if node.op_type == 'Cast':
-                for att in node.attribute:
-                    if att.name == 'to' and att.i == 1:
-                        att.CopyFrom(helper.make_attribute("to", int(TensorProto.FLOAT16)))
+        # Convert_float_to_float16 might add Cast(to=10) --> Cast(to=1) when two consequent nodes are computed in FP32.
+        # Below are post-processing that removes those Cast nodes.
+        # Remove first Cast nodes in path like  --> Cast --> Cast -->
+        nodes_to_remove = []
+        for node in self.nodes():
+            if node.op_type == "Cast":
+                parent = self.get_parent(node, 0)
+                if parent and parent.op_type == "Cast":
+                    if self.get_children(parent) == 1:  # cannot be removed if its output is used by multiple nodes
+                        self.replace_input_of_all_nodes(parent.output[0], parent.input[0])
+                        nodes_to_remove.append(parent)
 
-        if not cast_input_output:
-            self.change_input_output_float32_to_float16()
-            return
+        # Remove the second cast node.
+        for node in self.nodes():
+            if node.op_type == "Cast" and OnnxModel.get_node_attribute(node, "to") == int(TensorProto.FLOAT) and \
+                self.get_dtype(node.input[0])  == int(TensorProto.FLOAT):
 
-        # Below assumes that we keep input and output data types.
-        # Add Cast node to convert input from float32 to float16.
-        for input_value_info in graph.input:
-            if input_value_info.type.tensor_type.elem_type == TensorProto.FLOAT:
-                initializer = self.get_initializer(input_value_info.name)
-                if initializer is not None:  # for compatibility for old converter/exporter
-                    input_value_info.type.tensor_type.elem_type = TensorProto.FLOAT16
+                if self.find_graph_output(node.output[0]):
+                    self.replace_output_of_all_nodes(node.input[0], node.output[0])
                 else:
-                    cast_input = input_value_info.name
-                    cast_output = input_value_info.name + '_float16'
-                    self.replace_input_of_all_nodes(cast_input, cast_output)
-                    cast_node = helper.make_node('Cast', inputs=[cast_input], outputs=[cast_output])
-                    cast_node.attribute.extend([helper.make_attribute("to", int(TensorProto.FLOAT16))])
-                    self.add_node(cast_node)
+                    self.replace_input_of_all_nodes(node.output[0], node.input[0])
+                nodes_to_remove.append(node)
 
-        # Add Cast node to convert output from float16 back to float32.
-        for output_value_info in graph.output:
-            if output_value_info.type.tensor_type.elem_type == TensorProto.FLOAT:
-                cast_input = output_value_info.name + '_float16'
-                cast_output = output_value_info.name
-                self.replace_output_of_all_nodes(cast_output, cast_input)
-                self.replace_input_of_all_nodes(cast_output, cast_input)
-                cast_node = helper.make_node('Cast', inputs=[cast_input], outputs=[cast_output])
-                cast_node.attribute.extend([helper.make_attribute("to", int(TensorProto.FLOAT))])
-                self.add_node(cast_node)
+        self.remove_nodes(nodes_to_remove)
+
+        if nodes_to_remove:
+            self.prune_graph()
+            print(f"removed {len(nodes_to_remove)} Cast nodes from float16 model")
 
     def create_node_name(self, op_type, name_prefix=None):
         """Create a unique node name that starts with a prefix (default is operator type).
@@ -670,13 +698,9 @@ class OnnxModel:
         Args:
             outputs (list): a list of graph outputs to retain. If it is None, all graph outputs will be kept.
         """
-
-        for node in self.model.graph.node:
-            # Some operators with inner graph in attributes like 'body' 'else_branch' or 'then_branch'
-            if node.op_type in ['Loop', 'Scan', 'If']:
-                # TODO: handle inner graph
-                logger.debug(f"Skip prune_graph since graph has operator: {node.op_type}")
-                return
+        if len(self.graphs()) > 1:
+            logger.debug(f"Skip prune_graph since graph has subgraph")
+            return
 
         if outputs is None:
             outputs = [output.name for output in self.model.graph.output]
@@ -716,8 +740,9 @@ class OnnxModel:
         for input in input_to_remove:
             self.model.graph.input.remove(input)
 
-        logger.info("Graph pruned: {} inputs, {} outputs and {} nodes are removed".format(
-            len(input_to_remove), len(output_to_remove), len(nodes_to_remove)))
+        if input_to_remove or output_to_remove or nodes_to_remove:
+            logger.info("Graph pruned: {} inputs, {} outputs and {} nodes are removed".format(
+                len(input_to_remove), len(output_to_remove), len(nodes_to_remove)))
 
         self.update_graph()
 
@@ -799,6 +824,7 @@ class OnnxModel:
                 else:
                     deps_to_nodes[input_name].append(node_idx)
 
+        # Note: this logic only applies to top level graph since a sub graph could use intializer from parent graph
         initializer_names = [init.name for init in graph.initializer]
         graph_input_names = [input.name for input in graph.input]
         input_names = initializer_names + graph_input_names
@@ -838,11 +864,9 @@ class OnnxModel:
         #    self.graph_topological_sort(graph)
         OnnxModel.graph_topological_sort(self.model.graph)
 
-    def save_model_to_file(self, output_path, use_external_data_format=False):
+    def save_model_to_file(self, output_path, use_external_data_format=False, all_tensors_to_one_file=True):
         logger.info(f"Sort graphs in topological order")
         self.topological_sort()
-
-        logger.info(f"Output model to {output_path}")
 
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
@@ -853,13 +877,27 @@ class OnnxModel:
         else:
             # Save model to external data, which is needed for model size > 2GB
             if use_external_data_format:
-                data_file = str(Path(output_path).name + ".data")
-                if os.path.isfile(data_file):
-                    os.remove(data_file)
+                output_dir = Path(output_path).parent
+                output_dir.mkdir(parents=True, exist_ok=True)
+                location = Path(output_path).name + ".data" if all_tensors_to_one_file else None
+
+                # Show warnings of potential confliction of existing external data file.
+                if all_tensors_to_one_file:
+                    if os.path.exists(location):
+                        logger.warning(
+                            f"External data file ({location}) existed. Please remove the file and try again.")
+                else:
+                    if os.listdir(output_dir):
+                        logger.warning(
+                            f"Output directory ({output_dir}) for external data is not empty. Please try again with a new directory."
+                        )
+
                 external_data_helper.convert_model_to_external_data(self.model,
-                                                                    all_tensors_to_one_file=True,
-                                                                    location=data_file)
+                                                                    all_tensors_to_one_file=all_tensors_to_one_file,
+                                                                    location=location)
             save_model(self.model, output_path)
+
+        logger.info(f"Model saved to {output_path}")
 
     def get_graph_inputs_excluding_initializers(self):
         """

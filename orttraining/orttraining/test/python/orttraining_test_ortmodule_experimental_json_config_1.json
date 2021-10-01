@@ -1,0 +1,31 @@
+{
+    "PropagateCastOps":
+    {
+        "Strategy": "FLOOD_FILL",
+        "Level": 3,
+        "Allow": ["ABC", "DEF"]
+    },
+    "UseExternalGPUAllocator" : false,
+    "EnableCustomAutogradFunction": true,
+    "AllowLayerNormModPrecision": true,
+    "EnableGradAccOptimization": true,
+    "UseStaticShape": true,
+    "RunSymbolicShapeInference": false,
+    "SkipCheck":
+    [
+        "SKIP_CHECK_DEVICE",
+        "SKIP_CHECK_BUILD_GRADIENT",
+        "SKIP_CHECK_EXECUTION_AGENT"
+    ],
+    "DebugOptions":
+    {
+        "LogLevel": "VERBOSE",
+        "SaveONNX": true,
+        "ONNXPrefix": "my_model"
+    },
+    "UseMemoryEfficientGradient" : false,
+    "FallbackPolicy":
+    [
+        "FALLBACK_DISABLE"
+    ]
+}

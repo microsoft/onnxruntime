@@ -3,7 +3,7 @@
 
 #include "core/framework/session_options.h"
 #include "core/common/logging/logging.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 
 namespace onnxruntime {
 

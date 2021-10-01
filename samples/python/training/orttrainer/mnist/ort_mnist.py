@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torchvision import datasets, transforms
 
 import onnxruntime
-from onnxruntime.training import ORTTrainer, ORTTrainerOptions, optim, checkpoint
+from onnxruntime.training import ORTTrainer, ORTTrainerOptions, optim
 
 
 # Pytorch model
@@ -34,8 +34,10 @@ def mnist_model_description():
             'outputs': [('loss', [], True),
                         ('probability', ['batch', 10])]}
 
+
 def my_loss(x, target):
     return F.nll_loss(F.log_softmax(x, dim=1), target)
+
 
 # Helpers
 def train(log_interval, trainer, device, train_loader, epoch, train_steps):
@@ -150,6 +152,7 @@ def main():
     # Save model
     if args.save_path:
         torch.save(model.state_dict(), os.path.join(args.save_path, "mnist_cnn.pt"))
+
 
 if __name__ == '__main__':
     main()

@@ -14,7 +14,7 @@
 
 #include "gsl/gsl"
 #include "orttraining/core/framework/distributed_run_context.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 
 namespace onnxruntime {
 namespace training {

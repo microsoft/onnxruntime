@@ -903,13 +903,9 @@ TEST(QLinearConvTest, SharedPrepackedWeights) {
   test.AddOutput<uint8_t>("y", {1, 1, 7, 7}, Y.quantized_);
 
   // W
-  auto W_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<uint8_t>(), TensorShape({1, 1, 1, 1}),
-                                           W.quantized_.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
-
   OrtValue W_ortvalue;
-
-  W_ortvalue.Init(W_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  Tensor::InitOrtValue(DataTypeImpl::GetType<uint8_t>(), TensorShape({1, 1, 1, 1}),
+                       W.quantized_.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), W_ortvalue);
 
   SessionOptions so;
 

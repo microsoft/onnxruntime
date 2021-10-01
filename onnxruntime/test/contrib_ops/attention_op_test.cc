@@ -1291,7 +1291,7 @@ TEST(AttentionTest, AttentionUnidirectional3DMask) {
       1, 1};
 
   std::vector<float> output_data = {
-      3.967245340f, 0.07324841f, 4.25f, 5.65f,
+      3.0146f, 0.1142f, 3.9834f, 5.3394f,
       8.69f, -0.13f, 4.25f, 5.65f,
       8.69f, -0.13f, 4.25f, 5.65f,
       3.96967912f, 0.07314367f, 4.25f, 5.65f};
@@ -1332,7 +1332,7 @@ TEST(AttentionTest, AttentionUnidirectionalAttentionMask) {
   std::vector<int32_t> mask_index_data = {0, 1, 1, 1};
 
   std::vector<float> output_data = {
-      3.967245340f, 0.07324841f, 4.25f, 5.65f,
+      3.0146f, 0.1142f, 3.9834f, 5.3394f,
       8.69f, -0.13f, 4.25f, 5.65f,
       8.69f, -0.13f, 4.25f, 5.65f,
       3.96967912f, 0.07314367f, 4.25f, 5.65f};
@@ -1644,6 +1644,8 @@ TEST(AttentionTest, AttentionMaskIndexOutOfRange) {
                    use_float16, is_unidirectional, use_past_state, past_sequence_length, past_data, present_data, kMaskIndexEndAndStart);
 }
 
+#if !defined(__wasm__)
+// TODO: fix in web assembly
 TEST(AttentionTest, AttentionPastState_dynamic) {
   // create rand inputs
   RandomValueGenerator random{};
@@ -1672,6 +1674,7 @@ TEST(AttentionTest, AttentionPastState_dynamic) {
   test.AddReferenceOutputs("testdata/attention_past_state.onnx");
   test.Run();
 }
+#endif //!defined(__wasm__)
 
 TEST(AttentionTest, AttentionPrunedModel) {
   int batch_size = 2;
@@ -1832,12 +1835,9 @@ TEST(AttentionTest, SharedPrepackedWeights) {
   tester.AddOutput<float>("output", output_dims, output_data);
   tester.AddInput<int32_t>("mask_index", mask_index_dims, mask_index_data);
 
-  auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape(weights_dims),
-                                           weight_data.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
   OrtValue weight;
-
-  weight.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape(weights_dims),
+                       weight_data.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), weight);
 
   SessionOptions so;
 

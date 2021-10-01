@@ -14,6 +14,7 @@ Abstract:
     quantized integer matrix/matrix multiply operation (QGEMM).
 
     To implement a new kernel, there needs to specialize template functions below:
+        MlasGemmU8X8FixupZeroPointA
         MlasGemmU8X8FixupZeroPointB
         MlasGemmU8X8CopyPackA
         MlasGemmU8X8CopyPackB
@@ -64,6 +65,13 @@ MlasGemmU8X8TryGemvKernel(
     MLAS_UNREFERENCED_PARAMETER(BIsSigned);
 
     return false;
+}
+
+template <typename KernelType>
+MLAS_FORCEINLINE int32_t
+MlasGemmU8X8FixupZeroPointA(int32_t ZeroPointA)
+{
+    return ZeroPointA;
 }
 
 template<typename KernelType>
@@ -250,6 +258,13 @@ Return Value:
             return;
         }
     }
+
+    //
+    // Fixup the sign bit of the per-matrix zero point offset of matrix A if the
+    // kernel requires signed data.
+    //
+
+    ZeroPointA = MlasGemmU8X8FixupZeroPointA<KernelType>(ZeroPointA);
 
     //
     // Fixup the sign bit of the per-matrix zero point offset of matrix B if the
@@ -466,6 +481,13 @@ Return Value:
     int32_t ZeroPointB = typename KernelType::OffsetBType(*Data->ZeroPointB);
 
     //
+    // Fixup the sign bit of the per-matrix zero point offset of matrix A if the
+    // kernel requires signed data.
+    //
+
+    ZeroPointA = MlasGemmU8X8FixupZeroPointA<KernelType>(ZeroPointA);
+
+    //
     // Fixup the sign bit of the per-matrix zero point offset of matrix B if the
     // data is the opposite format of the kernel implementation. This value is
     // ignored if per-column zero point offsets are used instead.
@@ -659,6 +681,8 @@ struct MLAS_GEMM_U8X8_DISPATCH {
     size_t PackedStrideK;
 };
 
+#define USE_NEONS8_KERNEL true
+
 MLAS_FORCEINLINE
 const MLAS_GEMM_U8X8_DISPATCH*
 MlasGemmU8X8GetDispatch(
@@ -678,8 +702,13 @@ MlasGemmU8X8GetDispatch(
     }
 #elif defined(MLAS_TARGET_ARM64)
     GemmU8X8Dispatch = MlasPlatform.GemmU8X8Dispatch;
+    if (USE_NEONS8_KERNEL && BIsSigned && GemmU8X8Dispatch == &MlasGemmU8X8DispatchNeon) {
+        GemmU8X8Dispatch = &MlasGemmS8S8DispatchNeon;
+    }
 #elif defined(MLAS_TARGET_ARM64EC) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
     GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
+#elif defined(MLAS_TARGET_WASM_SIMD)
+    GemmU8X8Dispatch = &MlasGemmU8X8DispatchWasmSimd;
 #else
     GemmU8X8Dispatch = &MlasGemmU8X8DispatchDefault;
 #endif

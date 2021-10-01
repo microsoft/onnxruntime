@@ -649,7 +649,7 @@ void RegisterTrainingOpSchemas() {
             onnx_opset_13.set_domain("");
             onnx_opset_13.set_version(13);
 
-            return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+            return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
           });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LogSoftmaxGrad)
@@ -1711,7 +1711,7 @@ Example 4:
                   {{"scaled_dy"}, "Div", {"dy", "scale"}},
                   {{"dx"}, "Where", {"mask", "scaled_dy", "C0"}}};
 
-              return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+              return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
             } else {
               // ratio not specified. Use a value of 0.5
               std::vector<FunctionBodyHelper::NodeDef> body{
@@ -1722,7 +1722,7 @@ Example 4:
                   {{"scaled_dy"}, "Div", {"dy", "scale"}},
                   {{"dx"}, "Where", {"mask", "scaled_dy", "C0"}}};
 
-              return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+              return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
             }
           });
 
@@ -2079,7 +2079,7 @@ Example 4:
             onnx_opset_13.set_domain("");
             onnx_opset_13.set_version(13);
 
-            return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+            return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
           });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalizationGrad)
@@ -2095,7 +2095,7 @@ Example 4:
       .Input(1, "X", "Input data tensor from the forward path", "T")
       .Input(2, "scale", "Scale tensor.", "T")
       .Input(3, "mean", "mean of X.", "U")
-      .Input(4, "inv_std_var", "inverse std variance of X.", "U")
+      .Input(4, "inv_std_dev", "inverse std deviation of X.", "U")
       .Output(0, "X_grad", "Gradient of the input.", "T")
       .Output(1, "scale_grad", "Gradient of the scale.", "T")
       .Output(2, "bias_grad", "Gradient of the bias.", "T")
@@ -2115,7 +2115,59 @@ Example 4:
         // The bias tensor has the same shape of the scale tensor.
         propagateElemTypeFromInputToOutput(ctx, 2, 2);
         propagateShapeFromInputToOutput(ctx, 2, 2);
-      });
+      })
+      .SetContextDependentFunctionBodyBuilder(
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            FunctionBuilder builder(functionProto);
+
+            auto* tp = ctx.getInputType(0);
+            if ((tp == nullptr) || (!tp->has_tensor_type()))
+              return false;
+            int64_t T = tp->tensor_type().elem_type();
+
+            // Requirements/assumptions:
+            // Inputs Y_grad and X are of shape [d[0], ..., d[axis-1], d[axis], ..., d[rank-1]] and type T
+            // Input scale is of shape [d[axis], ..., d[rank-1]] and type U
+            // Inputs mean and inv_std_dev are of shape [d[0], ..., d[axis-1], 1, ..., 1] (same rank as X)
+            // and type U.
+            //
+            auto axis_ref_attr = MakeRefAttribute("axis", AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
+            builder
+                .AddOpset("", 15)
+                .Add("cast_mean = Cast (mean)", "to", T)
+                .Add("cast_inv_std_dev = Cast(inv_std_dev)", "to", T)
+                .Add("x_2d = Flatten (X)", axis_ref_attr)
+                .Add("Y_grad_2d = Flatten (Y_grad)", axis_ref_attr)
+                .Add("mean_2d = Flatten (cast_mean)", axis_ref_attr)
+                .Add("inv_std_dev_2d = Flatten (cast_inv_std_dev)", axis_ref_attr)
+                .Add(R"ONNX(
+                  shape_x = Shape (X)
+                  bias_scale_shape = Shape (scale)
+                  scale_2d = Flatten <axis = 0> (scale)
+
+                  axis_0 = Constant <value = int64[1] {0}> ()
+                  bias_grad_2d = ReduceSum (Y_grad_2d, axis_0)
+                  bias_grad = Reshape (bias_grad_2d, bias_scale_shape)
+
+                  deviation = Sub (x_2d, mean_2d)
+                  normalized_deviation = Mul(deviation, inv_std_dev_2d)
+                  scale_grad_rows = Mul (Y_grad_2d, normalized_deviation)
+                  scale_grad_2d = ReduceSum (scale_grad_rows, axis_0)
+                  scale_grad = Reshape (scale_grad_2d, bias_scale_shape)
+                  normalized_layer_grad = Mul (Y_grad_2d, scale_2d)
+
+                  B = Mul (normalized_layer_grad, inv_std_dev_2d)
+                  C = Mul (B, normalized_deviation)
+                  mean_B = ReduceMean <axes = [1]> (B)
+                  mean_C = ReduceMean <axes = [1]> (C)
+                  nd_mean_C = Mul (normalized_deviation, mean_C)
+                  mean_diff_B = Sub (B, mean_B)
+                  X_grad_2D = Sub (mean_diff_B, nd_mean_C)
+                  X_grad = Reshape (X_grad_2D, shape_x)
+                )ONNX");
+            schema.BuildFunction(functionProto);
+            return true;
+          });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SimplifiedLayerNormalizationGrad)
       .SetDomain(kMSDomain)
@@ -2613,7 +2665,46 @@ Return true if all elements are true and false otherwise.
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
+      .SetContextDependentFunctionBodyBuilder(
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            auto* tp = ctx.getInputType(0);
+            if ((tp == nullptr) || (!tp->has_tensor_type()))
+              return false;
+            auto elem_type = (ONNX_NAMESPACE::TensorProto_DataType)tp->tensor_type().elem_type();
+            static constexpr double kAlpha = M_2_SQRTPI * M_SQRT1_2;
+            static constexpr double kGamma = 0.044715f;
+            static constexpr double kBeta = kGamma * kAlpha * 3.0f;
+            std::vector<FunctionBodyHelper::NodeDef> body{
+                ONNX_NAMESPACE::Const("half", 0.5f, elem_type),
+                ONNX_NAMESPACE::Const("one", 1.0f, elem_type),
+                ONNX_NAMESPACE::Const("alpha", kAlpha, elem_type),
+                ONNX_NAMESPACE::Const("gamma", kGamma, elem_type),
+                ONNX_NAMESPACE::Const("beta", kBeta, elem_type),
+                {{"x_square"}, "Mul", {"X", "X"}},
+                {{"x_cube"}, "Mul", {"X", "x_square"}},
+                {{"gamma_x_cube"}, "Mul", {"gamma", "x_cube"}},
+                {{"sum1"}, "Add", {"X", "gamma_x_cube"}},
+                {{"tanh_arg"}, "Mul", {"alpha", "sum1"}},
+                {{"tanh_val"}, "Tanh", {"tanh_arg"}},
+                {{"tanh_square"}, "Mul", {"tanh_val", "tanh_val"}},
+                {{"sech_square"}, "Sub", {"one", "tanh_square"}},
+                {{"alpha_x"}, "Mul", {"alpha", "X"}},
+                {{"beta_x_cube"}, "Mul", {"beta", "x_cube"}},
+                {{"sum"}, "Add", {"alpha_x", "beta_x_cube"}},
+                {{"term2"}, "Mul", {"sech_square", "sum"}},
+                {{"sum2"}, "Add", {"tanh_val", "term2"}},
+                {{"sum3"}, "Add", {"sum2", "one"}},
+                {{"prod"}, "Mul", {"half", "sum3"}},
+                {{"dX"}, "Mul", {"dY", "prod"}},
+            };
+
+            OperatorSetIdProto onnx_opset_13;
+            onnx_opset_13.set_domain("");
+            onnx_opset_13.set_version(13);
+
+            return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+          });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(BiasGeluGrad_dX)
       .SetDomain(kMSDomain)

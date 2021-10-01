@@ -167,7 +167,7 @@ class InferenceSession {
     * Calling this API is optional in which case onnxruntime will use its internal CPU execution provider.
     * @return OK if success.
     */
-  common::Status RegisterExecutionProvider(std::unique_ptr<IExecutionProvider> p_exec_provider) ORT_MUST_USE_RESULT;
+  common::Status RegisterExecutionProvider(const std::shared_ptr<IExecutionProvider>& p_exec_provider) ORT_MUST_USE_RESULT;
 
 #if !defined(ORT_MINIMAL_BUILD)
   /**
@@ -316,12 +316,15 @@ class InferenceSession {
     * @param state State of the graph needed to resume partial graph run.
     * @param feeds_fetches_manager Contains feed/fetches name to internal indices mapping and information for device
     *                              copy/checks.
+    * @param cache Contains node arg name to OrtValue map stashed from previous run
+    *              for frontier tensors
   */
   common::Status PartialRun(onnxruntime::RunOptions& run_options,
                             const std::vector<OrtValue>& feeds,
                             std::vector<OrtValue>& fetches,
                             PartialGraphExecutionState& state,
-                            FeedsFetchesManager& feeds_fetches_manager);
+                            FeedsFetchesManager& feeds_fetches_manager,
+                            const OrtValueCachePtr& cache);
 #endif
 
   /**
@@ -596,11 +599,6 @@ class InferenceSession {
 
   // Any GraphTransformer/RewriteRule name in this set will not be enabled.
   std::unordered_set<std::string> optimizers_to_disable_;
-#endif
-
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  Status PartitionOrtFormatModel(onnxruntime::Graph& graph, const ExecutionProviders& providers,
-                                 KernelRegistryManager& kernel_registry_manager, SessionState& session_state) const;
 #endif
 
   SessionOptions session_options_;

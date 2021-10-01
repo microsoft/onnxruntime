@@ -16,7 +16,7 @@
 #include "core/common/status.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_def_builder.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/op_kernel_info.h"
 #include "core/framework/op_node_proto_helper.h"
 #include "core/framework/tensor.h"
@@ -110,8 +110,8 @@ class OpKernel {
   // @param used_shared_buffers: Boolean flag set by the kernel implementation indicating
   // that the provided weight has been used by the kernel.
   virtual Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& /*prepacked_buffers*/,
-                                          int /*input_idx*/,
-                                          /*out*/ bool& used_shared_buffers) {
+                                           int /*input_idx*/,
+                                           /*out*/ bool& used_shared_buffers) {
     used_shared_buffers = false;
     return Status::OK();
   }
@@ -327,12 +327,14 @@ struct BuildKernelDefConstraintsImpl {
   }
 };
 
-template<typename... Types>
+#if !defined(DISABLE_SPARSE_TENSORS)
+template <typename... Types>
 struct BuildKernelDefSparseConstraintsImpl {
   std::vector<MLDataType> operator()() const {
     return {DataTypeImpl::GetSparseTensorType<Types>()...};
   }
 };
+#endif
 
 // Use within macro definitions to create a custom vector of constraints.
 // Example: #define REG_KERNEL(OP, VERSION, KERNEL_CLASS, Type, ...)
@@ -342,10 +344,12 @@ inline std::vector<MLDataType> BuildKernelDefConstraints() {
   return BuildKernelDefConstraintsImpl<Types...>{}();
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 template <typename... Types>
 inline std::vector<MLDataType> BuildKernelDefSparseConstraints() {
   return BuildKernelDefSparseConstraintsImpl<Types...>{}();
 }
+#endif
 
 // version of BuildKernelDefConstraints() which takes a type list
 template <typename L>
@@ -353,11 +357,12 @@ inline std::vector<MLDataType> BuildKernelDefConstraintsFromTypeList() {
   return boost::mp11::mp_apply<BuildKernelDefConstraintsImpl, L>{}();
 }
 
-template<typename L>
+#if !defined(DISABLE_SPARSE_TENSORS)
+template <typename L>
 inline std::vector<MLDataType> BuildKernelDefSparseConstraintsFromTypeList() {
   return boost::mp11::mp_apply<BuildKernelDefSparseConstraintsImpl, L>{}();
 }
-
+#endif
 
 }  // namespace onnxruntime
 

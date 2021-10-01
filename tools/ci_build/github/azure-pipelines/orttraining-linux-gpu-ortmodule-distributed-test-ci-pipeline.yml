@@ -4,7 +4,7 @@ jobs:
 - job: Onnxruntime_Linux_GPU_ORTModule_Distributed_Test
 
   timeoutInMinutes: 120
-  pool: 'Linux-Multi-GPU-V100'
+  pool: 'Onnxruntime-Linux-GPU-NC24sv3'
 
   steps:
   - checkout: self
@@ -20,15 +20,16 @@ jobs:
           --config RelWithDebInfo \
           --use_cuda --cuda_version=11.1 --cuda_home=/usr/local/cuda-11.1 --cudnn_home=/usr/local/cuda-11.1 \
           --enable_training \
+          --enable_training_torch_interop \
           --update --build \
-          --build_wheel --cmake_extra_defines onnxruntime_ENABLE_TRAINING_TORCH_INTEROP=ON \
+          --build_wheel \
           " \
         -m \
         -u \
         -e
       DisplayName: 'Build'
 
-  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/mnist" -d "/mnist"
+  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/mnist" -d "/mnist"
     displayName: 'Mount MNIST'
     condition: succeededOrFailed()
 

@@ -30,6 +30,8 @@ class EmbedLayerNormalizationQuant(QuantOperatorBase):
         '''
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
             self.quantizer.quantize_inputs(node, [2, 3, 4, 5, 6])
+        if quantized_input_names is None:
+            return super().quantize()
 
         qembed_layer_norm_name = "" if node.name == "" else node.name + "_quant"
 
