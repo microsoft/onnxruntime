@@ -17,7 +17,7 @@ bool ConfigOptions::TryGetConfigEntry(const std::string& config_key, std::string
   auto entry = GetConfigEntry(config_key);
   const bool found = entry.has_value();
   if (found) {
-    config_value = std::move(entry.value());
+    config_value = std::move(*entry);
   }
   return found;
 }
