@@ -282,6 +282,7 @@ inline std::string ToMBString(const std::string& s) { return s; }
  */
 std::string ToMBString(const std::wstring& s);
 
+std::string ToUTF8String(const std::wstring& s);
 std::wstring ToWideString(const std::string& s);
 inline std::wstring ToWideString(const std::wstring& s) { return s; }
 #else
