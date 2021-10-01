@@ -56,9 +56,6 @@ class ConstNodesToOptimize {
     return GetNode(idx, required);
   }
 
-  // inputs filtered by index. includes all variadic.
-  std::vector<const Node*> Inputs(const std::vector<int>& indexes, bool required = true) const;
-
   const Node& Target() {
     return *GetNode(NumInputEntries() + 0, /*required*/ true);
   }
@@ -66,12 +63,6 @@ class ConstNodesToOptimize {
   const Node* Output(int idx, bool required = true) {
     return GetNode(NumInputEntries() + 1 + idx, required);
   }
-
-  // outputs filtered by index. includes all variadic.
-  std::vector<const Node*> Outputs(const std::vector<int>& indexes, bool required = true) const;
-
-  // Get the Node or Nodes (if variadic) at a specific index.
-  std::vector<const Node*> GetNodesAtLocation(const NodeLocation& location, bool required = true) const;
 
   std::vector<const Node*>& AllNodes() { return nodes_; }
 

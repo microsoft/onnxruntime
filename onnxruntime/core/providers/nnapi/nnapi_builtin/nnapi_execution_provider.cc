@@ -14,6 +14,12 @@
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 #include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_selector_action_transformer.h"
 #include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_selector_action_transformer.cc"
+#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selector_action_transformer.h"
+#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selector_action_transformer.cc"
+#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selectors.h"
+#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selectors.cc"
+#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selector_helper.h"
+#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selector_helper.cc"
 #include "core/providers/partitioning_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
@@ -121,8 +127,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   // TODO: Pre-Partition: add selection - checkQDQNodes -> select qdq structure pairs -> supported
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
     const auto* node = graph_viewer.GetNode(index);
-    NNAPISelectorActionTransformer nnapi_selector_action_transformer;
-    //NNAPIQDQSelectorActionTransformer nnapi_qdq_selector_action_transformer;
+    NNAPISelectorActionTransformer nnapi_selector_action_transformer("NNAPISAT", CreateNNAPISelectorsAndActions());
     auto node_group = nnapi_selector_action_transformer.Match(graph_viewer.GetGraph(), *node);
     // Get Node Groups?
   }
@@ -130,7 +135,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   const auto excluded_nodes = utils::CreateExcludedNodeSet(graph_viewer, partitioning_stop_ops_);
   const bool check_excluded_nodes = !excluded_nodes.empty();
 
-  std::unordered_set<std::string> node_outputs_in_current_group {};
+  std::unordered_set<std::string> node_outputs_in_current_group{};
 
   const auto is_node_supported = [&](const Node& node) -> bool {
     const bool excluded = check_excluded_nodes && Contains(excluded_nodes, &node);

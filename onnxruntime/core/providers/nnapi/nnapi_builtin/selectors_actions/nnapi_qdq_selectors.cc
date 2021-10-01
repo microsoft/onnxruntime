@@ -38,7 +38,7 @@ bool BaseSelector::CheckQDQNodes(const Graph& graph, const Node& node,
          !graph.NodeProducesGraphOutput(node);
 }
 
-bool BaseSelector::Select(const Graph& graph, const Node& node, std::unique_ptr<ConstNodesToOptimize>& selection) const{
+bool BaseSelector::Select(const Graph& graph, const Node& node, std::unique_ptr<ConstNodesToOptimize>& selection) const {
   std::vector<const Node*> dq_nodes = graph_utils::FindParentsByType(node, QDQ::DQOpName);
   std::vector<const Node*> q_nodes = graph_utils::FindChildrenByType(node, QDQ::QOpName);
 
@@ -187,7 +187,7 @@ bool MatMulSelector::Check(const Graph& graph,
   return (dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8);
 }
 
-}  // namespace QDQ
+}  // namespace NNAPIQDQ
 }  // namespace onnxruntime
 
 #endif  // !defined(ORT_MINIMAL_BUILD)

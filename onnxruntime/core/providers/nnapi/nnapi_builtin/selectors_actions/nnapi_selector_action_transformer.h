@@ -3,9 +3,7 @@
 
 #pragma once
 
-#include "core/optimizer/selectors_actions/selector_action_transformer.h"
 #include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selector_helper.h"
-#include "core/optimizer/selectors_actions/helpers.h"
 
 namespace onnxruntime {
 
