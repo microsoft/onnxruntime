@@ -311,8 +311,6 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace('ROCM error executing', 'HIP error executing')
     s = s.replace('ROCM_PINNED', 'CUDA_PINNED')
     s = s.replace('rocm_err', 'hip_err')
-    #s = s.replace('MiopenConvAlgoSearch', 'CudnnConvAlgoSearch')
-    #s = s.replace('miopen_conv_algo_search', 'cudnn_conv_algo_search')
     s = s.replace('RegisterHipTrainingKernels', 'RegisterRocmTrainingKernels')
     s = s.replace('ROCM_VERSION', 'CUDA_VERSION')  # semantically different meanings, cannot hipify
     s = s.replace('__ROCM_ARCH__', '__CUDA_ARCH__')  # semantically different meanings, cannot hipify
