@@ -756,7 +756,6 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float or half tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
       .SetContextDependentFunctionBodyBuilder([](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
-        // fastgelu(x) =
         auto* tp = ctx.getInputType(0);
         if ((tp == nullptr) || (!tp->has_tensor_type()))
           return false;
@@ -765,34 +764,25 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
         // Optional input 1 indicates a bias to be added to input 0.
         auto hasBias = ctx.hasInput(1);
 
-        std::string xb(hasBias ? "X_bias" : "X");
+        FunctionBuilder builder(functionProto);
+        builder
+            .AddOpset("", 13)
+            .Add("a = Constant()", onnx::ValueAttr(0.5, elem_type))
+            .Add("b = Constant()", onnx::ValueAttr(0.797885, elem_type))
+            .Add("c = Constant()", onnx::ValueAttr(0.035677, elem_type))
+            .Add("one = Constant()", onnx::ValueAttr(1.0, elem_type))
+            .Add(hasBias ? "X_bias = Add (X, bias)" : "X_bias = Identity (X)")
+            .Add("T1 = Mul (X_bias, X_bias) ")
+            .Add("T2 = Mul (c, T1) ")
+            .Add("T3 = Add (b, T2) ")
+            .Add("T4 = Mul (X_bias, T3) ")
+            .Add("T5 = Tanh (T4) ")
+            .Add("T6 = Add (one, T5) ")
+            .Add("T7 = Mul (X_bias, T6) ")
+            .Add("Y = Mul (a, T7)");
 
-        std::vector<FunctionBodyHelper::NodeDef> body{
-            // Constants:
-            ONNX_NAMESPACE::Const("a", 0.5f, elem_type),
-            ONNX_NAMESPACE::Const("b", 0.797885f, elem_type),
-            ONNX_NAMESPACE::Const("c", 0.035677f, elem_type),
-            ONNX_NAMESPACE::Const("one", 1.0f, elem_type),
-            // nodes: {outputs, op, inputs, attributes}
-            // Following node to be added only if bias is specified.
-            // {{xb}, "Add", {"X", "bias"}},
-            {{"T1"}, "Mul", {xb, xb}},
-            {{"T2"}, "Mul", {"c", "T1"}},
-            {{"T3"}, "Add", {"b", "T2"}},
-            {{"T4"}, "Mul", {xb, "T3"}},
-            {{"T5"}, "Tanh", {"T4"}},
-            {{"T6"}, "Add", {"one", "T5"}},
-            {{"T7"}, "Mul", {xb, "T6"}},
-            {{"Y"}, "Mul", {"a", "T7"}}};
-
-        if (hasBias)
-          body.insert(body.begin(), {{xb}, "Add", {"X", "bias"}});
-
-        ONNX_NAMESPACE::OperatorSetIdProto onnx_opset_13;
-        onnx_opset_13.set_domain("");
-        onnx_opset_13.set_version(13);
-
-        return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+        schema.BuildFunction(functionProto);
+        return true;
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SkipLayerNormalization)
@@ -2493,7 +2483,7 @@ Example 4:
                 .Add("Rank = Size (XShape)")                                                  // rank of input tensor: scalar
                 .Add("Zero1D = Constant()", "value", mktensor(0))                             // [0] : 1D tensor
                 .Add("Axis1D = Constant()", "value", mktensor(axis))                          // [axis] : 1D tensor
-                .Add("PrefixShape = Slice (XShape, Zero1D, Axis1D)")                           // [d[0], ..., d[axis-1]]
+                .Add("PrefixShape = Slice (XShape, Zero1D, Axis1D)")                          // [d[0], ..., d[axis-1]]
                 .Add(axis > 0                                                                 // number of axes that are reduced =
                          ? "NumReducedAxes = Sub (Rank, Axis1D)"                              // [rank - axis]: 1D tensor
                          : "NumReducedAxes = Neg (Axis1D)")                                   // [-axis] : 1D tensor
