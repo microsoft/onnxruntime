@@ -8,6 +8,8 @@
 #include <fstream>
 
 #include <inference_engine.hpp>
+#include <gpu/gpu_context_api_ocl.hpp>
+#include <gpu/gpu_config.hpp>
 
 #ifdef OPENVINO_2021_4
 using Exception = InferenceEngine::Exception;
@@ -203,7 +205,15 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
         }
       }
       try {
-        exe_network_ = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, hw_target, config);
+        if ((global_context.device_type.find("GPU") != std::string::npos)  && 
+            (global_context_.context != nullptr)) {
+          std::cout << "We have Remote GPU Plugin Enabled" <<  global_context_.context << "\n";
+          cl_context ctx = static_cast<cl_context>(global_context_.context); //td::static_pointer_cast<cl_context>(global_context_.context);
+          auto remote_context = InferenceEngine::gpu::make_shared_context(global_context_.ie_core, "GPU", ctx);
+          exe_network_ = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, remote_context);
+        } else {
+          exe_network_ = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, hw_target, config);
+        }
       } catch (const Exception& e) {
         ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_context_.subgraph_name + ": " + e.what());
       } catch (...) {

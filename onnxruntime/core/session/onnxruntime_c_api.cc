@@ -45,6 +45,14 @@ ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 }
 #endif
 
+#ifdef USE_OPENVINO
+
+#include "core/providers/openvino/openvino_provider_factory.h"
+namespace onnxruntime {
+ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO();
+}
+#endif
+
 #ifdef ENABLE_EXTENSION_CUSTOM_OPS
 #include "onnxruntime_extensions.h"
 #endif
@@ -181,7 +189,7 @@ ORT_STATUS_PTR CreateTensorImpl(MLDataType ml_type, const int64_t* shape, size_t
   }
   if (size_to_allocate > p_data_len) {
     std::ostringstream oss;
-    oss << "not enough space: expected " << size_to_allocate << ", got " << p_data_len;
+    oss << ": expected " << size_to_allocate << ", got " << p_data_len;
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, oss.str().c_str());
   }
   Tensor::InitOrtValue(ml_type, tensor_shape, p_data, *info, ort_value);
@@ -246,6 +254,14 @@ std::unique_ptr<IDataTransfer> GetDataTransfer(const OrtDevice& src_device, cons
   if (src_device.Type() == OrtDevice::GPU || dst_device.Type() == OrtDevice::GPU) {
     if (auto* provider_info = TryGetProviderInfo_CUDA()) {
       return provider_info->CreateGPUDataTransfer(nullptr);
+    }
+  }
+#endif
+#ifdef USE_OPENVINO
+  if (src_device.Type() == OrtDevice::GPU || dst_device.Type() == OrtDevice::GPU) {
+    if (auto* provider_info = GetProviderInfo_OpenVINO()) {
+      std::cout << "I am here\n";
+      return provider_info->CreateOVGPUDataTransfer();
     }
   }
 #endif

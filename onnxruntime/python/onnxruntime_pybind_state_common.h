@@ -169,6 +169,7 @@ extern std::string nuphar_settings;
 namespace onnxruntime {
 ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
+ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO();
 namespace python {
 // TODO remove deprecated global config
 extern OrtCudnnConvAlgoSearch cudnn_conv_algo_search;

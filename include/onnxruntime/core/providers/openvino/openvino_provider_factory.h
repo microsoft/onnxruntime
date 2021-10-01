@@ -4,9 +4,16 @@
 #include "onnxruntime_c_api.h"
 
 #ifdef __cplusplus
+namespace onnxruntime {
+class IAllocator;
+class IDataTransfer;
 struct ProviderInfo_OpenVINO {
   virtual std::vector<std::string> GetAvailableDevices() const = 0;
+  virtual std::unique_ptr<IAllocator> CreateOVGPUAllocator() const = 0;
+  virtual std::unique_ptr<IDataTransfer> CreateOVGPUDataTransfer() const = 0;
 };
+
+}
 
 extern "C" {
 #endif

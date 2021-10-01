@@ -318,10 +318,6 @@ std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) {
 }
 #endif
 
-std::string GetEnvironmentVar(const std::string& var_name) {
-  return g_host->GetEnvironmentVar(var_name);
-}
-
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                    const std::string& provider_type,
                                                    const std::vector<const KernelRegistry*>& kernel_registries,
