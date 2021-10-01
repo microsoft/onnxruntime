@@ -61,22 +61,36 @@ def export_gradient_graph(
     }
 
     if input_weights:
-        # FIXME Probably need to expand the list of model params.
         class WeightsWrapperModule(WrapperModule):
-            def forward(self, model_input, model_params, expected_labels):
+            def forward(self, model_input, expected_labels, *model_params):
                 for param, set_param in zip(model.parameters(), model_params):
                     param.data = set_param.data
                 output = self.model(model_input)
                 loss = loss_fn(output, expected_labels)
                 return output, loss
         wrapped_model = WeightsWrapperModule(model)
-        args = (example_input, tuple(model.parameters()), example_labels)
-        input_names = ['input', 'model_params', 'labels']
-        dynamic_axes['model_params'] = {0: 'batch_size', }
+        args = (example_input, example_labels, *tuple(model.parameters()))
+        model_param_names = tuple(name for name, _ in model.named_parameters())
+        input_names = ['input', 'labels', *model_param_names]
+        nodes_needing_gradients = set()
+        for name, _ in model.named_parameters():
+            # Should we check `if _.requires_grad:` first?
+            nodes_needing_gradients.add(name)
     else:
         wrapped_model = WrapperModule(model)
         args = (example_input, example_labels)
         input_names = ['input', 'labels']
+        # 'model.' will be prepended to nodes because we wrapped `model` using a member called `model`.
+        node_name_prefix = 'model.'
+         # TODO Allow customizing.
+        nodes_needing_gradients = set()
+        for name, _ in model.named_parameters():
+            # Should we check `if _.requires_grad:` first?
+            nodes_needing_gradients.add(name)
+
+        nodes_needing_gradients = set(
+            node_name_prefix + name for name in nodes_needing_gradients)
+        
 
     torch.onnx.export(
         wrapped_model, args,
@@ -87,16 +101,6 @@ def export_gradient_graph(
         input_names=input_names,
         output_names=['output', 'loss'],
         dynamic_axes=dynamic_axes)
-
-    # TODO Allow customizing.
-    nodes_needing_gradients = set()
-    for name, _ in model.named_parameters():
-        # Should we check `if _.requires_grad:` first?
-        nodes_needing_gradients.add(name)
-
-    # 'model.' will be prepended to nodes because we wrapped `model` using a member called `model`.
-    nodes_needing_gradients = set(
-        'model.' + name for name in nodes_needing_gradients)
 
     builder = GradientGraphBuilder(intermediate_graph_path,
                                    {'loss'},

@@ -72,7 +72,7 @@ class GradientGraphBuilderTest(unittest.TestCase):
             }
 
             if input_weights:
-                # TODO Update ort_inputs
+                # FIXME Update ort_inputs
                 pass
 
             ort_outs = ort_session.run(None, ort_inputs)
