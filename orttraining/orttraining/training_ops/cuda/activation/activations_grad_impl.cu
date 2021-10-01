@@ -34,7 +34,7 @@ struct OP_ReluGrad : public CtxReluGrad {
 template <typename T>
 struct OP_SigmoidGrad : public CtxSigmoidGrad {
   __device__ __inline__ T operator()(const T& dy, const T& x) const {
-    const T sigmoid_x = x >= T {0} ? (T)1 / ((T)1 + _Exp(-_Abs(x))) : ((T)1  - (T)1 / ((T)1 + _Exp(-_Abs(x))));
+    const T sigmoid_x = (T)1 / ((T)1 + _Exp(-_Abs(x)));
     return dy * sigmoid_x * ((T)1 - sigmoid_x);
   }
 };
