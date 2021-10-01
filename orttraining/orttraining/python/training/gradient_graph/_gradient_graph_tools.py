@@ -14,7 +14,7 @@ def export_gradient_graph(
         example_input: torch.Tensor,
         example_labels: torch.Tensor,
         gradient_graph_path: Union[Path, str], intermediate_graph_path: Optional[Union[Path, str]] = None,
-        opset_version=12):
+        opset_version=12) -> None:
     r"""
     Build a gradient graph for `model` so that you can output gradients when given a specific input and labels.
 
