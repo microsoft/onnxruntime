@@ -93,6 +93,7 @@ async function testAllBrowserCases({ hostInKarma }) {
 }
 
 async function runKarma({ hostInKarma, main, browser }) {
+  fs.emptyDirSync(CHROME_USER_DATA_FOLDER);
   const selfHostFlag = hostInKarma ? '--self-host' : '';
   await runInShell(
     `npx karma start --single-run --browsers ${browser} ${selfHostFlag} --test-main=${main} --user-data=${CHROME_USER_DATA_FOLDER}`);
