@@ -5,7 +5,6 @@ import argparse
 import os
 import pathlib
 import typing
-import sys
 
 import onnxruntime as ort
 from .ort_format_model import create_config_from_models
@@ -42,7 +41,8 @@ def _create_config_file_from_ort_models(onnx_model_path_or_dir: pathlib.Path, op
 
 def _create_session_options(optimization_level: ort.GraphOptimizationLevel,
                             output_model_path: pathlib.Path,
-                            custom_op_library: pathlib.Path):
+                            custom_op_library: pathlib.Path,
+                            session_options_config_entries: typing.Dict[str, str]):
     so = ort.SessionOptions()
     so.optimized_model_filepath = str(output_model_path)
     so.graph_optimization_level = optimization_level
@@ -50,11 +50,15 @@ def _create_session_options(optimization_level: ort.GraphOptimizationLevel,
     if custom_op_library:
         so.register_custom_ops_library(str(custom_op_library))
 
+    for key, value in session_options_config_entries.items():
+        so.add_session_config_entry(key, value)
+
     return so
 
 
 def _convert(model_path_or_dir: pathlib.Path, optimization_level_str: str, use_nnapi: bool, use_coreml: bool,
-             custom_op_library: pathlib.Path, create_optimized_onnx_model: bool):
+             custom_op_library: pathlib.Path, create_optimized_onnx_model: bool, allow_conversion_failures: bool,
+             session_options_config_entries: typing.Dict[str, str]):
 
     optimization_level = _get_optimization_level(optimization_level_str)
 
@@ -104,14 +108,16 @@ def _convert(model_path_or_dir: pathlib.Path, optimization_level_str: str, use_n
                 # Create an ONNX file with the same optimizations that will be used for the ORT format file.
                 # This allows the ONNX equivalent of the ORT format model to be easily viewed in Netron.
                 optimized_target_path = model.with_suffix(".{}.optimized.onnx".format(optimization_level_str))
-                so = _create_session_options(optimization_level, optimized_target_path, custom_op_library)
+                so = _create_session_options(optimization_level, optimized_target_path, custom_op_library,
+                                             session_options_config_entries)
 
                 print("Saving optimized ONNX model {} to {}".format(model, optimized_target_path))
                 _ = ort.InferenceSession(str(model), sess_options=so, providers=providers,
                                          disabled_optimizers=optimizer_filter)
 
             # Load ONNX model, optimize, and save to ORT format
-            so = _create_session_options(optimization_level, ort_target_path, custom_op_library)
+            so = _create_session_options(optimization_level, ort_target_path, custom_op_library,
+                                         session_options_config_entries)
             so.add_session_config_entry('session.save_model_format', 'ORT')
 
             print("Converting optimized ONNX model {} to ORT format model {}".format(model, ort_target_path))
@@ -124,6 +130,8 @@ def _convert(model_path_or_dir: pathlib.Path, optimization_level_str: str, use_n
             #     onnx_target_path, ort_target_path, orig_size, new_size, new_size - orig_size, new_size / orig_size))
         except Exception as e:
             print("Error converting {}: {}".format(model, e))
+            if not allow_conversion_failures:
+                raise
             num_failures += 1
 
     print("Converted {} models. {} failures.".format(len(models), num_failures))
@@ -142,10 +150,6 @@ def _get_optimization_level(level):
         return ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 
     raise ValueError('Invalid optimization level of ' + level)
-
-
-def is_macOS():
-    return sys.platform.startswith("darwin")
 
 
 def parse_args():
@@ -192,6 +196,14 @@ def parse_args():
                         help='Save the optimized version of each ONNX model. '
                              'This will have the same optimizations applied as the ORT format model.')
 
+    parser.add_argument('--allow_conversion_failures', action='store_true',
+                        help='Whether to proceed after encountering model conversion failures.')
+
+    parser.add_argument('--nnapi_partitioning_stop_ops',
+                        help='Specify the list of NNAPI EP partitioning stop ops. '
+                             'In particular, specify the value of the "ep.nnapi.partitioning_stop_ops" session '
+                             'options config entry.')
+
     parser.add_argument('model_path_or_dir', type=pathlib.Path,
                         help='Provide path to ONNX model or directory containing ONNX model/s to convert. '
                              'All files with a .onnx extension, including in subdirectories, will be processed.')
@@ -214,15 +226,16 @@ def convert_onnx_models_to_ort():
     if args.use_nnapi and 'NnapiExecutionProvider' not in ort.get_available_providers():
         raise ValueError('The NNAPI Execution Provider was not included in this build of ONNX Runtime.')
 
-    if args.use_coreml:
-        if not is_macOS():
-            # Check if the script is run on a Mac Device in this case
-            raise ValueError('--use_coreml option requires a MacOS environment.')
-        if 'CoreMLExecutionProvider' not in ort.get_available_providers():
-            raise ValueError('The CoreML Execution Provider was not included in this build of ONNX Runtime.')
+    if args.use_coreml and 'CoreMLExecutionProvider' not in ort.get_available_providers():
+        raise ValueError('The CoreML Execution Provider was not included in this build of ONNX Runtime.')
+
+    session_options_config_entries = {}
+
+    if args.nnapi_partitioning_stop_ops is not None:
+        session_options_config_entries["ep.nnapi.partitioning_stop_ops"] = args.nnapi_partitioning_stop_ops
 
     _convert(model_path_or_dir, args.optimization_level, args.use_nnapi, args.use_coreml, custom_op_library,
-             args.save_optimized_onnx_model)
+             args.save_optimized_onnx_model, args.allow_conversion_failures, session_options_config_entries)
 
     _create_config_file_from_ort_models(model_path_or_dir, args.optimization_level, args.enable_type_reduction)
 

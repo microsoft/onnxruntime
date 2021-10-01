@@ -11,7 +11,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
 #include "core/framework/iexecutor.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/node_index_info.h"
 #include "core/framework/sequential_execution_plan.h"
 #include "core/framework/tensor.h"
@@ -158,6 +158,7 @@ class ExecutionFrame final : public IExecutionFrame {
   // If the retrival is sucessful, this function returns true and false otherwise.
   bool TryGetInferredShape(int index, TensorShape& shape) const override;
 
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Return the size of virtual memory allocated in runtime.
   // The memory is usually used for activations in forward and backward passes.
   const std::unordered_map<std::string, size_t>& GetDynamicMemorySizeInfo() {
@@ -177,6 +178,7 @@ class ExecutionFrame final : public IExecutionFrame {
     //   std::unique_lock<std::mutex> lock(mtx_);
     return static_activation_memory_sizes_in_byte_;
   }
+  #endif
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ExecutionFrame);
@@ -225,6 +227,7 @@ class ExecutionFrame final : public IExecutionFrame {
   // inferred_shapes_ is generated together with mem_patterns_.
   std::unordered_map<int, TensorShape> inferred_shapes_;
 
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Size of virtual memory allocated before any kernel execution.
   // This field is not physical memory size.
   // static_activation_memory_sizes_in_byte_[location] is the static memory consumption on "location".
@@ -239,5 +242,6 @@ class ExecutionFrame final : public IExecutionFrame {
   // Mutex which should be acquired when executing non-thread-safe member functions.
   // A current example is the tracker of dynamic memory allocation.
   mutable std::mutex mtx_;
+#endif
 };
 }  // namespace onnxruntime

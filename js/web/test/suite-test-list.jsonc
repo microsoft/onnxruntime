@@ -234,6 +234,7 @@
       "and.jsonc",
       "asin.jsonc",
       "ceil.jsonc",
+      "concat.jsonc",
       "conv.jsonc",
       "cos.jsonc",
       "div.jsonc",

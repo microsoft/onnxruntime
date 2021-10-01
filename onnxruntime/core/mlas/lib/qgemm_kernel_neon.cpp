@@ -83,8 +83,6 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
     int32_t* RowSumBuffer
     )
 {
-    uint8_t PaddedMatrixAData[16];
-
     //
     // Process four rows of matrix A in a loop.
     //
@@ -179,7 +177,7 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
             *reinterpret_cast<uint32_t*>(&D[8]) = v2;
             *reinterpret_cast<uint32_t*>(&D[12]) = v3;
 
-            RowSums = vpadalq_u16(RowSums, vpaddlq_u8(vld1q_u8(D)));
+            RowSums = vpadalq_u16(RowSums, vpaddlq_u8(vld1q_u8(&D[0])));
 
             D += 16;
             k -= 4;
@@ -191,9 +189,9 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
             // Copy the remaining bytes to the zero padded stack buffer.
             //
 
-            uint8_t* d = PaddedMatrixAData;
+            uint8_t* d = D;
 
-            vst1q_u8(PaddedMatrixAData, vmovq_n_u8(0));
+            vst1q_u8(&D[0], vmovq_n_u8(0));
 
             while (k > 0) {
 
@@ -206,10 +204,7 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
                 k -= 1;
             }
 
-            uint8x16_t PackedVector = vld1q_u8(PaddedMatrixAData);
-            vst1q_u8(D, PackedVector);
-
-            RowSums = vpadalq_u16(RowSums, vpaddlq_u8(PackedVector));
+            RowSums = vpadalq_u16(RowSums, vpaddlq_u8(vld1q_u8(&D[0])));
 
             D += 16;
         }
@@ -254,7 +249,7 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
             *reinterpret_cast<uint32_t*>(&D[0]) = v0;
             *reinterpret_cast<uint32_t*>(&D[4]) = v1;
 
-            RowSums = vpadal_u16(RowSums, vpaddl_u8(vld1_u8(D)));
+            RowSums = vpadal_u16(RowSums, vpaddl_u8(vld1_u8(&D[0])));
 
             D += 8;
             k -= 4;
@@ -266,9 +261,9 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
             // Copy the remaining bytes to the zero padded stack buffer.
             //
 
-            uint8_t* d = PaddedMatrixAData;
+            uint8_t* d = D;
 
-            vst1q_u8(PaddedMatrixAData, vmovq_n_u8(0));
+            vst1_u8(&D[0], vmov_n_u8(0));
 
             while (k > 0) {
 
@@ -279,10 +274,7 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
                 k -= 1;
             }
 
-            uint8x8_t PackedVector = vld1_u8(PaddedMatrixAData);
-            vst1_u8(D, PackedVector);
-
-            RowSums = vpadal_u16(RowSums, vpaddl_u8(PackedVector));
+            RowSums = vpadal_u16(RowSums, vpaddl_u8(vld1_u8(&D[0])));
 
             D += 8;
         }
@@ -291,7 +283,6 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
         RowSumBuffer += 2;
 
         A = A + lda * 2;
-        CountM -= 2;
     }
 
     //
@@ -333,16 +324,13 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_NEON>(
             // Copy the remaining bytes to the zero padded stack buffer.
             //
 
-            vst1q_u8(PaddedMatrixAData, vmovq_n_u8(0));
+            vst1q_u8(&D[0], vmovq_n_u8(0));
 
             for (size_t kk = 0; kk < k; kk++) {
-                PaddedMatrixAData[kk] = a[kk];
+                D[kk] = a[kk];
             }
 
-            uint8x16_t v = vld1q_u8(PaddedMatrixAData);
-            vst1q_u8(D, v);
-
-            RowSums = vpadalq_u16(RowSums, vpaddlq_u8(v));
+            RowSums = vpadalq_u16(RowSums, vpaddlq_u8(vld1q_u8(&D[0])));
         }
 
 #if defined(MLAS_NEON32_INTRINSICS)
@@ -508,3 +496,479 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchNeon = {
     MLAS_GEMM_U8X8_KERNEL_NEON::PackedK,
     MLAS_GEMM_U8X8_KERNEL_NEON::PackedStrides.K,
 };
+
+#if defined(MLAS_TARGET_ARM64)
+/*-------------------------
+ * NEON kernel for signed int8
+ */
+
+extern "C" {
+    // Prototype of NEON s8 kernel in assembly
+
+    size_t
+    MLASCALL
+    MlasGemmS8S8KernelNeon(
+        const uint8_t* A,
+        const uint8_t* B,
+        int32_t* C,
+        size_t PackedCountK,
+        size_t CountM,
+        size_t CountN,
+        size_t ldc,
+        const int32_t* RowSumVector,
+        const int32_t* ColumnSumVector,
+        const int32_t* ZeroPointB,
+        bool ZeroMode
+        );
+}
+
+struct MLAS_GEMM_S8S8_KERNEL_NEON {
+    typedef uint8_t PackedAType;
+    typedef uint8_t PackedBType;
+    typedef int8_t OffsetBType;
+
+    static constexpr size_t PackedK = 16;
+    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{24, 128, 256};
+    static constexpr MLAS_GEMM_U8X8_STRIDES PackedStrides{24, 128, 384};
+};
+
+constexpr size_t MLAS_GEMM_S8S8_KERNEL_NEON::PackedK;
+constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_S8S8_KERNEL_NEON::Strides;
+constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_S8S8_KERNEL_NEON::PackedStrides;
+
+template <>
+MLAS_FORCEINLINE int32_t
+MlasGemmU8X8FixupZeroPointA<MLAS_GEMM_S8S8_KERNEL_NEON>(int32_t ZeroPointA)
+{
+    return int8_t(ZeroPointA ^ 0x80);
+}
+
+template<>
+void
+MlasGemmU8X8CopyPackA<MLAS_GEMM_S8S8_KERNEL_NEON>(
+    MLAS_GEMM_S8S8_KERNEL_NEON::PackedAType* D,
+    const uint8_t* A,
+    size_t lda,
+    size_t CountM,
+    size_t CountK,
+    int32_t* RowSumBuffer
+    )
+{
+
+    const uint8x16_t BitFlipVector = vdupq_n_u8(0x80);
+
+    //
+    // Process four rows of matrix A.
+    //
+
+    while (CountM >= 4) {
+
+        const uint8_t* a0 = A;
+        const uint8_t* a1 = a0 + lda;
+        const uint8_t* a2 = a1 + lda;
+        const uint8_t* a3 = a2 + lda;
+
+        size_t k = CountK;
+        int32x4_t RowSums0 = vdupq_n_s32(0);
+        int32x4_t RowSums1 = vdupq_n_s32(0);
+        int32x4_t RowSums2 = vdupq_n_s32(0);
+        int32x4_t RowSums3 = vdupq_n_s32(0);
+
+        while (k >= 16) {
+
+            int8x16_t v0 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(a0), BitFlipVector));
+            a0 += 16;
+            int8x16_t v1 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(a1), BitFlipVector));
+            a1 += 16;
+            int8x16_t v2 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(a2), BitFlipVector));
+            a2 += 16;
+            int8x16_t v3 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(a3), BitFlipVector));
+            a3 += 16;
+
+            RowSums0 = vpadalq_s16(RowSums0, vpaddlq_s8(v0));
+            RowSums1 = vpadalq_s16(RowSums1, vpaddlq_s8(v1));
+            RowSums2 = vpadalq_s16(RowSums2, vpaddlq_s8(v2));
+            RowSums3 = vpadalq_s16(RowSums3, vpaddlq_s8(v3));
+
+            vst1q_u8(&D[0], vreinterpretq_u8_s8(v0));
+            vst1q_u8(&D[16], vreinterpretq_u8_s8(v1));
+            vst1q_u8(&D[32], vreinterpretq_u8_s8(v2));
+            vst1q_u8(&D[48], vreinterpretq_u8_s8(v3));
+
+            D += 64;
+            k -= 16;
+        }
+
+        if (k > 0) {
+
+            uint8_t* d = D;
+
+            vst1q_u8(&D[0], BitFlipVector);
+            vst1q_u8(&D[16], BitFlipVector);
+            vst1q_u8(&D[32], BitFlipVector);
+            vst1q_u8(&D[48], BitFlipVector);
+
+            if (k >= 8) {
+
+                vst1_u8(&d[0], vld1_u8(a0));
+                a0 += 8;
+                vst1_u8(&d[16], vld1_u8(a1));
+                a1 += 8;
+                vst1_u8(&d[32], vld1_u8(a2));
+                a2 += 8;
+                vst1_u8(&d[48], vld1_u8(a3));
+                a3 += 8;
+
+                d += 8;
+                k -= 8;
+            }
+
+            if (k >= 4) {
+
+                uint32_t v0 = *reinterpret_cast<const uint32_t*>(a0);
+                a0 += 4;
+                uint32_t v1 = *reinterpret_cast<const uint32_t*>(a1);
+                a1 += 4;
+                uint32_t v2 = *reinterpret_cast<const uint32_t*>(a2);
+                a2 += 4;
+                uint32_t v3 = *reinterpret_cast<const uint32_t*>(a3);
+                a3 += 4;
+
+                *reinterpret_cast<uint32_t*>(&d[0]) = v0;
+                *reinterpret_cast<uint32_t*>(&d[16]) = v1;
+                *reinterpret_cast<uint32_t*>(&d[32]) = v2;
+                *reinterpret_cast<uint32_t*>(&d[48]) = v3;
+
+                d += 4;
+                k -= 4;
+            }
+
+            while (k > 0) {
+
+                d[0] = *a0++;
+                d[16] = *a1++;
+                d[32] = *a2++;
+                d[48] = *a3++;
+
+                d += 1;
+                k -= 1;
+            }
+
+            int8x16_t v0 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(&D[0]), BitFlipVector));
+            int8x16_t v1 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(&D[16]), BitFlipVector));
+            int8x16_t v2 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(&D[32]), BitFlipVector));
+            int8x16_t v3 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(&D[48]), BitFlipVector));
+
+            RowSums0 = vpadalq_s16(RowSums0, vpaddlq_s8(v0));
+            RowSums1 = vpadalq_s16(RowSums1, vpaddlq_s8(v1));
+            RowSums2 = vpadalq_s16(RowSums2, vpaddlq_s8(v2));
+            RowSums3 = vpadalq_s16(RowSums3, vpaddlq_s8(v3));
+
+            vst1q_u8(&D[0], vreinterpretq_u8_s8(v0));
+            vst1q_u8(&D[16], vreinterpretq_u8_s8(v1));
+            vst1q_u8(&D[32], vreinterpretq_u8_s8(v2));
+            vst1q_u8(&D[48], vreinterpretq_u8_s8(v3));
+
+            D += 64;
+        }
+
+        RowSums0 = vpaddq_s32(RowSums0, RowSums1);
+        RowSums2 = vpaddq_s32(RowSums2, RowSums3);
+        RowSums0 = vpaddq_s32(RowSums0, RowSums2);
+
+        vst1q_s32(&RowSumBuffer[0], RowSums0);
+        RowSumBuffer += 4;
+
+        A = A + lda * 4;
+        CountM -= 4;
+    }
+
+    //
+    // Process two rows of matrix A.
+    //
+
+    if ((CountM & 2) != 0) {
+
+        const uint8_t* a0 = A;
+        const uint8_t* a1 = a0 + lda;
+
+        size_t k = CountK;
+        int32x4_t RowSums0 = vdupq_n_s32(0);
+        int32x4_t RowSums1 = vdupq_n_s32(0);
+
+        while (k >= 16) {
+
+            int8x16_t v0 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(a0), BitFlipVector));
+            a0 += 16;
+            int8x16_t v1 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(a1), BitFlipVector));
+            a1 += 16;
+
+            RowSums0 = vpadalq_s16(RowSums0, vpaddlq_s8(v0));
+            RowSums1 = vpadalq_s16(RowSums1, vpaddlq_s8(v1));
+
+            vst1q_u8(&D[0], vreinterpretq_u8_s8(v0));
+            vst1q_u8(&D[16], vreinterpretq_u8_s8(v1));
+
+            D += 32;
+            k -= 16;
+        }
+
+        if (k > 0) {
+
+            uint8_t* d = D;
+
+            vst1q_u8(&D[0], BitFlipVector);
+            vst1q_u8(&D[16], BitFlipVector);
+
+            while (k > 0) {
+
+                d[0] = *a0++;
+                d[16] = *a1++;
+
+                d += 1;
+                k -= 1;
+            }
+
+            int8x16_t v0 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(&D[0]), BitFlipVector));
+            int8x16_t v1 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(&D[16]), BitFlipVector));
+
+            RowSums0 = vpadalq_s16(RowSums0, vpaddlq_s8(v0));
+            RowSums1 = vpadalq_s16(RowSums1, vpaddlq_s8(v1));
+
+            vst1q_u8(&D[0], vreinterpretq_u8_s8(v0));
+            vst1q_u8(&D[16], vreinterpretq_u8_s8(v1));
+
+            D += 32;
+        }
+
+        RowSums0 = vpaddq_s32(RowSums0, RowSums1);
+        RowSums0 = vpaddq_s32(RowSums0, RowSums0);
+
+        vst1_s32(RowSumBuffer, vget_low_s32(RowSums0));
+        RowSumBuffer += 2;
+
+        A = A + lda * 2;
+    }
+
+    //
+    // Process one row of matrix A.
+    //
+
+    if ((CountM & 1) != 0) {
+
+        const uint8_t* a0 = A;
+
+        size_t k = CountK;
+        int32x4_t RowSums0 = vdupq_n_s32(0);
+
+        while (k >= 16) {
+
+            int8x16_t v0 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(a0), BitFlipVector));
+            a0 += 16;
+
+            RowSums0 = vpadalq_s16(RowSums0, vpaddlq_s8(v0));
+
+            vst1q_u8(&D[0], vreinterpretq_u8_s8(v0));
+
+            D += 16;
+            k -= 16;
+        }
+
+        if (k > 0) {
+
+            uint8_t* d = D;
+
+            vst1q_u8(&D[0], BitFlipVector);
+
+            while (k > 0) {
+
+                d[0] = *a0++;
+
+                d += 1;
+                k -= 1;
+            }
+
+            int8x16_t v0 = vreinterpretq_s8_u8(veorq_u8(vld1q_u8(&D[0]), BitFlipVector));
+
+            RowSums0 = vpadalq_s16(RowSums0, vpaddlq_s8(v0));
+
+            vst1q_u8(&D[0], vreinterpretq_u8_s8(v0));
+
+            D += 16;
+        }
+
+#if defined(_M_ARM64)
+        // N.B. The workaround of defining a local vaddvq_u32 doesn't work here
+        // as VS2019 added new intrinsics to make the operation work. Also, not
+        // all build environments using VS2019 have the up-to-date arm64_neon.h,
+        // so fallback to pairwise addition.
+        RowSums0 = vpaddq_s32(RowSums0, RowSums0);
+        RowSums0 = vpaddq_s32(RowSums0, RowSums0);
+        vst1q_lane_s32(RowSumBuffer, RowSums0, 0);
+#else
+        *RowSumBuffer = vaddvq_s32(RowSums0);
+#endif
+    }
+}
+
+template<>
+void
+MlasGemmU8X8CopyPackB<MLAS_GEMM_S8S8_KERNEL_NEON>(
+    MLAS_GEMM_S8S8_KERNEL_NEON::PackedBType* D,
+    const uint8_t* B,
+    size_t ldb,
+    size_t CountN,
+    size_t CountK,
+    int32_t* ColumnSumBuffer,
+    bool BIsSigned
+    )
+{
+    MLAS_UNREFERENCED_PARAMETER(BIsSigned);
+
+    while (CountN >= 4) {
+
+        const uint8_t* b = B;
+        size_t k = CountK;
+        int32x4_t ColumnSums0 = vdupq_n_s32(0);
+        int32x4_t ColumnSums1 = vdupq_n_s32(0);
+        int32x4_t ColumnSums2 = vdupq_n_s32(0);
+        int32x4_t ColumnSums3 = vdupq_n_s32(0);
+
+        while (k >= 16) {
+
+            for (size_t nn = 0; nn < 4; nn++) {
+                for (size_t kk = 0; kk < 16; kk++) {
+                    D[nn * 16 + kk] = (b[kk * ldb + nn] );
+                }
+            }
+
+            ColumnSums0 = vpadalq_s16(ColumnSums0, vpaddlq_s8(vreinterpretq_s8_u8(vld1q_u8(&D[0]))));
+            ColumnSums1 = vpadalq_s16(ColumnSums1, vpaddlq_s8(vreinterpretq_s8_u8(vld1q_u8(&D[16]))));
+            ColumnSums2 = vpadalq_s16(ColumnSums2, vpaddlq_s8(vreinterpretq_s8_u8(vld1q_u8(&D[32]))));
+            ColumnSums3 = vpadalq_s16(ColumnSums3, vpaddlq_s8(vreinterpretq_s8_u8(vld1q_u8(&D[48]))));
+
+            b += 16 * ldb;
+            D += 64;
+            k -= 16;
+        }
+
+        if (k > 0) {
+
+            vst1q_u8(&D[0], vdupq_n_u8(0));
+            vst1q_u8(&D[16], vdupq_n_u8(0));
+            vst1q_u8(&D[32], vdupq_n_u8(0));
+            vst1q_u8(&D[48], vdupq_n_u8(0));
+
+            for (size_t nn = 0; nn < 4; nn++) {
+                for (size_t kk = 0; kk < k; kk++) {
+                    D[nn * 16 + kk] = (b[kk * ldb + nn] );
+                }
+            }
+
+            ColumnSums0 = vpadalq_s16(ColumnSums0, vpaddlq_s8(vreinterpretq_s8_u8(vld1q_u8(&D[0]))));
+            ColumnSums1 = vpadalq_s16(ColumnSums1, vpaddlq_s8(vreinterpretq_s8_u8(vld1q_u8(&D[16]))));
+            ColumnSums2 = vpadalq_s16(ColumnSums2, vpaddlq_s8(vreinterpretq_s8_u8(vld1q_u8(&D[32]))));
+            ColumnSums3 = vpadalq_s16(ColumnSums3, vpaddlq_s8(vreinterpretq_s8_u8(vld1q_u8(&D[48]))));
+
+            D += 64;
+        }
+
+        ColumnSums0 = vpaddq_s32(ColumnSums0, ColumnSums1);
+        ColumnSums2 = vpaddq_s32(ColumnSums2, ColumnSums3);
+        ColumnSums0 = vpaddq_s32(ColumnSums0, ColumnSums2);
+
+        vst1q_s32(&ColumnSumBuffer[0], ColumnSums0);
+        ColumnSumBuffer += 4;
+
+        B += 4;
+        CountN -= 4;
+    }
+
+    if (CountN > 0) {
+
+        const uint8_t* b = B;
+        size_t k = CountK;
+        int32x4_t ColumnSums0 = vdupq_n_s32(0);
+        int32x4_t ColumnSums1 = vdupq_n_s32(0);
+        int32x4_t ColumnSums2 = vdupq_n_s32(0);
+        int32x4_t ColumnSums3 = vdupq_n_s32(0);
+
+        while (k >= 16) {
+
+            for (size_t nn = 0; nn < CountN; nn++) {
+                for (size_t kk = 0; kk < 16; kk++) {
+                    D[nn * 16 + kk] = (b[kk * ldb + nn] );
+                }
+            }
+
+            ColumnSums0 = vpadalq_s16(ColumnSums0, vpaddlq_s8(vreinterpretq_s8_u8(vld1q_u8(&D[0]))));
+            ColumnSums1 = vpadalq_s16(ColumnSums1, vpaddlq_s8(vreinterpretq_s8_u8(vld1q_u8(&D[16]))));
+            ColumnSums2 = vpadalq_s16(ColumnSums2, vpaddlq_s8(vreinterpretq_s8_u8(vld1q_u8(&D[32]))));
+            ColumnSums3 = vpadalq_s16(ColumnSums3, vpaddlq_s8(vreinterpretq_s8_u8(vld1q_u8(&D[48]))));
+
+            b += 16 * ldb;
+            D += 64;
+            k -= 16;
+        }
+
+        if (k > 0) {
+
+            vst1q_u8(&D[0], vdupq_n_u8(0));
+            vst1q_u8(&D[16], vdupq_n_u8(0));
+            vst1q_u8(&D[32], vdupq_n_u8(0));
+            vst1q_u8(&D[48], vdupq_n_u8(0));
+
+            for (size_t nn = 0; nn < CountN; nn++) {
+                for (size_t kk = 0; kk < k; kk++) {
+                    D[nn * 16 + kk] = (b[kk * ldb + nn] );
+                }
+            }
+
+            ColumnSums0 = vpadalq_s16(ColumnSums0, vpaddlq_s8(vreinterpretq_s8_u8(vld1q_u8(&D[0]))));
+            ColumnSums1 = vpadalq_s16(ColumnSums1, vpaddlq_s8(vreinterpretq_s8_u8(vld1q_u8(&D[16]))));
+            ColumnSums2 = vpadalq_s16(ColumnSums2, vpaddlq_s8(vreinterpretq_s8_u8(vld1q_u8(&D[32]))));
+            ColumnSums3 = vpadalq_s16(ColumnSums3, vpaddlq_s8(vreinterpretq_s8_u8(vld1q_u8(&D[48]))));
+
+            D += 64;
+        }
+
+        ColumnSums0 = vpaddq_s32(ColumnSums0, ColumnSums1);
+        ColumnSums2 = vpaddq_s32(ColumnSums2, ColumnSums3);
+        ColumnSums0 = vpaddq_s32(ColumnSums0, ColumnSums2);
+
+        vst1q_s32(&ColumnSumBuffer[0], ColumnSums0);
+        ColumnSumBuffer += 4;
+    }
+}
+
+template<>
+MLAS_FORCEINLINE
+size_t
+MlasGemmU8X8Kernel<MLAS_GEMM_S8S8_KERNEL_NEON>(
+    const MLAS_GEMM_S8S8_KERNEL_NEON::PackedAType* A,
+    const MLAS_GEMM_S8S8_KERNEL_NEON::PackedBType* B,
+    int32_t* C,
+    size_t PackedCountK,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc,
+    const int32_t* RowSumBuffer,
+    const int32_t* ColumnSumBuffer,
+    const int32_t* ZeroPointB,
+    bool ZeroMode
+    )
+{
+    return MlasGemmS8S8KernelNeon(A, B, C, PackedCountK, CountM, CountN, ldc,
+        RowSumBuffer, ColumnSumBuffer, ZeroPointB, ZeroMode);
+}
+
+
+const MLAS_GEMM_U8X8_DISPATCH MlasGemmS8S8DispatchNeon = {
+    MlasGemmU8X8Operation<MLAS_GEMM_S8S8_KERNEL_NEON>,
+    MlasGemmU8X8PackedOperation<MLAS_GEMM_S8S8_KERNEL_NEON>,
+    MlasGemmU8X8CopyPackB<MLAS_GEMM_S8S8_KERNEL_NEON>,
+    MLAS_GEMM_S8S8_KERNEL_NEON::PackedK,
+    MLAS_GEMM_S8S8_KERNEL_NEON::PackedStrides.K,
+};
+
+#endif  //defined(MLAS_TARGET_ARM64)

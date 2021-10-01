@@ -1,0 +1,39 @@
+jobs:
+- job: ObjCStaticAnalysis
+  
+  pool:
+    vmImage: 'macOS-10.15'
+  
+  timeoutInMinutes: 60
+
+  steps:
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: "3.9"
+      addToPath: true
+      architecture: "x64"
+
+  - script: |
+      pip install -r tools/ci_build/github/apple/objectivec/static_analysis/requirements.txt
+    displayName: Install tools
+
+  - script: |
+      python tools/ci_build/build.py \
+        --build_dir "$(Build.BinariesDirectory)" \
+        --cmake_generator "Ninja" \
+        --config Debug \
+        --build_shared_lib --use_coreml --build_objc \
+        --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON \
+        --update \
+        --build --parallel
+    displayName: Generate compile_commands.json
+
+  - script: |
+      "$(brew --prefix llvm)/bin/clang-tidy" \
+        -p="$(Build.BinariesDirectory)/Debug" \
+        --checks="-*,clang-analyzer-*" \
+        --header-filter="objectivec/include|objectivec/src|onnxruntime/core" \
+        ./objectivec/src/*.mm \
+        ./onnxruntime/core/platform/apple/logging/apple_log_sink.mm \
+        ./onnxruntime/core/providers/coreml/model/*.mm
+    displayName: Analyze Objective-C/C++ source code

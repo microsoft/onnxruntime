@@ -49,12 +49,36 @@ class UnmapFileParam {
   size_t len;
 };
 
+/**
+ * @brief Get System Error
+ *
+ * @return a pair of {errno, error message}
+ */
+static std::pair<int, std::string> GetSystemError() {
+  auto e = errno;
+  char buf[1024];
+  const char* msg = "";
+  if (e > 0) {
+#if defined(__GLIBC__) && defined(_GNU_SOURCE) && !defined(__ANDROID__)
+    msg = strerror_r(e, buf, sizeof(buf));
+#else
+    // for Mac OS X and Android lower than API 23
+    if (strerror_r(e, buf, sizeof(buf)) != 0) {
+      buf[0] = '\0';
+    }
+    msg = buf;
+#endif
+  }
+
+  return std::make_pair(e, msg);
+}
+
 static void UnmapFile(void* param) noexcept {
   UnmapFileParam* p = reinterpret_cast<UnmapFileParam*>(param);
   int ret = munmap(p->addr, p->len);
   if (ret != 0) {
-    int err = errno;
-    LOGS_DEFAULT(ERROR) << "munmap failed. error code: " << err;
+    auto[err_no, err_msg] = GetSystemError();
+    LOGS_DEFAULT(ERROR) << "munmap failed. error code: " << err_no << " error msg: " << err_msg;
   }
   delete p;
 }
@@ -64,8 +88,8 @@ struct FileDescriptorTraits {
   static Handle GetInvalidHandleValue() { return -1; }
   static void CleanUp(Handle h) {
     if (close(h) == -1) {
-      const int err = errno;
-      LOGS_DEFAULT(ERROR) << "Failed to close file descriptor " << h << " - error code: " << err;
+      auto[err_no, err_msg] = GetSystemError();
+      LOGS_DEFAULT(ERROR) << "Failed to close file descriptor " << h << " - error code: " << err_no << " error msg: " << err_msg;
     }
   }
 };
@@ -91,8 +115,8 @@ int nftw_remove(
     int /*typeflag*/, struct FTW* /*ftwbuf*/) {
   const auto result = remove(fpath);
   if (result != 0) {
-    const int err = errno;
-    LOGS_DEFAULT(WARNING) << "remove() failed. Error code: " << err
+    auto[err_no, err_msg] = GetSystemError();
+    LOGS_DEFAULT(WARNING) << "remove() failed. Error code: " << err_no << " error msg: " << err_msg
                           << ", path: " << fpath;
   }
   return result;
@@ -121,25 +145,33 @@ class PosixThread : public EnvThread {
               const ThreadOptions& thread_options) {
     pthread_attr_t attr;
     int s = pthread_attr_init(&attr);
-    if (s != 0)
-      ORT_THROW("pthread_attr_init failed");
+    if (s != 0) {
+      auto[err_no, err_msg] = GetSystemError();
+      ORT_THROW("pthread_attr_init failed, error code: ", err_no, " error msg: ", err_msg);
+    }
     if (thread_options.stack_size > 0) {
       s = pthread_attr_setstacksize(&attr, thread_options.stack_size);
-      if (s != 0)
-        ORT_THROW("pthread_attr_setstacksize failed");
+      if (s != 0) {
+        auto[err_no, err_msg] = GetSystemError();
+        ORT_THROW("pthread_attr_setstacksize failed, error code: ", err_no, " error msg: ", err_msg);
+      }
     }
     s = pthread_create(&hThread, &attr, ThreadMain,
                        new Param{name_prefix, index, start_address, param, thread_options});
-    if (s != 0)
-      ORT_THROW("pthread_create failed");
+    if (s != 0) {
+      auto[err_no, err_msg] = GetSystemError();
+      ORT_THROW("pthread_create failed, error code: ", err_no, " error msg: ", err_msg);
+    }
 #if !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__)
     if (!thread_options.affinity.empty()) {
       cpu_set_t cpuset;
       CPU_ZERO(&cpuset);
       CPU_SET(thread_options.affinity[index], &cpuset);
       s = pthread_setaffinity_np(hThread, sizeof(cpu_set_t), &cpuset);
-      if (s != 0)
-        ORT_THROW("pthread_setaffinity_np failed");
+      if (s != 0) {
+        auto[err_no, err_msg] = GetSystemError();
+        ORT_THROW("pthread_setaffinity_np failed, error code: ", err_no, " error msg: ", err_msg);
+      }
     }
 #endif
   }
@@ -327,23 +359,10 @@ class PosixEnv : public Env {
   }
 
   static common::Status ReportSystemError(const char* operation_name, const std::string& path) {
-    auto e = errno;
-    char buf[1024];
-    const char* msg = "";
-    if (e > 0) {
-#if defined(__GLIBC__) && defined(_GNU_SOURCE) && !defined(__ANDROID__)
-      msg = strerror_r(e, buf, sizeof(buf));
-#else
-      // for Mac OS X and Android lower than API 23
-      if (strerror_r(e, buf, sizeof(buf)) != 0) {
-        buf[0] = '\0';
-      }
-      msg = buf;
-#endif
-    }
+    auto[err_no, err_msg] = GetSystemError();
     std::ostringstream oss;
-    oss << operation_name << " file \"" << path << "\" failed: " << msg;
-    return common::Status(common::SYSTEM, e, oss.str());
+    oss << operation_name << " file \"" << path << "\" failed: " << err_msg;
+    return common::Status(common::SYSTEM, err_no, oss.str());
   }
 
   bool FolderExists(const std::string& path) const override {

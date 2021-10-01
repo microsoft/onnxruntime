@@ -184,10 +184,12 @@ class TestInferenceSession(unittest.TestCase):
 
                 option['gpu_external_alloc'] = '0'
                 option['gpu_external_free'] = '0'
+                option['gpu_external_empty_cache'] = '0'
                 sess.set_providers(['CUDAExecutionProvider'], [option])
                 options = sess.get_provider_options()
                 self.assertEqual(options['CUDAExecutionProvider']['gpu_external_alloc'], '0')
                 self.assertEqual(options['CUDAExecutionProvider']['gpu_external_free'], '0')
+                self.assertEqual(options['CUDAExecutionProvider']['gpu_external_empty_cache'], '0')
                 #
                 # Note: Tests that throw an exception leave an empty session due to how set_providers currently works,
                 #       so run them last. Each set_providers call will attempt to re-create a session, so it's
@@ -597,10 +599,10 @@ class TestInferenceSession(unittest.TestCase):
         with open(profile_file) as f:
             lines = f.readlines()
             self.assertTrue('[' in lines[0])
-            for i in range(1, 8):
+            for i in range(1, len(lines)-1):
                 for tag in tags:
                     self.assertTrue(tag in lines[i])
-            self.assertTrue(']' in lines[8])
+            self.assertTrue(']' in lines[-1])
 
     def testProfilerGetStartTimeNs(self):
         def getSingleSessionProfilingStartTime():

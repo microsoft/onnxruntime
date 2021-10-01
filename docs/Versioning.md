@@ -26,8 +26,11 @@ For more details on ONNX Release versions, see [this page](https://github.com/on
 
 | ONNX Runtime release version | ONNX release version | ONNX opset version | ONNX ML opset version | Supported ONNX IR version | [Windows ML Availability](https://docs.microsoft.com/en-us/windows/ai/windows-ml/release-notes/)|
 |------------------------------|--------------------|--------------------|----------------------|------------------|------------------|
-| 1.8.1 | **1.8** down to 1.2 | 14 | 2 | 7 | Windows AI 1.8+ |
-| 1.8.0 | **1.8** down to 1.2 | 14 | 2 | 7 | Windows AI 1.8+ |
+| 1.10.0 | **1.10** down to 1.2 | 15 | 2 | 7 | Windows AI 1.10+ |
+| 1.9.0 | **1.10** down to 1.2 | 15 | 2 | 7 | Windows AI 1.9+ |
+| 1.8.2 | **1.9** down to 1.2 | 14 | 2 | 7 | Windows AI 1.8+ |
+| 1.8.1 | **1.9** down to 1.2 | 14 | 2 | 7 | Windows AI 1.8+ |
+| 1.8.0 | **1.9** down to 1.2 | 14 | 2 | 7 | Windows AI 1.8+ |
 | 1.7.0 | **1.8** down to 1.2 | 13 | 2 | 7 | Windows AI 1.7+ |
 | 1.6.0 | **1.8** down to 1.2 | 13 | 2 | 7 | Windows AI 1.6+ |
 | 1.5.3 | **1.7** down to 1.2 | 12 | 2 | 7 | Windows AI 1.5+ |
@@ -58,6 +61,7 @@ A variety of tools can be used to create ONNX models. Unless otherwise noted, pl
 |[Keras-ONNX](https://pypi.org/project/keras2onnx/)|[Latest stable](https://github.com/onnx/keras-onnx/releases)|1.2-1.6|
 |[Tensorflow-ONNX](https://pypi.org/project/tf2onnx/)|[Latest stable](https://github.com/onnx/tensorflow-onnx/releases)|1.2-1.6|
 |[WinMLTools](https://docs.microsoft.com/en-us/windows/ai/windows-ml/convert-model-winmltools)|[Latest stable](https://pypi.org/project/winmltools/)|1.2-1.6|
+|[Paddle2ONNX](https://pypi.org/project/paddle2onnx/)| [Latest stable](https://github.com/PaddlePaddle/Paddle2ONNX/releases) | 1.6-1.9 |
 |[AutoML](https://docs.microsoft.com/en-us/azure/machine-learning/service/concept-automated-ml)|[1.0.39+](https://pypi.org/project/azureml-automl-core)|1.5|
 | |[1.0.33](https://pypi.org/project/azureml-automl-core/1.0.33/)|1.4|
 

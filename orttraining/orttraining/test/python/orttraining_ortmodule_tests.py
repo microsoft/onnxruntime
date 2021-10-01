@@ -38,6 +38,15 @@ def run_ortmodule_api_tests(cwd, log, transformers_cache):
     run_subprocess(command, cwd=cwd, log=log, env=env).check_returncode()
 
 
+def run_ortmodule_fallback_tests(cwd, log, transformers_cache):
+    log.debug('Running: ORTModule-API tests')
+
+    env = get_env_with_transformers_cache(transformers_cache)
+
+    command = [sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_ortmodule_fallback.py']
+
+    run_subprocess(command, cwd=cwd, log=log, env=env).check_returncode()
+
 def run_ortmodule_poc_net(cwd, log, no_cuda, data_dir):
     log.debug('Running: ORTModule POCNet for MNIST with --no-cuda arg {}.'.format(no_cuda))
 
@@ -86,6 +95,21 @@ def run_ortmodule_custom_autograd_tests(cwd, log):
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
 
+def run_ortmodule_hierarchical_ortmodule_tests(cwd, log):
+    log.debug('Running: ORTModule-Hierarchical model tests')
+
+    command = [sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_hierarchical_ortmodule.py']
+
+    run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
+
+def run_ortmodule_experimental_json_config_tests(cwd, log):
+    log.debug('Running: ORTModule Experimental Load Config tests')
+
+    command = [sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_ortmodule_experimental_json_config.py']
+
+    run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
 
 def main():
     args = parse_arguments()
@@ -107,9 +131,14 @@ def main():
 
     run_ortmodule_torch_lightning(cwd, log, args.mnist)
 
-    # TODO: enable this once the PyTorch used for testing meets the requirements running
-    # auto grad testing.
-    #run_ortmodule_custom_autograd_tests(cwd, log)
+    run_ortmodule_custom_autograd_tests(cwd, log)
+
+    run_ortmodule_experimental_json_config_tests(cwd, log)
+
+    run_ortmodule_fallback_tests(cwd, log, args.transformers_cache)
+
+    run_ortmodule_hierarchical_ortmodule_tests(cwd, log,)
+
     return 0
 
 

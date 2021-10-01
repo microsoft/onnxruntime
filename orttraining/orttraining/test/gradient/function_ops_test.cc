@@ -141,7 +141,7 @@ void CheckDropoutGradWithoutRatio(bool inline_call) {
   auto model = testCase.CreateModel(inline_call);
   if (!inline_call) {
     auto& node = *model->MainGraph().Nodes().begin();
-    auto* fnbody = node.GetFunctionBody(true);
+    auto* fnbody = node.GetMutableFunctionBody(true);
     EXPECT_EQ(fnbody, nullptr);
   }
 }
@@ -169,29 +169,66 @@ TEST_F(FunExpansionTest, DropoutGrad_WithRatio2) {
   CheckDropoutGradWithRatio<MLFloat16>(true);
 }
 
-TEST_F(FunExpansionTest, GeluGrad_2D) {
-  FunctionTestCase testCase("GeluGrad");
+template <typename T, bool RunTest = true>
+void TestUnaryOpGrad(const char* opname) {
+  FunctionTestCase testCase(opname);
   std::vector<int64_t> shape{16, 4};
-  testCase.AddInput<float>("dY", shape);
-  testCase.AddInput<float>("X", shape);
+  testCase.AddInput<T, RunTest>("dY", shape);
+  testCase.AddInput<T, RunTest>("X", shape);
   testCase.AddOutput("dX");
-  testCase.RunTest();
+  if (RunTest)
+    testCase.RunTest();
+  else
+    // Test only expanded model creation and model checking.
+    testCase.CreateModel(true);
 }
 
-template <typename T>
-void CheckGeluGrad() {
-  // Tests only expanded model creation and checking.
-  FunctionTestCase testCase("GeluGrad");
-  std::vector<int64_t> shape{16, 4};
-  testCase.AddInput<T, false>("dY", shape);
-  testCase.AddInput<T, false>("X", shape);
-  testCase.AddOutput("dX");
-  testCase.CreateModel(true);
+TEST_F(FunExpansionTest, GeluGrad_float) {
+  TestUnaryOpGrad<float, true>("GeluGrad");
 }
 
 TEST_F(FunExpansionTest, GeluGrad_HalfPrecision) {
-  CheckGeluGrad<BFloat16>();
-  CheckGeluGrad<MLFloat16>();
+  TestUnaryOpGrad<BFloat16, false>("GeluGrad");
+  TestUnaryOpGrad<MLFloat16, false>("GeluGrad");
+}
+
+TEST_F(FunExpansionTest, FastGeluGrad) {
+  TestUnaryOpGrad<float, true>("FastGeluGrad");
+  TestUnaryOpGrad<BFloat16, false>("FastGeluGrad");
+  TestUnaryOpGrad<MLFloat16, false>("FastGeluGrad");
+}
+
+template <typename T, typename U, bool RunTest = true>
+void TestLayerNormGrad(std::vector<int64_t> prefix_shape, std::vector<int64_t> suffix_shape) {
+  FunctionTestCase testCase("LayerNormalizationGrad");
+  std::vector<int64_t> input_shape(prefix_shape);
+  for (auto d : suffix_shape)
+    input_shape.push_back(d);
+  std::vector<int64_t> stats_shape(prefix_shape);
+  for (auto d : suffix_shape) {
+    (void)d;
+    stats_shape.push_back(1);
+  }
+  testCase.AddInput<T, RunTest>("Y_grad", input_shape);
+  testCase.AddInput<T, RunTest>("X", input_shape);
+  testCase.AddInput<T, RunTest>("scale", suffix_shape);
+  testCase.AddInput<U, RunTest>("mean", stats_shape);
+  testCase.AddInput<U, RunTest>("inv_std_dev", stats_shape);
+  testCase.AddOutput("X_grad");
+  testCase.AddOutput("scale_grad");
+  testCase.AddOutput("bias_grad");
+  testCase.AddAttribute("axis", prefix_shape.size());
+  if (RunTest)
+    testCase.RunTest();
+  else
+    // Test only expanded model creation and model checking.
+    testCase.CreateModel(true);
+}
+
+TEST_F(FunExpansionTest, LayerNormalizationGrad) {
+  TestLayerNormGrad<float, float, true>({4, 1}, {8, 4});
+  TestLayerNormGrad<float, float, true>({}, {8, 4});
+  TestLayerNormGrad<BFloat16, float, false>({}, {8, 4});
 }
 
 }  // namespace test

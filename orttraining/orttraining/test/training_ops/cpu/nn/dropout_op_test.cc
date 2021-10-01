@@ -125,6 +125,15 @@ void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape
 
 // Dropout
 
+// N % 4 != 0
+TEST(DropoutTest, BasicAndNotVectorized) {
+  RunDropoutTest(false, {10, 5, 5}, 0.75f);
+}
+TEST(DropoutTest, MaskAndNotVectorized) {
+  RunDropoutTest(true, {250}, 0.25f);
+}
+
+// N % 4 == 0
 TEST(DropoutTest, Basic) {
   RunDropoutTest(false, {10, 10, 10}, 0.75f);
 }
@@ -197,6 +206,11 @@ void RunDropoutGradTest(float ratio, const std::vector<int64_t>& input_dims, boo
 // DropoutGrad
 
 TEST(DropoutGradTest, Basic) {
+  // N % 4 != 0
+  //Ratio 0.3, 2D
+  RunDropoutGradTest(0.3f, {5, 6}, false);
+
+  // N %4 == 0
   //Ratio 0.2, 1D
   RunDropoutGradTest(0.2f, {16}, false);
 

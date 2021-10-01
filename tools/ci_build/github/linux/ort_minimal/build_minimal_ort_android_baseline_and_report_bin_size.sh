@@ -29,30 +29,11 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
     --include_ops_by_config /home/onnxruntimedev/.test_data/include_no_operators.config
 
 # set current size limit to BINARY_SIZE_LIMIT_IN_BYTES.
-BINARY_SIZE_LIMIT_IN_BYTES=1220000
+BINARY_SIZE_LIMIT_IN_BYTES=1256000
 echo "The current preset binary size limit is $BINARY_SIZE_LIMIT_IN_BYTES"
 python3 /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/check_build_binary_size.py \
     --threshold=$BINARY_SIZE_LIMIT_IN_BYTES \
     /build/MinSizeRel/libonnxruntime.so
 
-# Post the binary size info to ort mysql DB
-# The report script's DB connection failure will not fail the pipeline
-# To reduce noise, we only report binary size for Continuous integration (a merge to master)
-if [[ $BUILD_REASON == "IndividualCI" || $BUILD_REASON == "BatchedCI" ]] && [[ $BUILD_BRANCH == "refs/heads/master" ]]; then
-    # Install the mysql connector
-    python3 -m pip install --user mysql-connector-python
-
-    python3 /onnxruntime_src/tools/ci_build/github/windows/post_binary_sizes_to_dashboard.py \
-        --ignore_db_error \
-        --commit_hash=$BUILD_SOURCEVERSION \
-        --size_data_file=/build/MinSizeRel/binary_size_data.txt \
-        --build_project=onnxruntime \
-        --build_id=$BUILD_ID
-else
-    echo "No binary size report for build reason: [$BUILD_REASON] and build branch: [$BUILD_BRANCH]"
-    echo "The content of binary_size_data.txt"
-    cat /build/MinSizeRel/binary_size_data.txt
-fi
-
-# Clear the build
-rm -rf /build/MinSizeRel
+echo "The content of binary_size_data.txt"
+cat /build/MinSizeRel/binary_size_data.txt

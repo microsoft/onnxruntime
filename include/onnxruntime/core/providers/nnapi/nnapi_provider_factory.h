@@ -33,11 +33,21 @@ enum NNAPIFlags {
   //
   // For NNAPI device assignments, see https://developer.android.com/ndk/guides/neuralnetworks#device-assignment
   // For NNAPI CPU fallback, see https://developer.android.com/ndk/guides/neuralnetworks#cpu-fallback
+  //
+  // Please note, the NNAPI EP will return error status if both NNAPI_FLAG_CPU_DISABLED
+  // and NNAPI_FLAG_CPU_ONLY flags are set
   NNAPI_FLAG_CPU_DISABLED = 0x004,
 
-  // Keep NNAPI_FLAG_MAX at the end of the enum definition
+  // Using CPU only in NNAPI EP, this may decrease the perf but will provide
+  // reference output value without precision loss, which is useful for validation
+  //
+  // Please note, the NNAPI EP will return error status if both NNAPI_FLAG_CPU_DISABLED
+  // and NNAPI_FLAG_CPU_ONLY flags are set
+  NNAPI_FLAG_CPU_ONLY = 0x008,
+
+  // Keep NNAPI_FLAG_LAST at the end of the enum definition
   // And assign the last NNAPIFlag to it
-  NNAPI_FLAG_LAST = NNAPI_FLAG_CPU_DISABLED,
+  NNAPI_FLAG_LAST = NNAPI_FLAG_CPU_ONLY,
 };
 
 #ifdef __cplusplus

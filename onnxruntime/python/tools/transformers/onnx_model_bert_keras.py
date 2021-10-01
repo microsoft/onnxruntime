@@ -11,6 +11,7 @@ import numpy as np
 from collections import deque
 from onnx import ModelProto, TensorProto, numpy_helper
 from onnx_model_bert_tf import BertOnnxModelTF
+
 logger = logging.getLogger(__name__)
 
 

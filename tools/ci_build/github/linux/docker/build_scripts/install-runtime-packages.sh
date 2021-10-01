@@ -84,27 +84,30 @@ elif [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
 	yum -y update
 	yum -y install yum-utils curl
 	yum-config-manager --enable extras
-	#Added by @snnn
-	if [ ! -d "/usr/local/cuda-10.2" ]; then
-	  TOOLCHAIN_DEPS="devtoolset-9-binutils devtoolset-9-gcc devtoolset-9-gcc-c++ devtoolset-9-gcc-gfortran"
-	else
-	  TOOLCHAIN_DEPS="devtoolset-8-binutils devtoolset-8-gcc devtoolset-8-gcc-c++ devtoolset-8-gcc-gfortran"
-	fi
+	
+ 	#Added by @snnn
+ 	if [ -d "/usr/local/cuda-10.2" ]; then
+ 	  TOOLCHAIN_DEPS="devtoolset-8-binutils devtoolset-8-gcc devtoolset-8-gcc-c++ devtoolset-8-gcc-gfortran"
+ 	elif [ -d "/usr/local/cuda-11.1" ]; then
+ 	  TOOLCHAIN_DEPS="devtoolset-9-binutils devtoolset-9-gcc devtoolset-9-gcc-c++ devtoolset-9-gcc-gfortran"
+ 	else
+ 	  TOOLCHAIN_DEPS="devtoolset-10-binutils devtoolset-10-gcc devtoolset-10-gcc-c++ devtoolset-10-gcc-gfortran"
+ 	fi
 	if [ "${AUDITWHEEL_ARCH}" == "x86_64" ]; then
-		# Software collection (for devtoolset-9)
+		# Software collection (for devtoolset-10)
 		yum -y install centos-release-scl-rh
 		# EPEL support (for yasm)
-		if ! rpm -q --quiet epel-release ; then
-		  yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
-		fi
+ 		if ! rpm -q --quiet epel-release ; then
+ 		  yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+ 		fi
 		TOOLCHAIN_DEPS="${TOOLCHAIN_DEPS} yasm"
 	elif [ "${AUDITWHEEL_ARCH}" == "aarch64" ] || [ "${AUDITWHEEL_ARCH}" == "ppc64le" ] || [ "${AUDITWHEEL_ARCH}" == "s390x" ]; then
-		# Software collection (for devtoolset-9)
+		# Software collection (for devtoolset-10)
 		yum -y install centos-release-scl-rh
 	elif [ "${AUDITWHEEL_ARCH}" == "i686" ]; then
 		# No yasm on i686
-		# Install mayeut/devtoolset-9 repo to get devtoolset-9
-		curl -fsSLo /etc/yum.repos.d/mayeut-devtoolset-9.repo https://copr.fedorainfracloud.org/coprs/mayeut/devtoolset-9/repo/custom-1/mayeut-devtoolset-9-custom-1.repo
+		# Install mayeut/devtoolset-10 repo to get devtoolset-10
+		curl -fsSLo /etc/yum.repos.d/mayeut-devtoolset-10.repo https://copr.fedorainfracloud.org/coprs/mayeut/devtoolset-10/repo/custom-1/mayeut-devtoolset-10-custom-1.repo
 	fi
 elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ]; then
 	PACKAGE_MANAGER=apt

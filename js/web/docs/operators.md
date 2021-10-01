@@ -1,6 +1,6 @@
 ## Operators Support Table
 
-The following table shows [ai.onnx](https://github.com/onnx/onnx/blob/master/docs/Operators.md)  operators from which onnx opset version are currently supported by onnxjs. For example, `4-6, 8+` means  ONNX Runtime Web currently support opset version 4 to 6, 8 and above.
+The following table shows [ai.onnx](https://github.com/onnx/onnx/blob/master/docs/Operators.md)  operators from which onnx opset version are currently supported by ONNX Runtime Web. For example, `4-6, 8+` means  ONNX Runtime Web currently support opset version 4 to 6, 8 and above.
 
 See [Compatibility](../README.md#Compatibility) for a list of the supported platforms.
 
@@ -20,10 +20,11 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [Atan](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Atan) | [7+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Atan-7) |
 | [Atanh](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Atanh) |  |
 | [AveragePool](https://github.com/onnx/onnx/blob/master/docs/Operators.md#AveragePool) | [7-9](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#AveragePool-7), [10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#AveragePool-10) |
-| [BatchNormalization](https://github.com/onnx/onnx/blob/master/docs/Operators.md#BatchNormalization) | [7-8](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#BatchNormalization-7), [9-13](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#BatchNormalization-9), [14+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#BatchNormalization-14) |
+| [BatchNormalization](https://github.com/onnx/onnx/blob/master/docs/Operators.md#BatchNormalization) | [7-8](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#BatchNormalization-7), [9-13](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#BatchNormalization-9), [14](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#BatchNormalization-14), [15+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#BatchNormalization-15) |
 | [Bernoulli](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Bernoulli) |  |
 | [BitShift](https://github.com/onnx/onnx/blob/master/docs/Operators.md#BitShift) |  |
 | [Cast](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Cast) |  |
+| [CastLike](https://github.com/onnx/onnx/blob/master/docs/Operators.md#CastLike) |  |
 | [Ceil](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Ceil) | [6-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Ceil-6), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Ceil-13) |
 | [Celu](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Celu) |  |
 | [Clip](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Clip) | [6-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Clip-6) |
@@ -99,6 +100,9 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [NonZero](https://github.com/onnx/onnx/blob/master/docs/Operators.md#NonZero) |  |
 | [Not](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Not) | [1+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Not-1) |
 | [OneHot](https://github.com/onnx/onnx/blob/master/docs/Operators.md#OneHot) |  |
+| [Optional](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Optional) |  |
+| [OptionalGetElement](https://github.com/onnx/onnx/blob/master/docs/Operators.md#OptionalGetElement) |  |
+| [OptionalHasElement](https://github.com/onnx/onnx/blob/master/docs/Operators.md#OptionalHasElement) |  |
 | [Or](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Or) | [7+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Or-7) |
 | [PRelu](https://github.com/onnx/onnx/blob/master/docs/Operators.md#PRelu) | [7-8](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#PRelu-7), [9+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#PRelu-9) |
 | [Pad](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Pad) | [2-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pad-2) |
@@ -140,7 +144,7 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [SequenceErase](https://github.com/onnx/onnx/blob/master/docs/Operators.md#SequenceErase) |  |
 | [SequenceInsert](https://github.com/onnx/onnx/blob/master/docs/Operators.md#SequenceInsert) |  |
 | [SequenceLength](https://github.com/onnx/onnx/blob/master/docs/Operators.md#SequenceLength) |  |
-| [Shape](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Shape) | [1-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Shape-1), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Shape-13) |
+| [Shape](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Shape) | [1-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Shape-1), [13-14](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Shape-13), [15+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Shape-15) |
 | [Shrink](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Shrink) |  |
 | [Sigmoid](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Sigmoid) | [6-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Sigmoid-6), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Sigmoid-13) |
 | [Sign](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Sign) |  |

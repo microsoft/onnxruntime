@@ -19,6 +19,7 @@ Usage:
 
 Modes:
  suite0                        Run all unittests, all operator tests and node model tests that described in suite test list
+ suite1                        Run all operator tests and node model tests that described in suite test list
  model                         Run a single model test
  unittest                      Run all unittests
  op                            Run a single operator test
@@ -61,6 +62,7 @@ Options:
  --wasm-number-threads         Set the WebAssembly number of threads
  --wasm-init-timeout           Set the timeout for WebAssembly backend initialization, in milliseconds
  --wasm-enable-simd            Set whether to enable SIMD
+ --wasm-enable-proxy           Set whether to enable proxy worker
  --webgl-context-id            Set the WebGL context ID (webgl/webgl2)
  --webgl-matmul-max-batch-size Set the WebGL matmulMaxBatchSize
  --webgl-texture-cache-mode    Set the WebGL texture cache mode (initializerOnly/full)
@@ -94,7 +96,7 @@ Examples:
 /* eslint-enable max-len */
 
 export declare namespace TestRunnerCliArgs {
-  type Mode = 'suite0'|'model'|'unittest'|'op';
+  type Mode = 'suite0'|'suite1'|'model'|'unittest'|'op';
   type Backend = 'cpu'|'webgl'|'wasm'|'onnxruntime';
   type Environment = 'chrome'|'edge'|'firefox'|'electron'|'safari'|'node'|'bs';
   type BundleMode = 'prod'|'dev'|'perf';
@@ -252,11 +254,23 @@ function parseWasmFlags(args: minimist.ParsedArgs): Env.WebAssemblyFlags {
   if (typeof initTimeout !== 'undefined' && typeof initTimeout !== 'number') {
     throw new Error('Flag "wasm-init-timeout" must be a number value');
   }
-  const simd = args['wasm-enable-simd'];
-  if (typeof simd !== 'undefined' && typeof simd !== 'boolean') {
+  let simd = args['wasm-enable-simd'];
+  if (simd === 'true') {
+    simd = true;
+  } else if (simd === 'false') {
+    simd = false;
+  } else if (typeof simd !== 'undefined' && typeof simd !== 'boolean') {
     throw new Error('Flag "wasm-enable-simd" must be a boolean value');
   }
-  return {numThreads, initTimeout, simd};
+  let proxy = args['wasm-enable-proxy'];
+  if (proxy === 'true') {
+    proxy = true;
+  } else if (proxy === 'false') {
+    proxy = false;
+  } else if (typeof proxy !== 'undefined' && typeof proxy !== 'boolean') {
+    throw new Error('Flag "wasm-enable-proxy" must be a boolean value');
+  }
+  return {numThreads, initTimeout, simd, proxy};
 }
 
 function parseWebglOptions(_args: minimist.ParsedArgs): InferenceSession.WebGLExecutionProviderOption {
@@ -280,7 +294,10 @@ function parseWebglFlags(args: minimist.ParsedArgs): Env.WebGLFlags {
   if (pack !== undefined && typeof pack !== 'boolean') {
     throw new Error('Flag "webgl-texture-pack-mode" is invalid');
   }
-
+  const async = args['webgl-async'];
+  if (async !== undefined && typeof async !== 'boolean') {
+    throw new Error('Flag "webgl-async" is invalid');
+  }
   return {contextId, matmulMaxBatchSize, textureCacheMode, pack};
 }
 

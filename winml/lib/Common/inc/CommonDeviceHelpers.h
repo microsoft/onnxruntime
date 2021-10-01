@@ -13,7 +13,13 @@
 #define ENABLE_DXCORE 1
 #endif
 #ifdef ENABLE_DXCORE
+// dxcore is delay loaded, so there is a runtime check for its existence and it's okay to reference,
+// even in unsupported versions of Windows
+#pragma push_macro("_WIN32_WINNT")
+#undef _WIN32_WINNT
+#define _WIN32_WINNT _WIN32_WINNT_WIN10
 #include <dxcore.h>
+#pragma pop_macro("_WIN32_WINNT")
 #endif
 
 //

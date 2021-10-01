@@ -292,13 +292,9 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
 }
 
 OrtValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& shape, AllocatorPtr& allocator) {
-  auto new_tensor = std::make_unique<Tensor>(data_type,
-                                                     shape,
-                                                     allocator);
-
-  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-  return OrtValue{new_tensor.release(), ml_tensor,
-                  ml_tensor->GetDeleteFunc()};
+  OrtValue ort_value;
+  Tensor::InitOrtValue(data_type, shape, allocator, ort_value);
+  return ort_value;
 };
 
 void CalculateTransposedShapeForInput(const TensorShape& original_shape, int64_t axis,

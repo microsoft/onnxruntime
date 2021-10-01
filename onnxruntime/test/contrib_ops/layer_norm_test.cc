@@ -48,7 +48,7 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
   test.AddAttribute("axis", axis);
   test.AddAttribute("keep_dims", keep_dims);
   if (epsilon.has_value()) {
-    test.AddAttribute("epsilon", epsilon.value());
+    test.AddAttribute("epsilon", *epsilon);
   }
 
   // create rand inputs
