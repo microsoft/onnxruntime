@@ -1,6 +1,6 @@
 ## Operators Support Table
 
-The following table shows [ai.onnx](https://github.com/onnx/onnx/blob/master/docs/Operators.md)  operators from which onnx opset version are currently supported by onnxjs. For example, `4-6, 8+` means  ONNX Runtime Web currently support opset version 4 to 6, 8 and above.
+The following table shows [ai.onnx](https://github.com/onnx/onnx/blob/master/docs/Operators.md)  operators from which onnx opset version are currently supported by ONNX Runtime Web. For example, `4-6, 8+` means  ONNX Runtime Web currently support opset version 4 to 6, 8 and above.
 
 See [Compatibility](../README.md#Compatibility) for a list of the supported platforms.
 
