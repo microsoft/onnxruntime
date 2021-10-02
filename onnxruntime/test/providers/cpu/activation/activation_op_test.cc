@@ -55,10 +55,9 @@ float ReluGrad(float dy, float x) {
 }
 
 float SigmoidGrad(float dy, float x) {
-  auto sigmoid_x = 1. / (1. + std::exp(-std::abs(x)));
-  return dy * sigmoid_x * (1-sigmoid_x);
+  float sigmoid_x = static_cast<float>(1. / (1. + std::exp(-std::abs(x))));
+  return static_cast<float>(dy * sigmoid_x * (1 - sigmoid_x));
 }
-
 }
 #endif
 
