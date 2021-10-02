@@ -250,5 +250,9 @@
     [
         "ZeroGradient com.microsoft CPUExecutionProvider",
         3284255990062374928
+    ],
+    [
+        "SigmoidGrad com.microsoft CPUExecutionProvider",
+        13197741041840309432
     ]
 ]
