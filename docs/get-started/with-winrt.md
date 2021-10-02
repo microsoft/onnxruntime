@@ -2,7 +2,7 @@
 title: WinRT
 parent: Get Started
 toc: true
-nav_order: 10
+nav_order: 8
 ---
 
 

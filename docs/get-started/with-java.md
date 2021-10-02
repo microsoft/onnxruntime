@@ -2,7 +2,7 @@
 title: Java
 parent: Get Started
 toc: true
-nav_order: 4
+nav_order: 5
 --- 
 # Get Started with ORT for Java
 {: .no_toc }

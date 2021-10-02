@@ -2,7 +2,7 @@
 title: C#
 parent: Get Started
 toc: true
-nav_order: 2
+nav_order: 3
 ---
 # Get started with ORT for C#
 {: .no_toc }
