@@ -78,7 +78,7 @@ float ReluGrad(float dy, float x) {
 
 float SigmoidGrad(float dy, float x) {
   float sigmoid_x = 1.f / (1.f + std::exp(-std::abs(x)));
-  return dy * sigmoid_x * (1-sigmoid_x);
+  return dy * sigmoid_x * (1 - sigmoid_x);
 }
 
 }  // namespace
