@@ -2090,7 +2090,7 @@ Example 4:
       .SetDoc("SigmoidGrad")
       .AllowUncheckedAttributes()
       .Input(0, "dY", "The gradient tensor from output.", "T")
-      .Input(1, "X", "The input tensor. ", "T")
+      .Input(1, "Y", "The input tensor. ", "T")
       .Output(0, "dX", "Gradient of the input.", "T")
       .TypeConstraint(
           "T",
@@ -2105,9 +2105,8 @@ Example 4:
             auto elem_type = (ONNX_NAMESPACE::TensorProto_DataType)tp->tensor_type().elem_type();
             std::vector<FunctionBodyHelper::NodeDef> body{
                 ONNX_NAMESPACE::Const("C_One", 1.0f, elem_type),
-                {{"SigmoidX"}, "Sigmoid", {"X"}},
-                {{"OneMinusSigmoidX"}, "Sub", {"C_One", "SigmoidX"}},
-                {{"dSigmoidX"}, "Mul", {"SigmoidX", "OneMinusSigmoidX"}},
+                {{"OneMinusY"}, "Sub", {"C_One", "Y"}},
+                {{"dSigmoidX"}, "Mul", {"Y", "OneMinusY"}},
                 {{"dX"}, "Mul", {"dY", "dSigmoidX"}}};
             OperatorSetIdProto onnx_opset_13;
             onnx_opset_13.set_domain("");
