@@ -159,14 +159,12 @@ ONNX_OPERATOR_KERNEL_EX(
 template <typename T>
 Status SigmoidGrad<T>::Compute(OpKernelContext* context) const {
   auto& dY = *context->Input<Tensor>(0);
-  auto& X = *context->Input<Tensor>(1);
+  auto& Y = *context->Input<Tensor>(1);
   auto& dX = *context->Output(0, dY.Shape());
   EigenVectorArrayMap<float> dx = EigenVectorArrayMap<float>(dX.template MutableData<T>(), dX.Shape().Size());
-  ConstEigenVectorArrayMap<float> xm = ConstEigenVectorArrayMap<float>(X.template Data<T>(), X.Shape().Size());
+  ConstEigenVectorArrayMap<float> y = ConstEigenVectorArrayMap<float>(Y.template Data<T>(), Y.Shape().Size());
   ConstEigenVectorArrayMap<float> dy = ConstEigenVectorArrayMap<float>(dY.template Data<T>(), dY.Shape().Size());
-  dx = 1 / (1. + (-xm.abs()).exp());
-  dx *= 1 - dx;  // calculate derivative sigmoid(X) * (1-sigmoid(X))
-  dx *= dy;      // calculate the output
+  dx = dy * y * (1 -y );
   return Status::OK();
 }
 }  // namespace contrib
