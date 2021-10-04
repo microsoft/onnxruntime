@@ -11,6 +11,7 @@
 #include <core/graph/graph.h>
 #include <core/graph/graph_viewer.h>
 #include <core/providers/common.h>
+#include <core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h>
 
 #include "core/providers/shared/utils/utils.h"
 #include "helper.h"
