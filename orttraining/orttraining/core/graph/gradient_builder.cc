@@ -697,7 +697,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetSigmoidGradient) {
   auto const_one = OneConstantNode(OElemType(0));
   return std::vector<NodeDef>{
       NodeDef(OpDef{"SigmoidGrad", kMSDomain, 1},
-              {GO(0), I(0)},
+              {GO(0), O(0)},
               {GI(0)})};
 }
 IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxGradient) {

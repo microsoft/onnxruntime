@@ -54,9 +54,8 @@ float ReluGrad(float dy, float x) {
   return x > 0 ? dy : 0;
 }
 
-float SigmoidGrad(float dy, float x) {
-  float sigmoid_x = static_cast<float>(1. / (1. + std::exp(-std::abs(x))));
-  return static_cast<float>(dy * sigmoid_x * (1 - sigmoid_x));
+float SigmoidGrad(float dy, float y) {
+  return dy * y * (1 - y);
 }
 }
 #endif
@@ -290,17 +289,17 @@ TEST(ReluGradInferenceTest, Basic) {
 }
 
 TEST(SigmoidGradInferenceTest, Basic) {
-  const std::vector<float> x_vals = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
+  const std::vector<float> y_vals = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
   const std::vector<float> dY(7, 1.0f);
 
   TestElementwiseGradientOp(
       "SigmoidGrad",
-      {{"dY", dY}, {"X", x_vals}},
+      {{"dY", dY}, {"Y", y_vals}},
       [](const std::vector<float>& params) {
         ORT_ENFORCE(params.size() == 2);
-        const auto dy = params[0], x = params[1];
+        const auto dy = params[0], y = params[1];
 
-        return SigmoidGrad(dy, x);
+        return SigmoidGrad(dy, y);
       },
       {}, 1, kMSDomain);
 }
