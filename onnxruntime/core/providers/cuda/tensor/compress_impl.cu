@@ -13,16 +13,30 @@
 
 #include "core/providers/cuda/tensor/compress_impl.h"
 
+#include <thrust/scan.h>
+#include <thrust/iterator/transform_iterator.h>
+
 namespace onnxruntime {
 namespace cuda {
 
+// This cast is for transform iterator. This type affects the accumulator type width
+// in InclusiveSum() and int8_t overflows.
+struct CastToIn32 {
+  __device__ int32_t operator()(int8_t v) const {
+    return static_cast<int32_t>(v);
+  }
+};
+
 cudaError_t CompressCalcPrefixSumTempStorageBytes(cudaStream_t stream, const int8_t* condition_data, int* condition_cumulative_sum, int length, size_t& temp_storage_bytes) {
-  return cub::DeviceScan::InclusiveSum(
-    nullptr, temp_storage_bytes, condition_data, condition_cumulative_sum, length, stream);
+   auto input_iter = thrust::make_transform_iterator(condition_data, CastToIn32());
+   return cub::DeviceScan::InclusiveSum(
+      nullptr, temp_storage_bytes, input_iter, condition_cumulative_sum, length, stream);
 }
+
 cudaError_t CompressInclusivePrefixSum(cudaStream_t stream, void* d_temp_storage, size_t temp_storage_bytes, const int8_t* condition_data, int* condition_cumulative_sum, int length) {
+  auto input_iter = thrust::make_transform_iterator(condition_data, CastToIn32());
   return cub::DeviceScan::InclusiveSum(
-    d_temp_storage, temp_storage_bytes, condition_data, condition_cumulative_sum, length, stream);
+      d_temp_storage, temp_storage_bytes, input_iter, condition_cumulative_sum, length, stream);
 }
 
 template <typename T>
