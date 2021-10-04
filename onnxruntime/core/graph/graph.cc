@@ -3348,6 +3348,7 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
 void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve) {
   // Node Args being used
   std::unordered_set<const NodeArg*> used_args;
+  used_args.reserve(node_args_.size());
   //Node Args we want to preserved even not being used
   std::unordered_set<const NodeArg*> node_args_to_preserve;
   if (initializer_names_to_preserve) {
@@ -3456,6 +3457,7 @@ void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::str
     ORT_IGNORE_RETURN_VALUE(node_args_to_preserve.insert(outer_scope_node_arg));
   }
 
+  std::unordered_set<std::string> node_args_removed;
   auto node_args_to_preserve_end = node_args_to_preserve.cend();
   for (auto it = node_args_.cbegin(), node_args_end = node_args_.cend(); it != node_args_end; /* no increment */) {
     auto current_entry = it++;
@@ -3464,9 +3466,35 @@ void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::str
     if (!node_arg_name.empty() && used_args.find(current_node_arg) == used_args_end &&
         node_args_to_preserve.find(current_node_arg) == node_args_to_preserve_end) {
       LOGS(logger_, INFO) << "Removing NodeArg '" << node_arg_name << "'. It is no longer used by any node.";
+      node_args_removed.insert(node_arg_name);
       // Need to remove the NodeArg from both value_info_ and node_args_
       value_info_.erase(current_node_arg);
       node_args_.erase(current_entry);
+    }
+  }
+
+  // Remove the NodeArgs from the underlying graph_proto
+  if (!node_args_removed.empty()) {
+    std::vector<std::string> proto_node_args_to_remove;
+    proto_node_args_to_remove.reserve(node_args_removed.size());
+    for (const auto& value_info : graph_proto_->value_info()) {
+      if (node_args_removed.find(value_info.name()) != node_args_removed.cend()) {
+        proto_node_args_to_remove.push_back(value_info.name());
+      }
+    }
+
+    if (!proto_node_args_to_remove.empty()) {
+      auto& proto_value_info = *graph_proto_->mutable_value_info();
+      for (const auto& node_arg_name : proto_node_args_to_remove) {
+        auto it = std::find_if(proto_value_info.cbegin(), proto_value_info.cend(),
+                               [&node_arg_name](const ONNX_NAMESPACE::ValueInfoProto& input) {
+                                 return input.name() == node_arg_name;
+                               });
+
+        if (it != proto_value_info.cend()) {
+          RemoveRepeatedFieldEntry(proto_value_info, it);
+        }
+      }
     }
   }
 }
