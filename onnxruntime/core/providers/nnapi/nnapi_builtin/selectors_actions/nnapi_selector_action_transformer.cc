@@ -58,7 +58,7 @@ NNAPISelectorActionTransformer::Match(const Graph& graph, const Node& node) cons
     return node_group;
   }
 
-  std::cout << "Found matched QDQ group with op: " << node.OpType() << std::endl;
+  std::cout << "Found matched QDQ group with op: " << node.OpType() << "  with name: " << node.Name() << std::endl;
 
   //TODO: how to return a set of node_groups here?
   return node_group;

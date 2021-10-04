@@ -124,19 +124,26 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     }
   }
 
-  // TODO: Pre-Partition: add selection - checkQDQNodes -> select qdq structure pairs -> supported
+  // TODO: Pre-Partition: add selector -> select qdq structure pairs -> obtain qdq_node_groups
+  std::vector<std::unique_ptr<ConstNodesToOptimize>> qdq_node_groups;
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
     const auto* node = graph_viewer.GetNode(index);
     NNAPISelectorActionTransformer nnapi_selector_action_transformer("NNAPISAT", CreateNNAPISelectorsAndActions());
-    auto node_group = nnapi_selector_action_transformer.Match(graph_viewer.GetGraph(), *node);
+    auto qdq_node_group = nnapi_selector_action_transformer.Match(graph_viewer.GetGraph(), *node);
     // Get Node Groups?
+    if (qdq_node_group != nullptr) {
+      std::cout << "QDQ Node Group added: " << node->OpType() << " with matched node's name: " << node->Name() << std::endl;
+      qdq_node_groups.emplace_back(std::move(qdq_node_group));
+    }
   }
 
   const auto excluded_nodes = utils::CreateExcludedNodeSet(graph_viewer, partitioning_stop_ops_);
   const bool check_excluded_nodes = !excluded_nodes.empty();
 
   std::unordered_set<std::string> node_outputs_in_current_group{};
+ 
 
+  // TODO:
   const auto is_node_supported = [&](const Node& node) -> bool {
     const bool excluded = check_excluded_nodes && Contains(excluded_nodes, &node);
     const bool supported = !excluded &&
