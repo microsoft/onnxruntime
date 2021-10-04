@@ -24,7 +24,7 @@
 	url = https://github.com/google/re2.git
 [submodule "cmake/external/eigen"]
 	path = cmake/external/eigen
-	url = https://gitlab.com/libeigen/eigen.git
+	url = https://gitlab.com/libeigen/eigen-backup.git
 [submodule "cmake/external/cxxopts"]
 	path = cmake/external/cxxopts
 	url = https://github.com/jarro2783/cxxopts.git

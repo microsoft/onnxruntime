@@ -115,7 +115,7 @@
         "type": "git",
         "git": {
           "commitHash": "efd9867ff0e8df23016ac6c9828d0d7bf8bec1b1",
-          "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
+          "repositoryUrl": "https://gitlab.com/libeigen/eigen-backup.git"
         },
         "comments": "git submodule at cmake/external/FeaturizersLibrary/src/3rdParty/eigen"
       }
@@ -195,7 +195,7 @@
         "type": "git",
         "git": {
           "commitHash": "d10b27fe37736d2944630ecd7557cefa95cf87c9",
-          "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
+          "repositoryUrl": "https://gitlab.com/libeigen/eigen-backup.git"
         },
         "comments": "git submodule at cmake/external/eigen"
       }
