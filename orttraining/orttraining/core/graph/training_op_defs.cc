@@ -621,13 +621,14 @@ void RegisterTrainingOpSchemas() {
             FunctionBuilder builder(functionProto);
             builder
                 .AddOpset("", 13)
-                .Const<int64_t>("one", 1)
-                .Const<int64_t>("k", axis)
+                .Const("one", 1)
+                .Const("k", axis)
                 .Const("axis_zero", std::vector<int64_t>({0}))
-                .Add(
-                    "shape = Shape (dY) "
-                    "n_as_vector = Shape (shape) "
-                    "n = Squeeze (n_as_vector, axis_zero) ");
+                .Add(R"(
+                    shape = Shape (dY)
+                    n_as_vector = Shape (shape)
+                    n = Squeeze (n_as_vector, axis_zero)
+                )");
 
             // For negative axis, add n to axis-value k; then use Range(...).
             if (axis >= 0) {
@@ -638,10 +639,12 @@ void RegisterTrainingOpSchemas() {
             }
 
             // compute dX = Y * ( dY - dot(Y, dY)) = Y * ( dY - ReduceSum(Y * dY))
-            builder.Add("a = Mul (Y ,dY) ")
-                .Add("b = ReduceSum (a ,reduction_axes) ")
-                .Add("c = Sub (dY ,b) ")
-                .Add("dX = Mul (Y ,c) ");
+            builder.Add(R"(
+                a = Mul (Y ,dY)
+                b = ReduceSum (a ,reduction_axes)
+                c = Sub (dY ,b)
+                dX = Mul (Y ,c)
+            )");
 
             schema.BuildFunction(functionProto);
             return true;
@@ -2060,18 +2063,19 @@ Example 4:
                 .Const("C_SqrtHalf", float(M_SQRT1_2), elem_type)
                 .Const("C_MinusHalf", -0.5f, elem_type)
                 .Const("C_alpha", kAlpha, elem_type)
-                .Add(
-                    "ErfArg = Mul (X, C_SqrtHalf) "
-                    "ErfTerm = Erf (ErfArg) "
-                    "PartialSum = Add (ErfTerm, C_One) "
-                    "HalfPartialSum = Mul (C_Half, PartialSum) "
-                    "AlphaX = Mul (X, C_alpha) "
-                    "MinusHalfX = Mul (C_MinusHalf, X) "
-                    "ExpArg = Mul (MinusHalfX, X) "
-                    "ExpTerm = Exp (ExpArg) "
-                    "Term3 = Mul (AlphaX, ExpTerm) "
-                    "FullSum = Add (HalfPartialSum, Term3) "
-                    "dX = Mul (dY, FullSum)");
+                .Add(R"(
+                    ErfArg = Mul (X, C_SqrtHalf) 
+                    ErfTerm = Erf (ErfArg) 
+                    PartialSum = Add (ErfTerm, C_One) 
+                    HalfPartialSum = Mul (C_Half, PartialSum) 
+                    AlphaX = Mul (X, C_alpha) 
+                    MinusHalfX = Mul (C_MinusHalf, X) 
+                    ExpArg = Mul (MinusHalfX, X) 
+                    ExpTerm = Exp (ExpArg) 
+                    Term3 = Mul (AlphaX, ExpTerm) 
+                    FullSum = Add (HalfPartialSum, Term3) 
+                    dX = Mul (dY, FullSum)
+                )");
 
             schema.BuildFunction(functionProto);
             return true;
