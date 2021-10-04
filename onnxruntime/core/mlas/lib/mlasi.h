@@ -674,6 +674,7 @@ extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx2;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvxVnni;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Core;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Vnni;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchArm64;
 
 //
 // Quantized depthwise convolution kernels.
@@ -726,6 +727,8 @@ struct MLAS_PLATFORM {
     const MLAS_GEMM_U8X8_DISPATCH* GemmU8X8Dispatch;
 #endif
 
+    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch;
+
 #if defined(MLAS_TARGET_AMD64)
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1Routine;
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1TransposeBRoutine;
@@ -744,7 +747,6 @@ struct MLAS_PLATFORM {
     MLAS_QLINEAR_BINARY_OP_U8_KERNEL* QLinearAddU8Kernel;
     MLAS_U8X8_KERNEL<int8_t>::DepthwiseKernel* ConvDepthwiseU8S8Kernel;
     MLAS_U8X8_KERNEL<uint8_t>::DepthwiseKernel* ConvDepthwiseU8U8Kernel;
-    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ComputeExpF32Kernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* LogisticKernelRoutine;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* TanhKernelRoutine;

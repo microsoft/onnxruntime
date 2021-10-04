@@ -353,6 +353,8 @@ Return Value:
     // Check if the processor supports ASIMD dot product instructions.
     //
 
+    this->ConvSymDispatch = &MlasConvSymDispatchArm64;
+
     bool HasDotProductInstructions;
 
 #if defined(_WIN32)

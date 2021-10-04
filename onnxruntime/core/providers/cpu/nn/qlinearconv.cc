@@ -157,12 +157,13 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr al
 
           column_sums_.resize(output_channels);
           const int8_t* sdata = (const int8_t*)Wdata;
+          int32_t X_zero_point_value_adjust = X_zero_point_value - 128;
           for (size_t oc = 0; oc < output_channels; oc++) {
             int32_t sum = 0;
             for (size_t ks = 0; ks < kernel_size * group_input_channels; ks++) {
               sum += *sdata++;
             }
-            column_sums_[oc] = (Bdata != nullptr ? Bdata[oc] : 0) - sum * X_zero_point_value;
+            column_sums_[oc] = (Bdata != nullptr ? Bdata[oc] : 0) - sum * X_zero_point_value_adjust;
           }
 
           auto* packed_W = static_cast<uint8_t*>(alloc->Alloc(packed_size));
