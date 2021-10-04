@@ -378,10 +378,11 @@ def create_gpt2_inputs(onnx_model, batch_size, sequence_length, past_sequence_le
     for graph_input in onnx_model.get_graph_inputs_excluding_initializers():
         shape = get_shape_from_type_proto(graph_input.type)
         for i, dim in enumerate(shape):
-            if isinstance(dim, str) and dim not in symbols.keys():
-                raise RuntimeError(f"symbol is not supported: {dim}")
-            else:
-                shape[i] = symbols[dim]
+            if isinstance(dim, str):
+                if dim not in symbols.keys():
+                    raise RuntimeError(f"symbol is not supported: {dim}")
+                else:
+                    shape[i] = symbols[dim]
 
         elem_type = graph_input.type.tensor_type.elem_type
         assert elem_type in [TensorProto.FLOAT, TensorProto.INT32, TensorProto.INT64]
@@ -416,10 +417,11 @@ def create_longformer_inputs(onnx_model, batch_size, sequence_length, global_len
     for graph_input in onnx_model.get_graph_inputs_excluding_initializers():
         shape = get_shape_from_type_proto(graph_input.type)
         for i, dim in enumerate(shape):
-            if isinstance(dim, str) and dim not in symbols.keys():
-                raise RuntimeError(f"symbol is not supported: {dim}")
-            else:
-                shape[i] = symbols[dim]
+            if isinstance(dim, str):
+                if dim not in symbols.keys():
+                    raise RuntimeError(f"symbol is not supported: {dim}")
+                else:
+                    shape[i] = symbols[dim]
 
         elem_type = graph_input.type.tensor_type.elem_type
         assert elem_type in [TensorProto.FLOAT, TensorProto.INT32, TensorProto.INT64]
