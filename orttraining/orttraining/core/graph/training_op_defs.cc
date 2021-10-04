@@ -623,7 +623,7 @@ void RegisterTrainingOpSchemas() {
                 .AddOpset("", 13)
                 .Const("one", 1)
                 .Const("k", axis)
-                .Const("axis_zero", std::vector<int64_t>({0}))
+                .Const("axis_zero", std::vector<int64_t>({0})) // a 1D tensor constant
                 .Add(R"(
                     shape = Shape (dY)
                     n_as_vector = Shape (shape)
