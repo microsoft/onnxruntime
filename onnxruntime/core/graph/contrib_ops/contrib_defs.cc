@@ -759,7 +759,7 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
         auto* tp = ctx.getInputType(0);
         if ((tp == nullptr) || (!tp->has_tensor_type()))
           return false;
-        auto elem_type = (ONNX_NAMESPACE::TensorProto_DataType)tp->tensor_type().elem_type();
+        auto elem_type = tp->tensor_type().elem_type();
 
         // Optional input 1 indicates a bias to be added to input 0.
         auto hasBias = ctx.hasInput(1);
@@ -767,19 +767,20 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
         FunctionBuilder builder(functionProto);
         builder
             .AddOpset("", 13)
-            .Add("a = Constant()", onnx::ValueAttr(0.5, elem_type))
-            .Add("b = Constant()", onnx::ValueAttr(0.797885, elem_type))
-            .Add("c = Constant()", onnx::ValueAttr(0.035677, elem_type))
-            .Add("one = Constant()", onnx::ValueAttr(1.0, elem_type))
+            .Const("a", 0.5, elem_type)
+            .Const("b", 0.797885, elem_type)
+            .Const("c", 0.035677, elem_type)
+            .Const("one", 1.0, elem_type)
             .Add(hasBias ? "X_bias = Add (X, bias)" : "X_bias = Identity (X)")
-            .Add("T1 = Mul (X_bias, X_bias) ")
-            .Add("T2 = Mul (c, T1) ")
-            .Add("T3 = Add (b, T2) ")
-            .Add("T4 = Mul (X_bias, T3) ")
-            .Add("T5 = Tanh (T4) ")
-            .Add("T6 = Add (one, T5) ")
-            .Add("T7 = Mul (X_bias, T6) ")
-            .Add("Y = Mul (a, T7)");
+            .Add(
+                "T1 = Mul (X_bias, X_bias) "
+                "T2 = Mul (c, T1) "
+                "T3 = Add (b, T2) "
+                "T4 = Mul (X_bias, T3) "
+                "T5 = Tanh (T4) "
+                "T6 = Add (one, T5) "
+                "T7 = Mul (X_bias, T6) "
+                "Y = Mul (a, T7)");
 
         schema.BuildFunction(functionProto);
         return true;
@@ -2478,7 +2479,7 @@ Example 4:
             FunctionBuilder builder(functionProto);
             builder
                 .AddOpset("", 13)
-                .Add("Epsilon = Constant()", onnx::ValueAttr(epsilon, (ONNX_NAMESPACE::TensorProto_DataType)U))
+                .Const("Epsilon", epsilon, U)
                 .Add("XShape = Shape (X)")                                                    // shape of input tensor: 1D tensor
                 .Add("Rank = Size (XShape)")                                                  // rank of input tensor: scalar
                 .Add("Zero1D = Constant()", "value", mktensor(0))                             // [0] : 1D tensor
@@ -2596,9 +2597,9 @@ inputs by their magnitude, rather than gates inputs by their sign as in ReLUs.)D
         FunctionBuilder builder(functionProto);
         builder
             .AddOpset("", 13)
-            .Add("Half = Constant()", onnx::ValueAttr(0.5, elem_type))
-            .Add("One = Constant()", onnx::ValueAttr(1.0, elem_type))
-            .Add("C = Constant()", onnx::ValueAttr(std::sqrt(0.5), elem_type))
+            .Const("Half", 0.5, elem_type)
+            .Const("One", 1.0, elem_type)
+            .Const("C", std::sqrt(0.5), elem_type)
             .Add(
                 "CX = Mul (C, X) "
                 "ERFCX = Erf (CX) "
