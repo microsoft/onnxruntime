@@ -49,7 +49,7 @@
 	branch = master
 [submodule "cmake/external/FeaturizersLibrary"]
 	path = cmake/external/FeaturizersLibrary
-	url = https://github.com/microsoft/FeaturizersLibrary.git
+	url = https://github.com/suffiank/FeaturizersLibrary.git
 [submodule "cmake/external/libprotobuf-mutator"]
 	path = cmake/external/libprotobuf-mutator
 	url = https://github.com/google/libprotobuf-mutator.git
