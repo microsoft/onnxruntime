@@ -13,7 +13,7 @@ nav_order: 3
 Conversion of ONNX format models to ORT format utilizes the ONNX Runtime python package, as the model is loaded into ONNX Runtime and optimized as part of the conversion process. 
 
 For ONNX Runtime version 1.8 and later the conversion script is run directly from the ONNX Runtime python package.<br>
-For earlier versions, the conversion script is run from the local ONNX Runtime repository created during the [initial setup](initial-setup#clone-onnx-runtime-repository).
+For earlier versions, the conversion script is run from the local ONNX Runtime repository created during the [initial setup](./initial-setup.md#clone-onnx-runtime-repository).
 
 ### Basic processing
 
@@ -86,7 +86,7 @@ For earlier versions, *extended* is recommended, as the *all* level previously i
 
 If the model will potentially be run with the NNAPI EP or CoreML EP, it is recommended to create an ORT format model using the *basic* optimization level. Performance testing should be done to compare running this model with the NNAPI or CoreML EP enabled vs. running the model optimized to a higher level using the CPU EP to determine the optimal setup. 
 
-See the documentation on [performance tuning mobile scenarios](../references/mobile-performance-tuning) for in-depth information.
+See the documentation on [performance tuning mobile scenarios](../../performance/mobile-performance-tuning.md) for in-depth information.
 
 ##### Enable type reduction
 
@@ -99,7 +99,7 @@ For example, the ONNX Runtime kernel for Softmax supports both float and double.
 
 ##### Custom Operator support
 
-If your ONNX model uses [custom operators](../add-custom-op), the path to the library containing the custom operator kernels must be provided so that the ONNX model can be successfully loaded. The custom operators will be preserved in the ORT format model.
+If your ONNX model uses [custom operators](../../reference/operators/add-custom-op.md), the path to the library containing the custom operator kernels must be provided so that the ONNX model can be successfully loaded. The custom operators will be preserved in the ORT format model.
 
 ##### Save optimized ONNX model
 
@@ -108,6 +108,5 @@ Add this flag if you wish for the optimized ONNX model to also be saved. This mo
 -------
 
 Next: 
-* If building a custom package: [Performing a custom build](custom-build)
-* If using a pre-built package: [Model execution](model-execution)
-
+* If building a custom package: [Performing a custom build](./custom-build.md)
+* If using a pre-built package: [Model execution](./model-execution.md)

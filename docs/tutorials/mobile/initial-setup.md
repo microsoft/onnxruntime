@@ -77,7 +77,7 @@ Version v1.8 or higher is required.
 Use git to clone the ONNX Runtime repository
   - `git clone --recursive https://github.com/Microsoft/onnxruntime`
     - this will create an 'onnxruntime' directory with the repository contents
-  - See the [Build for inferencing](../build/inferencing) documentation for further details on supported environments. Ignore the build instructions on that page as they are for a full build and we will cover the mobile build instructions here.
+  - See the [Build for inferencing](../../build/inferencing.md) documentation for further details on supported environments. Ignore the build instructions on that page as they are for a full build and we will cover the mobile build instructions here.
 
 Select the branch you wish to use. The latest release is recommended.
   - `git checkout <branch>`
@@ -112,4 +112,4 @@ If you are using the `master` branch in the git repository you should use the ni
 
 -------
 
-Next: [Converting ONNX models to ORT format](model-conversion)
+Next: [Converting ONNX models to ORT format](./model-conversion.md)
