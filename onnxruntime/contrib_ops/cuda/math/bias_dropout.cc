@@ -37,7 +37,7 @@ struct BiasDropoutComputeImpl {
                     const Tensor* residual,
                     Tensor& Y,
                     bool* mask_data,
-                    bool bias_data_same_shape) const {
+                    bool has_same_shape_bias) const {
     typedef typename ToCudaType<T>::MappedType CudaT;
 
     const CudaT* X_data = reinterpret_cast<const CudaT*>(X.template Data<T>());
@@ -53,7 +53,7 @@ struct BiasDropoutComputeImpl {
 
     CudaT* Y_data = reinterpret_cast<CudaT*>(Y.template MutableData<T>());
 
-    BiasDropoutKernelImpl<CudaT>(prop, stream, N, fdm_dim, ratio_data, generator, X_data, bias_data, residual_data, Y_data, mask_data, bias_data_same_shape);
+    BiasDropoutKernelImpl<CudaT>(prop, stream, N, fdm_dim, ratio_data, generator, X_data, bias_data, residual_data, Y_data, mask_data, has_same_shape_bias);
 
     return Status::OK();
   }
@@ -72,9 +72,9 @@ Status BiasDropout::ComputeInternal(OpKernelContext* context) const {
   if (bias == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "Bias input of BiasDropout is not available.");
   const TensorShape& bias_shape = bias->Shape();
   const int64_t dim = bias_shape.GetDims().back();
-  bool data_and_bias_have_same_shape = false;
+  bool has_same_shape_bias = false;
   if (bias_shape == x_shape) {
-    data_and_bias_have_same_shape = true;
+    has_same_shape_bias = true;
   } else {
     if (bias_shape.NumDimensions() != 1) {
       return Status(common::ONNXRUNTIME, common::FAIL, "Bias input is not a 1D tensor.");
@@ -121,7 +121,7 @@ Status BiasDropout::ComputeInternal(OpKernelContext* context) const {
 
   utils::MLTypeCallDispatcher<ALL_IEEE_FLOAT_DATA_TYPES> t_disp(X->GetElementType());
   return t_disp.InvokeRet<Status, BiasDropoutComputeImpl>(
-      GetDeviceProp(), Stream(), N, fdm_dim, ratio_data, generator, *X, *bias, residual, *Y, mask_data, data_and_bias_have_same_shape);
+      GetDeviceProp(), Stream(), N, fdm_dim, ratio_data, generator, *X, *bias, residual, *Y, mask_data, has_same_shape_bias);
 }
 
 }  // namespace cuda

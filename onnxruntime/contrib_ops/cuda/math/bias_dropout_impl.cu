@@ -180,7 +180,7 @@ void BiasDropoutKernelImpl(
     const T* residual_data,
     T* Y_data,
     bool* mask_data,
-    bool bias_data_same_shape) {
+    bool has_same_shape_bias) {
   const int block_size = 256;
   const int blocks_per_sm = prop.maxThreadsPerMultiProcessor / block_size;
   const int grid_size = std::min(prop.multiProcessorCount * blocks_per_sm, static_cast<int>(CeilDiv(N, block_size * UNROLL)));
@@ -190,7 +190,7 @@ void BiasDropoutKernelImpl(
   auto seeds = generator.NextPhiloxSeeds(counter_offset);
 
   if (N % UNROLL != 0) {
-    if (bias_data_same_shape) {
+    if (has_same_shape_bias) {
       if (residual_data == nullptr) {
         BiasDropoutKernel<T, true, false><<<grid_size, block_size, 0, stream>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
       } else {
@@ -204,7 +204,7 @@ void BiasDropoutKernelImpl(
       }
     }
   } else {
-    if (bias_data_same_shape) {
+    if (has_same_shape_bias) {
       if (residual_data == nullptr) {
         BiasDropoutVectorizedKernel<T, true, false><<<grid_size, block_size, 0, stream>>>(N, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data);
       } else {
@@ -233,7 +233,7 @@ void BiasDropoutKernelImpl(
       const T* residual_data,       \
       T* Y_data,                    \
       bool* mask_data,              \
-      bool bias_data_same_shape);
+      bool has_same_shape_bias);
 
 
 SPECIALIZED_BIAS_DROPOUT_IMPL(float)
