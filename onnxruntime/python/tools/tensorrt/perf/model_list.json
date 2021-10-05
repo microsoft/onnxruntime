@@ -68,7 +68,7 @@
     {
         "model_name": "squeezenet1.1-7",
         "working_directory": "./onnx-zoo-models/squeezenet1.1-7/",
-        "model_path": "./squeezenet1.1/._squeezenet1.1.onnx",
+        "model_path": "./squeezenet1.1/squeezenet1.1.onnx",
         "test_data_path": "./squeezenet1.1/"
     },
     {
@@ -104,13 +104,13 @@
     {
         "model_name": "vgg16-7",
         "working_directory": "./onnx-zoo-models/vgg16-7/",
-        "model_path": "./vgg16/._vgg16.onnx",
+        "model_path": "./vgg16/vgg16.onnx",
         "test_data_path": "./vgg16/"
     },
     {
         "model_name": "vgg19-bn-7",
         "working_directory": "./onnx-zoo-models/vgg19-bn-7/",
-        "model_path": "./vgg19-bn/._vgg19-bn.onnx",
+        "model_path": "./vgg19-bn/vgg19-bn.onnx",
         "test_data_path": "./vgg19-bn/"
     },
     {
