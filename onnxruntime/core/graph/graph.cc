@@ -2439,7 +2439,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
       // In case of nested model local functions, graph resolve is called during resolve for parent
       // function body graph otherwise type inference for nest function cannot happen.
       if (options.traverse_function_body && node.GetFunctionBody() != nullptr) {
-        node.GetMutableFunctionBody()->MutableBody().Resolve(options);
+        ORT_RETURN_IF_ERROR(node.GetMutableFunctionBody()->MutableBody().Resolve(options));
       }
     }
 

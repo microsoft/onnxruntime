@@ -191,7 +191,7 @@ class PlannerTest : public ::testing::Test {
         KernelDefBuilder().SetName("Tanh").Provider(kCpuExecutionProvider).SinceVersion(1, 10).ExternalOutputs().Build();
     CPUExecutionProviderInfo epi;
     auto execution_provider = std::make_unique<CPUExecutionProvider>(epi);
-    execution_providers_.Add("CPUExecutionProvider", std::move(execution_provider));
+    ORT_THROW_IF_ERROR(execution_providers_.Add("CPUExecutionProvider", std::move(execution_provider)));
 
     state_.reset(new SessionState(graph_, execution_providers_, false, tp_.get(), nullptr, dtm_,
                                   DefaultLoggingManager().DefaultLogger(), profiler_));

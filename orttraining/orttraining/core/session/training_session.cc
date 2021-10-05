@@ -754,11 +754,11 @@ void TrainingSession::AddPreTrainingTransformers(const IExecutionProvider& execu
 }
 
 // Registers all the predefined transformers with transformer manager
-void TrainingSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                                TransformerLevel graph_optimization_level) {
-  ORT_ENFORCE(graph_optimization_level <= TransformerLevel::MaxLevel,
-              "Exceeded max transformer level. Current level is set to " +
-                  std::to_string(static_cast<uint32_t>(graph_optimization_level)));
+Status TrainingSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
+                                                  TransformerLevel graph_optimization_level) {
+  ORT_RETURN_IF_NOT(graph_optimization_level <= TransformerLevel::MaxLevel,
+                    "Exceeded max transformer level. Current level is set to " +
+                        std::to_string(static_cast<uint32_t>(graph_optimization_level)));
 
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);
@@ -767,7 +767,7 @@ void TrainingSession::AddPredefinedTransformers(GraphTransformerManager& transfo
       auto transformers_to_register = transformer_utils::GenerateTransformers(
           level, weights_to_train_, GetSessionOptions().free_dimension_overrides, {});
       for (auto& entry : transformers_to_register) {
-        transformer_manager.Register(std::move(entry), level);
+        ORT_RETURN_IF_ERROR(transformer_manager.Register(std::move(entry), level));
       }
     }
   }
