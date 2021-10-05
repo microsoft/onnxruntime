@@ -12,11 +12,8 @@
 #include <ATen/cuda/CUDAContext.h>
 #include <ATen/cuda/Exceptions.h>
 #include <c10/cuda/CUDAGuard.h>
-#include "compat.h"
 
 #include <assert.h>
-
-// #include <iostream>
 
 // This header is the one-stop shop for all your multi-tensor apply needs.
 
@@ -105,7 +102,7 @@ void multi_tensor_apply(int block_size,
             if (tensors_full || blocks_full || last_chunk) {
                 // using accscalar_t = acc_type<scalar_t, true>;
                 multi_tensor_apply_kernel<<<loc_block_info, block_size, 0, stream>>>(
-                    chunk_size, noop_flag.DATA_PTR<int>(), tl, callable, args...);
+                    chunk_size, noop_flag.data_ptr<int>(), tl, callable, args...);
 
                 AT_CUDA_CHECK(cudaGetLastError());
 

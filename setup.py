@@ -336,7 +336,8 @@ if enable_training:
     package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor'] = ['*.cc']
     package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils'] = ['*.cc']
     package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator'] = ['*.cc']
-    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.adam_optimizer'] = ['*.cpp', '*.cu', '*.cuh', '*.h']
+    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.adam_optimizer'] = \
+        ['*.cpp', '*.cu', '*.cuh', '*.h']
     requirements_file = "requirements-training.txt"
     # with training, we want to follow this naming convention:
     # stable:
