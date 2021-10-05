@@ -269,6 +269,37 @@ class QLinearConvOpTester {
     std::vector<int64_t> shape_;
     std::vector<float> scale_;
     T zero_point_{0};
+    void Print(const std::string& name){
+      std::cout<<name<<":"<<std::endl;
+
+      int64_t b_size = data_.size() / shape_[0];
+      for(int64_t b = 0; b < shape_[0]; b++){
+        for(int64_t b_i = 0; b_i < b_size; b_i++){
+          std::cout<<(int32_t)(data_[b * b_size + b_i])<<",";
+        }
+        std::cout<<std::endl;
+      }
+      // for(auto item : data_){
+      //   std::cout<<(int32_t)(item)<<",";
+      // }
+      std::cout<<std::endl;
+      std::cout<<"Scale:";
+      for(auto scale : scale_) std::cout<<scale<<",";
+      std::cout<<std::endl;
+      std::cout<<"ZeroPoint:"<<(int32_t)zero_point_<<std::endl;
+    }
+
+    void ReSet(){
+      int64_t count = 1;
+      for(auto s: shape_) count *= s;
+      int64_t batch_size = count/shape_[0];
+      for(auto i = 1; i < shape_[0]; i++){
+        for(auto b = 0; b < batch_size; b++){
+          data_[i*batch_size + b] = data_[b];
+        }
+      }
+    }
+
   };
 
   std::default_random_engine generator_{1234};
@@ -406,6 +437,7 @@ class QLinearConvOpTester {
 
     RequantizeValues<T1> requantize_values(output_zero_point_);
 
+    std::cout<<"Sum:";
     for (int64_t batch = 0; batch < batch_count; batch++) {
       const T2* weight_group = W_.data_.data();
       for (int64_t group = 0; group < group_count; group++) {
@@ -442,6 +474,7 @@ class QLinearConvOpTester {
 
               input_image += input_image_size;
             }
+            std::cout<<sum<<",";
             *Ydata++ = RequantizeOutput<T1>(sum, requantize_scale, requantize_values);
 
           } while (NextPosition(kernel_rank, output_shape, d_output.data()));
@@ -453,6 +486,7 @@ class QLinearConvOpTester {
         weight_group += group_output_channels * group_input_channels * kernel_size;
       }
     }
+    std::cout<<std::endl;
   }
 
   void Run(bool all_input_initializer_except_x) {
@@ -460,17 +494,23 @@ class QLinearConvOpTester {
 
     std::vector<T1> Y_data;
     std::vector<int64_t> Y_shape;
+    // W_.ReSet();
     ComputeExpectedOutput(Y_data, Y_shape);
 
+    X_.Print("X");
     test.AddInput<T1>("x", X_.shape_, X_.data_);
     test.AddInput<float>("x_scale", {}, X_.scale_, all_input_initializer_except_x);
     test.AddInput<T1>("x_zero_point", {}, {X_.zero_point_}, all_input_initializer_except_x);
 
+    // W_.ReSet();
+    W_.Print("W");
     const std::vector<int64_t> W_scale_shape{static_cast<int64_t>(W_.scale_.size())};
     test.AddInput<T2>("w", W_.shape_, W_.data_, all_input_initializer_except_x);
     test.AddInput<float>("w_scale", W_scale_shape, W_.scale_, all_input_initializer_except_x);
     test.AddInput<T2>("w_zero_point", {}, {W_.zero_point_}, all_input_initializer_except_x);
 
+    std::cout<<"y_scale:"<<output_scale_<<std::endl;
+    std::cout<<"y_zero_point:"<<output_zero_point_<<std::endl;
     test.AddInput<float>("y_scale", {}, {output_scale_}, all_input_initializer_except_x);
     test.AddInput<T1>("y_zero_point", {}, {output_zero_point_}, all_input_initializer_except_x);
 
@@ -565,9 +605,10 @@ class QLinearConvOpTester {
   }
 
   void Run() {
-    for (bool all_input_initializer_except_x : std::initializer_list<bool>{false, true}) {
-      Run(all_input_initializer_except_x);
-    }
+    // for (bool all_input_initializer_except_x : std::initializer_list<bool>{false, true}) {
+    //   Run(all_input_initializer_except_x);
+    // }
+    Run(true);
   }
 };
 
@@ -592,6 +633,17 @@ TEST(QLinearConvTest, Conv2D_U8S8aaa) {
 }
 
 TEST(QLinearConvTest, Conv2D_U8S8Debug)
+{
+    QLinearConvOpTester<uint8_t, int8_t> test;
+    test.GenerateRandomInput({ 1, 4, 3, 3 }, .05f, 4);
+    test.GenerateRandomWeights({ 16, 4, 3, 3 }, .125f, 0);
+    // test.GenerateRandomBias();
+    test.SetPads({ 0, 0, 0, 0 });
+    test.SetOutputScaleAndZeroPoint(.55f, 54);
+    test.Run();
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8DebugWithBias)
 {
     QLinearConvOpTester<uint8_t, int8_t> test;
     test.GenerateRandomInput({ 1, 4, 3, 3 }, .05f, 4);
