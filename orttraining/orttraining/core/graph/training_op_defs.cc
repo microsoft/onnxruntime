@@ -621,7 +621,7 @@ void RegisterTrainingOpSchemas() {
             FunctionBuilder builder(functionProto);
             builder
                 .AddOpset("", 13)
-                .Const("one", 1)
+                .Const("one", int64_t(1))
                 .Const("k", axis)
                 .Const("axis_zero", std::vector<int64_t>({0})) // a 1D tensor constant
                 .Add(R"(
