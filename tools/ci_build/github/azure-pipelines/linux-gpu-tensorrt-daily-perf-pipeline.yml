@@ -50,7 +50,7 @@ parameters:
   default: false
 
 jobs:
-- job: 'Onnxruntime-Linux-GPU-TensorRT-Perf'
+- job: 'Onnxruntime_Linux_GPU_TensorRT_Perf'
   workspace:
     clean: all
   timeoutInMinutes: 3000
