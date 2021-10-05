@@ -59,7 +59,7 @@ To learn more about different Execution Providers, see [Reference: Execution Pro
 
 **Python**
 
-Official Python packages on Pypi only support the default CPU (MLAS) and default GPU (CUDA) execution providers. For other execution providers, you need to [build from source](build/eps.md). The recommended instructions build the wheel with debug info in parallel.
+Official Python packages on Pypi only support the default CPU (MLAS) and default GPU (CUDA) execution providers. For other execution providers, you need to [build from source](../build/eps.md). The recommended instructions build the wheel with debug info in parallel.
 
 For example:
 
@@ -138,7 +138,7 @@ DirectML is the hardware-accelerated DirectX 12 library for machine learning on 
 Below are some suggestions for things to try for various EPs for tuning performance. 
 
 ### Shared arena based allocator
-Memory consumption can be reduced between multiple sessions by configuring the shared arena based allocation. See the `Share allocator(s) between sessions` section in the [C API documentation](../get-started/with-c.html).
+Memory consumption can be reduced between multiple sessions by configuring the shared arena based allocation. See the `Share allocator(s) between sessions` section in the [C API documentation](../get-started/with-c.md).
 
 ### Thread management
 
