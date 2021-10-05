@@ -2,7 +2,7 @@ trigger: none
 
 name: 'orttraining_ci_$(Date:yyyyMMdd)_$(Rev:r)'
 jobs:
-- job: rocm-pullrequest-pipeline
+- job: rocm_pullrequest_pipeline
   pool: 'AMD-GPU'
   timeoutInMinutes: 120
   
