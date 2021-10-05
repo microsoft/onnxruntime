@@ -114,7 +114,6 @@ __global__ void BiasDropoutVectorizedKernel(
   // using vectorized data load/store approach when N % 4 == 0
   // since this is typical case for input shape size
   using LoadT = aligned_vector<T, UNROLL>;
-  using BiasLoadT = aligned_vector<T, UNROLL>;
   using MaskLoadT = aligned_vector<bool, UNROLL>;
   using ResidualLoadT = aligned_vector<T, UNROLL>;
 
