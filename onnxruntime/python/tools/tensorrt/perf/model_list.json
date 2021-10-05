@@ -224,7 +224,7 @@
     {
         "model_name": "yolov4",
         "working_directory": "./onnx-zoo-models/yolov4/",
-        "model_path": "./yolov4/yolov4.onnx",
+        "model_path": "./yolov4/yolov4_shape.onnx",
         "test_data_path": "./yolov4/"
     },
     {
