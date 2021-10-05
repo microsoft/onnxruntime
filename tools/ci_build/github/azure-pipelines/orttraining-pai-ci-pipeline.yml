@@ -2,6 +2,7 @@ trigger: none
 
 name: 'orttraining_ci_$(Date:yyyyMMdd)_$(Rev:r)'
 pool: 'AMD-GPU'
+timeoutInMinutes: 120
 
 # gid of video and render group on gcr-openpai-35 and -36
 variables:
