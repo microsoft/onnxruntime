@@ -51,6 +51,10 @@ static void CountOpsInGraphImpl(const Graph& graph, bool recurse_into_subgraphs,
       ++pos->second;
     }
 
+    if (recurse_into_subgraphs && (node.GetFunctionBody() != nullptr)) {
+      CountOpsInGraphImpl(node.GetFunctionBody()->Body(), recurse_into_subgraphs, ops);
+    }
+
     if (recurse_into_subgraphs && node.ContainsSubgraph()) {
       for (auto& subgraph : node.GetSubgraphs()) {
         CountOpsInGraphImpl(*subgraph, recurse_into_subgraphs, ops);
