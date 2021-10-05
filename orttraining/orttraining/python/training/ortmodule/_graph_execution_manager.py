@@ -125,6 +125,10 @@ class GraphExecutionManager(GraphExecutionInterface):
         # To be instantiated in the concrete implementation of GraphExecutionManager
         self._export_mode = None
 
+        # Exporter can take extra arguments for ORTModule extensions
+        # It cannot overlap with required/immutable arguments (validated in runtime)
+        self._export_extra_kwargs = {}
+
         # Related to training graph shape inference
         self._current_input_shape = None
         # default execution order is priority-based for both dynamic/static shape input for now
@@ -353,18 +357,23 @@ class GraphExecutionManager(GraphExecutionInterface):
         try:
             with torch.set_grad_enabled(self._enable_custom_autograd_function), \
                     _logger.suppress_os_stream_output(log_level=self._debug_options.logging.log_level):
+                required_export_kwargs = {'input_names': self._input_info.names,
+                                          'output_names': output_names,
+                                          'opset_version': ONNX_OPSET_VERSION,
+                                          'do_constant_folding': False,
+                                          'training': self._export_mode,
+                                          'dynamic_axes': self._input_info.dynamic_axes,
+                                          'verbose': self._debug_options.logging.log_level < LogLevel.WARNING,
+                                          'export_params': False,
+                                          'keep_initializers_as_inputs': True}
+                invalid_args = self._export_extra_kwargs.keys() & required_export_kwargs.keys()
+                assert len(invalid_args) == 0,\
+                    f"The following PyTorch exporter arguments cannot be specified: '{invalid_args}'."
                 torch.onnx.export(self._flattened_module,
                                   sample_inputs_as_tuple,
                                   f,
-                                  input_names=self._input_info.names,
-                                  output_names=output_names,
-                                  opset_version=ONNX_OPSET_VERSION,
-                                  do_constant_folding=False,
-                                  training=self._export_mode,
-                                  dynamic_axes=self._input_info.dynamic_axes,
-                                  verbose=self._debug_options.logging.log_level < LogLevel.WARNING,
-                                  export_params=False,
-                                  keep_initializers_as_inputs=True)
+                                  **required_export_kwargs,
+                                  **self._export_extra_kwargs)
         except Exception as e:
             raise wrap_exception(ORTModuleONNXModelException,
                                  RuntimeError(f'There was an error while exporting the PyTorch model to ONNX: '
