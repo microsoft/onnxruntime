@@ -758,39 +758,32 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
         auto* tp = ctx.getInputType(0);
         if ((tp == nullptr) || (!tp->has_tensor_type()))
           return false;
-        auto elem_type = (ONNX_NAMESPACE::TensorProto_DataType)tp->tensor_type().elem_type();
+        auto elem_type = tp->tensor_type().elem_type();
 
         // Optional input 1 indicates a bias to be added to input 0.
         auto hasBias = ctx.hasInput(1);
 
-        std::string xb(hasBias ? "X_bias" : "X");
+        FunctionBuilder builder(functionProto);
+        builder
+            .AddOpset("", 13)
+            .Const("a", 0.5, elem_type)
+            .Const("b", 0.797885, elem_type)
+            .Const("c", 0.035677, elem_type)
+            .Const("one", 1.0, elem_type)
+            .Add(hasBias ? "X_bias = Add (X, bias)" : "X_bias = Identity (X)")
+            .Add(R"(
+                T1 = Mul (X_bias, X_bias) 
+                T2 = Mul (c, T1) 
+                T3 = Add (b, T2) 
+                T4 = Mul (X_bias, T3) 
+                T5 = Tanh (T4) 
+                T6 = Add (one, T5) 
+                T7 = Mul (X_bias, T6) 
+                Y = Mul (a, T7)
+            )");
 
-        std::vector<FunctionBodyHelper::NodeDef> body{
-            // Constants:
-            ONNX_NAMESPACE::Const("a", 0.5f, elem_type),
-            ONNX_NAMESPACE::Const("b", 0.797885f, elem_type),
-            ONNX_NAMESPACE::Const("c", 0.035677f, elem_type),
-            ONNX_NAMESPACE::Const("one", 1.0f, elem_type),
-            // nodes: {outputs, op, inputs, attributes}
-            // Following node to be added only if bias is specified.
-            // {{xb}, "Add", {"X", "bias"}},
-            {{"T1"}, "Mul", {xb, xb}},
-            {{"T2"}, "Mul", {"c", "T1"}},
-            {{"T3"}, "Add", {"b", "T2"}},
-            {{"T4"}, "Mul", {xb, "T3"}},
-            {{"T5"}, "Tanh", {"T4"}},
-            {{"T6"}, "Add", {"one", "T5"}},
-            {{"T7"}, "Mul", {xb, "T6"}},
-            {{"Y"}, "Mul", {"a", "T7"}}};
-
-        if (hasBias)
-          body.insert(body.begin(), {{xb}, "Add", {"X", "bias"}});
-
-        ONNX_NAMESPACE::OperatorSetIdProto onnx_opset_13;
-        onnx_opset_13.set_domain("");
-        onnx_opset_13.set_version(13);
-
-        return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+        schema.BuildFunction(functionProto);
+        return true;
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SkipLayerNormalization)
@@ -2477,58 +2470,56 @@ Example 4:
               return tp;
             };
 
-            std::vector<FunctionBodyHelper::NodeDef> body{
-                ONNX_NAMESPACE::Const("Epsilon", epsilon, (ONNX_NAMESPACE::TensorProto_DataType)U),
-                // The treatment of "axis" is different in "LayerNormalization" and in Reduction operations.
-                // This complicates the function definition, requiring reshaping inputs/outputs.
-                // Input X shape: [d[0], ..., d[axis-1], d[axis], ..., d[rank-1]]
-                // This is treated as a 2D shape [d[0] * ... * d[axis-1], d[axis] * ... * d[rank-1]]
-                // Normalization is applied to the second dimension.
-                // Output Y has same shape as X
-                // Outputs Mean and InvStdDev have shape: [d[0], ..., d[axis-1], 1, ..., 1]
-                {{"XShape"}, "Shape", {"X"}},                                                          // shape of input tensor: 1D tensor
-                {{"Rank"}, "Size", {"XShape"}},                                                        // rank of input tensor: scalar
-                {{"Zero1D"}, "Constant", {}, {{"value", mktensor(0)}}},                                // [0] : 1D tensor
-                {{"Axis1D"}, "Constant", {}, {{"value", mktensor(axis)}}},                             // [axis] : 1D tensor
-                {{"PrefixShape"}, "Slice", {"XShape", "Zero1D", "Axis1D"}},                            // [d[0], ..., d[axis-1]]
-                (axis > 0) ?                                                                           // number of axes that are reduced =
-                    FunctionBodyHelper::NodeDef({"NumReducedAxes"}, "Sub", {"Rank", "Axis1D"})         // [rank - axis]: 1D tensor
-                           : FunctionBodyHelper::NodeDef({"NumReducedAxes"}, "Neg", {"Axis1D"}),       // [-axis] : 1D tensor
-                {{"SuffixShape"}, "ConstantOfShape", {"NumReducedAxes"},                               //
-                 {{"value", mktensor(1)}}},                                                            // [1, ..., 1] for reduced axes
-                {{"ReducedShape"}, "Concat", {"PrefixShape", "SuffixShape"}, {{"axis", int64_t(0)}}},  // [d[0], ..., d[axis-1], 1, ..., 1]
-                {{"X2D"}, "Flatten", {"X"}, {{"axis", axis}}},
-                {{"XU"}, "Cast", {"X2D"}, {{"to", U}}},
-                {{"Mean2D"}, "ReduceMean", {"XU"}, {{"axes", std::vector<int64_t>{1}}}},
-                {{"Square"}, "Mul", {"XU", "XU"}},
-                {{"MeanOfSquare"}, "ReduceMean", {"Square"}, {{"axes", std::vector<int64_t>{1}}}},
-                {{"SquareOfMean"}, "Mul", {"Mean2D", "Mean2D"}},
-                {{"Var"}, "Sub", {"MeanOfSquare", "SquareOfMean"}},
-                {{"VarPlusEpsilon"}, "Add", {"Var", "Epsilon"}},
-                {{"StdDev"}, "Sqrt", {"VarPlusEpsilon"}},
-                {{"Deviation"}, "Sub", {"XU", "Mean2D"}},
-                {{"Normalized"}, "Div", {"Deviation", "StdDev"}},
-                {{"NormalizedT"}, "Cast", {"Normalized"}, {{"to", T}}},
-                {{"Scale2D"}, "Flatten", {"Scale"}, {{"axis", int64_t(0)}}},
-                {{"Scaled"}, "Mul", {"NormalizedT", "Scale2D"}}};
+            // The treatment of "axis" is different in "LayerNormalization" and in Reduction operations.
+            // This complicates the function definition, requiring reshaping inputs/outputs.
+            // Input X shape: [d[0], ..., d[axis-1], d[axis], ..., d[rank-1]]
+            // This is treated as a 2D shape [d[0] * ... * d[axis-1], d[axis] * ... * d[rank-1]]
+            // Normalization is applied to the second dimension.
+            // Output Y has same shape as X
+            // Outputs Mean and InvStdDev have shape: [d[0], ..., d[axis-1], 1, ..., 1]
+            FunctionBuilder builder(functionProto);
+            builder
+                .AddOpset("", 13)
+                .Const("Epsilon", epsilon, U)
+                .Add("XShape = Shape (X)")                                                    // shape of input tensor: 1D tensor
+                .Add("Rank = Size (XShape)")                                                  // rank of input tensor: scalar
+                .Add("Zero1D = Constant()", "value", mktensor(0))                             // [0] : 1D tensor
+                .Add("Axis1D = Constant()", "value", mktensor(axis))                          // [axis] : 1D tensor
+                .Add("PrefixShape = Slice (XShape, Zero1D, Axis1D)")                          // [d[0], ..., d[axis-1]]
+                .Add(axis > 0                                                                 // number of axes that are reduced =
+                         ? "NumReducedAxes = Sub (Rank, Axis1D)"                              // [rank - axis]: 1D tensor
+                         : "NumReducedAxes = Neg (Axis1D)")                                   // [-axis] : 1D tensor
+                .Add("SuffixShape = ConstantOfShape (NumReducedAxes)", "value", mktensor(1))  // [1, ..., 1] for reduced axes
+                .Add("ReducedShape = Concat <axis = 0> (PrefixShape, SuffixShape)")           // [d[0], ..., d[axis-1], 1, ..., 1]
+                .Add("X2D = Flatten (X)", "axis", axis)
+                .Add("XU = Cast (X2D)", "to", U)
+                .Add("Mean2D = ReduceMean <axes = [1]> (XU)")
+                .Add("Square = Mul (XU, XU)")
+                .Add("MeanOfSquare = ReduceMean <axes = [1]> (Square)")
+                .Add("SquareOfMean = Mul (Mean2D, Mean2D)")
+                .Add("Var = Sub (MeanOfSquare, SquareOfMean)")
+                .Add("VarPlusEpsilon = Add (Var, Epsilon)")
+                .Add("StdDev = Sqrt (VarPlusEpsilon)")
+                .Add("Deviation = Sub (XU, Mean2D)")
+                .Add("Normalized = Div (Deviation, StdDev)")
+                .Add("NormalizedT = Cast (Normalized)", "to", T)
+                .Add("Scale2D = Flatten <axis = 0> (Scale)")
+                .Add("Scaled = Mul (NormalizedT, Scale2D)");
             if (ctx.hasInput(2)) {
-              body.push_back({{"B2D"}, "Flatten", {"B"}, {{"axis", int64_t(0)}}});
-              body.push_back({{"Biased"}, "Add", {"Scaled", "B2D"}});
+              builder.Add("B2D = Flatten <axis=0> (B)");
+              builder.Add("Biased = Add (Scaled, B2D)");
             } else {
-              body.push_back({{"Biased"}, "Identity", {"Scaled"}});
+              builder.Add("Biased = Identity (Scaled)");
             }
-            body.push_back({{"Y"}, "Reshape", {"Biased", "XShape"}});
-            body.push_back({{"InvStdDev2D"}, "Reciprocal", {"StdDev"}});
+            builder.Add("Y = Reshape (Biased, XShape)");
+            builder.Add("InvStdDev2D = Reciprocal (StdDev)");
             if (ctx.hasOutput(1))
-              body.push_back({{"Mean"}, "Reshape", {"Mean2D", "ReducedShape"}});
+              builder.Add("Mean = Reshape (Mean2D, ReducedShape)");
             if (ctx.hasOutput(2))
-              body.push_back({{"InvStdDev"}, "Reshape", {"InvStdDev2D", "ReducedShape"}});
+              builder.Add("InvStdDev = Reshape (InvStdDev2D, ReducedShape)");
 
-            OperatorSetIdProto onnx_opset_13;
-            onnx_opset_13.set_domain("");
-            onnx_opset_13.set_version(13);
-
-            return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+            schema.BuildFunction(functionProto);
+            return true;
           });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SimplifiedLayerNormalization)
@@ -2602,26 +2593,24 @@ inputs by their magnitude, rather than gates inputs by their sign as in ReLUs.)D
         auto* tp = ctx.getInputType(0);
         if ((tp == nullptr) || (!tp->has_tensor_type()))
           return false;
-        auto elem_type = (ONNX_NAMESPACE::TensorProto_DataType)tp->tensor_type().elem_type();
+        auto elem_type = tp->tensor_type().elem_type();
 
-        std::vector<FunctionBodyHelper::NodeDef> body{
-            // Constants:
-            ONNX_NAMESPACE::Const("Half", 0.5, elem_type),
-            ONNX_NAMESPACE::Const("One", 1.0, elem_type),
-            ONNX_NAMESPACE::Const("C", std::sqrt(0.5), elem_type),
-            // ONNX_NAMESPACE::Const("C", M_SQRT1_2, elem_type),
-            // nodes: {outputs, op, inputs, attributes}
-            {{"CX"}, "Mul", {"C", "X"}},
-            {{"ERFCX"}, "Erf", {"CX"}},
-            {{"ERFCXPlus1"}, "Add", {"ERFCX", "One"}},
-            {{"PhiX"}, "Mul", {"ERFCXPlus1", "Half"}},
-            {{"Y"}, "Mul", {"X", "PhiX"}}};
+        FunctionBuilder builder(functionProto);
+        builder
+            .AddOpset("", 13)
+            .Const("Half", 0.5, elem_type)
+            .Const("One", 1.0, elem_type)
+            .Const("C", std::sqrt(0.5), elem_type)
+            .Add(R"(
+                CX = Mul (C, X)
+                ERFCX = Erf (CX)
+                ERFCXPlus1 = Add (ERFCX, One)
+                PhiX = Mul (ERFCXPlus1, Half)
+                Y = Mul (X, PhiX)
+            )");
 
-        ONNX_NAMESPACE::OperatorSetIdProto onnx_opset_13;
-        onnx_opset_13.set_domain("");
-        onnx_opset_13.set_version(13);
-
-        return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+        schema.BuildFunction(functionProto);
+        return true;
       });
 
   static const char* BiasGelu_ver1_doc =
