@@ -2678,7 +2678,7 @@ Status Graph::Resolve(const ResolveOptions& options) {
 
   // perform the final steps for this graph and all subgraphs
   auto finalize_func = [&options](Graph& graph) {
-            graph.CleanUnusedInitializers(options.initializer_names_to_preserve);
+            graph.CleanUnusedInitializersAndNodeArgs(options.initializer_names_to_preserve);
             graph.GraphResolveNeeded(false);
 
             // if we are resolving immediately after loading from a GraphProto, we don't need to
@@ -3345,8 +3345,20 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
   }
 }
 
-void Graph::CleanUnusedInitializers(const std::unordered_set<std::string>* initializer_names_to_preserve) {
-  std::unordered_set<std::string> used_args;
+void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve) {
+  // Node Args being used
+  std::unordered_set<const NodeArg*> used_args;
+  //Node Args we want to preserved even not being used
+  std::unordered_set<const NodeArg*> node_args_to_preserve;
+  if (initializer_names_to_preserve) {
+    node_args_to_preserve.reserve(initializer_names_to_preserve->size());
+    for (const auto& initializer_name : *initializer_names_to_preserve) {
+      const auto* initializer_node_arg = GetNodeArg(initializer_name);
+      if (initializer_node_arg != nullptr) {
+        ORT_IGNORE_RETURN_VALUE(node_args_to_preserve.insert(initializer_node_arg));
+      }
+    }
+  }
 
   // anything that provides a required graph input (GetInputs), an optional graph input (GetOverridableInitializers)
   // or a graph output (GetOutputs) cannot be removed
@@ -3355,35 +3367,36 @@ void Graph::CleanUnusedInitializers(const std::unordered_set<std::string>* initi
   const auto& outputs = GetOutputs();
 
   std::for_each(inputs.cbegin(), inputs.cend(), [&used_args](const NodeArg* input) {
-    ORT_IGNORE_RETURN_VALUE(used_args.insert(input->Name()));
+    ORT_IGNORE_RETURN_VALUE(used_args.insert(input));
   });
 
   std::for_each(overridable_initializers.cbegin(), overridable_initializers.cend(),
                 [&used_args](const NodeArg* input) {
-                  ORT_IGNORE_RETURN_VALUE(used_args.insert(input->Name()));
+                  ORT_IGNORE_RETURN_VALUE(used_args.insert(input));
                 });
 
   std::for_each(outputs.cbegin(), outputs.cend(), [&used_args](const NodeArg* output) {
-    ORT_IGNORE_RETURN_VALUE(used_args.insert(output->Name()));
+    ORT_IGNORE_RETURN_VALUE(used_args.insert(output));
   });
 
   for (const auto& node : Nodes()) {
     for (const auto* def : node.InputDefs()) {
-      ORT_IGNORE_RETURN_VALUE(used_args.insert(def->Name()));
+      ORT_IGNORE_RETURN_VALUE(used_args.insert(def));
     }
 
     for (const auto* def : node.ImplicitInputDefs()) {
-      ORT_IGNORE_RETURN_VALUE(used_args.insert(def->Name()));
+      ORT_IGNORE_RETURN_VALUE(used_args.insert(def));
     }
   }
 
   std::vector<std::string> erase_list;
-  auto end = used_args.end();
+  auto used_args_end = used_args.cend();
   for (const auto& pv : name_to_initial_tensor_) {
     const std::string& name = pv.first;
-    if (used_args.find(name) == end &&
-        (initializer_names_to_preserve == nullptr ||
-         initializer_names_to_preserve->find(name) == initializer_names_to_preserve->cend())) {
+    const auto* initializer_node_arg = GetNodeArg(name);
+    ORT_ENFORCE(initializer_node_arg != nullptr, "Cannot find NodeArgs for [", name, "]");
+    if (used_args.find(initializer_node_arg) == used_args_end &&
+        node_args_to_preserve.find(initializer_node_arg) == node_args_to_preserve.cend()) {
       // on the first call to Graph::Resolve we are removing unnecessary initializers that should be removed
       // from the model.
       // on later calls we are removing initializers that optimizations have made redundant.
@@ -3426,6 +3439,36 @@ void Graph::CleanUnusedInitializers(const std::unordered_set<std::string>* initi
                     }
                   }
                 });
+
+  // Clear the unused NodeArgs
+  // We also want to scan the output NodeArgs of each node
+  // In case one output of a node is neither used as an input of another node nor an output of graph
+  for (const auto& node : Nodes()) {
+    for (const auto* def : node.OutputDefs()) {
+      ORT_IGNORE_RETURN_VALUE(used_args.insert(def));
+    }
+  }
+
+  // We also need to check the Outer Scope NodeArgs
+  for (const auto& outer_scope_node_arg_name : outer_scope_node_arg_names_) {
+    const auto* outer_scope_node_arg = GetNodeArg(outer_scope_node_arg_name);
+    ORT_ENFORCE(outer_scope_node_arg != nullptr, "Cannot find NodeArgs for [", outer_scope_node_arg_name, "]");
+    ORT_IGNORE_RETURN_VALUE(node_args_to_preserve.insert(outer_scope_node_arg));
+  }
+
+  auto node_args_to_preserve_end = node_args_to_preserve.cend();
+  for (auto it = node_args_.cbegin(), node_args_end = node_args_.cend(); it != node_args_end; /* no increment */) {
+    auto current_entry = it++;
+    const auto* current_node_arg = current_entry->second.get();
+    const auto& node_arg_name = current_entry->first;
+    if (!node_arg_name.empty() && used_args.find(current_node_arg) == used_args_end &&
+        node_args_to_preserve.find(current_node_arg) == node_args_to_preserve_end) {
+      LOGS(logger_, INFO) << "Removing NodeArg '" << node_arg_name << "'. It is no longer used by any node.";
+      // Need to remove the NodeArg from both value_info_ and node_args_
+      value_info_.erase(current_node_arg);
+      node_args_.erase(current_entry);
+    }
+  }
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -3823,7 +3866,6 @@ Status Graph::InlineFunction(Node& node) {
     func_input_output_names.insert(output->Name());
   }
 
-  
   // create a uniq_identifier to append to every node name and intermediate input\outputs
   // to make sure there are no unintended duplicates
   std::stringstream ss;

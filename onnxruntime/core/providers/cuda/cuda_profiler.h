@@ -2,23 +2,7 @@
 // Licensed under the MIT License.
 #include "core/common/profiler_common.h"
 
-#if defined(USE_ROCM) || defined(ENABLE_TRAINING)
-namespace onnxruntime {
-
-namespace profiling {
-
-class CudaProfiler final : public EpProfiler {
- public:
-  bool StartProfiling() override { return true; }
-  void EndProfiling(TimePoint, Events&) override{};
-  void Start(uint64_t) override{};
-  void Stop(uint64_t) override{};
-};
-
-}
-}
-
-#else
+#if !(defined(USE_ROCM) || defined(ENABLE_TRAINING))
 
 #include "core/platform/ort_mutex.h"
 #include <cupti.h>
@@ -78,4 +62,22 @@ class CudaProfiler final : public EpProfiler {
 
 }  // namespace profiling
 }  // namespace onnxruntime
+
+#else
+
+namespace onnxruntime {
+
+namespace profiling {
+
+class CudaProfiler final : public EpProfiler {
+ public:
+  bool StartProfiling() override { return true; }
+  void EndProfiling(TimePoint, Events&) override{};
+  void Start(uint64_t) override{};
+  void Stop(uint64_t) override{};
+};
+
+}
+}
+
 #endif
