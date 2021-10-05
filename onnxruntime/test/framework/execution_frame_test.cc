@@ -339,7 +339,7 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
   KernelRegistryManager kernel_registry_manager;
 
   ExecutionProviders execution_providers;
-  execution_providers.Add(xp_type, std::move(cpu_xp));
+  ASSERT_STATUS_OK(execution_providers.Add(xp_type, std::move(cpu_xp)));
   ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
 
   DataTransferManager dtm;

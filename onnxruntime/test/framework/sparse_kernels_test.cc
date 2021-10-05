@@ -1455,7 +1455,7 @@ TEST(SparseTensorConversionTests, CsrConversion) {
   auto cuda_allocator = cuda_provider->GetAllocator(0, OrtMemTypeDefault);
   {
     auto cuda_transfer = cuda_provider->GetDataTransfer();
-    dtm.RegisterDataTransfer(std::move(cuda_transfer));
+    ASSERT_STATUS_OK(dtm.RegisterDataTransfer(std::move(cuda_transfer)));
   }
   {
     // test where source is on GPU and destination is on CPU
@@ -1682,7 +1682,7 @@ TEST(SparseTensorConversionTests, CooConversion) {
   auto cuda_allocator = cuda_provider->GetAllocator(0, OrtMemTypeDefault);
   {
     auto cuda_transfer = cuda_provider->GetDataTransfer();
-    dtm.RegisterDataTransfer(std::move(cuda_transfer));
+    ASSERT_STATUS_OK(dtm.RegisterDataTransfer(std::move(cuda_transfer)));
   }
   {
     // test where source is on GPU and destination is on GPU

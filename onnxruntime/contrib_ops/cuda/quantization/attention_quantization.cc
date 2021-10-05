@@ -136,12 +136,12 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
 
   typedef typename ToCudaType<T>::MappedType CudaT;
 
-  GemmInt8(m, n, k,
-           1 /*alpha_matmul*/, 0 /* beta_matmul*/,
-           input->template Data<int8_t>(), k,
-           weights->template Data<int8_t>(), n,
-           gemm_buffer_quantized.get(), n,
-           this);
+  ORT_RETURN_IF_ERROR(GemmInt8(m, n, k,
+                               1 /*alpha_matmul*/, 0 /* beta_matmul*/,
+                               input->template Data<int8_t>(), k,
+                               weights->template Data<int8_t>(), n,
+                               gemm_buffer_quantized.get(), n,
+                               this));
 
   CudaT dequant_scale;
   CudaT input_scale = *(reinterpret_cast<const CudaT*>(input_scale_tensor->template Data<T>()));
@@ -152,14 +152,13 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
     dequant_scale = input_scale * weight_scale;
   }
   // scale back and bias
-  CudaDequantizeWithBias(
-      Stream(),
-      gemm_buffer_quantized.get(),
-      reinterpret_cast<const CudaT*>(bias->template Data<T>()),
-      reinterpret_cast<CudaT*>(gemm_buffer.get()),
-      dequant_scale,
-      m,
-      n);
+  ORT_RETURN_IF_ERROR(CudaDequantizeWithBias(Stream(),
+                                             gemm_buffer_quantized.get(),
+                                             reinterpret_cast<const CudaT*>(bias->template Data<T>()),
+                                             reinterpret_cast<CudaT*>(gemm_buffer.get()),
+                                             dequant_scale,
+                                             m,
+                                             n));
 
   int past_sequence_length = 0;
   Tensor* present_tensor = GetPresent(context, past_tensor, batch_size, head_size, sequence_length, past_sequence_length);
