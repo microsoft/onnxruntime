@@ -57,7 +57,7 @@ except ImportError as e:
 if not is_torch_cpp_extensions_installed(ORTMODULE_TORCH_CPP_DIR) and '-m' not in sys.argv:
     _FALLBACK_INIT_EXCEPTION = wrap_exception(
         ORTModuleInitException,
-        EnvironmentError(
+        RuntimeError(
             f"ORTModule's extensions were not detected at '{ORTMODULE_TORCH_CPP_DIR}' folder. "
             "Run `python -m torch_ort.configure` before using `ORTModule` frontend."))
 
