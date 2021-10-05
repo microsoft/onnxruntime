@@ -3464,7 +3464,8 @@ void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::str
     const auto* current_node_arg = current_entry->second.get();
     const auto& node_arg_name = current_entry->first;
     if (!node_arg_name.empty() && used_args.find(current_node_arg) == used_args_end &&
-        node_args_to_preserve.find(current_node_arg) == node_args_to_preserve_end) {
+        node_args_to_preserve.find(current_node_arg) == node_args_to_preserve_end &&
+        !current_node_arg->ToProto().has_type()) {
       LOGS(logger_, INFO) << "Removing NodeArg '" << node_arg_name << "'. It is no longer used by any node.";
       node_args_removed.insert(node_arg_name);
       // Need to remove the NodeArg from both value_info_ and node_args_
