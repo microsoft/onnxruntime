@@ -50,7 +50,7 @@ parameters:
   default: false
 
 jobs:
-- job: build
+- job: 'Onnxruntime-Linux-GPU-TensorRT-Perf'
   workspace:
     clean: all
   timeoutInMinutes: 3000
@@ -82,8 +82,6 @@ jobs:
       value: $(environment) -e "$(epList)"
 
   steps:
-    - script: 'ls /data/ep-perf-models/partner-models'
-      displayName: 'print models'
 
     - ${{ if eq(parameters.BuildORT, true) }}:
 
@@ -155,10 +153,6 @@ jobs:
       - script: 'python3 -m pip install pandas azure-kusto-data[pandas] azure-kusto-ingest[pandas]'
         displayName: 'Install dashboard dependencies'
 
-      - task: DownloadPipelineArtifact@2
-        inputs:
-          artifact: 'result-$(Build.BuildNumber)'
-
       - task: AzureCLI@2
         displayName: 'Azure CLI Post to Dashboard'
         inputs:
@@ -166,6 +160,6 @@ jobs:
           scriptLocation: inlineScript
           scriptType: bash
           inlineScript: |
-            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Pipeline.Workspace)/result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" -t ${{ parameters.TrtVersion }} -b $(branch)
+            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact/result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" -t ${{ parameters.TrtVersion }} -b $(branch)
     
     - template: templates/clean-agent-build-directory-step.yml
