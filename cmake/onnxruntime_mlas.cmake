@@ -42,6 +42,7 @@ function(setup_mlas_source_for_windows)
       target_sources(onnxruntime_mlas PRIVATE
         ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
+        ${MLAS_SRC_DIR}/convsym_kernel_neon.cpp
       )
 
       set(mlas_platform_preprocess_srcs
@@ -251,6 +252,7 @@ else()
           ${MLAS_SRC_DIR}/aarch32/QgemmU8X8KernelNeon.S
           ${MLAS_SRC_DIR}/arm/sgemmc.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
+          ${MLAS_SRC_DIR}/convsym_kernel_neon.cpp
         )
         if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH)
           set(MLAS_SOURCE_IS_NOT_SET 0)
@@ -266,6 +268,7 @@ else()
           ${MLAS_SRC_DIR}/aarch64/SgemvKernelNeon.S
           ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
+          ${MLAS_SRC_DIR}/convsym_kernel_neon.cpp
         )
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
             onnxruntime_add_static_library(onnxruntime_mlas_arm64 ${mlas_platform_srcs})
