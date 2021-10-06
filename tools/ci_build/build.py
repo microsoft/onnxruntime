@@ -2287,8 +2287,8 @@ def main():
                 nightly_build=nightly_build,
                 default_training_package_device=default_training_package_device,
                 featurizers_build=args.use_featurizers,
-                use_ninja=(args.cmake_generator == 'Ninja',
-                build_eager_mode=args.build_eager_mode)
+                use_ninja=(args.cmake_generator == 'Ninja'),
+                build_eager_mode=args.build_eager_mode
             )
         if args.build_nuget:
             build_nuget_package(
