@@ -15,14 +15,15 @@
 
 #include <thrust/scan.h>
 #include <thrust/iterator/transform_iterator.h>
+#include <thrust/functional.h>
 
 namespace onnxruntime {
 namespace cuda {
 
 // This cast is for transform iterator. This type affects the accumulator type width
 // in InclusiveSum() and int8_t overflows.
-struct CastToIn32 {
-  __device__ int32_t operator()(int8_t v) const {
+struct CastToIn32 : public thrust::unary_function<int8_t, int32_t> {
+  __host__ __device__ int32_t operator()(int8_t v) const {
     return static_cast<int32_t>(v);
   }
 };

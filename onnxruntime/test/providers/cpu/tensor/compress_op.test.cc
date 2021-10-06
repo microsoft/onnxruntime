@@ -132,7 +132,7 @@ TEST(CompressTest, Compress_default_axis_issue_9247_cumulative_sum_overflow) {
   // Generate input longer than 127
   constexpr size_t elements = 150;
   std::vector<float> input;
-  for (int i = 0; i < elements; ++i) {
+  for (size_t i = 0; i < elements; ++i) {
     input.push_back(static_cast<float>(i));
   }
 

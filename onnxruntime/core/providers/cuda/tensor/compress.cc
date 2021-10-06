@@ -3,7 +3,6 @@
 
 #include "compress.h"
 #include "compress_impl.h"
-#include <iomanip>
 
 namespace onnxruntime {
 namespace cuda {
