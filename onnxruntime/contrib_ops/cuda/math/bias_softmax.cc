@@ -68,8 +68,8 @@ Status BiasSoftmax::ComputeInternal(OpKernelContext* ctx) const {
     t_disp.Invoke<DispatchBiasSoftmaxForward>(Stream(), Y, X, B, D, N, D, broadcast_size);
   } else {
     // need to fallback to add kernel + CUDA DNN library softmax call :/
-    ORT_RETURN_IF_ERROR(t_disp.InvokeRet<Status, DispatchBiasSoftMaxForwardViaDnnLibrary>(
-        Stream(), CudnnHandle(), D, N, broadcast_axis, softmax_axis, X_shape, X, B_shape, B, Y));
+    ORT_RETURN_IF_ERROR((t_disp.InvokeRet<Status, DispatchBiasSoftMaxForwardViaDnnLibrary>(
+        Stream(), CudnnHandle(), D, N, broadcast_axis, softmax_axis, X_shape, X, B_shape, B, Y)));
   }
 
   return Status::OK();
