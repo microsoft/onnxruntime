@@ -402,7 +402,7 @@ def parse_arguments():
         help="Build with OpenVINO for specific hardware.")
     parser.add_argument(
         "--disable_gp", action='store_true',
-        help="Used with OpenVINO EP. Only runs fully supported graphs on OpenVINO EP else the model fallbacks to default CPU EP")
+        help="Used with OpenVINO EP. Only runs fully supported graphs on OV EP else the model fallsback to default CPU")
     parser.add_argument(
         "--use_coreml", action='store_true', help="Build with CoreML support.")
     parser.add_argument(
