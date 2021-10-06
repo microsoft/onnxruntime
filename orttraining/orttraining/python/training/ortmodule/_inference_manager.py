@@ -133,14 +133,10 @@ class InferenceManager(GraphExecutionManager):
             return _io.unflatten_user_output(self._module_output_schema,
                                              user_outputs)
         except ORTModuleFallbackException as e:
-            # disable _SkipCheck, if not defined in os env, for retry 
-            self._skip_check = _utils.get_skip_check_flags(_utils._SkipCheck(_utils._SkipCheck.SKIP_CHECK_DISABLED))
             # Exceptions subject to fallback are handled here
             self._fallback_manager.handle_exception(exception=e,
                                                     log_level=self._debug_options.logging.log_level)
         except Exception as e:
-            # disable _SkipCheck, if not defined in os env, for retry 
-            self._skip_check = _utils.get_skip_check_flags(_utils._SkipCheck(_utils._SkipCheck.SKIP_CHECK_DISABLED))
             # Catch-all FALLBACK_FORCE_TORCH_FORWARD fallback is handled here
             self._fallback_manager.handle_exception(exception=e,
                                                     log_level=self._debug_options.logging.log_level,
