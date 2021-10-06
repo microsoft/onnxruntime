@@ -275,6 +275,7 @@ class SessionState {
   /// Return SessionState for the given Node index and attribute name if found.
   const SessionState* GetSubgraphSessionState(NodeIndex index, const std::string& attribute_name) const;
 
+  void SetThreadPool(concurrency::ThreadPool* tp) noexcept { thread_pool_ = tp; }
   concurrency::ThreadPool* GetThreadPool() const noexcept { return thread_pool_; }
   concurrency::ThreadPool* GetInterOpThreadPool() const noexcept { return inter_op_thread_pool_; }
 
@@ -486,7 +487,7 @@ class SessionState {
   SubgraphSessionStateMap subgraph_session_states_;
 
   // either threadpool could be nullptr
-  concurrency::ThreadPool* const thread_pool_{};
+  concurrency::ThreadPool* thread_pool_{};
   concurrency::ThreadPool* const inter_op_thread_pool_{};
 
   bool export_fused_dll_ = false;

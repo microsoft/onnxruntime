@@ -669,6 +669,10 @@ inline TypeInfo Session::GetOverridableInitializerTypeInfo(size_t index) const {
   return TypeInfo{out};
 }
 
+inline void Session::SetThreadPool(OrtThreadPoolBase* thread_pool) {
+  ThrowOnError(GetApi().SetThreadPool(p_, thread_pool));
+}
+
 inline ONNXTensorElementDataType TensorTypeAndShapeInfo::GetElementType() const {
   ONNXTensorElementDataType out;
   ThrowOnError(GetApi().GetTensorElementType(p_, &out));

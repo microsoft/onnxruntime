@@ -1153,6 +1153,13 @@ common::Status InferenceSession::AddPrePackedWeightsContainer(PrepackedWeightsCo
   return Status::OK();
 }
 
+Status InferenceSession::SetThreadPool(void* thread_pool) {
+  ORT_ENFORCE(nullptr != thread_pool, "external thread pool is null");
+  thread_pool_.reset(new onnxruntime::concurrency::CustomThreadPool(thread_pool));
+  session_state_->SetThreadPool(thread_pool_.get());
+  return Status::OK();
+}
+
 #if defined(ENABLE_ORT_FORMAT_LOAD)
 namespace {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

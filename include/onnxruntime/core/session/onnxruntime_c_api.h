@@ -314,6 +314,7 @@ struct OrtKernelContext;
 typedef struct OrtKernelContext OrtKernelContext;
 struct OrtCustomOp;
 typedef struct OrtCustomOp OrtCustomOp;
+struct OrtThreadPoolBase;
 
 typedef enum OrtAllocatorType {
   OrtInvalidAllocator = -1,
@@ -2976,6 +2977,9 @@ struct OrtApi {
   */
   ORT_API2_STATUS(GetSparseTensorIndices, _In_ const OrtValue* ort_value, enum OrtSparseIndicesFormat indices_format, _Out_ size_t* num_indices, _Outptr_ const void** indices);
 
+  /** set a custom thread pool
+  */
+  ORT_API2_STATUS(SetThreadPool, _In_ OrtSession* session, _In_ OrtThreadPoolBase* thread_pool);
   /// @}
 };
 
@@ -3036,6 +3040,18 @@ struct OrtCustomOp {
  * \param device_id CUDA device id, starts from zero.
 */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id);
+
+/*
+struct OrtThreadPool {
+  typedef void (*OrtThreadPoolTask)(ptrdiff_t, ptrdiff_t);
+  void(ORT_API_CALL* ParallelFor)(_In_ OrtThreadPool* tp, _In_ ptrdiff_t, _In_ const OrtThreadPoolTask);
+  int(ORT_API_CALL* NumThreads)(_In_ OrtThreadPool* tp);
+};*/
+
+struct OrtThreadPoolBase {
+  void(ORT_API_CALL* ParallelFor)(_In_ OrtThreadPoolBase* tp, _In_ ptrdiff_t, _In_ const void* fn);
+  int(ORT_API_CALL* NumThreads)(_In_ OrtThreadPoolBase* tp);
+};
 
 #ifdef __cplusplus
 }

@@ -2091,6 +2091,14 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SetThreadPool, _In_ OrtSession* session, _In_ OrtThreadPoolBase* thread_pool) {
+  API_IMPL_BEGIN
+  auto* sess = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
+  sess->SetThreadPool(thread_pool);
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString,
@@ -2364,6 +2372,7 @@ static constexpr OrtApi ort_api_1_to_10 = {
     &OrtApis::GetSparseTensorIndices,
     // End of Version 9 - DO NOT MODIFY ABOVE (see above text for more information)
 
+    &OrtApis::SetThreadPool,
     // Version 10 - In development, feel free to add/remove/rearrange here
 };
 

@@ -439,6 +439,8 @@ class InferenceSession {
     */
   Status AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container);
 
+  Status SetThreadPool(void* thread_pool);
+
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
   /**

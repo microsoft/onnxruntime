@@ -21,6 +21,8 @@ limitations under the License.
 #include "core/common/eigen_common_wrapper.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
 #include "core/platform/ort_mutex.h"
+#include "core/session/onnxruntime_c_api.h"
+
 #if !defined(ORT_MINIMAL_BUILD)
 #ifdef _WIN32
 #include "processthreadsapi.h"
@@ -388,6 +390,8 @@ ThreadPool::ThreadPool(Env* env,
   }
 }
 
+ThreadPool::ThreadPool() {}
+
 ThreadPool::~ThreadPool() = default;
 
 // Base case for parallel loops, running iterations 0..total, divided into blocks
@@ -712,6 +716,57 @@ void ThreadPool::TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t tota
   tp->ParallelFor(total, cost_per_unit, fn);
 #endif
 }
+
+CustomThreadPool::~CustomThreadPool() { impl_ = nullptr; }
+
+int CustomThreadPool::NumThreads() const {
+  auto tp = reinterpret_cast<OrtThreadPoolBase*>(impl_);
+  return tp->NumThreads(tp);
+}
+
+void CustomThreadPool::ParallelFor(std::ptrdiff_t total, double,
+                                     const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn) {
+  auto tp = reinterpret_cast<OrtThreadPoolBase*>(impl_);
+  return tp->ParallelFor(tp, total, &fn);
+}
+
+void CustomThreadPool::ParallelFor(std::ptrdiff_t total, const TensorOpCost&,
+                                     const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn) {
+  auto tp = reinterpret_cast<OrtThreadPoolBase*>(impl_);
+  return tp->ParallelFor(tp, total, &fn);
+}
+
+void CustomThreadPool::SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn) {
+
+  std::function<void(std::ptrdiff_t, std::ptrdiff_t)> fn_wrapper = [fn](std::ptrdiff_t from, std::ptrdiff_t to) {
+    for (auto i = from; i < to; ++i) {
+      fn(i);
+    }
+  };
+  auto tp = reinterpret_cast<OrtThreadPoolBase*>(impl_);
+  return tp->ParallelFor(tp, total, &fn_wrapper);
+}
+/*
+int CustomThreadPool::NumThreads() const {
+  return 0;
+}
+
+void CustomThreadPool::ParallelFor(std::ptrdiff_t, double,
+                                   const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>&) {
+}
+
+void CustomThreadPool::ParallelFor(std::ptrdiff_t, const TensorOpCost&,
+                                   const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>&) {
+}
+
+void CustomThreadPool::SimpleParallelFor(std::ptrdiff_t, const std::function<void(std::ptrdiff_t)>&) {
+}*/
+
+void CustomThreadPool::Schedule(std::function<void()>) { ORT_ENFORCE(false, "CustomThreadPool::Schedule not implemented"); }
+
+void CustomThreadPool::StartProfiling() {}
+
+std::string CustomThreadPool::StopProfiling() { return {}; }
 
 }  // namespace concurrency
 }  // namespace onnxruntime
