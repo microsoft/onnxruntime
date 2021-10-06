@@ -38,7 +38,10 @@ void copy(onnxruntime::ORTInvoker& invoker,
   auto* dst_tensor = dst.GetMutable<onnxruntime::Tensor>();
   if (!dst_tensor)
     throw std::runtime_error("ORT copy: dst is not a tensor");
-  ort_ep.GetDataTransfer()->CopyTensor(src_tensor, *dst_tensor);
+  auto status = ort_ep.GetDataTransfer()->CopyTensor(src_tensor, *dst_tensor);
+  if (!status.IsOK()) {
+    throw std::runtime_error("ORT return failure status: " + status.ErrorMessage());
+  }
 }
 
 } // namespace eager
