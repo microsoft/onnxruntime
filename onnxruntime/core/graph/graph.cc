@@ -3348,6 +3348,8 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
 void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve) {
   // Node Args being used
   std::unordered_set<const NodeArg*> used_args;
+  used_args.reserve(node_args_.size());
+
   //Node Args we want to preserved even not being used
   std::unordered_set<const NodeArg*> node_args_to_preserve;
   if (initializer_names_to_preserve) {
@@ -3461,8 +3463,12 @@ void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::str
     auto current_entry = it++;
     const auto* current_node_arg = current_entry->second.get();
     const auto& node_arg_name = current_entry->first;
+    // For some reason, we still have some code hold the raw pointer to the unused NodeArgs,
+    // Remove only the NodeArgs with no type for now
+    // TODO, investigate the issue when running using mpirun
     if (!node_arg_name.empty() && used_args.find(current_node_arg) == used_args_end &&
-        node_args_to_preserve.find(current_node_arg) == node_args_to_preserve_end) {
+        node_args_to_preserve.find(current_node_arg) == node_args_to_preserve_end &&
+        !current_node_arg->ToProto().has_type()) {
       LOGS(logger_, INFO) << "Removing NodeArg '" << node_arg_name << "'. It is no longer used by any node.";
       // Need to remove the NodeArg from both value_info_ and node_args_
       value_info_.erase(current_node_arg);
