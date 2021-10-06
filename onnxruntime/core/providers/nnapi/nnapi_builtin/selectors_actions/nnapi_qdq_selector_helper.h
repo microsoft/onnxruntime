@@ -48,6 +48,10 @@ class ConstNodesToOptimize {
 
   bool IsValid() const { return !nodes_.empty(); }
 
+  bool IsCheckedNotSupported() const { return is_checked_; }
+
+  bool IsNNAPISupported() const { return is_supported_; }
+
   // fetch an input.
   // valid indexes are 0 to num_inputs - 1 if no variadic inputs.
   // if there are variadic inputs, valid indexes are 0 to num_inputs + num_extra_variadic_inputs - 1
@@ -66,7 +70,10 @@ class ConstNodesToOptimize {
 
   std::vector<const Node*>& AllNodes() { return nodes_; }
 
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ConstNodesToOptimize);
+  bool is_checked_{false};
+  bool is_supported_{true};
+/* 
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ConstNodesToOptimize); */
 
  private:
   const Node* GetNode(int index, bool required) {
@@ -88,6 +95,7 @@ class ConstNodesToOptimize {
   bool variadic_output_{false};
   int num_variadic_inputs_{0};  // how many values does the variadic input have. can be zero or more.
   int num_variadic_outputs_{0};
+
   std::vector<const Node*> nodes_;
 };
 

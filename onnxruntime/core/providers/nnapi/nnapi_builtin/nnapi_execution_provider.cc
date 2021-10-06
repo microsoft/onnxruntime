@@ -54,6 +54,17 @@ std::unordered_set<std::string> GetPartitioningStopOps(const optional<std::strin
   return stop_ops_set;
 }
 
+bool IsNodeInQDQGroup(std::vector<std::unique_ptr<ConstNodesToOptimize>>& qdq_node_groups, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) {
+  for (auto& group : qdq_node_groups) {
+    if (std::find(group->AllNodes().begin(), group->AllNodes().end(), &node) != group->AllNodes().end()) {
+      LOGS_DEFAULT(VERBOSE) << "Node:" << node.Name() << "belongs to a qdq node group.";
+      qdq_node_group = std::move(group);
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 NnapiExecutionProvider::NnapiExecutionProvider(uint32_t nnapi_flags,
@@ -130,7 +141,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     const auto* node = graph_viewer.GetNode(index);
     NNAPISelectorActionTransformer nnapi_selector_action_transformer("NNAPISAT", CreateNNAPISelectorsAndActions());
     auto qdq_node_group = nnapi_selector_action_transformer.Match(graph_viewer.GetGraph(), *node);
-    // Get Node Groups?
+
     if (qdq_node_group != nullptr) {
       std::cout << "QDQ Node Group added: " << node->OpType() << " with matched node's name: " << node->Name() << std::endl;
       qdq_node_groups.emplace_back(std::move(qdq_node_group));
@@ -141,19 +152,54 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   const bool check_excluded_nodes = !excluded_nodes.empty();
 
   std::unordered_set<std::string> node_outputs_in_current_group{};
- 
 
-  // TODO:
+  // TODO: add extra passed-in params: Node group struct
   const auto is_node_supported = [&](const Node& node) -> bool {
+    bool supported = false;
+
     const bool excluded = check_excluded_nodes && Contains(excluded_nodes, &node);
-    const bool supported = !excluded &&
-                           nnapi::IsNodeSupportedInGroup(node, graph_viewer, params,
-                                                         node_outputs_in_current_group);
-    LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node.OpType()
-                          << "] index: [" << node.Index()
-                          << "] name: [" << node.Name()
-                          << "] supported: [" << supported
-                          << "]";
+
+    // if a node belongs to a qdq structure?
+    // 1. Check if `node` belongs to `qdq_node_group`
+    // 2. if yes, check input/target/output nodes in the `qdq_node_group` structure
+    //    any of the nodes in the group is not supported then set const bool supported = false; (how to save checked?)
+    // directly check if node belongs to one of the qdq_node_group in qdq_node_groups
+    std::unique_ptr<ConstNodesToOptimize> qdq_group;
+    bool is_qdq_node = false;
+    if (!qdq_node_groups.empty()) {
+      is_qdq_node = IsNodeInQDQGroup(qdq_node_groups, node, qdq_group);
+    }
+
+    if (is_qdq_node) {
+      // if a node is in a QDQ structure:
+      if (!qdq_group->IsCheckedNotSupported()) {
+        supported = !excluded &&
+                    nnapi::IsNodeSupportedInGroup(node, graph_viewer, params,
+                                                  node_outputs_in_current_group);  // related to internal quantization node?
+        if (!supported) {
+          qdq_group->is_checked_ = true;
+          qdq_group->is_supported_ = false;
+        }
+      } else {
+        supported = false;
+      }
+
+      LOGS_DEFAULT(VERBOSE) << "QDQ Group: Operator type: [" << node.OpType()
+                            << "] index: [" << node.Index()
+                            << "] name: [" << node.Name()
+                            << "] supported: [" << supported
+                            << "]";
+
+    } else {
+      supported = !excluded &&
+                  nnapi::IsNodeSupportedInGroup(node, graph_viewer, params,
+                                                node_outputs_in_current_group);
+      LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node.OpType()
+                            << "] index: [" << node.Index()
+                            << "] name: [" << node.Name()
+                            << "] supported: [" << supported
+                            << "]";
+    }
 
     if (supported) {
       // We want to save all the output names of nodes in the current group for easy query
@@ -207,13 +253,14 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 }
 
 #ifdef __ANDROID__
-static Status GetOutputBuffer(Ort::CustomOpApi& ort,
-                              OrtKernelContext* context,
-                              const nnapi::Model& model,
-                              const std::string& output_name,
-                              const std::vector<uint32_t>& output_shape,
-                              const android::nn::wrapper::Type output_type,
-                              void** output_buffer) ORT_MUST_USE_RESULT;
+static Status
+GetOutputBuffer(Ort::CustomOpApi& ort,
+                OrtKernelContext* context,
+                const nnapi::Model& model,
+                const std::string& output_name,
+                const std::vector<uint32_t>& output_shape,
+                const android::nn::wrapper::Type output_type,
+                void** output_buffer) ORT_MUST_USE_RESULT;
 
 static Status GetOutputBuffer(Ort::CustomOpApi& ort,
                               OrtKernelContext* context,
@@ -448,8 +495,9 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
   return Status::OK();
 }
 #else
-common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
-                                               std::vector<NodeComputeInfo>& node_compute_funcs) {
+common::Status
+NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
     ORT_UNUSED_PARAMETER(fused_node_and_graph);
     NodeComputeInfo compute_info;
