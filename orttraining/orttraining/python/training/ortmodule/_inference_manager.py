@@ -68,7 +68,7 @@ class InferenceManager(GraphExecutionManager):
         # Fallback to PyTorch due to failures *external* to forward(),
         #  typically from initialization
         if self._fallback_manager.is_pending():
-            return self._fallback_manager.fallback(self._original_module, self._debug_options.logging.log_level, *inputs, **kwargs)
+            return self._fallback_manager.fallback(self._debug_options.logging.log_level, *inputs, **kwargs)
 
         try:
             # Issue at most one warning message about fast path
@@ -146,7 +146,7 @@ class InferenceManager(GraphExecutionManager):
         # Fallback to PyTorch due to failures *during* forward(),
         #  (e.g. export, model/input post-processing, forward, output processing, etc)
         if self._fallback_manager.is_pending():
-            return self._fallback_manager.fallback(self._original_module, self._debug_options.logging.log_level, *inputs, **kwargs)
+            return self._fallback_manager.fallback(self._debug_options.logging.log_level, *inputs, **kwargs)
 
     def _build_graph(self):
         """Build an optimized inference graph using the module_graph_builder"""
