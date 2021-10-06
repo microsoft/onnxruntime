@@ -792,7 +792,7 @@ static bool HandleQuantizeDequantizeLinear(HandlerArgs& args) {
       if (axis < 0 || (size_t)axis >= args.perm.size()) {
         return false;
       }
-      args.node.SetAttributeInt("axis", args.perm[axis]);
+      args.node.SetAttributeInt("axis", args.perm[(size_t)axis]);
     }
   }
 
@@ -810,7 +810,7 @@ static bool HandleArgMinMax(HandlerArgs& args) {
   if (axis < 0) {
     axis += (int64_t)rank;
   }
-  int64_t new_axis = args.perm[axis];
+  int64_t new_axis = args.perm[(size_t)axis];
   std::vector<int64_t> new_axes {new_axis};
   args.node.SetAttributeInt("axis", new_axis);
 
@@ -851,7 +851,7 @@ static bool HandleSlice(HandlerArgs& args) {
       if (a < 0 || (size_t)a >= rank) {
         return false;
       }
-      new_axes.push_back(args.perm[a]);
+      new_axes.push_back(args.perm[(size_t)a]);
     }
     args.node.SetAttributeInts("axes", new_axes);
     TransposeFirstInput(args.graph, args.node, args.perm_inv);
@@ -895,7 +895,7 @@ static bool HandleSlice(HandlerArgs& args) {
       if (a < 0 || (size_t)a >= rank) {
         return false;
       }
-      new_axes.push_back(args.perm[a]);
+      new_axes.push_back(args.perm[(size_t)a]);
     }
     std::vector<int64_t> axes_shape { (int64_t)new_axes.size() };
     std::string_view new_axes_const = args.graph.AddInitializerInt64(axes_shape, new_axes);
@@ -1011,7 +1011,7 @@ static bool HandleQLinearConcat(HandlerArgs& args) {
   if (*axis < 0 || (size_t)*axis >= rank) {
     return false;
   }
-  args.node.SetAttributeInt("axis", args.perm[*axis]);
+  args.node.SetAttributeInt("axis", args.perm[(size_t)*axis]);
   TransposeInputs(args.graph, args.node, args.perm_inv, &indices);
   TransposeOutputs(args.graph, args.node, args.perm);
   return true;
