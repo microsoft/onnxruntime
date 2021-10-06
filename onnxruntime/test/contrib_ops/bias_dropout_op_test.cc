@@ -143,7 +143,7 @@ TEST(BiasDropoutTest, BasicWithoutResidualAndNotVectorized) {
   RunBiasDropoutTest(false, {10, 5, 5}, 0.75f, TrainingTrue, false, false);
 }
 TEST(BiasDropoutTest, MaskAndNotVectorized) {
-  RunBiasDropoutTest(true, {3, 5, 100}, 0.25f);
+  RunBiasDropoutTest(true, {3, 5, 10}, 0.25f);
 }
 
 // N % 4 == 0
