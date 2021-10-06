@@ -105,8 +105,12 @@ def _build_package(args):
     intermediates_dir = os.path.join(build_dir, 'intermediates')
     build_config = args.config
     base_build_command = [sys.executable, BUILD_PY, '--config=' + build_config] + build_settings['build_params']
+
     if args.include_ops_by_config is not None:
         base_build_command += ['--include_ops_by_config=' + str(args.include_ops_by_config.resolve())]
+
+    if args.path_to_protoc_exe is not None:
+        base_build_command += ['--path_to_protoc_exe=' + str(args.path_to_protoc_exe.resolve())]
 
     # build framework for individual sysroot
     framework_dirs = []
@@ -170,6 +174,8 @@ def parse_args():
 
     parser.add_argument('build_settings_file', type=pathlib.Path,
                         help='Provide the file contains settings for building iOS framework')
+
+    parser.add_argument("--path_to_protoc_exe", type=pathlib.Path, help="Path to protoc exe.")
 
     args = parser.parse_args()
 

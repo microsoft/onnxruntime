@@ -76,8 +76,8 @@ function prepareWasmPathOverrideFiles() {
 async function testAllNodejsCases() {
   await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-main-no-threads.js');
   await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-main.js');
-  await runInShell('node --experimental-wasm-threads --experimental-wasm-bulk-memory ./node_modules/mocha/bin/mocha ./node-test-main-no-threads.js');
-  await runInShell('node --experimental-wasm-threads --experimental-wasm-bulk-memory ./node_modules/mocha/bin/mocha ./node-test-main.js');
+  await runInShell('node --experimental-wasm-threads ./node_modules/mocha/bin/mocha ./node-test-main-no-threads.js');
+  await runInShell('node --experimental-wasm-threads ./node_modules/mocha/bin/mocha ./node-test-main.js');
   await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-wasm-path-override-filename.js');
   await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-wasm-path-override-prefix.js');
 }
@@ -86,11 +86,14 @@ async function testAllBrowserCases({ hostInKarma }) {
   await runKarma({ hostInKarma, main: './browser-test-webgl.js', browser: 'Chrome_default' });
   await runKarma({ hostInKarma, main: './browser-test-wasm.js', browser: 'Chrome_default' });
   await runKarma({ hostInKarma, main: './browser-test-wasm-no-threads.js', browser: 'Chrome_default' });
+  await runKarma({ hostInKarma, main: './browser-test-wasm-proxy.js', browser: 'Chrome_default' });
+  await runKarma({ hostInKarma, main: './browser-test-wasm-no-threads-proxy.js', browser: 'Chrome_default' });
   await runKarma({ hostInKarma, main: './browser-test-wasm-path-override-filename.js', browser: 'Chrome_default' });
   await runKarma({ hostInKarma, main: './browser-test-wasm-path-override-prefix.js', browser: 'Chrome_default' });
 }
 
 async function runKarma({ hostInKarma, main, browser }) {
+  fs.emptyDirSync(CHROME_USER_DATA_FOLDER);
   const selfHostFlag = hostInKarma ? '--self-host' : '';
   await runInShell(
     `npx karma start --single-run --browsers ${browser} ${selfHostFlag} --test-main=${main} --user-data=${CHROME_USER_DATA_FOLDER}`);

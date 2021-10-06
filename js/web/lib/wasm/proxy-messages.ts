@@ -47,4 +47,10 @@ interface MessageRun extends MessageError {
   out?: SerializableTensor[];
 }
 
-export type OrtWasmMessage = MessageInitWasm|MessageInitOrt|MessageCreateSession|MessageReleaseSession|MessageRun;
+interface MesssageEndProfiling extends MessageError {
+  type: 'end-profiling';
+  in ?: number;
+}
+
+export type OrtWasmMessage =
+    MessageInitWasm|MessageInitOrt|MessageCreateSession|MessageReleaseSession|MessageRun|MesssageEndProfiling;

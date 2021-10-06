@@ -25,7 +25,7 @@ export const initOrt = (numThreads: number, loggingLevel: number): void => {
  */
 type SessionMetadata = [number, number[], number[]];
 
-const activeSessions: Array<SessionMetadata|undefined> = [];
+const activeSessions = new Map<number, SessionMetadata>();
 
 /**
  * create an instance of InferenceSession.
@@ -77,13 +77,13 @@ export const createSession =
         outputNames.push(wasm.UTF8ToString(name));
       }
 
-      activeSessions.push([sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded]);
-      return [activeSessions.length - 1, inputNames, outputNames];
+      activeSessions.set(sessionHandle, [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded]);
+      return [sessionHandle, inputNames, outputNames];
     };
 
 export const releaseSession = (sessionId: number): void => {
   const wasm = getInstance();
-  const session = activeSessions[sessionId];
+  const session = activeSessions.get(sessionId);
   if (!session) {
     throw new Error('invalid session id');
   }
@@ -94,7 +94,7 @@ export const releaseSession = (sessionId: number): void => {
   inputNamesUTF8Encoded.forEach(wasm._OrtFree);
   outputNamesUTF8Encoded.forEach(wasm._OrtFree);
   wasm._OrtReleaseSession(sessionHandle);
-  activeSessions[sessionId] = undefined;
+  activeSessions.delete(sessionId);
 };
 
 /**
@@ -223,7 +223,7 @@ export const run =
     (sessionId: number, inputIndices: number[], inputs: SerializableTensor[], outputIndices: number[],
      options: InferenceSession.RunOptions): SerializableTensor[] => {
       const wasm = getInstance();
-      const session = activeSessions[sessionId];
+      const session = activeSessions.get(sessionId);
       if (!session) {
         throw new Error('invalid session id');
       }
@@ -384,6 +384,25 @@ export const run =
         runOptionsAllocs.forEach(wasm._free);
       }
     };
+
+/**
+ * end profiling
+ */
+export const endProfiling = (sessionId: number): void => {
+  const wasm = getInstance();
+  const session = activeSessions.get(sessionId);
+  if (!session) {
+    throw new Error('invalid session id');
+  }
+  const sessionHandle = session[0];
+
+  // profile file name is not used yet, but it must be freed.
+  const profileFileName = wasm._OrtEndProfiling(sessionHandle);
+  if (profileFileName === 0) {
+    throw new Error('Can\'t get an profile file name');
+  }
+  wasm._OrtFree(profileFileName);
+};
 
 export const extractTransferableBuffers = (tensors: readonly SerializableTensor[]): ArrayBufferLike[] => {
   const buffers: ArrayBufferLike[] = [];

@@ -30,7 +30,7 @@ void TestBatchNorm(const unordered_map<string, vector<T>>& input_data_map,
                    int opset_version = 9) {
   OpTester test("BatchNormalization", opset_version);
   if (epsilon.has_value()) {
-    test.AddAttribute("epsilon", epsilon.value());
+    test.AddAttribute("epsilon", *epsilon);
   }
   if (opset_version < 9) {  // spatial is only defined for opset-8 and below in the spec
     test.AddAttribute("spatial", spatial_mode);

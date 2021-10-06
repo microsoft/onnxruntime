@@ -623,7 +623,6 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .value("NONE", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::None)
       .value("INSERT_AND_REDUCE", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::InsertAndReduce)
       .value("FLOOD_FILL", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill)
-      .value("REMOVE_INPUT_OUTPUT_UP_DOWN_CASTS", GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::RemoveInputOutputUpDownCasts)
       .def("__or__", py::overload_cast<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy,
                                        GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(&operator|))
       .def("__and__", py::overload_cast<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy,
@@ -749,6 +748,11 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
   m.def("register_gradient_definition",
         [](const std::string& key, const std::vector<GradientNodeDefinition>& gradient_def) -> void {
           GradientDefinitionRegistry::Instance().Register(key, gradient_def);
+        });
+  
+  m.def("register_custom_stop_gradient_edges",
+        [](const std::string& key, const std::unordered_set<size_t> edges) -> void {
+          GradientDefinitionRegistry::Instance().SetStopGradientEdgesForNode(key, edges);
         });
 }
 

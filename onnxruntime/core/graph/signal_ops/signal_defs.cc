@@ -12,6 +12,7 @@
 #include "onnx/defs/shape_inference.h"
 #include "onnx/defs/tensor_proto_util.h"
 
+#include <cmath>
 
 namespace onnxruntime {
 namespace signal {

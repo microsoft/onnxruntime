@@ -707,6 +707,8 @@ MlasGemmU8X8GetDispatch(
     }
 #elif defined(MLAS_TARGET_ARM64EC) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
     GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
+#elif defined(MLAS_TARGET_WASM_SIMD)
+    GemmU8X8Dispatch = &MlasGemmU8X8DispatchWasmSimd;
 #else
     GemmU8X8Dispatch = &MlasGemmU8X8DispatchDefault;
 #endif

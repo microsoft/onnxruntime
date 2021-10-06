@@ -33,6 +33,9 @@
 #include "orttraining/core/framework/torch/refcount_tracker.h"
 #endif
 #endif
+#ifdef ENABLE_NVTX_PROFILE
+#include "core/providers/cuda/nvtx_profile.h"
+#endif
 #if defined(ORT_USE_NCCL)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include "orttraining/core/framework/distributed_run_context.h"
@@ -816,6 +819,7 @@ struct ProviderHostImpl : ProviderHost {
   bool Tensor__IsDataType_float(const Tensor* p) noexcept override { return p->IsDataType<float>(); }
   bool Tensor__IsDataType_double(const Tensor* p) noexcept override { return p->IsDataType<double>(); }
   bool Tensor__IsDataType_MLFloat16(const Tensor* p) noexcept override { return p->IsDataType<MLFloat16>(); }
+  bool Tensor__IsDataType_BFloat16(const Tensor* p) noexcept override { return p->IsDataType<BFloat16>(); }
   bool Tensor__IsDataTypeString(const Tensor* p) noexcept override { return p->IsDataTypeString(); }
 
   const TensorShape& Tensor__Shape(const Tensor* p) override { return p->Shape(); }
@@ -839,6 +843,7 @@ struct ProviderHostImpl : ProviderHost {
   size_t TensorSeq__Size(const TensorSeq* p) noexcept override { return p->Size(); }
   const Tensor& TensorSeq__Get(const TensorSeq* p, size_t i) override { return p->Get(i); }
   void TensorSeq__Add(TensorSeq* p, Tensor&& tensor) override { p->Add(std::move(tensor)); }
+  void TensorSeq__Reserve(TensorSeq* p, size_t capacity) override { p->Reserve(capacity); }
 
   // AllocatorManager (direct)
   void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) override { p->AllocatorManager::InsertAllocator(allocator); }
@@ -1067,6 +1072,21 @@ void cudaMemcpy_HostToDevice(void* dst, const void* src, size_t count) {
     return info->cudaMemcpy_HostToDevice(dst, src, count);
   ORT_THROW("cudaMemcpy_HostToDevice is not implemented.");
 }
+
+#ifdef ENABLE_NVTX_PROFILE
+namespace profile
+{
+void NvtxRangeCreator::BeginImpl()
+{
+  GetProviderInfo_CUDA().NvtxRangeCreator__BeginImpl(this);
+}
+
+void NvtxRangeCreator::EndImpl()
+{
+  GetProviderInfo_CUDA().NvtxRangeCreator__EndImpl(this);
+}
+}
+#endif
 
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 namespace cuda {
