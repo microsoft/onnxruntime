@@ -39,7 +39,7 @@ std::optional<std::vector<int64_t>> OrtValueInfo::Shape() const {
   }
   return shape;
 }
-void OrtValueInfo::SetShape(const std::vector<int64_t>* shape) const {
+void OrtValueInfo::SetShape(const std::vector<int64_t>* shape) {
   auto& node_arg = graph_.GetOrCreateNodeArg(name_, nullptr);
   if (shape == nullptr) {
     node_arg.ClearShape();
@@ -51,7 +51,7 @@ void OrtValueInfo::SetShape(const std::vector<int64_t>* shape) const {
   }
   node_arg.SetShape(new_shape);
 }
-void OrtValueInfo::PermuteDims(const std::vector<int64_t>& perm) const {
+void OrtValueInfo::PermuteDims(const std::vector<int64_t>& perm) {
   auto& node_arg = graph_.GetOrCreateNodeArg(name_, nullptr);
   auto* type = node_arg.TypeAsProto();
   if (type == nullptr || !utils::HasShape(*type)) {
@@ -72,7 +72,7 @@ void OrtValueInfo::PermuteDims(const std::vector<int64_t>& perm) const {
   }
   node_arg.SetShape(new_shape);
 }
-void OrtValueInfo::UnsqueezeDims(const std::vector<int64_t>& axes) const {
+void OrtValueInfo::UnsqueezeDims(const std::vector<int64_t>& axes) {
   auto& node_arg = graph_.GetOrCreateNodeArg(name_, nullptr);
   auto* type = node_arg.TypeAsProto();
   if (type == nullptr || !utils::HasShape(*type)) {
@@ -353,7 +353,7 @@ void OrtGraph::TransposeInitializer(const std::string_view name, const std::vect
   std::vector<size_t> permutations;
   for (int64_t p : perm) {
     permutations.push_back((size_t)p);
-    new_tensor_shape_dims.push_back(tensor_shape_dims[p]);
+    new_tensor_shape_dims.push_back(tensor_shape_dims[(size_t)p]);
   }
   auto new_tensor_shape = TensorShape(new_tensor_shape_dims);
 

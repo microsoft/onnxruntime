@@ -58,7 +58,7 @@ static std::vector<int64_t> InvertPerm(const std::vector<int64_t>& perm) {
   size_t rank = perm.size();
   auto perm_inv = std::vector<int64_t>(rank);
   for (size_t i = 0; i < rank; ++i) {
-    perm_inv[perm[i]] = i;
+    perm_inv[(size_t)perm[i]] = (int64_t)i;
   }
   return perm_inv;
 }
@@ -66,7 +66,7 @@ static std::vector<int64_t> InvertPerm(const std::vector<int64_t>& perm) {
 static std::vector<int64_t> ComposePerm(const std::vector<int64_t>& perm1, const std::vector<int64_t>& perm2) {
   std::vector<int64_t> perm;
   for (int64_t p : perm2) {
-    perm.push_back(perm1[p]);
+    perm.push_back(perm1[(size_t)p]);
   }
   return perm;
 }
@@ -85,7 +85,7 @@ static std::vector<int64_t> UnsqueezeShape(const std::vector<int64_t>& shape, co
   size_t new_rank = shape.size() + axes.size();
   auto new_shape = std::vector<int64_t>(new_rank);
   for (int64_t a : axes) {
-    new_shape[a] = 1;
+    new_shape[(size_t)a] = 1;
   }
   size_t j = 0;
   for (size_t i = 0; i < new_rank; i++) {
@@ -119,7 +119,7 @@ static std::vector<int64_t> UnsqueezePerm(const std::vector<int64_t>& axes, cons
     if (axes_bit_map[i]) {
       new_perm.push_back(i);
     } else {
-      new_perm.push_back(axes_map[perm[j++]]);
+      new_perm.push_back(axes_map[(size_t)perm[j++]]);
     }
   }
   return new_perm;
@@ -438,7 +438,7 @@ static bool HandleSimpleNodeAxis(HandlerArgs& args, bool has_default, int64_t de
   if (!HandleSimpleNodeBase(args, /*broadcast*/ false)) {
     return false;
   }
-  args.node.SetAttributeInt("axis", args.perm[*axis]);
+  args.node.SetAttributeInt("axis", args.perm[(size_t)*axis]);
   return true;
 }
 
@@ -501,11 +501,11 @@ static bool HandleShape(HandlerArgs& args) {
 static std::vector<int64_t> PermutePads(const std::vector<int64_t>& pads, const std::vector<int64_t>& perm) {
   size_t rank = perm.size();
   std::vector<int64_t> new_pads;
-  for (size_t i : perm) {
-    new_pads.push_back(pads[i]);
+  for (int64_t i : perm) {
+    new_pads.push_back(pads[(size_t)i]);
   }
-  for (size_t i : perm) {
-    new_pads.push_back(pads[i + rank]);
+  for (int64_t i : perm) {
+    new_pads.push_back(pads[(size_t)i + rank]);
   }
   return new_pads;
 }
@@ -556,6 +556,9 @@ static bool HandlePad(HandlerArgs& args) {
   api::Node& gather = *gather_ptr;
   std::string_view gather_output = gather.Outputs()[0];
   args.graph.CopyValueInfo(pads_input, gather_output);
+  auto info = args.graph.GetValueInfo(gather_output);
+  std::vector<int64_t> new_shape{(int64_t)rank * 2};
+  info->SetShape(&new_shape);
   gather.SetAttributeInt("axis", 0);
   args.node.SetInput(1, gather_output);
 
@@ -575,13 +578,13 @@ static std::vector<int64_t> SqueezePerm(const std::vector<int64_t>& axes, const 
     if (removed) {
       axes_map.push_back(-1);
     } else {
-      axes_map.push_back(j++);
+      axes_map.push_back((int64_t)j++);
     }
   }
   std::vector<int64_t> new_perm;
   for (int64_t p : perm) {
-    if (axes_map[p] != -1) {
-      new_perm.push_back(axes_map[p]);
+    if (axes_map[(size_t)p] != -1) {
+      new_perm.push_back(axes_map[(size_t)p]);
     }
   }
   return new_perm;
@@ -595,9 +598,9 @@ static std::vector<int64_t> PermuteAxes(const std::vector<int64_t>& axes, const 
   auto new_axes_bit_map = std::vector<bool>(perm.size());
   for (int64_t a : axes) {
     if (a < 0) {
-      a += rank;
+      a += (int64_t)rank;
     }
-    new_axes_bit_map[perm[a]] = true;
+    new_axes_bit_map[(size_t)perm[(size_t)a]] = true;
   }
   std::vector<int64_t> new_axes;
   for (size_t a = 0; a < rank; a++) {
@@ -786,7 +789,7 @@ static bool HandleQuantizeDequantizeLinear(HandlerArgs& args) {
       if (axis < 0) {
         axis += rank;
       }
-      if (axis < 0 || (uint64_t)axis >= args.perm.size()) {
+      if (axis < 0 || (size_t)axis >= args.perm.size()) {
         return false;
       }
       args.node.SetAttributeInt("axis", args.perm[axis]);
@@ -805,7 +808,7 @@ static bool HandleArgMinMax(HandlerArgs& args) {
   int64_t keepdims = args.node.GetAttributeIntDefault("keepdims", 1);
   int64_t axis = args.node.GetAttributeIntDefault("axis", 0);
   if (axis < 0) {
-    axis += rank;
+    axis += (int64_t)rank;
   }
   int64_t new_axis = args.perm[axis];
   std::vector<int64_t> new_axes {new_axis};
@@ -845,7 +848,7 @@ static bool HandleSlice(HandlerArgs& args) {
       if (a < 0) {
         a += rank;
       }
-      if (a < 0 || (uint64_t)a >= rank) {
+      if (a < 0 || (size_t)a >= rank) {
         return false;
       }
       new_axes.push_back(args.perm[a]);
@@ -889,7 +892,7 @@ static bool HandleSlice(HandlerArgs& args) {
       if (a < 0) {
         a += rank;
       }
-      if (a < 0 || (uint64_t)a >= rank) {
+      if (a < 0 || (size_t)a >= rank) {
         return false;
       }
       new_axes.push_back(args.perm[a]);
@@ -917,7 +920,7 @@ static bool HandleTile(HandlerArgs& args) {
     const std::vector<int64_t>& repeats = repeats_const->DataInt64();
     std::vector<int64_t> new_repeats;
     for (int64_t p : args.perm_inv) {
-      new_repeats.push_back(repeats[p]);
+      new_repeats.push_back(repeats[(size_t)p]);
     }
     std::string_view new_repeats_const = args.graph.AddInitializerInt64(perm_shape, new_repeats);
     args.node.SetInput(1, new_repeats_const);
@@ -1005,7 +1008,7 @@ static bool HandleQLinearConcat(HandlerArgs& args) {
   if (*axis < 0) {
     *axis += rank;
   }
-  if (*axis < 0 || (uint64_t)*axis >= rank) {
+  if (*axis < 0 || (size_t)*axis >= rank) {
     return false;
   }
   args.node.SetAttributeInt("axis", args.perm[*axis]);

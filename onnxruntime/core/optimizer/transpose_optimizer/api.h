@@ -29,15 +29,15 @@ class Tensor {
 class ValueInfo {
  public:
   virtual const std::string_view Name() const = 0;
-  // nullptr if rank is unknown
+  // nullptr if rank is unknown, -1 for unknown dims
   virtual std::optional<std::vector<int64_t>> Shape() const = 0;
 
   /**** Editing ****/
-  // nullptr if rank is unknown
-  virtual void SetShape(const std::vector<int64_t>* shape) const = 0;
+  // nullptr if rank is unknown, -1 for unknown dims
+  virtual void SetShape(const std::vector<int64_t>* shape) = 0;
   // TODO: what to do if shape is None?
-  virtual void PermuteDims(const std::vector<int64_t>& perm) const = 0;
-  virtual void UnsqueezeDims(const std::vector<int64_t>& axes) const = 0;
+  virtual void PermuteDims(const std::vector<int64_t>& perm) = 0;
+  virtual void UnsqueezeDims(const std::vector<int64_t>& axes) = 0;
   virtual ~ValueInfo(){};
 };
 

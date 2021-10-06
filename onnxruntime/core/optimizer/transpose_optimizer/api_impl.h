@@ -22,9 +22,10 @@ class OrtValueInfo : public api::ValueInfo {
   OrtValueInfo(onnxruntime::Graph& graph, std::string name) : graph_(graph), name_(name){};
   virtual const std::string_view Name() const override;
   virtual std::optional<std::vector<int64_t>> Shape() const override;
-  virtual void SetShape(const std::vector<int64_t>* shape) const override;
-  virtual void PermuteDims(const std::vector<int64_t>& perm) const override;
-  virtual void UnsqueezeDims(const std::vector<int64_t>& axes) const override;
+
+  virtual void SetShape(const std::vector<int64_t>* shape) override;
+  virtual void PermuteDims(const std::vector<int64_t>& perm) override;
+  virtual void UnsqueezeDims(const std::vector<int64_t>& axes) override;
 };
 
 class OrtTensor : public api::Tensor {
