@@ -62,7 +62,7 @@ static const onnx::TensorProto* GetInitializer(const Graph& graph, const std::st
 void GraphInitializersLocationInfo::AccumulateInitializerLocationsInSubgraphs(Graph& graph,
                                                                               const InitializedTensorSet& initializers,
                                                                               const KernelRegistryManager& kernel_registries,
-                                                                              /*out*/ std::unordered_map<std::string, std::unordered_set<int>> initializer_to_location_map) const {
+                                                                              /*out*/ std::unordered_map<std::string, std::unordered_set<int>>& initializer_to_location_map) const {
   for (auto& node : graph.Nodes()) {
     int index = 0;
     for (auto input : node.InputDefs()) {
@@ -72,12 +72,13 @@ void GraphInitializersLocationInfo::AccumulateInitializerLocationsInSubgraphs(Gr
           auto map_iter = initializer_to_location_map.find(def_name);
 
           if (map_iter == initializer_to_location_map.end()) {
-            initializer_to_location_map.insert(def_name, {});
+            initializer_to_location_map.insert({def_name, {}});
           }
 
           const KernelCreateInfo* kci = nullptr;
           kernel_registries.SearchKernelRegistry(node, &kci);
-          if (utils::IsInputOnCpu(node, kci, index)) {
+
+          if (node.GetExecutionProviderType() == kCpuExecutionProvider || utils::IsInputOnCpu(node, kci, index)) {
             initializer_to_location_map[def_name].insert(0);  // 0 for non-providers
           } else {
             initializer_to_location_map[def_name].insert(1);  // 1 for providers
@@ -107,7 +108,7 @@ void GraphInitializersLocationInfo::MakeProviderInitializerDuplicates(Graph& gra
   for (auto& pair : graph_initializers) {
     // We have already added an initializer with the same name while processing one of the outer graphs,
     // so break if we see shadow initializers
-    if (provider_initializer_names_.count(pair.first) > 0 || non_provider_initializer_names_.count(pair.first) > 0) {
+    if ((provider_initializer_names_.count(pair.first) > 0) || (non_provider_initializer_names_.count(pair.first) > 0)) {
       ORT_THROW(
           "Shadow initializers are currently unsupported in ORT. "
           "Consider using a new initializer (different name) for the shadow initializer");
@@ -158,6 +159,7 @@ void GraphInitializersLocationInfo::MakeProviderInitializerDuplicates(Graph& gra
 common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   for (auto& provider : provider_types_) {
     if (!utils::ProviderIsCpuBased(provider)) {
+      // Accumulate initializers' location info for all subgraphs
       graph_initializers_location_info_.MakeProviderInitializerDuplicates(graph, registry_manager_);
       TransformerMemcpyImpl copy_impl(graph, provider, graph_initializers_location_info_);
       auto current_modified = copy_impl.ModifyGraph(registry_manager_);
@@ -265,6 +267,7 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
     auto process_inputs =
         [this, &node, &kci, &initializers_consumed, &is_implicit_input](const onnxruntime::NodeArg& arg, size_t index) {
           // check if this NodeArg is an initializer defined in current outer graph level
+
           const auto* initializer_tensor_proto = GetInitializer(graph_, arg.Name(), true);
           if (initializer_tensor_proto != nullptr) {
             initializers_consumed[arg.Name()] = initializer_tensor_proto;
@@ -401,11 +404,16 @@ bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& ker
   std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacements;
   for (const auto& pair : initializers_consumed) {
     const auto& name = pair.first;
+    if (name == "self.logits_processor.min_length") {
+      float f = 1.2f;
+      ORT_IGNORE_RETURN_VALUE(f);
+    }
     const onnxruntime::NodeArg* provider_def = FindNodeArg(provider_input_defs_, name);
     const onnxruntime::NodeArg* non_provider_def = FindNodeArg(non_provider_input_defs_, name);
     if (provider_def != nullptr && non_provider_def != nullptr) {
       ORT_ENFORCE(graph_initializers_location_info_.non_provider_initializer_names_.find(name) !=
-                  graph_initializers_location_info_.non_provider_initializer_names_.end());
+                      graph_initializers_location_info_.non_provider_initializer_names_.end(),
+                  name);
 
       ORT_ENFORCE(graph_initializers_location_info_.non_provider_initializer_names_to_provider_dupe_initializer_names_.find(name) !=
                   graph_initializers_location_info_.non_provider_initializer_names_to_provider_dupe_initializer_names_.end());

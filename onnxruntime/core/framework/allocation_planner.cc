@@ -555,6 +555,11 @@ class PlannerImpl {
         // to nodes assigned to different providers.
 
         if (is_graph_input || is_outer_scope_arg) {
+          if (name == "find_end_idx.33") {
+            float f = 1.2f;
+            ORT_IGNORE_RETURN_VALUE(f);
+          }
+
           OrtValueIndex index = Index(name);
 
           if (!is_implicit_input) {
@@ -748,11 +753,12 @@ class PlannerImpl {
       plan_.allocation_plan[i].value_type = utils::GetMLDataType(*node_arg);
       plan_.allocation_plan[i].life_interval = std::pair<size_t, size_t>(0, max_pc);
 #endif
+      // Sanity check - make sure all the locations this initializer is being used in
+      // are the same
       for (size_t j = 0; j != loc.size(); ++j) {
         if (loc[j] != loc[0]) {
-          // set the location to CPU
-          plan_.allocation_plan[i].location = execution_providers_.GetDefaultCpuMemoryInfo();
-          break;
+          // This points to a severe bug in the Memcpy Transformer - no point in continuing
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Initializers consumed on multiple devices is not supported");
         }
       }
     }

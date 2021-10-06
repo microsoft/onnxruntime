@@ -18,7 +18,7 @@ struct GraphInitializersLocationInfo {
   void AccumulateInitializerLocationsInSubgraphs(Graph& graph,
                                                  const InitializedTensorSet& initializers,
                                                  const KernelRegistryManager& kernel_registries,
-                                                 /*out*/ std::unordered_map<std::string, std::unordered_set<int>> initializer_to_location_map) const;
+                                                 /*out*/ std::unordered_map<std::string, std::unordered_set<int>>& initializer_to_location_map) const;
 
   void MakeProviderInitializerDuplicates(Graph& graph, const KernelRegistryManager& kernel_registries) const;
 
