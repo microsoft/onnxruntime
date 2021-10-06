@@ -126,7 +126,7 @@ void GraphInitializersLocationInfo::CreateProviderInitializerDuplicates(Graph& g
 
     bool is_used_by_provider_nodes = usage_count_set.count(1) > 0;
 
-    // We make a copy of the initializer that is to be consumed by the provider Node so that
+    // We make a copy of the initializer that is to be consumed by the provider node so that
     // session state initializer can copy it over to the provider device during its operation
     // NOTE: We only need to make a copy if the initializer is consumed by both provider and
     // non-provider nodes, not if they are only consumed by one group of nodes
@@ -403,16 +403,13 @@ bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& ker
   std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacements;
   for (const auto& pair : initializers_consumed) {
     const auto& name = pair.first;
-    if (name == "self.logits_processor.min_length") {
-      float f = 1.2f;
-      ORT_IGNORE_RETURN_VALUE(f);
-    }
+
     const onnxruntime::NodeArg* provider_def = FindNodeArg(provider_input_defs_, name);
     const onnxruntime::NodeArg* non_provider_def = FindNodeArg(non_provider_input_defs_, name);
+
     if (provider_def != nullptr && non_provider_def != nullptr) {
       ORT_ENFORCE(graph_initializers_location_info_.non_provider_initializer_names_.find(name) !=
-                      graph_initializers_location_info_.non_provider_initializer_names_.end(),
-                  name);
+                  graph_initializers_location_info_.non_provider_initializer_names_.end());
 
       ORT_ENFORCE(graph_initializers_location_info_.non_provider_initializer_names_to_provider_dupe_initializer_names_.find(name) !=
                   graph_initializers_location_info_.non_provider_initializer_names_to_provider_dupe_initializer_names_.end());
@@ -432,12 +429,15 @@ bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& ker
 
       if (iter == graph_initializers_location_info_.provider_initializer_names_.end()) {
         // Use the duplicate def name we have created just for this scenario
+        ORT_ENFORCE(graph_initializers_location_info_.non_provider_initializer_names_to_provider_dupe_initializer_names_.find(name) !=
+                    graph_initializers_location_info_.non_provider_initializer_names_to_provider_dupe_initializer_names_.end());
         const auto& new_def_name = graph_initializers_location_info_.non_provider_initializer_names_to_provider_dupe_initializer_names_[name];
         auto& new_def = graph_.GetOrCreateNodeArg(new_def_name, provider_def->TypeAsProto());
         replacements.insert(std::make_pair(provider_def, &new_def));
       }
+    } else {
+      // For non_provider defs, there is no action - stick to using the original initializer
     }
-    // For non_provider defs, there is no action - stick to using the original def name
   }
 
   for (auto p_node : provider_nodes_) {
