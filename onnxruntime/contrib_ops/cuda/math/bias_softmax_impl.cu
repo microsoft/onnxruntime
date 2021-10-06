@@ -310,6 +310,7 @@ Status DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
       &beta,
       output_tensor,
       Y_data);
+
   return Status::OK();
 }
 
