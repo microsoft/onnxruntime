@@ -26,8 +26,7 @@ _FALLBACK_INIT_EXCEPTION = None
 ORTMODULE_FALLBACK_POLICY = _FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE |\
                             _FallbackPolicy.FALLBACK_UNSUPPORTED_DATA |\
                             _FallbackPolicy.FALLBACK_UNSUPPORTED_TORCH_MODEL |\
-                            _FallbackPolicy.FALLBACK_UNSUPPORTED_ONNX_MODEL |\
-                            _FallbackPolicy.FALLBACK_BAD_INITIALIZATION
+                            _FallbackPolicy.FALLBACK_UNSUPPORTED_ONNX_MODEL
 ORTMODULE_FALLBACK_RETRY = False
 ORTMODULE_IS_DETERMINISTIC = torch.are_deterministic_algorithms_enabled()
 
@@ -57,7 +56,7 @@ except ImportError as e:
 if not is_torch_cpp_extensions_installed(ORTMODULE_TORCH_CPP_DIR) and '-m' not in sys.argv:
     _FALLBACK_INIT_EXCEPTION = wrap_exception(
         ORTModuleInitException,
-        EnvironmentError(
+        RuntimeError(
             f"ORTModule's extensions were not detected at '{ORTMODULE_TORCH_CPP_DIR}' folder. "
             "Run `python -m torch_ort.configure` before using `ORTModule` frontend."))
 
