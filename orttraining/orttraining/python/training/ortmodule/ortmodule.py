@@ -104,7 +104,7 @@ class ORTModule(torch.nn.Module):
         except ORTModuleFallbackException as e:
             # Although backend is switched to PyTorch here,
             # it is up to _FallbackManager to actually terminate execution or fallback
-            self._switch_backend_to_pytorch(module)
+            _utils.switch_backend_to_pytorch(self, module)
 
             # Exceptions subject to fallback are handled here
             self._fallback_manager.handle_exception(exception=e,
@@ -112,7 +112,7 @@ class ORTModule(torch.nn.Module):
         except Exception as e:
             # Although backend is switched to PyTorch here,
             # it is up to _FallbackManager to actually terminate execution or fallback
-            self._switch_backend_to_pytorch(module)
+            _utils.switch_backend_to_pytorch(self, module)
 
             # Catch-all FALLBACK_FORCE_TORCH_FORWARD fallback is handled here
             self._fallback_manager.handle_exception(exception=e,
@@ -324,20 +324,3 @@ class ORTModule(torch.nn.Module):
         else:
             # Setting any new attributes should be done on ORTModule only when 'torch_module' is not defined
             self.__dict__[name] = value
-
-    def _switch_backend_to_pytorch(self, module):
-        self._torch_module = TorchModulePytorch(module)
-
-        # TODO: Rework by implementing the "__getattribute__" method.
-        #       Assigning all default attributes from user's original torch.nn.Module into ORTModule
-        self._backward_hooks = module._backward_hooks
-        self._forward_hooks = module._forward_hooks
-        self._forward_pre_hooks = module._forward_pre_hooks
-        self._parameters = module._parameters
-        self._buffers = module._buffers
-        self._non_persistent_buffers_set = module._non_persistent_buffers_set
-        self._is_full_backward_hook = module._is_full_backward_hook
-        self._state_dict_hooks = module._state_dict_hooks
-        self._load_state_dict_pre_hooks = module._load_state_dict_pre_hooks
-        self._modules = module._modules
-        self.forward = module.forward
