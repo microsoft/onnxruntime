@@ -40,7 +40,7 @@ class DnnlTensor {
   DnnlTensor(std::string name);
   DnnlTensor() = default;
   std::string Name() const;
-  dnnl::memory::dims Dim();
+  dnnl::memory::dims Dim() const;
   dnnl::memory::data_type Type() const;
   dnnl::memory::format_tag Format();
   //check whether the tensor is dynamic, e.g. contains unspecified dimension
@@ -108,6 +108,9 @@ class DnnlSubgraph {
   void RemoveNode(size_t node_index);
   void AddTensor(std::unique_ptr<DnnlTensor> new_tensor);
   void RemoveTensor(const std::string& tensor_name);
+
+  bool GetInitializedTensor(const std::string& arg_name, const ONNX_NAMESPACE::TensorProto*& value);
+  bool IsConstantInitializer(const std::string& arg_name, bool check_outer_scope);
 
  private:
   //graph owns all nodes

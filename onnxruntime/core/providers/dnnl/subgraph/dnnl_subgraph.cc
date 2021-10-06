@@ -27,7 +27,7 @@ std::string DnnlTensor::Name() const {
   return tensor_name_;
 }
 
-dnnl::memory::dims DnnlTensor::Dim() {
+dnnl::memory::dims DnnlTensor::Dim() const {
   if (arg_ == nullptr) {
     return dnnl::memory::dims();
   }
@@ -305,6 +305,14 @@ void DnnlSubgraph::AddNode(std::unique_ptr<DnnlNode> new_node) {
   auto index = dnnl_nodes_.size();
   dnnl_nodes_.emplace_back(std::move(new_node));
   dnnl_nodes_.back()->Index() = index;
+}
+
+bool DnnlSubgraph::GetInitializedTensor(const std::string& arg_name, const ONNX_NAMESPACE::TensorProto*& value) {
+  return graph_viewer_.GetInitializedTensor(arg_name, value);
+}
+
+bool DnnlSubgraph::IsConstantInitializer(const std::string& arg_name, bool check_outer_scope) {
+  return graph_viewer_.IsConstantInitializer(arg_name, check_outer_scope);
 }
 
 void DnnlSubgraph::Build() {

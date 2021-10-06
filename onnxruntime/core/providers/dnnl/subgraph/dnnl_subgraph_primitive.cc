@@ -8,6 +8,7 @@
 #include "dnnl_conv.h"
 #include "dnnl_dynamicquantizelinear.h"
 #include "dnnl_elementwise.h"
+#include "dnnl_gelu.h"
 #include "dnnl_gemm.h"
 #include "dnnl_lrn.h"
 #include "dnnl_matmul.h"
@@ -62,6 +63,10 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlDynamicQuantizeLinear().CreatePrimitive(*this, node);
     } else if (elementwise_ops.count(node.OpType())) {
       DnnlElementwise().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "FastGelu"){
+      DnnlGelu().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Gelu" || node.OpType() == "BiasGelu") {
+      DnnlGelu().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Gemm") {
       DnnlGemm().CreatePrimitive(*this, node);
     } else if (node.OpType() == "LRN") {
