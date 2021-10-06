@@ -209,21 +209,25 @@ static OrtDevice GetSessionGetInputDevice(_In_ OrtSession* session, _In_ const c
   const onnxruntime::SessionState& session_state = session_protected_load_accessor->GetSessionState();
 
   std::vector<onnxruntime::SessionState::NodeInfo> node_info_vec;
-  session_state.GetInputNodeInfo(input_name, node_info_vec);
+  ORT_THROW_IF_ERROR(session_state.GetInputNodeInfo(input_name, node_info_vec));
   const auto& node_info = node_info_vec.front();  // all consumers of a feed have the same device so first entry is fine
   return *node_info.device;
 }
 
 ORT_API_STATUS_IMPL(winmla::SessionGetInputRequiredDeviceId, _In_ OrtSession* session, _In_ const char* const input_name, _Out_ int16_t* device_id) {
+  API_IMPL_BEGIN
   auto device = GetSessionGetInputDevice(session, input_name);
   *device_id = device.Id();
   return nullptr;
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(winmla::ValueGetDeviceId, _In_ OrtValue* ort_value, _Out_ int16_t* device_id) {
+  API_IMPL_BEGIN
   auto device = ort_value->Get<onnxruntime::Tensor>().Location().device;
   *device_id = device.Id();
   return nullptr;
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(winmla::SessionCopyOneInputAcrossDevices, _In_ OrtSession* session, _In_ const char* const input_name,
