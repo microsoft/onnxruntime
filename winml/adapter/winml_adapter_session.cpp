@@ -79,7 +79,7 @@ ORT_API_STATUS_IMPL(winmla::CreateSessionWithoutModel, _In_ OrtEnv* env, _In_ co
   // register the providers
   for (auto& provider : provider_list) {
     if (provider) {
-      inference_session->RegisterExecutionProvider(std::move(provider));
+      ORT_API_RETURN_IF_STATUS_NOT_OK(inference_session->RegisterExecutionProvider(std::move(provider)));
     }
   }
 

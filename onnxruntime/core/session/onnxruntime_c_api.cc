@@ -71,22 +71,6 @@ using namespace onnxruntime;
 #endif
 #endif
 
-// Return the OrtStatus if it indicates an error
-#define ORT_API_RETURN_IF_ERROR(expr) \
-  do {                                \
-    auto _status = (expr);            \
-    if (_status)                      \
-      return _status;                 \
-  } while (0)
-
-// Convert internal onnxruntime::Status to OrtStatus and return if there's an error
-#define ORT_API_RETURN_IF_STATUS_NOT_OK(expr) \
-  do {                                        \
-    auto _status = (expr);                    \
-    if (!_status.IsOK())                      \
-      return ToOrtStatus(_status);            \
-  } while (0)
-
 #define TENSOR_READ_API_BEGIN                          \
   API_IMPL_BEGIN                                       \
   auto v = reinterpret_cast<const ::OrtValue*>(value); \

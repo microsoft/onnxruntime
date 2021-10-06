@@ -921,7 +921,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
                                           execution_providers_.Get(kDmlExecutionProvider));
 
     bool modified = false;
-    dml_transformer.Apply(graph, modified, *session_logger_);
+    ORT_RETURN_IF_ERROR_SESSIONID_(dml_transformer.Apply(graph, modified, *session_logger_));
   }
 #endif
 
