@@ -30,6 +30,10 @@ from onnxruntime.training.ortmodule import (ORTModule,
                                             LogLevel,
                                             _fallback,
                                             _graph_execution_manager)
+
+from onnxruntime.training.optim.fused_adam import FusedAdam
+from transformers import AdamW
+
 import _test_helpers
 
 # Import autocasting libs
@@ -4015,3 +4019,44 @@ def test_override_pytorch_exporter_kwargs_using_ortmodule_extension():
     assert prediction is not None
     prediction = prediction.sum()
     prediction.backward()
+
+def test_ortmodule_fused_adam_optimizer_correctness():
+
+    device = 'cuda'
+    N, D_in, H, D_out = 32, 128, 500, 10
+
+    pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    transformers_adamw_optimizer = AdamW(pt_model.parameters())
+
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    ort_fused_adam_optimizer = FusedAdam(ort_model.parameters())
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, loss
+
+    def run_optim_step(optimizer):
+        optimizer.step()
+        optimizer.zero_grad()
+
+    ga_steps = 2
+    pt_model.zero_grad()
+    ort_model.zero_grad()
+
+    for step in range(10):
+        x = torch.randn(N, D_in, device=device)
+
+        _, pt_loss = run_step(pt_model, x)
+        _, ort_loss = run_step(ort_model, x)
+
+        _test_helpers.assert_values_are_close(pt_loss, ort_loss, rtol=1e-4)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+
+        if (step+1) % ga_steps == 0:
+            run_optim_step(transformers_adamw_optimizer)
+            run_optim_step(ort_fused_adam_optimizer)
+
+            for pt_param, ort_param in zip(pt_model.parameters(), ort_model.parameters()):
+                _test_helpers.assert_values_are_close(pt_param, ort_param)
