@@ -303,7 +303,7 @@ Example's: HETERO:MYRIAD,CPU or HETERO:HDDL,GPU,CPU or MULTI:MYRIAD,GPU,CPU
 ```
 
 #### Disable subgraph partition Feature
-* `--disable_graph_partition` builds the OpenVINO Execution Provider in ONNX Runtime with sub graph partitioning disabled.
+* `--disable_gp` builds the OpenVINO Execution Provider in ONNX Runtime with sub graph partitioning disabled.
 
 With this option enabled. Fully supported models run on OpenVINO Execution Provider else they completely fall back to default CPU EP.
 

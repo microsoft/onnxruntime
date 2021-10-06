@@ -393,3 +393,15 @@ In order to showcase what you can do with the OpenVINO Execution Provider for ON
 
 ### Csharp API
 [Object detection with YOLOv3 in C#](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_sharp)
+
+## Blogs/Tutorials
+
+### Overview of OpenVINO Execution Provider for ONNX Runtime
+[OpenVINO Execution Provider](https://www.intel.com/content/www/us/en/artificial-intelligence/posts/faster-inferencing-with-one-line-of-code.html)
+
+### Tutorial on how to use OpenVINO™ Execution Provider for ONNX Runtime Docker Containers
+[Docker Containers](https://www.intel.com/content/www/us/en/artificial-intelligence/posts/openvino-execution-provider-docker-container.html)
+
+### Tutorial on how to use OpenVINO™ Execution Provider for ONNX Runtime python wheel packages
+[Python Pip Wheel Packages](https://www.intel.com/content/www/us/en/artificial-intelligence/posts/openvino-execution-provider-for-onnx-runtime.html)
+
