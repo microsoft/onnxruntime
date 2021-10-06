@@ -613,7 +613,10 @@ def run_subprocess(args, cwd=None, capture_stdout=False, dll_path=None,
                 my_env["LD_LIBRARY_PATH"] = dll_path
     if python_path:
         if is_windows():
-            my_env["PYTHONPATH"] = python_path + os.pathsep + my_env["PYTHONPATH"]
+            if "PYTHONPATH" in my_env:
+                my_env["PYTHONPATH"] = python_path + os.pathsep + my_env["PYTHONPATH"]
+            else:
+                my_env["PYTHONPATH"] = python_path
         else:
             if "PYTHONPATH" in my_env:
                 my_env["PYTHONPATH"] += os.pathsep + python_path
