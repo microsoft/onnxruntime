@@ -3,26 +3,24 @@
 
 #pragma once
 
-#include "core/common/common.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/framework/execution_provider.h"
 
 namespace onnxruntime {
 
 /**
-@Class NhwcTransformer
-
-Transformer that optimizes the graph by using NHWC nodes instead of NCHW nodes
-and inserts nodes to transpose tensors as needed.
+@Class BiasGeluFusion
+Fuse Add + Gelu to BiasGelu or FastGelu
 */
-class NhwcTransformer : public GraphTransformer {
+class TransposeOptimizer : public GraphTransformer {
  private:
   AllocatorPtr cpu_allocator_;
 
  public:
-  NhwcTransformer(AllocatorPtr cpu_allocator) noexcept : GraphTransformer("NhwcTransformer"), cpu_allocator_(cpu_allocator){};
+  TransposeOptimizer(AllocatorPtr cpu_allocator) noexcept
+      : GraphTransformer("TransposeOptimizer"), cpu_allocator_(cpu_allocator) {
+  }
 
- private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 };
 
