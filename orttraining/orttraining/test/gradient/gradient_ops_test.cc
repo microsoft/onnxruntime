@@ -110,8 +110,8 @@ static void RunReductionTests(const OpDef& op_def,
         attributes.push_back(MakeAttribute("axes", axes));
     }
 
-    gradient_checker.ComputeGradientError(op_def, input, {y_shape}, &max_error, x_datas,
-                                          attributes, true, check_not_have_shape_inferencing);
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, input, {y_shape}, &max_error, x_datas,
+                                                           attributes, true, check_not_have_shape_inferencing));
     EXPECT_IS_TINY(max_error);
   }
 }
