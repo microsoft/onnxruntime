@@ -164,7 +164,7 @@ Status SigmoidGrad<T>::Compute(OpKernelContext* context) const {
   EigenVectorArrayMap<float> dx = EigenVectorArrayMap<float>(dX.template MutableData<T>(), dX.Shape().Size());
   ConstEigenVectorArrayMap<float> y = ConstEigenVectorArrayMap<float>(Y.template Data<T>(), Y.Shape().Size());
   ConstEigenVectorArrayMap<float> dy = ConstEigenVectorArrayMap<float>(dY.template Data<T>(), dY.Shape().Size());
-  dx = dy * y * (1 -y );
+  dx = dy * y * (1 - y);
   return Status::OK();
 }
 }  // namespace contrib
