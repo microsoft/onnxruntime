@@ -40,10 +40,12 @@ class TransformerMemcpyImpl {
   std::set<onnxruntime::NodeArg*, NodeArgCompare> provider_output_defs_;           // all output defs of provider nodes that should be in provider allocator
   std::map<const onnxruntime::NodeArg*, std::set<onnxruntime::Node*, NodeCompare>> provider_input_nodes_;
   std::map<const onnxruntime::NodeArg*, std::set<onnxruntime::Node*, NodeCompare>> provider_output_nodes_;
-  GraphInitializersLocationInfo graph_initializers_location_info_;
 
   onnxruntime::Graph& graph_;
   std::string provider_;
+
+  // Holds location info of all initializers in the model
+  GraphInitializersLocationInfo graph_initializers_location_info_;
 };
 
 /** Helper that returns a pointer to the corresponding TensorProto for a name if it is an initializer.
