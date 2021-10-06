@@ -118,7 +118,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
 
   } else {  // unsupported_nodes_idx.empty()
 
-  #if defined(OPENVINO_DISABLE_GRAPH_PARTITION) // disable_graph_partition at build time
+  #if defined(OPENVINO_DISABLE_GRAPH_PARTITION) // disables graph partition at build time
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DISABLE_GRAPH_PARTITION option is set";
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model is not fully supported by OpenVINO, so making the full model fall back to default CPU Execution Provider";
     return result;

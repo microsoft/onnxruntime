@@ -338,8 +338,6 @@ def parse_arguments():
         help="Specify the minimum version of the target platform "
         "(e.g. macOS or iOS)"
         "This is only supported on MacOS")
-    parser.add_argument("--disable_graph_partition", action='store_true',
-                        help="Only runs fully supported graphs on OpenVINO EP else the model fall backs to default CPU EP")
 
     # WebAssembly build
     parser.add_argument("--build_wasm", action='store_true', help="Build for WebAssembly")
@@ -402,6 +400,9 @@ def parse_arguments():
         "--use_openvino", nargs="?", const="CPU_FP32",
         type=_openvino_verify_device_type,
         help="Build with OpenVINO for specific hardware.")
+    parser.add_argument(
+        "--disable_gp", action='store_true',
+        help="Used with OpenVINO EP. Only runs fully supported graphs on OpenVINO EP else the model fallbacks to default CPU EP")
     parser.add_argument(
         "--use_coreml", action='store_true', help="Build with CoreML support.")
     parser.add_argument(
@@ -878,7 +879,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                        "-Donnxruntime_USE_OPENVINO_MULTI=" + (
                            "ON" if args.use_openvino.startswith("MULTI") else "OFF"),
                        "-Donnxruntime_DISABLE_GRAPH_PARTITION=" + (
-                           "ON" if args.disable_graph_partition else "OFF")]
+                           "ON" if args.disable_gp else "OFF")]
 
     # TensorRT and OpenVINO providers currently only supports
     # full_protobuf option.
