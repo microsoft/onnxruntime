@@ -313,18 +313,18 @@ Status DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
   return Status::OK();
 }
 
-#define SPECIALIZED_BIAS_SOFTMAX_IMPL_VIA_DNN(T)                \
-  template void DispatchBiasSoftMaxForwardViaDnnLibraryImpl<T>( \
-      cudaStream_t stream,                                      \
-      cudnnHandle_t cudaDnnHandle,                              \
-      int element_count,                                        \
-      int batch_count,                                          \
-      int broadcast_axis,                                       \
-      int softmax_axis,                                         \
-      const onnxruntime::TensorShape& X_shape,                  \
-      const Tensor* X_data,                                     \
-      const onnxruntime::TensorShape& B_shape,                  \
-      const Tensor* B_data,                                     \
+#define SPECIALIZED_BIAS_SOFTMAX_IMPL_VIA_DNN(T)                  \
+  template Status DispatchBiasSoftMaxForwardViaDnnLibraryImpl<T>( \
+      cudaStream_t stream,                                        \
+      cudnnHandle_t cudaDnnHandle,                                \
+      int element_count,                                          \
+      int batch_count,                                            \
+      int broadcast_axis,                                         \
+      int softmax_axis,                                           \
+      const onnxruntime::TensorShape& X_shape,                    \
+      const Tensor* X_data,                                       \
+      const onnxruntime::TensorShape& B_shape,                    \
+      const Tensor* B_data,                                       \
       Tensor* Y_data);
 
 SPECIALIZED_BIAS_SOFTMAX_IMPL_VIA_DNN(double)
