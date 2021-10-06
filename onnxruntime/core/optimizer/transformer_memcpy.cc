@@ -13,7 +13,7 @@ namespace onnxruntime {
 // note that GraphTransformer::Apply() is supposed to be stateless, so this cannot derive from GraphTranformer
 class TransformerMemcpyImpl {
  public:
-  TransformerMemcpyImpl(onnxruntime::Graph& graph, const std::string& provider, const GraphInitializersLocationInfo& graph_initializers_location_info)
+  TransformerMemcpyImpl(onnxruntime::Graph& graph, const std::string& provider, GraphInitializersLocationInfo& graph_initializers_location_info)
       : graph_(graph), provider_(provider), graph_initializers_location_info_(graph_initializers_location_info) {}
 
   bool ModifyGraph(const KernelRegistryManager& schema_registries);
@@ -40,7 +40,7 @@ class TransformerMemcpyImpl {
   std::set<onnxruntime::NodeArg*, NodeArgCompare> provider_output_defs_;           // all output defs of provider nodes that should be in provider allocator
   std::map<const onnxruntime::NodeArg*, std::set<onnxruntime::Node*, NodeCompare>> provider_input_nodes_;
   std::map<const onnxruntime::NodeArg*, std::set<onnxruntime::Node*, NodeCompare>> provider_output_nodes_;
-  const GraphInitializersLocationInfo graph_initializers_location_info_;
+  GraphInitializersLocationInfo graph_initializers_location_info_;
 
   onnxruntime::Graph& graph_;
   std::string provider_;
@@ -59,10 +59,10 @@ static const onnx::TensorProto* GetInitializer(const Graph& graph, const std::st
   return initializer;
 }
 
-void GraphInitializersLocationInfo::AccumulateInitializerLocationsInSubgraphs(Graph& graph,
-                                                                              const InitializedTensorSet& initializers,
-                                                                              const KernelRegistryManager& kernel_registries,
-                                                                              /*out*/ std::unordered_map<std::string, std::unordered_set<int>>& initializer_to_location_map) const {
+void GraphInitializersLocationInfo::AccumulateInitializerLocations(Graph& graph,
+                                                                   const InitializedTensorSet& initializers,
+                                                                   const KernelRegistryManager& kernel_registries,
+                                                                   /*out*/ std::unordered_map<std::string, std::unordered_set<int>>& initializer_to_location_map) const {
   for (auto& node : graph.Nodes()) {
     int index = 0;
     for (auto input : node.InputDefs()) {
@@ -92,18 +92,18 @@ void GraphInitializersLocationInfo::AccumulateInitializerLocationsInSubgraphs(Gr
     // Recurse into subgraphs
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       auto& subgraph = *entry.second;
-      AccumulateInitializerLocationsInSubgraphs(subgraph, initializers,
-                                                kernel_registries, initializer_to_location_map);
+      AccumulateInitializerLocations(subgraph, initializers,
+                                     kernel_registries, initializer_to_location_map);
     }
   }
 }
 
-void GraphInitializersLocationInfo::MakeProviderInitializerDuplicates(Graph& graph, const KernelRegistryManager& kernel_registries) const {
+void GraphInitializersLocationInfo::CreateProviderInitializerDuplicates(Graph& graph, const KernelRegistryManager& kernel_registries) {
   const auto& graph_initializers = graph.GetAllInitializedTensors();
   // TODO: Support shadow initializers
-  // It is uncommon that we see shadow initializers (i.e.) an initializer re-defined in a subgraph
+  // It is uncommon to see shadow initializers (i.e.) an initializer re-defined in a subgraph
   // while the outer level graph(s) have different initializers defined for the same name.
-  // To support that adds some amount of complexity, so we will support it if we see such a model.
+  // To support that adds some amount of complexity, so we will support it if we see a use-case.
 
   for (auto& pair : graph_initializers) {
     // We have already added an initializer with the same name while processing one of the outer graphs,
@@ -116,8 +116,7 @@ void GraphInitializersLocationInfo::MakeProviderInitializerDuplicates(Graph& gra
   }
 
   std::unordered_map<std::string, std::unordered_set<int>> initializer_to_location_map;
-  AccumulateInitializerLocationsInSubgraphs(graph, graph_initializers,
-                                            kernel_registries, initializer_to_location_map);
+  AccumulateInitializerLocations(graph, graph_initializers, kernel_registries, initializer_to_location_map);
 
   for (auto& pair : initializer_to_location_map) {
     const auto& def_name = pair.first;
@@ -160,7 +159,7 @@ common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
   for (auto& provider : provider_types_) {
     if (!utils::ProviderIsCpuBased(provider)) {
       // Accumulate initializers' location info for all subgraphs
-      graph_initializers_location_info_.MakeProviderInitializerDuplicates(graph, registry_manager_);
+      graph_initializers_location_info_.CreateProviderInitializerDuplicates(graph, registry_manager_);
       TransformerMemcpyImpl copy_impl(graph, provider, graph_initializers_location_info_);
       auto current_modified = copy_impl.ModifyGraph(registry_manager_);
       modified = modified || current_modified;
