@@ -295,7 +295,7 @@ TEST(TransformerTest, TestInitializerDuplicationInSubgraph) {
 }
 
 TEST(TransformerTest, MemcpyTransformerTestGraphInputConsumedOnMultipleDevices) {
-  // In this test, a graph input is consumed by 2 nodes partitioned to multiple devices.
+  // In this test, a graph input is consumed by 2 nodes partitioned to different devices.
   // We expect a copy node to get inserted to the provider (CUDA) node while consuming
   // the graph input.
   std::unordered_map<std::string, int> domain_to_version;
@@ -347,8 +347,8 @@ TEST(TransformerTest, MemcpyTransformerTestGraphInputConsumedOnMultipleDevices) 
 }
 
 TEST(TransformerTest, MemcpyTransformerTestImplicitInputConsumedOnMultipleDevices) {
-  // In this test, an implicit input (consumed by an if subgraph)
-  // is consumed by 2 nodes partitioned to multiple devices.
+  // In this test, an implicit input (consumed by If subgraphs)
+  // is consumed by 2 nodes partitioned to different devices.
   // We expect a copy node to get inserted to the provider (CUDA) node while consuming
   // the implicit input.
   std::unordered_map<std::string, int> domain_to_version;
