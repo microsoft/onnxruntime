@@ -321,13 +321,12 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
 
 //for non_provider defs, collect the nodes that expect it is provider tensor as input/output.
 void TransformerMemcpyImpl::BuildDefsMapping(const onnxruntime::NodeArg* arg, const KernelRegistryManager& kernel_registries) {
-  const auto& name = arg->Name();
   for (auto& it : graph_.Nodes()) {
     if (it.OpType() == "MemcpyFromHost" || it.OpType() == "MemcpyToHost") continue;
     auto input_it =
-        std::find(it.MutableInputDefs().begin(), it.MutableInputDefs().end(), arg);
+        std::find(it.MutableInputDefs().begin(), it.MutableInputDefs().end(), const_cast<onnxruntime::NodeArg*>(arg));
     auto output_it =
-        std::find(it.MutableOutputDefs().begin(), it.MutableOutputDefs().end(), arg);
+        std::find(it.MutableOutputDefs().begin(), it.MutableOutputDefs().end(), const_cast<onnxruntime::NodeArg*>(arg));
     int arg_input_index =
         input_it != it.MutableInputDefs().end() ? static_cast<int>(input_it - it.MutableInputDefs().begin()) : -1;
     int arg_output_index =
@@ -339,14 +338,10 @@ void TransformerMemcpyImpl::BuildDefsMapping(const onnxruntime::NodeArg* arg, co
       const KernelCreateInfo* kci = nullptr;
       kernel_registries.SearchKernelRegistry(it, &kci);
       if (arg_input_index != -1) {
-        if (!kci || !utils::IsInputOnCpu(it, kci, arg_input_index)) {
-          provider_input_nodes_[const_cast<onnxruntime::NodeArg*>(arg)].insert(&it);
-        }
+        if (!kci || !utils::IsInputOnCpu(it, kci, arg_input_index)) provider_input_nodes_[arg].insert(&it);
       }
       if (arg_output_index != -1) {
-        if (!kci || !kci->kernel_def->IsOutputOnCpu(arg_output_index)) {
-          provider_output_nodes_[const_cast<onnxruntime::NodeArg*>(arg)].insert(&it);
-        }
+        if (!kci || !kci->kernel_def->IsOutputOnCpu(arg_output_index)) provider_output_nodes_[arg].insert(&it);
       }
     }
   }
@@ -369,7 +364,6 @@ void TransformerMemcpyImpl::AddCopyNode(onnxruntime::NodeArg* arg, bool is_input
                                   std::vector<onnxruntime::NodeArg*>{dst_arg});
   new_node.SetExecutionProviderType(provider_);
   std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> map = {{arg, new_arg}};
-
   auto it = provider_input_nodes_.find(arg);
   if (it != provider_input_nodes_.end()) {
     for (auto* node : it->second)
