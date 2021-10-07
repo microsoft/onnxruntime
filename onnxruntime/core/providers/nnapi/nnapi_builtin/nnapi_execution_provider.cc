@@ -54,15 +54,19 @@ std::unordered_set<std::string> GetPartitioningStopOps(const optional<std::strin
   return stop_ops_set;
 }
 
-bool IsNodeInQDQGroup(std::vector<std::unique_ptr<ConstNodesToOptimize>>& qdq_node_groups, const Node& node, std::unique_ptr<ConstNodesToOptimize>& qdq_node_group) {
+std::unique_ptr<ConstNodesToOptimize> IsNodeInQDQGroup(std::vector<std::unique_ptr<ConstNodesToOptimize>>& qdq_node_groups, const Node& node) {
+  std::unique_ptr<ConstNodesToOptimize> qdq_node_group;
   for (auto& group : qdq_node_groups) {
-    if (std::find(group->AllNodes().begin(), group->AllNodes().end(), &node) != group->AllNodes().end()) {
-      LOGS_DEFAULT(VERBOSE) << "Node:" << node.Name() << "belongs to a qdq node group.";
-      qdq_node_group = std::move(group);
-      return true;
+    if (group != nullptr) {
+      if (std::find(group->AllNodes().begin(), group->AllNodes().end(), &node) != group->AllNodes().end()) {
+        LOGS_DEFAULT(VERBOSE) << "Node:" << node.Name() << "belongs to a qdq node group.";
+        // Issue: node in the same group? nullptr?
+        qdq_node_group = std::move(group);
+        return qdq_node_group;
+      }
     }
   }
-  return false;
+  return nullptr;
 }
 
 }  // namespace
@@ -165,12 +169,11 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     //    any of the nodes in the group is not supported then set const bool supported = false; (how to save checked?)
     // directly check if node belongs to one of the qdq_node_group in qdq_node_groups
     std::unique_ptr<ConstNodesToOptimize> qdq_group;
-    bool is_qdq_node = false;
     if (!qdq_node_groups.empty()) {
-      is_qdq_node = IsNodeInQDQGroup(qdq_node_groups, node, qdq_group);
+      qdq_group = IsNodeInQDQGroup(qdq_node_groups, node);
     }
 
-    if (is_qdq_node) {
+    if (qdq_group != nullptr) {
       // if a node is in a QDQ structure:
       if (!qdq_group->IsCheckedNotSupported()) {
         supported = !excluded &&
