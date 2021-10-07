@@ -76,7 +76,9 @@ _check_python_version()
 
 
 def _openvino_verify_device_type(device_read):
-    choices = ["CPU_FP32", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VAD-F_FP32"]
+    choices = ["CPU_FP32", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VAD-F_FP32",
+                "CPU_FP32_NO_PARTITION", "GPU_FP32_NO_PARTITION", "GPU_FP16_NO_PARTITION",
+                "VAD-M_FP16_NO_PARTITION", "MYRIAD_FP16_NO_PARTITION", "VAD-F_FP32_NO_PARTITION"]
     status_hetero = True
     res = False
     if (device_read in choices):
@@ -400,9 +402,6 @@ def parse_arguments():
         "--use_openvino", nargs="?", const="CPU_FP32",
         type=_openvino_verify_device_type,
         help="Build with OpenVINO for specific hardware.")
-    parser.add_argument(
-        "--disable_gp", action='store_true',
-        help="Used with OpenVINO EP. Only runs fully supported graphs on OV EP else the model fallsback to default CPU")
     parser.add_argument(
         "--use_coreml", action='store_true', help="Build with CoreML support.")
     parser.add_argument(
@@ -873,13 +872,23 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                            "ON" if args.use_openvino == "VAD-M_FP16" else "OFF"),
                        "-Donnxruntime_USE_OPENVINO_VAD_F=" + (
                            "ON" if args.use_openvino == "VAD-F_FP32" else "OFF"),
+                       "-Donnxruntime_USE_OPENVINO_MYRIAD_NP=" + (
+                           "ON" if args.use_openvino == "MYRIAD_FP16_NO_PARTITION" else "OFF"),
+                       "-Donnxruntime_USE_OPENVINO_GPU_FP32_NP=" + (
+                           "ON" if args.use_openvino == "GPU_FP32_NO_PARTITION" else "OFF"),
+                       "-Donnxruntime_USE_OPENVINO_GPU_FP16_NP=" + (
+                           "ON" if args.use_openvino == "GPU_FP16_NO_PARTITION" else "OFF"),
+                       "-Donnxruntime_USE_OPENVINO_CPU_FP32_NP=" + (
+                           "ON" if args.use_openvino == "CPU_FP32_NO_PARTITION" else "OFF"),
+                       "-Donnxruntime_USE_OPENVINO_VAD_M_NP=" + (
+                           "ON" if args.use_openvino == "VAD-M_FP16_NO_PARTITION" else "OFF"),
+                       "-Donnxruntime_USE_OPENVINO_VAD_F_NP=" + (
+                           "ON" if args.use_openvino == "VAD-F_FP32_NO_PARTITION" else "OFF"),
                        "-Donnxruntime_USE_OPENVINO_HETERO=" + (
                            "ON" if args.use_openvino.startswith("HETERO") else "OFF"),
                        "-Donnxruntime_USE_OPENVINO_DEVICE=" + (args.use_openvino),
                        "-Donnxruntime_USE_OPENVINO_MULTI=" + (
-                           "ON" if args.use_openvino.startswith("MULTI") else "OFF"),
-                       "-Donnxruntime_DISABLE_GRAPH_PARTITION=" + (
-                           "ON" if args.disable_gp else "OFF")]
+                           "ON" if args.use_openvino.startswith("MULTI") else "OFF")]
 
     # TensorRT and OpenVINO providers currently only supports
     # full_protobuf option.
