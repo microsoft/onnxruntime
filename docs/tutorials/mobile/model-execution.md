@@ -9,7 +9,7 @@ nav_order: 5
 
 # Executing an ORT format model
 
-The API for executing ORT format models is the same as for ONNX models. 
+The API for executing ORT format models is the same as for ONNX models.
 
 See the [ONNX Runtime API documentation](../../api) for details on individual API usage.
 
@@ -29,6 +29,8 @@ If you provide in-memory bytes for the ORT format model, a marker in those bytes
 
 If you wish to explicitly say that the InferenceSession input is an ORT format model you can do so via SessionOptions, although this generally should not be necessary.
 
+### Load ORT format model from a file path
+
 C++ API
 ```c++
 Ort::SessionOptions session_options;
@@ -45,6 +47,39 @@ session_options.addConfigEntry("session.load_model_format", "ORT");
 
 OrtEnvironment env = OrtEnvironment.getEnvironment();
 OrtSession session = env.createSession(<path to model>, opsession_optionstions);
+```
+
+### Load ORT format model from an in-memory byte array
+
+If a session is created using an input byte array contains the ORT format model data.
+
+By default we will copy the model bytes at the time of session creation to ensure the model bytes buffer is valid.
+
+You may also set the option `session.use_ort_model_bytes_directly` to use the model bytes directly, this may reduce the peak memory usage of ONNX Runtime Mobile, you will need to guarantee that the model bytes are valid until the ORT session using the model bytes is destroyed.
+
+C++ API
+```c++
+Ort::SessionOptions session_options;
+session_options.AddConfigEntry('session.load_model_format', 'ORT');
+session_options.AddConfigEntry('session.use_ort_model_bytes_directly', '1');
+
+std::ifstream stream(<path to model>, std::ios::in | std::ios::binary);
+std::vector<uint8_t> model_bytes((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+
+Ort::Env env;
+Ort::Session session(env, model_bytes.data(), model_bytes.size(), session_options);
+```
+
+Java API
+```java
+SessionOptions session_options = new SessionOptions();
+session_options.AddConfigEntry('session.load_model_format', 'ORT');
+session_options.addConfigEntry("session.use_ort_model_bytes_directly", "1");
+
+byte[] model_bytes = Files.readAllBytes(Paths.get(<path to model>));
+
+OrtEnvironment env = OrtEnvironment.getEnvironment();
+OrtSession session = env.createSession(model_bytes, opsession_optionstions);
 ```
 
 ------

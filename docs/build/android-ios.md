@@ -161,10 +161,6 @@ Android NNAPI Execution Provider can be built using building commands in [Androi
 
   If the code signing development team ID or code signing identity is specified, and has a valid code signing certificate, Xcode will code sign the onnxruntime library in the building process. Otherwise, the onnxruntime will be built without code signing. It may be required or desired to code sign the library for iOS devices. For more information, see [Code Signing](https://developer.apple.com/support/code-signing/).
 
-* Bitcode
-
-  Bitcode is an Apple technology that enables you to recompile your app to reduce its size. It is by default enabled for building onnxruntime. Bitcode can be disabled by using the building commands in [iOS Build instructions](#build-instructions-1) with `--apple_disable_bitcode`. For more information about bitcode, please see [Doing Basic Optimization to Reduce Your App’s Size](https://developer.apple.com/documentation/xcode/doing-basic-optimization-to-reduce-your-app-s-size).
-
 ### Build Instructions
 
 Run one of the following build scripts from the ONNX Runtime repository root:
