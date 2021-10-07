@@ -324,9 +324,6 @@ endif()
 file(GLOB onnxruntime_python_tools_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/*.py"
 )
-file(GLOB onnxruntime_python_tools_featurizers_src CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/python/tools/featurizer_ops/*.py"
-)
 file(GLOB onnxruntime_python_quantization_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/quantization/*.py"
 )
