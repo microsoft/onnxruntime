@@ -20,19 +20,17 @@ variables:
   AnyBuildDegreeOfParallelism: 64
 
   # how many cache lookups to run in parallel (the default value below works well for a 2-core machine)
-  AnyBuildMaxParallelLookups: 15
+  AnyBuildMaxParallelLookups: 25
 
   # just a symbolic name for a local Docker image (this pipeline build this image, then uses it to run a build in a container; it never pushes this image)
   DockerImageTag: manylinux-onnxr:latest
 
   # directory where the onnxruntime sources are checked out
-  OnnxSourcesDir: $(Build.SourcesDirectory)/onnxruntime
+  OnnxSourcesDir: $(Build.SourcesDirectory)
 
   # App used for authentication
   # https://ms.portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/Overview/appId/ef5b3365-5c24-4e2e-b79d-6382a48d7436/isMSAApp/
   OnnxPrincipalAppId: ef5b3365-5c24-4e2e-b79d-6382a48d7436
-
-
 
 jobs:
 - job: 
@@ -43,16 +41,11 @@ jobs:
   timeoutInMinutes: 60
   workspace:
     clean: all
+
   steps:
-  - checkout: none
-
-  - bash: |
-      set -euo pipefail
-      git clone --recursive --depth 1 https://github.com/Microsoft/onnxruntime.git "$(OnnxSourcesDir)"
-
-      cd "$(OnnxSourcesDir)"
-      git log -1
-    displayName: Checkout
+  - checkout: self
+    clean: true
+    submodules: recursive
 
   - bash: |
       set -euo pipefail
