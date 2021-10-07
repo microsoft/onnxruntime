@@ -56,6 +56,7 @@ def _to_gradient_definition(gradient):
 
 class CustomGradientRegistry:
     _GRADIENTS = {}
+    _STOP_GRADIENT_EDGES = {}
 
     @classmethod
     def register(cls, domain, name, attributes, fn):
@@ -63,10 +64,16 @@ class CustomGradientRegistry:
         cls._GRADIENTS[key] = _to_gradient_definition(fn())
 
     @classmethod
+    def register_custom_stop_gradient_edges(cls, edges, domain, name, *attributes):
+        key  = '::'.join([domain, name] + list(attributes))
+        cls._STOP_GRADIENT_EDGES[key] = set(edges)
+
+    @classmethod
     def register_all(cls):
         for key, value in cls._GRADIENTS.items():
             C.register_gradient_definition(key, value)
-
+        for key, value in cls._STOP_GRADIENT_EDGES.items():
+            C.register_custom_stop_gradient_edges(key, value)
 
 def register_gradient(domain, name, *attributes):
     def gradient_wrapper(fn):
@@ -125,3 +132,5 @@ def adaptive_avg_pool2d_gradient():
         (('ATenOp', 'com.microsoft'), ['GO(0)', 'I(0)'], [
          'GI(0)'], {'name': {'value': 'aten::_adaptive_avg_pool2d_backward', 'dtype': 'string'}}),
     ]
+
+CustomGradientRegistry.register_custom_stop_gradient_edges([0], 'com.microsoft', 'ATenOp', 'aten::multinomial', '')
