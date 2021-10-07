@@ -124,18 +124,14 @@ bool QkvToContext(
     return false;
   }
 
-  if (nullptr != extra_add_qk && !AdditionBeforeSoftmax<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, extra_add_qk, scratch1)) {
-    return false;
-  }
-
   // apply softmax and store result P to scratch2: BxNxSxS*
   if (use_raw_attention_mask) {  // 2d, 3d or 4d attention mask
     const int mask_dimension = static_cast<int>(mask_index_dims->size());
     const int64_t max_sequence_length = mask_dimension == 4 ? mask_index_dims->at(3) : 0;
 
     T* persistent_softmax_workspace = scratch1; // replace Q*K' in place with masked score if persistent softmax is selected.
-    if (!ComputeSoftmaxWithRawMask<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, mask_index, scratch1, scratch2, is_unidirectional,
-                                      rsqrt_head_size, mask_dimension, static_cast<int>(max_sequence_length),
+    if (!ComputeSoftmaxWithRawMask<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, mask_index, extra_add_qk, scratch1, scratch2, 
+                                      is_unidirectional, rsqrt_head_size, mask_dimension, static_cast<int>(max_sequence_length),
                                       use_persistent_softmax, persistent_softmax_workspace)) {
       return false;
     }
@@ -143,11 +139,11 @@ bool QkvToContext(
     ORT_ENFORCE(nullptr != mask_index_dims && mask_index_dims->size() == 1);
     // mask_index has 1D shape: either (batch_size) or (2*batch_size). Only the later one has start postions.
     const int* mask_start = (mask_index_dims->at(0) > batch_size) ? mask_index + batch_size : nullptr;
-    if (!ComputeSoftmaxWithMask1D<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, mask_index, mask_start, scratch1, scratch2, is_unidirectional)) {
+    if (!ComputeSoftmaxWithMask1D<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, mask_index, mask_start, extra_add_qk, scratch1, scratch2, is_unidirectional)) {
       return false;
     }
   } else {  // no mask
-    if (!ComputeSoftmax<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, scratch1, scratch2, is_unidirectional)) {
+    if (!ComputeSoftmax<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, extra_add_qk, scratch1, scratch2, is_unidirectional)) {
       return false;
     }
   }
