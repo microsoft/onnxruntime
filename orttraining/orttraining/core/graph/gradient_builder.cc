@@ -700,6 +700,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetSigmoidGradient) {
               {GO(0), O(0)},
               {GI(0)})};
 }
+
 IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxGradient) {
   return std::vector<NodeDef>{
       NodeDef(OpDef{"SoftmaxGrad", kMSDomain, 1},

@@ -4061,6 +4061,7 @@ def test_ortmodule_fused_adam_optimizer_correctness():
             for pt_param, ort_param in zip(pt_model.parameters(), ort_model.parameters()):
                 _test_helpers.assert_values_are_close(pt_param, ort_param)
 
+
 def test_sigmoid_grad():
     class NeuralNetSigmoid(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
