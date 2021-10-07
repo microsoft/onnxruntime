@@ -148,6 +148,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<ReshapeFusion>());
       transformers.emplace_back(std::make_unique<FreeDimensionOverrideTransformer>(
           session_options.free_dimension_overrides));
+      auto cpu_allocator = cpu_execution_provider.GetAllocator(0, OrtMemTypeDefault);
+      transformers.emplace_back(std::make_unique<TransposeOptimizer>(cpu_allocator));
 
       rule_transformer = GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, {});
     } break;
@@ -216,7 +218,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
       auto cpu_allocator = cpu_execution_provider.GetAllocator(0, OrtMemTypeDefault);
       transformers.emplace_back(std::make_unique<NhwcTransformer>(cpu_allocator));
-      //transformers.emplace_back(std::make_unique<TransposeOptimizer>(cpu_allocator));
 #endif
     } break;
 

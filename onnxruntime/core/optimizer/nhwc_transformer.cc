@@ -39,8 +39,8 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   std::unordered_map<std::string_view, LayoutHandler*> handler_map = {
       {"QLinearConv", &QLinearConvHandler}
   };
-  auto ort_graph = OrtGraph(graph, cpu_allocator_, logger);
-  if (ChannelFirstToChannelLast(ort_graph, handler_map)) {
+  auto ort_graph = OrtGraph(graph, cpu_allocator_, logger, kCpuExecutionProvider);
+  if (ChannelFirstToChannelLast(ort_graph, handler_map, /*allow_extended_ops*/ true)) {
     modified = true;
   }
   return Status::OK();

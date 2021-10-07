@@ -144,10 +144,9 @@ struct LayoutHandlerResult {
 typedef LayoutHandlerResult LayoutHandler(api::Graph& graph, api::Node& node);
 
 // Push/remove transposes from the graph. Returns true if the graph was modified.
-bool Optimize(api::Graph& graph);
-void FakeOptimize();
+bool Optimize(api::Graph& graph, bool allow_extended_ops);
 
-bool ChannelLastToChannelFirst(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler*>& handler_map);
-bool ChannelFirstToChannelLast(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler*>& handler_map);
+bool ChannelLastToChannelFirst(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler*>& handler_map, bool allow_extended_ops);
+bool ChannelFirstToChannelLast(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler*>& handler_map, bool allow_extended_ops);
 
 }  // namespace onnx_layout_transformation

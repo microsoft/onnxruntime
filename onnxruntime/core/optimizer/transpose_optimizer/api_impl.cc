@@ -255,7 +255,7 @@ void OrtNode::SetInput(size_t i, const std::string_view name) {
 }
 
 
-OrtGraph::OrtGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator, const logging::Logger& logger) : graph_(graph), cpu_allocator_(cpu_allocator), logger_(logger) {
+OrtGraph::OrtGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator, const logging::Logger& logger, const char* new_node_ep) : graph_(graph), cpu_allocator_(cpu_allocator), logger_(logger), new_node_ep_(new_node_ep) {
   const std::vector<const NodeArg*>& graph_inputs = graph.GetInputsIncludingInitializers();
   inputs_.reserve(graph_inputs.size());
   for (const NodeArg* input : graph_inputs) {
@@ -430,7 +430,10 @@ std::unique_ptr<api::Node> OrtGraph::AddNode(const std::string_view op_type, con
   }
   std::vector<NodeArg*> outputs;
   Node& node = graph_.AddNode(name, op_type_str, "Added in transpose optimizer", input_args, output_args, nullptr, std::string(domain));
-  node.SetExecutionProviderType(kCpuExecutionProvider);
+
+  if (new_node_ep_ != nullptr) {
+    node.SetExecutionProviderType(new_node_ep_);
+  }
 
   for (size_t i = 0; i < input_args.size(); ++i) {
     NodeArg* arg = input_args[i];

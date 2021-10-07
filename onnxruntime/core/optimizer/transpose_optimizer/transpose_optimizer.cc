@@ -125,7 +125,7 @@ static std::vector<int64_t> UnsqueezePerm(const std::vector<int64_t>& axes, cons
   return new_perm;
 }
 
-static bool HandleUnsqueeze(HandlerArgs& args);
+static const std::string_view HelpHandleUnsqueeze(HandlerArgs& args, std::vector<int64_t> axes);
 
 static const std::string_view UnsqueezeValue(int64_t opset, api::Graph& graph, const std::string_view input, const std::vector<int64_t>& axes) {
   std::unique_ptr<api::Tensor> constant = graph.GetConstant(input);
@@ -148,7 +148,7 @@ static const std::string_view UnsqueezeValue(int64_t opset, api::Graph& graph, c
     const std::vector<std::string_view>& inputs = node->Inputs();
     std::optional<std::vector<int64_t>> squeeze_axes = std::nullopt;
     if (*graph.Opset() < 13) {
-      squeeze_axes = node->GetAttributeInts("axes");
+      squeeze_axes = move(node->GetAttributeInts("axes"));
     } else if (inputs.size() == 2) {
       std::unique_ptr<api::Tensor> axes_const = graph.GetConstant(inputs[1]);
       if (axes_const != nullptr) {
@@ -165,37 +165,19 @@ static const std::string_view UnsqueezeValue(int64_t opset, api::Graph& graph, c
       return inputs[0];
     }
   }
-  //if (node != nullptr && node->IsOp("Transpose")) {
-  //  auto perm = node->GetAttributeInts("perm");
-  //  if (perm != std::nullopt) {
-  //    auto unsqueeze = MakeSqueezeOrUnsqueeze(opset, graph, "Unsqueeze", node->Inputs()[0], axes);
-  //    const std::string_view unsq_out = unsqueeze->Outputs()[0];
-  //    graph.CopyValueInfo(input, unsq_out);
-  //    graph.GetValueInfo(unsq_out)->UnsqueezeDims(axes);
-  //    auto new_perm = UnsqueezePerm(axes, *perm);
-  //    auto transpose = MakeTranspose(graph, unsq_out, new_perm);
-  //    const std::string_view trans_out = transpose->Outputs()[0]; 
-  //    graph.CopyValueInfo(unsq_out, trans_out);
-  //    graph.GetValueInfo(trans_out)->PermuteDims(new_perm);
-  //    if (!graph.HasValueConsumers(node->Outputs()[0])) {
-  //      graph.RemoveNode(*node);
-  //    }
-  //    return trans_out;
-  //  }
-  //}
   auto squeeze_ptr = MakeSqueezeOrUnsqueeze(opset, graph, "Unsqueeze", input, axes);
   api::Node& squeeze = *squeeze_ptr;
   const std::string_view sq_out = squeeze.Outputs()[0];
   graph.CopyValueInfo(input, sq_out);
   graph.GetValueInfo(sq_out)->UnsqueezeDims(axes);
-  /*if (node != nullptr && node->IsOp("Transpose")) {
+  if (node != nullptr && node->IsOp("Transpose")) {
     auto perm = node->GetAttributeInts("perm");
     if (perm != std::nullopt) {
       auto perm_inv = InvertPerm(*perm);
       HandlerArgs args{opset, graph, *node, squeeze, *perm, perm_inv, 0, false};
-      HandleUnsqueeze(args);
+      return HelpHandleUnsqueeze(args, axes);
     }
-  }*/
+  }
   return sq_out;
 }
 
@@ -228,7 +210,7 @@ static const std::string_view TransposeValue(api::Graph& graph, const std::strin
         }
         return pre_trans_value;
       }
-      const std::vector<int64_t>& perm_combined = ComposePerm(perm, *perm2);
+      const std::vector<int64_t>& perm_combined = ComposePerm(*perm2, perm);
       auto trans_ptr = MakeTranspose(graph, node->Inputs()[0], perm_combined);
       api::Node& trans = *trans_ptr;
       const std::string_view trans_out = trans.Outputs()[0];
@@ -375,20 +357,26 @@ static bool IsIdentityPerm(const std::vector<int64_t>& perm) {
   return true;
 }
 
+static const std::string_view TransposeOutput(api::Graph& graph, api::Node& node, size_t i, const std::vector<int64_t>& perm, const std::vector<int64_t>& perm_inv) {
+  // Make transpose without input, then add it to avoid cyclic reference.
+  auto trans_ptr = MakeTranspose(graph, "", perm);
+  api::Node& trans = *trans_ptr;
+  graph.MoveOutput(node, i, trans, 0);
+  const std::string_view new_output = node.Outputs()[i];
+  trans.SetInput(0, new_output);
+  const std::string_view old_output = trans.Outputs()[0];
+  graph.CopyValueInfo(old_output, new_output);
+  graph.GetValueInfo(new_output)->PermuteDims(perm_inv);
+  return old_output;
+}
+
 static void TransposeOutputs(api::Graph& graph, api::Node& node, const std::vector<int64_t>& perm) {
   if (IsIdentityPerm(perm)) {
     return;
   }
   auto perm_inv = InvertPerm(perm);
   for (size_t j = 0; j < node.Outputs().size(); ++j) {
-    // Make transpose without input, then add it to avoid cyclic reference.
-    auto trans_ptr = MakeTranspose(graph, "", perm);
-    api::Node& trans = *trans_ptr;
-    graph.MoveOutput(node, j, trans, 0);
-    const std::string_view new_output = node.Outputs()[j];
-    trans.SetInput(0, new_output);
-    graph.CopyValueInfo(trans.Outputs()[0], new_output);
-    graph.GetValueInfo(new_output)->PermuteDims(perm_inv);
+    TransposeOutput(graph, node, j, perm, perm_inv);
   }
 }
 
@@ -743,27 +731,31 @@ static bool HandleSqueeze(HandlerArgs& args) {
 }
 
 
+static const std::string_view HelpHandleUnsqueeze(HandlerArgs& args, std::vector<int64_t> axes) {
+  TransposeFirstInput(args.graph, args.node, args.perm_inv);
+  std::vector<int64_t> new_perm = UnsqueezePerm(axes, args.perm);
+  return TransposeOutput(args.graph, args.node, 0, new_perm, InvertPerm(new_perm));
+}
+
 static bool HandleUnsqueeze(HandlerArgs& args) {
   if (args.trans_input_index != 0) return false;
-  std::vector<int64_t> new_perm;
+  std::vector<int64_t> axes;
   if (args.opset < 13) {
-    std::optional<std::vector<int64_t>> axes = args.node.GetAttributeInts("axes");
+    std::optional<std::vector<int64_t>> axes_attr = args.node.GetAttributeInts("axes");
     // TODO: (compress impl) empty axes
-    if (axes == std::nullopt) {
+    if (axes_attr == std::nullopt) {
       return false;
     }
-    new_perm = UnsqueezePerm(*axes, args.perm);
+    axes = *axes_attr;
   } else {
     const std::vector<std::string_view>& inputs = args.node.Inputs();
     std::unique_ptr<api::Tensor> axes_const = args.graph.GetConstant(inputs[1]);
     if (axes_const == nullptr) {
       return false;
     }
-    auto axes = axes_const->DataInt64();
-    new_perm = UnsqueezePerm(axes, args.perm);
+    axes = axes_const->DataInt64();
   }
-  TransposeFirstInput(args.graph, args.node, args.perm_inv);
-  TransposeOutputs(args.graph, args.node, new_perm);
+  HelpHandleUnsqueeze(args, axes);
   return true;
 }
 
@@ -1115,7 +1107,9 @@ static const std::unordered_map<std::string_view, HandlerFunction*> handler_map 
   {"Softmax", &HandleSoftHardMax}, {"Hardmax", &HandleSoftHardMax}, {"LogSoftmax", &HandleSoftHardMax},
 
   {"QuantizeLinear", &HandleQuantizeDequantizeLinear}, {"DequantizeLinear", &HandleQuantizeDequantizeLinear},
+};
 
+static const std::unordered_map<std::string_view, HandlerFunction*> extended_handler_map {
   {"com.microsoft.QLinearReduceMean", &HandleReduceOp},
   {"com.microsoft.QLinearSigmoid", &HandleSimpleNode1Inp},
   {"com.microsoft.QLinearLeakyRelu", &HandleSimpleNode1Inp},
@@ -1127,17 +1121,25 @@ static const std::unordered_map<std::string_view, HandlerFunction*> handler_map 
   {"MaxPool", &HandleMaxPool},
 };
 
-bool ProcessTranspose(HandlerArgs& args) {
-  if (args.node.Domain() == "") {
-    auto match = handler_map.find(args.node.OpType());
-    if (match != handler_map.end()) {
-      HandlerFunction* fn = match->second;
-      return fn(args);
-    }
-  } else if (args.node.Domain() == "com.microsoft") {
-    std::string name = "com.microsoft." + std::string(args.node.OpType());
-    auto match = handler_map.find(name);
-    if (match != handler_map.end()) {
+bool ProcessTranspose(HandlerArgs& args, bool allow_extended_ops) {
+  std::string key;
+  auto domain = args.node.Domain();
+  auto op_type = args.node.OpType();
+  if (domain == "") {
+    key = std::string(op_type);
+  } else if (domain == "com.microsoft") {
+    key = "com.microsoft." + std::string(op_type);
+  } else {
+    return false;
+  }
+
+  auto match = handler_map.find(key);
+  if (match != handler_map.end()) {
+    HandlerFunction* fn = match->second;
+    return fn(args);
+  } else if (allow_extended_ops) {
+    match = extended_handler_map.find(key);
+    if (match != extended_handler_map.end()) {
       HandlerFunction* fn = match->second;
       return fn(args);
     }
@@ -1145,10 +1147,16 @@ bool ProcessTranspose(HandlerArgs& args) {
   return false;
 }
 
-bool Optimize(api::Graph& graph) {
+bool Optimize(api::Graph& graph, bool allow_extended_ops) {
   auto opset = graph.Opset();
   if (opset == std::nullopt || *opset > 14 || *opset < 7) {
     return false;
+  }
+  if (allow_extended_ops) {
+    auto ms_opset = graph.Opset("com.microsoft");
+    if (ms_opset == std::nullopt || *ms_opset != 1) {
+      allow_extended_ops = false;
+    }
   }
   const std::vector<std::unique_ptr<api::Node>> nodes = graph.Nodes();
   bool changed = false;
@@ -1166,7 +1174,7 @@ bool Optimize(api::Graph& graph) {
         if (perm != std::nullopt) {
           std::vector<int64_t> perm_inv = InvertPerm(*perm);
           HandlerArgs ctx = { *opset, graph, *trans, node, *perm, perm_inv, j, false };
-          if (ProcessTranspose(ctx)) {
+          if (ProcessTranspose(ctx, allow_extended_ops)) {
             changed = true;
             break;
           }
@@ -1177,7 +1185,7 @@ bool Optimize(api::Graph& graph) {
   return changed;
 }
 
-static bool ChangeLayout(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler*>& layout_handler_map, bool last_to_first) {
+static bool ChangeLayout(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler*>& layout_handler_map, bool last_to_first, bool allow_extended_ops) {
   auto opset = graph.Opset();
   if (opset == std::nullopt || *opset > 14 || *opset < 7) {
     return false;
@@ -1231,23 +1239,17 @@ static bool ChangeLayout(api::Graph& graph, std::unordered_map<std::string_view,
     }
   }
   if (changed) {
-    Optimize(graph);
-    Optimize(graph);
+    Optimize(graph, allow_extended_ops);
   }
   return changed;
 }
 
-bool ChannelLastToChannelFirst(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler*>& layout_handler_map) {
-  return ChangeLayout(graph, layout_handler_map, true);
+bool ChannelLastToChannelFirst(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler*>& layout_handler_map, bool allow_extended_ops) {
+  return ChangeLayout(graph, layout_handler_map, /*last_to_first*/ true, allow_extended_ops);
 }
 
-bool ChannelFirstToChannelLast(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler*>& layout_handler_map) {
-  return ChangeLayout(graph, layout_handler_map, false);
-}
-
-void FakeOptimize() {
-  //api::Graph* g = nullptr;
-  //Optimize(*g);
+bool ChannelFirstToChannelLast(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler*>& layout_handler_map, bool allow_extended_ops) {
+  return ChangeLayout(graph, layout_handler_map, /*last_to_first*/ false, allow_extended_ops);
 }
 
 }  // namespace onnx_layout_transformation

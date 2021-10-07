@@ -16,8 +16,8 @@ using namespace onnx_layout_transformation;
 namespace onnxruntime {
 
 Status TransposeOptimizer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
-  auto ort_graph = OrtGraph(graph, cpu_allocator_, logger);
-  onnx_layout_transformation::Optimize(ort_graph);
+  auto ort_graph = OrtGraph(graph, cpu_allocator_, logger, /*new_node_ep*/ nullptr);
+  onnx_layout_transformation::Optimize(ort_graph, /*allow_extended_ops*/ false);
   GraphViewer graph_viewer(graph);
   auto nodes = std::vector<std::unique_ptr<api::Node>>();
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {

@@ -75,8 +75,9 @@ class OrtGraph : public api::Graph {
   std::vector<std::string_view> outputs_;
   AllocatorPtr cpu_allocator_;
   const logging::Logger& logger_;
+  const char* new_node_ep_;
  public:
-  OrtGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator, const logging::Logger& logger);
+  OrtGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator, const logging::Logger& logger, const char* new_node_ep);
   onnxruntime::Graph& Graph() {
     return graph_;
   }
