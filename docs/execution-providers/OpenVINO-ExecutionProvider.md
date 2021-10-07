@@ -116,8 +116,19 @@ Starting from the OpenVINO EP 2021.4 Release, support for external weights is ad
 Converting and Saving an ONNX Model to External Data:
 Use the ONNX API's.[documentation](https://github.com/onnx/onnx/blob/master/docs/ExternalData.md#converting-and-saving-an-onnx-model-to-external-data).
 
-Note: Install the latest ONNX Python package using pip to run these ONNX Python API's successfully.
+Example:
+```bash
+import onnx
+onnx_model = onnx.load("model.onnx") # Your model in memory as ModelProto
+onnx.save_model(onnx_model, 'saved_model.onnx', save_as_external_data=True, all_tensors_to_one_file=True, location='data/weights_data', size_threshold=1024, convert_attribute=False)
+```
 
+Note:
+1. In the above script, model.onnx is loaded and then gets saved into a file called 'saved_model.onnx' which won't have the weights but this new onnx model now will have the relative path to where the weights file is located. The weights file 'weights_data' will now contain the weights of the model and the weights from the original model gets saved at /data/weights_data.
+
+2. Now, you can use this 'saved_model.onnx' file to infer using your sample. But remember, the weights file location can't be changed. The weights have to be present at /data/weights_data
+
+3. Install the latest ONNX Python package using pip to run these ONNX Python API's successfully.
 
 ## Configuration Options
 
