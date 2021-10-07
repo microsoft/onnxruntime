@@ -174,9 +174,7 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
   for (auto arg : non_provider_output_defs_)
     BuildDefsMapping(arg, kernel_registries);
 
-  std::unordered_set<std::string> graph_input_names;
   for (auto arg : graph_.GetInputs()) {
-    graph_input_names.insert(arg->Name());
     // For inputs we need to create a copy node only when the input is connected to both provider
     // and non-provider nodes. Otherwise utils::CopyInputsAcrossDevices() will do the job.
     if (provider_input_defs_.count(arg) && non_provider_input_defs_.count(arg)) {
