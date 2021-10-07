@@ -727,6 +727,7 @@ struct ProviderHost {
   virtual bool Tensor__IsDataType_float(const Tensor* p) noexcept = 0;
   virtual bool Tensor__IsDataType_double(const Tensor* p) noexcept = 0;
   virtual bool Tensor__IsDataType_MLFloat16(const Tensor* p) noexcept = 0;
+  virtual bool Tensor__IsDataType_BFloat16(const Tensor* p) noexcept = 0;
   virtual bool Tensor__IsDataTypeString(const Tensor* p) noexcept = 0;
 
   virtual const TensorShape& Tensor__Shape(const Tensor* p) = 0;

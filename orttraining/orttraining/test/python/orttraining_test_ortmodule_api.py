@@ -23,7 +23,17 @@ from distutils.version import LooseVersion
 
 from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
 
-from onnxruntime.training.ortmodule import ORTModule, _utils, _io, DebugOptions, LogLevel, _fallback, _graph_execution_manager
+from onnxruntime.training.ortmodule import (ORTModule,
+                                            _utils,
+                                            _io,
+                                            DebugOptions,
+                                            LogLevel,
+                                            _fallback,
+                                            _graph_execution_manager)
+
+from onnxruntime.training.optim.fused_adam import FusedAdam
+from transformers import AdamW
+
 import _test_helpers
 
 # Import autocasting libs
@@ -968,6 +978,44 @@ def test_gradient_correctness_argmax_diagonal(offset, dim1, dim2):
 
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+
+# Since multinomial is a generator function, we do not have to test for gradient
+# Two consecutive calls on the torch.multinomail on a probability distribution with more 
+# than one index with non-zero probability(eg, [0, 10, 3, 0]) will not result in 
+# the same output. Thus we reset the seed before each call to the op torch.multinomial.
+@pytest.mark.parametrize("input_shape", ([5], [2,5]))
+@pytest.mark.parametrize("num_samples, replacement", ((1, False), (2, True)))
+def test_aten_multinomial(input_shape, num_samples, replacement):
+    class NeuralNetDiagonal(torch.nn.Module):
+        def __init__(self, num_samples, replacement):
+            super(NeuralNetDiagonal, self).__init__()
+            self.num_samples = num_samples
+            self.replacement = replacement
+
+        def forward(self, input):
+            return torch.multinomial(input, self.num_samples, self.replacement)
+
+    torch.backends.cudnn.deterministic = True
+    device = 'cuda'
+    pt_model = NeuralNetDiagonal(num_samples, replacement).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input):
+        # reset manual seed to reset the generator
+        torch.manual_seed(5032)
+        prediction = model(input)
+        return prediction
+
+    pt_input = torch.rand(input_shape, dtype=torch.float, device=device)
+    ort_input = copy.deepcopy(pt_input)
+    pt_prediction = run_step(pt_model, pt_input)
+    ort_prediction = run_step(ort_model, ort_input)
+    # run the ort prediction again since the first call involves export 
+    # and run step, which means the torch.multinomial is called twice in a row without 
+    # resetting the generator in between, which will result in a different output
+    ort_prediction = run_step(ort_model, ort_input)
+
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
 
 def test_module_with_non_differential_output():
     device = 'cuda'
@@ -3862,7 +3910,7 @@ def test_ortmodule_determinism_flag(is_training,deterministic):
     model = ORTModule(model)
     model.train(is_training)
 
-    for i in range(5):
+    for _ in range(5):
         x = torch.randn(N, D_in)
         _ = model(x)
 
@@ -3900,3 +3948,115 @@ def test_ortmodule_gradient_builder():
     ort_prediction = run_step(ort_model, ort_x)
     _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
     _test_helpers.assert_values_are_close(ort_x.grad, pt_x.grad )
+
+
+def test_override_pytorch_exporter_kwargs():
+    device = 'cuda'
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    x = torch.randn(N, D_in, device=device)
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+
+    ort_model = ORTModule(model)
+    ort_model._torch_module._execution_manager(True)._export_extra_kwargs = {'custom_opsets': None}
+
+    # Make sure model runs without any exception
+    prediction = ort_model(x)
+    assert prediction is not None
+    prediction = prediction.sum()
+    prediction.backward()
+
+
+def test_override_pytorch_exporter_kwargs__invalid():
+    device = 'cuda'
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    x = torch.randn(N, D_in, device=device)
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+
+    ort_model = ORTModule(model)
+    ort_model._torch_module._execution_manager(True)._export_extra_kwargs = {'verbose': False}
+    with pytest.raises(_fallback.ORTModuleONNXModelException) as type_error:
+        _ = ort_model(x)
+    assert "The following PyTorch exporter arguments cannot be specified: '{'verbose'}'." in str(type_error.value)
+
+
+def test_override_pytorch_exporter_kwargs_using_ortmodule_extension__invalid():
+    device = 'cuda'
+
+    class ORTModuleExtension(ORTModule):
+        def __init__(self, module, debug_options=None):
+            super().__init__(module, debug_options)
+            for training_mode in [False, True]:
+                self._torch_module._execution_manager(training_mode)._export_extra_kwargs = {'verbose': None}
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    x = torch.randn(N, D_in, device=device)
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    ort_model = ORTModuleExtension(model)
+
+    with pytest.raises(_fallback.ORTModuleONNXModelException) as type_error:
+        _ = ort_model(x)
+    assert "The following PyTorch exporter arguments cannot be specified: '{'verbose'}'." in str(type_error.value)
+
+def test_override_pytorch_exporter_kwargs_using_ortmodule_extension():
+    device = 'cuda'
+
+    class ORTModuleExtension(ORTModule):
+        def __init__(self, module, debug_options=None):
+            super().__init__(module, debug_options)
+            # modify GraphExecutionManager internally
+            for training_mode in [False, True]:
+                self._torch_module._execution_manager(training_mode)._export_extra_kwargs = {'custom_opsets': None}
+
+    N, D_in, H, D_out = 64, 784, 500, 10
+    x = torch.randn(N, D_in, device=device)
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    ort_model = ORTModuleExtension(model)
+
+    # Make sure model runs without any exception
+    prediction = ort_model(x)
+    assert prediction is not None
+    prediction = prediction.sum()
+    prediction.backward()
+
+def test_ortmodule_fused_adam_optimizer_correctness():
+
+    device = 'cuda'
+    N, D_in, H, D_out = 32, 128, 500, 10
+
+    pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    transformers_adamw_optimizer = AdamW(pt_model.parameters())
+
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    ort_fused_adam_optimizer = FusedAdam(ort_model.parameters())
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, loss
+
+    def run_optim_step(optimizer):
+        optimizer.step()
+        optimizer.zero_grad()
+
+    ga_steps = 2
+    pt_model.zero_grad()
+    ort_model.zero_grad()
+
+    for step in range(10):
+        x = torch.randn(N, D_in, device=device)
+
+        _, pt_loss = run_step(pt_model, x)
+        _, ort_loss = run_step(ort_model, x)
+
+        _test_helpers.assert_values_are_close(pt_loss, ort_loss, rtol=1e-4)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+
+        if (step+1) % ga_steps == 0:
+            run_optim_step(transformers_adamw_optimizer)
+            run_optim_step(ort_fused_adam_optimizer)
+
+            for pt_param, ort_param in zip(pt_model.parameters(), ort_model.parameters()):
+                _test_helpers.assert_values_are_close(pt_param, ort_param)
