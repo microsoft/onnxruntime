@@ -383,8 +383,8 @@ TEST(TransformerTest, MemcpyTransformerTestImplicitInputConsumedOnMultipleDevice
 
   // I1 is a subgraph input that is consumed by 2 MatMul nodes on different devices
   auto& implicit_input_arg = graph.GetOrCreateNodeArg("I2", &tensor_float_type);
-  auto& node1 = subgraph.AddNode("node1", "MatMul", "cpu operator1", ArgMap{&implicit_input_arg, &implicit_input_arg}, ArgMap{&o1_def});
-  auto& node2 = subgraph.AddNode("node2", "MatMul", "gpu operator1", ArgMap{&implicit_input_arg, &implicit_input_arg}, ArgMap{&o2_def});
+  subgraph.AddNode("node1", "MatMul", "cpu operator1", ArgMap{&implicit_input_arg, &implicit_input_arg}, ArgMap{&o1_def});
+  subgraph.AddNode("node2", "MatMul", "gpu operator1", ArgMap{&implicit_input_arg, &implicit_input_arg}, ArgMap{&o2_def});
 
   subgraph.AddOuterScopeNodeArg("I2");
 
