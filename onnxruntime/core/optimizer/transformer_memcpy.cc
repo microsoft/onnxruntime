@@ -211,8 +211,6 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
   if (is_subgraph && !graph_implicit_inputs.empty()) {
     for (auto arg : provider_input_defs_) {
       if (non_provider_input_defs_.count(arg)) {
-        const auto& name = arg->Name();
-
         // We only care about implicit inputs - if it isn't an implicit input,
         // we would have already added copy nodes in all the logic blocks above.
         bool is_implicit_input = (graph_implicit_inputs.find(arg->Name()) != graph_implicit_inputs.end());
