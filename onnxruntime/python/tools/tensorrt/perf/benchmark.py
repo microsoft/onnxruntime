@@ -66,35 +66,43 @@ def is_dynamic(model):
             return True
     return False 
 
-def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
+def run_trt_standalone(trtexec, model_name, model_path, ort_inputs, all_inputs_shape, fp16):
     logger.info("running standalone trt")
     onnx_model_path = "--onnx=" + model_path
     input_shape = []
-
+    loaded_inputs = []
     logger.info(all_inputs_shape)
-
     for i in range(len(ort_inputs)):
         name = ort_inputs[i].name
-
+        loaded_input = name + ':' + str(i) + '.bin'
         shape = []
         for j in all_inputs_shape[i]:
             shape.append(str(j))
         shape = "x".join(shape)
         shape = name + ':' + shape
         input_shape.append(shape)
-    
+        loaded_inputs.append(loaded_input)
+
     shapes_arg = '--optShapes=' + ','.join(input_shape)
     logger.info(shapes_arg)
-    
+    inputs_arg = '--loadInputs=' + ','.join(loaded_inputs)
+    logger.info(inputs_arg)
     result = {}
-    command = [trtexec, onnx_model_path, "--percentile=90", "--explicitBatch"]
+    command = [trtexec, onnx_model_path, "--duration=50", "--percentile=90", "--explicitBatch", "--workspace=4096"]
+    command.extend([inputs_arg])
     
     model = onnx.load(model_path)
     if is_dynamic(model):
         command.extend([shapes_arg])
     if fp16: 
         command.extend(["--fp16"])
-    out = get_output(command)
+    logger.info(command)
+    
+    engine_name = model_name + ".engine"
+    command1 = command + ["--saveEngine=" + engine_name]
+    out = get_output(command1)
+    command2 = command + ["--loadEngine=" + engine_name]
+    out = get_output(command2)
     
     tmp = out.split("\n")
     target_list = []
@@ -116,6 +124,7 @@ def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
     return result
 
 def get_latency_result(runtimes, batch_size):
+    logger.info(runtimes)
     latency_ms = sum(runtimes) / float(len(runtimes)) * 1000.0
     latency_variance = numpy.var(runtimes, dtype=numpy.float64) * 1000.0
     throughput = batch_size * (1000.0 / latency_ms)
@@ -224,6 +233,20 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
             logger.info(sess_outputs)
 
         try:
+            #perf_ep = ''
+            #if ep == cuda or ep == cuda_fp16: 
+            #    perf_ep = 'cuda'
+            #if ep == trt or ep == trt_fp16: 
+            #    perf_ep = 'tensorrt'
+            #if ep == cpu: 
+            #    perf_ep = 'cpu'
+            #command = ['./code/onnxruntime/build/Linux/Release/onnxruntime_perf_test', '-e', 'tensorrt','-t', '50', '-i','"','trt_max_workspace_size|4294967296', 'trt_engine_cache_enable|True']
+            #if trt_fp16 in ep: 
+            #    command.extend['trt_fp16_enable|True']
+            #command.extend(['"', model_path])
+            #if trt in ep or trt_fp16 in ep: 
+            #    out = get_output(command)
+            #os.environ["ORT_TENSORRT_CACHE_PATH"] = "/perf/onnx-zoo-models/renset152-v2-7/TensorrtExecutionProvider_TRTKernel_graph_main_5145462769846823227_1_0_fp16.engine"
             runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
             runtimes += runtime[1:] # remove warmup
         
@@ -312,6 +335,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
         logger.info(input_data)
 
         input_data_pb = []
+        i = 0
         for data in input_data:
             tensor = onnx.TensorProto()
             with open(data, 'rb') as f:
@@ -319,6 +343,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
                 tensor_to_array = numpy_helper.to_array(tensor)
                 if data_type == "fp16" and tensor_to_array.dtype == np.dtype(np.float32):
                     tensor_to_array = tensor_to_array.astype(np.float16)
+                tensor_to_array.tofile(str(i) + ".bin")
                 input_data_pb.append(tensor_to_array)
                 if not shape_flag:
                     all_inputs_shape.append(input_data_pb[-1].shape)
@@ -848,7 +873,14 @@ def run_symbolic_shape_inference(model_path, new_model_path):
 def create_session(model_path, providers, session_options):
     logger.info(model_path)
     try:
+        
+        #po = [{'trt_max_workspace_size': '4294967296', 'trt_engine_cache_enable':'True', 'trt_engine_cache_path':'/perf/onnx-zoo-models/renset152-v2-7/TensorrtExecutionProvider_TRTKernel_graph_main_5145462769846823227_1_0_fp16.engine'}]
         session = onnxruntime.InferenceSession(model_path, providers=providers, sess_options=session_options)
+#        if trt in providers or trt_fp16 in providers:
+ #       else: 
+  #          session.set_providers(providers)
+
+        #session = onnxruntime.InferenceSession(model_path, providers=providers, sess_options=session_options)
         return session
     except Exception as e:
         if "shape inference" in str(e):
@@ -954,7 +986,6 @@ def run_onnxruntime(args, models):
                 fp16 = True
             
             inputs, ref_outputs = get_test_data(fp16, test_data_dir, all_inputs_shape)
-
             # generate random input data
             if args.input_data == "random":
                 inputs = generate_onnx_model_random_input(args.test_times+1, inputs[0])
@@ -994,10 +1025,10 @@ def run_onnxruntime(args, models):
                     try: 
                         if args.track_memory: 
                             p = start_memory_tracking()            
-                            result = run_trt_standalone(args.trtexec, model_path, sess.get_inputs(), all_inputs_shape, fp16)
+                            result = run_trt_standalone(args.trtexec, name, model_path, sess.get_inputs(), all_inputs_shape, fp16)
                             mem_usage = end_memory_tracking(p, trtexec, True)
                         else: 
-                            result = run_trt_standalone(args.trtexec, model_path, sess.get_inputs(), all_inputs_shape, fp16)
+                            result = run_trt_standalone(args.trtexec, name, model_path, sess.get_inputs(), all_inputs_shape, fp16)
                     except Exception as e: 
                         logger.error(e)
                         if args.track_memory:
