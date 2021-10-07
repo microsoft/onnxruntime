@@ -17,7 +17,7 @@ nav_order: 2
 
 ## Requirements
 
-The CoreML Execution Provider (EP) requires iOS devices with iOS 13 or higher, or Mac computers with macOS 10.15 or higher. 
+The CoreML Execution Provider (EP) requires iOS devices with iOS 13 or higher, or Mac computers with macOS 10.15 or higher.
 
 It is recommended to use Apple devices equipped with Apple Neural Engine to achieve optimal performance.
 
@@ -33,7 +33,7 @@ For build instructions for iOS devices, please see [How to: Build for Android/iO
 
 ## Usage
 
-The ONNX Runtime API details are [here](../api). 
+The ONNX Runtime API details are [here](../api).
 
 The CoreML EP can be used via the C or C++ APIs currently. Additional support via the Objective-C API is in progress.
 
@@ -75,8 +75,33 @@ Enable CoreML EP to run on a subgraph in the body of a control flow operator (i.
 
 By default the CoreML EP will be enabled for all compatible Apple devices.
 
-Setting this option will only enable CoreML EP for Apple devices with a compatible Apple Neural Engine (ANE). 
-Note, enabling this option does not guarantee the entire model to be executed using ANE only. 
+Setting this option will only enable CoreML EP for Apple devices with a compatible Apple Neural Engine (ANE).
+Note, enabling this option does not guarantee the entire model to be executed using ANE only.
 
 For more information, see [Which devices have an ANE?](https://github.com/hollance/neural-engine/blob/master/docs/supported-devices.md)
 
+## Supported ops
+Following ops are supported by the CoreML Execution Provider,
+
+|Operator|Note|
+|--------|------|
+|ai.onnx:Add||
+|ai.onnx:ArgMax||
+|ai.onnx:AveragePool|Only 2D Pool is supported.|
+|ai.onnx:BatchNormalization||
+|ai.onnx:Cast||
+|ai.onnx:Clip||
+|ai.onnx:Concat||
+|ai.onnx:Conv|Only 1D/2D Conv is supported.<br/>Weights and bias should be constant.|
+|ai.onnx:Gemm|Input B should be constant.|
+|ai.onnx:GlobalAveragePool|Only 2D Pool is supported.|
+|ai.onnx:GlobalMaxPool|Only 2D Pool is supported.|
+|ai.onnx:MatMul|Input B should be constant.|
+|ai.onnx:MaxPool|Only 2D Pool is supported.|
+|ai.onnx:Relu||
+|ai.onnx:Reshape||
+|ai.onnx:Resize||
+|ai.onnx:Sigmoid||
+|ai.onnx:Squeeze||
+|ai.onnx:Tanh||
+|ai.onnx:Transpose||
