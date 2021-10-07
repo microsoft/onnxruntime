@@ -273,7 +273,6 @@ class TrainingManager(GraphExecutionManager):
             # Exceptions subject to fallback are handled here
             self._fallback_manager.handle_exception(exception=e,
                                                     log_level=self._debug_options.logging.log_level)
-
         except Exception as e:
             # Catch-all FALLBACK_FORCE_TORCH_FORWARD fallback is handled here
             self._fallback_manager.handle_exception(exception=e,
