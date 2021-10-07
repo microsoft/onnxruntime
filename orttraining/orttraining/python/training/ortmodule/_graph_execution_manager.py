@@ -25,6 +25,7 @@ from onnxruntime.capi import _pybind_state as C
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 from abc import ABC, abstractmethod
 import copy
+from functools import reduce
 import io
 import inspect
 import os
@@ -32,6 +33,7 @@ import onnx
 import onnxruntime
 import torch
 import warnings
+from enum import IntFlag
 
 from torch.utils.cpp_extension import ROCM_HOME
 
@@ -44,6 +46,28 @@ class _RunStateInfo(object):
         """
         self.state = state
         self.output_info = output_info
+
+
+class _SkipCheck(IntFlag):
+    """Enumeration to specify which checks should be skipped, allowing faster execution"""
+
+    SKIP_CHECK_DISABLED = 1
+    SKIP_CHECK_DEVICE = 2
+    SKIP_CHECK_BUILD_GRADIENT = 4
+    SKIP_CHECK_EXECUTION_AGENT = 8
+
+    def is_set(self, check):
+        """Check whether `check` is set on the `_SkipCheck instance
+
+        SKIP_CHECK_DISABLED implies the check will return False
+        """
+
+        return not _SkipCheck.is_disabled(self) and check in self
+
+    def is_disabled(self):
+        """Check whether `_SkipCheck.SKIP_CHECK_DISABLED is set on the `_SkipCheck instance"""
+
+        return _SkipCheck.SKIP_CHECK_DISABLED in self
 
 
 class GraphExecutionManager(GraphExecutionInterface):
@@ -74,9 +98,12 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._execution_agent = None
 
         # indicators of some logic have been executed previously thus could be skipped for faster training
-        # default is enabled, if not define in os env; but will be disabled with any exception
-        skip_check_enabled = _utils._SkipCheck.SKIP_CHECK_DEVICE | _utils._SkipCheck.SKIP_CHECK_BUILD_GRADIENT | _utils._SkipCheck.SKIP_CHECK_EXECUTION_AGENT
-        self._skip_check = _utils.get_skip_check_flags(_utils._SkipCheck(skip_check_enabled))
+        # default is enabled, if not define in os env
+        self._skip_check = _SkipCheck(_SkipCheck.SKIP_CHECK_DEVICE | _SkipCheck.SKIP_CHECK_BUILD_GRADIENT | _SkipCheck.SKIP_CHECK_EXECUTION_AGENT)        
+        if os.getenv('ORTMODULE_SKIPCHECK_POLICY') is not None:
+            self._skip_check = reduce(lambda x, y: x | y,
+                                      [_SkipCheck[name] for name in
+                                        _utils.parse_os_env_skip_check_flags('ORTMODULE_SKIPCHECK_POLICY')])
         self._first_skip_check_warning = True
 
         # Graph transformer config

@@ -26,7 +26,8 @@ from onnxruntime.training.ortmodule import (ORTModule,
                                             _io,
                                             DebugOptions,
                                             LogLevel,
-                                            _fallback)
+                                            _fallback,
+                                            _graph_execution_manager)
 import _test_helpers
 
 # Import autocasting libs
@@ -3886,10 +3887,10 @@ def test_ortmodule_ortmodule_method_attribute_copy():
         torch.__version__) >= LooseVersion('1.10.0') else 'AddmmBackward'
 
 @pytest.mark.parametrize("policy_str, policy",[
-    ('SKIP_CHECK_DISABLED', _utils._SkipCheck.SKIP_CHECK_DISABLED),
-    ('SKIP_CHECK_DEVICE', _utils._SkipCheck.SKIP_CHECK_DEVICE),
-    ('SKIP_CHECK_BUILD_GRADIENT', _utils._SkipCheck.SKIP_CHECK_BUILD_GRADIENT),
-    ('SKIP_CHECK_EXECUTION_AGENT', _utils._SkipCheck.SKIP_CHECK_EXECUTION_AGENT),
+    ('SKIP_CHECK_DISABLED', _graph_execution_manager._SkipCheck.SKIP_CHECK_DISABLED),
+    ('SKIP_CHECK_DEVICE', _graph_execution_manager._SkipCheck.SKIP_CHECK_DEVICE),
+    ('SKIP_CHECK_BUILD_GRADIENT', _graph_execution_manager._SkipCheck.SKIP_CHECK_BUILD_GRADIENT),
+    ('SKIP_CHECK_EXECUTION_AGENT', _graph_execution_manager._SkipCheck.SKIP_CHECK_EXECUTION_AGENT),
 ])
 def test_ortmodule_skip_check_load_from_os_env(policy_str, policy):
     device = 'cuda'
