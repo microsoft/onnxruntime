@@ -198,6 +198,7 @@ def check_for_name_collisions_and_bind_methods_to_ortmodule(ortmodule: torch.nn.
 
 def parse_os_env_skip_check_flags(env_name):
     """Returns a list of SkipChecks as defined by os env variable env_name"""
+
     return os.getenv(env_name).split('|')
 
 def get_exception_as_string(exception):
