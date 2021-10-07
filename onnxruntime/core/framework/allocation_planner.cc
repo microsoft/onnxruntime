@@ -704,7 +704,7 @@ class PlannerImpl {
         // transformer and the model will crash while running. The Memcpy transformer
         // is supposed to duplicate initializers being used on different devices within
         // the same graph level and hence we should never see an initializer being used
-        // in different devices here.
+        // on different devices here.
         // The same initializer being used on different devices across graph levels
         // (subgraphs) is okay and utils::CopyInputsAcrossDevices() will take it to
         // the right device before subgraph execution.
@@ -744,14 +744,14 @@ class PlannerImpl {
     // We do not need to maintain a vector of locations that a weight is used in.
     // We only need to know the location of its first usage because:
     // (1) If the initializer is used in the graph level it is introduced in, then it can
-    // only be used in one device as the Memcpy transformer will duplicate the initializer
-    // (with a different name) in case it is used in multiple devices.
-    // In case, the initializer is also additionally used in one of the subgraphs, we rely
+    // only be used on one device as the Memcpy transformer will duplicate the initializer
+    // (with a different name) in case it is used on multiple devices.
+    // If the initializer is also additionally used in one of the subgraphs, we rely
     // on the utils::CopyInputsAcrossDevices() to copy it over to the appropriate device
     // before the subgraphs are executed.
     // (2) If the initializer is NOT used in the level it is introduced in and only used
     // in subgraphs, even then knowing its first usage location is enough as it can't be
-    // used in different devices within the same graph level (see (1) for reason), and for
+    // used on different devices within the same graph level (see (1) for reason), and for
     // nested subgraphs, we can rely on the utils::CopyInputsAcrossDevices() to copy it
     // over to the appropriate device before the subgraphs are executed.
     std::vector<std::vector<OrtMemoryInfo>> locations(plan_.allocation_plan.size());
