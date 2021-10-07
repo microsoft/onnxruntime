@@ -364,7 +364,6 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/datasets
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/featurizer_ops
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model/ort_flatbuffers_py
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers
@@ -414,9 +413,6 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_tools_srcs}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/
-  COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_tools_featurizers_src}
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/featurizer_ops/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_ort_format_model_conversion_srcs}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/
