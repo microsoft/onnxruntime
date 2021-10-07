@@ -61,8 +61,6 @@ Status MakeCooSparse::Compute(OpKernelContext* ctx) const {
   const auto indices_span = indices_input.DataAsSpan<int64_t>();
   const auto indices_ndims = indices_input.Shape().NumDimensions();
   const auto dense_ndims = dense_shape.NumDimensions();
-  ORT_RETURN_IF(indices_ndims > dense_ndims,
-                "indices must not have more dimensions than dense_shape");
   if (indices_ndims == 1) {
     VerifyFlatIndices(indices_span, dense_values_count);
   } else if (indices_ndims == 2) {
