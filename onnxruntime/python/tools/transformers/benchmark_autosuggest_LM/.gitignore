@@ -8,3 +8,5 @@ dlis/*
 dlis_tokenizer/*
 
 
+10KPrefixes_RandomSet_WithRepeat_set1_result_dlis_original_top_8.tsv
+10KPrefixes_RandomSet_WithRepeat_set1_result_onnx_original_top_8.tsv
