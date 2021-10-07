@@ -29,6 +29,7 @@ function getNextUserDataDir() {
   const dir = path.resolve(CHROME_USER_DATA_FOLDER, nextUserDataDirId.toString())
   nextUserDataDirId++;
   fs.emptyDirSync(dir);
+  return dir;
 }
 
 // find packed package
