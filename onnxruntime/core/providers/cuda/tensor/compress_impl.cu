@@ -13,9 +13,8 @@
 
 #include "core/providers/cuda/tensor/compress_impl.h"
 
-#include <thrust/scan.h>
-#include <thrust/iterator/transform_iterator.h>
 #include <thrust/functional.h>
+#include <thrust/iterator/transform_iterator.h>
 
 namespace onnxruntime {
 namespace cuda {
