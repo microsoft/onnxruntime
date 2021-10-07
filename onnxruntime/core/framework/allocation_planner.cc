@@ -748,6 +748,7 @@ class PlannerImpl {
       plan_.allocation_plan[i].value_type = utils::GetMLDataType(*node_arg);
       plan_.allocation_plan[i].life_interval = std::pair<size_t, size_t>(0, max_pc);
 #endif
+      /*
       for (size_t j = 0; j != loc.size(); ++j) {
         if (loc[j] != loc[0]) {
           // set the location to CPU
@@ -755,6 +756,7 @@ class PlannerImpl {
           break;
         }
       }
+      */
     }
     return Status::OK();
   }
