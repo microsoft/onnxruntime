@@ -174,28 +174,25 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
   for (auto arg : non_provider_output_defs_)
     BuildDefsMapping(arg, kernel_registries);
 
-  for (auto arg : graph_.GetInputs()) {
+  for (auto arg : graph_.GetInputs())
     // For inputs we need to create a copy node only when the input is connected to both provider
     // and non-provider nodes. Otherwise utils::CopyInputsAcrossDevices() will do the job.
     if (provider_input_defs_.count(arg) && non_provider_input_defs_.count(arg)) {
       AddCopyNode(const_cast<onnxruntime::NodeArg*>(arg), true);
       modified = true;
     }
-  }
 
-  for (auto arg : non_provider_output_defs_) {
+  for (auto arg : non_provider_output_defs_)
     if (provider_input_defs_.count(arg)) {
       AddCopyNode(arg, true);
       modified = true;
     }
-  }
 
-  for (auto arg : provider_output_defs_) {
+  for (auto arg : provider_output_defs_)
     if (non_provider_input_defs_.count(arg)) {
       AddCopyNode(arg, false);
       modified = true;
     }
-  }
 
   // Process implicit inputs in subgraphs that is explicitly consumed
   // on both provider and non-provider nodes. This is mimicking
