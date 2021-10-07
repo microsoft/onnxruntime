@@ -185,7 +185,7 @@ TEST(BiasDropoutTest, EmptyRatio) {
   RunBiasDropoutTest(true, {2, 7, 1024});
 }
 
-// has_same_bias_shape = true
+// has_same_bias_shape == true
 TEST(BiasDropoutTest, BasicBiasSameShape) {
   RunBiasDropoutTest(false, {10, 10, 10}, 0.75f, TrainingTrue, false, true, true);
 }
