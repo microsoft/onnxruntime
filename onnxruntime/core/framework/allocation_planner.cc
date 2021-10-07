@@ -748,11 +748,11 @@ class PlannerImpl {
       plan_.allocation_plan[i].value_type = utils::GetMLDataType(*node_arg);
       plan_.allocation_plan[i].life_interval = std::pair<size_t, size_t>(0, max_pc);
 #endif
-      // Sanity check - make sure all the locations this initializer is being used in are the same
       for (size_t j = 0; j != loc.size(); ++j) {
         if (loc[j] != loc[0]) {
-          // This points to a severe bug in the Memcpy Transformer - no point in continuing
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Initializers consumed on multiple devices is not supported");
+          // set the location to CPU
+          plan_.allocation_plan[i].location = execution_providers_.GetDefaultCpuMemoryInfo();
+          break;
         }
       }
     }

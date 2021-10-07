@@ -13,8 +13,8 @@ namespace onnxruntime {
 // note that GraphTransformer::Apply() is supposed to be stateless, so this cannot derive from GraphTranformer
 class TransformerMemcpyImpl {
  public:
-  TransformerMemcpyImpl(onnxruntime::Graph& graph, const std::string& provider, GraphInitializersLocationInfo& graph_initializers_location_info)
-      : graph_(graph), provider_(provider), graph_initializers_location_info_(graph_initializers_location_info) {}
+  TransformerMemcpyImpl(onnxruntime::Graph& graph, const std::string& provider)
+      : graph_(graph), provider_(provider) {}
 
   bool ModifyGraph(const KernelRegistryManager& schema_registries);
 
@@ -24,6 +24,7 @@ class TransformerMemcpyImpl {
   void AddCopyNode(onnxruntime::NodeArg* arg, bool is_input);
   bool ProcessInitializers(const KernelRegistryManager& kernel_registries, const InitializedTensorSet& initializers_consumed);
 
+ private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TransformerMemcpyImpl);
 
   // use value-based compare to make sure transformer output order is consistent
@@ -43,9 +44,6 @@ class TransformerMemcpyImpl {
 
   onnxruntime::Graph& graph_;
   std::string provider_;
-
-  // Holds location info of all initializers in the model
-  GraphInitializersLocationInfo graph_initializers_location_info_;
 };
 
 /** Helper that returns a pointer to the corresponding TensorProto for a name if it is an initializer.
@@ -61,108 +59,53 @@ static const onnx::TensorProto* GetInitializer(const Graph& graph, const std::st
   return initializer;
 }
 
-void GraphInitializersLocationInfo::AccumulateInitializerLocations(Graph& graph,
-                                                                   const InitializedTensorSet& initializers,
-                                                                   const KernelRegistryManager& kernel_registries,
-                                                                   /*out*/ std::unordered_map<std::string, std::unordered_set<int>>& initializer_to_location_map) const {
+/** Helper that checks if a given NodeArg is an explicitly consumed input by a provider node
+* Return true if it is explicitly consumed and false if it is implicitly consumed
+*/
+static bool IsExplicitlyConsumedByProviderNodeInCurrentGraphLevel(const NodeArg* arg,
+                                                                  Graph& graph,
+                                                                  const std::string& provider_name) {
   for (auto& node : graph.Nodes()) {
-    int index = 0;
-    for (auto input : node.InputDefs()) {
-      if (input) {
-        const auto& def_name = input->Name();
-        if (initializers.count(def_name) > 0) {
-          auto map_iter = initializer_to_location_map.find(def_name);
-
-          if (map_iter == initializer_to_location_map.end()) {
-            initializer_to_location_map.insert({def_name, {}});
-          }
-
-          const KernelCreateInfo* kci = nullptr;
-          kernel_registries.SearchKernelRegistry(node, &kci);
-
-          if (node.GetExecutionProviderType() == kCpuExecutionProvider || utils::IsInputOnCpu(node, kci, index)) {
-            initializer_to_location_map[def_name].insert(0);  // 0 for non-providers
-          } else {
-            initializer_to_location_map[def_name].insert(1);  // 1 for providers
-          }
+    auto node_provider_type = node.GetExecutionProviderType();
+    // This is the same logic used in TransformerMemcpyImpl::ProcessDefs() to identify a "provider" node
+    if ((node_provider_type == provider_name) ||
+        (node_provider_type == kCudaExecutionProvider && kTensorrtExecutionProvider == provider_name)) {
+      for (auto input_arg : node.InputDefs()) {
+        if (input_arg->Exists() && input_arg == arg) {
+          return true;
         }
       }
-
-      ++index;
-    }
-
-    // Recurse into subgraphs
-    for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
-      auto& subgraph = *entry.second;
-      AccumulateInitializerLocations(subgraph, initializers,
-                                     kernel_registries, initializer_to_location_map);
     }
   }
+  // If we reach here, then this arg is only implicitly consumed in the current level
+  return false;
 }
 
-void GraphInitializersLocationInfo::CreateProviderInitializerDuplicates(Graph& graph, const KernelRegistryManager& kernel_registries) {
-  const auto& graph_initializers = graph.GetAllInitializedTensors();
-  // TODO: Support shadow initializers
-  // It is uncommon to see shadow initializers (i.e.) an initializer re-defined in a subgraph
-  // while the outer level graph(s) have different initializers defined for the same name.
-  // To support that adds some amount of complexity, so we will support it if we see a use-case.
-
-  for (auto& pair : graph_initializers) {
-    // We have already added an initializer with the same name while processing one of the outer graphs,
-    // so break if we see shadow initializers
-    if ((provider_initializer_names_.count(pair.first) > 0) || (non_provider_initializer_names_.count(pair.first) > 0)) {
-      ORT_THROW(
-          "Shadow initializers are currently unsupported in ORT. "
-          "Consider using a new initializer (different name) for the shadow initializer");
+/** Helper that checks if a given NodeArg is an explicitly consumed input by a non-provider node
+* Return true if it is explicitly consumed and false if it is implicitly consumed
+*/
+static bool IsExplicitlyConsumedByNonProviderNodeInCurrentGraphLevel(const NodeArg* arg,
+                                                                     Graph& graph) {
+  for (auto& node : graph.Nodes()) {
+    auto node_provider_type = node.GetExecutionProviderType();
+    // This is the same logic used in TransformerMemcpyImpl::ProcessDefs() to identify a "non-provider" node
+    if (node_provider_type != kCudaExecutionProvider && node_provider_type != kTensorrtExecutionProvider) {
+      for (auto input_arg : node.InputDefs()) {
+        if (input_arg->Exists() && input_arg == arg) {
+          return true;
+        }
+      }
     }
   }
-
-  std::unordered_map<std::string, std::unordered_set<int>> initializer_to_location_map;
-  AccumulateInitializerLocations(graph, graph_initializers, kernel_registries, initializer_to_location_map);
-
-  for (auto& pair : initializer_to_location_map) {
-    const auto& def_name = pair.first;
-    const auto& usage_count_set = pair.second;
-
-    bool is_used_by_non_provider_nodes = usage_count_set.count(0) > 0;
-
-    bool is_used_by_provider_nodes = usage_count_set.count(1) > 0;
-
-    // We make a copy of the initializer that is to be consumed by the provider node so that
-    // session state initializer can copy it over to the provider device during its operation
-    // NOTE: We only need to make a copy if the initializer is consumed by both provider and
-    // non-provider nodes, not if they are only consumed by one group of nodes
-    if (is_used_by_non_provider_nodes && is_used_by_provider_nodes) {
-      std::string dupe_name = graph.GenerateNodeArgName(pair.first);
-
-      // No need to check outer scope
-      // we are only processing initializers introduced in the current level of the graph
-      const TensorProto* tensor_proto = GetInitializer(graph, def_name, false);
-      ORT_ENFORCE(tensor_proto);  // Sanity check
-      TensorProto new_tensor_proto = *tensor_proto;
-      *(new_tensor_proto.mutable_name()) = dupe_name;
-      graph.AddInitializedTensor(new_tensor_proto);
-
-      non_provider_initializer_names_.insert(def_name);  // Original initializer for non-provider nodes
-      provider_initializer_names_.insert(dupe_name);     // New initializer for provider nodes
-
-      non_provider_initializer_names_to_provider_dupe_initializer_names_.insert({def_name, dupe_name});
-    } else if (is_used_by_non_provider_nodes) {
-      non_provider_initializer_names_.insert(def_name);
-    } else {
-      provider_initializer_names_.insert(def_name);
-    }
-  }
+  // If we reach here, then this arg is only implicitly consumed in the current level
+  return false;
 }
-
 // very simple GraphTransformer that uses TransformerMemcpyImpl for each graph
 // and mainly provides the subgraph recursion functionality
 common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   for (auto& provider : provider_types_) {
     if (!utils::ProviderIsCpuBased(provider)) {
-      // Accumulate initializers' location info for all subgraphs
-      graph_initializers_location_info_.CreateProviderInitializerDuplicates(graph, registry_manager_);
-      TransformerMemcpyImpl copy_impl(graph, provider, graph_initializers_location_info_);
+      TransformerMemcpyImpl copy_impl(graph, provider);
       auto current_modified = copy_impl.ModifyGraph(registry_manager_);
       modified = modified || current_modified;
       break;
@@ -231,25 +174,73 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
   for (auto arg : non_provider_output_defs_)
     BuildDefsMapping(arg, kernel_registries);
 
-  for (auto arg : graph_.GetInputs())
+  std::unordered_set<std::string> graph_input_names;
+  for (auto arg : graph_.GetInputs()) {
+    graph_input_names.insert(arg->Name());
     // For inputs we need to create a copy node only when the input is connected to both provider
     // and non-provider nodes. Otherwise utils::CopyInputsAcrossDevices() will do the job.
     if (provider_input_defs_.count(arg) && non_provider_input_defs_.count(arg)) {
       AddCopyNode(const_cast<onnxruntime::NodeArg*>(arg), true);
       modified = true;
     }
+  }
 
-  for (auto arg : non_provider_output_defs_)
+  for (auto arg : non_provider_output_defs_) {
     if (provider_input_defs_.count(arg)) {
       AddCopyNode(arg, true);
       modified = true;
     }
+  }
 
-  for (auto arg : provider_output_defs_)
+  for (auto arg : provider_output_defs_) {
     if (non_provider_input_defs_.count(arg)) {
       AddCopyNode(arg, false);
       modified = true;
     }
+  }
+
+  // Process implicit inputs in subgraphs that is explicitly consumed
+  // on both provider and non-provider nodes. This is mimicking
+  // logic for graph inputs for implicit graph inputs.
+  std::unordered_set<std::string> graph_implicit_inputs;
+  bool is_subgraph = (graph_.ParentGraph() != nullptr);
+
+  if (is_subgraph) {
+    for (auto arg : graph_.ParentNode()->ImplicitInputDefs()) {
+      if (arg->Exists()) {
+        graph_implicit_inputs.insert(arg->Name());
+      }
+    }
+  }
+
+  if (is_subgraph && !graph_implicit_inputs.empty()) {
+    for (auto arg : provider_input_defs_) {
+      if (non_provider_input_defs_.count(arg)) {
+        const auto& name = arg->Name();
+
+        // We only care about implicit inputs - if it isn't an implicit input,
+        // we would have already added copy nodes in all the logic blocks above.
+        bool is_implicit_input = (graph_implicit_inputs.find(arg->Name()) != graph_implicit_inputs.end());
+
+        // There should be at-least one explicit consumer of the NodeArg
+        // in both the provider node list and the non-provider node list.
+        // If there are no explicit consumers in both lists, we don't want
+        // to get into the business of adding copy nodes at this
+        // level.
+        // If there are explicit consumers in only one list (either provider
+        // or non-provider node consumers), there isn't any point in adding
+        // copy nodes in that case either as subgraph copy logic will take
+        // it to the required device (i.e.) we don't need to care about it here.
+
+        if (is_implicit_input &&
+            IsExplicitlyConsumedByProviderNodeInCurrentGraphLevel(arg, graph_, provider_) &&
+            IsExplicitlyConsumedByNonProviderNodeInCurrentGraphLevel(arg, graph_)) {
+          AddCopyNode(const_cast<onnxruntime::NodeArg*>(arg), true);
+          modified = true;
+        }
+      }
+    }
+  }
 
   return modified;
 }
@@ -268,7 +259,6 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
     auto process_inputs =
         [this, &node, &kci, &initializers_consumed, &is_implicit_input](const onnxruntime::NodeArg& arg, size_t index) {
           // check if this NodeArg is an initializer defined in current outer graph level
-
           const auto* initializer_tensor_proto = GetInitializer(graph_, arg.Name(), true);
           if (initializer_tensor_proto != nullptr) {
             initializers_consumed[arg.Name()] = initializer_tensor_proto;
@@ -319,6 +309,9 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
         non_provider_input_defs_.insert(arg);
     }
 
+    // TODO: Investigate if we need the following logic
+    // There should be no need to add an implicit def to non_provider_input_defs_.
+    // Since this has been around for sometime, remove after a thorough investigation/ testing.
     for (const auto* arg : node.ImplicitInputDefs()) {
       if (arg->Exists())
         non_provider_input_defs_.insert(arg);
@@ -333,12 +326,13 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
 
 //for non_provider defs, collect the nodes that expect it is provider tensor as input/output.
 void TransformerMemcpyImpl::BuildDefsMapping(const onnxruntime::NodeArg* arg, const KernelRegistryManager& kernel_registries) {
+  const auto& name = arg->Name();
   for (auto& it : graph_.Nodes()) {
     if (it.OpType() == "MemcpyFromHost" || it.OpType() == "MemcpyToHost") continue;
     auto input_it =
-        std::find(it.MutableInputDefs().begin(), it.MutableInputDefs().end(), const_cast<onnxruntime::NodeArg*>(arg));
+        std::find(it.MutableInputDefs().begin(), it.MutableInputDefs().end(), arg);
     auto output_it =
-        std::find(it.MutableOutputDefs().begin(), it.MutableOutputDefs().end(), const_cast<onnxruntime::NodeArg*>(arg));
+        std::find(it.MutableOutputDefs().begin(), it.MutableOutputDefs().end(), arg);
     int arg_input_index =
         input_it != it.MutableInputDefs().end() ? static_cast<int>(input_it - it.MutableInputDefs().begin()) : -1;
     int arg_output_index =
@@ -350,10 +344,14 @@ void TransformerMemcpyImpl::BuildDefsMapping(const onnxruntime::NodeArg* arg, co
       const KernelCreateInfo* kci = nullptr;
       kernel_registries.SearchKernelRegistry(it, &kci);
       if (arg_input_index != -1) {
-        if (!kci || !utils::IsInputOnCpu(it, kci, arg_input_index)) provider_input_nodes_[arg].insert(&it);
+        if (!kci || !utils::IsInputOnCpu(it, kci, arg_input_index)) {
+          provider_input_nodes_[const_cast<onnxruntime::NodeArg*>(arg)].insert(&it);
+        }
       }
       if (arg_output_index != -1) {
-        if (!kci || !kci->kernel_def->IsOutputOnCpu(arg_output_index)) provider_output_nodes_[arg].insert(&it);
+        if (!kci || !kci->kernel_def->IsOutputOnCpu(arg_output_index)) {
+          provider_output_nodes_[const_cast<onnxruntime::NodeArg*>(arg)].insert(&it);
+        }
       }
     }
   }
@@ -376,6 +374,7 @@ void TransformerMemcpyImpl::AddCopyNode(onnxruntime::NodeArg* arg, bool is_input
                                   std::vector<onnxruntime::NodeArg*>{dst_arg});
   new_node.SetExecutionProviderType(provider_);
   std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> map = {{arg, new_arg}};
+
   auto it = provider_input_nodes_.find(arg);
   if (it != provider_input_nodes_.end()) {
     for (auto* node : it->second)
@@ -400,45 +399,30 @@ static const onnxruntime::NodeArg* FindNodeArg(const NodeArgSetType& def_set, co
 // We duplicate any initializer that is used by both provider nodes and non-provider nodes
 // to ensure that provider nodes and non-provider nodes don't share initializers, as they
 // need to stay in different memory locations.
-bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& kernel_registries,
-                                                const InitializedTensorSet& initializers_consumed) {
+bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& kernel_registries, const InitializedTensorSet& initializers_consumed) {
   std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacements;
   for (const auto& pair : initializers_consumed) {
     const auto& name = pair.first;
-
     const onnxruntime::NodeArg* provider_def = FindNodeArg(provider_input_defs_, name);
     const onnxruntime::NodeArg* non_provider_def = FindNodeArg(non_provider_input_defs_, name);
-
     if (provider_def != nullptr && non_provider_def != nullptr) {
-      ORT_ENFORCE(graph_initializers_location_info_.non_provider_initializer_names_.find(name) !=
-                  graph_initializers_location_info_.non_provider_initializer_names_.end());
-
-      ORT_ENFORCE(graph_initializers_location_info_.non_provider_initializer_names_to_provider_dupe_initializer_names_.find(name) !=
-                  graph_initializers_location_info_.non_provider_initializer_names_to_provider_dupe_initializer_names_.end());
-
-      // Use the duplicate def name we have created just for this scenario
-      const auto& new_def_name = graph_initializers_location_info_.non_provider_initializer_names_to_provider_dupe_initializer_names_[name];
-
+      std::string new_def_name = graph_.GenerateNodeArgName(name);
       auto& new_def = graph_.GetOrCreateNodeArg(new_def_name, provider_def->TypeAsProto());
-      replacements.insert(std::make_pair(provider_def, &new_def));
-    } else if (provider_def != nullptr) {
-      // This def is consumed by a provider node
-      // If this initializer is ONLY consumed by provider nodes, then we don't need to use
-      // the duplicate initializer. Look into the provider_initializer_names_ map to know
-      // if this is the case.
-      // Else, use the duplicate initializer
-      auto iter = graph_initializers_location_info_.provider_initializer_names_.find(name);
 
-      if (iter == graph_initializers_location_info_.provider_initializer_names_.end()) {
-        // Use the duplicate def name we have created just for this scenario
-        ORT_ENFORCE(graph_initializers_location_info_.non_provider_initializer_names_to_provider_dupe_initializer_names_.find(name) !=
-                    graph_initializers_location_info_.non_provider_initializer_names_to_provider_dupe_initializer_names_.end());
-        const auto& new_def_name = graph_initializers_location_info_.non_provider_initializer_names_to_provider_dupe_initializer_names_[name];
-        auto& new_def = graph_.GetOrCreateNodeArg(new_def_name, provider_def->TypeAsProto());
-        replacements.insert(std::make_pair(provider_def, &new_def));
-      }
-    } else {
-      // For non_provider defs, there is no action - stick to using the original initializer
+      // We make a copy of the initializer that is to be consumed by the provider Node so that
+      // session state initializer can copy it over to the provider device during its operation
+      // TODO: The copy being made is possibly redundant if this occurs in a subgraph
+      // When multiple subgraphs consume the same initializer as an implicit input,
+      // multiple copies of the initializer will be made into the provider device
+      // This should not directly affect runtime performance as the copies occur during initialization
+      // but overuse of the provider device's memory is definitely inefficient
+      // In future, we need to "statefully" make the copy only once and use it in all subgraphs referencing the initializer
+      const TensorProto* tensor_proto = pair.second;
+      TensorProto new_tensor_proto = *tensor_proto;
+      *(new_tensor_proto.mutable_name()) = new_def_name;
+      graph_.AddInitializedTensor(new_tensor_proto);
+
+      replacements.insert(std::make_pair(provider_def, &new_def));
     }
   }
 
