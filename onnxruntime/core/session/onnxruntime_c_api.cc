@@ -2099,6 +2099,13 @@ ORT_API_STATUS_IMPL(OrtApis::SetThreadPool, _In_ OrtSession* session, _In_ OrtTh
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SetSessionThreadPool, _In_ OrtSessionOptions* session_options, _In_ OrtThreadPoolBase* thread_pool) {
+  API_IMPL_BEGIN
+  session_options->value.thread_pool = thread_pool;
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString,
@@ -2373,6 +2380,7 @@ static constexpr OrtApi ort_api_1_to_10 = {
     // End of Version 9 - DO NOT MODIFY ABOVE (see above text for more information)
 
     &OrtApis::SetThreadPool,
+    &OrtApis::SetSessionThreadPool,
     // Version 10 - In development, feel free to add/remove/rearrange here
 };
 

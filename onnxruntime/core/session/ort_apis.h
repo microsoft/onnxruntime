@@ -277,6 +277,7 @@ ORT_API_STATUS_IMPL(CreateSessionFromArrayWithPrepackedWeightsContainer, _In_ co
                     _In_ const OrtSessionOptions* options, _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
                     _Outptr_ OrtSession** out);
 ORT_API_STATUS_IMPL(SetThreadPool, _In_ OrtSession* session, _In_ OrtThreadPoolBase* thread_pool);
+ORT_API_STATUS_IMPL(SetSessionThreadPool, _In_ OrtSessionOptions* session_options, _In_ OrtThreadPoolBase* thread_pool);
 ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_TensorRT_V2,
                     _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options);
 ORT_API_STATUS_IMPL(CreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptionsV2** out);

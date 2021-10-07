@@ -2980,6 +2980,10 @@ struct OrtApi {
   /** set a custom thread pool
   */
   ORT_API2_STATUS(SetThreadPool, _In_ OrtSession* session, _In_ OrtThreadPoolBase* thread_pool);
+
+  /** set custom thread pool for the session
+  */
+  ORT_API2_STATUS(SetSessionThreadPool, _In_ OrtSessionOptions* session_options, _In_ OrtThreadPoolBase* thread_pool);
   /// @}
 };
 

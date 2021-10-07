@@ -510,6 +510,11 @@ inline SessionOptions& SessionOptions::AppendExecutionProvider_TensorRT(const Or
   return *this;
 }
 
+inline SessionOptions& SessionOptions::SetSessionThreadPool(OrtThreadPoolBase* thread_pool) {
+  ThrowOnError(GetApi().SetSessionThreadPool(p_, thread_pool));
+  return *this;
+}
+
 inline SessionOptions& SessionOptions::AppendExecutionProvider_OpenVINO(const OrtOpenVINOProviderOptions& provider_options) {
   ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_OpenVINO(p_, &provider_options));
   return *this;

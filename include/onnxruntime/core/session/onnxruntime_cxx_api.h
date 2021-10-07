@@ -348,6 +348,8 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& AppendExecutionProvider_ROCM(const OrtROCMProviderOptions& provider_options); ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_ROCM
   SessionOptions& AppendExecutionProvider_OpenVINO(const OrtOpenVINOProviderOptions& provider_options); ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_OpenVINO
   SessionOptions& AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options); ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_TensorRT
+
+  SessionOptions& SetSessionThreadPool(OrtThreadPoolBase* thread_pool); ///< Wraps OrtApi::SetThreadPool
 };
 
 /** \brief Wrapper around ::OrtModelMetadata
