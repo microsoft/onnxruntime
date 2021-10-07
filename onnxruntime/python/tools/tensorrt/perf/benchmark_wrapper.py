@@ -82,7 +82,7 @@ def main():
                 command.extend(["--benchmark_metrics_csv", benchmark_metrics_csv])
             
             elif args.running_mode == "benchmark":
-                command.extend(["-t", str(500),
+                command.extend(["-t", str(args.test_times),
                                 "-o", args.perf_result_path,
                                 "--write_test_result", "false",
                                 "--benchmark_fail_csv", benchmark_fail_csv,

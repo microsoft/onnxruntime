@@ -124,7 +124,6 @@ def run_trt_standalone(trtexec, model_name, model_path, ort_inputs, all_inputs_s
     return result
 
 def get_latency_result(runtimes, batch_size):
-    logger.info(runtimes)
     latency_ms = sum(runtimes) / float(len(runtimes)) * 1000.0
     latency_variance = numpy.var(runtimes, dtype=numpy.float64) * 1000.0
     throughput = batch_size * (1000.0 / latency_ms)
@@ -253,8 +252,6 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
         except Exception as e:
             logger.error(e)
             return None
-
-    logger.info(runtimes)
 
     result = {}
     result.update(result_template)
@@ -484,6 +481,19 @@ def remove_profiling_files(path):
         subprocess.Popen(["rm","-rf", f], stdout=subprocess.PIPE)
 
 
+def remove_files(path):
+    files = []
+    out = get_output(["find", path, "-name", "onnxruntime_profile*"])
+    ort_profiling_files = [] + out.split("\n")
+    out = get_output(["find", path, "-name", "*.profile"])
+    profiling_files = [] + out.split("\n")
+    out = get_output(["find", path, "-name", "*.engine"])
+    engine_files = [] + out.split("\n")
+    files = files + ort_profiling_files + profiling_files + engine_files
+    for f in files:
+        if "custom_test_data" in f:
+            continue
+        subprocess.Popen(["rm","-rf", f], stdout=subprocess.PIPE)
 def update_fail_report(fail_results, model, ep, e_type, e):
     result = {}
 
@@ -1081,6 +1091,7 @@ def run_onnxruntime(args, models):
                         success_results.append(result)
 
                     model_to_latency[name] = copy.deepcopy(latency_result)
+                    remove_files(model_info["working_directory"])
                 logger.info("---------------------------- benchmark [end] ----------------------------------\n")
 
 
