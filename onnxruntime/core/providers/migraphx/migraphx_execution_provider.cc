@@ -100,9 +100,9 @@ static Status RegisterMIGraphXKernels(KernelRegistry& kernel_registry) {
 
 static std::shared_ptr<KernelRegistry> s_kernel_registry;
 
-// void Shutdown_DeleteRegistry() {
-//   s_kernel_registry.reset();
-// }
+void Shutdown_DeleteRegistry() {
+  s_kernel_registry.reset();
+}
 
 std::shared_ptr<KernelRegistry> MIGraphXExecutionProvider::GetKernelRegistry() const {
   if (!s_kernel_registry) {
@@ -136,18 +136,17 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
   InsertAllocator(CreateAllocator(pinned_memory_info));
 
   // create the target based on the device_id
-  std::set<std::string> valid_targets = {"gpu", "cpu"};
-  if (valid_targets.count(info.target_device) == 0) {
-    LOGS_DEFAULT(FATAL) << "Device " << info.target_device << " are not supported";
-  }
+  // std::set<std::string> valid_targets = {"gpu", "cpu"};
+  // if (valid_targets.count(info.target_device) == 0) {
+  //   LOGS_DEFAULT(FATAL) << "Device " << info.target_device << " are not supported";
+  // }
 
-  t_ = migraphx::target(info.target_device.c_str());
+  // t_ = migraphx::target(info.target_device.c_str());
+  t_ = migraphx::target("gpu");
 
-  // Get environment variables
-  const Env& env_instance = Env::Default();
 
   // whether fp16 is enable
-  const std::string fp16_enable_env = env_instance.GetEnvironmentVar(migraphx_env_vars::kFP16Enable);
+  const std::string fp16_enable_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kFP16Enable);
   if (!fp16_enable_env.empty()) {
     fp16_enable_ = (std::stoi(fp16_enable_env) == 0 ? false : true);
   }

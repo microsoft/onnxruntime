@@ -13,9 +13,10 @@
 
 using namespace onnxruntime;
 
-void Shutdown_DeleteRegistry();
 
 namespace onnxruntime {
+
+void Shutdown_DeleteRegistry();
 
 struct MIGraphXProviderFactory : IExecutionProviderFactory {
   MIGraphXProviderFactory(const MIGraphXExecutionProviderInfo& info) : info_{info} {}
