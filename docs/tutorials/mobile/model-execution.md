@@ -18,7 +18,7 @@ See the [ONNX Runtime API documentation](../../api) for details on individual AP
 
 | Platform | Available APIs |
 |----------|----------------|
-| Android | C, C++, Java |
+| Android | C, C++, Java, Kotlin |
 | iOS | C, C++, Objective-C (Swift via bridge) |
 
 ## ORT format model loading
@@ -71,7 +71,7 @@ Ort::Session session(env, model_bytes.data(), model_bytes.size(), session_option
 Java API
 ```java
 SessionOptions session_options = new SessionOptions();
-session_options.AddConfigEntry('session.load_model_format', 'ORT');
+session_options.addConfigEntry('session.load_model_format', 'ORT');
 session_options.addConfigEntry("session.use_ort_model_bytes_directly", "1");
 
 byte[] model_bytes = Files.readAllBytes(Paths.get(<path to model>));
