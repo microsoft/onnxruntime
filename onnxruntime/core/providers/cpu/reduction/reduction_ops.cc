@@ -657,8 +657,8 @@ bool CommonFastReduceCopy(OpKernelContext* ctx, std::vector<int64_t>& input_axes
     if (input_axes.empty() && noop_with_empty_axes) {
       const Tensor* input = ctx->Input<Tensor>(0);
       auto* output = ctx->Output(0, input->Shape());
-      memcpy(reinterpret_cast<void*>(output->template MutableData<float>()),
-             reinterpret_cast<const void*>(input->template Data<float>()),
+      memcpy(output->MutableDataRaw(),
+             input->DataRaw(),
              input->SizeInBytes());
       return true;
     }
