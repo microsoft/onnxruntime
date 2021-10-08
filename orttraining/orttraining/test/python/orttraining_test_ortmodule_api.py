@@ -4107,3 +4107,37 @@ def test_ortmodule_fused_adam_optimizer_correctness():
 
             for pt_param, ort_param in zip(pt_model.parameters(), ort_model.parameters()):
                 _test_helpers.assert_values_are_close(pt_param, ort_param)
+
+
+def test_sigmoid_grad():
+    class NeuralNetSigmoid(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(NeuralNetSigmoid, self).__init__()
+
+            self.fc1 = torch.nn.Linear(input_size, hidden_size)
+            self.sigmoid = torch.nn.Sigmoid()
+
+        def forward(self, input1):
+            out = self.fc1(input1)
+            out = self.sigmoid(out)
+            return out
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, loss
+    device = 'cuda'
+
+    N, D_in, H, D_out = 120, 15360, 500, 15360
+    pt_model = NeuralNetSigmoid(D_in, H, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    for step in range(1000):
+        pt_x = torch.randn(N, D_in, device=device, requires_grad=True)
+        ort_x = copy.deepcopy(pt_x)
+        ort_prediction, ort_loss = run_step(ort_model, ort_x)
+        pt_prediction, pt_loss = run_step(pt_model, pt_x)
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_values_are_close(ort_x.grad, pt_x.grad)
+        _test_helpers.assert_values_are_close(ort_loss, pt_loss)
