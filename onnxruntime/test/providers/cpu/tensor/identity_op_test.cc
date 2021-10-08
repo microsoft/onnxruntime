@@ -43,7 +43,6 @@ TEST(Identity, OptionalTensorType_NonNone) {
 
 TEST(Identity, OptionalTensorType_None) {
   OpTester test("Identity", 16, kOnnxDomain);
-  std::initializer_list<float> data = {-1.0856307f, 0.99734545f};
   test.AddOptionalTypeTensorInput<float>("A", {}, nullptr);   // None
   test.AddOptionalTypeTensorOutput<float>("Y", {}, nullptr);  // None
   test.Run();
