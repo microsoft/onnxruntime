@@ -59,15 +59,13 @@ struct ProviderInfo_MIGRAPHX_Impl : ProviderInfo_MIGRAPHX {
 } g_info;
 
 struct MIGraphX_Provider : Provider {
+  void* GetInfo() override { return &g_info; }
+      
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) override {
     MIGraphXExecutionProviderInfo info;
     info.device_id = device_id;
     return std::make_shared<MIGraphXProviderFactory>(info);
   }
-
-
-  int migraphx_fp16_enable;                     // enable MIGraphX FP16 precision. Default 0 = false, nonzero = true
-  int migraphx_int8_enable;                     // enable MIGraphX INT8 precision. Default 0 = false, nonzero = true
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* provider_options) override {
     auto& options = *reinterpret_cast<const OrtMIGraphXProviderOptions*>(provider_options);

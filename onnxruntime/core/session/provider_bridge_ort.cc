@@ -949,20 +949,15 @@ struct ProviderLibrary {
       return nullptr;
 
     std::string full_path = Env::Default().GetRuntimePath() + std::string(filename_);
-std::cout << "loc1" << std::endl;
     auto error = Env::Default().LoadDynamicLibrary(full_path, false, &handle_);
-std::cout << "loc2" << std::endl;
     if (!error.IsOK()) {
-std::cout << "loc3" << std::endl;
       LOGS_DEFAULT(ERROR) << error.ErrorMessage();
       return nullptr;
     }
-std::cout << "loc4" << std::endl;
 
     Provider* (*PGetProvider)();
     Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider);
 
-std::cout << "loc5, PGetProvider = " << PGetProvider << std::endl;
     provider_ = PGetProvider();
     return provider_;
   }
