@@ -6,9 +6,9 @@
 #include "migraphx_call.h"
 
 namespace onnxruntime {
-GPUDataTransfer::GPUDataTransfer() {
+GPUDataTransfer::GPUDataTransfer(hipStream_t stream) {
   // create streams, default is nullptr
-  streams_[kHipStreamDefault] = nullptr;
+  streams_[kHipStreamDefault] = stream;
   HIP_CALL_THROW(hipStreamCreateWithFlags(&streams_[kHipStreamCopyIn], hipStreamNonBlocking));
   HIP_CALL_THROW(hipStreamCreateWithFlags(&streams_[kHipStreamCopyOut], hipStreamNonBlocking));
 }

@@ -18,7 +18,7 @@ struct MIGraphXExecutionProviderExternalAllocatorInfo;
 //   class NvtxRangeCreator;
 // }
 
-struct ProviderInfo_MIGraphX {
+struct ProviderInfo_MIGRAPHX {
 //   virtual OrtStatus* SetCurrentGpuDeviceId(_In_ int device_id) = 0;
 //   virtual OrtStatus* GetCurrentGpuDeviceId(_In_ int* device_id) = 0;
 
@@ -52,6 +52,7 @@ struct ProviderInfo_MIGraphX {
 //   virtual std::shared_ptr<onnxruntime::IExecutionProviderFactory> CreateExecutionProviderFactory(const onnxruntime::CUDAExecutionProviderInfo& info) = 0;
 //   virtual std::shared_ptr<onnxruntime::IAllocator> CreateCudaAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo& external_allocator_info, OrtArenaCfg* default_memory_arena_cfg) = 0;
 };
+}
 
 
 #ifdef __cplusplus

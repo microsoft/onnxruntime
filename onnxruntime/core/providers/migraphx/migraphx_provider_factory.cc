@@ -4,6 +4,8 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/migraphx/migraphx_provider_factory.h"
 #include "migraphx_execution_provider.h"
+#include "hip_allocator.h"
+#include "gpu_data_transfer.h"
 #include "core/framework/provider_options.h"
 #include <atomic>
 
@@ -41,7 +43,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGrap
 }
 
 
-struct ProviderInfo_MIGraphX_Impl : ProviderInfo_MIGraphX {
+struct ProviderInfo_MIGRAPHX_Impl : ProviderInfo_MIGRAPHX {
   std::unique_ptr<IAllocator> CreateHIPAllocator(int16_t device_id, const char* name) override {
     return std::make_unique<HIPAllocator>(device_id, name);
   }

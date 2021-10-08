@@ -153,6 +153,12 @@ struct ProviderHost {
   virtual bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
 #endif
 
+#ifdef USE_MIGRAPHX
+  virtual std::unique_ptr<IAllocator> CreateHIPAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<IAllocator> CreateHIPPinnedAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) = 0;
+#endif
+
   virtual std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                              const std::string& provider_type,
                                                              const std::vector<const KernelRegistry*>& kernel_registries,

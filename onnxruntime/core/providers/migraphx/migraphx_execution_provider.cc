@@ -208,7 +208,7 @@ void MIGraphXExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManag
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> MIGraphXExecutionProvider::GetDataTransfer() const {
-  return std::make_unique<onnxruntime::GPUDataTransfer>();
+  return std::make_unique<onnxruntime::GPUDataTransfer>(static_cast<hipStream_t>(GetComputeStream()));
 }
 
 static bool IsTypeSupported(const NodeArg* node_arg) {

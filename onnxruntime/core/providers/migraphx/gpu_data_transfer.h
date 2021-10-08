@@ -17,7 +17,7 @@ enum HIPStreamType : int {
 
 class GPUDataTransfer : public IDataTransfer {
  public:
-  GPUDataTransfer();
+  GPUDataTransfer(hipStream_t stream);
   ~GPUDataTransfer();
 
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;
@@ -30,6 +30,7 @@ class GPUDataTransfer : public IDataTransfer {
   }
 
  private:
+  bool do_copy_in_default_stream_;
   hipStream_t streams_[kTotalHipStreams];
 };
 

@@ -84,6 +84,8 @@ namespace onnxruntime {
 
 ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
+ProviderInfo_MIGRAPHX* TryGetProviderInfo_MIGRAPHX();
+ProviderInfo_MIGRAPHX& GetProviderInfo_MIGRAPHX();
 ProviderHostCPU& GetProviderHostCPU();
 
 struct TensorShapeProto_Dimension_Iterator_Impl : TensorShapeProto_Dimension_Iterator {
@@ -174,6 +176,12 @@ struct ProviderHostImpl : ProviderHost {
 
   bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_CUDA().CudaCall_false(retCode, exprString, libName, successCode, msg); }
   bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_CUDA().CudaCall_true(retCode, exprString, libName, successCode, msg); }
+#endif
+
+#ifdef USE_MIGRAPHX
+  std::unique_ptr<IAllocator> CreateHIPAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_MIGRAPHX().CreateHIPAllocator(device_id, name); }
+  std::unique_ptr<IAllocator> CreateHIPPinnedAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_MIGRAPHX().CreateHIPPinnedAllocator(device_id, name); }
+  std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) override { return GetProviderInfo_MIGRAPHX().CreateGPUDataTransfer(stream); }
 #endif
 
   std::string GetEnvironmentVar(const std::string& var_name) override { return Env::Default().GetEnvironmentVar(var_name); }
@@ -1010,7 +1018,7 @@ std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const c
 }
 
 std::unique_ptr<IAllocator> CreateHIPPinnedAllocator(int16_t device_id, const char* name) {
-  if (auto* info = onnxruntime::TryGetProviderInfo_HIP())
+  if (auto* info = onnxruntime::TryGetProviderInfo_MIGRAPHX())
     return info->CreateHIPPinnedAllocator(device_id, name);
 
   return nullptr;
@@ -1085,11 +1093,18 @@ ProviderInfo_CUDA& GetProviderInfo_CUDA() {
   ORT_THROW("CUDA Provider not available, can't get interface for it");
 }
 
-ProviderInfo_MIGRAPHX* TryGetProviderInfo_MIGraphX() {
+ProviderInfo_MIGRAPHX* TryGetProviderInfo_MIGRAPHX() {
   if (auto* provider = s_library_migraphx.Get())
     return reinterpret_cast<ProviderInfo_MIGRAPHX*>(provider->GetInfo());
 
   return nullptr;
+}
+
+ProviderInfo_MIGRAPHX& GetProviderInfo_MIGRAPHX() {
+  if (auto* info = TryGetProviderInfo_MIGRAPHX())
+    return *info;
+
+  ORT_THROW("MIGRAPHX Provider not available, can't get interface for it");
 }
 
 void CopyGpuToCpu(

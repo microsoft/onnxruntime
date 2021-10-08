@@ -71,7 +71,7 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
 
   // Status SetComputeStream(void* stream) override;
 
-  // void* GetComputeStream() const override { return static_cast<void*>(stream_); }
+  void* GetComputeStream() const override { return static_cast<void*>(stream_); }
 
   // ProviderOptions GetProviderOptions() const override {
   //   return TensorrtExecutionProviderInfo::ToProviderOptions(info_);
@@ -84,6 +84,7 @@ private:
   int device_id_;
   migraphx::target t_; 
   OrtMutex mgx_mu_;
+  hipStream_t stream_ = nullptr;
 
   std::unordered_map<std::string, migraphx::program> map_progs_;
   std::unordered_map<std::string, std::string> map_onnx_string_;
