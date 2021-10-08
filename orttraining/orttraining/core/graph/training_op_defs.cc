@@ -616,40 +616,38 @@ void RegisterTrainingOpSchemas() {
 
             auto* axis_attr = ctx.getAttribute("axis");
             int64_t axis = (axis_attr != nullptr) ? axis_attr->i() : 1;
-            auto zero1d = ToTensor(std::vector<int64_t>({0}));
-            zero1d.add_dims(1);
-
-            // nodes: {outputs, op, inputs, attributes}
 
             // First, convert axis specification k to reduction axes [k, k+1, ..., n-1]
-            std::vector<FunctionBodyHelper::NodeDef> body{
-                FunctionBodyHelper::Const<int64_t>("one", 1),
-                FunctionBodyHelper::Const<int64_t>("k", axis),
-                {{"axis_zero"}, "Constant", {}, {{"value", zero1d}}},
-                {{"shape"}, "Shape", {"dY"}},
-                {{"n_as_vector"}, "Shape", {"shape"}},
-                {{"n"}, "Squeeze", {"n_as_vector", "axis_zero"}},
-            };
+            FunctionBuilder builder(functionProto);
+            builder
+                .AddOpset("", 13)
+                .Const("one", int64_t(1))
+                .Const("k", axis)
+                .Const("axis_zero", std::vector<int64_t>({0})) // a 1D tensor constant
+                .Add(R"(
+                    shape = Shape (dY)
+                    n_as_vector = Shape (shape)
+                    n = Squeeze (n_as_vector, axis_zero)
+                )");
 
             // For negative axis, add n to axis-value k; then use Range(...).
             if (axis >= 0) {
-              body.push_back({{"reduction_axes"}, "Range", {"k", "n", "one"}});
+              builder.Add("reduction_axes = Range (k, n, one)");
             } else {
-              body.push_back({{"n_plus_k"}, "Add", {"n", "k"}});
-              body.push_back({{"reduction_axes"}, "Range", {"n_plus_k", "n", "one"}});
+              builder.Add("n_plus_k = Add (n, k)");
+              builder.Add("reduction_axes = Range (n_plus_k, n, one)");
             }
 
             // compute dX = Y * ( dY - dot(Y, dY)) = Y * ( dY - ReduceSum(Y * dY))
-            body.push_back({{"a"}, "Mul", {"Y", "dY"}});
-            body.push_back({{"b"}, "ReduceSum", {"a", "reduction_axes"}});
-            body.push_back({{"c"}, "Sub", {"dY", "b"}});
-            body.push_back({{"dX"}, "Mul", {"Y", "c"}});
+            builder.Add(R"(
+                a = Mul (Y ,dY)
+                b = ReduceSum (a ,reduction_axes)
+                c = Sub (dY ,b)
+                dX = Mul (Y ,c)
+            )");
 
-            OperatorSetIdProto onnx_opset_13;
-            onnx_opset_13.set_domain("");
-            onnx_opset_13.set_version(13);
-
-            return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+            schema.BuildFunction(functionProto);
+            return true;
           });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LogSoftmaxGrad)
@@ -2055,31 +2053,32 @@ Example 4:
             auto* tp = ctx.getInputType(0);
             if ((tp == nullptr) || (!tp->has_tensor_type()))
               return false;
-            auto elem_type = (ONNX_NAMESPACE::TensorProto_DataType)tp->tensor_type().elem_type();
+            auto elem_type = tp->tensor_type().elem_type();
             double kAlpha = M_2_SQRTPI * M_SQRT1_2 * 0.5;
-            std::vector<FunctionBodyHelper::NodeDef> body{
-                ONNX_NAMESPACE::Const("C_Half", 0.5f, elem_type),
-                ONNX_NAMESPACE::Const("C_One", 1.0f, elem_type),
-                ONNX_NAMESPACE::Const("C_SqrtHalf", float(M_SQRT1_2), elem_type),
-                ONNX_NAMESPACE::Const("C_MinusHalf", -0.5f, elem_type),
-                ONNX_NAMESPACE::Const("C_alpha", kAlpha, elem_type),
-                {{"ErfArg"}, "Mul", {"X", "C_SqrtHalf"}},
-                {{"ErfTerm"}, "Erf", {"ErfArg"}},
-                {{"PartialSum"}, "Add", {"ErfTerm", "C_One"}},
-                {{"HalfPartialSum"}, "Mul", {"C_Half", "PartialSum"}},
-                {{"AlphaX"}, "Mul", {"X", "C_alpha"}},
-                {{"MinusHalfX"}, "Mul", {"C_MinusHalf", "X"}},
-                {{"ExpArg"}, "Mul", {"MinusHalfX", "X"}},
-                {{"ExpTerm"}, "Exp", {"ExpArg"}},
-                {{"Term3"}, "Mul", {"AlphaX", "ExpTerm"}},
-                {{"FullSum"}, "Add", {"HalfPartialSum", "Term3"}},
-                {{"dX"}, "Mul", {"dY", "FullSum"}}};
+            FunctionBuilder builder(functionProto);
+            builder
+                .AddOpset("", 13)
+                .Const("C_Half", 0.5f, elem_type)
+                .Const("C_One", 1.0f, elem_type)
+                .Const("C_SqrtHalf", float(M_SQRT1_2), elem_type)
+                .Const("C_MinusHalf", -0.5f, elem_type)
+                .Const("C_alpha", kAlpha, elem_type)
+                .Add(R"(
+                    ErfArg = Mul (X, C_SqrtHalf) 
+                    ErfTerm = Erf (ErfArg) 
+                    PartialSum = Add (ErfTerm, C_One) 
+                    HalfPartialSum = Mul (C_Half, PartialSum) 
+                    AlphaX = Mul (X, C_alpha) 
+                    MinusHalfX = Mul (C_MinusHalf, X) 
+                    ExpArg = Mul (MinusHalfX, X) 
+                    ExpTerm = Exp (ExpArg) 
+                    Term3 = Mul (AlphaX, ExpTerm) 
+                    FullSum = Add (HalfPartialSum, Term3) 
+                    dX = Mul (dY, FullSum)
+                )");
 
-            OperatorSetIdProto onnx_opset_13;
-            onnx_opset_13.set_domain("");
-            onnx_opset_13.set_version(13);
-
-            return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+            schema.BuildFunction(functionProto);
+            return true;
           });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalizationGrad)
@@ -2675,35 +2674,35 @@ Return true if all elements are true and false otherwise.
             static constexpr double kAlpha = M_2_SQRTPI * M_SQRT1_2;
             static constexpr double kGamma = 0.044715f;
             static constexpr double kBeta = kGamma * kAlpha * 3.0f;
-            std::vector<FunctionBodyHelper::NodeDef> body{
-                ONNX_NAMESPACE::Const("half", 0.5f, elem_type),
-                ONNX_NAMESPACE::Const("one", 1.0f, elem_type),
-                ONNX_NAMESPACE::Const("alpha", kAlpha, elem_type),
-                ONNX_NAMESPACE::Const("gamma", kGamma, elem_type),
-                ONNX_NAMESPACE::Const("beta", kBeta, elem_type),
-                {{"x_square"}, "Mul", {"X", "X"}},
-                {{"x_cube"}, "Mul", {"X", "x_square"}},
-                {{"gamma_x_cube"}, "Mul", {"gamma", "x_cube"}},
-                {{"sum1"}, "Add", {"X", "gamma_x_cube"}},
-                {{"tanh_arg"}, "Mul", {"alpha", "sum1"}},
-                {{"tanh_val"}, "Tanh", {"tanh_arg"}},
-                {{"tanh_square"}, "Mul", {"tanh_val", "tanh_val"}},
-                {{"sech_square"}, "Sub", {"one", "tanh_square"}},
-                {{"alpha_x"}, "Mul", {"alpha", "X"}},
-                {{"beta_x_cube"}, "Mul", {"beta", "x_cube"}},
-                {{"sum"}, "Add", {"alpha_x", "beta_x_cube"}},
-                {{"term2"}, "Mul", {"sech_square", "sum"}},
-                {{"sum2"}, "Add", {"tanh_val", "term2"}},
-                {{"sum3"}, "Add", {"sum2", "one"}},
-                {{"prod"}, "Mul", {"half", "sum3"}},
-                {{"dX"}, "Mul", {"dY", "prod"}},
-            };
+            FunctionBuilder builder(functionProto);
+            builder
+                .AddOpset("", 13)
+                .Const("half", 0.5f, elem_type)
+                .Const("one", 1.0f, elem_type)
+                .Const("alpha", kAlpha, elem_type)
+                .Const("gamma", kGamma, elem_type)
+                .Const("beta", kBeta, elem_type)
+                .Add(R"ONNX(
+                  x_square = Mul (X, X)
+                  x_cube = Mul (X, x_square)
+                  gamma_x_cube = Mul (gamma, x_cube)
+                  sum1 = Add (X, gamma_x_cube)
+                  tanh_arg = Mul (alpha, sum1)
+                  tanh_val = Tanh (tanh_arg)
+                  tanh_square = Mul (tanh_val, tanh_val)
+                  sech_square = Sub (one, tanh_square)
+                  alpha_x = Mul (alpha, X)
+                  beta_x_cube = Mul (beta, x_cube)
+                  sum = Add (alpha_x, beta_x_cube)
+                  term2 = Mul (sech_square, sum)
+                  sum2 = Add (tanh_val, term2)
+                  sum3 = Add (sum2, one)
+                  prod = Mul (half, sum3)
+                  dX = Mul (dY, prod)
+                )ONNX");
 
-            OperatorSetIdProto onnx_opset_13;
-            onnx_opset_13.set_domain("");
-            onnx_opset_13.set_version(13);
-
-            return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+            schema.BuildFunction(functionProto);
+            return true;
           });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(BiasGeluGrad_dX)

@@ -78,6 +78,12 @@ def diagonal(g, self, offset, dim1, dim2):
     return g.op("com.microsoft::ATenOp", self, offset, dim1, dim2,
                 name_s='aten::diagonal')
 
+@register_symbolic('multinomial')
+def multinomial(g, self, num_samples, replacement=False, generator=None):
+    if generator is not None and not sym_help._is_none(generator):
+        raise RuntimeError("Unsupported: ONNX does not support generator for multinomial")
+    return g.op("com.microsoft::ATenOp", self, num_samples, replacement, generator,
+                name_s='aten::multinomial')
 
 @register_symbolic('max_pool2d')
 def max_pool2d(g, self, kernel_size, stride, padding, dilation, ceil_mode):
