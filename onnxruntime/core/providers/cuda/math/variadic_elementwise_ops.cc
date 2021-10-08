@@ -5,6 +5,7 @@
 #include "core/providers/cuda/math/variadic_elementwise_ops.h"
 
 #include <cassert>
+#include <algorithm>
 
 #include "core/framework/data_types_internal.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
@@ -22,7 +23,7 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
   using CudaT = typename ToCudaType<T>::MappedType;
   size_t input_count = inputs.size();
   assert(input_count > 1);
-  size_t index = input_count > k_max_input_batch_size ? k_max_input_batch_size : input_count;
+  size_t index = std::min(input_count, static_cast<size_t>(k_max_input_batch_size));
   InputBatchArray<CudaT> input_data_batch{static_cast<int32_t>(index)};
   for (size_t i = 0; i < index; ++i) {
     input_data_batch[static_cast<int32_t>(i)] = reinterpret_cast<const CudaT*>(inputs[i].get().template Data<T>());
@@ -33,8 +34,8 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
                                                               output.Shape().Size());
 
   while (index < input_count) {
-    size_t left_cout = input_count - index + 1;
-    size_t batch = left_cout > k_max_input_batch_size ? k_max_input_batch_size : left_cout;
+    size_t left_count = input_count - index + 1;
+    size_t batch = std::min(left_count, static_cast<size_t>(k_max_input_batch_size));
     // Special case for 2 inputs left.
     if (batch == 2) {
       BinaryElementwisePreparation prepare;
@@ -52,7 +53,7 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
 
     InputBatchArray<CudaT> left_input_data_batch{static_cast<int32_t>(batch)};
     left_input_data_batch[0] = reinterpret_cast<const CudaT*>(output.template Data<T>());
-    for (size_t i = 1; i < batch; i++) {
+    for (size_t i = 1; i < batch; ++i) {
       left_input_data_batch[static_cast<int32_t>(i)] =
           reinterpret_cast<const CudaT*>(inputs[index].get().template Data<T>());
       index++;
