@@ -93,10 +93,22 @@ def call_python_forward_function(
                 ctx = arg.grad_fn
                 first_tensor_output = arg
                 break
-            if training_mode_flag:
-                # Must extract one valid context from result tensors.
-                assert ctx is not None
 
+            # Context can be None because not all autograd.Function's are differentiable. For example,
+            #  class Bar(torch.autograd.Function):
+            #      # A non-differentiable autograd Function whose forard output
+            #      # doesn't have grad_fn attribute.
+            #      @staticmethod
+            #      def forward(ctx, x):
+            #          y = torch.ones_like(x)
+            #          return y
+
+            #      @staticmethod
+            #      def backward(ctx, dy):
+            #          dx = torch.zeros_like(dy)
+            #          return dx
+
+            if training_mode_flag and ctx:
                 #         FORWARD                                                    BACKWARD FUNCTION CONNECTIONS
                 # input_1 (leaf, constructed by from_dlpack)   <----reference----  AccumulateGrad gradient function
                 #             ↓                                                                 ↑
@@ -113,9 +125,6 @@ def call_python_forward_function(
                 # https://github.com/pytorch/pytorch/blob/15532595209d2daf34d35e10f8d3d3b64966aea2/torch/csrc/autograd/function.h#L527
                 torch_interop_utils.clear_grad_fns_for_next_edges(first_tensor_output, ctx.saved_tensors)
                 torch_interop_utils.register_grad_fn(id(ctx), first_tensor_output)
-            else:
-                # Context must not present under non-training mode.
-                assert ctx is None
             return ctx
 
         if isinstance(result, torch.Tensor):
