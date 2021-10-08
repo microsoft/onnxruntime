@@ -201,6 +201,7 @@ bool DnnlSoftmaxNodeCapability::IsAttributeSupported(const Node* node) const {
   return true;
 }
 
+
 // DnnlMatMulNodeCapability class
 //-------------------------------------
 bool DnnlMatMulNodeCapability::Supported(const Node* node) const {

@@ -47,6 +47,16 @@ std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
   return nullptr;
 }
 
+std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const OrtTensorRTProviderOptions* params) {
+#ifdef USE_TENSORRT
+  if (auto factory = CreateExecutionProviderFactory_Tensorrt(params))
+    return factory->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(params);
+#endif
+  return nullptr;
+}
+
 std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider() {
 #ifdef USE_MIGRAPHX
   return CreateExecutionProviderFactory_MIGraphX(0)->CreateProvider();

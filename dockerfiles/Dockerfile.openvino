@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 #--------------------------------------------------------------------------
 
-ARG OPENVINO_VERSION=2021.4
+ARG OPENVINO_VERSION=2021.4.1
 
 
 # Build stage

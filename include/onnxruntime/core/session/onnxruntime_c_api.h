@@ -1,19 +1,21 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// See docs\c_cxx\README.md on generating the Doxygen documentation from this file
+
 /** \mainpage C & C++ APIs
 *
 * <h1>C</h1>
 *
 * ::OrtApi - Click here to jump to the structure with all C API functions.
-* 
+*
 * <h1>C++</h1>
 *
 * ::Ort - Click here to jump to the namespace holding all of the C++ wrapper classes
-* 
+*
 * It is a set of header only wrapper classes around the C API. The goal is to turn the C style return value error codes into C++ exceptions, and to
 * automate memory management through standard C++ RAII principles.
-* 
+*
 * \addtogroup Global
 * ONNX Runtime C API
 * @{
@@ -196,12 +198,16 @@ enum OrtSparseIndicesFormat {
   ORT_SPARSE_BLOCK_SPARSE_INDICES
 };
 
+/** \brief Logging severity levels
+ *
+ * In typical API usage, specifying a logging severity level specifies the minimum severity of log messages to show.
+ */
 typedef enum OrtLoggingLevel {
-  ORT_LOGGING_LEVEL_VERBOSE,
-  ORT_LOGGING_LEVEL_INFO,
-  ORT_LOGGING_LEVEL_WARNING,
-  ORT_LOGGING_LEVEL_ERROR,
-  ORT_LOGGING_LEVEL_FATAL,
+  ORT_LOGGING_LEVEL_VERBOSE,  ///< Verbose informational messages (least severe).
+  ORT_LOGGING_LEVEL_INFO,     ///< Informational messages.
+  ORT_LOGGING_LEVEL_WARNING,  ///< Warning messages.
+  ORT_LOGGING_LEVEL_ERROR,    ///< Error messages.
+  ORT_LOGGING_LEVEL_FATAL,    ///< Fatal error messages (most severe).
 } OrtLoggingLevel;
 
 typedef enum OrtErrorCode {
@@ -255,22 +261,28 @@ typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
 typedef OrtStatus* OrtStatusPtr;
 #endif
 
-// When passing in an allocator to any ORT function, be sure that the allocator object
-// is not destroyed until the last allocated object using it is freed.
+/** \brief Memory allocation interface
+*
+* Structure of function pointers that defines a memory allocator. This can be created and filled in by the user for custom allocators.
+* 
+* When an allocator is passed to any function, be sure that the allocator object is not destroyed until the last allocated object using it is freed.
+*/
 typedef struct OrtAllocator {
-  uint32_t version;  // Initialize to ORT_API_VERSION
-  void*(ORT_API_CALL* Alloc)(struct OrtAllocator* this_, size_t size);
-  void(ORT_API_CALL* Free)(struct OrtAllocator* this_, void* p);
-  const struct OrtMemoryInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);
+  uint32_t version;                                                                   ///< Must be initialized to ORT_API_VERSION
+  void*(ORT_API_CALL* Alloc)(struct OrtAllocator* this_, size_t size);                ///< Returns a pointer to an allocated block of `size` bytes
+  void(ORT_API_CALL* Free)(struct OrtAllocator* this_, void* p);                      ///< Free a block of memory previously allocated with OrtAllocator::Alloc
+  const struct OrtMemoryInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);  ///< Return a pointer to an ::OrtMemoryInfo that describes this allocator
 } OrtAllocator;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
     void* param, OrtLoggingLevel severity, const char* category, const char* logid, const char* code_location,
     const char* message);
 
-// Graph optimization level.
-// Refer to https://www.onnxruntime.ai/docs/resources/graph-optimizations.html
-// for an in-depth understanding of Graph Optimizations
+/** \brief Graph optimization level
+*
+* Refer to https://www.onnxruntime.ai/docs/resources/graph-optimizations.html
+* for an in-depth understanding of Graph Optimizations
+*/
 typedef enum GraphOptimizationLevel {
   ORT_DISABLE_ALL = 0,
   ORT_ENABLE_BASIC = 1,
@@ -304,7 +316,7 @@ struct OrtCustomOp;
 typedef struct OrtCustomOp OrtCustomOp;
 
 typedef enum OrtAllocatorType {
-  Invalid = -1,
+  OrtInvalidAllocator = -1,
   OrtDeviceAllocator = 0,
   OrtArenaAllocator = 1
 } OrtAllocatorType;
@@ -322,9 +334,9 @@ typedef enum OrtMemType {
 /** \brief Algorithm to use for cuDNN Convolution Op
 */
 typedef enum OrtCudnnConvAlgoSearch {
-  EXHAUSTIVE,  // expensive exhaustive benchmarking using cudnnFindConvolutionForwardAlgorithmEx
-  HEURISTIC,   // lightweight heuristic based search using cudnnGetConvolutionForwardAlgorithm_v7
-  DEFAULT,     // default algorithm using CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM
+  OrtCudnnConvAlgoSearchExhaustive,  // expensive exhaustive benchmarking using cudnnFindConvolutionForwardAlgorithmEx
+  OrtCudnnConvAlgoSearchHeuristic,   // lightweight heuristic based search using cudnnGetConvolutionForwardAlgorithm_v7
+  OrtCudnnConvAlgoSearchDefault,     // default algorithm using CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM
 } OrtCudnnConvAlgoSearch;
 
 /** \brief CUDA Provider Options
@@ -332,30 +344,62 @@ typedef enum OrtCudnnConvAlgoSearch {
 * \see OrtApi::SessionOptionsAppendExecutionProvider_CUDA
 */
 typedef struct OrtCUDAProviderOptions {
-  int device_id;  ///< CUDA device id (0 = default device)
+#ifdef __cplusplus
+  OrtCUDAProviderOptions() : device_id{}, cudnn_conv_algo_search{OrtCudnnConvAlgoSearchExhaustive}, gpu_mem_limit{SIZE_MAX}, arena_extend_strategy{}, do_copy_in_default_stream{1}, has_user_compute_stream{}, user_compute_stream{}, default_memory_arena_cfg{} {}
+#endif
+
+  /** \brief CUDA device Id
+  *   Defaults to 0.
+  */
+  int device_id;
+
+  /** \brief CUDA Convolution algorithm search configuration.
+  *   See enum OrtCudnnConvAlgoSearch for more details.
+  *   Defaults to OrtCudnnConvAlgoSearchExhaustive.
+  */
   OrtCudnnConvAlgoSearch cudnn_conv_algo_search;
 
   /** \brief CUDA memory limit (To use all possible memory pass in maximum size_t)
-  *
-  * \note If a ::OrtArenaCfg has been applied, it will override this field
+  *   Defaults to SIZE_MAX.
+  *   \note If a ::OrtArenaCfg has been applied, it will override this field
   */
-      size_t gpu_mem_limit;
+  size_t gpu_mem_limit;
 
   /** \brief Strategy used to grow the memory arena
-  *
-  * 0 = kNextPowerOfTwo<br>
-  * 1 = kSameAsRequested<br>
-  * \note If a ::OrtArenaCfg has been applied, it will override this field
+  *   0 = kNextPowerOfTwo<br>
+  *   1 = kSameAsRequested<br>
+  *   Defaults to 0.
+  *   \note If a ::OrtArenaCfg has been applied, it will override this field
   */
   int arena_extend_strategy;
+
+  /** \brief Flag indicating if copying needs to take place on the same stream as the compute stream in the CUDA EP   
+  *   0 = Use separate streams for copying and compute.
+  *   1 = Use the same stream for copying and compute.
+  *   Defaults to 1.
+  *   WARNING: Setting this to 0 may result in data races for some models.
+  *   Please see issue #4829 for more details.
+  */
   int do_copy_in_default_stream;
+
+  /** \brief Flag indicating if there is a user provided compute stream
+  *   Defaults to 0.
+  */
   int has_user_compute_stream;
+
+  /** \brief User provided compute stream. 
+  *   If provided, please set `has_user_compute_stream` to 1.
+  */
   void* user_compute_stream;
+
+  /** \brief CUDA memory arena configuration parameters
+  */
   OrtArenaCfg* default_memory_arena_cfg;
+
 } OrtCUDAProviderOptions;
 
 /** \brief ROCM Provider Options
-* 
+*
 * \see OrtApi::SessionOptionsAppendExecutionProvider_ROCM
 */
 typedef struct OrtROCMProviderOptions {
@@ -414,7 +458,7 @@ struct OrtApi;
 typedef struct OrtApi OrtApi;
 
 /** \brief The helper interface to get the right version of OrtApi
-* 
+*
 * Get a pointer to this structure through ::OrtGetApiBase
 */
 struct OrtApiBase {
@@ -430,7 +474,7 @@ struct OrtApiBase {
 typedef struct OrtApiBase OrtApiBase;
 
 /** \brief The Onnxruntime library's entry point to access the C API
-* 
+*
 * Call this to get the a pointer to an ::OrtApiBase
 */
 ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION;
@@ -439,7 +483,7 @@ ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION;
 *
 * All C API functions are defined inside this structure as pointers to functions.
 * Call OrtApiBase::GetApi to get a pointer to it
-* 
+*
 * \nosubgrouping
 */
 struct OrtApi {
@@ -474,27 +518,28 @@ struct OrtApi {
   /// @{
 
   /** \brief Create an OrtEnv
-  * 
-  * \param[in] logging_level
-  * \param[in] logid
+  *
+  * \param[in] log_severity_level The log severity level.
+  * \param[in] logid The log identifier.
   * \param[out] out Returned newly created OrtEnv. Must be freed with OrtApi::ReleaseEnv
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
-  ORT_API2_STATUS(CreateEnv, OrtLoggingLevel logging_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
+  ORT_API2_STATUS(CreateEnv, OrtLoggingLevel log_severity_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
 
   /** \brief Create an OrtEnv
   *
-  * \param[in] logging_function
-  * \param[in] logger_param
-  * \param[in] logging_level
-  * \param[in] logid
+  * \param[in] logging_function A pointer to a logging function.
+  * \param[in] logger_param A pointer to arbitrary data passed as the ::OrtLoggingFunction `param` parameter to
+  *                         `logging_function`.
+  * \param[in] log_severity_level The log severity level.
+  * \param[in] logid The log identifier.
   * \param[out] out Returned newly created OrtEnv. Must be freed with OrtApi::ReleaseEnv
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(CreateEnvWithCustomLogger, OrtLoggingFunction logging_function, _In_opt_ void* logger_param,
-                  OrtLoggingLevel logging_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
+                  OrtLoggingLevel log_severity_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
 
   /** \brief Enable Telemetry
   *
@@ -547,11 +592,29 @@ struct OrtApi {
   ORT_API2_STATUS(CreateSessionFromArray, _In_ const OrtEnv* env, _In_ const void* model_data, size_t model_data_length,
                   _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out);
 
+  /** \brief Run the model in an ::OrtSession
+  *
+  * Will not return until the model run has completed. Multiple threads might be used to run the model based on
+  * the options in the ::OrtSession and settings used when creating the ::OrtEnv
+  *
+  * \param[in] session
+  * \param[in] run_options If nullptr, will use a default ::OrtRunOptions
+  * \param[in] input_names Array of null terminated UTF8 encoded strings of the input names
+  * \param[in] inputs Array of ::OrtValue%s of the input values
+  * \param[in] input_len Number of elements in the input_names and inputs arrays
+  * \param[in] output_names Array of null terminated UTF8 encoded strings of the output names
+  * \param[in] output_names_len Number of elements in the output_names and outputs array
+  * \param[out] outputs Array of ::OrtValue%s that the outputs are stored in. This can also be
+  *     an array of nullptr values, in this case ::OrtValue objects will be allocated and pointers
+  *     to them will be set into the `outputs` array.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
   ORT_API2_STATUS(Run, _Inout_ OrtSession* session, _In_opt_ const OrtRunOptions* run_options,
                   _In_reads_(input_len) const char* const* input_names,
-                  _In_reads_(input_len) const OrtValue* const* input, size_t input_len,
-                  _In_reads_(output_names_len) const char* const* output_names1, size_t output_names_len,
-                  _Inout_updates_all_(output_names_len) OrtValue** output);
+                  _In_reads_(input_len) const OrtValue* const* inputs, size_t input_len,
+                  _In_reads_(output_names_len) const char* const* output_names, size_t output_names_len,
+                  _Inout_updates_all_(output_names_len) OrtValue** outputs);
 
   /// @}
   /// \name OrtSessionOptions
@@ -670,33 +733,27 @@ struct OrtApi {
   /** \brief Set session log id
   *
   * \param[in] options
-  * \param[in] logid
+  * \param[in] logid The log identifier.
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(SetSessionLogId, _Inout_ OrtSessionOptions* options, const char* logid);
 
-  /** \brief Set log verbosity level
+  /** \brief Set session log verbosity level
   *
   * Applies to session load, initialization, etc
   *
   * \param[in] options
-  * \param[in] session_log_verbosity_level
+  * \param[in] session_log_verbosity_level \snippet{doc} snippets.dox Log Verbosity Level
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(SetSessionLogVerbosityLevel, _Inout_ OrtSessionOptions* options, int session_log_verbosity_level);
 
-  /** \brief Set log severity level
+  /** \brief Set session log severity level
   *
   * \param[in] options
-  * \param[in] session_log_severity_level
-  * Valid values are:<br>
-  *   0 = Verbose, log everything<br>
-  *   1 = Info, log info level or higher<br>
-  *   2 = Warning, log warnings or higher<br>
-  *   3 = Error, log errors or higher<br>
-  *   4 = Fatal, log only fatal errors<br>
+  * \param[in] session_log_severity_level The log severity level (refer to ::OrtLoggingLevel for possible values).
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
@@ -914,13 +971,70 @@ struct OrtApi {
   */
   ORT_API2_STATUS(CreateRunOptions, _Outptr_ OrtRunOptions** out);
 
-  ORT_API2_STATUS(RunOptionsSetRunLogVerbosityLevel, _Inout_ OrtRunOptions* options, int value);
-  ORT_API2_STATUS(RunOptionsSetRunLogSeverityLevel, _Inout_ OrtRunOptions* options, int value);
-  ORT_API2_STATUS(RunOptionsSetRunTag, _Inout_ OrtRunOptions*, _In_ const char* run_tag);
+  /** \brief Set per-run log verbosity level
+   *
+   * \see OrtApi::RunOptionsGetRunLogVerbosityLevel
+   *
+   * \param[in] options
+   * \param[in] log_verbosity_level \snippet{doc} snippets.dox Log Verbosity Level
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(RunOptionsSetRunLogVerbosityLevel, _Inout_ OrtRunOptions* options, int log_verbosity_level);
 
-  ORT_API2_STATUS(RunOptionsGetRunLogVerbosityLevel, _In_ const OrtRunOptions* options, _Out_ int* out);
-  ORT_API2_STATUS(RunOptionsGetRunLogSeverityLevel, _In_ const OrtRunOptions* options, _Out_ int* out);
-  ORT_API2_STATUS(RunOptionsGetRunTag, _In_ const OrtRunOptions*, _Out_ const char** out);
+  /** \brief Set per-run log severity level
+   *
+   * \see OrtApi::RunOptionsGetRunLogSeverityLevel
+   *
+   * \param[in] options
+   * \param[in] log_severity_level The log severity level (refer to ::OrtLoggingLevel for possible values).
+   */
+  ORT_API2_STATUS(RunOptionsSetRunLogSeverityLevel, _Inout_ OrtRunOptions* options, int log_severity_level);
+
+  /** \brief Set per-run tag
+   *
+   * This is used in a per-run log identifier.
+   *
+   * \see OrtApi::RunOptionsGetRunTag
+   *
+   * \param[in] options
+   * \param[in] run_tag The run tag.
+   */
+  ORT_API2_STATUS(RunOptionsSetRunTag, _Inout_ OrtRunOptions* options, _In_ const char* run_tag);
+
+  /** \brief Get per-run log verbosity level
+   *
+   * \see OrtApi::RunOptionsSetRunLogVerbosityLevel
+   *
+   * \param[in] options
+   * \param[out] log_verbosity_level \snippet{doc} snippets.dox Log Verbosity Level
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(RunOptionsGetRunLogVerbosityLevel, _In_ const OrtRunOptions* options,
+                  _Out_ int* log_verbosity_level);
+
+  /** \brief Get per-run log severity level
+   *
+   * \see OrtApi::RunOptionsSetRunLogSeverityLevel
+   *
+   * \param[in] options
+   * \param[out] log_severity_level The log severity level (refer to ::OrtLoggingLevel for possible values).
+   */
+  ORT_API2_STATUS(RunOptionsGetRunLogSeverityLevel, _In_ const OrtRunOptions* options, _Out_ int* log_severity_level);
+
+  /** \brief Get per-run tag
+   *
+   * This is used in a per-run log identifier.
+   *
+   * \see OrtApi::RunOptionsSetRunTag
+   *
+   * \param[in] options
+   * \param[out] run_tag The run tag.
+   *                     Do not free this value, it is owned by `options`. It will be invalidated if the run tag
+   *                     changes (i.e., with OrtApi::RunOptionsSetRunTag) or `options` is freed.
+   */
+  ORT_API2_STATUS(RunOptionsGetRunTag, _In_ const OrtRunOptions* options, _Out_ const char** run_tag);
 
   /** \brief Set terminate flag
   *
@@ -993,7 +1107,7 @@ struct OrtApi {
   *
   * Used to read/write/modify the internal tensor data directly.
   * \note The returned pointer is valid until the \p value is destroyed.
-  * 
+  *
   * \param[in] value A tensor type (string tensors are not supported)
   * \param[out] out Filled in with a pointer to the internal storage
   *
@@ -1071,7 +1185,7 @@ struct OrtApi {
   /// \name OrtTensorTypeAndShapeInfo
   /// @{
 
-  /** \brief Create an OrtTensorTypeAndShapeInfo object
+  /** \brief Create an ::OrtTensorTypeAndShapeInfo object
   *
   * \param[out] out Returns newly created ::OrtTensorTypeAndShapeInfo. Must be freed with OrtApi::ReleaseTensorTypeAndShapeInfo
   *
@@ -1079,7 +1193,7 @@ struct OrtApi {
   */
   ORT_API2_STATUS(CreateTensorTypeAndShapeInfo, _Outptr_ OrtTensorTypeAndShapeInfo** out);
 
-  /** \brief Set element type in OrtTensorTypeAndShapeInfo
+  /** \brief Set element type in ::OrtTensorTypeAndShapeInfo
   *
   * \param[in] info
   * \param[in] type
@@ -1088,7 +1202,7 @@ struct OrtApi {
   */
   ORT_API2_STATUS(SetTensorElementType, _Inout_ OrtTensorTypeAndShapeInfo* info, enum ONNXTensorElementDataType type);
 
-  /** \brief Set shape information in OrtTensorTypeAndShapeInfo
+  /** \brief Set shape information in ::OrtTensorTypeAndShapeInfo
   *
   * \param[in] info
   * \param[in] dim_values Array with `dim_count` elements. Can contain negative values.
@@ -1098,10 +1212,10 @@ struct OrtApi {
   */
   ORT_API2_STATUS(SetDimensions, OrtTensorTypeAndShapeInfo* info, _In_ const int64_t* dim_values, size_t dim_count);
 
-  /** \brief Get element type in OrtTensorTypeAndShapeInfo
+  /** \brief Get element type in ::OrtTensorTypeAndShapeInfo
   *
   * \see OrtApi::SetTensorElementType
-  * 
+  *
   * \param[in] info
   * \param[out] out
   *
@@ -1110,7 +1224,7 @@ struct OrtApi {
   ORT_API2_STATUS(GetTensorElementType, _In_ const OrtTensorTypeAndShapeInfo* info,
                   _Out_ enum ONNXTensorElementDataType* out);
 
-  /** \brief Get dimension count in OrtTensorTypeAndShapeInfo
+  /** \brief Get dimension count in ::OrtTensorTypeAndShapeInfo
   *
   * \see OrtApi::GetDimensions
   *
@@ -1121,10 +1235,10 @@ struct OrtApi {
   */
   ORT_API2_STATUS(GetDimensionsCount, _In_ const OrtTensorTypeAndShapeInfo* info, _Out_ size_t* out);
 
-  /** \brief Get dimensions in OrtTensorTypeAndShapeInfo
+  /** \brief Get dimensions in ::OrtTensorTypeAndShapeInfo
   *
   * \param[in] info
-  * \param[out] dim_values Array with `dim_values_length` elements. On return, filled with the dimensions stored in the OrtTensorTypeAndShapeInfo
+  * \param[out] dim_values Array with `dim_values_length` elements. On return, filled with the dimensions stored in the ::OrtTensorTypeAndShapeInfo
   * \param[in] dim_values_length Number of elements in `dim_values`. Use OrtApi::GetDimensionsCount to get this value
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -1132,7 +1246,7 @@ struct OrtApi {
   ORT_API2_STATUS(GetDimensions, _In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values,
                   size_t dim_values_length);
 
-  /** \brief Get symbolic dimension names in OrtTensorTypeAndShapeInfo
+  /** \brief Get symbolic dimension names in ::OrtTensorTypeAndShapeInfo
   *
   * \param[in] info
   * \param[in] dim_params Array with `dim_params_length` elements. On return filled with pointers to null terminated strings of the dimension names
@@ -1143,7 +1257,7 @@ struct OrtApi {
   ORT_API2_STATUS(GetSymbolicDimensions, _In_ const OrtTensorTypeAndShapeInfo* info,
                   _Out_writes_all_(dim_params_length) const char* dim_params[], size_t dim_params_length);
 
-  /** \brief Get total number of elements in a tensor shape from an OrtTensorTypeAndShapeInfo
+  /** \brief Get total number of elements in a tensor shape from an ::OrtTensorTypeAndShapeInfo
   *
   * Return the number of elements specified by the tensor shape (all dimensions multiplied by each other).
   * For 0 dimensions, 1 is returned. If any dimension is less than 0, the result is always -1.
@@ -1196,7 +1310,7 @@ struct OrtApi {
   /// \name OrtMemoryInfo
   /// @{
 
-  /** \brief Create an OrtMemoryInfo
+  /** \brief Create an ::OrtMemoryInfo
   *
   * \param[in] name
   * \param[in] type
@@ -1209,7 +1323,7 @@ struct OrtApi {
   ORT_API2_STATUS(CreateMemoryInfo, _In_ const char* name, enum OrtAllocatorType type, int id,
                   enum OrtMemType mem_type, _Outptr_ OrtMemoryInfo** out);
 
-  /** \brief Create an OrtMemoryInfo for CPU memory
+  /** \brief Create an ::OrtMemoryInfo for CPU memory
   *
   * Special case version of OrtApi::CreateMemoryInfo for CPU based memory. Same as using OrtApi::CreateMemoryInfo with name = "Cpu" and id = 0.
   *
@@ -1222,9 +1336,9 @@ struct OrtApi {
   ORT_API2_STATUS(CreateCpuMemoryInfo, enum OrtAllocatorType type, enum OrtMemType mem_type,
                   _Outptr_ OrtMemoryInfo** out);
 
-  /** \brief Compare OrtMemoryInfo objects for equality
+  /** \brief Compare ::OrtMemoryInfo objects for equality
   *
-  * Compares all settings of each OrtMemoryInfo for equality
+  * Compares all settings of each ::OrtMemoryInfo for equality
   *
   * \param[in] info1
   * \param[in] info2
@@ -1234,26 +1348,37 @@ struct OrtApi {
   */
   ORT_API2_STATUS(CompareMemoryInfo, _In_ const OrtMemoryInfo* info1, _In_ const OrtMemoryInfo* info2, _Out_ int* out);
 
-  /** \brief Get name from OrtMemoryInfo
+  /** \brief Get name from ::OrtMemoryInfo
   *
   * \param[in] ptr
-  * \param[out] out Writes null terminated string to this pointer. Do NOT free the returned pointer. It is valid for the lifetime of the OrtMemoryInfo
+  * \param[out] out Writes null terminated string to this pointer. Do NOT free the returned pointer. It is valid for the lifetime of the ::OrtMemoryInfo
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(MemoryInfoGetName, _In_ const OrtMemoryInfo* ptr, _Out_ const char** out);
 
+  /** \brief Get the id from ::OrtMemoryInfo
+  */
   ORT_API2_STATUS(MemoryInfoGetId, _In_ const OrtMemoryInfo* ptr, _Out_ int* out);
+
+  /** \brief Get the ::OrtMemType from ::OrtMemoryInfo
+  */
   ORT_API2_STATUS(MemoryInfoGetMemType, _In_ const OrtMemoryInfo* ptr, _Out_ OrtMemType* out);
+
+  /** \brief Get the ::OrtAllocatorType from ::OrtMemoryInfo
+  */
   ORT_API2_STATUS(MemoryInfoGetType, _In_ const OrtMemoryInfo* ptr, _Out_ OrtAllocatorType* out);
 
   /// @}
   /// \name OrtAllocator
   /// @{
 
-  ORT_API2_STATUS(AllocatorAlloc, _Inout_ OrtAllocator* ptr, size_t size, _Outptr_ void** out);
-  ORT_API2_STATUS(AllocatorFree, _Inout_ OrtAllocator* ptr, void* p);
-  ORT_API2_STATUS(AllocatorGetInfo, _In_ const OrtAllocator* ptr, _Outptr_ const struct OrtMemoryInfo** out);
+  /// \brief Calls OrtAllocator::Alloc function
+  ORT_API2_STATUS(AllocatorAlloc, _Inout_ OrtAllocator* ort_allocator, size_t size, _Outptr_ void** out);
+  /// \brief Calls OrtAllocator::Free function
+  ORT_API2_STATUS(AllocatorFree, _Inout_ OrtAllocator* ort_allocator, void* p);
+  /// \brief Calls OrtAllocator::Info function
+  ORT_API2_STATUS(AllocatorGetInfo, _In_ const OrtAllocator* ort_allocator, _Outptr_ const struct OrtMemoryInfo** out);
 
   /** \brief Get the default allocator
   *
@@ -1344,11 +1469,11 @@ struct OrtApi {
 
   /** \brief Create a map or sequence ::OrtValue
   *
-  * To construct a map (ONNX_TYPE_MAP), use num_values = 2 and `in` should be an array of 2 ::OrtValue s
+  * To construct a map (ONNX_TYPE_MAP), use num_values = 2 and `in` should be an array of 2 ::OrtValue%s
   * representing keys and values.<br>
   *
   * To construct a sequence (ONNX_TYPE_SEQUENCE), use num_values = N where N is the number of the elements in the
-  * sequence. 'in' should be an array of N ::OrtValue s.
+  * sequence. 'in' should be an array of N ::OrtValue%s.
   *
   * \param[in] in See above for details
   * \param[in] num_values
@@ -1388,8 +1513,8 @@ struct OrtApi {
   /** \brief Get internal data from an opaque (custom user defined type) ::OrtValue
   *
   * Copies internal data from an opaque value into a user provided buffer
-  * 
-  * \see OrtApi::CreateOpaqueValue 
+  *
+  * \see OrtApi::CreateOpaqueValue
   *
   * \param[in] domain_name Null terminated string of the domain name
   * \param[in] type_name Null terminated string of the type name
@@ -1408,7 +1533,7 @@ struct OrtApi {
 
   /** \brief Get a float stored as an attribute in the graph node
   *
-  * \param[in] info OrtKernelInfo instance
+  * \param[in] info ::OrtKernelInfo instance
   * \param[in] name Null terminated string of the name of the attribute
   * \param[out] out Pointer to memory where the attribute will be stored
   *
@@ -1419,7 +1544,7 @@ struct OrtApi {
 
   /** \brief Fetch a 64-bit int stored as an attribute in the graph node
   *
-  * \param[in] info OrtKernelInfo instance
+  * \param[in] info ::OrtKernelInfo instance
   * \param[in] name Null terminated string of the name of the attribute
   * \param[out] out Pointer to memory where the attribute will be stored
   *
@@ -1441,7 +1566,7 @@ struct OrtApi {
   * is not nullptr, the value of `size` is set to the true size of the string attribute
   * and a failure status is returned.)
   *
-  * \param[in] info OrtKernelInfo instance
+  * \param[in] info ::OrtKernelInfo instance
   * \param[in] name Null terminated string of the name of the attribute
   * \param[out] out Pointer to memory where the attribute will be stored
   * \param[in,out] size See above comments for details
@@ -1451,10 +1576,33 @@ struct OrtApi {
   ORT_API2_STATUS(KernelInfoGetAttribute_string, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ char* out,
                   _Inout_ size_t* size);
 
+  /// @}
+  /// \name OrtKernelContext
+  /// @{
+
+  /** \brief Used for custom operators, get the input count of a kernel
+  *
+  * \see ::OrtCustomOp
+  */
   ORT_API2_STATUS(KernelContext_GetInputCount, _In_ const OrtKernelContext* context, _Out_ size_t* out);
+
+  /** \brief Used for custom operators, get the output count of a kernel
+  *
+  * \see ::OrtCustomOp
+  */
   ORT_API2_STATUS(KernelContext_GetOutputCount, _In_ const OrtKernelContext* context, _Out_ size_t* out);
+
+  /** \brief Used for custom operators, get an input of a kernel
+  *
+  * \see ::OrtCustomOp
+  */
   ORT_API2_STATUS(KernelContext_GetInput, _In_ const OrtKernelContext* context, _In_ size_t index,
                   _Out_ const OrtValue** out);
+
+  /** \brief Used for custom operators, get an output of a kernel
+  *
+  * \see ::OrtCustomOp
+  */
   ORT_API2_STATUS(KernelContext_GetOutput, _Inout_ OrtKernelContext* context, _In_ size_t index,
                   _In_ const int64_t* dim_values, size_t dim_count, _Outptr_ OrtValue** out);
 
@@ -1537,7 +1685,7 @@ struct OrtApi {
   *
   * This api augments ::OrtTypeInfo to return an ::OrtSequenceTypeInfo when the type is a sequence.
 	* The ::OrtSequenceTypeInfo has additional information about the sequence's element type.
-  * 
+  *
   * This is used by WinML to support model reflection APIs.
 	*
   * \param[in] type_info
@@ -1628,7 +1776,8 @@ struct OrtApi {
   /// \name OrtModelMetadata
   /// @{
 
-  /**
+  /** \brief Get `producer name` from an ::OrtModelMetadata
+  *
   * \param[in] model_metadata
   * \param[in] allocator
   * \param[out] value Set to a null terminated string allocated using `allocator`. Must be freed using `allocator`
@@ -1637,14 +1786,41 @@ struct OrtApi {
   */
   ORT_API2_STATUS(ModelMetadataGetProducerName, _In_ const OrtModelMetadata* model_metadata,
                   _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
+
+  /** \brief Get `graph name` from an ::OrtModelMetadata
+  *
+  * \param[in] model_metadata
+  * \param[in] allocator
+  * \param[out] value Set to a null terminated string allocated using `allocator`. Must be freed using `allocator`
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
   ORT_API2_STATUS(ModelMetadataGetGraphName, _In_ const OrtModelMetadata* model_metadata,
                   _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
+
+  /** \brief Get `domain` from an ::OrtModelMetadata
+  *
+  * \param[in] model_metadata
+  * \param[in] allocator
+  * \param[out] value Set to a null terminated string allocated using `allocator`. Must be freed using `allocator`
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
   ORT_API2_STATUS(ModelMetadataGetDomain, _In_ const OrtModelMetadata* model_metadata, _Inout_ OrtAllocator* allocator,
                   _Outptr_ char** value);
+
+  /** \brief Get `description` from an ::OrtModelMetadata
+  *
+  * \param[in] model_metadata
+  * \param[in] allocator
+  * \param[out] value Set to a null terminated string allocated using `allocator`. Must be freed using `allocator`
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
   ORT_API2_STATUS(ModelMetadataGetDescription, _In_ const OrtModelMetadata* model_metadata,
                   _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
 
-  /** \brief Return data for a key in the custom metadata map
+  /** \brief Return data for a key in the custom metadata map in an ::OrtModelMetadata
   *
   * \param[in] model_metadata
   * \param[in] allocator
@@ -1657,6 +1833,13 @@ struct OrtApi {
   ORT_API2_STATUS(ModelMetadataLookupCustomMetadataMap, _In_ const OrtModelMetadata* model_metadata,
                   _Inout_ OrtAllocator* allocator, _In_ const char* key, _Outptr_result_maybenull_ char** value);
 
+  /** \brief Get version number from an ::OrtModelMetadata
+  *
+  * \param[in] model_metadata
+  * \param[out] value Set to the version number
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
   ORT_API2_STATUS(ModelMetadataGetVersion, _In_ const OrtModelMetadata* model_metadata, _Out_ int64_t* value);
 
   ORT_CLASS_RELEASE(ModelMetadata);
@@ -1671,18 +1854,26 @@ struct OrtApi {
   * Use this in conjunction with OrtApi::DisablePerSessionThreads or else the session will use
   * its own thread pools.
   *
+  * \param[in] log_severity_level The log severity level.
+  * \param[in] logid The log identifier.
+  * \param[in] tp_options
+  * \param[out] out Returned newly created OrtEnv. Must be freed with OrtApi::ReleaseEnv
+  *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
-  ORT_API2_STATUS(CreateEnvWithGlobalThreadPools, OrtLoggingLevel logging_level, _In_ const char* logid,
-                  _In_ const OrtThreadingOptions* t_options, _Outptr_ OrtEnv** out);
+  ORT_API2_STATUS(CreateEnvWithGlobalThreadPools, OrtLoggingLevel log_severity_level, _In_ const char* logid,
+                  _In_ const OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out);
 
   /// @}
   /// \name OrtSessionOptions
   /// @{
 
-  /*
-  * Calling this will make the session use the global threadpools shared across sessions.
+  /** \brief Use global thread pool on a session
+  *
+  * Disable using per session thread pool and use the shared global threadpool.
   * This should be used in conjunction with OrtApi::CreateEnvWithGlobalThreadPools.
+  *
+  * \param[in] options
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
@@ -1692,6 +1883,11 @@ struct OrtApi {
   /// \name OrtThreadingOptions
   /// @{
 
+  /** \brief Create an ::OrtThreadingOptions
+  *
+  * \param[out] out Newly created ::OrtThreadingOptions. Must be freed with OrtApi::ReleaseThreadingOptions
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
   ORT_API2_STATUS(CreateThreadingOptions, _Outptr_ OrtThreadingOptions** out);
 
   ORT_CLASS_RELEASE(ThreadingOptions);
@@ -1701,7 +1897,7 @@ struct OrtApi {
   /// @{
 
   /**
-  * 
+  *
   * \param[in] model_metadata
   * \param[in] allocator
   * \param[out] keys Array of null terminated strings (array count = num_keys) allocated using `allocator`.
@@ -1817,8 +2013,8 @@ struct OrtApi {
   /** \brief Create an allocator for an ::OrtSession following an ::OrtMemoryInfo
   *
   * \param[in] session
-  * \param[in] mem_info valid OrtMemoryInfo instance
-  * \param[out] out Newly created OrtAllocator. Must be freed with OrtApi::ReleaseAllocator
+  * \param[in] mem_info valid ::OrtMemoryInfo instance
+  * \param[out] out Newly created ::OrtAllocator. Must be freed with OrtApi::ReleaseAllocator
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
@@ -1847,7 +2043,7 @@ struct OrtApi {
 
   /** \brief Create an ::OrtIoBinding instance
   *
-  * An IoBinding object allows one to bind pre-allocated ::OrtValue s to input names. 
+  * An IoBinding object allows one to bind pre-allocated ::OrtValue%s to input names.
   * Thus if you want to use a raw on device buffer as input or output you can avoid
   * extra copy during runtime.
   *
@@ -1929,18 +2125,18 @@ struct OrtApi {
 
   /** \brief Get the output ::OrtValue objects from an ::OrtIoBinding
   *
-  * Returns an array of pointers to individually allocated ::OrtValue s that contain results of a model execution with OrtApi::RunWithBinding
-  * The array contains the same number of ::OrtValue s and they are in the same order as they were bound with OrtApi::BindOutput
+  * Returns an array of pointers to individually allocated ::OrtValue%s that contain results of a model execution with OrtApi::RunWithBinding
+  * The array contains the same number of ::OrtValue%s and they are in the same order as they were bound with OrtApi::BindOutput
   * or OrtApi::BindOutputToDevice.
   *
-  * The returned ::OrtValue s must be released using OrtApi::ReleaseValue after they are no longer needed.
+  * The returned ::OrtValue%s must be released using OrtApi::ReleaseValue after they are no longer needed.
   * The array is allocated using the specified instance of the allocator and must be freed using the same allocator after
-  * all the ::OrtValue s contained therein are individually released.
+  * all the ::OrtValue%s contained therein are individually released.
   *
   * \param[in] binding_ptr
   * \param[in] allocator Allocator used to allocate output array
   * \param[out] output Set to the allocated array of allocated ::OrtValue outputs. Set to nullptr if there are 0 outputs.
-  * \param[out] output_count Set to number of ::OrtValue s returned
+  * \param[out] output_count Set to number of ::OrtValue%s returned
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
@@ -1979,18 +2175,17 @@ struct OrtApi {
   /// \name OrtEnv
   /// @{
 
-  /**
+  /** \brief Create an allocator and register it with the ::OrtEnv
   *
-  * Create an allocator instance and registers it with the env to enable
-  * sharing between multiple sessions that use the same env instance.
+  * Enables sharing the allocator between multiple sessions that use the same env instance.
   * Lifetime of the created allocator will be valid for the duration of the environment.
-  * Returns an error if an allocator with the same OrtMemoryInfo is already registered.
+  * Returns an error if an allocator with the same ::OrtMemoryInfo is already registered.
   *
   * See https://onnxruntime.ai/docs/reference/api/c-api.html for details.
   *
-  * \param[in] env OrtEnv instance (must be non-null).
-  * \param[in] mem_info (must be non-null).
-  * \param[in] arena_cfg if nullptr defaults will be used.
+  * \param[in] env ::OrtEnv instance
+  * \param[in] mem_info
+  * \param[in] arena_cfg Pass nullptr for defaults
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
@@ -2076,7 +2271,7 @@ struct OrtApi {
 
   /** \brief Add a pre-allocated initializer to a session
   *
-  * If a model contains an initializer with a name that is same as the name passed to this call, 
+  * If a model contains an initializer with a name that is same as the name passed to this call,
   * ORT will use this initializer instance instead of deserializing one from the model file. This
   * is useful when you want to share the same initializer across sessions.
   *
@@ -2100,16 +2295,17 @@ struct OrtApi {
   * Use this in conjunction with OrtApi::DisablePerSessionThreads or else the session will use
   * its own thread pools.
   *
-  * \param[in] logging_function
-  * \param[in] logger_param
-  * \param[in] logging_level
-  * \param[in] logid
+  * \param[in] logging_function A pointer to a logging function.
+  * \param[in] logger_param A pointer to arbitrary data passed as the ::OrtLoggingFunction `param` parameter to
+  *                         `logging_function`.
+  * \param[in] log_severity_level The log severity level.
+  * \param[in] logid The log identifier.
   * \param[in] tp_options
   * \param[out] out Newly created OrtEnv. Must be freed with OrtApi::ReleaseEnv
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
-  ORT_API2_STATUS(CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel logging_level,
+  ORT_API2_STATUS(CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel log_severity_level,
                   _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out);
 
   /// @}
@@ -2437,14 +2633,14 @@ struct OrtApi {
   /** \brief Append TensorRT execution provider to the session options
   *
   * If TensorRT is not available (due to a non TensorRT enabled build), this function will return failure.
-  * 
+  *
   * This is slightly different from OrtApi::SessionOptionsAppendExecutionProvider_TensorRT, it takes an
   * ::OrtTensorRTProviderOptions which is publicly defined. This takes an opaque ::OrtTensorRTProviderOptionsV2
   * which must be created with OrtApi::CreateTensorRTProviderOptions.
   *
   * For OrtApi::SessionOptionsAppendExecutionProvider_TensorRT, the user needs to instantiate ::OrtTensorRTProviderOptions
   * as well as allocate/release buffers for some members of ::OrtTensorRTProviderOptions.
-  * Here, OrtApi::CreateTensorRTProviderOptions and Ortapi::ReleaseTensorRTProviderOptions will do the memory management for you. 
+  * Here, OrtApi::CreateTensorRTProviderOptions and Ortapi::ReleaseTensorRTProviderOptions will do the memory management for you.
   *
   * \param[in] options
   * \param[in] tensorrt_options
@@ -2488,9 +2684,9 @@ struct OrtApi {
 
   /** \brief Get serialized TensorRT provider options string.
   *
-  * For example, "trt_max_workspace_size=2147483648;trt_max_partition_iterations=10;trt_int8_enable=1;......" 
+  * For example, "trt_max_workspace_size=2147483648;trt_max_partition_iterations=10;trt_int8_enable=1;......"
   *
-  * \param tensorrt_options - OrTensorRTProviderOptionsV2 instance 
+  * \param tensorrt_options - OrTensorRTProviderOptionsV2 instance
   * \param allocator - a ptr to an instance of OrtAllocator obtained with OrtApi::CreateAllocator or OrtApi::GetAllocatorWithDefaultOptions
   *                      the specified allocator will be used to allocate continuous buffers for output strings and lengths.
   * \param ptr - is a UTF-8 null terminated string allocated using 'allocator'. The caller is responsible for using the same allocator to free it.
@@ -2527,7 +2723,7 @@ struct OrtApi {
   * Returns an error if an allocator with the same ::OrtMemoryInfo is already registered.
   *
   * The behavior of this is exactly the same as OrtApi::CreateAndRegisterAllocator except
-  * instead of ORT creating an allocator based on provided info, in this case 
+  * instead of ORT creating an allocator based on provided info, in this case
   * ORT uses the user-provided custom allocator.
   * See https://onnxruntime.ai/docs/reference/api/c-api.html for details.
   *
@@ -2540,7 +2736,7 @@ struct OrtApi {
 
   /** \brief Unregister a custom allocator
   *
-  * It is an error if you provide an OrtmemoryInfo not corresponding to any
+  * It is an error if you provide an ::OrtMemoryInfo not corresponding to any
   * registered allocators for sharing.
   *
   * \param[in] env
@@ -2555,9 +2751,8 @@ struct OrtApi {
   /// \name OrtValue
   /// @{
 
-  /**
-  * Sets *out to 1 iff an ::OrtValue is a SparseTensor, and 0 otherwise
-  * 
+  /** \brief Sets *out to 1 iff an ::OrtValue is a SparseTensor, and 0 otherwise
+  *
   * \param[in] value existing ::OrtValue
   * \param[out] out unless an error occurs, contains 1 iff the value contains an instance
   *  of sparse tensor or 0 otherwise.
@@ -2566,8 +2761,8 @@ struct OrtApi {
   */
   ORT_API2_STATUS(IsSparseTensor, _In_ const OrtValue* value, _Out_ int* out);
 
-  /**
-  * Create an ::OrtValue with a sparse tensor that is empty.
+  /** \brief Create an ::OrtValue with a sparse tensor that is empty.
+  *
   * Use FillSparseTensor<Format>() functions to populate sparse tensor with non-zero values and
   * format specific indices data.
   * Use ReleaseValue to destroy the sparse tensor, this will also release the buffer inside the output value
@@ -2589,9 +2784,9 @@ struct OrtApi {
   * This fills populates an empty tensor that was created using OrtApi::CreateSparseTensorAsOrtValue.
   * This will allocate required memory and copy the supplied NNZ values and COO indices into that memory allocation.
   * Memory allocation is performed using the allocator that was specified with OrtApi::CreateSparseTensorAsOrtValue.
-  * 
+  *
   * \param[in,out] ort_value ::OrtValue to populate with data
-  * \param[in] data_mem_info serves to identify the location of the data to be copied. If the allocator specified 
+  * \param[in] data_mem_info serves to identify the location of the data to be copied. If the allocator specified
   *  at the creation time has memory info that is not the same as mem_info argument to this function a X-device copy will be performed.
   *  String data is assumed to be on CPU and will only be copied into a CPU allocated buffer.
   * \param[in] values_shape pointer to values shape array
@@ -2610,9 +2805,9 @@ struct OrtApi {
   * This fills populates an empty tensor that was created using OrtApi::CreateSparseTensorAsOrtValue.
   * This will allocate required memory and copy the supplied NNZ values and CSR indices into that memory allocation.
   * Memory allocation is performed using the allocator that was specified with OrtApi::CreateSparseTensorAsOrtValue.
-  * 
+  *
   * \param[in,out] ort_value ::OrtValue to populate with data
-  * \param[in] data_mem_info serves to identify the location of the data to be copied. If the allocator specified 
+  * \param[in] data_mem_info serves to identify the location of the data to be copied. If the allocator specified
   *  at the creation time has memory info that is not the same as mem_info argument to this function a X-device copy will be performed.
   *  String data is assumed to be on CPU and will only be copied into a CPU allocated buffer.
   * \param[in] values_shape pointer to values shape array
@@ -2634,9 +2829,9 @@ struct OrtApi {
   * This fills populates an empty tensor that was created using OrtApi::CreateSparseTensorAsOrtValue.
   * This will allocate required memory and copy the supplied NNZ values and BlockSparse indices into that memory allocation.
   * Memory allocation is performed using the allocator that was specified with OrtApi::CreateSparseTensorAsOrtValue.
-  * 
+  *
   * \param[in,out] ort_value ::OrtValue to populate with data
-  * \param[in] data_mem_info serves to identify the location of the data to be copied. If the allocator specified 
+  * \param[in] data_mem_info serves to identify the location of the data to be copied. If the allocator specified
   *  at the creation time has memory info that is not the same as mem_info argument to this function a X-device copy will be performed.
   *  String data is assumed to be on CPU and will only be copied into a CPU allocated buffer.
   * \param[in] values_shape
@@ -2663,7 +2858,7 @@ struct OrtApi {
   * This function can not be used to map strings from the user allocated memory. Strings must always be copied
   * and have UTF-8 encoding. Therefore, use OrtApi::CreateSparseTensorAsOrtValue above and then fill it with data
   * using appropriate Make*() function.
-  * 
+  *
   * \param[in] info memory info where sparse values reside.
   * \param[in,out] p_data pointer to a user allocated buffer with values. To create a full sparse tensor with no non-zero
   *   values, pass nullptr
@@ -2683,11 +2878,11 @@ struct OrtApi {
                   ONNXTensorElementDataType type, _Outptr_ OrtValue** out);
 
   /**
-  * This assigns Coo format indices to the SparseTensor that was created by 
-  * OrtApi::CreateSparseTensorWithValuesAsOrtValue above. It also sets OrtSparseFormat to 
+  * This assigns Coo format indices to the SparseTensor that was created by
+  * OrtApi::CreateSparseTensorWithValuesAsOrtValue above. It also sets OrtSparseFormat to
   * ORT_SPARSE_COO. This will not allocate any additional memory for data. The life span of
   * indices_data buffer should eclipse the life span of this ::OrtValue.
-  * 
+  *
   * \param[in,out] ort_value ::OrtValue instance constructed with OrtApi::CreateSparseTensorWithValuesAsOrtValue
   * \param[in,out] indices_data pointer to a user pre-allocated buffer or nullptr for fully sparse tensors.
   * \param[in] indices_num  number of COO indices. Should either be 0 for fully sparse tensors, be equal
@@ -2699,11 +2894,11 @@ struct OrtApi {
   ORT_API2_STATUS(UseCooIndices, _Inout_ OrtValue* ort_value, _Inout_ int64_t* indices_data, size_t indices_num);
 
   /**
-  * The assigns CSR format indices to the SparseTensor that was created by 
-  * OrtApi::CreateSparseTensorWithValuesAsOrtValue above. It also sets OrtSparseFormat to 
+  * The assigns CSR format indices to the SparseTensor that was created by
+  * OrtApi::CreateSparseTensorWithValuesAsOrtValue above. It also sets OrtSparseFormat to
   * ORT_SPARSE_CSRC. This will not allocate any additional memory for data. The life spans of
   * inner_data and outer_data buffers should eclipse the life span of this ::OrtValue.
-  * 
+  *
   * \param[in,out] ort_value ::OrtValue instance constructed with OrtApi::CreateSparseTensorWithValuesAsOrtValue
   * \param[in,out] inner_data pointer to a user pre-allocated buffer or nullptr for fully sparse tensors.
   * \param[in] inner_num  number of inner CSR indices. Should either be 0 for fully sparse tensors or be equal
@@ -2718,11 +2913,11 @@ struct OrtApi {
                   _Inout_ int64_t* outer_data, size_t outer_num);
 
   /**
-  * The assigns BlockSparse format indices to the SparseTensor that was created by 
-  * OrtApi::CreateSparseTensorWithValuesAsOrtValue above. It also sets OrtSparseFormat to 
+  * The assigns BlockSparse format indices to the SparseTensor that was created by
+  * OrtApi::CreateSparseTensorWithValuesAsOrtValue above. It also sets OrtSparseFormat to
   * ORT_SPARSE_BLOCK_SPARSE. This will not allocate any additional memory for data. The life span of
   * indices_data buffer must eclipse the lifespan of this ::OrtValue.
-  * 
+  *
   * \param[in,out] ort_value OrtValue instance constructed with OrtApi::CreateSparseTensorWithValuesAsOrtValue
   * \param[in] indices_shape pointer to indices shape. Use {0} for fully sparse tensors
   * \param[in] indices_shape_len length of the indices shape
@@ -2732,9 +2927,8 @@ struct OrtApi {
   */
   ORT_API2_STATUS(UseBlockSparseIndices, _Inout_ OrtValue* ort_value, const int64_t* indices_shape, size_t indices_shape_len, _Inout_ int32_t* indices_data);
 
-  /**
-  * Returns sparse tensor format enum iff a given ort value contains an instance of sparse tensor.
-  * 
+  /** \brief Returns sparse tensor format enum iff a given ort value contains an instance of sparse tensor.
+  *
   * \param[in] ort_value ::OrtValue that contains an instance of sparse tensor
   * \param[out] out pointer to out parameter
   *
@@ -2742,19 +2936,17 @@ struct OrtApi {
   */
   ORT_API2_STATUS(GetSparseTensorFormat, _In_ const OrtValue* ort_value, _Out_ enum OrtSparseFormat* out);
 
-  /**
-  *  Returns data type and shape of sparse tensor values (nnz) iff ::OrtValue contains a SparseTensor.
-  * 
-  * \param[in] ort_value an ::OrtValue that contains a fully constructed sparse tensor
-  * \param[out] out Should be freed by OrtApi::ReleaseTensorTypeAndShapeInfo after use
+  /** \brief Returns data type and shape of sparse tensor values (nnz) iff ::OrtValue contains a SparseTensor.
+  *
+  * \param[in] ort_value An ::OrtValue that contains a fully constructed sparse tensor
+  * \param[out] out Must be freed by OrtApi::ReleaseTensorTypeAndShapeInfo
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(GetSparseTensorValuesTypeAndShape, _In_ const OrtValue* ort_value, _Outptr_ OrtTensorTypeAndShapeInfo** out);
 
-  /**
-  * Returns numeric data for sparse tensor values (nnz). For string values use GetStringTensor*().
-  * 
+  /** \brief Returns numeric data for sparse tensor values (nnz). For string values use GetStringTensor*().
+  *
   * \param[in] ort_value an instance of ::OrtValue containing sparse tensor
   * \param[out] out returns a pointer to values data.  Do not attempt to free this ptr.
   *
@@ -2762,27 +2954,23 @@ struct OrtApi {
   */
   ORT_API2_STATUS(GetSparseTensorValues, _In_ const OrtValue* ort_value, _Outptr_ const void** out);
 
-  /**
-  * Returns data type, shape for the type of indices specified by indices_format.
-  * 
+  /** \brief Returns data type, shape for the type of indices specified by indices_format.
+  *
   * \param[in] ort_value ::OrtValue containing sparse tensor.
   * \param[in] indices_format One of the indices formats. It is an error to request a format that the sparse
   * tensor does not contain.
-  * \param[out] out an instance of OrtTensorTypeAndShapeInfo. Must be freed by the ReleaseTensorTypeAndShapeInfo.
+  * \param[out] out an instance of ::OrtTensorTypeAndShapeInfo. Must be freed by OrtApi::ReleaseTensorTypeAndShapeInfo
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(GetSparseTensorIndicesTypeShape, _In_ const OrtValue* ort_value, enum OrtSparseIndicesFormat indices_format, _Outptr_ OrtTensorTypeAndShapeInfo** out);
 
-  /**
-  * Returns indices data for the type of the indices specified by indices_format.
-  * Do not free the returned ptr as it points directly to the internal sparse tensor buffer.
-  * 
+  /** \brief Returns indices data for the type of the indices specified by indices_format
+  *
   * \param[in] ort_value ::OrtValue containing sparse tensor.
-  * \param[in] indices_format - one of the indices formats. It is an error to request a format that the sparse
-  * tensor does not contain.
-  * \param[out] num_indices ptr where the number of indices entries is returned
-  * \param[out] indices out param where the pointer to the internal buffer is returned. Do not free this buffer.
+  * \param[in] indices_format One of the indices formats. It is an error to request a format that the sparse tensor does not contain.
+  * \param[out] num_indices Pointer to where the number of indices entries is returned
+  * \param[out] indices Returned pointer to the indices data. Do not free the returned pointer as it refers to internal data owned by the ::OrtValue
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
@@ -2814,7 +3002,7 @@ typedef enum OrtCustomOpInputOutputCharacteristic {
  * the implementor of the custom op.
 */
 struct OrtCustomOp {
-  uint32_t version;  // Initialize to ORT_API_VERSION
+  uint32_t version;  // Must be initialized to ORT_API_VERSION
 
   // This callback creates the kernel, which is a user defined parameter that is passed to the Kernel* callbacks below.
   void*(ORT_API_CALL* CreateKernel)(_In_ const struct OrtCustomOp* op, _In_ const OrtApi* api,
@@ -2844,7 +3032,7 @@ struct OrtCustomOp {
 /*
  * This is the old way to add the CUDA provider to the session, please use SessionOptionsAppendExecutionProvider_CUDA above to access the latest functionality
  * This function always exists, but will only succeed if Onnxruntime was built with CUDA support and the CUDA provider shared library exists
- * 
+ *
  * \param device_id CUDA device id, starts from zero.
 */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id);
