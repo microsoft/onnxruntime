@@ -162,8 +162,8 @@ function validateTestList() {
         const testCaseName = typeof testCase === 'string' ? testCase : testCase.name;
         let found = false;
         for (const testGroup of nodeTest) {
-          found =
-              found || testGroup.tests.some(test => minimatch(test.modelUrl, path.join('**', testCaseName, '*.onnx')));
+          found = found ||
+              testGroup.tests.some(test => minimatch(test.modelUrl, path.join('**', testCaseName, '*.+(onnx|ort)')));
         }
         if (!found) {
           throw new Error(`node model test case '${testCaseName}' in test list does not exist.`);
@@ -228,6 +228,11 @@ function suiteFromFolder(
   return {name, tests: sessions};
 }
 
+interface ModelFileInfo {
+  fullPath: string;
+  stat: fs.Stats;
+}
+
 function modelTestFromFolder(
     testDataRootFolder: string, backend: string, condition?: Test.Condition, times?: number): Test.ModelTest {
   if (times === 0) {
@@ -240,6 +245,8 @@ function modelTestFromFolder(
 
   npmlog.verbose('TestRunnerCli.Init.Model', `Start to prepare test data from folder: ${testDataRootFolder}`);
 
+  const modelFileInfos: Map<string, ModelFileInfo> = new Map();
+
   try {
     for (const thisPath of fs.readdirSync(testDataRootFolder)) {
       const thisFullPath = path.join(testDataRootFolder, thisPath);
@@ -247,14 +254,10 @@ function modelTestFromFolder(
       if (stat.isFile()) {
         const ext = path.extname(thisPath);
         if (ext.toLowerCase() === '.onnx' || ext.toLowerCase() === '.ort') {
-          if (modelUrl === null) {
-            modelUrl = path.join(TEST_DATA_BASE, path.relative(TEST_ROOT, thisFullPath));
-            if (FILE_CACHE_ENABLED && !fileCache[modelUrl] && stat.size <= FILE_CACHE_MAX_FILE_SIZE) {
-              fileCache[modelUrl] = bufferToBase64(fs.readFileSync(thisFullPath));
-            }
-          } else {
+          if (modelFileInfos.has(ext.toLowerCase())) {
             throw new Error('there are multiple model files under the folder specified');
           }
+          modelFileInfos.set(ext.toLowerCase(), {fullPath: thisFullPath, stat});
         }
       } else if (stat.isDirectory()) {
         const dataFiles: string[] = [];
@@ -277,8 +280,28 @@ function modelTestFromFolder(
       }
     }
 
-    if (modelUrl === null) {
+    let modelFileInfo: ModelFileInfo|null = null;
+    if (args.ort) {
+      if (!modelFileInfos.has('.ort')) {
+        throw new Error('there is no ort model file under the folder specified');
+      } else {
+        modelFileInfo = modelFileInfos.get('.ort')!;
+      }
+    } else {
+      if (modelFileInfos.has('.onnx')) {
+        modelFileInfo = modelFileInfos.get('.onnx')!;
+      } else if (modelFileInfos.has('.ort')) {
+        modelFileInfo = modelFileInfos.get('.ort')!;
+      }
+    }
+
+    if (modelFileInfo === null) {
       throw new Error('there are no model file under the folder specified');
+    }
+
+    modelUrl = path.join(TEST_DATA_BASE, path.relative(TEST_ROOT, modelFileInfo.fullPath));
+    if (FILE_CACHE_ENABLED && !fileCache[modelUrl] && modelFileInfo.stat.size <= FILE_CACHE_MAX_FILE_SIZE) {
+      fileCache[modelUrl] = bufferToBase64(fs.readFileSync(modelFileInfo.fullPath));
     }
   } catch (e) {
     npmlog.error('TestRunnerCli.Init.Model', `Failed to prepare test data. Error: ${inspect(e)}`);
@@ -327,7 +350,7 @@ function tryLocateModelTestFolder(searchPattern: string): string {
   // pick the first folder that matches the pattern
   for (const folderCandidate of folderCandidates) {
     const modelCandidates = globby.sync('*.{onnx,ort}', {onlyFiles: true, cwd: folderCandidate});
-    if (modelCandidates && modelCandidates.length === 1) {
+    if (modelCandidates && (modelCandidates.length === 1 || modelCandidates.length === 2)) {
       return folderCandidate;
     }
   }

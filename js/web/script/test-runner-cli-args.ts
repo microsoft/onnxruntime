@@ -48,6 +48,7 @@ Options:
  -P[=<...>], --perf[=<...>]    Generate performance number. Cannot be used with flag --debug.
                                  This flag can be used with a number as value, specifying the total count of test cases to run. The test cases may be used multiple times. Default value is 10.
  -c, --file-cache              Enable file cache.
+ -o, --ort                     Test ort model instead of onnx model.
 
 *** Logging Options ***
 
@@ -147,6 +148,11 @@ export interface TestRunnerCliArgs {
    * Specify the times that test cases to run
    */
   times?: number;
+
+  /**
+   * Whether to use ort model instead of onnx model
+   */
+  ort: boolean;
 
   cpuOptions?: InferenceSession.CpuExecutionProviderOption;
   cudaOptions?: InferenceSession.CudaExecutionProviderOption;
@@ -388,6 +394,8 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   // Option: --no-sandbox
   const noSandbox = !!args['no-sandbox'];
 
+  const ort = (args.ort || args.O) ? true : false;
+
   npmlog.verbose('TestRunnerCli.Init', ` Mode:              ${mode}`);
   npmlog.verbose('TestRunnerCli.Init', ` Env:               ${env}`);
   npmlog.verbose('TestRunnerCli.Init', ` Debug:             ${debug}`);
@@ -404,6 +412,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     logConfig,
     profile,
     times: perf ? times : undefined,
+    ort,
     fileCache,
     cpuOptions,
     webglOptions,

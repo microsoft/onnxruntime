@@ -50,3 +50,16 @@ if (args.f || args.force || !fs.existsSync(TEST_DATA_NODE)) {
   }
   npmlog.info('PrepareTestData', 'Revert git index... DONE');
 }
+
+if (args.ort) {
+  npmlog.info('PrepareTestData', 'Convert onnx to ort...');
+  const scriptPath = path.join(ROOT, 'tools', 'python', 'convert_onnx_models_to_ort.py');
+  const convert = spawnSync('python', [scriptPath, '--allow_conversion_failures', TEST_DATA_NODE], {stdio: 'ignore'});
+  if (convert.status !== 0) {
+    if (convert.error) {
+      console.error(convert.error);
+    }
+    process.exit(convert.status === null ? undefined : convert.status);
+  }
+  npmlog.info('PrepareTestData', 'Convert onnx to ort... DONE');
+}
