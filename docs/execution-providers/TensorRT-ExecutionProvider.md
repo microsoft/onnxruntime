@@ -20,6 +20,16 @@ With the TensorRT execution provider, the ONNX Runtime delivers better inferenci
 ## Install
 Pre-built packages and Docker images are available for Jetpack in the [Jetson Zoo](https://elinux.org/Jetson_Zoo#ONNX_Runtime).
 
+## Requirements
+|ONNX Runtime|TensorRT|CUDA|
+|---|---|---|
+|1.9|8.0|11.4|
+|1.7-1.8|7.2|11.0.3|
+|1.5-1.6|7.1|10.2|
+|1.2-1.4|7.0|10.1|
+|1.0-1.1|6.0|10.0|
+
+For more details on CUDA/cuDNN versions, please see [CUDA EP requirements](./CUDA-ExecutionProvider.md#Requirements).
 
 ## Build
 

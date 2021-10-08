@@ -2,6 +2,7 @@
 title: C# API
 parent: API Docs
 nav_order: 2
+nav_exclude: true
 ---
 
 # C# API Reference
