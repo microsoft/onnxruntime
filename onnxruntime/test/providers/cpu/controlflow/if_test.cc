@@ -506,7 +506,7 @@ class IfOpTesterWithOptionalTypeAsOutput : public OpTester {
                                                                    identity_input->TypeAsProto());
       graph.AddOuterScopeNodeArg("pass_through_identity_input");
 
-      auto& optional_node = graph.AddNode(
+      graph.AddNode(
           then_branch ? "Identity_Then" : "Identity_Else",
           "Identity",
           then_branch ? "Identity_Then" : "Identity_Else", {&pass_through_identity_input}, if_outputs);
