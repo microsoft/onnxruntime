@@ -1475,6 +1475,18 @@
         "OptionalHasElement ai.onnx CPUExecutionProvider",
         103583056104706000
     ],
+[
+        "Identity ai.onnx CPUExecutionProvider",
+        17661628575887109792
+    ],
+    [
+        "If ai.onnx CPUExecutionProvider",
+        14605093928914589528
+    ],
+    [
+        "Loop ai.onnx CPUExecutionProvider",
+        3437102755395866648
+    ],
     [
         "Or ai.onnx CPUExecutionProvider",
         18295541712828245416

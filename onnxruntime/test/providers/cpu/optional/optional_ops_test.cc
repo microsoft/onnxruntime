@@ -205,8 +205,12 @@ TEST(OptionalOpTest, OptionalOpsValidateOrtValueReUseForOptionalTensors) {
   // We create a simple model with 2 optional ops - Optional and OptionalGetElement
   // that don't produce graph outputs and we have logic in the allocation planner to
   // re-use input OrtValues as output OrtValues for such cases. We test that the model
-  // executes fine with sch logic.
-  // TODO: How to ensure that re-use took place ?
+  // executes fine with such logic.
+  // The allocation planner already tests the re-use of inputs as outputs if the kernel def
+  // requests that, so there is no need to test that re-use took place here.
+  // We are just triggering that behavior in the allocation planner by ensuring
+  // that 'OptionalGetElement' op doesn't produce a graph output, in which case,
+  // input re-use wouldn't have happened.
 
   OptionalOpTester test;
 
@@ -222,9 +226,12 @@ TEST(OptionalOpTest, OptionalOpsValidateOrtValueReUseForOptionalTensorSequence) 
   // We create a simple model with 2 optional ops - Optional and OptionalGetElement
   // that don't produce graph outputs and we have logic in the allocation planner to
   // re-use input OrtValues as output OrtValues for such cases. We test that the model
-  // executes fine with sch logic.
-  // TODO: How to ensure that re-use took place ?
-
+  // executes fine with such logic.
+  // The allocation planner already tests the re-use of inputs as outputs if the kernel def
+  // requests that, so there is no need to test that re-use took place here.
+  // We are just triggering that behavior in the allocation planner by ensuring
+  // that 'OptionalGetElement' op doesn't produce a graph output, in which case,
+  // input re-use wouldn't have happened.
   OptionalOpTester test(true);
 
   SeqTensors<float> data;
