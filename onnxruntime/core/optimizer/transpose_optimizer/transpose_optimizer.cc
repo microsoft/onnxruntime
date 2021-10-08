@@ -151,7 +151,7 @@ static const std::string_view UnsqueezeValue(int64_t opset, api::Graph& graph, c
     const std::vector<std::string_view>& inputs = node->Inputs();
     std::optional<std::vector<int64_t>> squeeze_axes = std::nullopt;
     if (*graph.Opset() < 13) {
-      squeeze_axes = move(node->GetAttributeInts("axes"));
+      squeeze_axes = node->GetAttributeInts("axes");
     } else if (inputs.size() == 2) {
       std::unique_ptr<api::Tensor> axes_const = graph.GetConstant(inputs[1]);
       if (axes_const != nullptr) {
