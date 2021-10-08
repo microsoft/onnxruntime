@@ -72,6 +72,7 @@ class TrainingManager(GraphExecutionManager):
         if self._fallback_manager.is_pending():
             return self._fallback_manager.fallback(self._debug_options.logging.log_level, *inputs, **kwargs)
 
+        ## try catch on such long code is not a good pratice.
         try:
             if self._first_skip_check_warning is True and self._skip_check.is_disabled() is False \
                     and self._debug_options.logging.log_level <= _logger.LogLevel.WARNING:
@@ -95,6 +96,7 @@ class TrainingManager(GraphExecutionManager):
                 # since the schema was just extracted while trying to export the model and it was either
                 # saved to self._input_info.schema or checked for equality with the self._input_info.schema
                 # it should not need to be updated again. Pass it inside parse_inputs_for_onnx_export.
+                ## It seems to be called at every iteration. Why do we need to parse input again?
                 input_info = _io.parse_inputs_for_onnx_export(self._module_parameters,
                                                               self._onnx_models.exported_model,
                                                               self._input_info.schema,
@@ -104,6 +106,7 @@ class TrainingManager(GraphExecutionManager):
                 # Reinitialize graph builder if the inputs or initializers requiring gradient have changed.
                 # Order of or operation is important here because we always need to call
                 # _reinitialize_graph_builder irrespective of the value of build_gradient_graph.
+                ## if build_gradient_graph is True, this should not be needed.
                 build_gradient_graph = self._reinitialize_graph_builder(
                     input_info) or build_gradient_graph
 

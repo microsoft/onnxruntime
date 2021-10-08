@@ -55,6 +55,7 @@ class TorchModuleORT(TorchModuleInterface):
         self._flattened_module.apply(fn)
         return self
 
+    ## Called many times. One time should be enough.
     def is_training(self):
         return self._flattened_module.training and torch.is_grad_enabled()
 

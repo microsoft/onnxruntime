@@ -9,6 +9,7 @@ from onnxruntime.capi.onnxruntime_inference_collection import IOBinding, OrtValu
 from onnxruntime.capi._pybind_state import TrainingAgent as C_TrainingAgent
 
 
+## using __slots__ = ['ortvalues', 'run_id'] is 33% faster.
 class ExecutionAgentOutput(object):
     def __init__(self, ortvalues, run_id=None):
         self.ortvalues = ortvalues

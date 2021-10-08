@@ -33,6 +33,7 @@ def _ortvalue_from_torch_tensor(torch_tensor):
 
 def _torch_tensor_from_dl_pack(dlpack, ortvalue, device):
     torch_tensor = from_dlpack(dlpack) if device.type != 'ort' else C.ort_from_dlpack(dlpack)
+    ## string comparison should be avoided here (types don't change)
     return torch_tensor.to(torch.bool) if ortvalue.data_type() == 'tensor(bool)' else torch_tensor
 
 

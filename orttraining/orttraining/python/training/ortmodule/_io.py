@@ -141,6 +141,9 @@ def _combine_input_buffers_initializers(params, onnx_input_names, input_info, bu
         # The exporter handles input lists by expanding them so that each
         # element of the list is its own input.
         # ORTModule must match this behavior by also expanding the inputs.
+        ## Recursivity should be avoided.
+        ## This function is used to retrieve the element != None
+        ## Using [o for o in inputs if o is not None] is 100 times faster.
         if isinstance(current_input, abc.Sequence):
             # If the input is a sequence (like a list), expand the list so that
             # each element of the list is an input by itself
@@ -159,6 +162,7 @@ def _combine_input_buffers_initializers(params, onnx_input_names, input_info, bu
     # User inputs
     non_none_inputs = []
     _expand_inputs(inputs, non_none_inputs)
+    ## dict(buffer_names) should be faster.
     buffer_names_dict = {buffer_name: inp for buffer_name, inp in buffer_names}
     result = []
 
@@ -225,6 +229,7 @@ def deepcopy_model_input(*inputs, **kwargs):
 
 class _TensorStub(object):
     '''Tensor stub class used to represent model's input or output'''
+    ## Using __slots__ would make it 33% faster.
 
     def __init__(self, name=None, dtype=None, shape=None, shape_dims=None):
         self.name = name
@@ -273,6 +278,7 @@ def unflatten_user_output(output_schema, outputs):
     def _replace_stub_with_tensor_value(user_output, outputs, output_idx):
         # Recursively traverse across user_output and replace all _TensorStub
         # with torch.Tensor values from outputs following output_idx
+        ## Recursivity should be removed.
 
         if user_output is None:
             return None
@@ -301,6 +307,7 @@ def unflatten_user_output(output_schema, outputs):
         return user_output
 
     # Replace every _TensorStub value in the schema with the torch.Tensor outputs calculated
+    ## Why deepcopy, since every value is replaced, copy should be enough.
     output_schema_copy = copy.deepcopy(output_schema)
 
     # It is expected that the outputs are ordered in the way defined in the exported onnx model
@@ -312,6 +319,8 @@ def unflatten_user_output(output_schema, outputs):
 
 def _extract_schema(data):
     """Extract the data schema by replacing every torch.Tensor value with _TensorStub"""
+    ## This function is recursive, data is always a container.
+    ## It should be rewritten without the recursion.
 
     if data is None:
         return None
@@ -319,6 +328,7 @@ def _extract_schema(data):
         return _TensorStub(dtype=_PrimitiveType.get_primitive_dtype(data), shape_dims=0)
     # Depth first traversal to iterate over the data to replace every tensor with a stub
     elif isinstance(data, torch.Tensor):
+        ## Why str(data.dtype)?
         return _TensorStub(dtype=str(data.dtype), shape_dims=len(data.size()))
 
     # Instead of replacing the tensor with a stub in the original user input, build the stubbed_schema
