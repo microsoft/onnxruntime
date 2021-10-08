@@ -34,7 +34,7 @@ If you wish to explicitly say that the InferenceSession input is an ORT format m
 C++ API
 ```c++
 Ort::SessionOptions session_options;
-session_options.AddConfigEntry('session.load_model_format', 'ORT');
+session_options.AddConfigEntry("session.load_model_format", "ORT");
 
 Ort::Env env;
 Ort::Session session(env, <path to model>, session_options);
@@ -58,8 +58,8 @@ You may also enable the option to use the model bytes directly by setting the Se
 C++ API
 ```c++
 Ort::SessionOptions session_options;
-session_options.AddConfigEntry('session.load_model_format', 'ORT');
-session_options.AddConfigEntry('session.use_ort_model_bytes_directly', '1');
+session_options.AddConfigEntry("session.load_model_format", "ORT");
+session_options.AddConfigEntry("session.use_ort_model_bytes_directly", "1");
 
 std::ifstream stream(<path to model>, std::ios::in | std::ios::binary);
 std::vector<uint8_t> model_bytes((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
@@ -71,7 +71,7 @@ Ort::Session session(env, model_bytes.data(), model_bytes.size(), session_option
 Java API
 ```java
 SessionOptions session_options = new SessionOptions();
-session_options.addConfigEntry('session.load_model_format', 'ORT');
+session_options.addConfigEntry("session.load_model_format", "ORT");
 session_options.addConfigEntry("session.use_ort_model_bytes_directly", "1");
 
 byte[] model_bytes = Files.readAllBytes(Paths.get(<path to model>));
