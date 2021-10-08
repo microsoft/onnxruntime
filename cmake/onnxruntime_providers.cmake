@@ -976,26 +976,7 @@ if (onnxruntime_USE_MIGRAPHX)
     "${ONNXRUNTIME_ROOT}/core/providers/migraphx/*.cc"
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
-#    "${ONNXRUNTIME_ROOT}/core/session/*.cc"
-#    "${ONNXRUNTIME_ROOT}/core/framework/*.cc"
-#    "${ONNXRUNTIME_ROOT}/core/session/provider_bridge_ort.cc"
-#    "${ONNXRUNTIME_ROOT}/core/session/onnxruntime_c_api.cc"
-#    "${ONNXRUNTIME_ROOT}/core/session/abi_session_options.cc"
-#    "${ONNXRUNTIME_ROOT}/core/framework/error_code.cc"
-#    "${ONNXRUNTIME_ROOT}/core/framework/run_options.cc"
-#    "${ONNXRUNTIME_ROOT}/core/framework/onnxruntime_typeinfo.cc"
-#    "${ONNXRUNTIME_ROOT}/core/framework/tensor_type_and_shape.cc"
-#    "${ONNXRUNTIME_ROOT}/core/session/default_cpu_allocator_c_api.cc"
-#    "${ONNXRUNTIME_ROOT}/core/providers/cpu/cpu_provider_factory.cc"
-#    "${ONNXRUNTIME_ROOT}/core/session/custom_ops.cc"
-#    "${ONNXRUNTIME_ROOT}/core/framework/onnxruntime_map_type_info.cc"
-#    "${ONNXRUNTIME_ROOT}/core/framework/onnxruntime_sequence_type_info.cc"
-#    "${ONNXRUNTIME_ROOT}/core/util/thread_utils.cc"
-#    "${ONNXRUNTIME_ROOT}/core/framework/allocatormgr.h"
-#    "${ONNXRUNTIME_ROOT}/core/session/allocator_adapters.cc"
-#    "${ONNXRUNTIME_ROOT}/core/session/provider_stubs.cc"
   )
-#  list(APPEND onnxruntime_providers_migraphx_cc_srcs ${onnxruntime_providers_src})
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_migraphx_cc_srcs})
   onnxruntime_add_shared_library_module(onnxruntime_providers_migraphx ${onnxruntime_providers_migraphx_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_migraphx onnxruntime_common onnx flatbuffers)

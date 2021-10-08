@@ -10,9 +10,9 @@
 #include "hip_fence.h"
 #include "gpu_data_transfer.h"
 #include "migraphx_call.h"
-#include "core/framework/ortdevice.h"
-#include "core/framework/provider_options.h"
-#include "core/session/onnxruntime_c_api.h"
+// #include "core/framework/ortdevice.h"
+// #include "core/framework/provider_options.h"
+// #include "core/session/onnxruntime_c_api.h"
 
 #include <fstream>
 #include <algorithm>
