@@ -941,15 +941,20 @@ struct ProviderLibrary {
       return nullptr;
 
     std::string full_path = Env::Default().GetRuntimePath() + std::string(filename_);
+std::cout << "loc1" << std::endl;
     auto error = Env::Default().LoadDynamicLibrary(full_path, false, &handle_);
+std::cout << "loc2" << std::endl;
     if (!error.IsOK()) {
+std::cout << "loc3" << std::endl;
       LOGS_DEFAULT(ERROR) << error.ErrorMessage();
       return nullptr;
     }
+std::cout << "loc4" << std::endl;
 
     Provider* (*PGetProvider)();
     Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider);
 
+std::cout << "loc5, PGetProvider = " << PGetProvider << std::endl;
     provider_ = PGetProvider();
     return provider_;
   }
@@ -1000,6 +1005,13 @@ void UnloadSharedProviders() {
 std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
   if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->CreateCUDAPinnedAllocator(device_id, name);
+
+  return nullptr;
+}
+
+std::unique_ptr<IAllocator> CreateHIPPinnedAllocator(int16_t device_id, const char* name) {
+  if (auto* info = onnxruntime::TryGetProviderInfo_HIP())
+    return info->CreateHIPPinnedAllocator(device_id, name);
 
   return nullptr;
 }
@@ -1071,6 +1083,13 @@ ProviderInfo_CUDA& GetProviderInfo_CUDA() {
     return *info;
 
   ORT_THROW("CUDA Provider not available, can't get interface for it");
+}
+
+ProviderInfo_MIGRAPHX* TryGetProviderInfo_MIGraphX() {
+  if (auto* provider = s_library_migraphx.Get())
+    return reinterpret_cast<ProviderInfo_MIGRAPHX*>(provider->GetInfo());
+
+  return nullptr;
 }
 
 void CopyGpuToCpu(

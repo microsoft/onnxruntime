@@ -100,9 +100,9 @@ static Status RegisterMIGraphXKernels(KernelRegistry& kernel_registry) {
 
 static std::shared_ptr<KernelRegistry> s_kernel_registry;
 
-void Shutdown_DeleteRegistry() {
-  s_kernel_registry.reset();
-}
+// void Shutdown_DeleteRegistry() {
+//   s_kernel_registry.reset();
+// }
 
 std::shared_ptr<KernelRegistry> MIGraphXExecutionProvider::GetKernelRegistry() const {
   if (!s_kernel_registry) {
@@ -159,6 +159,52 @@ AllocatorPtr MIGraphXExecutionProvider::GetAllocator(int id, OrtMemType mem_type
   } else {
     return IExecutionProvider::GetAllocator(id, mem_type);
   }
+}
+
+void MIGraphXExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) {
+  // Try to get a HIP allocator from allocator manager first
+  // Used to allocate HIP device memory
+  allocator_ = allocator_manager->GetAllocator(device_id_, OrtMemTypeDefault);
+  if (nullptr == allocator_) {
+    AllocatorCreationInfo default_memory_info(
+        [](OrtDevice::DeviceId device_id) { return CreateHIPAllocator(device_id, onnxruntime::MIGRAPHX); }, device_id_);
+    allocator_ = CreateAllocator(default_memory_info);
+    allocator_manager->InsertAllocator(allocator_);
+  }
+  TryInsertAllocator(allocator_);
+
+  // OrtMemTypeCPUOutput -- allocated by hipMallocHost, used to copy HIP device memory to CPU
+  // Use pinned memory instead of pageable memory make the data transfer faster
+  // Used by node MemcpyToHost only
+  auto hip_pinned_alloc = allocator_manager->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUOutput);
+  if (nullptr == hip_pinned_alloc) {
+    AllocatorCreationInfo pinned_allocator_info(
+        [](OrtDevice::DeviceId device_id) {
+          return CreateHIPPinnedAllocator(device_id, onnxruntime::MIGRAPHX_PINNED);
+        },
+        DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
+    hip_pinned_alloc = CreateAllocator(pinned_allocator_info);
+    allocator_manager->InsertAllocator(hip_pinned_alloc);
+  }
+  TryInsertAllocator(hip_pinned_alloc);
+
+  auto hip_cpu_alloc = allocator_manager->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUInput);
+  if (nullptr == hip_cpu_alloc) {
+    // TODO: this is actually used for the hip kernels which explicitly ask for inputs from CPU.
+    // This will be refactored/removed when allocator and execution provider are decoupled.
+    // Need to move the OrtMemoryType out of Allocator, that's one thing blocking us to share it with CPU EP
+    // CPUAllocator is OrtMemTypeDefault for CPU EP
+    AllocatorCreationInfo cpu_memory_info(
+        [](int device_id) {
+          return std::make_unique<CPUAllocator>(
+              OrtMemoryInfo("MIP_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
+                            OrtMemTypeCPUInput));
+        },
+        DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
+    hip_cpu_alloc = CreateAllocator(cpu_memory_info);
+    allocator_manager->InsertAllocator(hip_cpu_alloc);
+  }
+  TryInsertAllocator(hip_cpu_alloc);
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> MIGraphXExecutionProvider::GetDataTransfer() const {

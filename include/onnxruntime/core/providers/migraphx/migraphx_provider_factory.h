@@ -1,6 +1,58 @@
 // Copyright 2019 AMD AMDMIGraphX
 
 #include "onnxruntime_c_api.h"
+#include "core/framework/provider_options.h"
+
+namespace onnxruntime {
+class IAllocator;
+class IDataTransfer;
+struct IExecutionProviderFactory;
+struct MIGraphXExecutionProviderInfo;
+enum class ArenaExtendStrategy : int32_t;
+struct MIGraphXExecutionProviderExternalAllocatorInfo;
+
+// namespace cuda {
+// class INcclService;
+// }
+// namespace profile {
+//   class NvtxRangeCreator;
+// }
+
+struct ProviderInfo_MIGraphX {
+//   virtual OrtStatus* SetCurrentGpuDeviceId(_In_ int device_id) = 0;
+//   virtual OrtStatus* GetCurrentGpuDeviceId(_In_ int* device_id) = 0;
+
+  virtual std::unique_ptr<onnxruntime::IAllocator> CreateHIPAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<onnxruntime::IAllocator> CreateHIPPinnedAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<onnxruntime::IDataTransfer> CreateGPUDataTransfer(void* stream) = 0;
+
+//   virtual void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) = 0;
+//   virtual void cuda__Impl_Cast(void* stream, const int32_t* input_data, int64_t* output_data, size_t count) = 0;
+//   virtual void cuda__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) = 0;
+//   virtual void cuda__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) = 0;
+
+//   virtual bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+//   virtual bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+
+//   virtual void CopyGpuToCpu(void* dst_ptr, const void* src_ptr, const size_t size, const OrtMemoryInfo& dst_location, const OrtMemoryInfo& src_location) = 0;
+//   virtual void cudaMemcpy_HostToDevice(void* dst, const void* src, size_t count) = 0;
+//   virtual void cudaMemcpy_DeviceToHost(void* dst, const void* src, size_t count) = 0;
+//   virtual int cudaGetDeviceCount() = 0;
+//   virtual void CUDAExecutionProviderInfo__FromProviderOptions(const onnxruntime::ProviderOptions& options, onnxruntime::CUDAExecutionProviderInfo& info) = 0;
+
+// #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+//   virtual onnxruntime::cuda::INcclService& GetINcclService() = 0;
+// #endif
+
+// #ifdef ENABLE_NVTX_PROFILE
+//   virtual void NvtxRangeCreator__BeginImpl(profile::NvtxRangeCreator *p) = 0;
+//   virtual void NvtxRangeCreator__EndImpl(profile::NvtxRangeCreator* p) = 0;
+// #endif
+
+//   virtual std::shared_ptr<onnxruntime::IExecutionProviderFactory> CreateExecutionProviderFactory(const onnxruntime::CUDAExecutionProviderInfo& info) = 0;
+//   virtual std::shared_ptr<onnxruntime::IAllocator> CreateCudaAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo& external_allocator_info, OrtArenaCfg* default_memory_arena_cfg) = 0;
+};
+
 
 #ifdef __cplusplus
 extern "C" {

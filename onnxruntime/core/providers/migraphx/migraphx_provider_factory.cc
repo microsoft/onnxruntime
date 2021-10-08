@@ -11,87 +11,95 @@
 
 using namespace onnxruntime;
 
+void Shutdown_DeleteRegistry();
+
 namespace onnxruntime {
+
 struct MIGraphXProviderFactory : IExecutionProviderFactory {
-  MIGraphXProviderFactory(int device_id) : device_id_(device_id) {}
-  ~MIGraphXProviderFactory() = default;
+  MIGraphXProviderFactory(const MIGraphXExecutionProviderInfo& info) : info_{info} {}
+  ~MIGraphXProviderFactory() override {}
 
-  std::unique_ptr<IExecutionProvider> CreateProvider() override {
-    MIGraphXExecutionProviderInfo info;
-    info.device_id = device_id_;
-    info.target_device = "gpu";
-    return std::make_unique<MIGraphXExecutionProvider>(info);
-  }
+  std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
-private:
-  int device_id_;
+ private:
+  MIGraphXExecutionProviderInfo info_;
 };
 
-// std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id) {
-//   return std::make_shared<onnxruntime::MIGraphXProviderFactory>(device_id);
-// }
+std::unique_ptr<IExecutionProvider> MIGraphXProviderFactory::CreateProvider() {
+  return std::make_unique<MIGraphXExecutionProvider>(info_);
+}
+
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id) {
+  MIGraphXExecutionProviderInfo info;
+  info.device_id = device_id;
+  // info.has_trt_options = false;
+  return std::make_shared<onnxruntime::MIGraphXProviderFactory>(info);
+}
+
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(const MIGraphXExecutionProviderInfo& info) {
+  return std::make_shared<onnxruntime::MIGraphXProviderFactory>(info);
+}
+
+
+struct ProviderInfo_MIGraphX_Impl : ProviderInfo_MIGraphX {
+  std::unique_ptr<IAllocator> CreateHIPAllocator(int16_t device_id, const char* name) override {
+    return std::make_unique<HIPAllocator>(device_id, name);
+  }
+
+  std::unique_ptr<IAllocator> CreateHIPPinnedAllocator(int16_t device_id, const char* name) override {
+    return std::make_unique<HIPPinnedAllocator>(device_id, name);
+  }
+
+  std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) override {
+    return std::make_unique<GPUDataTransfer>(static_cast<hipStream_t>(stream));
+  }
+} g_info;
+
+struct MIGraphX_Provider : Provider {
+  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) override {
+    MIGraphXExecutionProviderInfo info;
+    info.device_id = device_id;
+    return std::make_shared<MIGraphXProviderFactory>(info);
+  }
+
+
+  int migraphx_fp16_enable;                     // enable MIGraphX FP16 precision. Default 0 = false, nonzero = true
+  int migraphx_int8_enable;                     // enable MIGraphX INT8 precision. Default 0 = false, nonzero = true
+
+  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* provider_options) override {
+    auto& options = *reinterpret_cast<const OrtMIGraphXProviderOptions*>(provider_options);
+    MIGraphXExecutionProviderInfo info;
+    info.device_id = options.device_id;
+    info.fp16_enable = options.migraphx_fp16_enable;
+    info.int8_enable = options.migraphx_int8_enable;
+    return std::make_shared<MIGraphXProviderFactory>(info);
+  }
+
+  void UpdateProviderOptions(void* provider_options, const ProviderOptions& options) override {
+    auto internal_options = onnxruntime::MIGraphXExecutionProviderInfo::FromProviderOptions(options);
+    auto& trt_options = *reinterpret_cast<OrtMIGraphXProviderOptions*>(provider_options);
+    trt_options.device_id = internal_options.device_id;
+    trt_options.migraphx_fp16_enable = internal_options.fp16_enable;
+    trt_options.migraphx_int8_enable = internal_options.int8_enable;
+  }
+
+  ProviderOptions GetProviderOptions(const void* provider_options) override {
+    auto& options = *reinterpret_cast<const OrtMIGraphXProviderOptions*>(provider_options);
+    return onnxruntime::MIGraphXExecutionProviderInfo::ToProviderOptions(options);
+  }
+
+  void Shutdown() override {
+    Shutdown_DeleteRegistry();
+  }
+
+} g_provider;
 
 }  // namespace onnxruntime
 
-//ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtSessionOptions* options, int device_id) {
-//  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_MIGraphX(device_id));
-//  return nullptr;
-//}
+extern "C" {
 
-// ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo, _In_ const char* name1, enum OrtAllocatorType type, int id1,
-//                   enum OrtMemType mem_type1, _Outptr_ OrtMemoryInfo** out) {
-// (void)name1;
-// (void)type;
-// (void)id1;
-// (void)mem_type1;
-// (*out) = nullptr;
-// //if (strcmp(name1, onnxruntime::CPU) == 0) {
-// //  *out = new OrtMemoryInfo(onnxruntime::CPU, type, OrtDevice(), id1, mem_type1);
-// //} else if (strcmp(name1, onnxruntime::CUDA) == 0) {
-// //  *out = new OrtMemoryInfo(
-// //      onnxruntime::CUDA, type, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(id1)), id1,
-// //      mem_type1);
-// //} else if (strcmp(name1, onnxruntime::CUDA_PINNED) == 0) {
-// //  *out = new OrtMemoryInfo(
-// //      onnxruntime::CUDA_PINNED, type, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, static_cast<OrtDevice::DeviceId>(id1)),
-// //      id1, mem_type1);
-// //} else {
-// //  return nullptr;
-// // //  return CreateStatus(ORT_INVALID_ARGUMENT, "Specified device is not supported.");
-// //}
-// return nullptr;
-// }
-
-ORT_API_STATUS_IMPL(OrtCreateCpuMemoryInfo, enum OrtAllocatorType type, enum OrtMemType mem_type,
-                   _Outptr_ OrtMemoryInfo** out) {
- *out = new OrtMemoryInfo(onnxruntime::CPU, type, OrtDevice(), 0, mem_type);
- return nullptr;
+ORT_API(onnxruntime::Provider*, GetProvider) {
+  return &onnxruntime::g_provider;
 }
 
-// ORT_API(void, OrtApis::ReleaseMemoryInfo, _Frees_ptr_opt_ OrtMemoryInfo* p) { delete p; }
-
-// ORT_API_STATUS_IMPL(OrtApis::MemoryInfoGetName, _In_ const OrtMemoryInfo* ptr, _Out_ const char** out) {
-//   *out = ptr->name;
-//   return nullptr;
-// }
-
-// ORT_API_STATUS_IMPL(OrtApis::MemoryInfoGetId, _In_ const OrtMemoryInfo* ptr, _Out_ int* out) {
-//   *out = ptr->id;
-//   return nullptr;
-// }
-
-// ORT_API_STATUS_IMPL(OrtApis::MemoryInfoGetMemType, _In_ const OrtMemoryInfo* ptr, _Out_ OrtMemType* out) {
-//   *out = ptr->mem_type;
-//   return nullptr;
-// }
-
-// ORT_API_STATUS_IMPL(OrtApis::MemoryInfoGetType, _In_ const OrtMemoryInfo* ptr, _Out_ OrtAllocatorType* out) {
-//   *out = ptr->alloc_type;
-//   return nullptr;
-// }
-
-// ORT_API_STATUS_IMPL(OrtApis::CompareMemoryInfo, _In_ const OrtMemoryInfo* info1, _In_ const OrtMemoryInfo* info2,
-//                     _Out_ int* out) {
-//   *out = (*info1 == *info2) ? 0 : -1;
-//   return nullptr;
-// }
+}

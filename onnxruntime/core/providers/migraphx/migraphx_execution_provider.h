@@ -11,6 +11,7 @@
 #include "core/framework/ortdevice.h"
 #include "core/framework/provider_options.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "migraphx_execution_provider_info.h"
 
 // #include "core/framework/execution_provider.h"
 // #include "core/graph/indexed_sub_graph.h"
@@ -25,10 +26,12 @@ static const std::string kFP16Enable = "ORT_MIGRAPHX_FP16_ENABLE";
 };
 
 // Information needed to construct amdmigraphx execution providers.
-struct MIGraphXExecutionProviderInfo {
-  std::string target_device;
-  int device_id {0};
-};
+// struct MIGraphXExecutionProviderInfo {
+//   std::string target_device;
+//   int device_id {0};
+//   int fp16_enable;
+//   int int8_enable;
+// };
 
 // Information to construct kernel function state.
 struct MIGraphXFuncState {
