@@ -24,19 +24,20 @@ class IdentityOp final : public OpKernel {
   }
 
   Status Compute(OpKernelContext* context) const override {
+    const auto* input_type_proto = Node().InputDefs()[0]->TypeAsProto();
+
     const auto* input_ort_value = context->GetInputOrtValue(0);
 
-    if (!input_ort_value->IsAllocated()) {
+    // Only Optional type can be None (i.e.) not have data
+    if (input_type_proto->has_optional_type() && !input_ort_value->IsAllocated()) {
       // We can't rely on the input OrtValue containing type information
       // as it could be a main graph input which will be missing the type
       // in the corresponding OrtValue for the "None" case because
       // the user doesn't provide any input for the "None" case.
 
-      const auto* input_type = Node().InputDefs()[0]->TypeAsProto();
-
-      if (utils::HasOptionalTensorType(*input_type)) {
+      if (utils::HasOptionalTensorType(*input_type_proto)) {
         context->OutputOptionalWithoutData<Tensor>(0);
-      } else if (utils::HasOptionalTensorSequenceType(*input_type)) {
+      } else if (utils::HasOptionalTensorSequenceType(*input_type_proto)) {
         context->OutputOptionalWithoutData<TensorSeq>(0);
       } else {
         // Will never hit this

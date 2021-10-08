@@ -508,7 +508,8 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
   // as we need the final shape.
   auto copy_mlvalue_to_output = [this](OrtValue& input, int output_idx,
                                        int64_t iter_num_value, const TypeProto& tp) {
-    if (!input.IsAllocated()) {  // "None"
+    // Only Optional type can be None (i.e.) not have data
+    if (tp.has_optional_type() && !input.IsAllocated()) {
       // We can't rely on the input OrtValue containing type information
       // as it could be a main graph input which will be missing the type
       // in the corresponding OrtValue for the "None" case because

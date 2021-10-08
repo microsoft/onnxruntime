@@ -43,7 +43,7 @@ struct OrtValue {
   }
 
   bool IsAllocated() const {
-    return data_ != nullptr && type_;
+    return data_ && type_;
   }
 
   template <typename T>

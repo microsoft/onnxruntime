@@ -1343,7 +1343,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
              rfetch.reserve(fetches.size());
              size_t pos = 0;
              for (auto fet : fetches) {
-               if (fet.HasValue()) {
+               if (fet.IsAllocated()) {
                  if (fet.IsTensor()) {
                    rfetch.push_back(AddTensorAsPyObj(fet, nullptr, nullptr));
                  } else if (fet.IsSparseTensor()) {
