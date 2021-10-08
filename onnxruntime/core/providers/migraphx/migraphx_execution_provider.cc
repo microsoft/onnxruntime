@@ -122,18 +122,18 @@ std::shared_ptr<KernelRegistry> MIGraphXExecutionProvider::GetKernelRegistry() c
 // }
 
 MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kMIGraphXExecutionProvider} {
+    : IExecutionProvider{onnxruntime::kMIGraphXExecutionProvider, true} {
   // Set GPU device to be used
   HIP_CALL_THROW(hipSetDevice(info.device_id));
-  AllocatorCreationInfo default_memory_info(
-      [](int id) { return std::make_unique<HIPAllocator>(id, MIGRAPHX); }, device_id_);
-  allocator_ = CreateAllocator(default_memory_info);
-  InsertAllocator(allocator_);
+  // AllocatorCreationInfo default_memory_info(
+  //     [](int id) { return std::make_unique<HIPAllocator>(id, MIGRAPHX); }, device_id_);
+  // allocator_ = CreateAllocator(default_memory_info);
+  // InsertAllocator(allocator_);
 
-  AllocatorCreationInfo pinned_memory_info(
-      [](int) { return std::make_unique<HIPPinnedAllocator>(0, MIGRAPHX_PINNED); },
-      device_id_);
-  InsertAllocator(CreateAllocator(pinned_memory_info));
+  // AllocatorCreationInfo pinned_memory_info(
+  //     [](int) { return std::make_unique<HIPPinnedAllocator>(0, MIGRAPHX_PINNED); },
+  //     device_id_);
+  // InsertAllocator(CreateAllocator(pinned_memory_info));
 
   // create the target based on the device_id
   // std::set<std::string> valid_targets = {"gpu", "cpu"};
@@ -141,8 +141,8 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
   //   LOGS_DEFAULT(FATAL) << "Device " << info.target_device << " are not supported";
   // }
 
-  // t_ = migraphx::target(info.target_device.c_str());
-  t_ = migraphx::target("gpu");
+  t_ = migraphx::target(info.target_device.c_str());
+  // t_ = migraphx::target("gpu");
 
 
   // whether fp16 is enable

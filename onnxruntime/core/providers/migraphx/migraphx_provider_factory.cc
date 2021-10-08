@@ -60,10 +60,11 @@ struct ProviderInfo_MIGRAPHX_Impl : ProviderInfo_MIGRAPHX {
 
 struct MIGraphX_Provider : Provider {
   void* GetInfo() override { return &g_info; }
-      
+
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) override {
     MIGraphXExecutionProviderInfo info;
     info.device_id = device_id;
+    info.target_device = "gpu";
     return std::make_shared<MIGraphXProviderFactory>(info);
   }
 
@@ -71,6 +72,7 @@ struct MIGraphX_Provider : Provider {
     auto& options = *reinterpret_cast<const OrtMIGraphXProviderOptions*>(provider_options);
     MIGraphXExecutionProviderInfo info;
     info.device_id = options.device_id;
+    info.target_device = "gpu";
     info.fp16_enable = options.migraphx_fp16_enable;
     info.int8_enable = options.migraphx_int8_enable;
     return std::make_shared<MIGraphXProviderFactory>(info);
