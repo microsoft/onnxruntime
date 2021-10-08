@@ -119,7 +119,6 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     ${onnxruntime_libs}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_VITISAI}
-#    ${PROVIDERS_MIGRAPHX}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_COREML}
     ${PROVIDERS_RKNPU}
