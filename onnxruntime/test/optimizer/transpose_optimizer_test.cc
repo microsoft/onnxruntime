@@ -54,6 +54,12 @@ NodeArg* MakeInput(ModelTestBuilder& builder, const std::optional<std::vector<in
   return node_arg;
 }
 
+NodeArg* MakeInputBool(ModelTestBuilder& builder, const std::optional<std::vector<int64_t>>& input_shape, const std::vector<int64_t>& value_shape) {
+  auto node_arg = builder.MakeInputBool(value_shape);
+  SetNodeArgShape(node_arg, input_shape);
+  return node_arg;
+}
+
 template <typename T>
 NodeArg* MakeInput(ModelTestBuilder& builder, const std::optional<std::vector<int64_t>>& input_shape, const std::vector<int64_t>& value_shape, const std::vector<T>& data) {
   auto node_arg = builder.MakeInput<T>(value_shape, data);
@@ -61,8 +67,8 @@ NodeArg* MakeInput(ModelTestBuilder& builder, const std::optional<std::vector<in
   return node_arg;
 }
 
-size_t EstimateTransposeCost(const Graph& graph) {
-  size_t cost = 0;
+int EstimateTransposeCost(const Graph& graph) {
+  int cost = 0;
   for (auto& node : graph.Nodes()) {
     if (node.OpType() == "Transpose") {
       auto arg = node.OutputDefs()[0];
@@ -2832,8 +2838,8 @@ TEST(TransposeOptimizerTests, BroadcastOps) {
                     /*opset_version*/ 15);
 
   auto build_test_case_16 = [&](ModelTestBuilder& builder) {
-    auto* input0_arg = MakeInput<bool>(builder, {{4, 6, 10}}, {4, 6, 10}, false, true);
-    auto* input1_arg = MakeInput<bool>(builder, {{10, 4}}, {10, 4}, false, true);
+    auto* input0_arg = MakeInputBool(builder, {{4, 6, 10}}, {4, 6, 10});
+    auto* input1_arg = MakeInputBool(builder, {{10, 4}}, {10, 4});
     auto* transpose_1_out_0 = builder.MakeIntermediate();
     auto* and_1_out_0 = builder.MakeIntermediate();
     auto* transpose_2_out_0 = builder.MakeOutput();
@@ -2857,8 +2863,8 @@ TEST(TransposeOptimizerTests, BroadcastOps) {
                     /*opset_version*/ 15);
 
   auto build_test_case_17 = [&](ModelTestBuilder& builder) {
-    auto* input0_arg = MakeInput<bool>(builder, {{4, 6, 10}}, {4, 6, 10}, false, true);
-    auto* input1_arg = MakeInput<bool>(builder, {{10, 4}}, {10, 4}, false, true);
+    auto* input0_arg = MakeInputBool(builder, {{4, 6, 10}}, {4, 6, 10});
+    auto* input1_arg = MakeInputBool(builder, {{10, 4}}, {10, 4});
     auto* transpose_1_out_0 = builder.MakeIntermediate();
     auto* or_1_out_0 = builder.MakeIntermediate();
     auto* transpose_2_out_0 = builder.MakeOutput();
@@ -2882,8 +2888,8 @@ TEST(TransposeOptimizerTests, BroadcastOps) {
                     /*opset_version*/ 15);
 
   auto build_test_case_18 = [&](ModelTestBuilder& builder) {
-    auto* input0_arg = MakeInput<bool>(builder, {{4, 6, 10}}, {4, 6, 10}, false, true);
-    auto* input1_arg = MakeInput<bool>(builder, {{10, 4}}, {10, 4}, false, true);
+    auto* input0_arg = MakeInputBool(builder, {{4, 6, 10}}, {4, 6, 10});
+    auto* input1_arg = MakeInputBool(builder, {{10, 4}}, {10, 4});
     auto* transpose_1_out_0 = builder.MakeIntermediate();
     auto* xor_1_out_0 = builder.MakeIntermediate();
     auto* transpose_2_out_0 = builder.MakeOutput();
@@ -2961,7 +2967,7 @@ TEST(TransposeOptimizerTests, BroadcastOps) {
 
 TEST(TransposeOptimizerTests, Where) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
-    auto* input0_arg = MakeInput<bool>(builder, {{10, 4}}, {10, 4}, false, true);
+    auto* input0_arg = MakeInputBool(builder, {{10, 4}}, {10, 4});
     auto* input1_arg = builder.MakeInput<float>({4, 6, 10}, 0.0, 1.0);
     auto* input2_arg = builder.MakeInput<float>({4, 6, 10}, 0.0, 1.0);
     auto* transpose_1_out_0 = builder.MakeIntermediate();
