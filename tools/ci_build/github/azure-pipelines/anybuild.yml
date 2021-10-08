@@ -41,7 +41,8 @@ jobs:
   pool: onnxruntime-linux-cpu-westus2
 
   timeoutInMinutes: 60
-
+  workspace:
+    clean: all
   steps:
   - checkout: none
 

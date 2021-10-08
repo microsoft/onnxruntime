@@ -749,6 +749,11 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         [](const std::string& key, const std::vector<GradientNodeDefinition>& gradient_def) -> void {
           GradientDefinitionRegistry::Instance().Register(key, gradient_def);
         });
+  
+  m.def("register_custom_stop_gradient_edges",
+        [](const std::string& key, const std::unordered_set<size_t> edges) -> void {
+          GradientDefinitionRegistry::Instance().SetStopGradientEdgesForNode(key, edges);
+        });
 }
 
 }  // namespace python

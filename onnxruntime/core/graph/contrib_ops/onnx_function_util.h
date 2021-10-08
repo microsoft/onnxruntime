@@ -58,7 +58,30 @@ class FunctionBuilder {
 
   template <typename T>
   FunctionBuilder& Add(const char* node_txt, const std::string& attr_name, T attr_value) {
-    return Add (node_txt, MakeAttribute(attr_name, attr_value));
+    return Add(node_txt, MakeAttribute(attr_name, attr_value));
+  }
+
+  FunctionBuilder& Const(const std::string& name, double value, int64_t elem_type) {
+    std::string constant_op(name);
+    constant_op += " = Constant()";
+    return Add(constant_op.c_str(), MakeAttribute("value", ToTensor(value, (TensorProto_DataType) elem_type)));
+  }
+
+  template <typename T>
+  FunctionBuilder& Const(const std::string& name, T const_value) {
+    std::string constant_op(name);
+    constant_op += " = Constant()";
+    return Add (constant_op.c_str(), MakeAttribute("value", ToTensor(const_value)));
+  }
+
+  template <typename T>
+  FunctionBuilder& Const(const std::string& name, const std::vector<T>& values) {
+    std::string constant_op(name);
+    constant_op += " = Constant()";
+    auto tensor = ToTensor(values);
+    tensor.add_dims(values.size());  // Treat as 1D tensor.
+
+    return Add (constant_op.c_str(), MakeAttribute("value", tensor));
   }
 
   FunctionBuilder& AddOpset(const char* domain, int version) {
