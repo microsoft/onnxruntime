@@ -35,7 +35,6 @@ std::unique_ptr<IExecutionProvider> MIGraphXProviderFactory::CreateProvider() {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id) {
   MIGraphXExecutionProviderInfo info;
   info.device_id = device_id;
-  // info.has_trt_options = false;
   return std::make_shared<onnxruntime::MIGraphXProviderFactory>(info);
 }
 

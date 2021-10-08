@@ -7,15 +7,8 @@
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"
-
-// #include "core/framework/ortdevice.h"
-// #include "core/framework/provider_options.h"
-// #include "core/session/onnxruntime_c_api.h"
 #include "migraphx_execution_provider_info.h"
 
-// #include "core/framework/execution_provider.h"
-// #include "core/graph/indexed_sub_graph.h"
-// #include "core/providers/shared_library/provider_api.h"
 #include <map>
 #include "migraphx_inc.h"
 
@@ -24,14 +17,6 @@ namespace onnxruntime {
 namespace migraphx_env_vars {
 static const std::string kFP16Enable = "ORT_MIGRAPHX_FP16_ENABLE";
 };
-
-// Information needed to construct amdmigraphx execution providers.
-// struct MIGraphXExecutionProviderInfo {
-//   std::string target_device;
-//   int device_id {0};
-//   int fp16_enable;
-//   int int8_enable;
-// };
 
 // Information to construct kernel function state.
 struct MIGraphXFuncState {
@@ -67,15 +52,7 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
 
   void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
 
-  // Status OnRunEnd() override;
-
-  // Status SetComputeStream(void* stream) override;
-
   void* GetComputeStream() const override { return static_cast<void*>(stream_); }
-
-  // ProviderOptions GetProviderOptions() const override {
-  //   return TensorrtExecutionProviderInfo::ToProviderOptions(info_);
-  // }
 
   std::unique_ptr<IndexedSubGraph> GetSubGraph(const std::vector<std::size_t>& graph_nodes_index, const GraphViewer& graph) const;
 
