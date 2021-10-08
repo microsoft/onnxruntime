@@ -74,11 +74,17 @@ NNAPI is more efficient using GPU or NPU for execution, however NNAPI might fall
 
 For some models, if NNAPI would use CPU to execute an operation, and this flag is set, the execution of the model may fall back to ORT kernels.
 
-This option is only available after Android API level 29, and will be ignored for Android API level 28 and lower.
+This option is only available for Android API level 29 and later, and will be ignored for Android API level 28 and lower.
 
 For NNAPI device assignments, see [https://developer.android.com/ndk/guides/neuralnetworks#device-assignment](https://developer.android.com/ndk/guides/neuralnetworks#device-assignment)
 
 For NNAPI CPU fallback, see [https://developer.android.com/ndk/guides/neuralnetworks#cpu-fallback](https://developer.android.com/ndk/guides/neuralnetworks#cpu-fallback)
+
+##### NNAPI_FLAG_CPU_ONLY
+
+Using CPU only in NNAPI EP, this may decrease the perf but will provide reference output value without precision loss, which is useful for validation.
+
+This option is only available for Android API level 29 and later, and will be ignored for Android API level 28 and lower.
 
 ## Supported ops
 Following ops are supported by the NNAPI Execution Provider,

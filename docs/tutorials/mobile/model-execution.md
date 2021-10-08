@@ -53,7 +53,7 @@ OrtSession session = env.createSession(<path to model>, session_options);
 
 If a session is created using an input byte array contains the ORT format model data. By default we will copy the model bytes at the time of session creation to ensure the model bytes buffer is valid.
 
-You may also set the option `session.use_ort_model_bytes_directly` as `1` to use the model bytes directly, this may reduce the peak memory usage of ONNX Runtime Mobile, you will need to guarantee that the model bytes are valid throughout the lifespan of the ORT session using the model bytes.
+You may also enable the option to use the model bytes directly by setting the Session Options config `session.use_ort_model_bytes_directly` to `1`, this may reduce the peak memory usage of ONNX Runtime Mobile, you will need to guarantee that the model bytes are valid throughout the lifespan of the ORT session using the model bytes.
 
 C++ API
 ```c++
