@@ -468,13 +468,32 @@ static bool HandleSoftHardMax(HandlerArgs& args) {
 }
 
 static bool HandleShape(HandlerArgs& args) {
-  const std::string_view output = args.node.Outputs()[0];
-
   TransposeInputs(args.graph, args.node, args.perm_inv);
+  size_t rank = args.perm.size();
 
-  std::vector<int64_t> perm_shape;
-  perm_shape.push_back(args.perm.size());
-  const std::string_view perm_const = args.graph.AddInitializerInt64(perm_shape, args.perm);
+  std::vector<int64_t> new_perm;
+  if (args.opset >= 15) {
+    int64_t start = args.node.GetAttributeIntDefault("start", 0);
+    int64_t end = args.node.GetAttributeIntDefault("end", (int64_t)rank);
+    if (start < 0) {
+      start += rank;
+    }
+    if (end < 0) {
+      end += rank;
+    }
+    size_t start_idx = (size_t)std::clamp(start, (int64_t)0, (int64_t)rank);
+    size_t end_idx = (size_t)std::clamp(end, (int64_t)0, (int64_t)rank);
+    for (size_t i = start_idx; i < end_idx; ++i) {
+      new_perm.push_back(args.perm[i]);
+    }
+    args.node.ClearAttribute("start");
+    args.node.ClearAttribute("end");
+  } else {
+    new_perm = args.perm;
+  }
+
+  std::vector<int64_t> perm_shape {(int64_t)new_perm.size()};
+  const std::string_view perm_const = args.graph.AddInitializerInt64(perm_shape, new_perm);
 
   std::vector<std::string_view> gather_inputs;
   gather_inputs.push_back("");
@@ -483,9 +502,14 @@ static bool HandleShape(HandlerArgs& args) {
   api::Node& gather = *gather_ptr;
   gather.SetAttributeInt("axis", 0);
   args.graph.MoveOutput(args.node, 0, gather, 0);
-  gather.SetInput(0, output);
-  args.graph.CopyValueInfo(gather.Outputs()[0], args.node.Outputs()[0]);
-
+  const std::string_view new_output = args.node.Outputs()[0];
+  gather.SetInput(0, new_output);
+  args.graph.CopyValueInfo(gather.Outputs()[0], new_output);
+  if (new_perm.size() != rank) {
+    auto info = args.graph.GetValueInfo(new_output);
+    std::vector<int64_t> new_shape {(int64_t)rank};
+    info->SetShape(&new_shape);
+  }
   return true;
 }
 
@@ -1152,7 +1176,7 @@ bool ProcessTranspose(HandlerArgs& args, bool allow_extended_ops) {
 
 bool Optimize(api::Graph& graph, bool allow_extended_ops) {
   auto opset = graph.Opset();
-  if (opset == std::nullopt || *opset > 14 || *opset < 7) {
+  if (opset == std::nullopt || *opset > kMaxSupportedOpset || *opset < kMinSupportedOpset) {
     return false;
   }
   if (allow_extended_ops) {
@@ -1189,10 +1213,6 @@ bool Optimize(api::Graph& graph, bool allow_extended_ops) {
 }
 
 static bool ChangeLayout(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler*>& layout_handler_map, bool last_to_first, bool allow_extended_ops) {
-  auto opset = graph.Opset();
-  if (opset == std::nullopt || *opset > 14 || *opset < 7) {
-    return false;
-  }
   const std::vector<std::unique_ptr<api::Node>> nodes = graph.Nodes();
   bool changed = false;
   for (size_t i = 0; i < nodes.size(); ++i) {

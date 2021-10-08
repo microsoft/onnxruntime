@@ -7,6 +7,7 @@
 #include <string_view>
 #include <memory>
 #include <optional>
+#include <unordered_map>
 
 namespace onnx_layout_transformation {
 namespace api {
@@ -136,6 +137,9 @@ class Graph {
 }  // namespace onnx_layout_transformation
 
 namespace onnx_layout_transformation {
+
+constexpr int64_t kMinSupportedOpset = 7;
+constexpr int64_t kMaxSupportedOpset = 15;
 
 struct LayoutHandlerResult {
   bool should_transpose;
