@@ -45,12 +45,12 @@ class GraphTransformer {
   /** Helper method to call ApplyImpl on any subgraphs in the Node. */
   common::Status Recurse(Node& node, bool& modified, int graph_level, const logging::Logger& logger) const {
     int subgraph_level = ++graph_level;
-    if (node.GetAttributes().size() > 0) {
-      for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
-        auto& subgraph = *entry.second;
-        ORT_RETURN_IF_ERROR(ApplyImpl(subgraph, modified, subgraph_level, logger));
-      }
-    } else if (node.GetMutableFunctionBody() != nullptr) {
+    for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
+      auto& subgraph = *entry.second;
+      ORT_RETURN_IF_ERROR(ApplyImpl(subgraph, modified, subgraph_level, logger));
+    }
+
+    if (node.GetMutableFunctionBody() != nullptr) {
       ORT_RETURN_IF_ERROR(ApplyImpl(node.GetMutableFunctionBody()->MutableBody(), modified, subgraph_level, logger));
     }
 
