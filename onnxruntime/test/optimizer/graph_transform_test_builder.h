@@ -52,7 +52,7 @@ class ModelTestBuilder {
     return &graph_.GetOrCreateNodeArg(name, &type_proto);
   }
 
-  template <typename T, class Dummy = int>
+  template <typename T>
   NodeArg* MakeInput(const std::vector<int64_t>& shape, T min, T max) {
     return MakeInput<T>(shape, rand_gen_.Uniform<T>(shape, min, max));
   }

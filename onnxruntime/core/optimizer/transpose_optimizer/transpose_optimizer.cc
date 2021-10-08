@@ -74,7 +74,7 @@ static std::vector<int64_t> ComposePerm(const std::vector<int64_t>& perm1, const
   return perm;
 }
 
-std::vector<int64_t> ChannelLastToFirstPerm(size_t rank) {
+static std::vector<int64_t> ChannelLastToFirstPerm(size_t rank) {
   std::vector<int64_t> p(rank);
   p[0] = 0;
   p[1] = rank - 1;

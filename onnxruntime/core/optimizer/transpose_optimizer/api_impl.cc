@@ -47,7 +47,10 @@ void OrtValueInfo::SetShape(const std::vector<int64_t>* shape) {
   }
   TensorShapeProto new_shape;
   for (int64_t d : *shape) {
-    new_shape.add_dim()->set_dim_value(d);
+    auto dim = new_shape.add_dim();
+    if (d > 0) {
+      dim->set_dim_value(d);
+    }
   }
   node_arg.SetShape(new_shape);
 }
@@ -58,9 +61,9 @@ void OrtValueInfo::PermuteDims(const std::vector<int64_t>& perm) {
     return;
   }
   auto& shape_proto = utils::GetShape(*type);
-  // TODO: Assert size matches
   TensorShapeProto new_shape;
   for (int64_t p : perm) {
+    ORT_ENFORCE(0 <= p && (int)p < shape_proto.dim_size(), "Permutation ", perm, " out of bounds for number of dims ", shape_proto.dim_size());
     auto& dim = *new_shape.add_dim();
     auto& src_dim = shape_proto.dim((int)p);
     if (src_dim.has_dim_value()) {
