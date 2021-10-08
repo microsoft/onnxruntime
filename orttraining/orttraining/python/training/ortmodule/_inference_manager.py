@@ -142,7 +142,6 @@ class InferenceManager(GraphExecutionManager):
             self._fallback_manager.handle_exception(exception=e,
                                                     log_level=self._debug_options.logging.log_level,
                                                     override_policy=_FallbackPolicy.FALLBACK_FORCE_TORCH_FORWARD)
-
         # Fallback to PyTorch due to failures *during* forward(),
         #  (e.g. export, model/input post-processing, forward, output processing, etc)
         if self._fallback_manager.is_pending():
