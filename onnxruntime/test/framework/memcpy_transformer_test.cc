@@ -336,14 +336,8 @@ TEST(TransformerTest, MemcpyTransformerTestGraphInputConsumedOnMultipleDevices) 
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_TRUE(modified);
 
-  bool found_copy = false;
-  for (const auto& node : graph.Nodes()) {
-    if (node.OpType() == "MemcpyFromHost") {
-      found_copy = true;
-    }
-  }
-
-  EXPECT_TRUE(found_copy);
+  auto op_count_map = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_count_map["MemcpyFromHost"] == 1);
 }
 
 TEST(TransformerTest, MemcpyTransformerTestImplicitInputConsumedOnMultipleDevices) {
@@ -445,26 +439,13 @@ TEST(TransformerTest, MemcpyTransformerTestImplicitInputConsumedOnMultipleDevice
   EXPECT_TRUE(modified);
 
   // We expect to see copy nodes inserted in each of the subgraphs
-  // because an implicit input is consumed both by provider and non-provider
-  // nodes.
-  bool found_copy = false;
+  // because an implicit input is consumed both by provider (CUDA) and
+  // non-provider (CPU) nodes.
+  auto op_count_map = CountOpsInGraph(*subgraph_1);
+  ASSERT_TRUE(op_count_map["MemcpyFromHost"] == 1);
 
-  subgraph_1 = if_node.GetMutableGraphAttribute("then_branch");
-  for (auto& node : subgraph_1->Nodes()) {
-    if (node.OpType() == "MemcpyFromHost") {
-      found_copy = true;
-    }
-  }
-  EXPECT_TRUE(found_copy);
-
-  found_copy = false;
-  subgraph_2 = if_node.GetMutableGraphAttribute("else_branch");
-  for (auto& node : subgraph_2->Nodes()) {
-    if (node.OpType() == "MemcpyFromHost") {
-      found_copy = true;
-    }
-  }
-  EXPECT_TRUE(found_copy);
+  op_count_map = CountOpsInGraph(*subgraph_2);
+  ASSERT_TRUE(op_count_map["MemcpyFromHost"] == 1);
 }
 
 #endif
