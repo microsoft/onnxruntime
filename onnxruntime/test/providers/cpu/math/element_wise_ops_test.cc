@@ -1083,9 +1083,18 @@ static void TestSumMultipleInputsNoBroadcasting(size_t num_inputs, const TensorS
 
 TEST(MathOpTest, SumMultipleInputsNoBroadcasting) {
   const TensorShape shape{3, 3, 3};
-  for (size_t num_inputs = 2; num_inputs < 10; ++num_inputs) {
+  // Special case:
+  //   2: BinaryImplDispatchTarget
+  //   3-8: NoBroadcastBatchImplDispatchTarget(i)
+  //   9: NoBroadcastBatchImplDispatchTarget(8) + BinaryImplDispatchTarget
+  //   10: NoBroadcastBatchImplDispatchTarget(8) + NoBroadcastBatchImplDispatchTarget(3)
+  //   15: NoBroadcastBatchImplDispatchTarget(8) + NoBroadcastBatchImplDispatchTarget(8)
+  //   16: NoBroadcastBatchImplDispatchTarget(8) + NoBroadcastBatchImplDispatchTarget(8) + BinaryImplDispatchTarget
+  for (size_t num_inputs = 2; num_inputs <= 10; ++num_inputs) {
     TestSumMultipleInputsNoBroadcasting<float>(num_inputs, shape);
   }
+  TestSumMultipleInputsNoBroadcasting<float>(15, shape);
+  TestSumMultipleInputsNoBroadcasting<float>(16, shape);
 }
 
 TEST(MathOpTest, SumMultipleInputsNoBroadcasting_double) {
