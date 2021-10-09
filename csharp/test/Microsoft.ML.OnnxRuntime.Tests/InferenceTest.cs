@@ -933,7 +933,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_bernoulli_double", "random generator"},
                 { "test_bernoulli_expanded", "random generator"},
                 { "test_bernoulli_seed_expanded", "random generator"},
-                { "test_bernoulli_double_expanded", "random generator"}
+                { "test_bernoulli_double_expanded", "random generator"},
                 {"test_roialign_aligned_false", "opset 16 is not implemented yet"},
                 {"test_roialign_aligned_true", "opset 16 is not implemented yet"}
             };
