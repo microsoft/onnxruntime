@@ -588,6 +588,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"bernoulli_seed", "By design. Test data is for informational purpose because the generator is non deterministic."},
       {"bernoulli_seed_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
       {"bernoulli_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
+      {"test_roialign_aligned_false", "opset 16 is not implemented yet"},
+      {"test_roialign_aligned_true", "opset 16 is not implemented yet"},
   };
 
 #ifdef DISABLE_ML_OPS
