@@ -169,6 +169,10 @@ std::string ORTTrainingPythonEnv::GetExecutionProviderMapKey(const std::string& 
   return key;
 }
 
+void ORTTrainingPythonEnv::ClearExecutionProviderInstances(){
+  execution_provider_instances_map_.clear();
+}
+
 static std::unique_ptr<ORTTrainingPythonEnv> ort_training_env;
 
 void InitializeTrainingEnv() {
@@ -228,27 +232,22 @@ std::unique_ptr<IExecutionProvider> CreateTrainingEP(
   const SessionOptions& session_options,
   const std::string& provider_type,
   const ProviderOptionsMap& provider_options_map){
-  ORTTrainingPythonEnv& training_env = GetTrainingEnv();
-  if (training_env.ext_execution_provider_info_map_.find(provider_type) != 
-      training_env.ext_execution_provider_info_map_.end()){
-    ProviderOptionsMap merged_options;
-    ResolveExtraProviderOptions({provider_type}, provider_options_map, merged_options);
-    return CreateExecutionProviderInstance(session_options, provider_type, merged_options);
-  }else{
-    return CreateExecutionProviderInstance(session_options, provider_type, provider_options_map);
-  }
+  return CreateExecutionProviderInstance(session_options, provider_type, provider_options_map);
 }
 
 std::shared_ptr<IExecutionProvider> GetOrCreateExecutionProvider(const std::string& provider_type,
                                                                  const ProviderOptionsMap& provider_options_map,
                                                                  const SessionOptions& session_options){
   ORTTrainingPythonEnv& training_env = GetTrainingEnv();
+  // resolve provider options, because the hash key of ep depends on provider options.
+  ProviderOptionsMap merged_options;
+  ResolveExtraProviderOptions({provider_type}, provider_options_map, merged_options);
   // search in environment
   size_t hash;
-  if (GetProviderInstanceHash(provider_type, provider_options_map, hash)){
+  if (GetProviderInstanceHash(provider_type, merged_options, hash)){
     auto cached_provider_instance = training_env.GetExecutionProviderInstance(provider_type, hash);
     if (!cached_provider_instance){
-      auto ep = CreateTrainingEP(session_options, provider_type, provider_options_map);
+      auto ep = CreateTrainingEP(session_options, provider_type, merged_options);
       if (ep){
         training_env.AddExecutionProvider(provider_type, hash, std::move(ep));
         cached_provider_instance = training_env.GetExecutionProviderInstance(provider_type, hash);
@@ -258,7 +257,7 @@ std::shared_ptr<IExecutionProvider> GetOrCreateExecutionProvider(const std::stri
   }
   else{
     // the EP doesn't support cache, register the instance to session
-    auto ep = CreateTrainingEP(session_options, provider_type, provider_options_map);
+    auto ep = CreateTrainingEP(session_options, provider_type, merged_options);
     return ep;
   }
 }
@@ -309,6 +308,11 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
       "Return list of available Execution Providers in this installed version of Onnxruntime. "
       "The order of elements represents the default priority order of Execution Providers "
       "from highest to lowest.");
+  
+  m.def("clear_training_ep_instances", []() -> void {
+         ort_training_env->ClearExecutionProviderInstances();
+         },
+        "Clean the execution provider instances used in ort training module.");
 
   // clean the ort training environment when python interpreter exit
   // otherwise the global var will be de-constrcut after user main.

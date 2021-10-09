@@ -40,6 +40,8 @@ public:
 
   ExecutionProviderLibInfoMap ext_execution_provider_info_map_;
 
+  void ClearExecutionProviderInstances();
+
 private:
   std::string GetExecutionProviderMapKey(const std::string& provider_type,
                                          size_t hash);
