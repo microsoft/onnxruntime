@@ -1,6 +1,5 @@
 ---
 title: Other Inference APIs
-parent: API Docs
 nav_exclude: true
 ---
 

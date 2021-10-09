@@ -1,6 +1,5 @@
 ---
 title: C# API
-parent: API Docs
 nav_exclude: true
 ---
 
