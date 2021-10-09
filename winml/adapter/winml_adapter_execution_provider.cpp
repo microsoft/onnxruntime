@@ -39,7 +39,7 @@ struct OrtAllocatorWrapper : public OrtAllocator {
 ORT_API_STATUS_IMPL(winmla::ExecutionProviderSync, _In_ OrtExecutionProvider* provider) {
   API_IMPL_BEGIN
   const auto execution_provider = reinterpret_cast<onnxruntime::IExecutionProvider*>(provider);
-  execution_provider->Sync();
+  ORT_API_RETURN_IF_STATUS_NOT_OK(execution_provider->Sync());
   return nullptr;
   API_IMPL_END
 }

@@ -27,7 +27,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   allocator_ptr_ = execution_provider_.GetAllocator(device_id_, mem_type_);
   ORT_ENFORCE(allocator_ptr_, "Failed to get allocator for optimizer");
 
-  data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>());
+  ORT_THROW_IF_ERROR(data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>()));
 
   // Create MLValues related maps
   auto initialize_maps = [this, &initialized_tensor_set, &model_path](const NodeArg& arg, size_t /*index*/) -> Status {
@@ -75,7 +75,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   allocator_ptr_ = execution_provider_.GetAllocator(device_id_, mem_type_);
   ORT_ENFORCE(allocator_ptr_, "Failed to get allocator for optimizer");
 
-  data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>());
+  ORT_THROW_IF_ERROR(data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>()));
 
   // Create MLValues related maps
   auto initialize_maps = [this, &initialized_tensor_set, &model_path](const NodeArg& arg, size_t /*index*/) -> Status {
