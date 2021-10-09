@@ -32,8 +32,9 @@ Status SliceGrad::Compute(OpKernelContext* context) const {
   std::vector<int64_t> input_ends;
   std::vector<int64_t> input_axes;
   std::vector<int64_t> input_steps;
-  FillVectorsFromInput(*context->Input<Tensor>(2), *context->Input<Tensor>(3), context->Input<Tensor>(4),
-                       context->Input<Tensor>(5), input_starts, input_ends, input_axes, input_steps);
+  ORT_RETURN_IF_ERROR(FillVectorsFromInput(*context->Input<Tensor>(2), *context->Input<Tensor>(3),
+                                           context->Input<Tensor>(4), context->Input<Tensor>(5),
+                                           input_starts, input_ends, input_axes, input_steps));
 
   SliceOp::PrepareForComputeMetadata compute_metadata(data_shape.GetDims());
   ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes, input_steps, compute_metadata));

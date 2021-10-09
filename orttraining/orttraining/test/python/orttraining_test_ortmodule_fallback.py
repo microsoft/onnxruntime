@@ -9,7 +9,7 @@ import torch
 import pytest
 import warnings
 
-from onnxruntime.training.ortmodule import ORTModule, _fallback, TORCH_CPP_DIR
+from onnxruntime.training.ortmodule import ORTModule, _fallback, ORTMODULE_TORCH_CPP_DIR
 from onnxruntime.training.ortmodule.torch_cpp_extensions import is_installed as is_torch_cpp_extensions_installed
 import _test_helpers
 from _orttraining_ortmodule_models import (NeuralNetSinglePositionalArgument,
@@ -148,6 +148,7 @@ def test_ortmodule_fallback_device__mismatch(is_training, fallback_enabled, matc
         policy = 'FALLBACK_DISABLE'
     os.environ['ORTMODULE_FALLBACK_POLICY'] = policy
     os.environ['ORTMODULE_FALLBACK_RETRY'] = str(not persist_fallback)
+    os.environ['ORTMODULE_SKIPCHECK_POLICY'] = 'SKIP_CHECK_DISABLED'
 
     data_device = 'cuda'
     N, D_in, H, D_out = 64, 784, 500, 10
@@ -169,8 +170,9 @@ def test_ortmodule_fallback_device__mismatch(is_training, fallback_enabled, matc
             if matching_policy:
                 with pytest.raises(RuntimeError) as e:
                     ort_model(inputs)
-                assert ("Expected all tensors to be on the same device, but found at least two devices, cpu and cuda:0!"
-                        in str(e.value))
+                assert \
+                    ("Tensor for argument #1 'self' is on CPU, but expected them to be on GPU (while checking arguments for addmm)" in str(e.value)) \
+                    or ("Expected all tensors to be on the same device, but found at least two devices, cpu and cuda:0!" in str(e.value))
             else:
                 with pytest.raises(_fallback.ORTModuleDeviceException) as e:
                     ort_model(inputs)
@@ -182,6 +184,7 @@ def test_ortmodule_fallback_device__mismatch(is_training, fallback_enabled, matc
             assert (f"Input argument to forward found on device {input_device}, "
                     f"but expected it to be on module device {ort_model_device}." in str(e.value))
 
+    del os.environ['ORTMODULE_SKIPCHECK_POLICY']
 
 @pytest.mark.parametrize("is_training,fallback_enabled,matching_policy,persist_fallback",
                          list(itertools.product([True, False], repeat=4)))
@@ -387,7 +390,7 @@ def test_ortmodule_fallback_init__missing_cpp_extensions(is_training, fallback_e
     # matching_policy: True matches FALLBACK_UNSUPPORTED_TORCH_MODEL policy to ORTModuleDeviceException exception.
     #   Otherwise, an incorrect policy (FALLBACK_UNSUPPORTED_DEVICE) is used to verify that the fallback does not happen
 
-    if is_torch_cpp_extensions_installed(TORCH_CPP_DIR):
+    if is_torch_cpp_extensions_installed(ORTMODULE_TORCH_CPP_DIR):
         warnings.warn('Skipping test_ortmodule_fallback_init__missing_cpp_extensions.'
                       f' It requires PyTorch CPP extensions to be missing')
     else:
@@ -539,6 +542,7 @@ def test_ortmodule_fallback_warn_message(is_training, persist_fallback):
     policy = 'FALLBACK_UNSUPPORTED_DEVICE'
     os.environ['ORTMODULE_FALLBACK_POLICY'] = policy
     os.environ['ORTMODULE_FALLBACK_RETRY'] = str(not persist_fallback)
+    os.environ['ORTMODULE_SKIPCHECK_POLICY'] = 'SKIP_CHECK_DISABLED'
 
     data_device = 'cuda'
     N, D_in, H, D_out = 64, 784, 500, 10
@@ -558,3 +562,5 @@ def test_ortmodule_fallback_warn_message(is_training, persist_fallback):
             with pytest.warns(UserWarning) as warning_record:
                 ort_model(inputs)
         assert "Fallback to PyTorch due to exception" in str(warning_record[0].message.args[0])
+
+    del os.environ['ORTMODULE_SKIPCHECK_POLICY']
