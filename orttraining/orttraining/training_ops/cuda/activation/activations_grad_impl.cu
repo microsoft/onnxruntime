@@ -31,6 +31,13 @@ struct OP_ReluGrad : public CtxReluGrad {
   }
 };
 
+template <typename T>
+struct OP_SigmoidGrad : public CtxSigmoidGrad {
+  __device__ __inline__ T operator()(const T& dy, const T& y) const {
+    return dy * y * ((T)1 - y);
+  }
+};
+
 #define BINARY_ELEMENTWISE_IMPL(name)                                                  \
   BINARY_ELEMENTWISE_IMPL_DECLARATION(name) {                                          \
     BinaryElementWiseNoBroadcastImpl(stream,                                           \

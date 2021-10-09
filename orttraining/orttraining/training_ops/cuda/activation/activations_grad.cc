@@ -46,6 +46,7 @@ namespace cuda {
 ACTIVATION_GRAD_OP_HFD(GeluGrad, 1, kMSDomain);
 ACTIVATION_GRAD_OP_HFD(FastGeluGrad, 1, kMSDomain);
 ACTIVATION_GRAD_OP_HFD(ReluGrad, 1, kMSDomain);
+ACTIVATION_GRAD_OP_HFD(SigmoidGrad, 1, kMSDomain);
 
 }  //namespace cuda
 }  // namespace onnxruntime

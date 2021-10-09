@@ -32,10 +32,10 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
       logger_(logger) {
   auto rule_based_graph_transformer =
       std::make_unique<RuleBasedGraphTransformer>("pre_training_rule_based_graph_transformer");
-  rule_based_graph_transformer->Register(std::make_unique<InsertMaxPoolOutput>());
+  ORT_THROW_IF_ERROR(rule_based_graph_transformer->Register(std::make_unique<InsertMaxPoolOutput>()));
 
-  graph_transformation_mgr_.Register(std::move(rule_based_graph_transformer),
-                                     TransformerLevel::Level2);
+  ORT_THROW_IF_ERROR(graph_transformation_mgr_.Register(std::move(rule_based_graph_transformer),
+                                                        TransformerLevel::Level2));
 
   auto forward_reachable_nodes = BFSWithStopGradient(x_node_arg_names);
 

@@ -1015,7 +1015,7 @@ void OpTester::Run(
       InferenceSession session_object{so, GetEnvironment()};
 
       if (add_prepacked_shared_container_to_sessions_) {
-        session_object.AddPrePackedWeightsContainer(&prepacked_weights_container_);
+        ASSERT_STATUS_OK(session_object.AddPrePackedWeightsContainer(&prepacked_weights_container_));
       }
 
       ASSERT_TRUE(!execution_providers->empty())
@@ -1060,7 +1060,7 @@ void OpTester::Run(
         InferenceSession session_object{so, GetEnvironment()};
 
         if (add_prepacked_shared_container_to_sessions_) {
-          session_object.AddPrePackedWeightsContainer(&prepacked_weights_container_);
+          ASSERT_STATUS_OK(session_object.AddPrePackedWeightsContainer(&prepacked_weights_container_));
         }
 
         for (auto& custom_session_registry : custom_session_registries_)
