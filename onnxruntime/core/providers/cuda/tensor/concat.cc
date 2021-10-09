@@ -70,10 +70,10 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
   CudaAsyncBuffer<int64_t> concat_sizes_gpu(this, concat_sizes);
   CudaAsyncBuffer<int64_t> axis_dimension_input_output_mapping_gpu(this, axis_dimension_input_output_mapping);
   CudaAsyncBuffer<int64_t> concat_sizes_range_gpu(this, concat_sizes_range);
-  concat_sizes_gpu.CopyToGpu();
-  axis_dimension_input_output_mapping_gpu.CopyToGpu();
-  concat_sizes_range_gpu.CopyToGpu();
-  input_ptr.CopyToGpu();
+  ORT_RETURN_IF_ERROR(concat_sizes_gpu.CopyToGpu());
+  ORT_RETURN_IF_ERROR(axis_dimension_input_output_mapping_gpu.CopyToGpu());
+  ORT_RETURN_IF_ERROR(concat_sizes_range_gpu.CopyToGpu());
+  ORT_RETURN_IF_ERROR(input_ptr.CopyToGpu());
   int block_size_inside_axis_dim = static_cast<int>(p.output_axis_pitch / p.output_tensor->Shape()[p.axis]);
   int block_size_including_axis_dim = static_cast<int>(p.output_axis_pitch);
   auto element_bytes = p.output_tensor->DataType()->Size();
