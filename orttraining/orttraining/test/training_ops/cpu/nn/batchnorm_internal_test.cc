@@ -37,9 +37,9 @@ TEST(BatchNormInternalTest, ForwardTrainingTest) {
   test.AddOutput<float>("saved_mean", channel_dims, {-0.306f, 0.114562f});
   test.AddOutput<float>("saved_inv_std", channel_dims, {1.2288f, 0.861317f});
 
-  // exclude CUDA Execution Provider due to different calculation method of `running_var`
+  // exclude CUDA and ROCm Execution Provider due to different calculation method of `running_var`
   // exclude TRT and OpenVINO for same reasons as seen in TestBatchNorm()
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 }  // namespace test
