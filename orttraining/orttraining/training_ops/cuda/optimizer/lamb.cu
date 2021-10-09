@@ -617,7 +617,7 @@ CudaKernel::CudaAsyncBuffer<LambMultiTensorSyncRangeAndLock> compute_tensor_rang
     tensor_block_span.leading_block = block_index;
     tensor_block_span.number_blocks++;
   }
-  sync_range_and_lock.CopyToGpu();
+  ORT_THROW_IF_ERROR(sync_range_and_lock.CopyToGpu());
 
   return sync_range_and_lock;
 }

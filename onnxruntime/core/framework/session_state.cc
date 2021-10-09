@@ -592,7 +592,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
       ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate);
 
       const auto& counter = exe_plan->allocation_plan[ml_value_idx].program_counter;
-      mem_planner.TraceAllocation(ml_value_idx, counter, size);
+      ORT_RETURN_IF_ERROR(mem_planner.TraceAllocation(ml_value_idx, counter, size));
     }
   }
 
@@ -628,7 +628,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
         ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate);
 
         const auto& counter = exe_plan->allocation_plan[ml_value_idx].program_counter;
-        mem_planner.TraceAllocation(ml_value_idx, counter, aligned_size);
+        ORT_RETURN_IF_ERROR(mem_planner.TraceAllocation(ml_value_idx, counter, aligned_size));
       }
     }
 
@@ -640,7 +640,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
         continue;
       const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
       if (ml_data_type != DataTypeImpl::GetType<std::string>()) {
-        mem_planner.TraceFree(ml_value_idx);
+        ORT_RETURN_IF_ERROR(mem_planner.TraceFree(ml_value_idx));
       }
     }
   }

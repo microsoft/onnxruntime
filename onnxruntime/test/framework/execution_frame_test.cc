@@ -53,7 +53,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   auto cpu_xp = CreateCPUExecutionProvider();
   auto xp_typ = cpu_xp->Type();
   ExecutionProviders execution_providers;
-  execution_providers.Add(xp_typ, std::move(cpu_xp));
+  ASSERT_STATUS_OK(execution_providers.Add(xp_typ, std::move(cpu_xp)));
   KernelRegistryManager kernel_registry_manager;
   ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
 
@@ -125,7 +125,7 @@ TEST_F(ExecutionFrameTest, OutputShapeValidationTest) {
   auto cpu_xp = CreateCPUExecutionProvider();
   auto xp_typ = cpu_xp->Type();
   ExecutionProviders execution_providers;
-  execution_providers.Add(xp_typ, std::move(cpu_xp));
+  ASSERT_STATUS_OK(execution_providers.Add(xp_typ, std::move(cpu_xp)));
   KernelRegistryManager kernel_registry_manager;
   ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
 
@@ -152,7 +152,7 @@ TEST_F(ExecutionFrameTest, OutputShapeValidationTest) {
   // Calling the method with correct shape. It should work without any warnings.
   ASSERT_STATUS_OK(frame.GetOrCreateNodeOutputMLValue(int(node->Index()), 1, &actual_shape_same_as_input, p_ml_value, *node));
 
-  frame.ReleaseMLValue(1);
+  ASSERT_STATUS_OK(frame.ReleaseMLValue(1));
   // Calling the method with in-correct shape. It should work but this time it should display a warning message.
   ASSERT_STATUS_OK(frame.GetOrCreateNodeOutputMLValue(int(node->Index()), 1, &actual_shape_diff_from_input, p_ml_value, *node));
 }
@@ -168,7 +168,7 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
 
   graph.AddNode("node1", "Clip", "Clip operator", ArgMap{&input_def}, ArgMap{&output_def})
       .SetExecutionProviderType(kCpuExecutionProvider);
-  graph.Resolve();
+  ASSERT_STATUS_OK(graph.Resolve());
   auto element_type = DataTypeImpl::GetType<float>();
   TensorShape shape({3, 2});
   std::vector<float> fdata(static_cast<size_t>(shape.Size()));
@@ -182,7 +182,7 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
 
   KernelRegistryManager kernel_registry_manager;
   ExecutionProviders execution_providers;
-  execution_providers.Add(xp_typ, std::move(cpu_xp));
+  ASSERT_STATUS_OK(execution_providers.Add(xp_typ, std::move(cpu_xp)));
   ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
 
   DataTransferManager dtm;
@@ -239,7 +239,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   KernelRegistryManager kernel_registry_manager;
 
   ExecutionProviders execution_providers;
-  execution_providers.Add(xp_type, std::move(cpu_xp));
+  ASSERT_STATUS_OK(execution_providers.Add(xp_type, std::move(cpu_xp)));
   ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
   //1. prepare input
 
@@ -339,7 +339,7 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
   KernelRegistryManager kernel_registry_manager;
 
   ExecutionProviders execution_providers;
-  execution_providers.Add(xp_type, std::move(cpu_xp));
+  ASSERT_STATUS_OK(execution_providers.Add(xp_type, std::move(cpu_xp)));
   ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
 
   DataTransferManager dtm;

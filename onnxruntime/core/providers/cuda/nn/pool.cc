@@ -249,7 +249,7 @@ Status Pool<T, MaxPool<8>>::ComputeInternal(OpKernelContext* context) const {
         y_data,
         i_data);
   } else {
-    Pool<T, MaxPool<1>>::ComputeInternal(context);
+    ORT_RETURN_IF_ERROR((Pool<T, MaxPool<1>>::ComputeInternal(context)));
   }
   return Status::OK();
 }
