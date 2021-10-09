@@ -531,7 +531,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
       // Loop on CUDA if the copy stream is the same as the compute stream.
       // So there is no explicit sync required between the compute and copy streams
       // to avoid data races.
-      ORT_RETURN_IF_ERROR(session_state_.GetDataTransferMgr().CopyTensor(input.Get<Tensor>(), *output));
+      ORT_RETURN_IF_ERROR(session_state_.GetDataTransferMgr().CopyTensor(input_tensor, *output));
     } else if (input.IsTensorSequence()) {
       TensorSeq* output = context_.Output<TensorSeq>(output_idx);
 
@@ -569,8 +569,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
   if (iter_num_value != 0) {
     for (int i = 0; i < info_.num_loop_carried_vars; ++i) {
       // need to allocate Loop output and copy OrtValue from fetches
-      copy_mlvalue_to_output(fetches[i + 1], i, iter_num_value, *info_.loop_carried_vars_types[i]);  // skip cond
-      ORT_RETURN_IF_ERROR(copy_mlvalue_to_output(fetches[i + 1], i, iter_num_value));  // skip cond
+      ORT_RETURN_IF_ERROR(copy_mlvalue_to_output(fetches[i + 1], i, iter_num_value, *info_.loop_carried_vars_types[i]));  // skip cond
     }
 
     for (int i = info_.num_loop_carried_vars; i < info_.num_outputs; ++i) {
@@ -584,7 +583,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
     // no iterations.
     // copy input loop carried vars to output.
     for (int i = 0; i < info_.num_loop_carried_vars; ++i) {
-      ORT_RETURN_IF_ERROR(copy_mlvalue_to_output(feeds[i + 2], i, iter_num_value));  // skip iter# and cond
+      ORT_RETURN_IF_ERROR(copy_mlvalue_to_output(feeds[i + 2], i, iter_num_value, *info_.loop_carried_vars_types[i]));  // skip iter# and cond
     }
 
     // create empty outputs for loop outputs using the subgraph output shapes for the rank
