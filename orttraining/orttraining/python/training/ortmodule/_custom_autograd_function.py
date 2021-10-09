@@ -31,6 +31,10 @@ def enable_custom_autograd_support():
     # Unregister all python functions automatically upon normal interpreter termination.
     atexit.register(unregister_python_functions)
 
+    # This applies to Pytorch 1.9 and 1.9.1.
     register_custom_op_symbolic('::prim_PythonOp', _export, 1)
+    # This is for the latest Pytorch nightly after this commit:
+    # https://github.com/pytorch/pytorch/commit/11bc435622e6b7207bbf37ed1aafe999e1f296ec
+    register_custom_op_symbolic('prim::PythonOp', _export, 1)
 
     custom_autograd_function_enabler.state = True
