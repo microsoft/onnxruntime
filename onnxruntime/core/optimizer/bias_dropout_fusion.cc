@@ -118,8 +118,8 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       dropout_input.push_back(node.MutableInputDefs()[0]);  // dropout input
       dropout_input.push_back(node.MutableInputDefs()[1]);  // bias
     } else {
-      int last_dim_shape1 = input1_shape->dim_size() - 1;
-      int last_dim_shape2 = input2_shape->dim_size() - 1;
+      const int last_dim_shape1 = input1_shape->dim_size() - 1;
+      const int last_dim_shape2 = input2_shape->dim_size() - 1;
       if (!utils::HasDimValue(input1_shape->dim(last_dim_shape1)) ||
           !utils::HasDimValue(input2_shape->dim(last_dim_shape2)) ||
           input1_shape->dim(last_dim_shape1).dim_value() != input2_shape->dim(last_dim_shape2).dim_value()) {

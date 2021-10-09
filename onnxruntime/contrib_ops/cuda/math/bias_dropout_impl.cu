@@ -49,7 +49,6 @@ __global__ void BiasDropoutKernel(
   curand_init(seeds.first, idx, seeds.second, &state);
 
   float4 rand;
-  float bias;
 
   // We ensure every thread generates the same number of random numbers (by rounding
   // up the size) and at the same timestep (by syncing threads).
@@ -65,6 +64,7 @@ __global__ void BiasDropoutKernel(
     for (int i = 0; i < UNROLL; i++) {
       CUDA_LONG li = id + i;
       if (li < N) {
+        float bias;
         if (has_same_shape_bias) {
           bias = float(bias_data[li]);
         } else {
@@ -109,7 +109,6 @@ __global__ void BiasDropoutVectorizedKernel(
   curand_init(seeds.first, idx, seeds.second, &state);
 
   float4 rand;
-  float bias;
 
   // using vectorized data load/store approach when N % 4 == 0
   // since this is typical case for input shape size
@@ -143,6 +142,7 @@ __global__ void BiasDropoutVectorizedKernel(
     // actual computation
     #pragma unroll
     for (int ii = 0; ii < UNROLL; ii++) {
+      float bias;
       if (has_same_shape_bias) {
         bias = float(bias_vec[ii]);
       } else {
