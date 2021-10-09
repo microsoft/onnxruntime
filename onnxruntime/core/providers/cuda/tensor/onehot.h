@@ -2,8 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-
-#include "core/common/common.h"
+#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {

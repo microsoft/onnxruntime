@@ -356,65 +356,46 @@ void
 MLASCALL
 MlasRequantizeOutput(
     const int32_t* Input,
+    size_t InputLeadingDimension,
     uint8_t* Output,
+    size_t OutputLeadingDimension,
     const int32_t* Bias,
-    size_t M,
-    size_t N,
     const float* Scale,
     bool PerColumnScale,
-    uint8_t ZeroPoint
+    uint8_t ZeroPoint,
+    size_t StartM,
+    size_t StartN,
+    size_t CountM,
+    size_t CountN
     )
-/*++
-
-Routine Description:
-
-    This routine requantizes the intermediate buffer to the output buffer
-    optionally adding the supplied bias.
-
-Arguments:
-
-    Input - Supplies the input matrix.
-
-    Output - Supplies the output matrix.
-
-    Bias - Supplies the optional bias vector to be added to the input buffer
-        before requantization.
-
-    Buffer - Supplies the output matrix.
-
-    M - Supplies the number of elements of the bias vector and the number of
-        rows in the output matrix.
-
-    N - Supplies the number of columns of the output matrix.
-
-    Scale - Supplies the quantization scale.
-
-    PerColumnScale - Supplies true if the quantization scale has per-column
-        values, else false if a single quantization scale applies to the
-        entire matrix.
-
-    ZeroPoint - Supplies the quantization zero point value.
-
-Return Value:
-
-    None.
-
---*/
 {
     const __m128 PerMatrixScaleVector = PerColumnScale ? _mm_setzero_ps() : _mm_load1_ps(Scale);
     const __m128 MinimumValueVector = _mm_set1_ps(float(0 - ZeroPoint));
     const __m128 MaximumValueVector = _mm_set1_ps(float(255 - ZeroPoint));
     const __m128i ZeroPointVector = _mm_set1_epi32(ZeroPoint);
 
+    if (nullptr != Bias) {
+        Bias += StartN;
+    }
+    if (PerColumnScale) {
+        Scale += StartN;
+    }
+
+    Input += StartM * InputLeadingDimension + StartN;
+    Output += StartM * OutputLeadingDimension + StartN;
+
     //
     // Step through each row of the output matrix.
     //
 
-    while (M-- > 0) {
+    while (CountM-- > 0) {
 
         const int32_t* bias = Bias;
         const float* scale = PerColumnScale ? Scale : nullptr;
-        size_t n = N;
+        size_t n = CountN;
+
+        auto* RowInput = Input;
+        auto* RowOutput = Output;
 
         //
         // Process 16 columns of the matrices at a time.
@@ -426,11 +407,11 @@ Return Value:
             // Load the input data and optionally add the per-column bias.
             //
 
-            __m128i IntegerVector0 = _mm_loadu_si128((const __m128i *)&Input[0]);
-            __m128i IntegerVector1 = _mm_loadu_si128((const __m128i *)&Input[4]);
-            __m128i IntegerVector2 = _mm_loadu_si128((const __m128i *)&Input[8]);
-            __m128i IntegerVector3 = _mm_loadu_si128((const __m128i *)&Input[12]);
-            Input += 16;
+            __m128i IntegerVector0 = _mm_loadu_si128((const __m128i*)&RowInput[0]);
+            __m128i IntegerVector1 = _mm_loadu_si128((const __m128i*)&RowInput[4]);
+            __m128i IntegerVector2 = _mm_loadu_si128((const __m128i*)&RowInput[8]);
+            __m128i IntegerVector3 = _mm_loadu_si128((const __m128i*)&RowInput[12]);
+            RowInput += 16;
 
             if (bias != nullptr) {
                 IntegerVector0 = _mm_add_epi32(IntegerVector0, _mm_loadu_si128((const __m128i *)&bias[0]));
@@ -491,8 +472,8 @@ Return Value:
 
             __m128i ByteVector = _mm_packus_epi16(WordVector0, WordVector1);
 
-            _mm_storeu_si128((__m128i*)Output, ByteVector);
-            Output += 16;
+            _mm_storeu_si128((__m128i*)RowOutput, ByteVector);
+            RowOutput += 16;
 
             n -= 16;
         }
@@ -511,8 +492,8 @@ Return Value:
 
             if (n >= 4) {
 
-                IntegerVector = _mm_loadu_si128((const __m128i*)&Input[0]);
-                Input += 4;
+                IntegerVector = _mm_loadu_si128((const __m128i*)&RowInput[0]);
+                RowInput += 4;
 
                 if (bias != nullptr) {
                     IntegerVector = _mm_add_epi32(IntegerVector, _mm_loadu_si128((const __m128i*)&bias[0]));
@@ -521,7 +502,7 @@ Return Value:
 
             } else {
 
-                int32_t IntegerValue = *Input++;
+                int32_t IntegerValue = *RowInput++;
 
                 if (bias != nullptr) {
                     IntegerValue += *bias++;
@@ -567,19 +548,23 @@ Return Value:
 
             if (n >= 4) {
 
-                *reinterpret_cast<uint32_t*>(Output) = OutputValue;
-                Output += 4;
+                *reinterpret_cast<uint32_t*>(RowOutput) = OutputValue;
+                RowOutput += 4;
 
                 n -= 4;
 
             } else {
 
-                *Output = uint8_t(OutputValue);
-                Output += 1;
+                *RowOutput = uint8_t(OutputValue);
+                RowOutput += 1;
 
                 n -= 1;
             }
         }
+
+        // Next Row
+        Input += InputLeadingDimension;
+        Output += OutputLeadingDimension;
     }
 }
 
@@ -589,63 +574,44 @@ void
 MLASCALL
 MlasRequantizeOutput(
     const int32_t* Input,
+    size_t InputLeadingDimension,
     uint8_t* Output,
+    size_t OutputLeadingDimension,
     const int32_t* Bias,
-    size_t M,
-    size_t N,
     const float* Scale,
     bool PerColumnScale,
-    uint8_t ZeroPoint
+    uint8_t ZeroPoint,
+    size_t StartM,
+    size_t StartN,
+    size_t CountM,
+    size_t CountN
     )
-/*++
-
-Routine Description:
-
-    This routine requantizes the intermediate buffer to the output buffer
-    optionally adding the supplied bias.
-
-Arguments:
-
-    Input - Supplies the input matrix.
-
-    Output - Supplies the output matrix.
-
-    Bias - Supplies the optional bias vector to be added to the input buffer
-        before requantization.
-
-    Buffer - Supplies the output matrix.
-
-    M - Supplies the number of elements of the bias vector and the number of
-        rows in the output matrix.
-
-    N - Supplies the number of columns of the output matrix.
-
-    Scale - Supplies the quantization scale.
-
-    PerColumnScale - Supplies true if the quantization scale has per-column
-        values, else false if a single quantization scale applies to the
-        entire matrix.
-
-    ZeroPoint - Supplies the quantization zero point value.
-
-Return Value:
-
-    None.
-
---*/
 {
     const float32x4_t PerMatrixScaleVector = PerColumnScale ? vdupq_n_f32(0) : vld1q_dup_f32(Scale);
     const int16x8_t ZeroPointVector = vdupq_n_s16(ZeroPoint);
+
+    if (nullptr != Bias) {
+        Bias += StartN;
+    }
+    if (PerColumnScale) {
+        Scale += StartN;
+    }
+
+    Input += StartM * InputLeadingDimension + StartN;
+    Output += StartM * OutputLeadingDimension + StartN;
 
     //
     // Step through each row of the output matrix.
     //
 
-    while (M-- > 0) {
+    while (CountM-- > 0) {
 
         const int32_t* bias = Bias;
         const float* scale = PerColumnScale ? Scale : nullptr;
-        size_t n = N;
+        size_t n = CountN;
+
+        auto* RowInput = Input;
+        auto* RowOutput = Output;
 
         //
         // Process 16 columns of the matrices at a time.
@@ -659,11 +625,11 @@ Return Value:
 
             int32x4x4_t IntegerVector;
 
-            IntegerVector.val[0] = vld1q_s32(&Input[0]);
-            IntegerVector.val[1] = vld1q_s32(&Input[4]);
-            IntegerVector.val[2] = vld1q_s32(&Input[8]);
-            IntegerVector.val[3] = vld1q_s32(&Input[12]);
-            Input += 16;
+            IntegerVector.val[0] = vld1q_s32(&RowInput[0]);
+            IntegerVector.val[1] = vld1q_s32(&RowInput[4]);
+            IntegerVector.val[2] = vld1q_s32(&RowInput[8]);
+            IntegerVector.val[3] = vld1q_s32(&RowInput[12]);
+            RowInput += 16;
 
             if (bias != nullptr) {
                 IntegerVector.val[0] = vaddq_s32(IntegerVector.val[0], vld1q_s32(&bias[0]));
@@ -731,8 +697,8 @@ Return Value:
             WordVector.val[0] = vqaddq_s16(WordVector.val[0], ZeroPointVector);
             WordVector.val[1] = vqaddq_s16(WordVector.val[1], ZeroPointVector);
 
-            vst1q_u8(Output, vqmovun_high_s16(vqmovun_s16(WordVector.val[0]), WordVector.val[1]));
-            Output += 16;
+            vst1q_u8(RowOutput, vqmovun_high_s16(vqmovun_s16(WordVector.val[0]), WordVector.val[1]));
+            RowOutput += 16;
 
             n -= 16;
         }
@@ -751,8 +717,8 @@ Return Value:
 
             if (n >= 4) {
 
-                IntegerVector = vld1q_s32(&Input[0]);
-                Input += 4;
+                IntegerVector = vld1q_s32(&RowInput[0]);
+                RowInput += 4;
 
                 if (bias != nullptr) {
                     IntegerVector = vaddq_s32(IntegerVector, vld1q_s32(&bias[0]));
@@ -761,8 +727,8 @@ Return Value:
 
             } else {
 
-                IntegerVector = vld1q_dup_s32(Input);
-                Input += 1;
+                IntegerVector = vld1q_dup_s32(RowInput);
+                RowInput += 1;
 
                 if (bias != nullptr) {
                     IntegerVector = vaddq_s32(IntegerVector, vld1q_dup_s32(bias));
@@ -813,19 +779,24 @@ Return Value:
 
             if (n >= 4) {
 
-                vst1q_lane_u32(reinterpret_cast<uint32_t*>(Output), vreinterpretq_u32_u8(ByteVector), 0);
-                Output += 4;
+                vst1q_lane_u32(reinterpret_cast<uint32_t*>(RowOutput),
+                               vreinterpretq_u32_u8(ByteVector), 0);
+                RowOutput += 4;
 
                 n -= 4;
 
             } else {
 
-                vst1q_lane_u8(Output, ByteVector, 0);
-                Output += 1;
+                vst1q_lane_u8(RowOutput, ByteVector, 0);
+                RowOutput += 1;
 
                 n -= 1;
             }
         }
+
+        // Next Row
+        Input += InputLeadingDimension;
+        Output += OutputLeadingDimension;
     }
 }
 
@@ -835,68 +806,49 @@ void
 MLASCALL
 MlasRequantizeOutput(
     const int32_t* Input,
+    size_t InputLeadingDimension,
     uint8_t* Output,
+    size_t OutputLeadingDimension,
     const int32_t* Bias,
-    size_t M,
-    size_t N,
     const float* Scale,
     bool PerColumnScale,
-    uint8_t ZeroPoint
+    uint8_t ZeroPoint,
+    size_t StartM,
+    size_t StartN,
+    size_t CountM,
+    size_t CountN
     )
-/*++
-
-Routine Description:
-
-    This routine requantizes the intermediate buffer to the output buffer
-    optionally adding the supplied bias.
-
-Arguments:
-
-    Input - Supplies the input matrix.
-
-    Output - Supplies the output matrix.
-
-    Bias - Supplies the optional bias vector to be added to the input buffer
-        before requantization.
-
-    Buffer - Supplies the output matrix.
-
-    M - Supplies the number of elements of the bias vector and the number of
-        rows in the output matrix.
-
-    N - Supplies the number of columns of the output matrix.
-
-    Scale - Supplies the quantization scale.
-
-    PerColumnScale - Supplies true if the quantization scale has per-column
-        values, else false if a single quantization scale applies to the
-        entire matrix.
-
-    ZeroPoint - Supplies the quantization zero point value.
-
-Return Value:
-
-    None.
-
---*/
 {
     const float PerMatrixScaleValue = PerColumnScale ? 0.0f : *Scale;
     const float MinimumValue = float(0 - ZeroPoint);
     const float MaximumValue = float(255 - ZeroPoint);
 
+    if (nullptr != Bias) {
+        Bias += StartN;
+    }
+    if (PerColumnScale) {
+        Scale += StartN;
+    }
+
+    Input += StartM * InputLeadingDimension + StartN;
+    Output += StartM * OutputLeadingDimension + StartN;
+
     //
     // Step through each row of the output matrix.
     //
 
-    while (M-- > 0) {
+    while (CountM-- > 0) {
 
         const int32_t* bias = Bias;
         const float* scale = Scale;
-        size_t n = N;
+        size_t n = CountN;
+
+        auto* RowInput = Input;
+        auto* RowOutput = Output;
 
         while (n > 0) {
 
-            int32_t IntegerValue = *Input++;
+            int32_t IntegerValue = *RowInput++;
 
             if (bias != nullptr) {
                 IntegerValue += *bias++;
@@ -920,10 +872,14 @@ Return Value:
             IntegerValue = int32_t(MlasBitsOfFp32(FloatValue + MLAS_ROUNDING_BIAS_MAGIC)) -
                 MLAS_ROUNDING_BIAS_MAGIC_BITS;
 
-            *Output++ = uint8_t(IntegerValue + ZeroPoint);
+            *RowOutput++ = uint8_t(IntegerValue + ZeroPoint);
 
             n -= 1;
         }
+
+        // Next Row
+        Input += InputLeadingDimension;
+        Output += OutputLeadingDimension;
     }
 }
 

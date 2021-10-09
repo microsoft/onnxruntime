@@ -28,11 +28,6 @@
 //Gist Encoding
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 
-#ifdef USE_CUDA
-#include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/cuda_allocator.h"
-#endif
-
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
@@ -716,7 +711,7 @@ static Status AddGradientAccumulationNodes(Graph& graph,
 }
 
 Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
-                                                        const TrainingConfiguration::GraphTransformerConfiguration& config) {
+                                                        const TrainingGraphTransformerConfiguration& config) {
   GraphTransformerManager graph_transformation_mgr{2};
   // TODO: ideally we can just reuse the CPU EP registered with the session, but in the training session case
   // the EPs are registered after ConfigureForTraining and before Initialize is called. Hence we don't have access
@@ -740,7 +735,7 @@ Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set
 void TrainingSession::AddPreTrainingTransformers(const IExecutionProvider& execution_provider,
                                                  GraphTransformerManager& transformer_manager,
                                                  const std::unordered_set<std::string>& weights_to_train,
-                                                 const TrainingConfiguration::GraphTransformerConfiguration& config,
+                                                 const TrainingGraphTransformerConfiguration& config,
                                                  TransformerLevel graph_optimization_level) {
   ORT_ENFORCE(graph_optimization_level <= TransformerLevel::MaxLevel,
               "Exceeded max transformer level. Current level is set to " +
@@ -752,18 +747,18 @@ void TrainingSession::AddPreTrainingTransformers(const IExecutionProvider& execu
       auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
           level, weights_to_train, config, execution_provider);
       for (auto& entry : transformers_to_register) {
-        transformer_manager.Register(std::move(entry), level);
+        ORT_THROW_IF_ERROR(transformer_manager.Register(std::move(entry), level));
       }
     }
   }
 }
 
 // Registers all the predefined transformers with transformer manager
-void TrainingSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                                TransformerLevel graph_optimization_level) {
-  ORT_ENFORCE(graph_optimization_level <= TransformerLevel::MaxLevel,
-              "Exceeded max transformer level. Current level is set to " +
-                  std::to_string(static_cast<uint32_t>(graph_optimization_level)));
+Status TrainingSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
+                                                  TransformerLevel graph_optimization_level) {
+  ORT_RETURN_IF_NOT(graph_optimization_level <= TransformerLevel::MaxLevel,
+                    "Exceeded max transformer level. Current level is set to " +
+                        std::to_string(static_cast<uint32_t>(graph_optimization_level)));
 
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);
@@ -772,10 +767,12 @@ void TrainingSession::AddPredefinedTransformers(GraphTransformerManager& transfo
       auto transformers_to_register = transformer_utils::GenerateTransformers(
           level, weights_to_train_, GetSessionOptions().free_dimension_overrides, {});
       for (auto& entry : transformers_to_register) {
-        transformer_manager.Register(std::move(entry), level);
+        ORT_RETURN_IF_ERROR(transformer_manager.Register(std::move(entry), level));
       }
     }
   }
+
+  return Status::OK();
 }
 
 Status TrainingSession::ApplyModelParallelTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
@@ -800,7 +797,7 @@ Status TrainingSession::ApplyModelParallelTransformationsToMainGraph(std::unorde
 
   // Generate and register transformers for level
   for (auto& entry : transformers_to_register) {
-    graph_transformation_mgr.Register(std::move(entry), TransformerLevel::Level1);
+    ORT_RETURN_IF_ERROR(graph_transformation_mgr.Register(std::move(entry), TransformerLevel::Level1));
   }
 
   Graph& graph = model_->MainGraph();
@@ -814,9 +811,9 @@ Status TrainingSession::AddGistEncoding(int op_type, std::string compr_type) {
     Graph& graph = model_->MainGraph();
 
     auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleGistTransformer1");
-    rule_transformer_L1->Register(std::make_unique<GistEncodeDecode>(op_type, compr_type));
+    ORT_RETURN_IF_ERROR(rule_transformer_L1->Register(std::make_unique<GistEncodeDecode>(op_type, compr_type)));
     onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-    graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+    ORT_RETURN_IF_ERROR(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
 
     ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
   } catch (const OnnxRuntimeException& exp) {
@@ -926,7 +923,7 @@ Status TrainingSession::BuildOptimizer(
     OptimizerOutputKeyMap<std::string>& opt_graph_outputs) {
   ORT_RETURN_IF_NOT(
       opt_configs.size() == weights_to_train_.size(),
-      "Number of optimizer configurations does not match number of weights to train.")
+      "Number of optimizer configurations does not match number of weights to train.");
 
   for (const auto& weight_name : weights_to_train_) {
     ORT_RETURN_IF_NOT(
@@ -1076,7 +1073,7 @@ common::Status TrainingSession::GetOptimizerState(std::unordered_map<std::string
     }
     NameMLValMap curr_opt_tensors;
     const auto& weight_name = weight_map.first;
-    GetSessionState().GetInitializedTensors(opt_names, allow_missing, curr_opt_tensors);
+    ORT_RETURN_IF_ERROR(GetSessionState().GetInitializedTensors(opt_names, allow_missing, curr_opt_tensors));
     opt_state_tensors[weight_name] = {};
     // Keep only prefix in returned value
     for (const auto& opt_pair : weight_map.second) {
@@ -1112,7 +1109,7 @@ common::Status TrainingSession::GetModelState(std::unordered_map<std::string, Na
   }
 
   NameMLValMap fp_weights;
-  GetSessionState().GetInitializedTensors(fp_tensor_names, allow_missing, fp_weights);
+  ORT_RETURN_IF_ERROR(GetSessionState().GetInitializedTensors(fp_tensor_names, allow_missing, fp_weights));
   // Change key from sharded_name to weight_name using partition_info
   for (const auto& weight : weight_partition_info_) {
     if (weight.second.weight_partitioned) {
@@ -1136,7 +1133,7 @@ common::Status TrainingSession::GetModelState(std::unordered_map<std::string, Na
     mp_tensor_names.insert(
         mixed_precision_weight_initializer_names.begin(), mixed_precision_weight_initializer_names.end());
     NameMLValMap mp_weights;
-    GetSessionState().GetInitializedTensors(mp_tensor_names, allow_missing, mp_weights);
+    ORT_RETURN_IF_ERROR(GetSessionState().GetInitializedTensors(mp_tensor_names, allow_missing, mp_weights));
     // Change key from fp16_name to weight_name
     for (const auto& weight_fp16_pair : weight_to_mixed_precision_map_) {
       const auto& it = mp_weights.find(weight_fp16_pair.second);
@@ -1294,7 +1291,7 @@ Status TrainingSession::SetStateTensors(const NameMLValMap& state_tensors, bool 
     if (is_valid_state_tensor && is_tensor_present) {
       ORT_RETURN_IF_NOT(
           initializer_it->second.IsTensor() && state.second.IsTensor(),
-          "Non-tensor type as initializer is not expected.")
+          "Non-tensor type as initializer is not expected.");
 
       auto* initializer_tensor = initializer_it->second.GetMutable<Tensor>();
       auto& ckpt_tensor = state.second.Get<Tensor>();
@@ -1425,7 +1422,7 @@ std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
 // Send and Recv call SubmitSendAndWait and SubmitRecvAndWait, respectively.
 void PipelineTrainingSession::LaunchNcclService(const int pipeline_stage_id) {
   ORT_ENFORCE(pipeline_stage_id >= 0, "Pipeline stage ID cannot be negative.");
-  auto& nccl_service = cuda::NcclService::GetInstance();
+  auto& nccl_service = cuda::INcclService::GetInstance();
 
   // Create NCCL communication plan. The plan is a vector of communication task group.
   // Each communication task group contains tasks which should be done in parallel.
@@ -1746,9 +1743,9 @@ void PipelineTrainingSession::CreateMicroBatchVariables(
       const size_t slice_axis = static_cast<size_t>(pipeline_context_.sliced_axes[name]);
       if (has_element(pipeline_context_.sliced_tensor_names, name)) {
         OrtValue sliced_value = SliceTensor(values[i], slice_id, slice_axis, num_slices, *this);
-        (sub_io_binding.*bind)(name, sliced_value);
+        ORT_THROW_IF_ERROR((sub_io_binding.*bind)(name, sliced_value));
       } else {
-        (sub_io_binding.*bind)(name, values[i]);
+        ORT_THROW_IF_ERROR((sub_io_binding.*bind)(name, values[i]));
       }
     }
   };
@@ -1797,7 +1794,7 @@ void PipelineTrainingSession::CreatePipelineEvents(
     auto event = onnxruntime::MakeScalarMLValue<int64_t>(bfc_arena, event_value, false);
 
     // Add the created event to the list.
-    io_binding.BindInput(event_name, event);
+    ORT_THROW_IF_ERROR(io_binding.BindInput(event_name, event));
   };
 
   int id = -1;
@@ -1902,7 +1899,7 @@ common::Status PipelineTrainingSession::RunWithPipeline(const RunOptions& run_op
   pipeline_worker_pool_.JoinAll();
   onnxruntime::contrib::OrtEventPool::GetInstance().ResetAllEvents();
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
-  auto& nccl_service = cuda::NcclService::GetInstance();
+  auto& nccl_service = cuda::INcclService::GetInstance();
   nccl_service.Reset();
 #endif
 
@@ -1911,7 +1908,7 @@ common::Status PipelineTrainingSession::RunWithPipeline(const RunOptions& run_op
 
 PipelineTrainingSession::~PipelineTrainingSession() {
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
-  auto& nccl_service = cuda::NcclService::GetInstance();
+  auto& nccl_service = cuda::INcclService::GetInstance();
   nccl_service.Terminate();
 #endif
 }

@@ -3,6 +3,8 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "default_providers.h"
+
 using namespace std;
 namespace onnxruntime {
 namespace test {
@@ -253,7 +255,8 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_1) {
                         18.0f, 27.0f, 27.0f, 18.0f,
                         18.0f, 27.0f, 27.0f, 18.0f,
                         12.0f, 18.0f, 18.0f, 12.0f};
-  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
+                      OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_1_group_2_for_tranpose_path) {
@@ -282,31 +285,106 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_1_group_2_for_tranpose_path
   vector<int64_t> W_shape = {6, 3, 3, 3};
 
   vector<int64_t> Y_shape = {1, 6, 4, 4};
-  auto expected_vals = {12.0f, 18.0f, 18.0f, 12.0f,
-                        18.0f, 27.0f, 27.0f, 18.0f,
-                        18.0f, 27.0f, 27.0f, 18.0f,
-                        12.0f, 18.0f, 18.0f, 12.0f,
-                        12.0f, 18.0f, 18.0f, 12.0f,
-                        18.0f, 27.0f, 27.0f, 18.0f,
-                        18.0f, 27.0f, 27.0f, 18.0f,
-                        12.0f, 18.0f, 18.0f, 12.0f,
-                        12.0f, 18.0f, 18.0f, 12.0f,
-                        18.0f, 27.0f, 27.0f, 18.0f,
-                        18.0f, 27.0f, 27.0f, 18.0f,
-                        12.0f, 18.0f, 18.0f, 12.0f, // duplicate below
-                        12.0f, 18.0f, 18.0f, 12.0f,
-                        18.0f, 27.0f, 27.0f, 18.0f,
-                        18.0f, 27.0f, 27.0f, 18.0f,
-                        12.0f, 18.0f, 18.0f, 12.0f,
-                        12.0f, 18.0f, 18.0f, 12.0f,
-                        18.0f, 27.0f, 27.0f, 18.0f,
-                        18.0f, 27.0f, 27.0f, 18.0f,
-                        12.0f, 18.0f, 18.0f, 12.0f,
-                        12.0f, 18.0f, 18.0f, 12.0f,
-                        18.0f, 27.0f, 27.0f, 18.0f,
-                        18.0f, 27.0f, 27.0f, 18.0f,
-                        12.0f, 18.0f, 18.0f, 12.0f,};
-  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+  auto expected_vals = {
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,  // duplicate below
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+  };
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
+                      OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_2) {
@@ -328,7 +406,8 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_2) {
   vector<int64_t> B_shape = {1};
   vector<int64_t> Y_shape = {1, 1, 1, 14};
   auto expected_vals = {1.0f, 2.0f, 5.0f, 11.0f, 19.0f, 28.0f, 37.0f, 46.0f, 55.0f, 64.0f, 63.0f, 51.0f, 27.0f, 10.0f};
-  TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+  TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape,
+                      OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_OutputShapeWithBatchSize) {
@@ -352,7 +431,8 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShapeWithBatchSize) {
   vector<int64_t> Y_shape = {2, 1, 1, 14};
   auto expected_vals = {1.0f, 2.0f, 5.0f, 11.0f, 19.0f, 28.0f, 37.0f, 46.0f, 55.0f, 64.0f, 63.0f, 51.0f, 27.0f, 10.0f,
                         11.0f, 32.0f, 65.0f, 91.0f, 109.0f, 118.0f, 127.0f, 136.0f, 145.0f, 154.0f, 143.0f, 111.0f, 57.0f, 20.0f};
-  TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+  TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape,
+                      OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
 
 TEST(ConvTransposeTest, ConvTranspose_InvalidKernelShape) {
@@ -563,6 +643,104 @@ TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_4) {
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
+
+TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_AsymmetricPads_1) {
+  ConvTransposeOpAttributes attrs = {
+      vector<int64_t>{2, 2},
+      {},
+      {},
+      vector<int64_t>{2, 2, 1, 1},
+      vector<int64_t>{1, 1},
+      {3, 3},
+      1,
+      "NOTSET"};
+
+  vector<float> X = {3.0f, 8.0f, 1.0f, 9.0f, 5.0f, 7.0f, 3.0f, 2.0f, 6.0f};
+  vector<int64_t> X_shape = {1, 1, 3, 3};
+  vector<float> W = {7.0f, 2.0f, 1.0f, 9.0f};
+  vector<int64_t> W_shape = {1, 1, 2, 2};
+  vector<int64_t> Y_shape = {1, 1, 3, 3};
+  auto expected_vals = {42.0f, 6.0f, 4.0f,
+                        1.0f, 27.0f, 72.0f,
+                        7.0f, 81.0f, 45.0f};
+
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+}
+
+
+TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_AsymmetricPads_2) {
+  ConvTransposeOpAttributes attrs = {
+      vector<int64_t>{2, 2},
+      {},
+      {},
+      vector<int64_t>{1, 1, 2, 2},
+      vector<int64_t>{1, 1},
+      {3, 3},
+      1,
+      "NOTSET"};
+
+  vector<float> X = {3.0f, 8.0f, 1.0f, 9.0f, 5.0f, 7.0f, 3.0f, 2.0f, 6.0f};
+  vector<int64_t> X_shape = {1, 1, 3, 3};
+  vector<float> W = {7.0f, 2.0f, 1.0f, 9.0f};
+  vector<int64_t> W_shape = {1, 1, 2, 2};
+  vector<int64_t> Y_shape = {1, 1, 3, 3};
+  auto expected_vals = {35.0f, 49.0f, 18.0f,
+                        14.0f, 42.0f, 6.0f,
+                        8.0f, 1.0f, 27.0f};
+
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+}
+
+
+TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_AsymmetricPads_3) {
+  ConvTransposeOpAttributes attrs = {
+      vector<int64_t>{2, 2},
+      {},
+      {},
+      vector<int64_t>{2, 2, 0, 0},
+      vector<int64_t>{1, 1},
+      {3, 3},
+      1,
+      "NOTSET"};
+
+  vector<float> X = {3.0f, 8.0f, 1.0f, 9.0f, 5.0f, 7.0f, 3.0f, 2.0f, 6.0f};
+  vector<int64_t> X_shape = {1, 1, 3, 3};
+  vector<float> W = {7.0f, 2.0f, 1.0f, 9.0f};
+  vector<int64_t> W_shape = {1, 1, 2, 2};
+  vector<int64_t> Y_shape = {1, 1, 4, 4};
+  auto expected_vals = {42.0f, 6.0f, 4.0f, 12.0f,
+                        1.0f, 27.0f, 72.0f, 9.0f,
+                        7.0f, 81.0f, 45.0f, 63.0f,
+                        6.0f, 27.0f, 18.0f, 54.0f};
+
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+}
+
+
+TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_AsymmetricPads_4) {
+  ConvTransposeOpAttributes attrs = {
+      vector<int64_t>{2, 2},
+      {},
+      {},
+      vector<int64_t>{0, 0, 2, 2},
+      vector<int64_t>{1, 1},
+      {3, 3},
+      1,
+      "NOTSET"};
+
+  vector<float> X = {3.0f, 8.0f, 1.0f, 9.0f, 5.0f, 7.0f, 3.0f, 2.0f, 6.0f};
+  vector<int64_t> X_shape = {1, 1, 3, 3};
+  vector<float> W = {7.0f, 2.0f, 1.0f, 9.0f};
+  vector<int64_t> W_shape = {1, 1, 2, 2};
+  vector<int64_t> Y_shape = {1, 1, 4, 4};
+  auto expected_vals = {21.0f, 56.0f, 7.0f, 6.0f,
+                        63.0f, 35.0f, 49.0f, 18.0f,
+                        21.0f, 14.0f, 42.0f, 6.0f,
+                        3.0f, 8.0f, 1.0f, 27.0f};
+
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+}
+
 TEST(ConvTransposeTest, ConvTranspose_2D_Dilation_Group_1) {
   ConvTransposeOpAttributes attrs = {
       vector<int64_t>{2, 2},
@@ -642,6 +820,27 @@ TEST(ConvTransposeTest, ConvTranspose_2D_NonDefaultStridesAndDilations) {
   vector<float> W = {1., 1., 1., 1.};
   vector<int64_t> W_shape = {1, 1, 1, 4};
   vector<int64_t> Y_shape = {1, 1, 1, 12};
+  auto expected_vals = {1.f, 0.f, 2.f, 1.f, 0.f, 2.f, 1.f, 0.f, 2.f, 1.f, 0.f, 2.f};
+
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+}
+
+TEST(ConvTransposeTest, ConvTranspose_2D_NonDefaultStridesAndDilations_T) {
+  ConvTransposeOpAttributes attrs = {
+      vector<int64_t>{4, 1},        // kernel_shape
+      {},                           // output_padding
+      {},                           // output_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{2, 1},        // strides
+      vector<int64_t>{3, 1},        // dilations
+      1,                            // group
+      "NOTSET"                      // auto_pad
+  };
+  vector<float> X = {1., 2.};
+  vector<int64_t> X_shape = {1, 1, 2, 1};
+  vector<float> W = {1., 1., 1., 1.};
+  vector<int64_t> W_shape = {1, 1, 4, 1};
+  vector<int64_t> Y_shape = {1, 1, 12, 1};
   auto expected_vals = {1.f, 0.f, 2.f, 1.f, 0.f, 2.f, 1.f, 0.f, 2.f, 1.f, 0.f, 2.f};
 
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
@@ -849,7 +1048,7 @@ TEST(ConvTransposeTest, ConvTranspose_1D_AutoPad_SameUpper) {
   auto expected_vals = {3.0f, 5.0f, 7.0f, 4.0f, 3.0f, 5.0f, 7.0f, 4.0f};
 
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
-                      OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+                      OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider}); //Accuracy Mismatch on OpenVINO-EP
 }
 
 TEST(ConvTransposeTest, ConvTranspose_1D_AutoPad_SameLower) {
@@ -872,7 +1071,7 @@ TEST(ConvTransposeTest, ConvTranspose_1D_AutoPad_SameLower) {
   auto expected_vals = {1.0f, 3.0f, 5.0f, 7.0f, 1.0f, 3.0f, 5.0f, 7.0f};
 
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
-                      OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+                      OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider}); //Accuracy Mismatch on OpenVINO-EP
 }
 
 TEST(ConvTransposeTest, ConvTranspose_AutoPad_with_non_default_strides) {
@@ -917,8 +1116,191 @@ TEST(ConvTransposeTest, ConvTranspose_AutoPad_with_non_default_strides) {
   vector<int64_t> Y_shape = {1, 2, 6, 6};
 
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
-                      OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+                      OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider}); //Accuracy Mismatch on OpenVINO-EP
 }
+
+#ifndef ENABLE_TRAINING  // Prepacking is enabled only on non-training builds
+TEST(ConvTransposeTest, SharedPrepackedWeights) {
+  OpTester test("ConvTranspose", 11);
+  test.AddAttribute("kernel_shape", vector<int64_t>{3, 3});
+  test.AddAttribute("group", static_cast<int64_t>(2));
+  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("output_shape", vector<int64_t>{1, 6, 4, 4});
+
+  int image_size = 4 * 4;
+  int input_channels = 3 * 2;
+  int output_channels = 3;
+  std::vector<float> X;
+  for (int i = 0; i < input_channels * image_size; i++)
+    X.push_back(1.0f);
+  test.AddInput<float>("X", {1, 6, 4, 4}, X, false);
+
+  std::vector<float> W;
+  int kernel_size = output_channels * input_channels * 3 * 3;
+  for (int i = 0; i < kernel_size; i++)
+    W.push_back(1.0f);
+  test.AddInput<float>("W", {6, 3, 3, 3}, W, true);  // Trigger pre-packing
+
+  auto expected_vals = {
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,  // duplicate below
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      18.0f,
+      27.0f,
+      27.0f,
+      18.0f,
+      12.0f,
+      18.0f,
+      18.0f,
+      12.0f,
+  };
+  test.AddOutput<float>("Y", {1, 6, 4, 4}, expected_vals);
+
+  OrtValue w;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({6, 3, 3, 3}),
+                       W.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), w);
+
+  SessionOptions so;
+  // Set up W as a shared initializer to be shared between sessions
+  ASSERT_EQ(so.AddInitializer("W", &w), Status::OK());
+
+  // We want all sessions running using this OpTester to be able to share pre-packed weights if applicable
+  test.EnableSharingOfPrePackedWeightsAcrossSessions();
+
+  // Pre-packing is limited just to the CPU EP for now and we will only test the CPU EP
+  // and we want to ensure that it is available in this build
+  auto cpu_ep = []() -> std::vector<std::unique_ptr<IExecutionProvider>> {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    return execution_providers;
+  };
+
+  size_t number_of_pre_packed_weights_counter_session_1 = 0;
+  size_t number_of_shared_pre_packed_weights_counter = 0;
+
+  // Session 1
+  {
+    auto ep_vec = cpu_ep();
+    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
+             &ep_vec, {}, &number_of_pre_packed_weights_counter_session_1, &number_of_shared_pre_packed_weights_counter);
+    // Assert that no pre-packed weights have been shared thus far
+    ASSERT_EQ(number_of_shared_pre_packed_weights_counter, static_cast<size_t>(0));
+  }
+
+  auto number_of_elements_in_shared_prepacked_buffers_container =
+      test.GetNumPrePackedWeightsShared();
+  // Assert that the number of elements in the shared container
+  // is the same as the number of weights that have been pre-packed
+  ASSERT_EQ(number_of_pre_packed_weights_counter_session_1, number_of_elements_in_shared_prepacked_buffers_container);
+
+  // On some platforms/architectures MLAS may choose to not do any pre-packing and the number of elements
+  // that have been pre-packed will be zero in which case we do not continue with the testing
+  // of "sharing" of pre-packed weights as there are no pre-packed weights to be shared at all.
+  if (number_of_pre_packed_weights_counter_session_1 == 0)
+    return;
+
+  // Session 2
+  {
+    size_t number_of_pre_packed_weights_counter_session_2 = 0;
+    auto ep_vec = cpu_ep();
+    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
+             &ep_vec, {}, &number_of_pre_packed_weights_counter_session_2, &number_of_shared_pre_packed_weights_counter);
+
+    // Assert that the same number of weights were pre-packed in both sessions
+    ASSERT_EQ(number_of_pre_packed_weights_counter_session_1, number_of_pre_packed_weights_counter_session_2);
+
+    // Assert that the number of pre-packed weights that were shared equals
+    // the number of pre-packed weights in the second session
+    ASSERT_EQ(number_of_pre_packed_weights_counter_session_2,
+              static_cast<size_t>(number_of_shared_pre_packed_weights_counter));
+  }
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

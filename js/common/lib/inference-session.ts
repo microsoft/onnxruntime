@@ -24,7 +24,8 @@ export declare namespace InferenceSession {
    * - An array of string indicating the output names.
    * - An object that use output names as keys and OnnxValue or null as corresponding values.
    *
-   * REMARK: different from input argument, in output, OnnxValue is optional. If an OnnxValue is present it will be
+   * @remark
+   * different from input argument, in output, OnnxValue is optional. If an OnnxValue is present it will be
    * used as a pre-allocated value by the inference engine; if omitted, inference engine will allocate buffer
    * internally.
    */
@@ -94,6 +95,20 @@ export declare namespace InferenceSession {
     executionMode?: 'sequential'|'parallel';
 
     /**
+     * Wether enable profiling.
+     *
+     * This setting is a placeholder for a future use.
+     */
+    enableProfiling?: boolean;
+
+    /**
+     * File prefix for profiling.
+     *
+     * This setting is a placeholder for a future use.
+     */
+    profileFilePrefix?: string;
+
+    /**
      * Log ID.
      *
      * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
@@ -107,12 +122,41 @@ export declare namespace InferenceSession {
      * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
     logSeverityLevel?: 0|1|2|3|4;
+
+    /**
+     * Log verbosity level.
+     *
+     * This setting is available only in WebAssembly backend. Will support Node.js binding and react-native later
+     */
+    logVerbosityLevel?: number;
+
+    /**
+     * Store configurations for a session. See
+     * https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/
+     * onnxruntime_session_options_config_keys.h
+     *
+     * This setting is available only in WebAssembly backend. Will support Node.js binding and react-native later
+     *
+     * @example
+     * ```js
+     * extra: {
+     *   session: {
+     *     set_denormal_as_zero: "1",
+     *     disable_prepacking: "1"
+     *   },
+     *   optimization: {
+     *     enable_gelu_approximation: "1"
+     *   }
+     * }
+     * ```
+     */
+    extra?: Record<string, unknown>;
   }
 
   //#region execution providers
 
   // Currently, we have the following backends to support execution providers:
-  // Backend Node.js binding: supports "cpu" and "cuda".
+  // Backend Node.js binding: supports 'cpu' and 'cuda'.
   // Backend WebAssembly: supports 'wasm'.
   // Backend ONNX.js: supports 'webgl'.
   interface ExecutionProviderOptionMap {
@@ -164,11 +208,44 @@ export declare namespace InferenceSession {
     logSeverityLevel?: 0|1|2|3|4;
 
     /**
+     * Log verbosity level.
+     *
+     * This setting is available only in WebAssembly backend. Will support Node.js binding and react-native later
+     */
+    logVerbosityLevel?: number;
+
+    /**
+     * Terminate all incomplete OrtRun calls as soon as possible if true
+     *
+     * This setting is available only in WebAssembly backend. Will support Node.js binding and react-native later
+     */
+    terminate?: boolean;
+
+    /**
      * A tag for the Run() calls using this
      *
      * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
     tag?: string;
+
+    /**
+     * Set a single run configuration entry. See
+     * https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/
+     * onnxruntime_run_options_config_keys.h
+     *
+     * This setting is available only in WebAssembly backend. Will support Node.js binding and react-native later
+     *
+     * @example
+     *
+     * ```js
+     * extra: {
+     *   memory: {
+     *     enable_memory_arena_shrinkage: "1",
+     *   }
+     * }
+     * ```
+     */
+    extra?: Record<string, unknown>;
   }
 
   //#endregion

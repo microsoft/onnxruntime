@@ -18,7 +18,6 @@ CMake creates a target to this project
     <IsReleaseBuild Condition=" '$(IsReleaseBuild)' == '' ">false</IsReleaseBuild>
     <IsLinuxBuild Condition=" '$(IsLinuxBuild)' == '' ">false</IsLinuxBuild>
     <ExecutionProvider Condition=" '$(ExecutionProvider)' == '' ">None</ExecutionProvider>
-    <IsStoreBuild Condition=" '$(IsStoreBuild)' == '' ">false</IsStoreBuild>
 
     <!--internal build related properties-->
     <OnnxRuntimeSourceDirectory Condition="'$(OnnxRuntimeSourceDirectory)'==''">..</OnnxRuntimeSourceDirectory>
@@ -126,12 +125,16 @@ CMake creates a target to this project
              Properties="NoBuild=true;Platform=AnyCPU;PackageVersion=$(PackageVersion);OrtPackageId=$(OrtPackageId)"/>
 
     <Message Importance="High" Text="Generating nuspec for the native Nuget package ..." />
-    <Exec ContinueOnError="False" Command="python $(GenerateNuspecScript) --package_version $(PackageVersion) --package_name $(OrtPackageId) --target_architecture $(TargetArchitecture) --build_config $(Configuration) --native_build_path $(NativeBuildOutputDirAbs) --packages_path $(OnnxRuntimePackagesDirectoryAbs) --ort_build_path $(OnnxRuntimeBuildDirectoryAbs) --sources_path $(OnnxRuntimeSourceDirectoryAbs) --commit_id $(GitCommitHash) --is_release_build $(IsReleaseBuild) --execution_provider $(ExecutionProvider) --is_store_build $(IsStoreBuild)" ConsoleToMSBuild="true">
+    <Exec ContinueOnError="False" Command="python $(GenerateNuspecScript) --package_version $(PackageVersion) --package_name $(OrtPackageId) --target_architecture $(TargetArchitecture) --build_config $(Configuration) --native_build_path $(NativeBuildOutputDirAbs) --packages_path $(OnnxRuntimePackagesDirectoryAbs) --ort_build_path $(OnnxRuntimeBuildDirectoryAbs) --sources_path $(OnnxRuntimeSourceDirectoryAbs) --commit_id $(GitCommitHash) --is_release_build $(IsReleaseBuild) --execution_provider $(ExecutionProvider)" ConsoleToMSBuild="true">
         <Output TaskParameter="ConsoleOutput" PropertyName="GenerateNuspecOutput" />
     </Exec>
 
     <Message Importance="High" Text="Bundling native shared library artifacts into a NuGet package ..." />
-    <Exec ContinueOnError="False" Command="$(NugetExe) pack NativeNuget.nuspec" ConsoleToMSBuild="true" WorkingDirectory="$(NativeBuildOutputDirAbs)">
+    <Exec ContinueOnError="False" Command="$(NugetExe) pack -Symbols -SymbolPackageFormat snupkg NativeNuget.nuspec" ConsoleToMSBuild="true" WorkingDirectory="$(NativeBuildOutputDirAbs)" Condition=" '$(OS)' == 'Windows_NT'">
+      <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
+    </Exec>
+
+    <Exec ContinueOnError="False" Command="$(NugetExe) pack NativeNuget.nuspec" ConsoleToMSBuild="true" WorkingDirectory="$(NativeBuildOutputDirAbs)" Condition=" '$(OS)' != 'Windows_NT'">
       <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
     </Exec>
 
@@ -149,7 +152,7 @@ CMake creates a target to this project
     <Copy SourceFiles="@(LicenseFile)" DestinationFiles="@(LicenseFile->'$(OnnxRuntimeSourceDirectory)\%(Filename).txt')"/>
 
     <Message Importance="High" Text="Generating nuspec for the Microsoft.AI.MachineLearning Nuget package ..." />
-    <Exec ContinueOnError="False" Command="python ..\tools\nuget\generate_nuspec_for_native_nuget.py --package_version $(PackageVersion) --package_name Microsoft.AI.MachineLearning --target_architecture $(TargetArchitecture) --build_config $(Configuration) --native_build_path $(NativeBuildOutputDirAbs) --packages_path $(OnnxRuntimePackagesDirectoryAbs) --ort_build_path $(OnnxRuntimeBuildDirectoryAbs) --sources_path $(OnnxRuntimeSourceDirectoryAbs) --commit_id $(GitCommitHash) --is_release_build $(IsReleaseBuild) --is_store_build $(IsStoreBuild)" ConsoleToMSBuild="true">
+    <Exec ContinueOnError="False" Command="python ..\tools\nuget\generate_nuspec_for_native_nuget.py --package_version $(PackageVersion) --package_name Microsoft.AI.MachineLearning --target_architecture $(TargetArchitecture) --build_config $(Configuration) --native_build_path $(NativeBuildOutputDirAbs) --packages_path $(OnnxRuntimePackagesDirectoryAbs) --ort_build_path $(OnnxRuntimeBuildDirectoryAbs) --sources_path $(OnnxRuntimeSourceDirectoryAbs) --commit_id $(GitCommitHash) --is_release_build $(IsReleaseBuild)" ConsoleToMSBuild="true">
       <Output TaskParameter="ConsoleOutput" PropertyName="GenerateNuspecOutput" />
     </Exec>
 

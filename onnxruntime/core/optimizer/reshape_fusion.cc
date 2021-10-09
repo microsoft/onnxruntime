@@ -23,8 +23,13 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
     Node& reshape = *p_reshape;
     ORT_RETURN_IF_ERROR(Recurse(reshape, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(reshape, "Reshape", {5, 13}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(reshape, "Reshape", {5, 13, 14}) ||
         !graph_utils::IsSupportedProvider(reshape, GetCompatibleExecutionProviders())) {
+      continue;
+    }
+
+    const auto* attr_proto = graph_utils::GetNodeAttribute(reshape, "allowzero");
+    if ((nullptr != attr_proto) && attr_proto->has_i() && attr_proto->i() != 0) {
       continue;
     }
 
@@ -255,11 +260,11 @@ bool ReshapeFusion::Is_One_Element_Output_Subgraph(Graph& graph, const NodeArg& 
 
   std::vector<graph_utils::EdgeEndToMatch> div_path{
       {0, index, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
-      {0, 0, "Div", {7, 13}, kOnnxDomain}};
+      {0, 0, "Div", {7, 13, 14}, kOnnxDomain}};
 
   std::vector<graph_utils::EdgeEndToMatch> mul_path{
       {0, index, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
-      {0, 0, "Mul", {7, 13}, kOnnxDomain}};
+      {0, 0, "Mul", {7, 13, 14}, kOnnxDomain}};
 
   std::vector<graph_utils::EdgeEndToMatch> unsqueeze_path{
       {0, index, "Unsqueeze", {1, 11, 13}, kOnnxDomain}};

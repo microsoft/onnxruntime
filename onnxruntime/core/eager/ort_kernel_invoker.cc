@@ -7,8 +7,11 @@
 #include "core/graph/model.h"
 #include "core/framework/op_kernel.h"
 #include "core/session/ort_env.h"
+#include "core/graph/constants.h"
 
 namespace onnxruntime {
+
+#define ORT_EAGER_ONNX_OPSET_VERSION 14
 
 common::Status ORTInvoker::Invoke(const std::string& op_name,
                                   //optional inputs / outputs?
@@ -16,9 +19,18 @@ common::Status ORTInvoker::Invoke(const std::string& op_name,
                                   std::vector<OrtValue>& outputs,
                                   const NodeAttributes* attributes,
                                   const std::string& domain,
-                                  const int /*version*/) {
+                                  const int version) {
+  std::unordered_map<std::string, int> domain_version_map = {{kOnnxDomain, ORT_EAGER_ONNX_OPSET_VERSION},
+                                                             {kMSDomain, 1}};
   //create a graph
-  Model model("test", false, logger_);
+  Model model("test", 
+              false, 
+              ModelMetaData(),
+              ORT_TSTR(""),
+              custom_op_registries_,
+              domain_version_map,
+              {},
+              logger_);
 
   std::vector<onnxruntime::NodeArg*> input_args;
   std::vector<onnxruntime::NodeArg*> output_args;
@@ -51,10 +63,10 @@ common::Status ORTInvoker::Invoke(const std::string& op_name,
   node.SetExecutionProviderType(execution_provider_->Type());
   std::vector<const Node*> frame_nodes{&node};
 
-  OptimizerExecutionFrame::Info info({&node}, initializer_map, graph.ModelPath(), *execution_provider_);
+  OptimizerExecutionFrame::Info info({&node}, initializer_map, graph.ModelPath(), *execution_provider_, [](std::string const& ) { return false; });
   auto kernel = info.CreateKernel(&node);
   if (!kernel) {
-    ORT_THROW("Could not find kernel");
+    ORT_THROW("Could not find kernel name:", op_name, ", domain:", domain, ", version:", version);
   }
 
   std::vector<int> fetch_mlvalue_idxs;

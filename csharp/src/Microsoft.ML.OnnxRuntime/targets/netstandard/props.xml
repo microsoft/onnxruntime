@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)../../build/native/include/;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ResourceCompile>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)../../build/native/include/;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')">
+   <Link>
+      <AdditionalDependencies>$(MSBuildThisFileDirectory)../../runtimes/win-x64/native/onnxruntime.lib</AdditionalDependencies>
+   </Link>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(PlatformTarget)' == 'x86' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' == 'true')">
+   <Link>
+      <AdditionalDependencies>$(MSBuildThisFileDirectory)../../runtimes/win-x86/native/onnxruntime.lib</AdditionalDependencies>
+   </Link>
+  </ItemDefinitionGroup>
+
+ <PropertyGroup>
+    <EnginePlatform Condition="'$(Platform)' == 'Win32'">x86</EnginePlatform>
+    <EnginePlatform Condition="'$(Platform)' != 'Win32'">$(Platform)</EnginePlatform>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <OnnxRuntimeBinary>$(MSBuildThisFileDirectory)..\..\runtimes\win-$(EnginePlatform)\native\onnxruntime.dll</OnnxRuntimeBinary>
+  </PropertyGroup>
+
+  <!-- Assume apps using the Microsoft.ML.OnnxRuntime.DirectML package only want the DirectML binaries (no need for a build dependency). -->
+  <PropertyGroup Label="Globals" Condition="Exists('$(MSBuildThisFileDirectory)include\dml_provider_factory.h')">
+    <Microsoft_AI_DirectML_SkipDebugLayerCopy>true</Microsoft_AI_DirectML_SkipDebugLayerCopy>
+    <Microsoft_AI_DirectML_SkipLink>true</Microsoft_AI_DirectML_SkipLink>
+    <Microsoft_AI_DirectML_SkipIncludeDir>true</Microsoft_AI_DirectML_SkipIncludeDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime.dll"
+          Condition="'$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')">
+      <Link>onnxruntime.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_providers_shared.dll"
+          Condition="Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_providers_shared.dll')">
+      <Link>onnxruntime_providers_shared.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_providers_cuda.dll"
+          Condition="Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_providers_cuda.dll')">
+      <Link>onnxruntime_providers_cuda.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_providers_dnnl.dll"
+          Condition="Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_providers_dnnl.dll')">
+      <Link>onnxruntime_providers_dnnl.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_providers_tensorrt.dll"
+          Condition="Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_providers_tensorrt.dll')">
+      <Link>onnxruntime_providers_tensorrt.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_providers_openvino.dll"
+          Condition="Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_providers_openvino.dll')">
+      <Link>onnxruntime_providers_openvino.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\dnnl.dll"
+          Condition="('$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')) AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\dnnl.dll')">
+      <Link>dnnl.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\mklml.dll"
+          Condition="('$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')) AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\mklml.dll')">
+      <Link>mklml.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\libiomp5md.dll"
+          Condition="('$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')) AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\libiomp5md.dll')">
+      <Link>libiomp5md.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\onnxruntime.dll"
+          Condition="('$(PlatformTarget)' == 'x86' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' == 'true'))">
+      <Link>onnxruntime.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\dnnl.dll"
+          Condition="('$(PlatformTarget)' == 'x86' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' == 'true')) AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\dnnl.dll')">
+      <Link>dnnl.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\mklml.dll"
+          Condition="('$(PlatformTarget)' == 'x86' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' == 'true')) AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\mklml.dll')">
+      <Link>mklml.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\libiomp5md.dll"
+          Condition="('$(PlatformTarget)' == 'x86' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' == 'true')) AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\libiomp5md.dll')">
+      <Link>libiomp5md.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+  </ItemGroup>
+</Project>

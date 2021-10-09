@@ -49,7 +49,7 @@ constexpr const char* const k_gradient_norm_op_name = "ReduceAllL2";
 constexpr const char* const k_unscale_op_name = "MixedPrecisionScale";
 constexpr const char* const k_inplace_accumulator_op_name = "InPlaceAccumulator";
 constexpr const char* const k_zero_gradient_op_name = "ZeroGradient";
-#if defined(USE_MPI)
+#if defined(ORT_USE_NCCL) && defined(USE_MPI)
 constexpr const char* const k_adasum_op_name = "AdasumAllReduce";
 #endif
 Status SetUpBaseGraph(Graph& graph);
@@ -229,7 +229,7 @@ TEST_F(OptimizerGraphBuilderTest, ZeroSplitInitialOptimizerState) {
   std::vector<int64_t> param_dims = {784, 128};
   int64_t num_ele = std::accumulate(param_dims.begin(), param_dims.end(), static_cast<int64_t>(1), std::multiplies<int64_t>());
 
-  MLValue mlValue;
+  OrtValue mlValue;
   std::vector<float> init_value(num_ele);
   std::iota(init_value.begin(), init_value.end(), static_cast<float>(0));
 

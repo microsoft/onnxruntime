@@ -73,6 +73,12 @@ __device__ __forceinline__ bool operator>(const half& lh, const half& rh) { retu
 __device__ __forceinline__ bool operator<(const half& lh, const half& rh) { return (float)lh < (float)rh; }
 __device__ __forceinline__ bool operator>=(const half& lh, const half& rh) { return (float)lh >= (float)rh; }
 __device__ __forceinline__ bool operator<=(const half& lh, const half& rh) { return (float)lh <= (float)rh; }
+
+// support half2 arithmetic for cuda architecture < 5.3
+__device__ __forceinline__ half2 operator+(const half2& lh, const half2& rh) { half2 r; r.x = lh.x + rh.x; r.y = lh.y + rh.y; return r; }
+__device__ __forceinline__ half2 operator-(const half2& lh, const half2& rh) { half2 r; r.x = lh.x - rh.x; r.y = lh.y - rh.y; return r; }
+__device__ __forceinline__ half2 operator*(const half2& lh, const half2& rh) { half2 r; r.x = lh.x * rh.x; r.y = lh.y * rh.y; return r; }
+__device__ __forceinline__ half2 operator/(const half2& lh, const half2& rh) { half2 r; r.x = lh.x / rh.x; r.y = lh.y / rh.y; return r; }
 #endif
 
 template <typename T>
@@ -304,6 +310,12 @@ struct GridDim {
     maxThreadsPerBlock = 256,  // max threads per block
     maxElementsPerThread = 4,  // max element processed per thread
   };
+};
+
+// aligned vector generates vectorized load/store on CUDA
+template<typename T, int vec_size>
+struct alignas(sizeof(T) * vec_size) aligned_vector {
+  T val[vec_size];
 };
 
 #define CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N)      \

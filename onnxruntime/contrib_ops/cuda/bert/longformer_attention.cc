@@ -1,11 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "longformer_attention.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/platform/env_var_utils.h"
+#include "longformer_attention.h"
 #include "longformer_global_impl.h"
 #include "longformer_attention_impl.h"
 
@@ -24,7 +23,7 @@ namespace cuda {
       1,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       LongformerAttention<T>);
 
@@ -45,6 +44,7 @@ class AutoDestoryCudaEvent {
   cudaEvent_t& Get() {
     return cuda_event_;
   }
+
  private:
   cudaEvent_t cuda_event_;
 };

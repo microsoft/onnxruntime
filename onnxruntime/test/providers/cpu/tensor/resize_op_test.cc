@@ -1217,8 +1217,8 @@ TEST(ResizeOpTest, ResizeOp_MissingRoiAndMissingScalesOptionalInputs) {
       1.0f, 1.0f, 1.0f, 1.0f};
 
   test.AddInput<float>("X", {H, W}, X);
-  test.AddMissingOptionalInput<float>();
-  test.AddMissingOptionalInput<float>();
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
   test.AddInput<int64_t>("sizes", {2}, {4, 4});
 
   test.AddOutput<float>("Y", {H, W}, X);

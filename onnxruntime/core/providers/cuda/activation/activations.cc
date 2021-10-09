@@ -6,17 +6,17 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_ACTIVATION_VERSIONED_KERNEL(x, startver, endver, T)  \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                            \
-      x,                                                              \
-      kOnnxDomain,                                                    \
-      startver,                                                       \
-      endver,                                                         \
-      T,                                                              \
-      kCudaExecutionProvider,                                         \
-      KernelDefBuilder()                                              \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())      \
-          .MayInplace(0, 0),                                          \
+#define REGISTER_ACTIVATION_VERSIONED_KERNEL(x, startver, endver, T) \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                           \
+      x,                                                             \
+      kOnnxDomain,                                                   \
+      startver,                                                      \
+      endver,                                                        \
+      T,                                                             \
+      kCudaExecutionProvider,                                        \
+      (*KernelDefBuilder::Create())                                  \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())     \
+          .MayInplace(0, 0),                                         \
       x<T>);
 
 #define REGISTER_ACTIVATION_KERNEL(x, ver, T)                    \
@@ -26,7 +26,7 @@ namespace cuda {
       ver,                                                       \
       T,                                                         \
       kCudaExecutionProvider,                                    \
-      KernelDefBuilder()                                         \
+      (*KernelDefBuilder::Create())                              \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()) \
           .MayInplace(0, 0),                                     \
       x<T>);
@@ -60,9 +60,17 @@ namespace cuda {
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 #define UNARY_ACTIVATION_OP_TYPED_BF16(name, ver) UNARY_ACTIVATION_OP_TYPED(name, ver, BFloat16)
+#define UNARY_ACTIVATION_OP_VERSIONED_TYPED_BF16(name, startver, endver) UNARY_ACTIVATION_OP_VERSIONED_TYPED(name, startver, endver, BFloat16)
 #else
 #define UNARY_ACTIVATION_OP_TYPED_BF16(name, ver)
+#define UNARY_ACTIVATION_OP_VERSIONED_TYPED_BF16(name, startver, endver)
 #endif
+
+#define UNARY_ACTIVATION_OP_VERSIONED_HFD_WITH_BF16(name, startver, endver) \
+  UNARY_ACTIVATION_OP_VERSIONED_TYPED(name, startver, endver, MLFloat16)    \
+  UNARY_ACTIVATION_OP_VERSIONED_TYPED(name, startver, endver, float)        \
+  UNARY_ACTIVATION_OP_VERSIONED_TYPED(name, startver, endver, double)       \
+  UNARY_ACTIVATION_OP_VERSIONED_TYPED_BF16(name, startver, endver)
 
 #define UNARY_ACTIVATION_OP_HFD(name, ver)        \
   UNARY_ACTIVATION_OP_TYPED(name, ver, MLFloat16) \
@@ -73,7 +81,8 @@ namespace cuda {
 UNARY_ACTIVATION_OP_HFD(Elu, 6);
 UNARY_ACTIVATION_OP_HFD(HardSigmoid, 6);
 UNARY_ACTIVATION_OP_HFD(LeakyRelu, 6);
-UNARY_ACTIVATION_OP_HFD(Relu, 13);
+UNARY_ACTIVATION_OP_HFD(Relu, 14);
+UNARY_ACTIVATION_OP_VERSIONED_HFD_WITH_BF16(Relu, 13, 13);
 UNARY_ACTIVATION_OP_VERSIONED_HFD(Relu, 6, 12);
 UNARY_ACTIVATION_OP_HFD(Selu, 6);
 UNARY_ACTIVATION_OP_HFD(Sigmoid, 13);

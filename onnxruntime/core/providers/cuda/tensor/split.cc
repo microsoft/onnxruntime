@@ -4,7 +4,6 @@
 #include "core/providers/cuda/tensor/split.h"
 #include "core/providers/cuda/tensor/split_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -12,7 +11,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Split,
                                   kOnnxDomain,
                                   2, 10,
                                   kCudaExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+                                  (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                                   Split);
 
 // explicitly supports negative axis
@@ -20,7 +19,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Split,
                                   kOnnxDomain,
                                   11, 12,
                                   kCudaExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+                                  (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                                   Split);
 
 // explicitly supports 'split' as optional input
@@ -28,8 +27,8 @@ ONNX_OPERATOR_KERNEL_EX(Split,
                         kOnnxDomain,
                         13,
                         kCudaExecutionProvider,
-                        KernelDefBuilder()
-                            .InputMemoryType<OrtMemTypeCPUInput>(1)
+                        (*KernelDefBuilder::Create())
+                            .InputMemoryType(OrtMemTypeCPUInput, 1)
                             .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                         Split);
 
@@ -85,10 +84,10 @@ Status Split::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   if (input_tensor->Shape().Size() > 0) {
-    output_ptr.CopyToGpu();
+    ORT_RETURN_IF_ERROR(output_ptr.CopyToGpu());
 
     CudaAsyncBuffer<int64_t> split_sizes_gpu(this, split_sizes);
-    split_sizes_gpu.CopyToGpu();
+    ORT_RETURN_IF_ERROR(split_sizes_gpu.CopyToGpu());
 
     std::vector<int64_t> split_sizes_range(split_sizes);
     for (size_t i = 1; i < split_sizes_range.size(); ++i) {
@@ -96,10 +95,10 @@ Status Split::ComputeInternal(OpKernelContext* ctx) const {
     }
 
     CudaAsyncBuffer<int64_t> split_sizes_range_gpu(this, split_sizes_range);
-    split_sizes_range_gpu.CopyToGpu();
+    ORT_RETURN_IF_ERROR(split_sizes_range_gpu.CopyToGpu());
 
     CudaAsyncBuffer<int64_t> axis_dimension_input_output_mapping_gpu(this, axis_dimension_input_output_mapping);
-    axis_dimension_input_output_mapping_gpu.CopyToGpu();
+    ORT_RETURN_IF_ERROR(axis_dimension_input_output_mapping_gpu.CopyToGpu());
 
     size_t element_size = input_tensor->DataType()->Size();
     ORT_RETURN_IF_ERROR(SplitImpl(Stream(),

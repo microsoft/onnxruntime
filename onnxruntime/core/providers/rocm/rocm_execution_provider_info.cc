@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/rocm/rocm_execution_provider_info.h"
+#include "core/providers/rocm/rocm_common.h"
 
 #include "core/common/make_string.h"
 #include "core/framework/provider_options_utils.h"
@@ -15,6 +16,7 @@ constexpr const char* kArenaExtendStrategy = "arena_extend_strategy";
 constexpr const char* kConvExhaustiveSearch = "conv_exhaustive_search";
 constexpr const char* kGpuExternalAlloc = "gpu_external_alloc";
 constexpr const char* kGpuExternalFree = "gpu_external_free";
+constexpr const char* kGpuExternalEmptyCache = "gpu_external_empty_cache";
 }  // namespace provider_option_names
 }  // namespace rocm
 
@@ -29,7 +31,7 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
   ROCMExecutionProviderInfo info{};
   void* alloc = nullptr;
   void* free = nullptr;
-
+  void* empty_cache = nullptr;
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
           .AddValueParser(
@@ -48,8 +50,28 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
                 free  = reinterpret_cast<void*>(address);
                 return Status::OK();
               })
-          // TODO validate info.device_id
-          .AddAssignmentToReference(rocm::provider_option_names::kDeviceId, info.device_id)
+          .AddValueParser(
+              rocm::provider_option_names::kGpuExternalEmptyCache,
+              [&empty_cache](const std::string& value_str) -> Status {
+                size_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                empty_cache = reinterpret_cast<void*>(address);
+                return Status::OK();
+              })
+          .AddValueParser(
+              rocm::provider_option_names::kDeviceId,
+              [&info](const std::string& value_str) -> Status {
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.device_id));
+                int num_devices{};
+                ORT_RETURN_IF_NOT(
+                    HIP_CALL(hipGetDeviceCount(&num_devices)),
+                    "hipGetDeviceCount() failed.");
+                ORT_RETURN_IF_NOT(
+                    0 <= info.device_id && info.device_id < num_devices,
+                    "Invalid device ID: ", info.device_id,
+                    ", must be between 0 (inclusive) and ", num_devices, " (exclusive).");
+                return Status::OK();
+              }) 
           .AddAssignmentToReference(rocm::provider_option_names::kMemLimit, info.gpu_mem_limit)
           .AddAssignmentToReference(rocm::provider_option_names::kConvExhaustiveSearch, info.miopen_conv_exhaustive_search)
           .AddAssignmentToEnumReference(
@@ -57,7 +79,7 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
               arena_extend_strategy_mapping, info.arena_extend_strategy)
           .Parse(options));
 
-  ROCMExecutionProviderExternalAllocatorInfo alloc_info{alloc, free};
+  ROCMExecutionProviderExternalAllocatorInfo alloc_info{alloc, free, empty_cache};
   info.external_allocator_info = alloc_info;
 
   return info;
@@ -69,6 +91,7 @@ ProviderOptions ROCMExecutionProviderInfo::ToProviderOptions(const ROCMExecution
       {rocm::provider_option_names::kMemLimit, MakeStringWithClassicLocale(info.gpu_mem_limit)},
       {rocm::provider_option_names::kGpuExternalAlloc, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.alloc))},
       {rocm::provider_option_names::kGpuExternalFree, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.free))},
+      {rocm::provider_option_names::kGpuExternalEmptyCache, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.empty_cache))},
       {rocm::provider_option_names::kConvExhaustiveSearch, MakeStringWithClassicLocale(info.miopen_conv_exhaustive_search)},
       {rocm::provider_option_names::kArenaExtendStrategy,
        EnumToName(arena_extend_strategy_mapping, info.arena_extend_strategy)},
@@ -76,4 +99,5 @@ ProviderOptions ROCMExecutionProviderInfo::ToProviderOptions(const ROCMExecution
 
   return options;
 }
+
 }  // namespace onnxruntime

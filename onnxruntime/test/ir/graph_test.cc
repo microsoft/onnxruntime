@@ -10,6 +10,7 @@
 #include "gmock/gmock.h"
 #include "onnx/defs/function.h"
 #include "core/graph/function_impl.h"
+#include "test/framework/test_utils.h"
 
 #ifdef __GNUC__
 #define UNUSED __attribute__((unused))
@@ -144,8 +145,19 @@ static bool RegisterCustomSchemas() {
             node.set_domain(kMSNchwcDomain);
           }
         }
-        return nodes;
-      }());
+        return nodes; }(),
+                    []() {
+                      std::vector<OperatorSetIdProto> operator_sets(2);
+                      auto& onnx_opset = operator_sets[0];
+                      onnx_opset.set_domain("");
+                      onnx_opset.set_version(11);
+
+                      auto& test_opset = operator_sets[1];
+                      test_opset.set_domain(kMSNchwcDomain);
+                      test_opset.set_version(1);
+
+                      return operator_sets;
+                    }());
 
   return true;
 }
@@ -205,6 +217,7 @@ const std::vector<float> values = {13.f,
 const std::vector<int64_t> indices = {9, 30, 50};  // Not to exceed 59
 }  // namespace sparse_details
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 // To match a simple Add graph above
 static void ConstructSparseTensor(const std::string& name,
                                   SparseTensorProto& sparse_proto) {
@@ -221,6 +234,7 @@ static void ConstructSparseTensor(const std::string& name,
   std::copy(values.cbegin(), values.cend(), dest_span.begin());
 
   const std::vector<int64_t>& indices = sparse_details::indices;  // Not to exceed 59
+
   auto& m_indicies = *sparse_proto.mutable_indices();
   m_indicies.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
   *m_indicies.mutable_dims()->Add() = static_cast<int64_t>(indices.size());
@@ -252,16 +266,16 @@ static void ValidateSparseTensorProto(const SparseTensorProto& proto) {
     ++expected_begin;
   }
   // Check indices
-  EXPECT_EQ(proto.indices().data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  const auto& indices = proto.indices();
   auto expected_indices = gsl::make_span(sparse_details::indices);
-  auto actual_indices = gsl::make_span<const int64_t>(proto.indices().int64_data().data(), proto.indices().int64_data_size());
-  EXPECT_THAT(actual_indices, testing::ContainerEq(expected_indices));
+  SparseIndicesChecker(indices, expected_indices);
   // check shape
   const auto& dims = proto.dims();
   auto actual_shape = gsl::make_span<const int64_t>(dims.data(), dims.size());
   auto expected_shape = gsl::make_span(sparse_details::shape);
   EXPECT_THAT(actual_shape, testing::ContainerEq(expected_shape));
 }
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 TEST_F(GraphTest, SimpleAddWithoutDomain) {
   ModelProto m;
@@ -446,8 +460,8 @@ TEST_F(GraphTest, LocalCustomRegistry) {
 }
 
 // Tests the case where function op and function body ops belong to different domains.
-// Tests that such a model can be loaded successfully, function body initialization is 
-// successful and domain and verison mapping for each node is successful (by verifying 
+// Tests that such a model can be loaded successfully, function body initialization is
+// successful and domain and verison mapping for each node is successful (by verifying
 // op schema for each of the function body nodes can be found).
 TEST_F(GraphTest, FunctionOpsetImportTest) {
   std::shared_ptr<Model> model;
@@ -859,7 +873,7 @@ TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_CompressDecompr
         node_4 (Identity)  decompress (pri = LOCAL_LOW)
                       \       /
                       node_5 (Merge)
-                          |                   
+                          |
   */
 
   TypeProto tensor_int32;
@@ -929,10 +943,10 @@ TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_CompressDecompr
                     \           /                   |
                     node_8 (Merge)                  |
                            \                        /
-                                 node_9 (Merge)                
-                                      |                   
+                                 node_9 (Merge)
+                                      |
   */
-  
+
   TypeProto tensor_int32;
   tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
   tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
@@ -962,10 +976,10 @@ TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_CompressDecompr
 
   auto& compress_node1 = graph.AddNode("compress_1", "Identity_Fake", "compress node 1", {&output_arg1}, {&output_arg5});
   compress_node1.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_HIGH));
-  
+
   auto& decompress_node1 = graph.AddNode("decompress_1", "Identity_Fake", "decompress node 1", {&output_arg5}, {&output_arg6});
-  decompress_node1.SetPriority(10); // lower number means high priority
-  
+  decompress_node1.SetPriority(10);  // lower number means high priority
+
   graph.AddNode("node_7", "Identity_Fake", "node 7", {&output_arg4}, {&output_arg7});
   graph.AddNode("node_8", "Merge_Fake", "node 8", {&output_arg7, &output_arg6}, {&output_arg8});
   graph.AddNode("node_9", "Merge_Fake", "node 9", {&output_arg8, &output_arg3}, {&output_arg9});
@@ -998,7 +1012,7 @@ TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_Recompute) {
         node_1 (Identity)  recompute_node_1 (pri = LOCAL_LOW)
                     |         |
         node_4 (Identity)     |
-                     \       /           
+                     \       /
                node_1_grad (Merge)
                         |
   */
@@ -1056,7 +1070,7 @@ TEST_F(GraphTest, GraphConstruction_PriorityBasedTopologicalSort_MultiLayerRecom
           loss (Identity) \   \        \        \
                     |     |    \         \        \
              1            |     |         \        \
-               \         /      |          \        | 
+               \         /      |          \        |
                 loss_grad  recom_node_3    |        |
                      \         /           |        |
                      node_3_grad      recom_node_2  |
@@ -1242,7 +1256,8 @@ TEST_F(GraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained) {
 
 // Validate that an unused initializer doesn't break graph loading/resolution
 // and is removed as expected.
-TEST_F(GraphTest, UnusedInitializerIsIgnored) {
+// Validate unused NodeArgs are removed as expected
+TEST_F(GraphTest, UnusedInitializerAndNodeArgsAreIgnored) {
   Model model("UnusedInitializerIsIgnored", false, *logger_);
   auto& graph = model.MainGraph();
 
@@ -1261,17 +1276,31 @@ TEST_F(GraphTest, UnusedInitializerIsIgnored) {
   graph.AddNode("a", "Identity_Fake", "a", inputs, outputs);
 
   TensorProto initializer_tensor;
-  initializer_tensor.set_name("unused");
+  const std::string unused_initializer_name = "unused_initializer";
+  initializer_tensor.set_name(unused_initializer_name);
   initializer_tensor.add_dims(1);
   initializer_tensor.add_float_data(1.f);
   initializer_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
   graph.AddInitializedTensor(initializer_tensor);
   ASSERT_TRUE(graph.GetAllInitializedTensors().size() == 1);
+  ASSERT_NE(nullptr, graph.GetNodeArg(unused_initializer_name));
+
+  // Add unused NodeArgs
+  const std::string unused_node_arg_name = graph.GenerateNodeArgName("unused_node_arg");
+  ASSERT_EQ(nullptr, graph.GetNodeArg(unused_node_arg_name));
+  graph.GetOrCreateNodeArg(unused_node_arg_name, nullptr);
+  ASSERT_NE(nullptr, graph.GetNodeArg(unused_node_arg_name));
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
   ASSERT_TRUE(graph.GetAllInitializedTensors().empty());
+  ASSERT_EQ(nullptr, graph.GetNodeArg(unused_node_arg_name));
+
+  // Verify NodeArg from the unused initializer is deleted as well
+  // TODO, enable this when we can remove unused NodeArgs with type
+  // See Graph::CleanUnusedInitializersAndNodeArgs
+  // ASSERT_EQ(nullptr, graph.GetNodeArg(unused_initializer_name));
 
   // serialize and reload so we check the loaded from proto path in SetGraphInputsOutputs
   auto proto = model.ToProto();
@@ -1290,8 +1319,13 @@ TEST_F(GraphTest, UnusedInitializerIsIgnored) {
   status = graph2.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   ASSERT_TRUE(graph.GetAllInitializedTensors().empty());
+  ASSERT_EQ(nullptr, graph.GetNodeArg(unused_node_arg_name));
+  // TODO, enable this when we can remove unused NodeArgs with type
+  // See Graph::CleanUnusedInitializersAndNodeArgs
+  // ASSERT_EQ(nullptr, graph.GetNodeArg(unused_initializer_name));
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 TEST_F(GraphTest, UnusedSparseInitializerIsIgnored) {
   std::string s1;
   {
@@ -1322,6 +1356,7 @@ TEST_F(GraphTest, UnusedSparseInitializerIsIgnored) {
   auto& graph_proto = graph2.ToGraphProto();
   ASSERT_TRUE(graph_proto.sparse_initializer().empty());
 }
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 TEST_F(GraphTest, GraphConstruction_CheckIsNotAcyclic) {
   // A cyclic graph
@@ -1786,6 +1821,7 @@ TEST_F(GraphTest, AddRemoveInitializerHandling) {
                                  << num_initializers << " remain.";
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 TEST_F(GraphTest, SparseInitializerHandling) {
   const char* const input_initializer_name = "x";
   Model model("SparseInitializerHandling", false, *logger_);
@@ -1836,6 +1872,7 @@ TEST_F(GraphTest, SparseInitializerHandling) {
     ValidateSparseTensorProto(model_proto_get.graph().sparse_initializer().at(0));
   }
 }
+#endif  //!defined(DISABLE_SPARSE_TENSORS)
 
 TEST_F(GraphTest, SetInputsAndSetOutputs_NewInputAndOutput) {
   std::shared_ptr<Model> model;
@@ -1879,6 +1916,50 @@ TEST_F(GraphTest, SetInputsAndSetOutputs_NewInputAndOutput) {
   outputs = graph.GetOutputs();
   ASSERT_TRUE(std::find(outputs.begin(), outputs.end(), sum_with_z) != outputs.end())
       << "expected new output sum_with_z";
+}
+
+TEST_F(GraphTest, LoadModelMissingInput) {
+  ModelProto m;
+  m.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+  ImportOpset(m, "", 13);
+  GraphProto& g = *m.mutable_graph();
+  NodeProto* node = g.add_node();
+  *node->add_input() = "x";
+  *node->add_input() = "y";
+  *node->add_output() = "z";
+  node->set_op_type("Reshape");
+  node->set_domain("");
+
+  // add 'x' as a graph input but not 'y'
+  ValueInfoProto* input1 = g.add_input();
+  input1->set_name("x");
+  SetTypeAndShape(input1->mutable_type()->mutable_tensor_type(), 1, {4});
+  ValueInfoProto* output = g.add_output();
+  output->set_name("z");
+  SetTypeAndShape(output->mutable_type()->mutable_tensor_type(), 1, {2, 2});
+
+  std::shared_ptr<Model> model;
+  Status st = Model::Load(std::move(m), model, nullptr, *logger_);
+  ASSERT_FALSE(st.IsOK());
+  ASSERT_THAT(st.ErrorMessage(), testing::HasSubstr("Invalid model. Node input 'y' is not a graph input, "
+                                                    "initializer, or output of a previous node."));
+}
+
+// if an initializer is backing an optional graph input, it can't be removed even if unused in the graph.
+TEST_F(GraphTest, DontRemoveUnusedInitializerWithGraphInput) {
+  const std::string unused_initializer_name("truncation:0");
+
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(ORT_TSTR("testdata/unused_initializer.onnx"), model, nullptr, *logger_));
+
+  auto& graph = model->MainGraph();
+  const auto& inputs_including_initializers = graph.GetInputsIncludingInitializers();
+  auto j = std::find_if(inputs_including_initializers.cbegin(), inputs_including_initializers.cend(),
+                        [&unused_initializer_name](const NodeArg* input) {
+                          return input->Name() == unused_initializer_name;
+                        });
+
+  ASSERT_NE(j, inputs_including_initializers.cend()) << "Unused initializer was incorrectly removed.";
 }
 }  // namespace test
 }  // namespace onnxruntime

@@ -33,6 +33,8 @@ class Model {
 
   bool IsScalarOutput(const std::string& output_name) const;
 
+  bool IsInt64Output(const std::string& output_name) const;
+
   // Mutex for exclusive lock to this model object
   OrtMutex& GetMutex() { return mutex_; }
 
@@ -48,6 +50,7 @@ class Model {
  private:
   std::unique_ptr<Execution> execution_;
   std::unordered_set<std::string> scalar_outputs_;
+  std::unordered_set<std::string> int64_outputs_;
 
   std::vector<std::string> inputs_;
   std::vector<std::string> outputs_;
@@ -65,6 +68,10 @@ class Model {
 
   void SetScalarOutputs(std::unordered_set<std::string>&& scalar_outputs) {
     scalar_outputs_ = std::move(scalar_outputs);
+  }
+
+  void SetInt64Outputs(std::unordered_set<std::string>&& int64_outputs) {
+    int64_outputs_ = std::move(int64_outputs);
   }
 };
 

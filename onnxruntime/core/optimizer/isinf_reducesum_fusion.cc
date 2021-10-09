@@ -35,7 +35,7 @@ Status IsInfReduceSumFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(isinf_node, "IsInf", {10}) ||
         isinf_node.GetOutputEdgesCount() != 1 ||
-        !graph.GetNodeOutputsInGraphOutputs(isinf_node).empty()) {
+        graph.NodeProducesGraphOutput(isinf_node)) {
       continue;
     }
 
@@ -67,7 +67,7 @@ Status IsInfReduceSumFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     Node& cast2_node = *graph.GetNode(cast2_node_itr->Index());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(cast2_node, "Cast", {9, 13}) ||
         cast2_node.GetOutputEdgesCount() != 1 ||
-        !graph.GetNodeOutputsInGraphOutputs(cast2_node).empty()) {
+        graph.NodeProducesGraphOutput(cast2_node)) {
       continue;
     }
     nodes_to_remove.push_back(cast2_node);
@@ -80,7 +80,7 @@ Status IsInfReduceSumFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     Node& reduce_sum_node = *graph.GetNode(reduce_sum_node_itr->Index());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_sum_node, "ReduceSum", {1, 11, 13}) ||
         reduce_sum_node.GetOutputEdgesCount() != 1 ||
-        !graph.GetNodeOutputsInGraphOutputs(reduce_sum_node).empty()) {
+        graph.NodeProducesGraphOutput(reduce_sum_node)) {
       continue;
     }
     nodes_to_remove.push_back(reduce_sum_node);

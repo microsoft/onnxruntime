@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "complex_mul.h"
 #include "complex_mul_impl.h"
 
 namespace onnxruntime {
@@ -14,7 +13,7 @@ namespace cuda {
       1,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       ComplexMul<T, false>);                                      \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
@@ -23,7 +22,7 @@ namespace cuda {
       1,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       ComplexMul<T, true>);
 

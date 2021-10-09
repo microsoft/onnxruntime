@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
@@ -16,6 +15,7 @@ class EmbedLayerNorm final : public CudaKernel {
  public:
   EmbedLayerNorm(const OpKernelInfo& op_kernel_info);
   Status ComputeInternal(OpKernelContext* ctx) const override;
+
  private:
   float epsilon_;
 };

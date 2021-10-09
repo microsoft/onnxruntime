@@ -17,15 +17,16 @@ class NonMaxSuppressionBase {
     ORT_ENFORCE(0 == center_point_box_ || 1 == center_point_box_, "center_point_box only support 0 or 1");
   }
 
+  int64_t GetCenterPointBox() const {
+    return center_point_box_;
+  }
+
+ public:
   static Status PrepareCompute(OpKernelContext* ctx, PrepareContext& pc);
   static Status GetThresholdsFromInputs(const PrepareContext& pc,
                                         int64_t& max_output_boxes_per_class,
                                         float& iou_threshold,
                                         float& score_threshold);
-
-  int64_t GetCenterPointBox() const {
-    return center_point_box_;
-  }
 
  private:
   int64_t center_point_box_;

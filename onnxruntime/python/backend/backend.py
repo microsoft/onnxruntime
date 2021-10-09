@@ -79,6 +79,8 @@ class OnnxRuntimeBackend(Backend):
         Check whether the backend is compiled with particular device support.
         In particular it's used in the testing suite.
         """
+        if device == 'CUDA':
+            device = 'GPU'
         return device in get_device()
 
     @classmethod

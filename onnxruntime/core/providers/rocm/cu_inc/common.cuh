@@ -205,6 +205,11 @@ struct GridDim {
   };
 };
 
+// aligned vector generates vectorized load/store on CUDA
+template<typename T, int vec_size>
+struct alignas(sizeof(T) * vec_size) aligned_vector {
+  T val[vec_size];
+};
 
 #define CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N)          \
   HIP_LONG id = blockDim.x * blockIdx.x + threadIdx.x;     \

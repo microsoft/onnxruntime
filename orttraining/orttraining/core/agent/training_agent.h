@@ -19,25 +19,22 @@ class TrainingAgent {
  public:
   explicit TrainingAgent(InferenceSession& session,
                          const std::vector<std::string>& fw_feed_names,
-                         const std::vector<std::string>& fw_fetches_names,
                          const std::vector<OrtDevice>& fw_outputs_device_info,
-                         const std::vector<std::string>& bw_feed_names,
                          const std::vector<std::string>& bw_fetches_names,
                          const std::vector<OrtDevice>& bw_outputs_device_info);
   ~TrainingAgent();
   // For ORTModule.forward()
   common::Status RunForward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-                            PartialGraphExecutionState& state) ORT_MUST_USE_RESULT;
-  ;
+                            PartialGraphExecutionState& state, const OrtValueCachePtr& cache) ORT_MUST_USE_RESULT;
+
   // For ORTModule.backward()
   common::Status RunBackward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                              PartialGraphExecutionState& state) ORT_MUST_USE_RESULT;
-  ;
 
   common::Status RunCore(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-                         PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager)
+                         PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager,
+                         const OrtValueCachePtr& cache)
       ORT_MUST_USE_RESULT;
-  ;
 
   void CreateAndInitializeFeedsFetchesManager(const SessionState& session_state,
                                               const std::vector<std::string>& feed_names,

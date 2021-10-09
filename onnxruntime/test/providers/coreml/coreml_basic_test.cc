@@ -71,6 +71,7 @@ TEST(CoreMLExecutionProviderTest, FunctionTest) {
     ASSERT_STATUS_OK(onnxruntime::Model::Save(model, model_file_name));
   }
 
+#if defined(__APPLE__)
   std::vector<int64_t> dims_mul_x = {1, 1, 3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
@@ -92,14 +93,59 @@ TEST(CoreMLExecutionProviderTest, FunctionTest) {
   RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.FunctionTest",
                             std::make_unique<CoreMLExecutionProvider>(s_coreml_flags),
                             feeds);
+#else
+  // test load only
+  SessionOptions so;
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<CoreMLExecutionProvider>(0)));
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kCoreMLExecutionProvider), 0)
+      << "Some nodes should have been taken by the CoreML EP";
+#endif
+}
+
+// CoreML EP currently handles a special case for supporting ArgMax op:
+// An ArgMax followed by a Cast to int32 type.
+// Please see in <repo_root>/onnxruntime/core/providers/coreml/builders/impl/argmax_op_builder.cc
+// and /cast_op_builder.cc. We have the following UT test here for this special case
+// This test case can also be shared later if we want to support similar cases in NNAPI
+TEST(CoreMLExecutionProviderTest, ArgMaxCastTest) {
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/coreml_argmax_cast_test.onnx");
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims_mul_x = {3, 2, 2};
+  std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
+  OrtValue ml_value_x;
+
+  CreateMLValue<float>(TestCoreMLExecutionProvider(s_coreml_flags)->GetAllocator(0, OrtMemTypeDefault),
+                       dims_mul_x, values_mul_x, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.ArgMaxCastTest",
+                            std::make_unique<CoreMLExecutionProvider>(s_coreml_flags),
+                            feeds);
+#else
+  // test load only
+  SessionOptions so;
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<CoreMLExecutionProvider>(0)));
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kCoreMLExecutionProvider), 0)
+      << "Some nodes should have been taken by the CoreML EP";
+#endif
 }
 
 #endif  // !(ORT_MINIMAL_BUILD)
 
 TEST(CoreMLExecutionProviderTest, TestOrtFormatModel) {
-  // mnist model that has only had basic optimizations applied. nnapi should be able to take at least some of the nodes
+  // mnist model that has only had basic optimizations applied. CoreML should be able to take at least some of the nodes
   const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/mnist.level1_opt.ort");
 
+#if defined(__APPLE__)
   RandomValueGenerator random{};
   const std::vector<int64_t> dims = {1, 1, 28, 28};
   std::vector<float> data = random.Gaussian<float>(dims, 0.0f, 1.f);
@@ -113,6 +159,16 @@ TEST(CoreMLExecutionProviderTest, TestOrtFormatModel) {
   RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.TestOrtFormatModel",
                             std::make_unique<CoreMLExecutionProvider>(s_coreml_flags),
                             feeds);
+#else
+  // test load only
+  SessionOptions so;
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<CoreMLExecutionProvider>(0)));
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kCoreMLExecutionProvider), 0)
+      << "Some nodes should have been taken by the CoreML EP";
+#endif
 }
 
 }  // namespace test

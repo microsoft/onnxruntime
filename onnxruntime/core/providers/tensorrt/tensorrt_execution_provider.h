@@ -6,6 +6,7 @@
 #include "NvInfer.h"
 #include "NvOnnxParser.h"
 #include "core/platform/ort_mutex.h"
+#include "tensorrt_execution_provider_info.h"
 
 namespace onnxruntime {
 
@@ -17,16 +18,16 @@ static const std::string kFP16Enable = "ORT_TENSORRT_FP16_ENABLE";
 static const std::string kINT8Enable = "ORT_TENSORRT_INT8_ENABLE";
 static const std::string kINT8CalibrationTableName = "ORT_TENSORRT_INT8_CALIBRATION_TABLE_NAME";
 static const std::string kINT8UseNativeTensorrtCalibrationTable = "ORT_TENSORRT_INT8_USE_NATIVE_CALIBRATION_TABLE";
+static const std::string kDLAEnable = "ORT_TENSORRT_DLA_ENABLE";
+static const std::string kDLACore = "ORT_TENSORRT_DLA_CORE";
 static const std::string kDumpSubgraphs = "ORT_TENSORRT_DUMP_SUBGRAPHS";
 static const std::string kEngineCacheEnable = "ORT_TENSORRT_ENGINE_CACHE_ENABLE";
 static const std::string kCachePath = "ORT_TENSORRT_CACHE_PATH";
+static const std::string kDecryptionEnable = "ORT_TENSORRT_ENGINE_DECRYPTION_ENABLE";
+static const std::string kDecryptionLibPath = "ORT_TENSORRT_ENGINE_DECRYPTION_LIB_PATH";
 static const std::string kForceSequentialEngineBuild= "ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD";
 // Old env variable for backward compatibility
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
-static const std::string kDecryptionEnable = "ORT_TENSORRT_ENGINE_DECRYPTION_ENABLE";
-static const std::string kDecryptionLibPath = "ORT_TENSORRT_ENGINE_DECRYPTION_LIB_PATH";
-static const std::string kDLAEnable = "ORT_TENSORRT_DLA_ENABLE";
-static const std::string kDLACore = "ORT_TENSORRT_DLA_CORE";
 }  // namespace tensorrt_env_vars
 
 class TensorrtLogger : public nvinfer1::ILogger {
@@ -46,10 +47,11 @@ class TensorrtLogger : public nvinfer1::ILogger {
                                                                             : severity == Severity::kWARNING ? "WARNING"
                                                                             : severity == Severity::kINFO    ? "   INFO"
                                                                                                              : "UNKNOWN");
-      if (severity <= Severity::kERROR)
+      if (severity <= Severity::kERROR) {
         LOGS_DEFAULT(ERROR) << "[" << buf << " " << sevstr << "] " << msg;
-      else
+      } else {
         LOGS_DEFAULT(WARNING) << "[" << buf << " " << sevstr << "] " << msg;
+      }
     }
   }
 };
@@ -69,20 +71,6 @@ template <typename T>
 using unique_pointer = std::unique_ptr<T, TensorrtInferDeleter>;
 };  // namespace tensorrt_ptr
 
-// Information needed to construct trt execution providers.
-struct TensorrtExecutionProviderInfo {
-  int device_id{0};
-  bool has_user_compute_stream{false};
-  void* user_compute_stream{nullptr};
-  bool has_trt_options{false};
-  size_t max_workspace_size{1 << 30};
-  bool fp16_enable{false};
-  bool int8_enable{false}; 
-  std::string int8_calibration_table_name{""};
-  bool int8_use_native_calibration_table{false};
-  bool force_sequential_engine_build{false};
-};
-
 // Information to construct kernel function state.
 struct TensorrtFuncState {
   AllocateFunc test_allocate_func = nullptr;
@@ -99,6 +87,7 @@ struct TensorrtFuncState {
   OrtMutex* tensorrt_mu_ptr = nullptr;
   bool fp16_enable;
   bool int8_enable;
+  bool int8_calibration_cache_available;
   bool dla_enable;
   int dla_core;
   size_t* max_workspace_size_ptr = nullptr;
@@ -111,6 +100,7 @@ struct TensorrtFuncState {
   std::unordered_map<std::string, float> dynamic_range_map;
   bool engine_decryption_enable;
   int (*engine_decryption)(const char*, char*, size_t*);
+  int (*engine_encryption)(const char*, char*, size_t);
 };
 
 // Logical device representation.
@@ -141,7 +131,12 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   void* GetComputeStream() const override { return static_cast<void*>(stream_); }
 
+  ProviderOptions GetProviderOptions() const override {
+    return TensorrtExecutionProviderInfo::ToProviderOptions(info_);
+  }
+
  private:
+  TensorrtExecutionProviderInfo info_;
   bool external_stream_ = false;
   cudaStream_t stream_ = nullptr;
   int max_partition_iterations_ = 1000;
@@ -152,11 +147,12 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool dla_enable_ = false;
   int dla_core_ = 0;
   bool force_sequential_engine_build_ = false;
-  std::string int8_calibration_cache_name_ = "INT8_calibration_table";
+  std::string int8_calibration_cache_name_;
+  bool int8_calibration_cache_available_ = false;
   bool int8_use_native_tensorrt_calibration_table_ = false;
   bool dump_subgraphs_ = false;
   bool engine_cache_enable_ = false;
-  std::string cache_path_;
+  std::string cache_path_, engine_decryption_lib_path_;
   tensorrt_ptr::unique_pointer<nvinfer1::IRuntime> runtime_ = nullptr;
   OrtMutex tensorrt_mu_;
   int device_id_;
@@ -164,6 +160,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   mutable char model_path_[4096];  // Reserved for max path length
   bool engine_decryption_enable_ = false;
   int (*engine_decryption_)(const char*, char*, size_t*);
+  int (*engine_encryption_)(const char*, char*, size_t);
 
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>> engines_;

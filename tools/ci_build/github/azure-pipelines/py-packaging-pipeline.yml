@@ -1,4 +1,42 @@
+parameters:
+- name: enable_linux_cpu
+  displayName: 'Whether Linux CPU package is built.'
+  type: boolean
+  default: true
+
+- name: enable_linux_gpu
+  displayName: 'Whether Linux GPU package is built.'
+  type: boolean
+  default: true
+
+- name: enable_windows_cpu
+  displayName: 'Whether Windows CPU package is built.'
+  type: boolean
+  default: true
+
+- name: enable_windows_gpu
+  displayName: 'Whether Windows GPU package is built.'
+  type: boolean
+  default: true
+
+- name: enable_mac_cpu
+  displayName: 'Whether Mac CPU package is built.'
+  type: boolean
+  default: true
+
+- name: enable_linux_arm
+  displayName: 'Whether Linux ARM package is built.'
+  type: boolean
+  default: true
+
 trigger: none
 
 stages:
 - template: templates/py-packaging-stage.yml
+  parameters:
+    enable_linux_gpu: ${{ parameters.enable_linux_gpu }}
+    enable_linux_cpu: ${{ parameters.enable_linux_cpu }}
+    enable_windows_cpu: ${{ parameters.enable_windows_cpu }}
+    enable_windows_gpu: ${{ parameters.enable_windows_gpu }}
+    enable_mac_cpu: ${{ parameters.enable_mac_cpu }}
+    enable_linux_arm: ${{ parameters.enable_linux_arm }}

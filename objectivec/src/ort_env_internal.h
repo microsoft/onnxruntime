@@ -3,7 +3,7 @@
 
 #import "ort_env.h"
 
-#include "core/session/onnxruntime_cxx_api.h"
+#import "src/cxx_api.h"
 
 NS_ASSUME_NONNULL_BEGIN
 

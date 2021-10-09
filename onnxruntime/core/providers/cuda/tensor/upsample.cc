@@ -19,8 +19,8 @@ namespace cuda {
       end,                                                        \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
-          .InputMemoryType<OrtMemTypeCPUInput>(1)                 \
+      (*KernelDefBuilder::Create())                               \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                 \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Upsample<T>)
 

@@ -3,9 +3,10 @@
 # Licensed under the MIT License.
 
 import argparse
+import json
 import os
 import pathlib
-import json
+import shutil
 import subprocess
 import sys
 
@@ -30,35 +31,35 @@ DEFAULT_ANDROID_TARGET_SDK_VER = 24
 
 
 def _parse_build_settings(args):
-    _setting_file = args.build_settings_file.resolve()
+    setting_file = args.build_settings_file.resolve()
 
-    if not _setting_file.is_file():
-        raise FileNotFoundError('Build config file {} is not a file.'.format(_setting_file))
+    if not setting_file.is_file():
+        raise FileNotFoundError('Build config file {} is not a file.'.format(setting_file))
 
-    with open(_setting_file) as f:
-        _build_settings_data = json.load(f)
+    with open(setting_file) as f:
+        build_settings_data = json.load(f)
 
     build_settings = {}
 
-    if 'build_abis' in _build_settings_data:
-        build_settings['build_abis'] = _build_settings_data['build_abis']
+    if 'build_abis' in build_settings_data:
+        build_settings['build_abis'] = build_settings_data['build_abis']
     else:
         build_settings['build_abis'] = DEFAULT_BUILD_ABIS
 
     build_params = []
-    if 'build_params' in _build_settings_data:
-        build_params += _build_settings_data['build_params']
+    if 'build_params' in build_settings_data:
+        build_params += build_settings_data['build_params']
     else:
         raise ValueError('build_params is required in the build config file')
 
-    if 'android_min_sdk_version' in _build_settings_data:
-        build_settings['android_min_sdk_version'] = _build_settings_data['android_min_sdk_version']
+    if 'android_min_sdk_version' in build_settings_data:
+        build_settings['android_min_sdk_version'] = build_settings_data['android_min_sdk_version']
     else:
         build_settings['android_min_sdk_version'] = DEFAULT_ANDROID_MIN_SDK_VER
     build_params += ['--android_api=' + str(build_settings['android_min_sdk_version'])]
 
-    if 'android_target_sdk_version' in _build_settings_data:
-        build_settings['android_target_sdk_version'] = _build_settings_data['android_target_sdk_version']
+    if 'android_target_sdk_version' in build_settings_data:
+        build_settings['android_target_sdk_version'] = build_settings_data['android_target_sdk_version']
     else:
         build_settings['android_target_sdk_version'] = DEFAULT_ANDROID_TARGET_SDK_VER
 
@@ -77,69 +78,83 @@ def _build_aar(args):
     build_dir = os.path.abspath(args.build_dir)
 
     # Setup temp environment for building
-    _env = os.environ.copy()
-    _env['ANDROID_HOME'] = os.path.abspath(args.android_sdk_path)
-    _env['ANDROID_NDK_HOME'] = os.path.abspath(args.android_ndk_path)
+    temp_env = os.environ.copy()
+    temp_env['ANDROID_HOME'] = os.path.abspath(args.android_sdk_path)
+    temp_env['ANDROID_NDK_HOME'] = os.path.abspath(args.android_ndk_path)
 
     # Temp dirs to hold building results
-    _intermediates_dir = os.path.join(build_dir, 'intermediates')
-    _build_config = args.config
-    _aar_dir = os.path.join(_intermediates_dir, 'aar', _build_config)
-    _jnilibs_dir = os.path.join(_intermediates_dir, 'jnilibs', _build_config)
-    _base_build_command = [
-        sys.executable, BUILD_PY, '--config=' + _build_config
+    intermediates_dir = os.path.join(build_dir, 'intermediates')
+    build_config = args.config
+    aar_dir = os.path.join(intermediates_dir, 'aar', build_config)
+    jnilibs_dir = os.path.join(intermediates_dir, 'jnilibs', build_config)
+    exe_dir = os.path.join(intermediates_dir, 'executables', build_config)
+    base_build_command = [
+        sys.executable, BUILD_PY, '--config=' + build_config
     ] + build_settings['build_params']
+    header_files_path = ''
 
     # Build binary for each ABI, one by one
     for abi in build_settings['build_abis']:
-        _build_dir = os.path.join(_intermediates_dir, abi)
-        _build_command = _base_build_command + [
+        abi_build_dir = os.path.join(intermediates_dir, abi)
+        abi_build_command = base_build_command + [
             '--android_abi=' + abi,
-            '--build_dir=' + _build_dir
+            '--build_dir=' + abi_build_dir
         ]
 
         if args.include_ops_by_config is not None:
-            _build_command += ['--include_ops_by_config=' + args.include_ops_by_config]
+            abi_build_command += ['--include_ops_by_config=' + args.include_ops_by_config]
 
-        subprocess.run(_build_command, env=_env, shell=False, check=True, cwd=REPO_DIR)
+        subprocess.run(abi_build_command, env=temp_env, shell=False, check=True, cwd=REPO_DIR)
 
         # create symbolic links for libonnxruntime.so and libonnxruntime4j_jni.so
         # to jnilibs/[abi] for later compiling the aar package
-        _jnilibs_abi_dir = os.path.join(_jnilibs_dir, abi)
-        os.makedirs(_jnilibs_abi_dir, exist_ok=True)
+        abi_jnilibs_dir = os.path.join(jnilibs_dir, abi)
+        os.makedirs(abi_jnilibs_dir, exist_ok=True)
         for lib_name in ['libonnxruntime.so', 'libonnxruntime4j_jni.so']:
-            _target_lib_name = os.path.join(_jnilibs_abi_dir, lib_name)
+            target_lib_name = os.path.join(abi_jnilibs_dir, lib_name)
             # If the symbolic already exists, delete it first
             # For some reason, os.path.exists will return false for a symbolic link in Linux,
             # add double check with os.path.islink
-            if os.path.exists(_target_lib_name) or os.path.islink(_target_lib_name):
-                os.remove(_target_lib_name)
-            os.symlink(os.path.join(_build_dir, _build_config, lib_name), _target_lib_name)
+            if os.path.exists(target_lib_name) or os.path.islink(target_lib_name):
+                os.remove(target_lib_name)
+            os.symlink(os.path.join(abi_build_dir, build_config, lib_name), target_lib_name)
+
+        # copy executables for each abi, in case we want to publish those as well
+        abi_exe_dir = os.path.join(exe_dir, abi)
+        for exe_name in ['libonnxruntime.so', 'onnxruntime_perf_test', 'onnx_test_runner']:
+            os.makedirs(abi_exe_dir, exist_ok=True)
+            target_exe_name = os.path.join(abi_exe_dir, exe_name)
+            shutil.copyfile(os.path.join(abi_build_dir, build_config, exe_name), target_exe_name)
+
+        # we only need to define the header files path once
+        if not header_files_path:
+            header_files_path = os.path.join(abi_build_dir, build_config, 'android', 'headers')
 
     # The directory to publish final AAR
-    _aar_publish_dir = os.path.join(build_dir, 'aar_out', _build_config)
-    os.makedirs(_aar_publish_dir, exist_ok=True)
+    aar_publish_dir = os.path.join(build_dir, 'aar_out', build_config)
+    os.makedirs(aar_publish_dir, exist_ok=True)
 
     # get the common gradle command args
-    _gradle_command = [
+    gradle_command = [
         'gradle',
         '--no-daemon',
         '-b=build-android.gradle',
         '-c=settings-android.gradle',
-        '-DjniLibsDir=' + _jnilibs_dir,
-        '-DbuildDir=' + _aar_dir,
-        '-DpublishDir=' + _aar_publish_dir,
+        '-DjniLibsDir=' + jnilibs_dir,
+        '-DbuildDir=' + aar_dir,
+        '-DheadersDir=' + header_files_path,
+        '-DpublishDir=' + aar_publish_dir,
         '-DminSdkVer=' + str(build_settings['android_min_sdk_version']),
         '-DtargetSdkVer=' + str(build_settings['android_target_sdk_version'])
     ]
 
     # If not using shell on Window, will not be able to find gradle in path
-    _shell = True if is_windows() else False
+    use_shell = True if is_windows() else False
 
     # clean, build, and publish to a local directory
-    subprocess.run(_gradle_command + ['clean'], env=_env, shell=_shell, check=True, cwd=JAVA_ROOT)
-    subprocess.run(_gradle_command + ['build'], env=_env, shell=_shell, check=True, cwd=JAVA_ROOT)
-    subprocess.run(_gradle_command + ['publish'], env=_env, shell=_shell, check=True, cwd=JAVA_ROOT)
+    subprocess.run(gradle_command + ['clean'], env=temp_env, shell=use_shell, check=True, cwd=JAVA_ROOT)
+    subprocess.run(gradle_command + ['build'], env=temp_env, shell=use_shell, check=True, cwd=JAVA_ROOT)
+    subprocess.run(gradle_command + ['publish'], env=temp_env, shell=use_shell, check=True, cwd=JAVA_ROOT)
 
 
 def parse_args():

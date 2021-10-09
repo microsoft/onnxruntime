@@ -19,7 +19,8 @@ class FusionSkipLayerNormalization(Fusion):
     """
     def __init__(self, model: OnnxModel):
         super().__init__(model, "SkipLayerNormalization", "LayerNormalization")
-        self.shape_infer_helper = self.model.infer_runtime_shape({"batch_size": 4, "seq_len": 7})
+        # Update shape inference is needed since other fusions might add new edge which does not have shape info yet.
+        self.shape_infer_helper = self.model.infer_runtime_shape({"batch_size": 4, "seq_len": 7}, update=True)
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
         add = self.model.get_parent(node, 0, output_name_to_node)
@@ -39,8 +40,12 @@ class FusionSkipLayerNormalization(Fusion):
 
         if self.shape_infer_helper is not None:
             if not self.shape_infer_helper.compare_shape(add.input[0], add.input[1]):
+                logger.debug(
+                    f"skip skiplayernorm fusion since shape of inputs ({add.input[0]}, {add.input[1]}) are not same")
                 return
         else:
+            # shape_infer_helper can not handle subgraphs. Current work around is to disable skiplayernorm fusion
+            # longterm todo: support subgraph in symbolic_shape_infer or support add broadcasting in skiplayernorm op
             logger.warning(
                 "symbolic shape infer failed. it's safe to ignore this message if there is no issue with optimized model"
             )
@@ -72,6 +77,7 @@ class FusionSkipLayerNormalization(Fusion):
                 normalize_node.attribute.extend([helper.make_attribute("epsilon", 1.0E-12)])
 
             self.nodes_to_add.append(normalize_node)
+            self.node_name_to_graph_name[normalize_node.name] = self.this_graph_name
 
 
 class FusionBiasSkipLayerNormalization(Fusion):
@@ -136,3 +142,4 @@ class FusionBiasSkipLayerNormalization(Fusion):
             new_node.attribute.extend([helper.make_attribute("epsilon", 1.0E-12)])
 
         self.nodes_to_add.append(new_node)
+        self.node_name_to_graph_name[new_node.name] = self.this_graph_name

@@ -4,14 +4,17 @@
 #include "core/providers/rocm/rocm_fence.h"
 
 #include "core/graph/constants.h"
-#include "core/providers/rocm/gpu_data_transfer.h"
 #include "core/providers/rocm/rocm_common.h"
+#include "core/providers/rocm/gpu_data_transfer.h"
 
 namespace onnxruntime {
 
 ROCMFence::ROCMFence(const GPUDataTransfer* data_transfer) : data_transfer_(data_transfer) {
-  HIP_CALL_THROW(hipEventCreate(&read_event_));
-  HIP_CALL_THROW(hipEventCreate(&write_event_));
+  // NOTE: hipEventBlockingSync may leads to longer wait time because of thread yield/switching in kernel
+  // if lower CPU usage is more important than latency, we should use this flag to avoid spin-loop in WaitOnCPU
+  int event_flags = /*hipEventBlockingSync |*/ hipEventDisableTiming;
+  HIP_CALL_THROW(hipEventCreateWithFlags(&read_event_, event_flags));
+  HIP_CALL_THROW(hipEventCreateWithFlags(&write_event_, event_flags));
 }
 
 ROCMFence::~ROCMFence() {
@@ -43,8 +46,24 @@ void ROCMFence::BeforeUsingAsOutput(onnxruntime::ProviderType provider_type, int
 }
 
 bool ROCMFence::CanRelease() {
-  return hipEventQuery(read_event_) == hipSuccess &&
-         hipEventQuery(write_event_) == hipSuccess;
+  hipError_t status;
+  status = hipEventQuery(read_event_);
+  if (status == hipErrorNotReady) {
+      // ignore and clear the error if not ready
+      hipGetLastError();
+      return false;
+  } else if (status != hipSuccess) {
+      RocmCall<hipError_t, true>(status, "hipEventQuery(read_event_)", "HIP", hipSuccess);
+  }
+  status = hipEventQuery(write_event_);
+  if (status == hipErrorNotReady) {
+      // ignore and clear the error if not ready
+      hipGetLastError();
+      return false;
+  } else if (status != hipSuccess) {
+      RocmCall<hipError_t, true>(status, "hipEventQuery(write_event_)", "HIP", hipSuccess);
+  }
+  return true;
 }
 
 void ROCMFence::AfterUsedAsInput(int queue_id) {

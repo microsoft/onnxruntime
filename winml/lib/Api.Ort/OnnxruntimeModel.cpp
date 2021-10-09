@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "pch.h"
+#include "lib/Api.Ort/pch.h"
 #include "OnnxruntimeModel.h"
 #include "core/platform/windows/TraceLoggingConfig.h"
 #include <evntrace.h>
@@ -312,60 +312,6 @@ STDMETHODIMP OnnruntimeModel::AddOperator(
     ort_model_.get(), op_type, op_name, onnx_opset_version, op_domain, input_names.data(), input_count, output_names.data(), output_count, op_attribute_names, attributes.data(), num_attributes),
                           engine_factory_->UseOrtApi());
   return S_OK;
-}
-
-static ONNXTensorElementDataType
-ONNXTensorElementDataTypeFromTensorKind(winml::TensorKind kind) {
-  switch (kind) {
-    case winml::TensorKind::Boolean: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
-    }
-    case winml::TensorKind::String: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
-    }
-    case winml::TensorKind::Float16: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
-    }
-    case winml::TensorKind::Float: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
-    }
-    case winml::TensorKind::Double: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
-    }
-    case winml::TensorKind::Int8: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8;
-    }
-    case winml::TensorKind::Int16: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16;
-    }
-    case winml::TensorKind::Int32: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;
-    }
-    case winml::TensorKind::Int64: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
-    }
-    case winml::TensorKind::UInt8: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8;
-    }
-    case winml::TensorKind::UInt16: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16;
-    }
-    case winml::TensorKind::UInt32: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32;
-    }
-    case winml::TensorKind::UInt64: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64;
-    }
-    case winml::TensorKind::Complex64: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64;
-    }
-    case winml::TensorKind::Complex128: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128;
-    }
-    default: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-    }
-  }
 }
 
 STDMETHODIMP OnnruntimeModel::AddModelInput(_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider, bool is_constant, IValue* constant_value) {

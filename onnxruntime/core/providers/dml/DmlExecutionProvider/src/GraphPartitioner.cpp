@@ -139,7 +139,7 @@ namespace Dml
         }
     };
 
-    bool NodeArgSupportedInGraph(const onnxruntime::NodeArg* arg, bool requiresFloatFormats, uint32_t supportedDeviceDataTypeMask)
+    bool NodeArgSupportedInGraph(const onnxruntime::NodeArg* arg, uint32_t supportedDeviceDataTypeMask)
     {            
         if (arg->Exists())
         {
@@ -164,14 +164,6 @@ namespace Dml
                         }
                     }
 
-                    if (requiresFloatFormats)
-                    {
-                        if (mlDataType != MLOperatorTensorDataType::Float &&
-                            mlDataType != MLOperatorTensorDataType::Float16)
-                        {
-                            return false;
-                        }
-                    }
                 }
             }
         }
@@ -189,7 +181,6 @@ namespace Dml
             if (!isConstantCpuInput &&
                 !NodeArgSupportedInGraph(
                     node.InputDefs()[i],
-                    registration.graphNodeFactoryRegistration->requiresFloatFormatsExceptConstInputs,
                     supportedDeviceDataTypeMask
                 ))
             {
@@ -201,7 +192,6 @@ namespace Dml
         {
             if (!NodeArgSupportedInGraph(
                     arg,
-                    registration.graphNodeFactoryRegistration->requiresFloatFormatsExceptConstInputs,
                     supportedDeviceDataTypeMask
                 ))
             {
@@ -680,7 +670,7 @@ namespace Dml
                 .SinceVersion(def->since_version)
                 .Provider(onnxruntime::kDmlExecutionProvider);
 
-            registryForPartitionKernels->Register(builder, fused_kernel_func);
+            ORT_THROW_IF_ERROR(registryForPartitionKernels->Register(builder, fused_kernel_func));
             
             subGraph->SetMetaDef(std::move(def));
         }

@@ -164,11 +164,11 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
     provider_nodes_.insert(&node);
     // note KernelCreateInfo might be nullptr for custom kernel
     const KernelCreateInfo* kci = nullptr;
-    kernel_registries.SearchKernelRegistry(node, &kci);
+    ORT_IGNORE_RETURN_VALUE(kernel_registries.SearchKernelRegistry(node, &kci));
 
     bool is_implicit_input = false;
     auto process_inputs =
-        [this, &kci, &initializers_consumed, &is_implicit_input](const onnxruntime::NodeArg& arg, size_t index) {
+        [this, &node, &kci, &initializers_consumed, &is_implicit_input](const onnxruntime::NodeArg& arg, size_t index) {
           // check if this NodeArg is an initializer defined in current outer graph level
           const auto* initializer_tensor_proto = GetInitializer(graph_, arg.Name(), true);
           if (initializer_tensor_proto != nullptr) {
@@ -179,7 +179,7 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
           //   flow op (Loop, Scan, If) to do the necessary copy if the input crosses different provider.
           // PlannerImpl::ComputeUseCounts has matching logic so the allocation plan does the same thing
           if (!is_implicit_input) {
-            if (kci && kci->kernel_def->IsInputOnCpu(index)) {
+            if (utils::IsInputOnCpu(node, kci, index)) {
               non_provider_input_defs_.insert(&arg);
             } else {
               provider_input_defs_.insert(&arg);
@@ -249,9 +249,9 @@ void TransformerMemcpyImpl::BuildDefsMapping(const onnxruntime::NodeArg* arg, co
     auto node_provider_type = it.GetExecutionProviderType();
     if ((node_provider_type == provider_) || (node_provider_type == kCudaExecutionProvider && kTensorrtExecutionProvider == provider_)) {
       const KernelCreateInfo* kci = nullptr;
-      kernel_registries.SearchKernelRegistry(it, &kci);
+      ORT_IGNORE_RETURN_VALUE(kernel_registries.SearchKernelRegistry(it, &kci));
       if (arg_input_index != -1) {
-        if (!kci || !kci->kernel_def->IsInputOnCpu(arg_input_index)) provider_input_nodes_[arg].insert(&it);
+        if (!kci || !utils::IsInputOnCpu(it, kci, arg_input_index)) provider_input_nodes_[arg].insert(&it);
       }
       if (arg_output_index != -1) {
         if (!kci || !kci->kernel_def->IsOutputOnCpu(arg_output_index)) provider_output_nodes_[arg].insert(&it);
@@ -337,20 +337,22 @@ bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& ker
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     if (kci == nullptr) continue;
     if (kci->kernel_def == nullptr) continue;
-    onnxruntime::Node::ForEachWithIndex(p_node->InputDefs(),
-                                        [kci, &dup_replacements](const onnxruntime::NodeArg& arg, size_t index) {
-                                          if (kci->kernel_def->IsInputOnCpu(index)) dup_replacements.erase(&arg);
-                                          return Status::OK();
-                                        });
+    ORT_THROW_IF_ERROR(Node::ForEachWithIndex(
+        p_node->InputDefs(),
+        [kci, &p_node, &dup_replacements](const onnxruntime::NodeArg& arg, size_t index) {
+          if (utils::IsInputOnCpu(*p_node, kci, index)) dup_replacements.erase(&arg);
+          return Status::OK();
+        }));
 
     // normally initializers are only inputs, but things may change with ops like assign
-    onnxruntime::Node::ForEachWithIndex(p_node->OutputDefs(),
-                                        [kci, &dup_replacements](const onnxruntime::NodeArg& arg, size_t index) {
-                                          if (kci->kernel_def->IsOutputOnCpu(index)) {
-                                            ORT_ENFORCE(dup_replacements.find(&arg) == dup_replacements.end());
-                                          }
-                                          return Status::OK();
-                                        });
+    ORT_THROW_IF_ERROR(Node::ForEachWithIndex(
+        p_node->OutputDefs(),
+        [kci, &dup_replacements](const onnxruntime::NodeArg& arg, size_t index) {
+          if (kci->kernel_def->IsOutputOnCpu(index)) {
+            ORT_ENFORCE(dup_replacements.find(&arg) == dup_replacements.end());
+          }
+          return Status::OK();
+        }));
 
     p_node->ReplaceDefs(dup_replacements);
   }

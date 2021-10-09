@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/controlflow/if.h"
 
 #include "core/providers/cuda/cuda_fwd.h"
@@ -15,8 +16,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
                                   kOnnxDomain,
                                   1, 10,
                                   kCudaExecutionProvider,
-                                  KernelDefBuilder()
-                                      .InputMemoryType<OrtMemTypeCPUInput>(0)  // 'cond' needs to be on CPU
+                                  (*KernelDefBuilder::Create())
+                                      .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
                                       .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
                                   If);
@@ -27,23 +28,21 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
                                   kOnnxDomain,
                                   11, 12,
                                   kCudaExecutionProvider,
-                                  KernelDefBuilder()
-                                      .InputMemoryType<OrtMemTypeCPUInput>(0)  // 'cond' needs to be on CPU
+                                  (*KernelDefBuilder::Create())
+                                      .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
                                       .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
                                   If);
 
-// sequence tensors were also supported in addition to existing support for tensors in opset-13,
-// but we do not support sequence tensors in the cuda If kernel because there are no ops that handle
-// sequence tensors on CUDA and supporting it for If doesn't add value while that is the case
+// opset-13 supports sequence type for If's subgraph outputs
 ONNX_OPERATOR_KERNEL_EX(If,
                         kOnnxDomain,
                         13,
                         kCudaExecutionProvider,
-                        KernelDefBuilder()
-                            .InputMemoryType<OrtMemTypeCPUInput>(0)  // 'cond' needs to be on CPU
+                        (*KernelDefBuilder::Create())
+                            .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                            .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
+                            .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
                         If);
 
 Status If::Compute(OpKernelContext* ctx) const {

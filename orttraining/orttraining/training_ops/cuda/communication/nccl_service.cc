@@ -13,6 +13,10 @@
 namespace onnxruntime {
 namespace cuda {
 
+INcclService& GetINcclService() {
+  return NcclService::GetInstance();
+}
+
 bool NcclTask::Compare(const NcclTask& other) const {
   if (type != other.type) {
     return false;
@@ -356,7 +360,7 @@ void NcclService::Terminate() {
   WaitForLaunch();
   {
     std::unique_lock<std::mutex> lock(mutex_);
-    cv_.wait(lock, [this] { return schedule_.empty() || total_time_ > 0 && time_ == 0; });
+    cv_.wait(lock, [this] { return schedule_.empty() || (total_time_ > 0 && time_ == 0); });
   }
 
   CUDA_CALL(cudaStreamDestroy(stream_));

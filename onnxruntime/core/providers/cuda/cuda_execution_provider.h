@@ -6,7 +6,6 @@
 #include <set>
 #include <vector>
 
-#include "core/graph/constants.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
@@ -64,6 +63,14 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes);
   }
 
+  template <typename T>
+  IAllocatorUniquePtr<T> GetTransientScratchBuffer(size_t count_or_bytes) const {
+    if (count_or_bytes == 0)
+      return nullptr;
+
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes, true);
+  }
+
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 
@@ -74,6 +81,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
   int GetDeviceId() const override { return info_.device_id; }
   const cudaDeviceProp& GetDeviceProp() const { return device_prop_; };
   int GetCudnnConvAlgo() const { return info_.cudnn_conv_algo_search; }
+  bool DoCopyOnDefaultStream() const { return info_.do_copy_in_default_stream; }
+  bool GetCudnnConvUseMaxWorkspace() const { return info_.cudnn_conv_use_max_workspace; }
 
   ProviderOptions GetProviderOptions() const override {
     return CUDAExecutionProviderInfo::ToProviderOptions(info_);
@@ -82,6 +91,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
   void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
   static AllocatorPtr CreateCudaAllocator(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy,
                                           CUDAExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
+
+  std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
  private:
   CUDAExecutionProviderInfo info_;
@@ -170,9 +181,21 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   using PerThreadContextMap = std::unordered_map<const CUDAExecutionProvider*, std::weak_ptr<PerThreadContext>>;
   // thread local PerThreadContext cache
+
+  struct ContextCacheHolder {
+    ContextCacheHolder() {
+      // Keep a weak pointer to the object, if the weak pointer can be locked, then the shared pointer is still around, so we can reset it
+      RunOnUnload([&, weak_p_ = std::weak_ptr<PerThreadContextMap>(p)] {
+        if (auto lock = weak_p_.lock())
+          p.reset();
+      });
+    }
+    std::shared_ptr<PerThreadContextMap> p = std::make_shared<PerThreadContextMap>();
+  };
+
   static const std::shared_ptr<PerThreadContextMap>& PerThreadContextCache() {
-    thread_local const auto per_thread_context_cache = std::make_shared<PerThreadContextMap>();
-    return per_thread_context_cache;
+    thread_local const ContextCacheHolder per_thread_context_cache;
+    return per_thread_context_cache.p;
   }
 
   struct PerThreadContextState {

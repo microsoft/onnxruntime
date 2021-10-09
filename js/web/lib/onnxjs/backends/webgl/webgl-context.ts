@@ -7,6 +7,26 @@ import * as DataEncoders from './texture-data-encoder';
 import {DataEncoder, Encoder} from './texture-data-encoder';
 import {repeatedTry} from './utils';
 
+export interface FenceContext {
+  query: WebGLSync|null;
+  isFencePassed(): boolean;
+}
+
+type PollItem = {
+  isDoneFn: () => boolean; resolveFn: () => void;
+};
+
+export function linearSearchLastTrue(arr: Array<() => boolean>): number {
+  let i = 0;
+  for (; i < arr.length; ++i) {
+    const isDone = arr[i]();
+    if (!isDone) {
+      break;
+    }
+  }
+  return i - 1;
+}
+
 /**
  * Abstraction and wrapper around WebGLRenderingContext and its operations
  */
@@ -128,6 +148,7 @@ export class WebGLContext {
     // unbind FB
     return encoder.decode(buffer, dataSize);
   }
+
   isFramebufferReady(): boolean {
     // TODO: Implement logic to check if the framebuffer is ready
     return true;
@@ -176,7 +197,9 @@ export class WebGLContext {
     gl.shaderSource(shader, shaderSource);
     gl.compileShader(shader);
     if (gl.getShaderParameter(shader, gl.COMPILE_STATUS) === false) {
-      throw new Error(`Failed to compile shader: ${gl.getShaderInfoLog(shader)}`);
+      throw new Error(`Failed to compile shader: ${gl.getShaderInfoLog(shader)}
+Shader source:
+${shaderSource}`);
     }
     return shader;
   }
@@ -520,6 +543,7 @@ export class WebGLContext {
     if (this.version === 2) {
       const gl2 = this.gl as WebGL2RenderingContext;
       timeElapsed = gl2.getQueryParameter(query, gl2.QUERY_RESULT);
+      gl2.deleteQuery(query);
     } else {
       // TODO: add webgl 1 handling.
       throw new Error('WebGL1 profiling currently not supported');
@@ -531,5 +555,58 @@ export class WebGLContext {
   async waitForQueryAndGetTime(query: WebGLQuery): Promise<number> {
     await repeatedTry(() => this.isTimerResultAvailable(query));
     return this.getTimerResult(query);
+  }
+
+  public async createAndWaitForFence(): Promise<void> {
+    const fenceContext = this.createFence(this.gl);
+    return this.pollFence(fenceContext);
+  }
+
+  private createFence(gl: WebGLRenderingContext): FenceContext {
+    let isFencePassed: () => boolean;
+    const gl2 = gl as WebGL2RenderingContext;
+    const query = gl2.fenceSync(gl2.SYNC_GPU_COMMANDS_COMPLETE, 0);
+    gl.flush();
+    if (query === null) {
+      isFencePassed = () => true;
+    } else {
+      isFencePassed = () => {
+        const status = gl2.clientWaitSync(query, 0, 0);
+        return status === gl2.ALREADY_SIGNALED || status === gl2.CONDITION_SATISFIED;
+      };
+    }
+    return {query, isFencePassed};
+  }
+
+  async pollFence(fenceContext: FenceContext) {
+    return new Promise<void>(resolve => {
+      void this.addItemToPoll(() => fenceContext.isFencePassed(), () => resolve());
+    });
+  }
+
+  private itemsToPoll: PollItem[] = [];
+
+  pollItems(): void {
+    // Find the last query that has finished.
+    const index = linearSearchLastTrue(this.itemsToPoll.map(x => x.isDoneFn));
+    for (let i = 0; i <= index; ++i) {
+      const {resolveFn} = this.itemsToPoll[i];
+      resolveFn();
+    }
+    this.itemsToPoll = this.itemsToPoll.slice(index + 1);
+  }
+
+  private async addItemToPoll(isDoneFn: () => boolean, resolveFn: () => void) {
+    this.itemsToPoll.push({isDoneFn, resolveFn});
+    if (this.itemsToPoll.length > 1) {
+      // We already have a running loop that polls.
+      return;
+    }
+    // Start a new loop that polls.
+    await repeatedTry(() => {
+      this.pollItems();
+      // End the loop if no more items to poll.
+      return this.itemsToPoll.length === 0;
+    });
   }
 }

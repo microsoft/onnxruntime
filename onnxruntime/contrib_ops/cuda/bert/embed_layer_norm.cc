@@ -1,9 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/common.h"
-#include "core/framework/tensorprotoutils.h"
-#include "onnx/defs/tensor_proto_util.h"
+#include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cpu/bert/embed_layer_norm_helper.h"
 #include "embed_layer_norm.h"
 #include "embed_layer_norm_impl.h"
@@ -19,7 +17,7 @@ namespace cuda {
       1,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       EmbedLayerNorm<T>);
 

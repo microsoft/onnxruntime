@@ -44,5 +44,16 @@ class ReluGrad final : public BinaryElementwise<ShouldNotBroadcast> {
   MAKE_FUNC_CTX_NULL()
 };
 
+template <typename T>
+class SigmoidGrad final : public BinaryElementwise<ShouldNotBroadcast> {
+ public:
+  SigmoidGrad(const OpKernelInfo& info) : BinaryElementwise(info) {}
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  MAKE_FUNC_CTX_NULL()
+};
+
 }  // namespace cuda
 }  // namespace onnxruntime

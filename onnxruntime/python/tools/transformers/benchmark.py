@@ -127,8 +127,8 @@ def run_onnxruntime(use_gpu, model_names, model_class, precision, num_threads, b
                         continue
 
                     input_value_type = numpy.int64 if 'pt' in model_source else numpy.int32
-                    ort_inputs = create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names,
-                                                          config, input_value_type)
+                    ort_inputs = create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names, config,
+                                                          input_value_type)
                     result_template = {
                         "engine": "onnxruntime",
                         "version": onnxruntime.__version__,
@@ -333,7 +333,7 @@ def run_tensorflow(use_gpu, model_names, model_class, precision, num_threads, ba
                     @run_with_tf_optimizations(do_eager_mode=False, use_xla=False)
                     def encoder_decoder_forward():
                         return model(input_ids, decoder_input_ids=input_ids, training=False)
-                    
+
                     @run_with_tf_optimizations(do_eager_mode=False, use_xla=False)
                     def lxmert_forward():
                         feats = tf.random.normal([1, 1, config.visual_feat_dim])

@@ -1,12 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <memory>
 #include "default_providers.h"
 #include "providers.h"
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
-#ifdef USE_CUDA
-#include "core/providers/cuda/cuda_provider_factory_creator.h"
-#endif
 #ifdef USE_ROCM
 #include "core/providers/rocm/rocm_provider_factory_creator.h"
 #endif
@@ -16,25 +14,6 @@
 #include "core/session/onnxruntime_cxx_api.h"
 
 namespace onnxruntime {
-
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(
-    const char* device_type, bool enable_vpu_fast_compile, const char* device_id, size_t num_of_threads, bool use_compiled_network, const char* blob_dump_path);
-
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* params);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(uint32_t);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptions* params);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CoreML(uint32_t);
-
-// EP for internal testing
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_InternalTesting(
-    const std::unordered_set<std::string>& supported_ops);
-
 namespace test {
 
 std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_arena) {
@@ -43,9 +22,37 @@ std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_aren
 
 std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
 #ifdef USE_TENSORRT
-  OrtTensorRTProviderOptions params{0, 0, nullptr, 0, 1 << 30, 0, 0, nullptr, 0, 0};
+  OrtTensorRTProviderOptions params{
+      0,
+      0,
+      nullptr,
+      1000,
+      1,
+      1 << 30,
+      0,
+      0,
+      nullptr,
+      0,
+      0,
+      0,
+      0,
+      0,
+      nullptr,
+      0,
+      nullptr,
+      0};
   if (auto factory = CreateExecutionProviderFactory_Tensorrt(&params))
     return factory->CreateProvider();
+#endif
+  return nullptr;
+}
+
+std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const OrtTensorRTProviderOptions* params) {
+#ifdef USE_TENSORRT
+  if (auto factory = CreateExecutionProviderFactory_Tensorrt(params))
+    return factory->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(params);
 #endif
   return nullptr;
 }
@@ -69,10 +76,12 @@ std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
 #ifdef USE_CUDA
-  return CreateExecutionProviderFactory_CUDA(CUDAExecutionProviderInfo{})->CreateProvider();
-#else
-  return nullptr;
+  OrtCUDAProviderOptions provider_options{};
+  provider_options.do_copy_in_default_stream = true;
+  if (auto factory = CreateExecutionProviderFactory_Cuda(&provider_options))
+    return factory->CreateProvider();
 #endif
+  return nullptr;
 }
 
 std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider(bool enable_arena) {
@@ -98,7 +107,7 @@ std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider() {
 // For any non - Android system, NNAPI will only be used for ort model converter
 // Make it unavailable here, you can still manually append NNAPI EP to session for model conversion
 #if defined(USE_NNAPI) && defined(__ANDROID__)
-  return CreateExecutionProviderFactory_Nnapi(0)->CreateProvider();
+  return CreateExecutionProviderFactory_Nnapi(0, {})->CreateProvider();
 #else
   return nullptr;
 #endif
@@ -139,7 +148,9 @@ std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider() {
 }
 
 std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider() {
-#if defined(USE_COREML)
+// For any non - macOS system, CoreML will only be used for ort model converter
+// Make it unavailable here, you can still manually append CoreML EP to session for model conversion
+#if defined(USE_COREML) && defined(__APPLE__)
   // We want to run UT on CPU only to get output value without losing precision
   uint32_t coreml_flags = 0;
   coreml_flags |= COREML_FLAG_USE_CPU_ONLY;

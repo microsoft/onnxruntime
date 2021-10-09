@@ -126,13 +126,34 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
+Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
+                              /*out*/ bool& is_packed,
+                              /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
   // only pack Matrix B
   if (input_idx == 1) {
-    is_packed = GemmPackBFp32(Info(), tensor, trans_b_attr_, packed_b_, b_shape_);
+    size_t packed_b_size;
+    is_packed = GemmPackBFp32(alloc, tensor, trans_b_attr_, packed_b_, packed_b_size, b_shape_);
+    bool share_prepacked_weights = (prepacked_weights != nullptr);
+    if (is_packed && share_prepacked_weights) {
+      prepacked_weights->buffers_.push_back(std::move(packed_b_));
+      prepacked_weights->buffer_sizes_.push_back(packed_b_size);
+    }
   }
+  return Status::OK();
+}
+
+Status MatMul<float>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                int input_idx,
+                                                /*out*/ bool& used_shared_buffers) {
+  used_shared_buffers = false;
+
+  if (input_idx == 1) {
+    used_shared_buffers = true;
+    packed_b_ = std::move(prepacked_buffers[0]);
+  }
+
   return Status::OK();
 }
 
@@ -179,7 +200,7 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
     data[i].beta = 0.0f;
   }
   MlasGemmBatch(trans_a ? CblasTrans : CblasNoTrans, trans_b ? CblasTrans : CblasNoTrans,
-      M, N, K, data.data(), max_len, thread_pool);
+                M, N, K, data.data(), max_len, thread_pool);
 
   return Status::OK();
 }

@@ -83,12 +83,6 @@ ONNX_OPERATOR_SET_SCHEMA(
     .TypeConstraint("V", OpSchema::all_tensor_types(), "All Tensor types"));
 */
 
-template <>
-struct Scan<8>::Info : public scan::detail::Info {
-  Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in, int num_scan_inputs_in)
-      : scan::detail::Info(node, subgraph_in, num_scan_inputs_in, /* is_v8 */ true) {}
-};
-
 class Scan8Impl {
  public:
   Scan8Impl(OpKernelContextInternal& context,
@@ -135,7 +129,7 @@ class Scan8Impl {
 };
 
 template <>
-Scan<8>::Scan(const OpKernelInfo& info) : IControlFlowKernel(info) {
+void Scan<8>::Init(const OpKernelInfo& info) {
   // make sure the attribute was present even though we don't need it here.
   // The GraphProto is loaded as a Graph instance by main Graph::Resolve,
   // and a SessionState instance for executing the subgraph is created by InferenceSession.
@@ -174,10 +168,6 @@ Status Scan<8>::SetupSubgraphExecutionInfo(const SessionState& session_state,
 
   return status;
 }
-
-// we need this to be in the .cc so 'unique_ptr<Info> info_' can be handled
-template <>
-Scan<8>::~Scan() = default;
 
 template <>
 Status Scan<8>::Compute(OpKernelContext* ctx) const {
@@ -435,7 +425,7 @@ Status Scan8Impl::Execute(const FeedsFetchesManager& ffm) {
     for (int64_t i = sequence_len; i < max_sequence_len_; ++i) {
       for (int output = info_.num_loop_state_variables; output < info_.num_outputs; ++output) {
         auto& iterator = *output_iterators_[output];
-        iterator.ZeroOutCurrent();
+        ORT_RETURN_IF_ERROR(iterator.ZeroOutCurrent());
         ++iterator;
       }
     }

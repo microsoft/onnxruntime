@@ -6,6 +6,7 @@
 #include <string>
 #include <unordered_map>
 #include "core/common/common.h"
+#include "core/common/optional.h"
 #include "core/common/logging/logging.h"
 
 namespace onnxruntime {
@@ -16,6 +17,10 @@ namespace onnxruntime {
   */
 struct ConfigOptions {
   std::unordered_map<std::string, std::string> configurations;
+
+  // Gets the config string associated with the given config_key.
+  // If not found, an empty optional is returned.
+  optional<std::string> GetConfigEntry(const std::string& config_key) const noexcept;
 
   // Check if this instance of ConfigOptions has a config using the given config_key.
   // Returns true if found and copies the value into config_value.

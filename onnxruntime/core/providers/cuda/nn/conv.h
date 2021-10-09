@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include "core/common/common.h"
 #include "core/platform/ort_mutex.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/cudnn_common.h"
@@ -176,7 +175,6 @@ class Conv : public CudaKernel {
   Conv(const OpKernelInfo& info) : CudaKernel(info), conv_attrs_(info) {
     auto pads_size = conv_attrs_.pads.size();
     ORT_ENFORCE(pads_size % 2 == 0);
-
     s_.handle = CudnnHandle();
   }
 

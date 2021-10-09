@@ -5,8 +5,6 @@
 #include "reverse_sequence_impl.h"
 
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/providers/common.h"
-#include "core/framework/utils.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -16,7 +14,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     10,
     kCudaExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+    (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     ReverseSequenceOp);
 
 #define ReverseSequenceCallCudaImplTypeAs(T, TEqual)                                                 \

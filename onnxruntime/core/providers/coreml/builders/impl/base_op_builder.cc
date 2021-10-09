@@ -3,8 +3,11 @@
 
 #include <core/providers/common.h>
 
+#ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
+#endif
 #include "core/providers/coreml/builders/helper.h"
+#include "core/providers/shared/utils/utils.h"
 
 #include "base_op_builder.h"
 
@@ -34,11 +37,12 @@ bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node
 }
 
 // Add operator related
-
+#ifdef __APPLE__
 Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
                                         const logging::Logger& logger) const {
+  OpBuilderInputParams input_params(model_builder.GetGraphViewer());
   ORT_RETURN_IF_NOT(
-      IsOpSupported(model_builder.GetInitializerTensors(), node, logger),
+      IsOpSupported(node, input_params, logger),
       "Unsupported operator ",
       node.OpType());
 
@@ -48,28 +52,41 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node&
   return Status::OK();
 }
 
-/* static */ std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> BaseOpBuilder::CreateNNLayer(const Node& node) {
-  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer =
-      std::make_unique<COREML_SPEC::NeuralNetworkLayer>();
-  layer->set_name(node.Name());
+/* static */ std::unique_ptr<COREML_SPEC::NeuralNetworkLayer>
+BaseOpBuilder::CreateNNLayer(ModelBuilder& model_builder, const Node& node) {
+  auto layer_name = node.Name();
+  if (layer_name.empty()) {
+    // CoreML requires layer has a name, while the node name is optional in ONNX
+    // In this case, create a unique name for the layer
+    layer_name = model_builder.GetUniqueName(MakeString("Node_", node.Index(), "_type_", node.OpType()));
+  }
+  return CreateNNLayer(layer_name);
+}
+
+/* static */ std::unique_ptr<COREML_SPEC::NeuralNetworkLayer>
+BaseOpBuilder::CreateNNLayer(const std::string& layer_name) {
+  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = std::make_unique<COREML_SPEC::NeuralNetworkLayer>();
+  layer->set_name(layer_name);
   return layer;
 }
+#endif
 
 // Operator support related
 
-bool BaseOpBuilder::IsOpSupported(const InitializedTensorSet& initializers, const Node& node,
+bool BaseOpBuilder::IsOpSupported(const Node& node, const OpBuilderInputParams& input_params,
                                   const logging::Logger& logger) const {
   if (!HasSupportedInputs(node, logger))
     return false;
 
   // We do not support external initializers for now
+  const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
   if (HasExternalInitializer(initializers, node, logger))
     return false;
 
   if (!HasSupportedOpSet(node, logger))
     return false;
 
-  return IsOpSupportedImpl(initializers, node, logger);
+  return IsOpSupportedImpl(node, input_params, logger);
 }
 
 bool BaseOpBuilder::HasSupportedInputs(const Node& node, const logging::Logger& logger) const {
@@ -91,6 +108,13 @@ bool BaseOpBuilder::HasSupportedInputsImpl(const Node& node, const logging::Logg
   int32_t input_type;
   if (!GetType(input, input_type, logger))
     return false;
+
+  if (node.OpType() == "Cast" && input_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+    LOGS(logger, VERBOSE) << "[" << node.OpType()
+                          << "] Input type: [" << input_type
+                          << "] is not actually supported (used for supporting argmax op).";
+    return true;
+  }
 
   if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     LOGS(logger, VERBOSE) << "[" << node.OpType()

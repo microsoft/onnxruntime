@@ -256,6 +256,14 @@
         17832136363477464736
     ],
     [
+        "BatchNormalization ai.onnx CPUExecutionProvider",
+        3016597991190826984
+    ],
+    [
+        "BatchNormalization ai.onnx CPUExecutionProvider",
+        9270095107043637928
+    ],
+    [
         "BitShift ai.onnx CPUExecutionProvider",
         4758677670685660688
     ],
@@ -881,6 +889,10 @@
     ],
     [
         "GRU ai.onnx CPUExecutionProvider",
+        5656895183302764352
+    ],
+    [
+        "GRU ai.onnx CPUExecutionProvider",
         2706165712066264784
     ],
     [
@@ -1082,6 +1094,10 @@
     [
         "LRN ai.onnx CPUExecutionProvider",
         15047083116516536152
+    ],
+    [
+        "LSTM ai.onnx CPUExecutionProvider",
+        4392316607181063320
     ],
     [
         "LSTM ai.onnx CPUExecutionProvider",
@@ -1453,7 +1469,7 @@
     ],
     [
         "Pad ai.onnx CPUExecutionProvider",
-        9596174091174553032
+        12904240253005862936
     ],
     [
         "Pad ai.onnx CPUExecutionProvider",
@@ -1474,6 +1490,10 @@
     [
         "Pow ai.onnx CPUExecutionProvider",
         12963226513247425672
+    ],
+    [
+        "Pow ai.onnx CPUExecutionProvider",
+        16138602580714332296
     ],
     [
         "PRelu ai.onnx CPUExecutionProvider",
@@ -1992,6 +2012,14 @@
         17992752176767437224
     ],
     [
+        "Relu ai.onnx CPUExecutionProvider",
+        800813007613791272
+    ],
+    [
+        "Relu ai.onnx CPUExecutionProvider",
+        8895401642537447048
+    ],
+    [
         "Reshape ai.onnx CPUExecutionProvider",
         15585679549439997664
     ],
@@ -2046,6 +2074,10 @@
     [
         "ReverseSequence ai.onnx CPUExecutionProvider",
         777686786711298232
+    ],
+    [
+        "RNN ai.onnx CPUExecutionProvider",
+        1524012948315159160
     ],
     [
         "RNN ai.onnx CPUExecutionProvider",
@@ -2138,6 +2170,10 @@
     [
         "Shape ai.onnx CPUExecutionProvider",
         14989007508280400584
+    ],
+    [
+        "Shape ai.onnx CPUExecutionProvider",
+        9917761852037658112
     ],
     [
         "Shrink ai.onnx CPUExecutionProvider",

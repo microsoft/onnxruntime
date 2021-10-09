@@ -13,6 +13,7 @@
 #include "test/test_environment.h"
 #include "test/framework/test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "asserts.h"
 
 namespace onnxruntime {
 namespace test {
@@ -142,16 +143,14 @@ std::unique_ptr<Model> FunctionTestCase::CreateModel(bool inline_call) {
   onnxruntime::Graph& graph = model->MainGraph();
   auto& call_node = AddCallNodeTo(graph);
 
-  auto status = graph.Resolve();
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  EXPECT_STATUS_OK(graph.Resolve());
 
   if (inline_call) {
-    graph.InlineFunction(call_node);
+    EXPECT_STATUS_OK(graph.InlineFunction(call_node));
 #if 0
     std::cout << graph << std::endl;
 #endif
-    status = graph.Resolve();
-    EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+    EXPECT_STATUS_OK(graph.Resolve());
   }
 
   return model;

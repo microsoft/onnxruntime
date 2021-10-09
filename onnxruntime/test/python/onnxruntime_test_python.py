@@ -5,6 +5,7 @@
 import unittest
 import os
 import numpy as np
+import gc
 
 import onnxruntime as onnxrt
 import threading
@@ -62,6 +63,65 @@ class TestInferenceSession(unittest.TestCase):
             self.assertEqual(['CPUExecutionProvider'], sess.get_providers())
 
     def testSetProvidersWithOptions(self):
+        if 'TensorrtExecutionProvider' in onnxrt.get_available_providers():
+            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+            self.assertIn('TensorrtExecutionProvider', sess.get_providers())
+
+            options = sess.get_provider_options()
+            option = options['TensorrtExecutionProvider']
+            self.assertIn('device_id', option)
+            self.assertIn('trt_max_partition_iterations', option)
+            self.assertIn('trt_min_subgraph_size', option)
+            self.assertIn('trt_max_workspace_size', option)
+            self.assertIn('trt_dump_subgraphs', option)
+            self.assertIn('trt_engine_cache_enable', option)
+            self.assertIn('trt_engine_cache_path', option)
+            self.assertIn('trt_force_sequential_engine_build', option)
+
+            max_partition_iterations = option['trt_max_partition_iterations']
+            new_max_partition_iterations = int(max_partition_iterations) + 1
+            min_subgraph_size = option['trt_min_subgraph_size']
+            new_min_subgraph_size = int(min_subgraph_size) + 1
+            ori_max_workspace_size = option['trt_max_workspace_size']
+            new_max_workspace_size = int(ori_max_workspace_size) // 2
+
+            option = {}
+            option['trt_max_partition_iterations'] = new_max_partition_iterations
+            option['trt_min_subgraph_size'] = new_min_subgraph_size
+            option['trt_max_workspace_size'] = new_max_workspace_size
+            dump_subgraphs = "true"
+            option['trt_dump_subgraphs'] = dump_subgraphs
+            engine_cache_enable = "true"
+            option['trt_engine_cache_enable'] = engine_cache_enable
+            engine_cache_path = './engine_cache'
+            option['trt_engine_cache_path'] = engine_cache_path
+            force_sequential_engine_build = "true"
+            option['trt_force_sequential_engine_build'] = force_sequential_engine_build
+            sess.set_providers(['TensorrtExecutionProvider'], [option])
+
+            options = sess.get_provider_options()
+            option = options['TensorrtExecutionProvider']
+            self.assertEqual(option['trt_max_partition_iterations'], str(new_max_partition_iterations))
+            self.assertEqual(option['trt_min_subgraph_size'], str(new_min_subgraph_size))
+            self.assertEqual(option['trt_max_workspace_size'], str(new_max_workspace_size))
+            self.assertEqual(option['trt_dump_subgraphs'], '1')
+            self.assertEqual(option['trt_engine_cache_enable'], '1')
+            self.assertEqual(option['trt_engine_cache_path'], str(engine_cache_path))
+            self.assertEqual(option['trt_force_sequential_engine_build'], '1')
+
+            # We currently disable following test code since that not all test machines/GPUs have nvidia int8 capability
+
+            '''
+            int8_use_native_calibration_table = "false"
+            option['trt_int8_use_native_calibration_table'] = int8_use_native_calibration_table 
+            int8_enable = "true"
+            option['trt_int8_enable'] = int8_enable
+            calib_table_name = '/home/onnxruntime/table.flatbuffers' # this file is not existed
+            option['trt_int8_calibration_table_name'] = calib_table_name
+            with self.assertRaises(RuntimeError):
+                sess.set_providers(['TensorrtExecutionProvider'], [option])
+            '''
+
         if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
             import sys
             import ctypes
@@ -124,10 +184,12 @@ class TestInferenceSession(unittest.TestCase):
 
                 option['gpu_external_alloc'] = '0'
                 option['gpu_external_free'] = '0'
+                option['gpu_external_empty_cache'] = '0'
                 sess.set_providers(['CUDAExecutionProvider'], [option])
                 options = sess.get_provider_options()
                 self.assertEqual(options['CUDAExecutionProvider']['gpu_external_alloc'], '0')
                 self.assertEqual(options['CUDAExecutionProvider']['gpu_external_free'], '0')
+                self.assertEqual(options['CUDAExecutionProvider']['gpu_external_empty_cache'], '0')
                 #
                 # Note: Tests that throw an exception leave an empty session due to how set_providers currently works,
                 #       so run them last. Each set_providers call will attempt to re-create a session, so it's
@@ -536,10 +598,8 @@ class TestInferenceSession(unittest.TestCase):
         tags = ['pid', 'dur', 'ts', 'ph', 'X', 'name', 'args']
         with open(profile_file) as f:
             lines = f.readlines()
-            lines_len = len(lines)
-            self.assertTrue(lines_len > 8)
             self.assertTrue('[' in lines[0])
-            for i in range(1, lines_len-1):
+            for i in range(1, len(lines)-1):
                 for tag in tags:
                     self.assertTrue(tag in lines[i])
             self.assertTrue(']' in lines[-1])
@@ -812,6 +872,111 @@ class TestInferenceSession(unittest.TestCase):
 
             # The constructed OrtValue should still be valid after being used in a session
             self.assertTrue(np.array_equal(ortvalue2.numpy(), numpy_arr_input))
+            
+    def testSparseTensorCooFormat(self):
+        cpu_device = onnxrt.OrtDevice.make('cpu', 0)
+        shape = [9,9]
+        values = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+        # Linear indices
+        indices = np.array([3, 5, 15], dtype=np.int64)
+        sparse_tensor = onnxrt.SparseTensor.sparse_coo_from_numpy(shape, values, indices, cpu_device)
+        self.assertEqual(sparse_tensor.format(), onnxrt.OrtSparseFormat.ORT_SPARSE_COO)
+        self.assertEqual(sparse_tensor.dense_shape(), shape)
+        self.assertEqual(sparse_tensor.data_type(), "sparse_tensor(float)")
+        self.assertEqual(sparse_tensor.device_name(), 'cpu')
+
+        # Get Data View on a numeric type.
+        values_ret = sparse_tensor.values()
+        self.assertFalse(values_ret.flags.writeable)
+        indices_ret = sparse_tensor.as_coo_view().indices()
+        self.assertFalse(indices_ret.flags.writeable)
+        # Run GC to test that values_ret still exhibits expected data
+        gc.collect()
+        self.assertTrue(np.array_equal(values, values_ret))
+        self.assertTrue(np.array_equal(indices, indices_ret))
+
+        # Test new Ortvalue interfaces
+        ort_value = onnxrt.OrtValue.ort_value_from_sparse_tensor(sparse_tensor)
+        sparse_tensor = ort_value.as_sparse_tensor()
+        values_ret = sparse_tensor.values()
+        self.assertFalse(values_ret.flags.writeable)
+        indices_ret = sparse_tensor.as_coo_view().indices()
+        self.assertFalse(indices_ret.flags.writeable)
+        gc.collect()
+
+        # Test string data on cpu only, need to subst values only
+        str_values = np.array(['xyz', 'yxz', 'zyx'], dtype=str)
+        str_sparse_tensor = onnxrt.SparseTensor.sparse_coo_from_numpy(shape, str_values, indices, cpu_device)
+        self.assertEqual(str_sparse_tensor.format(), onnxrt.OrtSparseFormat.ORT_SPARSE_COO)
+        self.assertEqual(str_sparse_tensor.dense_shape(), shape)
+        self.assertEqual(str_sparse_tensor.data_type(), "sparse_tensor(string)")
+        self.assertEqual(str_sparse_tensor.device_name(), 'cpu')
+
+        # Get string values back
+        str_values_ret = str_sparse_tensor.values()
+        self.assertTrue(np.array_equal(str_values, str_values_ret))
+        # Check indices
+        str_indices_ret = str_sparse_tensor.as_coo_view().indices()
+        gc.collect()
+        self.assertFalse(str_indices_ret.flags.writeable)
+        self.assertTrue(np.array_equal(indices, str_indices_ret))
+
+        cuda_device = onnxrt.OrtDevice.make('cuda', 0)
+        if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
+            # Test to_cuda
+            copy_on_cuda = sparse_tensor.to_cuda(cuda_device)
+            self.assertEqual(copy_on_cuda.dense_shape(), shape)
+            self.assertEqual(copy_on_cuda.data_type(), "sparse_tensor(float)")
+            self.assertEqual(copy_on_cuda.device_name(), 'cuda')
+
+            # Test that gpu copy would fail to copy to cuda
+            with self.assertRaises(RuntimeError):
+                copy_on_cuda.to_cuda(cuda_device)
+            # Test that string tensor copy would fail
+            with self.assertRaises(RuntimeError):
+                str_sparse_tensor.to_cuda(cuda_device)
+        else:
+            # No cuda available
+            with self.assertRaises(RuntimeError):
+                sparse_tensor.to_cuda(cuda_device)
+
+    def testSparseTensorCsrFormat(self):
+        cpu_device = onnxrt.OrtDevice.make('cpu', 0)
+        shape = [9,9]
+        values = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+        inner_indices = np.array([1, 1, 1], dtype=np.int64)
+        outer_indices = np.array([0, 1, 2, 3, 3, 3, 3, 3, 3, 3], dtype=np.int64)
+        sparse_tensor = onnxrt.SparseTensor.sparse_csr_from_numpy(shape, values, inner_indices, outer_indices, cpu_device)
+        self.assertEqual(sparse_tensor.format(), onnxrt.OrtSparseFormat.ORT_SPARSE_CSRC)
+        self.assertEqual(sparse_tensor.dense_shape(), shape)
+        self.assertEqual(sparse_tensor.data_type(), "sparse_tensor(float)")
+        self.assertEqual(sparse_tensor.device_name(), 'cpu')
+
+        # Test CSR(C) indices
+        inner_indices_ret = sparse_tensor.as_csrc_view().inner()
+        outer_indices_ret = sparse_tensor.as_csrc_view().outer()
+        self.assertFalse(inner_indices_ret.flags.writeable)
+        self.assertFalse(outer_indices_ret.flags.writeable)
+        gc.collect()
+        self.assertTrue(np.array_equal(inner_indices, inner_indices_ret))
+        self.assertTrue(np.array_equal(outer_indices, outer_indices_ret))
+
+        # Test with strings
+        str_values = np.array(['xyz', 'yxz', 'zyx'], dtype=str)
+        str_sparse_tensor = onnxrt.SparseTensor.sparse_csr_from_numpy(shape, str_values, inner_indices, outer_indices, cpu_device)
+        self.assertEqual(str_sparse_tensor.format(), onnxrt.OrtSparseFormat.ORT_SPARSE_CSRC)
+        self.assertEqual(str_sparse_tensor.dense_shape(), shape)
+        self.assertEqual(str_sparse_tensor.data_type(), "sparse_tensor(string)")
+        self.assertEqual(str_sparse_tensor.device_name(), 'cpu')
+
+        if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
+            cuda_device = onnxrt.OrtDevice.make('cuda', 0)
+            cuda_sparse_tensor = sparse_tensor.to_cuda(cuda_device)
+            self.assertEqual(cuda_sparse_tensor.device_name(), 'cuda')
+            self.assertEqual(cuda_sparse_tensor.format(), onnxrt.OrtSparseFormat.ORT_SPARSE_CSRC)
+            self.assertEqual(cuda_sparse_tensor.dense_shape(), shape)
+            self.assertEqual(cuda_sparse_tensor.data_type(), "sparse_tensor(float)")
+
 
     def testRunModelWithCudaCopyStream(self):
         available_providers = onnxrt.get_available_providers()
@@ -902,22 +1067,29 @@ class TestInferenceSession(unittest.TestCase):
         check_failure([("a", {1: 2})], [{3: 4}])
 
     def testRegisterCustomEPsLibrary(self):
-        # exclude for macos and linux
-        if not sys.platform.startswith("win"):
+        from onnxruntime.capi import _pybind_state as C
+        available_eps = C.get_available_providers()
+        #skip amd gpu build
+        if 'kRocmExecutionProvider' in available_eps:
             return
+        if sys.platform.startswith("win"):
+            shared_library = 'test_execution_provider.dll'
+
+        elif sys.platform.startswith("darwin"):
+            # exclude for macos
+            return
+
+        else:
+            shared_library = './libtest_execution_provider.so'
         
-        shared_library = 'test_execution_provider.dll'
         if not os.path.exists(shared_library):
             raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
 
-        
         this = os.path.dirname(__file__)
         custom_op_model = os.path.join(this, "testdata", "custom_execution_provider_library", "test_model.onnx")
         if not os.path.exists(custom_op_model):
             raise FileNotFoundError("Unable to find '{0}'".format(custom_op_model))
 
-
-        from onnxruntime.capi import _pybind_state as C
         session_options = C.get_default_session_options()
         sess = C.InferenceSession(session_options, custom_op_model, True, True)
         sess.initialize_session(['my_ep'], 

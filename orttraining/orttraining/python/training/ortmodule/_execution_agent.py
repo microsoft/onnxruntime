@@ -77,15 +77,13 @@ class TrainingAgent(object):
     This is the main class used to run an ORTModule model training.
     """
 
-    def __init__(self, path_or_bytes, fw_feed_names, fw_fetches_names, fw_outputs_device_info,
-                 bw_feed_names, bw_fetches_names, bw_outputs_device_info, session_options=None,
+    def __init__(self, path_or_bytes, fw_feed_names, fw_outputs_device_info,
+                 bw_fetches_names, bw_outputs_device_info, session_options=None,
                  providers=None, provider_options=None):
         """
         :param path_or_bytes: filename or serialized ONNX or ORT format model in a byte string
         :param fw_feed_names: Feed names for foward pass.
-        :param fw_fetches_names: Fetch names for forward pass.
         :param fw_outputs_device_info: Device info for fetches in forward pass.
-        :param bw_feed_names: Feed names for backward pass.
         :param bw_fetches_names: Fetch names for backward pass.
         :param bw_outputs_device_info: Device info for fetches in backward pass.
         :param sess_options: session options
@@ -115,17 +113,18 @@ class TrainingAgent(object):
         self._inference_session = onnxruntime.InferenceSession(path_or_bytes, session_options,
                                                                providers, provider_options)
 
-        self._training_agent = C_TrainingAgent(self._inference_session._sess, fw_feed_names, fw_fetches_names,
-                                               fw_outputs_device_info, bw_feed_names, bw_fetches_names, bw_outputs_device_info)
+        self._training_agent = C_TrainingAgent(self._inference_session._sess, fw_feed_names, fw_outputs_device_info,
+                                               bw_fetches_names, bw_outputs_device_info)
 
-    def run_forward(self, feeds, fetches, state):
+    def run_forward(self, feeds, fetches, state, cache=None):
         """
          Compute the forward subgraph for given feeds and fetches.
          :param feeds: Inputs to the graph run.
          :param fetches: Outputs of the graph run.
          :param state: State of the graph that is used for executing partial graph runs.
+         :param cache: Cache to store stashed OrtValues for intermediate activations.
         """
-        self._training_agent.run_forward(feeds, fetches, state)
+        self._training_agent.run_forward(feeds, fetches, state, cache)
 
     def run_backward(self, feeds, fetches, state):
         """

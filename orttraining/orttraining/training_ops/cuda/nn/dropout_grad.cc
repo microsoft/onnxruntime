@@ -9,17 +9,17 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_GRADIENT_KERNEL(OpName)                                 \
-  ONNX_OPERATOR_KERNEL_EX(                                               \
-      OpName,                                                            \
-      kMSDomain,                                                         \
-      1,                                                                 \
-      kCudaExecutionProvider,                                            \
-      KernelDefBuilder()                                                 \
-          .TypeConstraint("T", ALL_IEEE_FLOAT_TENSOR_TYPES)              \
-          .TypeConstraint("T1", ALL_IEEE_FLOAT_TENSOR_TYPES)             \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())     \
-          .InputMemoryType<OrtMemTypeCPUInput>(2),                       \
+#define REGISTER_GRADIENT_KERNEL(OpName)                             \
+  ONNX_OPERATOR_KERNEL_EX(                                           \
+      OpName,                                                        \
+      kMSDomain,                                                     \
+      1,                                                             \
+      kCudaExecutionProvider,                                        \
+      (*KernelDefBuilder::Create())                                  \
+          .TypeConstraint("T", ALL_IEEE_FLOAT_TENSOR_TYPES)          \
+          .TypeConstraint("T1", ALL_IEEE_FLOAT_TENSOR_TYPES)         \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()) \
+          .InputMemoryType(OrtMemTypeCPUInput, 2),                   \
       DropoutGrad);
 
 REGISTER_GRADIENT_KERNEL(DropoutGrad)

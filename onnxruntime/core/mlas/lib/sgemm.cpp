@@ -1061,10 +1061,8 @@ Return Value:
 
         size_t RowsHandled;
 
-#if defined(MLAS_TARGET_AMD64_IX86)
+#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER)
         RowsHandled = MlasPlatform.GemmFloatKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
-#elif defined(MLAS_TARGET_POWER)
-        RowsHandled = MlasSgemmKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
 #else
         if (ZeroMode) {
             RowsHandled = MlasSgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
@@ -1175,7 +1173,7 @@ Return Value:
             return;
         }
 
-#elif (defined(MLAS_TARGET_ARM64) && !defined(_WIN32)) || defined(MLAS_TARGET_WASM)
+#elif defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_WASM)
 
         if (TransB == CblasNoTrans) {
             MlasGemvFloatKernel(A, B, C, K, N, ldb, (beta == 0.0f));
@@ -1623,8 +1621,8 @@ MlasGemmBatch(
         ThreadCountN = 1;
     }
 
-    MlasTrySimpleParallel(ThreadPool, 
-        ThreadsPerGemm * static_cast<ptrdiff_t>(BatchSize), 
+    MlasTrySimpleParallel(ThreadPool,
+        ThreadsPerGemm * static_cast<ptrdiff_t>(BatchSize),
         [=](ptrdiff_t tid)
     {
         ptrdiff_t GemmIdx = tid / ThreadsPerGemm;

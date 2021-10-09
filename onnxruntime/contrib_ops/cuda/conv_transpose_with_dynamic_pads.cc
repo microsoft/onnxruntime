@@ -12,7 +12,9 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     1,
     float,
     kCudaExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).InputMemoryType<OrtMemTypeCPUInput>(2),
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+        .InputMemoryType(OrtMemTypeCPUInput, 2),
     ConvTransposeWithDynamicPads<float>);
 }  // namespace cuda
 }  // namespace contrib

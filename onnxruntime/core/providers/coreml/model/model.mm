@@ -73,8 +73,10 @@
   if (featureNames_ == nil) {
     NSMutableArray* names = [[NSMutableArray alloc] init];
     for (const auto& input : *inputs_) {
-      [names addObject:[NSString stringWithCString:input.first.c_str()
-                                          encoding:[NSString defaultCStringEncoding]]];
+      NSString* inputName = [NSString stringWithCString:input.first.c_str()
+                                               encoding:[NSString defaultCStringEncoding]];
+      NSAssert(inputName != nil, @"inputName must not be nil");
+      [names addObject:inputName];
     }
 
     featureNames_ = [NSSet setWithArray:names];
@@ -121,6 +123,7 @@
       return nil;
     }
 
+    NSAssert(mlArray != nil, @"mlArray must not be nil");
     auto* mlFeatureValue = [MLFeatureValue featureValueWithMultiArray:mlArray];
     return mlFeatureValue;
   }
@@ -172,6 +175,7 @@
 - (onnxruntime::common::Status)loadModel {
   NSError* error = nil;
   NSURL* modelUrl = [NSURL URLWithString:coreml_model_path_];
+  NSAssert(modelUrl != nil, @"modelUrl must not be nil");
   NSURL* compileUrl = [MLModel compileModelAtURL:modelUrl error:&error];
 
   if (error != nil) {
@@ -219,10 +223,10 @@
                            [[error localizedDescription] cStringUsingEncoding:NSUTF8StringEncoding]);
   }
 
-  //   NSSet<NSString*>* output_feature_names = [output_feature featureNames];
   for (auto& output : outputs) {
     NSString* output_name = [NSString stringWithCString:output.first.c_str()
                                                encoding:[NSString defaultCStringEncoding]];
+    NSAssert(output_name != nil, @"output_name must not be nil");
     MLFeatureValue* output_value =
         [output_feature featureValueForName:output_name];
 
@@ -238,6 +242,8 @@
                              [output_name cStringUsingEncoding:NSUTF8StringEncoding]);
     }
 
+    auto model_output_type = data.dataType;
+
     auto& output_tensor = output.second;
     size_t num_elements =
         accumulate(output_tensor.tensor_info.shape.begin(),
@@ -245,14 +251,37 @@
                    1,
                    std::multiplies<int64_t>());
 
-    if (output_tensor.tensor_info.data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "Input data type is not float, actual type: ",
-                             output_tensor.tensor_info.data_type);
+    const auto type = output_tensor.tensor_info.data_type;
+    switch (type) {
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
+        const auto output_data_byte_size = num_elements * sizeof(float);
+        memcpy(output_tensor.buffer, model_output_data, output_data_byte_size);
+        break;
+      }
+      case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
+        const auto output_data_byte_size = num_elements * sizeof(int32_t);
+        memcpy(output_tensor.buffer, model_output_data, output_data_byte_size);
+        break;
+      }
+      // For this case, since Coreml Spec only uses int32 for model output while onnx provides
+      // int64 for model output data type. We are doing a type casting (int32 -> int64) here 
+      // when copying the model to ORT
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+        if (model_output_type == MLMultiArrayDataTypeInt32) {
+          int32_t* model_output_data_prime = static_cast<int32_t*>(model_output_data);
+          int64_t* output_tensor_buffer_prime = static_cast<int64_t*>(output_tensor.buffer);
+          for (size_t i = 0; i < num_elements; i++) {
+            output_tensor_buffer_prime[i] = model_output_data_prime[i];
+          }
+        }
+        ORT_RETURN_IF_NOT(model_output_type == MLMultiArrayDataTypeInt32,
+                          "Coreml model_output_type is not MLMultiArrayDataTypeInt32 for the case");
+        break;
+      default:
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Output data type is not supported, actual type: ",
+                               type);
     }
-
-    size_t output_data_byte_size = num_elements * sizeof(float);
-    memcpy(output_tensor.buffer, model_output_data, output_data_byte_size);
   }
 
   return onnxruntime::common::Status::OK();
@@ -327,6 +356,10 @@ Status Model::Predict(const std::unordered_map<std::string, OnnxTensorData>& inp
 
 bool Model::IsScalarOutput(const std::string& output_name) const {
   return Contains(scalar_outputs_, output_name);
+}
+
+bool Model::IsInt64Output(const std::string& output_name) const {
+  return Contains(int64_outputs_, output_name);
 }
 
 const OnnxTensorInfo& Model::GetInputOutputInfo(const std::string& name) const {

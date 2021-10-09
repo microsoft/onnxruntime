@@ -11,7 +11,6 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/common/logging/*.cc"
     "${ONNXRUNTIME_ROOT}/core/common/logging/sinks/*.h"
     "${ONNXRUNTIME_ROOT}/core/common/logging/sinks/*.cc"
-    "${ONNXRUNTIME_ROOT}/core/inc/*.h"
     "${ONNXRUNTIME_ROOT}/core/platform/env.h"
     "${ONNXRUNTIME_ROOT}/core/platform/env.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/env_time.h"
@@ -21,6 +20,10 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/platform/scoped_resource.h"
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry.h"
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry.cc"
+    "${ONNXRUNTIME_ROOT}/core/platform/logging/make_platform_default_log_sink.h"
+    "${ONNXRUNTIME_ROOT}/core/platform/logging/make_platform_default_log_sink.cc"
+    "$(ONNXRUNTIME_ROOT}/core/quantization/*.h"
+    "$(ONNXRUNTIME_ROOT}/core/quantization/*.cc"
 )
 
 if(WIN32)
@@ -53,24 +56,13 @@ else()
             "${ONNXRUNTIME_ROOT}/core/platform/android/logging/*.cc"
         )
     endif()
-endif()
 
-if(CMAKE_GENERATOR_PLATFORM)
-    # Multi-platform generator
-    set(onnxruntime_target_platform ${CMAKE_GENERATOR_PLATFORM})
-else()
-    set(onnxruntime_target_platform ${CMAKE_SYSTEM_PROCESSOR})
-endif()
-if(onnxruntime_target_platform STREQUAL "ARM64")
-    set(onnxruntime_target_platform "ARM64")
-elseif(onnxruntime_target_platform STREQUAL "ARM64EC")
-    set(onnxruntime_target_platform "ARM64EC")
-elseif(onnxruntime_target_platform STREQUAL "ARM" OR CMAKE_GENERATOR MATCHES "ARM")
-    set(onnxruntime_target_platform "ARM")
-elseif(onnxruntime_target_platform STREQUAL "x64" OR onnxruntime_target_platform STREQUAL "x86_64" OR onnxruntime_target_platform STREQUAL "AMD64" OR CMAKE_GENERATOR MATCHES "Win64")
-    set(onnxruntime_target_platform "x64")
-elseif(onnxruntime_target_platform STREQUAL "Win32" OR onnxruntime_target_platform STREQUAL "x86" OR onnxruntime_target_platform STREQUAL "i386" OR onnxruntime_target_platform STREQUAL "i686")
-    set(onnxruntime_target_platform "x86")
+    if (APPLE)
+        list(APPEND onnxruntime_common_src_patterns
+            "${ONNXRUNTIME_ROOT}/core/platform/apple/logging/*.h"
+            "${ONNXRUNTIME_ROOT}/core/platform/apple/logging/*.mm"
+            )
+    endif()
 endif()
 
 if(onnxruntime_target_platform STREQUAL "ARM64EC")
@@ -89,12 +81,6 @@ file(GLOB onnxruntime_common_src CONFIGURE_DEPENDS
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_common_src})
 
 onnxruntime_add_static_library(onnxruntime_common ${onnxruntime_common_src})
-
-if (onnxruntime_USE_CUDA)
-  target_include_directories(onnxruntime_common PUBLIC ${onnxruntime_CUDA_HOME}/include ${onnxruntime_CUDA_HOME}/extras/CUPTI/include)
-  target_link_directories(onnxruntime_common PUBLIC ${onnxruntime_CUDA_HOME}/extras/CUPTI/lib64)
-  target_link_libraries(onnxruntime_common cupti)
-endif()
 
 if (onnxruntime_USE_TELEMETRY)
   set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
@@ -164,4 +150,70 @@ endif()
 # e.g. Raspberry Pi requires this
 if (onnxruntime_LINK_LIBATOMIC)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES atomic)
+endif()
+
+if(APPLE)
+  target_link_libraries(onnxruntime_common "-framework Foundation")
+endif()
+
+
+if(MSVC)
+  if(onnxruntime_target_platform STREQUAL "ARM64")
+    set(ARM64 TRUE)
+  elseif (onnxruntime_target_platform STREQUAL "ARM")
+    set(ARM TRUE)
+  elseif(onnxruntime_target_platform STREQUAL "x64")
+    set(X64 TRUE)
+  elseif(onnxruntime_target_platform STREQUAL "x86")
+    set(X86 TRUE)
+  endif()
+elseif(APPLE)
+  if(CMAKE_OSX_ARCHITECTURES_LEN LESS_EQUAL 1)
+    set(X64 TRUE)
+  endif()
+elseif(NOT onnxruntime_BUILD_WEBASSEMBLY)
+  if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+    if (CMAKE_ANDROID_ARCH_ABI STREQUAL "armeabi-v7a")
+      set(ARM TRUE)
+    elseif (CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
+      set(ARM64 TRUE)
+    elseif (CMAKE_ANDROID_ARCH_ABI STREQUAL "x86_64")
+      set(X86_64 TRUE)
+    elseif (CMAKE_ANDROID_ARCH_ABI STREQUAL "x86")
+      set(X86 TRUE)
+    endif()
+  else()
+    execute_process(
+      COMMAND ${CMAKE_C_COMPILER} -dumpmachine
+      OUTPUT_VARIABLE dumpmachine_output
+      ERROR_QUIET
+    )
+    if(dumpmachine_output MATCHES "^arm64.*")
+      set(ARM64 TRUE)
+    elseif(dumpmachine_output MATCHES "^arm.*")
+      set(ARM TRUE)
+    elseif(dumpmachine_output MATCHES "^aarch64.*")
+      set(ARM64 TRUE)
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
+      set(X86 TRUE)
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
+      set(X86_64 TRUE)
+    endif()
+  endif()
+endif()
+
+
+if (ARM64 OR ARM OR X86 OR X64 OR X86_64)
+  if(WINDOWS_STORE OR (WIN32 AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib) OR ((ARM64 OR ARM) AND MSVC))
+    # msvc compiler report syntax error with cpuinfo arm source files
+    # and cpuinfo does not have code for getting arm uarch info under windows
+  else()
+    # Link cpuinfo
+    # Using it mainly in ARM with Android.
+    # Its functionality in detecting x86 cpu features are lacking, so is support for Windows.
+
+    target_include_directories(onnxruntime_common PRIVATE ${PYTORCH_CPUINFO_INCLUDE_DIR})
+    target_link_libraries(onnxruntime_common cpuinfo)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo clog)
+  endif()
 endif()

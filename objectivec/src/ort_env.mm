@@ -5,7 +5,7 @@
 
 #include <optional>
 
-#include "core/session/onnxruntime_cxx_api.h"
+#import "src/cxx_api.h"
 
 #import "src/error_utils.h"
 #import "src/ort_enums_internal.h"
@@ -18,17 +18,16 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (nullable instancetype)initWithLoggingLevel:(ORTLoggingLevel)loggingLevel
                                         error:(NSError**)error {
-  self = [super init];
-  if (self) {
-    try {
-      const auto CAPILoggingLevel = PublicToCAPILoggingLevel(loggingLevel);
-      _env = Ort::Env{CAPILoggingLevel};
-    } catch (const Ort::Exception& e) {
-      ORTSaveExceptionToError(e, error);
-      self = nil;
-    }
+  if ((self = [super init]) == nil) {
+    return nil;
   }
-  return self;
+
+  try {
+    const auto CAPILoggingLevel = PublicToCAPILoggingLevel(loggingLevel);
+    _env = Ort::Env{CAPILoggingLevel};
+    return self;
+  }
+  ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
 }
 
 - (Ort::Env&)CXXAPIOrtEnv {

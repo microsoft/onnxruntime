@@ -7,13 +7,40 @@
 //       switching providers to be runnable as shared libraries. The interfaces will become more tightly integrated into the core code.
 
 #pragma once
+// ROCM uses the CUDA provider's files, which are shared provider files. This 'fakes them out' and makes them be non shared provider files if they're being built as part of ROCM.
+#ifdef USE_ROCM
+#include "core/providers/common.h"
+#include "core/providers/cpu/tensor/onehot.h"
+#include "core/providers/cpu/tensor/gather_elements.h"
+
+namespace onnxruntime {
+// The ROCM version of this just deletes on destruction, but is drop in compatible with the regular DeleteOnUnloadPtr
+template <typename T>
+struct DeleteOnUnloadPtr {
+  DeleteOnUnloadPtr(T* p) : p_(p) {}
+  ~DeleteOnUnloadPtr() { delete p_; }
+
+  T& operator*() { return *p_; }
+  const T& operator*() const { return *p_; }
+
+  operator T*() {
+    return p_;
+  }
+
+ private:
+  T* p_;
+};
+}  // namespace onnxruntime
+#else
 #define SHARED_PROVIDER 1
 
 #include <vector>
 #include <string>
 #include <map>
+#include <gsl/gsl>
 #include <unordered_map>
-#include "onnx/common/stl_backports.h"
+#include <unordered_set>
+#include <stddef.h>
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
 #include "core/common/type_list.h"
@@ -91,12 +118,14 @@ struct AttributeProto;
 struct GraphProto;
 struct ModelProto;
 struct NodeProto;
+struct SparseTensorProto;
 struct TensorProto;
 struct TensorProtos;  // RepeatedPtrField
 struct TensorShapeProto_Dimension;
 struct TensorShapeProto_Dimensions;  // RepeatedPtrField
 struct TensorShapeProto;
 struct TypeProto_Tensor;
+struct TypeProto_SparseTensor;
 struct TypeProto;
 struct ValueInfoProto;
 struct ValueInfoProtos;  // RepeatedPtrField
@@ -111,13 +140,6 @@ enum class DataType {
 };
 
 }  // namespace logging
-
-enum class AutoPadType {
-  NOTSET = 0,
-  VALID = 1,
-  SAME_UPPER = 2,
-  SAME_LOWER = 3,
-};
 
 // OnnxRuntime Types (these are the internal types)
 struct CPUIDInfo;
@@ -141,21 +163,63 @@ struct Path;
 struct Node;
 struct NodeArg;
 struct NodeAttributes;
+class OpKernel;
 struct OpKernelContext;
 struct OpKernelInfo;
 struct PrimitiveDataTypeBase;
 struct Tensor;
+struct SparseTensor;
+struct TensorSeq;
+
+class If;
+class Loop;
+class ConcatBase;
+class Einsum;
+class GatherBase;
+class Size;
+class SliceBase;
+class SplitBase;
+class TensorShape;
+struct Prepare;
+struct PrepareContext;
+enum class Mode : int;
+struct EinsumComputePreprocessor;
+template <typename T>
+struct EinsumTypedComputeProcessor;
+
+namespace contrib {
+class ATenOp;
+class Group;
+class PassThrough;
+class YieldOp;
+}  // namespace contrib
+
+class UnsqueezeBase;
+template <int OpSet>
+class Scan;
 
 class DataTypeImpl;
 using MLDataType = const DataTypeImpl*;
+// be used with class MLValue
+using DeleteFunc = void (*)(void*);
 using NodeArgInfo = ONNX_NAMESPACE::ValueInfoProto;
+
+using NameMLValMap = std::unordered_map<std::string, OrtValue>;
 }  // namespace onnxruntime
 
+#include "core/platform/threadpool.h"
+#include "core/providers/cpu/math/einsum_utils/einsum_compute_preprocessor.h"
+#include "core/providers/cpu/cpu_provider_shared.h"
 #include "core/framework/data_transfer.h"
 #include "core/framework/execution_provider.h"
 #include "provider_interfaces.h"
+#include "provider_wrappedtypes.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/data_types_internal.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/providers/common.h"
+#include "core/providers/op_kernel_type_control_utils.h"
+#include "core/util/math.h"
 
 namespace onnxruntime {
 
@@ -172,6 +236,9 @@ struct DeleteOnUnloadPtr {
     });
   }
 
+  T& operator*() { return *p_; }
+  const T& operator*() const { return *p_; }
+
   operator T*() {
     return p_;
   }
@@ -183,19 +250,15 @@ struct DeleteOnUnloadPtr {
 constexpr const char* kOnnxDomain = "";
 constexpr const char* kMSDomain = "com.microsoft";
 constexpr const char* kNGraphDomain = "com.intel.ai";
+constexpr const char* kCudaExecutionProvider = "CUDAExecutionProvider";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
 constexpr const char* kOpenVINOExecutionProvider = "OpenVINOExecutionProvider";
 constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
 
-enum CUDAStreamType : int {
-  kCudaStreamDefault = 0,
-  kCudaStreamCopyIn,
-  kCudaStreamCopyOut,
-  kTotalCudaStreams,
-};
-
 template <typename T>
-using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
+using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)> >;
+
+inline OrtStatus* CreateStatus(OrtErrorCode code, _In_ const char* msg) noexcept { return g_host->CreateStatus(code, msg); }
 
 std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info);
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name);
@@ -203,12 +266,12 @@ std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const c
 
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream);
 
+std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
+                                                   const std::string& provider_type,
+                                                   const std::vector<const KernelRegistry*>& kernel_registries,
+                                                   const std::vector<NodeIndex>& tentative_nodes);
+
 std::string GetEnvironmentVar(const std::string& var_name);
-
-inline AutoPadType StringToAutoPadType(const std::string& str) { return g_host->StringToAutoPadType(str); }
-
-void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator);
-AllocatorPtr AllocatorManager__GetAllocator(AllocatorManager* p, int id, OrtMemType mem_type);
 
 namespace logging {
 
@@ -218,16 +281,40 @@ struct Category {
 
 }  // namespace logging
 
-namespace math {
+namespace utils {
 
-// Rounds a up to the next highest multiple of b, which is power-of-2. User must be careful
-// to ensure that there is no overflow or underflow in the calculation
-// of divUp.
-template <typename T, T b>
-constexpr T roundUpPow2(T a) {
-  return (a + (b - 1)) & (~(b - 1));
-}
-}  // namespace math
+template <typename T>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<bool>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<std::string>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<float>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<double>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<MLFloat16>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<BFloat16>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<int8_t>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint8_t>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<int16_t>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint16_t>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<int32_t>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint32_t>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<int64_t>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64; }
+
+}  // namespace utils
 
 }  // namespace onnxruntime
 
@@ -244,3 +331,5 @@ constexpr T roundUpPow2(T a) {
 
 #define LOGS_DEFAULT(severity) \
   LOGS_DEFAULT_CATEGORY(severity, ::onnxruntime::logging::Category::onnxruntime)
+
+#endif

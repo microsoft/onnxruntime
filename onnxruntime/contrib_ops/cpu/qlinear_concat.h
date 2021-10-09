@@ -19,6 +19,7 @@ class QLinearConcat final : public OpKernel, public ConcatBase {
 
  private:
   std::vector<std::vector<uint8_t>> fixed_lookup_tables_;
+  std::vector<int> fixed_table_attrs_; // is_static or not, is_copy or not
 };
 
 }  // namespace contrib

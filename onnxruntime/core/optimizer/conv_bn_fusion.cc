@@ -151,7 +151,7 @@ bool ConvBNFusion::SatisfyCondition(const Graph& graph, const Node& node, const 
   }
 
   const auto& next_node = *node.OutputNodesBegin();
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "BatchNormalization", {7, 9}) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "BatchNormalization", {7, 9, 14}) ||
       next_node.GetInputEdgesCount() != 1 ||
       // Make sure the two nodes do not span execution providers.
       next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
@@ -177,7 +177,7 @@ bool ConvBNFusion::SatisfyCondition(const Graph& graph, const Node& node, const 
     }
   }
 
-  if (!graph.GetNodeOutputsInGraphOutputs(node).empty()) {
+  if (graph.NodeProducesGraphOutput(node)) {
     return false;
   }
 

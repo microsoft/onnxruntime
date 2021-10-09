@@ -7,14 +7,14 @@
 
 namespace onnxruntime {
 namespace cuda {
-#define REGISTER_KERNEL_TYPED(Class, T, domain, version)                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      Class,                                                                    \
-      domain,                                                                   \
-      version,                                                                  \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define REGISTER_KERNEL_TYPED(Class, T, domain, version)                                   \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      Class,                                                                               \
+      domain,                                                                              \
+      version,                                                                             \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Class<T>);
 
 #define REGISTER_KERNEL_TYPED_TWO_TYPES(Class, T, Tin, domain, version) \
@@ -24,7 +24,7 @@ namespace cuda {
       version,                                                          \
       T, Tin,                                                           \
       kCudaExecutionProvider,                                           \
-      KernelDefBuilder()                                                \
+      (*KernelDefBuilder::Create())                                     \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
           .TypeConstraint("Tin", DataTypeImpl::GetTensorType<Tin>()),   \
       Class<T, Tin>);

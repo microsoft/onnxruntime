@@ -6,7 +6,9 @@
 #include <string>
 #include <vector>
 
-#include "core/framework/ml_value.h"
+#ifndef SHARED_PROVIDER
+#include "core/framework/ort_value.h"
+#endif
 
 namespace onnxruntime {
 class ExecutionProviders;

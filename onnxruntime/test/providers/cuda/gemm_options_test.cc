@@ -1,13 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef USE_CUDA
+#if 0  // TODO: Can't call these directly from external code as Cuda is now a shared library
+//#ifdef USE_CUDA
 
 #include "gtest/gtest.h"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
 namespace cuda {
+
+// Initialize the singleton instance
+HalfGemmOptions HalfGemmOptions::instance;
+
 namespace test {
 
 TEST(CudaGemmOptionsTest, DefaultOptions) {

@@ -81,7 +81,7 @@ struct NcclTaskGroup final {
 // Below is an example of planning tasks. Notice that the communication operations in the same group are
 // called in random order, so those operations cannot have mutual dependency.
 //
-//   auto& nccl_service = cuda::NcclService::GetInstance();
+//   auto& nccl_service = cuda::INcclService::GetInstance();
 //
 //   nccl_service.PlanStart();         // Signal the begin of communication planning.
 //
@@ -96,7 +96,43 @@ struct NcclTaskGroup final {
 //   nccl_service.PlanEndNewGroup();   // Mark the end of the second time slot.
 //
 //   nccl_service.EndPlan();           // Signal the end of communication planning.
-class NcclService final {
+class INcclService {
+ public:
+  static INcclService& GetInstance();
+
+  // Planning APIs. They are not thread-safe.
+
+  // Mark the start of entire plan.
+  virtual void PlanStart() = 0;
+  // Mark the end of entire plan.
+  virtual void PlanEnd() = 0;
+  // Mark the begin of a new communication group. It uses the latest time slot.
+  // Operations in a group can happen in random order.
+  virtual void PlanNewGroupStart() = 0;
+  // Mark the end of the current communication group.
+  virtual void PlanNewGroupEnd() = 0;
+  // Add Send to the current communication group.
+  virtual void PlanSend(const int dst) = 0;
+  // Add Recv to the current communication group.
+  virtual void PlanRecv(const int src) = 0;
+
+  // Runtime APIs. They are thread-safe.
+
+  // Launch NCCL service. It's an infinite loop which repeatedly calls corresponding NCCL
+  // when planned operators (e.g., Send and Recv) arrive.
+  virtual void Launch() = 0;
+  // Submit a Send request with needed information such as tensor's address and number bytes to send.
+  virtual void SubmitSendAndWait(void* buffer, size_t count, int peer) = 0;
+  // Submit a Recv request with needed information such as tensor's address and number bytes to recv.
+  virtual void SubmitRecvAndWait(void* buffer, size_t count, int peer) = 0;
+  // Reset communication plan's status so that we can reuse the same communication plan for multiple
+  // model update steps.
+  virtual void Reset() = 0;
+  // Terminate NCCL service.
+  virtual void Terminate() = 0;
+};
+
+class NcclService final : public INcclService {
  public:
   // Get the singleton of this class.
   static NcclService& GetInstance() {
@@ -107,33 +143,33 @@ class NcclService final {
   // Planning APIs. They are not thread-safe.
 
   // Mark the start of entire plan.
-  void PlanStart();
+  void PlanStart() override;
   // Mark the end of entire plan.
-  void PlanEnd();
+  void PlanEnd() override;
   // Mark the begin of a new communication group. It uses the latest time slot.
   // Operations in a group can happen in random order.
-  void PlanNewGroupStart();
+  void PlanNewGroupStart() override;
   // Mark the end of the current communication group.
-  void PlanNewGroupEnd();
+  void PlanNewGroupEnd() override;
   // Add Send to the current communication group.
-  void PlanSend(const int dst);
+  void PlanSend(const int dst) override;
   // Add Recv to the current communication group.
-  void PlanRecv(const int src);
+  void PlanRecv(const int src) override;
 
   // Runtime APIs. They are thread-safe.
 
   // Launch NCCL service. It's an infinite loop which repeatedly calls corresponding NCCL
   // when planned operators (e.g., Send and Recv) arrive.
-  void Launch();
+  void Launch() override;
   // Submit a Send request with needed information such as tensor's address and number bytes to send.
-  void SubmitSendAndWait(void* buffer, size_t count, int peer);
+  void SubmitSendAndWait(void* buffer, size_t count, int peer) override;
   // Submit a Recv request with needed information such as tensor's address and number bytes to recv.
-  void SubmitRecvAndWait(void* buffer, size_t count, int peer);
+  void SubmitRecvAndWait(void* buffer, size_t count, int peer) override;
   // Reset communication plan's status so that we can reuse the same communication plan for multiple
   // model update steps.
-  void Reset();
+  void Reset() override;
   // Terminate NCCL service.
-  void Terminate();
+  void Terminate() override;
 
   // Print debug string.
   friend std::ostream& operator<<(std::ostream& stream, const NcclService& service);

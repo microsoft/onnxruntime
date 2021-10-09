@@ -78,7 +78,7 @@ class TestOpResize(unittest.TestCase):
         graph = helper.make_graph([conv_node, identity_node, resize_node], 'TestOpQuantizerResize_test_model',
                                   [input_tensor], [identity_out, output_tensor], initializer=initializers)
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
-        model.ir_version = onnx.IR_VERSION
+        model.ir_version = 7 # use stable onnx ir version
         onnx.save(model, output_model_path)
 
     def test_quantize_resize(self):
@@ -109,7 +109,7 @@ class TestOpResize(unittest.TestCase):
         # Verify QDQ mode
         data_reader.rewind()
         quantize_static(model_fp32_path, model_uint8_qdq_path, data_reader, quant_format=QuantFormat.QDQ)
-        qdqnode_counts = {'Conv': 1, 'QuantizeLinear': 2, 'DequantizeLinear': 3, 'Resize': 1}
+        qdqnode_counts = {'Conv': 1, 'QuantizeLinear': 3, 'DequantizeLinear': 4, 'Resize': 1}
         check_op_type_count(self, model_uint8_qdq_path, **qdqnode_counts)
         data_reader.rewind()
         check_model_correctness(self, model_fp32_path, model_uint8_qdq_path, data_reader.get_next())

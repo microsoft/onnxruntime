@@ -14,6 +14,7 @@
 #pragma GCC diagnostic ignored "-Wignored-attributes"
 #endif
 #pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wunused-result"
 #ifdef HAS_DEPRECATED_COPY
 #pragma GCC diagnostic ignored "-Wdeprecated-copy"
 #endif
@@ -27,9 +28,6 @@
 #pragma warning(disable : 4554)
 #pragma warning(disable : 4245)
 #pragma warning(disable : 4127)
-#pragma warning(disable : 4805)
-#pragma warning(disable : 6313)
-#pragma warning(disable : 6294)
 #endif
 
 #include "unsupported/Eigen/CXX11/Tensor"

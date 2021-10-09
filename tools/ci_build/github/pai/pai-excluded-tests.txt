@@ -24,8 +24,6 @@ ReductionOpTest.ReduceLogSumExp_do_not_keepdims_2_double
 ReductionOpTest.ReduceLogSumExp_keepdims_double
 ReductionOpTest.ReduceLogSumExp_double
 ReductionOpTest.ReduceMax_double 
-ReductionOpTest.ReduceMax_int32 
-ReductionOpTest.ReduceMax_int8 
 ReductionOpTest.ReduceMean_default_axes_keepdims_double
 ReductionOpTest.ReduceMean_default_axes_do_not_keep_dims_double
 ReductionOpTest.ReduceMean_do_not_keepdims_double
@@ -34,8 +32,6 @@ ReductionOpTest.ReduceMean_keepdims_double
 ReductionOpTest.ReduceMean_double
 ReductionOpTest.ReduceMean0DTensor_double 
 ReductionOpTest.ReduceMin_double 
-ReductionOpTest.ReduceMin_int32 
-ReductionOpTest.ReduceMin_int8 
 ReductionOpTest.ReduceSum_double 
 ReductionOpTest.ReduceSumSquare_double 
 ReductionOpTest.ReduceInfMax_double

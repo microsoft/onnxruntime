@@ -4,7 +4,6 @@
 #include "gather_elements.h"
 #include "gather_elements_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -14,7 +13,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     13,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("Tind", std::vector<MLDataType>{
                                     DataTypeImpl::GetTensorType<int32_t>(),
@@ -26,7 +25,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kOnnxDomain,
     11, 12,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("Tind", std::vector<MLDataType>{
                                     DataTypeImpl::GetTensorType<int32_t>(),
@@ -62,8 +61,11 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
   if (indices_shape.Size() == 0)
     return Status::OK();
 
-  TensorPitches input_strides(input_dims);
-  TArray<int64_t> gpu_input_strides(input_strides);
+  // Set stride along axis to 0 so we don't need IF statment to check in kernel.
+  TensorPitches masked_input_strides(input_dims);
+  int64_t input_stride_along_axis = masked_input_strides[axis];
+  masked_input_strides[axis] = 0;
+  TArray<int64_t> gpu_masked_input_strides(masked_input_strides);
 
   TArray<fast_divmod> fdm_indices_strides(indices_rank);
   TensorPitches indices_strides(indices_dims);
@@ -78,14 +80,15 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
       indices_tensor->IsDataType<int64_t>()) {
     GatherElementsImpl(
         Stream(),
-        input_rank,
+        // Save one divmod in kernel if axis is the last dim.
+        input_rank == axis + 1 ? input_rank - 1 : input_rank,
         input_tensor->DataRaw(),
         input_dims[axis],
-        gpu_input_strides,
+        input_stride_along_axis,
+        gpu_masked_input_strides,
         indices_tensor->DataRaw(),
         indices_size,
         fdm_indices_strides,
-        axis,
         output_tensor->MutableDataRaw(),
         element_size,
         index_element_size);

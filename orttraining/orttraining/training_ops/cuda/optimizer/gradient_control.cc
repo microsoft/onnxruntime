@@ -17,9 +17,9 @@ namespace cuda {
       1,                                                                            \
       T##_##T_GRAD,                                                                 \
       kCudaExecutionProvider,                                                       \
-      KernelDefBuilder()                                                            \
+      (*KernelDefBuilder::Create())                                                 \
           .Alias(0, 0)                            /* Accumulate tensors in-place */ \
-          .InputMemoryType<OrtMemTypeCPUInput>(2) /* Keep do_update in CPU */       \
+          .InputMemoryType(OrtMemTypeCPUInput, 2) /* Keep do_update in CPU */       \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                    \
           .TypeConstraint("T_GRAD", DataTypeImpl::GetTensorType<T_GRAD>()),         \
       InPlaceAccumulator<T, T_GRAD>);
@@ -54,7 +54,7 @@ Status ZeroGradient<T>::ComputeInternal(OpKernelContext* ctx) const {
       1,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .Alias(0, 0) /* Zero out gradients in-place */          \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
           .TypeConstraint("T2", DataTypeImpl::AllTensorTypes()),  \

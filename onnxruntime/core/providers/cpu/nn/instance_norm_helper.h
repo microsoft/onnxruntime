@@ -3,8 +3,10 @@
 
 #pragma once
 
+#ifndef SHARED_PROVIDER
 #include "core/common/status.h"
 #include "core/framework/tensor.h"
+#endif
 #include <sstream>
 
 namespace onnxruntime {

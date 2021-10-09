@@ -41,15 +41,13 @@ class FusionLayerNormalization(Fusion):
         if len(children) == 0 or len(children) > 2:
             return
 
-        parent = self.model.get_parent(node, 0, output_name_to_node)
-        if parent is None:
-            return
+        root_input = node.input[0]
 
-        if children[0].op_type != 'Sub' or self.model.get_parent(children[0], 0, output_name_to_node) != parent:
+        if children[0].op_type != 'Sub' or children[0].input[0] != root_input:
             return
 
         if len(children) == 2:
-            if children[1].op_type != 'Sub' or self.model.get_parent(children[1], 0, output_name_to_node) != parent:
+            if children[1].op_type != 'Sub' or children[1].input[0] != root_input:
                 return
 
         div_node = None
@@ -110,9 +108,12 @@ class FusionLayerNormalization(Fusion):
 
         normalize_node = helper.make_node('LayerNormalization',
                                           inputs=[node.input[0], weight_input, bias_input],
-                                          outputs=[last_add_node.output[0]])
+                                          outputs=[last_add_node.output[0]],
+                                          name=self.model.create_node_name("LayerNormalization",
+                                                                           name_prefix="LayerNorm"))
         normalize_node.attribute.extend([helper.make_attribute("epsilon", float(add_weight))])
         self.nodes_to_add.append(normalize_node)
+        self.node_name_to_graph_name[normalize_node.name] = self.this_graph_name
 
 
 class FusionLayerNormalizationTF(Fusion):
@@ -216,6 +217,8 @@ class FusionLayerNormalizationTF(Fusion):
         #TODO: add epsilon attribute
         fused_node = helper.make_node('LayerNormalization',
                                       inputs=[mul_node_3.input[0], weight_input, bias_input],
-                                      outputs=[node.output[0]])
+                                      outputs=[node.output[0]],
+                                      name=self.model.create_node_name("LayerNormalization", name_prefix="LayerNorm"))
         fused_node.attribute.extend([helper.make_attribute("epsilon", float(epsilon))])
         self.nodes_to_add.append(fused_node)
+        self.node_name_to_graph_name[fused_node.name] = self.this_graph_name

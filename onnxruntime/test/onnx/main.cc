@@ -291,7 +291,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     double per_sample_tolerance = 1e-3;
     // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
     // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
-    double relative_per_sample_tolerance = enable_cuda ? 0.017 : enable_openvino ? 0.009 : 1e-3;
+    double relative_per_sample_tolerance = enable_cuda ? 0.017 : enable_openvino ? 0.009
+                                                                                 : 1e-3;
 
     Ort::SessionOptions sf;
 
@@ -309,29 +310,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
     if (enable_tensorrt) {
 #ifdef USE_TENSORRT
-      OrtTensorRTProviderOptions tensorrt_options{
-          0,
-          0,
-          nullptr,
-          0,
-          1 << 30,
-          0,
-          0,
-          nullptr,
-          0,
-          0};
-
-      OrtCUDAProviderOptions cuda_options{
-          0,
-          OrtCudnnConvAlgoSearch::EXHAUSTIVE,
-          std::numeric_limits<size_t>::max(),
-          0,
-          true,
-          0,
-          nullptr,
-          nullptr};  // TODO: Support arena configuration for users of test runner
-
-      sf.AppendExecutionProvider_TensorRT(tensorrt_options);
+      OrtCUDAProviderOptions cuda_options;
+      cuda_options.device_id=device_id;
+      cuda_options.do_copy_in_default_stream=true;
+      // TODO: Support arena configuration for users of test runner
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, device_id));
       sf.AppendExecutionProvider_CUDA(cuda_options);
 #else
       fprintf(stderr, "TensorRT is not supported in this build");
@@ -350,15 +333,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_cuda) {
 #ifdef USE_CUDA
-      OrtCUDAProviderOptions cuda_options{
-          0,
-          OrtCudnnConvAlgoSearch::EXHAUSTIVE,
-          std::numeric_limits<size_t>::max(),
-          0,
-          true,
-          0,
-          nullptr,
-          nullptr};  // TODO: Support arena configuration for users of test runner
+      OrtCUDAProviderOptions cuda_options;
+      cuda_options.do_copy_in_default_stream=true;
+      // TODO: Support arena configuration for users of test runner
       sf.AppendExecutionProvider_CUDA(cuda_options);
 #else
       fprintf(stderr, "CUDA is not supported in this build");
@@ -490,7 +467,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             ORT_TSTR("operator_non_float_params"),
             ORT_TSTR("operator_params"),
             ORT_TSTR("operator_pow"),
-        };
+            ORT_TSTR("bernoulli"),
+            ORT_TSTR("bernoulli_double"),
+            ORT_TSTR("bernoulli_seed")};
 
     static const ORTCHAR_T* cuda_flaky_tests[] = {
         ORT_TSTR("fp16_inception_v1"),
@@ -552,6 +531,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"BERT_Squad", "test data bug"},
       {"constantofshape_float_ones", "test data bug", {"onnx141", "onnx150"}},
       {"constantofshape_int_zeros", "test data bug", {"onnx141", "onnx150"}},
+      {"convtranspose_autopad_same", "Implementation need to be adjusted for ONNX changes"},
       {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"onnx141"}},
       // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
       // "e.g. 0.296140194 -> '0.2961402' not '0.29614019'. ORT produces the latter with precision set to 8,
@@ -591,11 +571,28 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"momentum", "not a registered function/op", {}},                 // Op not registered.
       {"momentum_multiple", "not a registered function/op", {}},        // Op not registered.
       {"nesterov_momentum", "not a registered function/op", {}},        // Op not registered.
-      {"cast_FLOAT_to_BFLOAT16", "onnx generate bfloat tensor as uint16 type", {}},
-      {"cast_BFLOAT16_to_FLOAT", "onnx generate bfloat tensor as uint16 type", {}},
       {"sequence_insert_at_back", "onnx currently not supporting loading segment", {}},
       {"sequence_insert_at_front", "onnx currently not supporting loading segment", {}},
       {"loop13_seq", "ORT api does not currently support creating empty sequences (needed for this test)", {}},
+      {"cast_FLOAT_to_BFLOAT16", "onnx generate bfloat tensor as uint16 type", {}},
+      {"cast_BFLOAT16_to_FLOAT", "onnx generate bfloat tensor as uint16 type", {}},
+      {"castlike_FLOAT_to_BFLOAT16", "Depends on cast.", {}},
+      {"castlike_BFLOAT16_to_FLOAT", "Depends on cast", {}},
+      {"castlike_FLOAT_to_BFLOAT16_expanded", "Depends on cast.", {}},
+      {"castlike_BFLOAT16_to_FLOAT_expanded", "Depends on cast", {}},
+      {"castlike_FLOAT_to_STRING", "Numpy float to string has unexpected rounding for some results.", {}},
+      {"castlike_FLOAT_to_STRING_expanded", "Numpy float to string has unexpected rounding for some results.", {}},
+      {"bernoulli", "By design. Test data is for informational purpose because the generator is non deterministic."},
+      {"bernoulli_double", "By design. Test data is for informational purpose because the generator is non deterministic."},
+      {"bernoulli_double_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
+      {"bernoulli_seed", "By design. Test data is for informational purpose because the generator is non deterministic."},
+      {"bernoulli_seed_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
+      {"bernoulli_expanded", "By design. Test data is for informational purpose because the generator is non deterministic."},
+      {"test_optional_get_element", "opset15 updates not supported yet."},
+      {"test_optional_get_element_sequence", "opset15 updates not supported yet."},
+      {"test_optional_has_element", "opset15 updates not supported yet."},
+      {"test_optional_has_element_empty", "opset15 updates not supported yet."},
+
   };
 
 #ifdef DISABLE_ML_OPS

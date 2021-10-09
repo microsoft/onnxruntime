@@ -3,16 +3,18 @@
 
 #pragma once
 
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
-#include "core/framework/op_node_proto_helper.h"
 #include "core/providers/common.h"
 #include "core/util/math.h"
+#endif
+#include "core/framework/op_node_proto_helper.h"
 
 namespace onnxruntime {
 
 // A helper struct holding attributes for Conv-family ops
 struct ConvAttributes {
-  explicit ConvAttributes(const OpNodeProtoHelper<ProtoHelperNodeContext>& info) {
+  explicit ConvAttributes(const OpKernelInfo& info) {
     std::string auto_pad_str;
     auto status = info.GetAttr<std::string>("auto_pad", &auto_pad_str);
     if (status.IsOK()) {

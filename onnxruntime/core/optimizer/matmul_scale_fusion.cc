@@ -62,7 +62,7 @@ optional<std::pair<float, int>> GetScaleFromNode(
         return excluded_initializer_names.find(node_arg.Name()) != excluded_initializer_names.end();
       };
 
-  if (graph_utils::IsSupportedOptypeVersionAndDomain(scale_node, "Div", {7, 13})) {
+  if (graph_utils::IsSupportedOptypeVersionAndDomain(scale_node, "Div", {7, 13, 14})) {
     // (x / scale_reciprocal)
     const auto div_inputs = scale_node.InputDefs();
     ORT_ENFORCE(div_inputs.size() == 2);
@@ -76,10 +76,10 @@ optional<std::pair<float, int>> GetScaleFromNode(
 
     if (!divisor.has_value()) return {};
 
-    return {std::make_pair(1.0f / divisor.value(), scale_reciprocal_arg_index)};
+    return {std::make_pair(1.0f / *divisor, scale_reciprocal_arg_index)};
   }
 
-  if (graph_utils::IsSupportedOptypeVersionAndDomain(scale_node, "Mul", {7, 13})) {
+  if (graph_utils::IsSupportedOptypeVersionAndDomain(scale_node, "Mul", {7, 13, 14})) {
     // (x * scale) or (scale * x)
     const auto mul_inputs = scale_node.InputDefs();
     ORT_ENFORCE(mul_inputs.size() == 2);
@@ -93,7 +93,7 @@ optional<std::pair<float, int>> GetScaleFromNode(
 
       if (!multiplier.has_value()) continue;
 
-      return {std::make_pair(multiplier.value(), scale_arg_index)};
+      return {std::make_pair(*multiplier, scale_arg_index)};
     }
 
     return {};
@@ -128,12 +128,12 @@ std::vector<ScaleMergeInfo> GetInputNodeMerges(
     if (!scale_and_index.has_value()) continue;
 
     // assume scale nodes have 2 input defs, so to_scale_index == 1 - scale_index
-    ORT_ENFORCE(input_node.InputDefs().size() == 2 && scale_and_index.value().second < 2);
-    const int to_scale_index = 1 - scale_and_index.value().second;
+    ORT_ENFORCE(input_node.InputDefs().size() == 2 && scale_and_index->second < 2);
+    const int to_scale_index = 1 - scale_and_index->second;
 
     input_node_merges.push_back(
         {input_edge,
-         scale_and_index.value().first,
+         scale_and_index->first,
          to_scale_index,
          input_edge->GetDstArgIndex()});
   }
@@ -160,7 +160,7 @@ std::vector<ScaleMergeInfo> GetOutputNodeMerges(
 
     output_node_merges.push_back(
         {output_edge,
-         scale_and_index.value().first,
+         scale_and_index->first,
          scaled_index,
          output_edge->GetSrcArgIndex()});
   }
@@ -171,6 +171,7 @@ bool IsMatMulInputTypeSupported(const Node& node) {
   // if no matching key is present, any data type is allowed
   static const std::map<std::string, std::vector<std::string>> k_supported_data_types{
       {kCudaExecutionProvider, {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"}},
+      {kRocmExecutionProvider, {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"}},
       {kCpuExecutionProvider, {"tensor(float)"}},
   };
 

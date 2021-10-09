@@ -28,7 +28,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", BuildKernelDefConstraints<float, double, MLFloat16>()),
     Inverse);
 

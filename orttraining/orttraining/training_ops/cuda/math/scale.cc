@@ -8,21 +8,21 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_SCALE_KERNEL_TYPED(T)                                          \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      Scale,                                                                    \
-      kMSDomain,                                                                \
-      1,                                                                        \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder()                                                        \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                \
-          .TypeConstraint("ScaleT", {DataTypeImpl::GetTensorType<float>(),      \
-                                     DataTypeImpl::GetTensorType<double>(),     \
-                                     DataTypeImpl::GetTensorType<MLFloat16>(),  \
-                                     DataTypeImpl::GetTensorType<int64_t>(),    \
-                                     DataTypeImpl::GetTensorType<int32_t>()})   \
-          .InputMemoryType<OrtMemTypeCPUInput>(1),                              \
+#define REGISTER_SCALE_KERNEL_TYPED(T)                                         \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                               \
+      Scale,                                                                   \
+      kMSDomain,                                                               \
+      1,                                                                       \
+      T,                                                                       \
+      kCudaExecutionProvider,                                                  \
+      (*KernelDefBuilder::Create())                                            \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())               \
+          .TypeConstraint("ScaleT", {DataTypeImpl::GetTensorType<float>(),     \
+                                     DataTypeImpl::GetTensorType<double>(),    \
+                                     DataTypeImpl::GetTensorType<MLFloat16>(), \
+                                     DataTypeImpl::GetTensorType<int64_t>(),   \
+                                     DataTypeImpl::GetTensorType<int32_t>()})  \
+          .InputMemoryType(OrtMemTypeCPUInput, 1),                             \
       Scale<T>);
 
 template <typename T>

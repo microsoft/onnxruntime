@@ -5,9 +5,9 @@
       "Component": {
         "Type": "other",
         "other": {
-          "Name": "patchelf",
-          "Version": "0.12",
-          "DownloadUrl": "https://github.com/NixOS/patchelf/archive/0.12.tar.gz"
+          "Name": "autoconf",
+          "Version": "2.71",
+          "DownloadUrl": "http://ftp.gnu.org/gnu/autoconf/autoconf-2.71.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -17,8 +17,8 @@
         "Type": "other",
         "other": {
           "Name": "automake",
-          "Version": "1.16.2",
-          "DownloadUrl": "http://ftp.gnu.org/gnu/automake/automake-1.16.2.tar.gz"
+          "Version": "1.16.4",
+          "DownloadUrl": "http://ftp.gnu.org/gnu/automake/automake-1.16.4.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -38,20 +38,9 @@
       "Component": {
         "Type": "other",
         "other": {
-          "Name": "sqlite_autoconf",
-          "Version": "3340000",
-          "DownloadUrl": "https://www.sqlite.org/2020/sqlite-autoconf-3340000.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "cmake",
-          "Version": "3.18.3",
-          "DownloadUrl": "https://github.com/Kitware/CMake/releases/download/v3.18.3/cmake-3.18.3.tar.gz"
+          "Name": "patchelf",
+          "Version": "0.13",
+          "DownloadUrl": "https://github.com/NixOS/patchelf/archive/0.13.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -61,8 +50,8 @@
         "Type": "other",
         "other": {
           "Name": "libxcrypt",
-          "Version": "4.4.17",
-          "DownloadUrl": "https://github.com/besser82/libxcrypt/archive/v4.4.17.tar.gz"
+          "Version": "4.4.23",
+          "DownloadUrl": "https://github.com/besser82/libxcrypt/archive/v4.4.23.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -72,8 +61,41 @@
         "Type": "other",
         "other": {
           "Name": "git",
-          "Version": "2.30.0",
-          "DownloadUrl": "https://www.kernel.org/pub/software/scm/git/git-2.30.0.tar.gz"
+          "Version": "2.32.0",
+          "DownloadUrl": "https://www.kernel.org/pub/software/scm/git/git-2.32.0.tar.gz"
+        },
+        "comments": "manylinux dependency"
+      }
+    },
+    {
+      "Component": {
+        "Type": "other",
+        "other": {
+          "Name": "swig",
+          "Version": "4.0.2",
+          "DownloadUrl": "https://sourceforge.net/projects/swig/files/swig/${SWIG_ROOT}/swig-4.0.2.tar.gz"
+        },
+        "comments": "manylinux dependency"
+      }
+    },
+    {
+      "Component": {
+        "Type": "other",
+        "other": {
+          "Name": "sqlite_autoconf",
+          "Version": "3360000",
+          "DownloadUrl": "https://www.sqlite.org/2021/sqlite-autoconf-3360000.tar.gz"
+        },
+        "comments": "manylinux dependency"
+      }
+    },
+    {
+      "Component": {
+        "Type": "other",
+        "other": {
+          "Name": "openssl",
+          "Version": "1.1.1k",
+          "DownloadUrl": "https://www.openssl.org/source/openssl-1.1.1k.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -162,7 +184,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "e1e11e0d555c08bec08a6c7773aa777dfcaae9da",
+          "commitHash": "277508879878e0a5b5b43599b1bea11f66eb3c6c",
           "repositoryUrl": "https://github.com/dmlc/dlpack.git"
         },
         "comments": "git submodule at cmake/external/dlpack"
@@ -182,7 +204,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "8b32b7def837a15e766039501630549149d3db41",
+          "commitHash": "f44b84154703d29a946d51ddee08f4e5725a61db",
           "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
         },
         "comments": "git submodule at cmake/external/emsdk"
@@ -202,7 +224,17 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "703bd9caab50b139428cea1aaff9974ebee5742e",
+          "commitHash": "7d0d9061d83b663ce05d9de5da3d5865a3845b79",
+          "repositoryUrl": "https://github.com/google/benchmark.git"
+        },
+        "comments": "git submodule at cmake/external/googlebenchmark"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "53495a2a7d6ba7e0691a7f3602e9a5324bba6e45",
           "repositoryUrl": "https://github.com/google/googletest.git"
         },
         "comments": "git submodule at cmake/external/googletest"
@@ -212,7 +244,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "d98bf0278d6f59a58271425963a8422ff48fe249",
+          "commitHash": "db78ac1d7716f56fc9f1b030b715f872f93964e4",
           "repositoryUrl": "https://github.com/nlohmann/json"
         },
         "comments": "git submodule at cmake/external/json"
@@ -262,7 +294,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "971632833036c576cf95499291f689f8bb3519e1",
+          "commitHash": "1f63dcb7fcc3a8bf5c3c8e326867ecd6f5c43f35",
           "repositoryUrl": "https://github.com/onnx/onnx"
         },
         "comments": "git submodule at cmake/external/onnx"
@@ -292,7 +324,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "99296a4462ffc0a8a4a9635e51382277bec68979",
+          "commitHash": "1f416bb462689f3ef9e3f1057a113d9c6aba6972",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "git submodule at cmake/external/onnx-tensorrt"
@@ -342,6 +374,16 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "d4b2aff0c890ae38bad87c20f5731333db2a2cc1",
+          "repositoryUrl": "https://github.com/microsoft/onnxruntime-extensions.git"
+        },
+        "comments": "git submodule at cmake/external/onnxruntime-extensions"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "4acf4553baa886e10e6613fe1452b706b0250e78",
           "repositoryUrl": "https://github.com/martinmoene/optional-lite.git"
         },
@@ -382,7 +424,17 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "30cad267151fa8f1b17da8c1ef0571da6da9a8f1",
+          "commitHash": "5916273f79a21551890fd3d56fc5375a78d1598d",
+          "repositoryUrl": "https://github.com/pytorch/cpuinfo.git"
+        },
+        "comments": "git submodule at cmake/external/pytorch_cpuinfo"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "4244cd1cb492fa1d10986ec67f862964c073f844",
           "repositoryUrl": "https://github.com/google/re2.git"
         },
         "comments": "git submodule at cmake/external/re2"
@@ -402,7 +454,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "eab844a87298d500f1924f8a7cadb4cbee426093",
+          "commitHash": "a1241a967ec7920310a696a6c22ae2426752e135",
           "repositoryUrl": "https://github.com/microsoft/onnxruntime-tvm.git"
         },
         "comments": "git submodule at cmake/external/tvm"

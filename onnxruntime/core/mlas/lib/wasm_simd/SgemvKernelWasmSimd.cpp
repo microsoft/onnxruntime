@@ -17,7 +17,7 @@ Abstract:
 
 #include "mlasi.h"
 
-size_t
+void
 MLASCALL 
 MlasGemvFloatKernel(
     const float* A,
@@ -155,6 +155,4 @@ Return Value:
         B += ldb;
         A++;
     }
-
-    return 0;
 }

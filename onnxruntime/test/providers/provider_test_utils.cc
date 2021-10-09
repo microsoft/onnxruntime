@@ -26,7 +26,7 @@ using namespace ::onnxruntime::logging;
 namespace onnxruntime {
 namespace test {
 
-template<typename T>
+template <typename T>
 Tensor copy_sort(const Tensor& src, const AllocatorPtr& allocator) {
   Tensor result(src.DataType(), src.Shape(), allocator);
   memcpy(result.MutableDataRaw(), src.DataRaw(), src.SizeInBytes());
@@ -39,7 +39,6 @@ Tensor copy_sort(const Tensor& src, const AllocatorPtr& allocator) {
 template <typename T>
 void sort_expected_and_actual_buffers(const Tensor& expected, Tensor& expected_sorted,
                                       const Tensor& actual, Tensor& actual_sorted) {
-
   auto allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
   expected_sorted = copy_sort<T>(expected, allocator);
   actual_sorted = copy_sort<T>(actual, allocator);
@@ -55,23 +54,12 @@ void sort_expected_and_actual_buffers(std::vector<T>& expected,
   std::sort(actual.begin(), actual.end());
 }
 
-struct CheckParams {
-  bool sort_output_;
-  optional<float> absolute_error_;
-  optional<float> relative_error_;
-};
-
-inline CheckParams make_params(const OpTester::Data& d) {
-  return CheckParams{d.sort_output_, d.absolute_error_, d.relative_error_};
-}
-
 // The default implementation compares for equality, specialized versions for
 // other types are below
 template <typename T>
 struct TensorCheck {
   void operator()(const Tensor& expected_tensor, const Tensor& output_tensor,
                   const std::string& provider_type, const CheckParams& params) const {
-
     Tensor expected_sorted, output_sorted;
     const T* expected;
     const T* output;
@@ -103,7 +91,6 @@ struct TensorCheck<uint8_t> {
   void operator()(const Tensor& expected_tensor,
                   const Tensor& output_tensor,
                   const std::string& provider_type, const CheckParams& params) const {
-
     const bool has_abs_err = params.absolute_error_.has_value();
     const bool has_rel_err = params.relative_error_.has_value();
 
@@ -130,13 +117,13 @@ struct TensorCheck<uint8_t> {
     // For any other EPs, we still expect an exact match for the results
     if (provider_type == kNnapiExecutionProvider && (has_abs_err || has_rel_err)) {
       double threshold = has_abs_err
-                             ? params.absolute_error_.value()
+                             ? *(params.absolute_error_)
                              : 0.0;
 
       for (int i = 0; i < size; ++i) {
         if (has_rel_err) {
           EXPECT_NEAR(expected[i], output[i],
-                      params.relative_error_.value() * expected[i])  // expected[i] is unsigned, can't be negative
+                      *(params.relative_error_) * expected[i])  // expected[i] is unsigned, can't be negative
               << "i:" << i << ", provider_type: " << provider_type;
         } else {  // has_abs_err
           EXPECT_NEAR(expected[i], output[i], threshold)
@@ -197,12 +184,12 @@ struct TensorCheck<double> {
         } else {
           if (has_abs_err) {
             ASSERT_NEAR(expected[i], output[i],
-                        params.absolute_error_.value())
+                        *(params.absolute_error_))
                 << "i:" << i << ", provider_type: " << provider_type;
           }
           if (has_rel_err) {
             ASSERT_NEAR(expected[i], output[i],
-                        params.relative_error_.value() *
+                        *(params.relative_error_) *
                             std::abs(expected[i]))
                 << "i:" << i << ", provider_type: " << provider_type;
           }
@@ -217,7 +204,6 @@ void InternalNumericalCheck(const Tensor& expected_tensor,
                             const Tensor& output_tensor,
                             const std::string& provider_type,
                             const CheckParams& params) {
-
   const bool has_abs_err = params.absolute_error_.has_value();
   const bool has_rel_err = params.relative_error_.has_value();
 
@@ -238,7 +224,7 @@ void InternalNumericalCheck(const Tensor& expected_tensor,
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
   constexpr float threshold = 0.005f;
-#else 
+#else
   constexpr float threshold = 0.0001f;
 #endif
 
@@ -257,12 +243,12 @@ void InternalNumericalCheck(const Tensor& expected_tensor,
       } else {
         if (has_abs_err) {
           ASSERT_NEAR(expected[i], output[i],
-                      params.absolute_error_.value())
+                      *(params.absolute_error_))
               << "i:" << i << ", provider_type: " << provider_type;
         }
         if (has_rel_err) {
           ASSERT_NEAR(expected[i], output[i],
-                      params.relative_error_.value() *
+                      *(params.relative_error_) *
                           std::abs(expected[i]))
               << "i:" << i << ", provider_type: " << provider_type;
         }
@@ -376,7 +362,7 @@ void Check(const OpTester::Data& expected_data, const Tensor& output_tensor,
                               BFloat16>
       t_disp(output_tensor.GetElementType());
 
-  t_disp.Invoke<TensorCheck>(expected_data.data_.Get<Tensor>(), output_tensor, provider_type, make_params(expected_data));
+  t_disp.Invoke<TensorCheck>(expected_data.data_.Get<Tensor>(), output_tensor, provider_type, MakeCheckParams(expected_data));
 }
 
 // Check for non tensor types
@@ -411,7 +397,7 @@ void Check<TensorSeq>(const OpTester::Data& expected_data,
       << " provider_type: " << provider_type;
 
   // now check the contents of the tensors
-  CheckParams check_params = make_params(expected_data);
+  CheckParams check_params = MakeCheckParams(expected_data);
 
   auto element_type = exp_seq.DataType()->AsPrimitiveDataType()->GetDataType();
   utils::MLTypeCallDispatcher<bool, float, double, uint8_t, uint16_t, uint32_t, uint64_t,
@@ -530,6 +516,166 @@ void OpTester::AddNodes(
     add_attribute_fn(node);
 }
 
+std::vector<int64_t> OpTester::GetDimsForProto(const std::vector<int64_t>& dims) {
+  std::vector<int64_t> dims_for_proto{dims};
+  if (add_symbolic_dim_to_tensor_data_ >= 0 &&
+      dims.size() > static_cast<size_t>(add_symbolic_dim_to_tensor_data_)) {
+    dims_for_proto[add_symbolic_dim_to_tensor_data_] = -1;
+  }
+  return dims_for_proto;
+}
+
+void OpTester::AddShapeToTensorData(NodeArg& node_arg, const std::vector<int64_t>& dims,
+                                    const std::vector<std::string>* dim_params) {
+  if (dim_params && !(dim_params->empty()) && add_shape_to_tensor_data_) {
+    // If dim_params presents, configure node_arg's dim value based on dim_params, which supports symbolic dim and dim broadcast.
+    const auto& dim_params_data = *dim_params;
+    onnx::TensorShapeProto new_shape;
+
+    // currently hard-code the reserved symbolic names.
+    // TODO: when the list grows longer, consider move it to a better place.
+    const static std::unordered_set<std::string> reserved_symbolic{"batch", "seq"};
+
+    for (size_t i = 0; i < dim_params_data.size(); ++i) {
+      if (reserved_symbolic.find(dim_params_data[i]) != reserved_symbolic.end()) {
+        new_shape.add_dim()->set_dim_param(dim_params_data[i]);
+      } else {
+        ASSERT_TRUE(std::stoi(dim_params_data[i]) == dims[i]);
+        new_shape.add_dim()->set_dim_value(dims[i]);
+      }
+    }
+    node_arg.SetShape(new_shape);
+  }
+}
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+static std::unique_ptr<SparseTensor> MakeSparseTensor(MLDataType data_type, const std::vector<int64_t>& dims) {
+  TensorShape shape{dims};
+  auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
+  auto p_tensor = std::make_unique<SparseTensor>(data_type, shape, allocator);
+  return p_tensor;
+}
+
+void OpTester::CopyDataToTensor(gsl::span<const gsl::byte> data, Tensor& dst) {
+  ORT_ENFORCE(dst.SizeInBytes() >= data.size_bytes(), "Not enough space in the destination tensor");
+  memcpy(dst.MutableDataRaw(), data.data(), data.size_bytes());
+}
+
+NodeArg OpTester::MakeSparseNodeArg(int32_t dtype, const char* name,
+                                    const std::vector<int64_t>& dims, const std::vector<std::string>* dim_params) {
+  std::vector<int64_t> dims_for_proto = GetDimsForProto(dims);
+  TSparseTensorProto type_proto(dtype, add_shape_to_tensor_data_ ? &dims_for_proto : nullptr);
+  NodeArg node_arg(name, &type_proto.proto);
+  AddShapeToTensorData(node_arg, dims, dim_params);
+  return node_arg;
+}
+
+void OpTester::AddSparseTensorData(std::vector<Data>& data, NodeArg node_arg,
+                                   std::unique_ptr<SparseTensor> p_tensor,
+                                   const CheckParams& check_params) {
+  OrtValue value;
+  auto ml_type = DataTypeImpl::GetType<SparseTensor>();
+  value.Init(p_tensor.release(), ml_type, ml_type->GetDeleteFunc());
+  data.push_back(Data(std::move(node_arg), std::move(value),
+                      optional<float>(check_params.relative_error_), optional<float>(check_params.absolute_error_),
+                      check_params.sort_output_));
+}
+
+void OpTester::AddSparseCooTensorData(std::vector<Data>& data,
+                                      MLDataType data_type,
+                                      const char* name,
+                                      const std::vector<int64_t>& dims,
+                                      gsl::span<const gsl::byte> values,
+                                      gsl::span<const int64_t> indices,
+                                      const CheckParams& check_params,
+                                      const std::vector<std::string>* dim_params) {
+  const auto elem_size = data_type->Size();
+  const auto dtype = data_type->AsPrimitiveDataType()->GetDataType();
+  const auto nnz = values.size_bytes() / elem_size;
+  ORT_ENFORCE(dims.size() == 2U, "Expecting a 2-D dense shape");
+  ORT_ENFORCE((nnz == indices.size() || 2 * nnz == indices.size()), "Expecting indices to have either nnz or (2 * nnz) length");
+  auto p_tensor = MakeSparseTensor(data_type, dims);
+  auto mutator = p_tensor->MakeCooData(nnz, indices.size());
+  CopyDataToTensor(values, mutator.Values());
+  CopyDataToTensor(indices.as_bytes(), mutator.Indices());
+
+  NodeArg node_arg = MakeSparseNodeArg(dtype, name, dims, dim_params);
+  AddSparseTensorData(data, std::move(node_arg), std::move(p_tensor), check_params);
+}
+
+void OpTester::AddSparseCooTensorStrings(std::vector<Data>& data,
+                                         const char* name,
+                                         const std::vector<int64_t>& dims,
+                                         gsl::span<const std::string> values,
+                                         gsl::span<const int64_t> indices,
+                                         const std::vector<std::string>* dim_params) {
+  auto data_type = DataTypeImpl::GetType<std::string>();
+  const auto nnz = values.size();
+  const auto dtype = data_type->AsPrimitiveDataType()->GetDataType();
+  ORT_ENFORCE(dims.size() == 2U, "Expecting a 2-D dense shape");
+  ORT_ENFORCE((nnz == indices.size() || 2 * nnz == indices.size()), "Expecting indices to have either nnz or (2 * nnz) length");
+  auto p_tensor = MakeSparseTensor(data_type, dims);
+  // linear index is 1-D index, otherwise 2-D index
+  auto mutator = p_tensor->MakeCooData(nnz, indices.size());
+  auto mutable_values = mutator.Values().MutableDataAsSpan<std::string>();
+  ORT_ENFORCE(values.size() == mutable_values.size(), "Must allocate space for values");
+  std::copy(values.cbegin(), values.cend(), mutable_values.begin());
+  CopyDataToTensor(indices.as_bytes(), mutator.Indices());
+  NodeArg node_arg = MakeSparseNodeArg(dtype, name, dims, dim_params);
+  AddSparseTensorData(data, std::move(node_arg), std::move(p_tensor), CheckParams());
+}
+
+void OpTester::AddSparseCsrTensorData(std::vector<Data>& data,
+                                      MLDataType data_type,
+                                      const char* name,
+                                      const std::vector<int64_t>& dims,
+                                      gsl::span<const gsl::byte> values,
+                                      gsl::span<const int64_t> inner_indices,
+                                      gsl::span<const int64_t> outer_indices,
+                                      const CheckParams& check_params,
+                                      const std::vector<std::string>* dim_params) {
+  const auto elem_size = data_type->Size();
+  const auto dtype = data_type->AsPrimitiveDataType()->GetDataType();
+  const auto nnz = values.size_bytes() / elem_size;
+  ORT_ENFORCE(dims.size() == 2U, "Expecting a 2-D dense shape");
+  ORT_ENFORCE(nnz == inner_indices.size(), "Expecting the same number of inner_indices as nnz");
+  auto p_tensor = MakeSparseTensor(data_type, dims);
+
+  auto mutator = p_tensor->MakeCsrData(nnz, inner_indices.size(), outer_indices.size());
+  CopyDataToTensor(values, mutator.Values());
+  CopyDataToTensor(inner_indices.as_bytes(), mutator.Inner());
+  CopyDataToTensor(outer_indices.as_bytes(), mutator.Outer());
+
+  NodeArg node_arg = MakeSparseNodeArg(dtype, name, dims, dim_params);
+  AddSparseTensorData(data, std::move(node_arg), std::move(p_tensor), check_params);
+}
+
+void OpTester::AddSparseCsrTensorStrings(std::vector<Data>& data,
+                                         const char* name,
+                                         const std::vector<int64_t>& dims,
+                                         gsl::span<const std::string> values,
+                                         gsl::span<const int64_t> inner_indices,
+                                         gsl::span<const int64_t> outer_indices,
+                                         const std::vector<std::string>* dim_params) {
+  auto data_type = DataTypeImpl::GetType<std::string>();
+  const auto nnz = values.size();
+  const auto dtype = data_type->AsPrimitiveDataType()->GetDataType();
+
+  ORT_ENFORCE(dims.size() == 2U, "Expecting a 2-D dense shape");
+  ORT_ENFORCE(nnz == inner_indices.size(), "Expecting the same number of inner_indices as nnz");
+  auto p_tensor = MakeSparseTensor(data_type, dims);
+
+  auto mutator = p_tensor->MakeCsrData(nnz, inner_indices.size(), outer_indices.size());
+  auto mutable_values = mutator.Values().MutableDataAsSpan<std::string>();
+  ORT_ENFORCE(values.size() == mutable_values.size(), "Must allocate space for values");
+  std::copy(values.cbegin(), values.cend(), mutable_values.begin());
+  CopyDataToTensor(inner_indices.as_bytes(), mutator.Inner());
+  CopyDataToTensor(outer_indices.as_bytes(), mutator.Outer());
+  NodeArg node_arg = MakeSparseNodeArg(dtype, name, dims, dim_params);
+  AddSparseTensorData(data, std::move(node_arg), std::move(p_tensor), CheckParams());
+}
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
+
 void OpTester::AddInitializers(onnxruntime::Graph& graph) {
   for (auto index : initializer_index_) {
     auto& data = input_data_[index];
@@ -601,7 +747,7 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph(
 }
 
 template <class SessionType>
-std::vector<MLValue> OpTester::ExecuteModel(
+std::vector<OrtValue> OpTester::ExecuteModel(
     Model& model, SessionType& session_object, ExpectResult expect_result,
     const std::string& expected_failure_string, const RunOptions* run_options,
     const std::unordered_map<std::string, OrtValue>& feeds,
@@ -622,6 +768,7 @@ std::vector<MLValue> OpTester::ExecuteModel(
   }
 
   status = session_object.Initialize();
+
   if (!status.IsOK()) {
     if (expect_result == ExpectResult::kExpectFailure) {
       EXPECT_TRUE(!status.IsOK());
@@ -705,9 +852,10 @@ std::vector<MLValue> OpTester::ExecuteModel(
                           expected_shape.NumDimensions());
               for (size_t d = 0; d < inferred_dims.size(); ++d) {
                 // check equal unless the input involved a symbolic dimension
-                if (inferred_dims[d] != -1)
+                if (inferred_dims[d] != -1) {
                   EXPECT_EQ(expected_shape[d], inferred_dims[d])
                       << "Output idx = " << idx << " dim = " << d;
+                }
               }
             }
             Check(expected_data, ort_value.Get<Tensor>(), provider_type);
@@ -758,7 +906,9 @@ void OpTester::Run(
     const std::unordered_set<std::string>& excluded_provider_types,
     const RunOptions* run_options,
     std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers,
-    const Graph::ResolveOptions& options) {
+    const Graph::ResolveOptions& options,
+    /*out*/ size_t* number_of_pre_packed_weights_counter,
+    /*out*/ size_t* number_of_shared_pre_packed_weights_counter) {
   std::string cur_provider = "not set";
   ORT_TRY {
 #ifndef NDEBUG
@@ -852,6 +1002,10 @@ void OpTester::Run(
 
       InferenceSession session_object{so, GetEnvironment()};
 
+      if (add_prepacked_shared_container_to_sessions_) {
+        ASSERT_STATUS_OK(session_object.AddPrePackedWeightsContainer(&prepacked_weights_container_));
+      }
+
       ASSERT_TRUE(!execution_providers->empty())
           << "Empty execution providers vector.";
       std::string provider_types;
@@ -865,6 +1019,21 @@ void OpTester::Run(
           *p_model, session_object, expect_result, expected_failure_string,
           run_options, feeds, output_names, provider_types);
 
+      // After the model has initialized (happens in ExecuteModel),
+      // we should be able to tell how many constant initializers were pre-packed
+      // and out of these pre-packed ones how many of them used a "cached" version
+      // from the shared container.
+      // Populate these value if the user has requested this information.
+      if (number_of_pre_packed_weights_counter) {
+        *number_of_pre_packed_weights_counter =
+            session_object.GetSessionState().GetNumberOfPrepacksCounter();
+      }
+
+      if (number_of_shared_pre_packed_weights_counter) {
+        *number_of_shared_pre_packed_weights_counter =
+            session_object.GetSessionState().GetUsedSharedPrePackedWeightCounter();
+      }
+
     } else {
       for (const std::string& provider_type : all_provider_types) {
         if (excluded_provider_types.count(provider_type) > 0)
@@ -877,6 +1046,10 @@ void OpTester::Run(
           so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
         }
         InferenceSession session_object{so, GetEnvironment()};
+
+        if (add_prepacked_shared_container_to_sessions_) {
+          ASSERT_STATUS_OK(session_object.AddPrePackedWeightsContainer(&prepacked_weights_container_));
+        }
 
         for (auto& custom_session_registry : custom_session_registries_)
           ASSERT_PROVIDER_STATUS_OK(session_object.RegisterCustomRegistry(custom_session_registry));
@@ -923,7 +1096,8 @@ void OpTester::Run(
               provider_type == onnxruntime::kTensorrtExecutionProvider ||
               provider_type == onnxruntime::kNupharExecutionProvider ||
               provider_type == onnxruntime::kNnapiExecutionProvider ||
-              provider_type == onnxruntime::kCoreMLExecutionProvider)
+              provider_type == onnxruntime::kCoreMLExecutionProvider ||
+              provider_type == onnxruntime::kDnnlExecutionProvider)
             continue;
           auto reg = execution_provider->GetKernelRegistry();
           if (!KernelRegistry::HasImplementationOf(*reg, node, execution_provider->Type())) {
@@ -955,6 +1129,21 @@ void OpTester::Run(
             *p_model, session_object, expect_result, expected_failure_string,
             run_options, feeds, output_names, provider_type);
 
+        // After the model has initialized (happens in ExecuteModel),
+        // we should be able to tell how many constant initializers were pre-packed
+        // and out of these pre-packed ones how many of them used a "cached" version
+        // from the shared container.
+        // Populate these value if the user has requested this information.
+        if (number_of_pre_packed_weights_counter) {
+          *number_of_pre_packed_weights_counter =
+              session_object.GetSessionState().GetNumberOfPrepacksCounter();
+        }
+
+        if (number_of_shared_pre_packed_weights_counter) {
+          *number_of_shared_pre_packed_weights_counter =
+              session_object.GetSessionState().GetUsedSharedPrePackedWeightCounter();
+        }
+
         cur_provider = "not set";
       }
 
@@ -975,6 +1164,7 @@ void OpTester::AddReferenceOutputs(const std::string& model_path) {
   SessionOptions so;
   so.session_logid = op_;
   so.session_log_verbosity_level = 1;
+  so.graph_optimization_level = TransformerLevel::Default;
 
   RunOptions run_options;
   run_options.run_tag = op_;
@@ -1001,7 +1191,7 @@ void OpTester::AddReferenceOutputs(const std::string& model_path) {
     }
   }
 
-  std::vector<MLValue> subgraph_fetches;
+  std::vector<OrtValue> subgraph_fetches;
   ASSERT_TRUE((status = subgraph_session_object.Run(run_options, feeds, output_names, &subgraph_fetches)).IsOK()) << status;
 
   for (size_t out_idx = 0; out_idx < subgraph_fetches.size(); out_idx++) {
@@ -1026,11 +1216,11 @@ void OpTester::AddReferenceOutputs(const std::string& model_path) {
 }
 
 #ifdef ENABLE_TRAINING
-template std::vector<MLValue> OpTester::ExecuteModel<training::TrainingSession>(
+template std::vector<OrtValue> OpTester::ExecuteModel<training::TrainingSession>(
     Model& model, training::TrainingSession& session_object,
     ExpectResult expect_result, const std::string& expected_failure_string,
     const RunOptions* run_options,
-    const std::unordered_map<std::string, MLValue>& feeds,
+    const std::unordered_map<std::string, OrtValue>& feeds,
     const std::vector<std::string>& output_names, const std::string& provider_type);
 #endif
 

@@ -5,6 +5,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/fence.h"
+#include "core/framework/allocator_stats.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "ortdevice.h"
 #include "ortmemoryinfo.h"
@@ -16,20 +17,20 @@ struct OrtArenaCfg {
                   arena_extend_strategy(-1),
                   initial_chunk_size_bytes(-1),
                   max_dead_bytes_per_chunk(-1),
-                  initial_regrowth_chunk_size_bytes(-1) {}
+                  initial_growth_chunk_size_bytes(-1) {}
   OrtArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
-              int max_dead_bytes_per_chunk, int initial_regrowth_chunk_size_bytes)
+              int max_dead_bytes_per_chunk, int initial_growth_chunk_size_bytes)
       : max_mem(max_mem),
         arena_extend_strategy(arena_extend_strategy),
         initial_chunk_size_bytes(initial_chunk_size_bytes),
         max_dead_bytes_per_chunk(max_dead_bytes_per_chunk),
-        initial_regrowth_chunk_size_bytes(initial_regrowth_chunk_size_bytes) {}
+        initial_growth_chunk_size_bytes(initial_growth_chunk_size_bytes) {}
 
-  size_t max_mem;                         // use 0 to allow ORT to choose the default
-  int arena_extend_strategy;              // use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
-  int initial_chunk_size_bytes;           // use -1 to allow ORT to choose the default
-  int max_dead_bytes_per_chunk;           // use -1 to allow ORT to choose the default
-  int initial_regrowth_chunk_size_bytes;  // use -1 to allow ORT to choose the default
+  size_t max_mem;                       // use 0 to allow ORT to choose the default
+  int arena_extend_strategy;            // use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
+  int initial_chunk_size_bytes;         // use -1 to allow ORT to choose the default
+  int max_dead_bytes_per_chunk;         // use -1 to allow ORT to choose the default
+  int initial_growth_chunk_size_bytes;  // use -1 to allow ORT to choose the default
 };
 
 namespace onnxruntime {
@@ -55,8 +56,22 @@ class IAllocator {
   @remarks Use SafeInt when calculating the size of memory to allocate using Alloc.
   */
   virtual void* Alloc(size_t size) = 0;
+
   virtual void Free(void* p) = 0;
+
+  // TODO: Find a better name than Reserve() and update in all places.
+  // Reserve() is an interface exposed for an implementation of IAllocator
+  // to optionally implement some allocation logic that by-passes any arena-based
+  // logic that may be housed in the Alloc() implementation.
+  // There are SessionOptions config(s) that allow users to allocate some memory
+  // by-passing arena-based logic.
+  // By default, the base implementation  just calls Alloc().
+  virtual void* Reserve(size_t size) { return Alloc(size); }
+
   const OrtMemoryInfo& Info() const { return memory_info_; };
+
+  // Each implementation of IAllocator can override and provide their own implementation
+  virtual void GetStats(AllocatorStats* /*stats*/) { return; }
 
   /**
      optional CreateFence interface, as provider like DML has its own fence
@@ -115,14 +130,16 @@ class IAllocator {
      Create a std::unique_ptr that is allocated and freed by the provided IAllocator.
      @param allocator The allocator.
      @param count_or_bytes The exact bytes to allocate if T is void, otherwise the number of elements to allocate.
+     @param use_reserve If true, call Reserve() instead of Alloc() to allocate memory.
      @returns std::unique_ptr with allocated memory and deleter.
   */
   template <typename T>
-  static IAllocatorUniquePtr<T> MakeUniquePtr(std::shared_ptr<IAllocator> allocator, size_t count_or_bytes) {
+  static IAllocatorUniquePtr<T> MakeUniquePtr(std::shared_ptr<IAllocator> allocator, size_t count_or_bytes,
+                                              bool use_reserve = false) {
     if (allocator == nullptr) return nullptr;
     // for now limit to fundamental types. we could support others, but to do so either we or the caller
     // needs to call the dtor for the objects, for buffers allocated on device we don't have destructor
-    //static_assert(std::is_fundamental<T>::value, "Fundamental type required as no destructors are called.");
+    // static_assert(std::is_fundamental<T>::value, "Fundamental type required as no destructors are called.");
 
     size_t alloc_size = count_or_bytes;
 
@@ -130,14 +147,15 @@ class IAllocator {
     if (!std::is_void<T>::value) {
       // sizeof(void) isn't valid, but the compiler isn't smart enough to ignore that this line isn't
       // reachable if T is void. use std::conditional to 'use' void* in the sizeof call
-      if (!CalcMemSizeForArray(count_or_bytes,
-                               sizeof(typename std::conditional<std::is_void<T>::value, void*, T>::type),
-                               &alloc_size)) return nullptr;
+      if (!CalcMemSizeForArray(
+              count_or_bytes, sizeof(typename std::conditional<std::is_void<T>::value, void*, T>::type), &alloc_size)) {
+        return nullptr;
+      }
     }
 
     return IAllocatorUniquePtr<T>{
-        static_cast<T*>(allocator->Alloc(alloc_size)),  // allocate
-        [=](T* ptr) {                                   // capture 'allocator' by value so it's always valid
+        static_cast<T*>(use_reserve ? allocator->Reserve(alloc_size) : allocator->Alloc(alloc_size)),  // allocate
+        [=](T* ptr) {  // capture 'allocator' by value so it's always valid
           allocator->Free(ptr);
         }};
   }

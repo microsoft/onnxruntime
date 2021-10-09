@@ -14,7 +14,11 @@ namespace onnxruntime {
  */
 template <typename T>
 optional<T> ParseEnvironmentVariable(const std::string& name) {
+#ifndef SHARED_PROVIDER
   const std::string value_str = Env::Default().GetEnvironmentVar(name);
+#else
+  const std::string value_str = GetEnvironmentVar(name);
+#endif
   if (value_str.empty()) {
     return {};
   }
@@ -34,7 +38,7 @@ template <typename T>
 T ParseEnvironmentVariableWithDefault(const std::string& name, const T& default_value) {
   const auto parsed = ParseEnvironmentVariable<T>(name);
   if (parsed.has_value()) {
-    return parsed.value();
+    return *parsed;
   }
 
   return default_value;

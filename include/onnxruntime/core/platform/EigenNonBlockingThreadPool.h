@@ -19,6 +19,7 @@
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wunused-result"
 #elif defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4127)
@@ -1024,7 +1025,7 @@ void InitializePreferredWorkers(std::vector<int> &preferred_workers) {
 void UpdatePreferredWorker(std::vector<int> &preferred_workers,
                            unsigned par_idx) {
   unsigned ran_on_idx = GetPerThread()->thread_id;
-  assert(ran_on_idx >= 0 && ran_on_idx < num_threads_);
+  assert(ran_on_idx < num_threads_);
   assert(par_idx < preferred_workers.size());
   preferred_workers[par_idx] = ran_on_idx;
 }
@@ -1192,6 +1193,7 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
                           std::function<void(unsigned idx)> fn,
                           unsigned n,
                           std::ptrdiff_t block_size) override {
+  ORT_ENFORCE(n <= num_threads_+1, "More work items than threads");
   profiler_.LogStartAndCoreAndBlock(block_size);
   PerThread* pt = GetPerThread();
   assert(pt->leading_par_section && "RunInParallel, but not in parallel section");
@@ -1249,6 +1251,7 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
 // For all other threads:
 //  1. run fn(...);
 void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdiff_t block_size) override {
+  ORT_ENFORCE(n <= num_threads_+1, "More work items than threads");
   profiler_.LogStartAndCoreAndBlock(block_size);
   PerThread* pt = GetPerThread();
   ThreadPoolParallelSection ps;
@@ -1261,12 +1264,11 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdif
   profiler_.LogEnd(ThreadPoolProfiler::WAIT);
 }
 
-
-int NumThreads() const EIGEN_FINAL {
+int NumThreads() const final {
   return num_threads_;
 }
 
-int CurrentThreadId() const EIGEN_FINAL {
+int CurrentThreadId() const final {
   const PerThread* pt = const_cast<ThreadPoolTempl*>(this)->GetPerThread();
   if (pt->pool == this) {
     return pt->thread_id;

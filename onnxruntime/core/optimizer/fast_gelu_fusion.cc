@@ -13,8 +13,8 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 
 // FastGelu supports limited data types.
-static std::vector<std::string> gpu_supported_data_types{"tensor(float16)", "tensor(float)", "tensor(bfloat16)"};
-static std::vector<std::string> cpu_supported_data_types{"tensor(float)"};
+static constexpr std::array gpu_supported_data_types{"tensor(float16)", "tensor(float)", "tensor(bfloat16)"};
+static constexpr std::array cpu_supported_data_types{"tensor(float)"};
 
 static bool IsSupportedDataType(const Node& node) {
   if (node.GetExecutionProviderType() == kCpuExecutionProvider) {
@@ -31,13 +31,13 @@ static bool CheckNode(Graph& graph, const Node& node, const std::string& op_name
          node.GetExecutionProviderType() == provider &&
          IsSupportedDataType(node) &&
          (!require_single_output || node.GetOutputEdgesCount() == 1) &&
-         graph.GetNodeOutputsInGraphOutputs(node).empty();
+         !graph.NodeProducesGraphOutput(node);
 }
 
 MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node,
                                               std::vector<std::reference_wrapper<Node>>& nodes_to_fuse) const {
   MatchResult matchResult{false, nullptr, nullptr};
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul1_node, "Mul", {7, 13}) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul1_node, "Mul", {7, 13, 14}) ||
       !graph_utils::IsSupportedProvider(mul1_node, GetCompatibleExecutionProviders()) ||
       mul1_node.GetOutputEdgesCount() != 1 ||
       !IsSupportedDataType(mul1_node)) {
@@ -60,7 +60,7 @@ MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node,
 
   Node& mul2_node = *graph.GetNode(mul1_node.OutputNodesBegin()->Index());
   input_index = optimizer_utils::IndexOfNodeInput(mul2_node, *mul1_node.MutableOutputDefs()[0]);
-  if (!CheckNode(graph, mul2_node, "Mul", {7, 13}, mul1_node.GetExecutionProviderType(), true) ||
+  if (!CheckNode(graph, mul2_node, "Mul", {7, 13, 14}, mul1_node.GetExecutionProviderType(), true) ||
       mul2_node.MutableInputDefs()[(input_index + 1) % 2]->Name() != gelu_without_bias_input_arg->Name()) {
     return matchResult;
   }
@@ -68,14 +68,14 @@ MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node,
 
   Node& add1_node = *graph.GetNode(mul2_node.OutputNodesBegin()->Index());
   input_index = optimizer_utils::IndexOfNodeInput(add1_node, *mul2_node.MutableOutputDefs()[0]);
-  if (!CheckNode(graph, add1_node, "Add", {7, 13}, mul1_node.GetExecutionProviderType(), true) ||
+  if (!CheckNode(graph, add1_node, "Add", {7, 13, 14}, mul1_node.GetExecutionProviderType(), true) ||
       !optimizer_utils::IsInitializerWithExpectedValue(graph, *(add1_node.InputDefs()[(input_index + 1) % 2]), 1.0f, true)) {
     return matchResult;
   }
   nodes_to_fuse.push_back(add1_node);
 
   Node& mul3_node = *graph.GetNode(add1_node.OutputNodesBegin()->Index());
-  if (!CheckNode(graph, mul3_node, "Mul", {7, 13}, mul1_node.GetExecutionProviderType(), true)) {
+  if (!CheckNode(graph, mul3_node, "Mul", {7, 13, 14}, mul1_node.GetExecutionProviderType(), true)) {
     return matchResult;
   }
   nodes_to_fuse.push_back(mul3_node);
@@ -84,7 +84,7 @@ MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node,
   const Node* p_mul3_input_node = graph_utils::GetInputNode(mul3_node, (input_index + 1) % 2);
   if (p_mul3_input_node == nullptr) return matchResult;
   Node& mul4_node = const_cast<Node&>(*p_mul3_input_node);
-  if (!CheckNode(graph, mul4_node, "Mul", {7, 13}, mul1_node.GetExecutionProviderType(), true)) {
+  if (!CheckNode(graph, mul4_node, "Mul", {7, 13, 14}, mul1_node.GetExecutionProviderType(), true)) {
     return matchResult;
   }
 
@@ -126,7 +126,7 @@ MatchResult FastGeluFusion::CheckSecondFormula(Graph& graph, Node& pow1_node,
 
   Node& mul1_node = *graph.GetNode(pow1_node.OutputNodesBegin()->Index());
   auto input_index = optimizer_utils::IndexOfNodeInput(mul1_node, *pow1_node.MutableOutputDefs()[0]);
-  if (!CheckNode(graph, mul1_node, "Mul", {7, 13}, pow1_node.GetExecutionProviderType(), true) ||
+  if (!CheckNode(graph, mul1_node, "Mul", {7, 13, 14}, pow1_node.GetExecutionProviderType(), true) ||
       !optimizer_utils::IsInitializerWithExpectedValue(graph, *(mul1_node.InputDefs()[(input_index + 1) % 2]),
                                                        0.044714998453855515f, true)) {
     return matchResult;
@@ -135,7 +135,7 @@ MatchResult FastGeluFusion::CheckSecondFormula(Graph& graph, Node& pow1_node,
 
   Node& add1_node = *graph.GetNode(mul1_node.OutputNodesBegin()->Index());
   input_index = optimizer_utils::IndexOfNodeInput(add1_node, *mul1_node.MutableOutputDefs()[0]);
-  if (!CheckNode(graph, add1_node, "Add", {7, 13}, pow1_node.GetExecutionProviderType(), true) ||
+  if (!CheckNode(graph, add1_node, "Add", {7, 13, 14}, pow1_node.GetExecutionProviderType(), true) ||
       add1_node.MutableInputDefs()[(input_index + 1) % 2]->Name() != pow_input_arg->Name()) {
     return matchResult;
   }
@@ -146,8 +146,8 @@ MatchResult FastGeluFusion::CheckSecondFormula(Graph& graph, Node& pow1_node,
   if (p_cast1_node != nullptr) {
     Node& cast1_node = *graph.GetNode(p_cast1_node->Index());
     // this is fused Cast node, so expect 2 output edges
-    if (!CheckNode(graph, cast1_node, "Cast", {9, 13}, pow1_node.GetExecutionProviderType(), false)  ||
-      cast1_node.GetOutputEdgesCount() != 2){
+    if (!CheckNode(graph, cast1_node, "Cast", {9, 13}, pow1_node.GetExecutionProviderType(), false) ||
+        cast1_node.GetOutputEdgesCount() != 2) {
       return matchResult;
     }
     const Node* p_pow_node = graph_utils::FirstChildByType(cast1_node, "Pow");
@@ -162,7 +162,7 @@ MatchResult FastGeluFusion::CheckSecondFormula(Graph& graph, Node& pow1_node,
 
   Node& mul2_node = *graph.GetNode(add1_node.OutputNodesBegin()->Index());
   input_index = optimizer_utils::IndexOfNodeInput(mul2_node, *add1_node.MutableOutputDefs()[0]);
-  if (!CheckNode(graph, mul2_node, "Mul", {7, 13}, pow1_node.GetExecutionProviderType(), true) ||
+  if (!CheckNode(graph, mul2_node, "Mul", {7, 13, 14}, pow1_node.GetExecutionProviderType(), true) ||
       !optimizer_utils::IsInitializerWithExpectedValue(graph, *(mul2_node.InputDefs()[(input_index + 1) % 2]),
                                                        0.7978845834732056f, true)) {
     return matchResult;
@@ -220,7 +220,7 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
     }
 
     Node& add2_node = *graph.GetNode(tanh_node.OutputNodesBegin()->Index());
-    if (!CheckNode(graph, add2_node, "Add", {7, 13}, node.GetExecutionProviderType(), true)) {
+    if (!CheckNode(graph, add2_node, "Add", {7, 13, 14}, node.GetExecutionProviderType(), true)) {
       continue;
     }
 
@@ -231,7 +231,7 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
 
     Node& mul5_node = *graph.GetNode(add2_node.OutputNodesBegin()->Index());
     // This is the output of the Gelu subgraph, we don't need check it has single edge.
-    if (!CheckNode(graph, mul5_node, "Mul", {7, 13}, node.GetExecutionProviderType(), false)) {
+    if (!CheckNode(graph, mul5_node, "Mul", {7, 13, 14}, node.GetExecutionProviderType(), false)) {
       continue;
     }
 
@@ -242,7 +242,7 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
     // if this is second formula and if pow node has Cast parent, expect mul5_node has Cast parent as well
     NodeArg* cast_input_arg = nullptr;
     if (second_formula) {
-      const Node* p_cast1_node = graph_utils::FirstParentByType(node, "Cast");   
+      const Node* p_cast1_node = graph_utils::FirstParentByType(node, "Cast");
       if (p_cast1_node != nullptr) {
         // we've done the node check in second formula for pow node
         Node& cast1_node = *graph.GetNode(p_cast1_node->Index());
@@ -254,16 +254,16 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
         Node& cast3_node = *graph.GetNode(p_cast3_node->Index());
         if (!CheckNode(graph, cast3_node, "Cast", {9, 13}, node.GetExecutionProviderType(), true)) {
           continue;
-        } 
+        }
         // overwrite and continue as usual
-        p_mul5_input_node = graph_utils::FirstParentByType(cast3_node, "Mul");        
-        nodes_to_fuse.push_back(cast3_node);   
-        // keep cast1_node for reuse, its output edges will be adjusted in FinalizeNodeFusion()                         
+        p_mul5_input_node = graph_utils::FirstParentByType(cast3_node, "Mul");
+        nodes_to_fuse.push_back(cast3_node);
+        // keep cast1_node for reuse, its output edges will be adjusted in FinalizeNodeFusion()
       }
     }
 
     Node& mul6_node = const_cast<Node&>(*p_mul5_input_node);
-    if (!CheckNode(graph, mul6_node, "Mul", {7, 13}, node.GetExecutionProviderType(), false)) {
+    if (!CheckNode(graph, mul6_node, "Mul", {7, 13, 14}, node.GetExecutionProviderType(), false)) {
       continue;
     }
 
@@ -275,8 +275,8 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
       }
     }
 
-    if (input_index == -1)  continue;
-    // check same parent for both mul6 and pow, with or without cast 
+    if (input_index == -1) continue;
+    // check same parent for both mul6 and pow, with or without cast
     if (cast_input_arg != nullptr) {
       if (mul6_node.InputDefs()[(input_index + 1) % 2]->Name() != cast_input_arg->Name())
         continue;

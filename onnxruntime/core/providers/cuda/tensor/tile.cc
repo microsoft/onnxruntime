@@ -15,8 +15,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     6,
     12,
     kCudaExecutionProvider,
-    KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeCPUInput>(1)
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<double>(),
                               DataTypeImpl::GetTensorType<int32_t>(),
@@ -30,8 +30,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     13,
     kCudaExecutionProvider,
-    KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeCPUInput>(1)
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<double>(),
                               DataTypeImpl::GetTensorType<int32_t>(),

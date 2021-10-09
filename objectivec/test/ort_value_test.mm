@@ -7,6 +7,8 @@
 
 #include <vector>
 
+#import "test/assertion_utils.h"
+
 NS_ASSUME_NONNULL_BEGIN
 
 @interface ORTValueTest : XCTestCase
@@ -29,12 +31,11 @@ NS_ASSUME_NONNULL_BEGIN
   const ORTTensorElementDataType elementType = ORTTensorElementDataTypeInt32;
 
   NSError* err = nil;
-  ORTValue* ortValue = [[ORTValue alloc] initTensorWithData:data
+  ORTValue* ortValue = [[ORTValue alloc] initWithTensorData:data
                                                 elementType:elementType
                                                       shape:shape
                                                       error:&err];
-  XCTAssertNotNil(ortValue);
-  XCTAssertNil(err);
+  ORTAssertNullableResultSuccessful(ortValue, err);
 
   auto checkTensorInfo = [&](ORTTensorTypeAndShapeInfo* tensorInfo) {
     XCTAssertEqual(tensorInfo.elementType, elementType);
@@ -42,20 +43,17 @@ NS_ASSUME_NONNULL_BEGIN
   };
 
   ORTValueTypeInfo* typeInfo = [ortValue typeInfoWithError:&err];
-  XCTAssertNotNil(typeInfo);
-  XCTAssertNil(err);
+  ORTAssertNullableResultSuccessful(typeInfo, err);
   XCTAssertEqual(typeInfo.type, ORTValueTypeTensor);
   XCTAssertNotNil(typeInfo.tensorTypeAndShapeInfo);
   checkTensorInfo(typeInfo.tensorTypeAndShapeInfo);
 
   ORTTensorTypeAndShapeInfo* tensorInfo = [ortValue tensorTypeAndShapeInfoWithError:&err];
-  XCTAssertNotNil(tensorInfo);
-  XCTAssertNil(err);
+  ORTAssertNullableResultSuccessful(tensorInfo, err);
   checkTensorInfo(tensorInfo);
 
   NSData* actualData = [ortValue tensorDataWithError:&err];
-  XCTAssertNotNil(actualData);
-  XCTAssertNil(err);
+  ORTAssertNullableResultSuccessful(actualData, err);
   XCTAssertEqual(actualData.length, sizeof(int32_t));
   int32_t actualValue;
   memcpy(&actualValue, actualData.bytes, sizeof(int32_t));
@@ -69,12 +67,11 @@ NS_ASSUME_NONNULL_BEGIN
   NSArray<NSNumber*>* shape = @[ @2, @3 ];  // too large
 
   NSError* err = nil;
-  ORTValue* ortValue = [[ORTValue alloc] initTensorWithData:data
+  ORTValue* ortValue = [[ORTValue alloc] initWithTensorData:data
                                                 elementType:ORTTensorElementDataTypeInt32
                                                       shape:shape
                                                       error:&err];
-  XCTAssertNil(ortValue);
-  XCTAssertNotNil(err);
+  ORTAssertNullableResultUnsuccessful(ortValue, err);
 }
 
 @end

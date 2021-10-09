@@ -11,10 +11,11 @@ namespace onnxruntime {
 namespace cuda {
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-#define ALL_IEEE_FLOAT_TENSOR_TYPES {DataTypeImpl::GetTensorType<float>(),      \
-                                     DataTypeImpl::GetTensorType<double>(),     \
-                                     DataTypeImpl::GetTensorType<MLFloat16>(),  \
-                                     DataTypeImpl::GetTensorType<BFloat16>()}
+#define ALL_IEEE_FLOAT_TENSOR_TYPES           \
+  { DataTypeImpl::GetTensorType<float>(),     \
+    DataTypeImpl::GetTensorType<double>(),    \
+    DataTypeImpl::GetTensorType<MLFloat16>(), \
+    DataTypeImpl::GetTensorType<BFloat16>() }
 #else
 #define ALL_IEEE_FLOAT_TENSOR_TYPES DataTypeImpl::AllIEEEFloatTensorTypes()
 #endif
@@ -24,8 +25,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCudaExecutionProvider,
-    KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeCPUInput>(0)
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 0)
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T", ALL_IEEE_FLOAT_TENSOR_TYPES)
         .TypeConstraint("Tind", std::vector<MLDataType>{

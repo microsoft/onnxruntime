@@ -55,7 +55,7 @@ def get_model_info(link):
 def write_json(models): 
     model_json = json.dumps(models, indent=4) 
     with open('model_list.json', 'w') as fp: 
-        fp.write(models_json)
+        fp.write(model_json)
 
 def main():
     links = []

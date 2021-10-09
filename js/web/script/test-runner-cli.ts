@@ -5,7 +5,7 @@
 /* eslint-disable @typescript-eslint/no-use-before-define */
 
 import {execSync, spawnSync} from 'child_process';
-import * as fs from 'fs';
+import * as fs from 'fs-extra';
 import * as globby from 'globby';
 import {default as minimatch} from 'minimatch';
 import npmlog from 'npmlog';
@@ -32,17 +32,17 @@ const TEST_DATA_OP_ROOT = path.join(TEST_ROOT, 'data', 'ops');
 
 const TEST_DATA_BASE = args.env === 'node' ? TEST_ROOT : '/base/test/';
 
-let whitelist: Test.WhiteList;
-const shouldLoadSuiteTestData = (args.mode === 'suite0');
+let testlist: Test.TestList;
+const shouldLoadSuiteTestData = (args.mode === 'suite0' || args.mode === 'suite1');
 if (shouldLoadSuiteTestData) {
-  npmlog.verbose('TestRunnerCli.Init', 'Loading whitelist...');
+  npmlog.verbose('TestRunnerCli.Init', 'Loading testlist...');
 
-  // The following is a whitelist of unittests for already implemented operators.
+  // The following is a list of unittests for already implemented operators.
   // Modify this list to control what node tests to run.
-  const jsonWithComments = fs.readFileSync(path.resolve(TEST_ROOT, './test-suite-whitelist.jsonc')).toString();
+  const jsonWithComments = fs.readFileSync(path.resolve(TEST_ROOT, './suite-test-list.jsonc')).toString();
   const json = stripJsonComments(jsonWithComments, {whitespace: true});
-  whitelist = JSON.parse(json) as Test.WhiteList;
-  npmlog.verbose('TestRunnerCli.Init', 'Loading whitelist... DONE');
+  testlist = JSON.parse(json) as Test.TestList;
+  npmlog.verbose('TestRunnerCli.Init', 'Loading testlist... DONE');
 }
 
 // The default backends and opset version lists. Those will be used in suite tests.
@@ -78,9 +78,9 @@ if (shouldLoadSuiteTestData) {
 if (shouldLoadSuiteTestData) {
   npmlog.verbose('TestRunnerCli.Init', 'Loading test groups for suite test... DONE');
 
-  npmlog.verbose('TestRunnerCli.Init', 'Validate whitelist...');
-  validateWhiteList();
-  npmlog.verbose('TestRunnerCli.Init', 'Validate whitelist... DONE');
+  npmlog.verbose('TestRunnerCli.Init', 'Validate testlist...');
+  validateTestList();
+  npmlog.verbose('TestRunnerCli.Init', 'Validate testlist... DONE');
 }
 
 const modelTestGroups: Test.ModelTestGroup[] = [];
@@ -90,13 +90,16 @@ let unittest = false;
 npmlog.verbose('TestRunnerCli.Init', 'Preparing test config...');
 switch (args.mode) {
   case 'suite0':
+  case 'suite1':
     for (const backend of DEFAULT_BACKENDS) {
       if (args.backends.indexOf(backend) !== -1) {
         modelTestGroups.push(...nodeTests.get(backend)!);  // model test : node
         opTestGroups.push(...opTests.get(backend)!);       // operator test
       }
     }
-    unittest = true;
+    if (args.mode === 'suite0') {
+      unittest = true;
+    }
     break;
 
   case 'model':
@@ -144,20 +147,18 @@ run({
     cpuOptions: args.cpuOptions,
     webglOptions: args.webglOptions,
     wasmOptions: args.wasmOptions,
-    cpuFlags: args.cpuFlags,
-    webglFlags: args.webglFlags,
-    wasmFlags: args.wasmFlags,
+    globalEnvFlags: args.globalEnvFlags
   }
 });
 npmlog.info('TestRunnerCli', 'Tests completed successfully');
 
 process.exit();
 
-function validateWhiteList() {
+function validateTestList() {
   for (const backend of DEFAULT_BACKENDS) {
     const nodeTest = nodeTests.get(backend);
     if (nodeTest) {
-      for (const testCase of whitelist[backend].node) {
+      for (const testCase of testlist[backend].node) {
         const testCaseName = typeof testCase === 'string' ? testCase : testCase.name;
         let found = false;
         for (const testGroup of nodeTest) {
@@ -165,7 +166,7 @@ function validateWhiteList() {
               found || testGroup.tests.some(test => minimatch(test.modelUrl, path.join('**', testCaseName, '*.onnx')));
         }
         if (!found) {
-          throw new Error(`node model test case '${testCaseName}' in white list does not exist.`);
+          throw new Error(`node model test case '${testCaseName}' in test list does not exist.`);
         }
       }
     }
@@ -173,10 +174,10 @@ function validateWhiteList() {
     const onnxTest = onnxTests.get(backend);
     if (onnxTest) {
       const onnxModelTests = onnxTest.tests.map(i => i.name);
-      for (const testCase of whitelist[backend].onnx) {
+      for (const testCase of testlist[backend].onnx) {
         const testCaseName = typeof testCase === 'string' ? testCase : testCase.name;
         if (onnxModelTests.indexOf(testCaseName) === -1) {
-          throw new Error(`onnx model test case '${testCaseName}' in white list does not exist.`);
+          throw new Error(`onnx model test case '${testCaseName}' in test list does not exist.`);
         }
       }
     }
@@ -184,10 +185,10 @@ function validateWhiteList() {
     const opTest = opTests.get(backend);
     if (opTest) {
       const opTests = opTest.map(i => i.name);
-      for (const testCase of whitelist[backend].ops) {
+      for (const testCase of testlist[backend].ops) {
         const testCaseName = typeof testCase === 'string' ? testCase : testCase.name;
         if (opTests.indexOf(testCaseName) === -1) {
-          throw new Error(`operator test case '${testCaseName}' in white list does not exist.`);
+          throw new Error(`operator test case '${testCaseName}' in test list does not exist.`);
         }
       }
     }
@@ -197,19 +198,19 @@ function validateWhiteList() {
 function loadNodeTests(backend: string, version: number): Test.ModelTestGroup {
   return suiteFromFolder(
       `node-opset_v${version}-${backend}`, path.join(TEST_DATA_MODEL_NODE_ROOT, `v${version}`), backend,
-      whitelist[backend].node);
+      testlist[backend].node);
 }
 
 function suiteFromFolder(
     name: string, suiteRootFolder: string, backend: string,
-    whitelist?: readonly Test.WhiteList.Test[]): Test.ModelTestGroup {
+    testlist?: readonly Test.TestList.Test[]): Test.ModelTestGroup {
   const sessions: Test.ModelTest[] = [];
   const tests = fs.readdirSync(suiteRootFolder);
   for (const test of tests) {
     let condition: Test.Condition|undefined;
     let times: number|undefined;
-    if (whitelist) {
-      const matches = whitelist.filter(
+    if (testlist) {
+      const matches = testlist.filter(
           p => minimatch(path.join(suiteRootFolder, test), path.join('**', typeof p === 'string' ? p : p.name)));
       if (matches.length === 0) {
         times = 0;
@@ -219,7 +220,7 @@ function suiteFromFolder(
           condition = match.condition;
         }
       } else {
-        throw new Error(`multiple whitelist rules matches test: ${path.join(suiteRootFolder, test)}`);
+        throw new Error(`multiple testlist rules matches test: ${path.join(suiteRootFolder, test)}`);
       }
     }
     sessions.push(modelTestFromFolder(path.resolve(suiteRootFolder, test), backend, condition, times));
@@ -341,7 +342,7 @@ function loadOpTests(backend: string): Test.OperatorTestGroup[] {
     const stat = fs.lstatSync(thisFullPath);
     const ext = path.extname(thisFullPath);
     if (stat.isFile() && (ext === '.json' || ext === '.jsonc')) {
-      const skip = whitelist[backend].ops.indexOf(thisPath) === -1;
+      const skip = testlist[backend].ops.indexOf(thisPath) === -1;
       groups.push(opTestFromManifest(thisFullPath, backend, skip));
     }
   }
@@ -399,31 +400,45 @@ function run(config: Test.Config) {
       `(1/5) Writing file cache to file: testdata-file-cache-*.json ... ${
           fileCacheUrls.length > 0 ? `DONE, ${fileCacheUrls.length} file(s) generated` : 'SKIPPED'}`);
 
-  // STEP 2. write the config to testdata-config.js
-  npmlog.info('TestRunnerCli.Run', '(2/5) Writing config to file: testdata-config.js ...');
+  // STEP 2. write the config to testdata-config.json
+  npmlog.info('TestRunnerCli.Run', '(2/5) Writing config to file: testdata-config.json ...');
   saveConfig(config);
-  npmlog.info('TestRunnerCli.Run', '(2/5) Writing config to file: testdata-config.js ... DONE');
+  npmlog.info('TestRunnerCli.Run', '(2/5) Writing config to file: testdata-config.json ... DONE');
 
   // STEP 3. get npm bin folder
   npmlog.info('TestRunnerCli.Run', '(3/5) Retrieving npm bin folder...');
   const npmBin = execSync('npm bin', {encoding: 'utf8'}).trimRight();
   npmlog.info('TestRunnerCli.Run', `(3/5) Retrieving npm bin folder... DONE, folder: ${npmBin}`);
 
+  // STEP 4. generate bundle
+  npmlog.info('TestRunnerCli.Run', '(4/5) Running build to generate bundle...');
+  const buildCommand = `node ${path.join(__dirname, 'build')}`;
+  const buildArgs = [`--bundle-mode=${args.env === 'node' ? 'node' : args.bundleMode}`];
+  if (args.backends.indexOf('wasm') === -1) {
+    buildArgs.push('--no-wasm');
+  }
+  npmlog.info('TestRunnerCli.Run', `CMD: ${buildCommand} ${buildArgs.join(' ')}`);
+  const build = spawnSync(buildCommand, buildArgs, {shell: true, stdio: 'inherit'});
+  if (build.status !== 0) {
+    console.error(build.error);
+    process.exit(build.status === null ? undefined : build.status);
+  }
+  npmlog.info('TestRunnerCli.Run', '(4/5) Running build to generate bundle... DONE');
+
   if (args.env === 'node') {
-    // STEP 4. use tsc to build ONNX Runtime Web
-    npmlog.info('TestRunnerCli.Run', '(4/5) Running tsc...');
+    // STEP 5. run tsc and run mocha
+    npmlog.info('TestRunnerCli.Run', '(5/5) Running tsc...');
     const tscCommand = path.join(npmBin, 'tsc');
     const tsc = spawnSync(tscCommand, {shell: true, stdio: 'inherit'});
     if (tsc.status !== 0) {
       console.error(tsc.error);
       process.exit(tsc.status === null ? undefined : tsc.status);
     }
-    npmlog.info('TestRunnerCli.Run', '(4/5) Running tsc... DONE');
+    npmlog.info('TestRunnerCli.Run', '(5/5) Running tsc... DONE');
 
-    // STEP 5. run mocha
     npmlog.info('TestRunnerCli.Run', '(5/5) Running mocha...');
     const mochaCommand = path.join(npmBin, 'mocha');
-    const mochaArgs = [path.join(TEST_ROOT, 'test-main'), '--timeout 60000'];
+    const mochaArgs = [path.join(TEST_ROOT, 'test-main'), `--timeout ${args.debug ? 9999999 : 60000}`];
     npmlog.info('TestRunnerCli.Run', `CMD: ${mochaCommand} ${mochaArgs.join(' ')}`);
     const mocha = spawnSync(mochaCommand, mochaArgs, {shell: true, stdio: 'inherit'});
     if (mocha.status !== 0) {
@@ -433,21 +448,6 @@ function run(config: Test.Config) {
     npmlog.info('TestRunnerCli.Run', '(5/5) Running mocha... DONE');
 
   } else {
-    // STEP 4. generate bundle
-    npmlog.info('TestRunnerCli.Run', '(4/5) Running build to generate bundle...');
-    const buildCommand = `node ${path.join(__dirname, 'build')}`;
-    const buildArgs = [`--bundle-mode=${args.bundleMode}`];
-    if (args.backends.indexOf('wasm') === -1) {
-      buildArgs.push('--no-wasm');
-    }
-    npmlog.info('TestRunnerCli.Run', `CMD: ${buildCommand} ${buildArgs.join(' ')}`);
-    const build = spawnSync(buildCommand, buildArgs, {shell: true, stdio: 'inherit'});
-    if (build.status !== 0) {
-      console.error(build.error);
-      process.exit(build.status === null ? undefined : build.status);
-    }
-    npmlog.info('TestRunnerCli.Run', '(4/5) Running build to generate bundle... DONE');
-
     // STEP 5. use Karma to run test
     npmlog.info('TestRunnerCli.Run', '(5/5) Running karma to start test runner...');
     const karmaCommand = path.join(npmBin, 'karma');
@@ -549,36 +549,7 @@ function saveOneFileCache(index: number, fileCache: Test.FileCache) {
 }
 
 function saveConfig(config: Test.Config) {
-  let setOptions = '';
-  if (config.options.debug !== undefined) {
-    setOptions += `ort.env.debug = ${config.options.debug};`;
-  }
-  if (config.options.webglFlags && config.options.webglFlags.contextId !== undefined) {
-    setOptions += `ort.env.webgl.contextId = ${JSON.stringify(config.options.webglFlags.contextId)};`;
-  }
-  if (config.options.webglFlags && config.options.webglFlags.matmulMaxBatchSize !== undefined) {
-    setOptions += `ort.env.webgl.matmulMaxBatchSize = ${config.options.webglFlags.matmulMaxBatchSize};`;
-  }
-  if (config.options.webglFlags && config.options.webglFlags.textureCacheMode !== undefined) {
-    setOptions += `ort.env.webgl.textureCacheMode = ${JSON.stringify(config.options.webglFlags.textureCacheMode)};`;
-  }
-  if (config.options.webglFlags && config.options.webglFlags.pack !== undefined) {
-    setOptions += `ort.env.webgl.pack = ${JSON.stringify(config.options.webglFlags.pack)};`;
-  }
-  if (config.options.wasmFlags && config.options.wasmFlags.numThreads !== undefined) {
-    setOptions += `ort.env.wasm.numThreads = ${JSON.stringify(config.options.wasmFlags.numThreads)};`;
-  }
-  if (config.options.wasmFlags && config.options.wasmFlags.initTimeout !== undefined) {
-    setOptions += `ort.env.wasm.initTimeout = ${JSON.stringify(config.options.wasmFlags.initTimeout)};`;
-  }
-  // TODO: support onnxruntime nodejs binding
-  // if (config.model.some(testGroup => testGroup.tests.some(test => test.backend === 'cpu'))) {
-  //   setOptions += 'require(\'onnxruntime-node\');';
-  // }
-
-  fs.writeFileSync(path.join(TEST_ROOT, './testdata-config.js'), `${setOptions}
-
-ort.env.ORT_WEB_TEST_DATA=${JSON.stringify(config)};`);
+  fs.writeJSONSync(path.join(TEST_ROOT, './testdata-config.json'), config);
 }
 
 function getBrowserNameFromEnv(env: TestRunnerCliArgs['env'], debug?: boolean) {
@@ -594,7 +565,7 @@ function getBrowserNameFromEnv(env: TestRunnerCliArgs['env'], debug?: boolean) {
     case 'safari':
       return 'Safari';
     case 'bs':
-      return process.env.ONNXJS_TEST_BS_BROWSERS!;
+      return process.env.ORT_WEB_TEST_BS_BROWSERS!;
     default:
       throw new Error(`env "${env}" not supported.`);
   }

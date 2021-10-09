@@ -45,7 +45,7 @@ static void RunTest(
     if (!no_beta) {
       test.AddInput<float>("beta", beta_dims, beta_data);
     } else {
-      test.AddMissingOptionalInput<float>();
+      test.AddOptionalInputEdge<float>();
     }
     test.AddAttribute("epsilon", epsilon);
     if (!bias_data.empty()) {
@@ -63,7 +63,7 @@ static void RunTest(
     if (!no_beta) {
       test.AddInput<MLFloat16>("beta", beta_dims, ToFloat16(beta_data));
     } else {
-      test.AddMissingOptionalInput<float>();
+      test.AddOptionalInputEdge<float>();
     }
     test.AddAttribute("epsilon", epsilon);
     if (!bias_data.empty()) {
@@ -74,9 +74,9 @@ static void RunTest(
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     if (rocm_ep != nullptr) {
-        execution_providers.push_back(DefaultRocmExecutionProvider());
+      execution_providers.push_back(DefaultRocmExecutionProvider());
     } else {
-        execution_providers.push_back(DefaultCudaExecutionProvider());
+      execution_providers.push_back(DefaultCudaExecutionProvider());
     }
 
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);

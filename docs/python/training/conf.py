@@ -20,6 +20,7 @@ extensions = ['sphinx.ext.autodoc',
 ]
 templates_path = ['_templates']
 exclude_patterns = []
+autoclass_content = 'both'
 
 # -- Options for HTML output -------------------------------------------------
 
@@ -28,4 +29,8 @@ html_static_path = ['_static']
 
 # -- Options for intersphinx extension ---------------------------------------
 
-intersphinx_mapping = {'https://docs.python.org/': None}
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/3', None),
+    'numpy': ('https://numpy.org/doc/stable', None),
+    'torch': ('https://pytorch.org/docs/stable/', None),
+}

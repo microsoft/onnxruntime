@@ -14,6 +14,7 @@
 #include "core/framework/framework_common.h"
 #include "core/framework/iexecutor.h"
 #include "core/framework/kernel_registry_manager.h"
+#include "core/framework/prepacked_weights_container.h"
 #include "core/framework/session_state.h"
 #include "core/graph/basic_types.h"
 #include "core/optimizer/graph_transformer_level.h"
@@ -166,7 +167,7 @@ class InferenceSession {
     * Calling this API is optional in which case onnxruntime will use its internal CPU execution provider.
     * @return OK if success.
     */
-  common::Status RegisterExecutionProvider(std::unique_ptr<IExecutionProvider> p_exec_provider) ORT_MUST_USE_RESULT;
+  common::Status RegisterExecutionProvider(const std::shared_ptr<IExecutionProvider>& p_exec_provider) ORT_MUST_USE_RESULT;
 
 #if !defined(ORT_MINIMAL_BUILD)
   /**
@@ -183,10 +184,10 @@ class InferenceSession {
   /**
     * Filter the enabled optimizers (either transformer or rewrite rule) using optimizers_to_disable.
     * For an optimizer to be enabled, it must be allowed at the current optimization level (as specified in
-    * session options), and NOT in optimizers_to_disable. 
+    * session options), and NOT in optimizers_to_disable.
     * This allows finer grained control of the enabled/disabled optimizations.
     * Must be called before Initialize() to take effect.
-    * 
+    *
     * Calling this API is optional.
     * @return OK if success.
     */
@@ -216,12 +217,12 @@ class InferenceSession {
   /**
     * Load an ONNX or ORT format model.
     *
-    * Set SessionOptions session config value ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT to 'ORT' or 'ONNX' to 
+    * Set SessionOptions session config value ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT to 'ORT' or 'ONNX' to
     * explicitly choose model format.
     *
     * If format is not explicitly specified and filename ends in '.ort' it will be inferred to be an ORT format model.
 	* All other files are assumed to be in ONNX format.
-    * 
+    *
     * @param model_uri absolute path of the model file.
     * @return OK if success.
     */
@@ -232,11 +233,11 @@ class InferenceSession {
   /**
     * Load an ONNX or ORT format model.
     *
-    * Set SessionOptions session config value ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT to 'ORT' or 'ONNX' to 
+    * Set SessionOptions session config value ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT to 'ORT' or 'ONNX' to
     * explicitly choose model format.
     *
     * If format is not explicitly specified the model format will be inferred from the bytes, defaulting to ONNX.
-    * 
+    *
     * @param model_data Model data buffer
     * @param model_data_len Model data buffer size
     * @return OK if success.
@@ -308,19 +309,22 @@ class InferenceSession {
 #ifdef ENABLE_TRAINING
   /**
   * Partially run a pre-loaded and pre-intialized model.
-    * @param run_options run options. 
+    * @param run_options run options.
     * @param feeds inputs owned by client code and should not be changed during
     *        execution of this function.
     * @param fetches outputs produced after the executin of this function.
     * @param state State of the graph needed to resume partial graph run.
     * @param feeds_fetches_manager Contains feed/fetches name to internal indices mapping and information for device
     *                              copy/checks.
+    * @param cache Contains node arg name to OrtValue map stashed from previous run
+    *              for frontier tensors
   */
   common::Status PartialRun(onnxruntime::RunOptions& run_options,
                             const std::vector<OrtValue>& feeds,
                             std::vector<OrtValue>& fetches,
                             PartialGraphExecutionState& state,
-                            FeedsFetchesManager& feeds_fetches_manager);
+                            FeedsFetchesManager& feeds_fetches_manager,
+                            const OrtValueCachePtr& cache);
 #endif
 
   /**
@@ -428,6 +432,13 @@ class InferenceSession {
     return *session_state_;
   }
 
+  /**
+    * Add a PrepackedWeightsContainer instance to the session so as to store the pre-packed weights
+    *  of shared initializers to be shared across sessions.
+    * @param prepacked_weights_container PrepackedWeightsContainer instance
+    */
+  Status AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container);
+
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
   /**
@@ -443,6 +454,9 @@ class InferenceSession {
     * @return OK if success.
     */
   common::Status Load(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto) ORT_MUST_USE_RESULT;
+
+  common::Status Load(std::function<common::Status(std::shared_ptr<Model>&)> loader,
+                      const std::string& event_name) ORT_MUST_USE_RESULT;
 
   common::Status DoPostLoadProcessing(onnxruntime::Model& model) ORT_MUST_USE_RESULT;
 
@@ -489,8 +503,6 @@ class InferenceSession {
   common::Status SaveModelMetadata(const onnxruntime::Model& model) ORT_MUST_USE_RESULT;
 
 #if !defined(ORT_MINIMAL_BUILD)
-  common::Status Load(std::function<common::Status(std::shared_ptr<Model>&)> loader,
-                      const std::string& event_name) ORT_MUST_USE_RESULT;
 
   template <typename T>
   common::Status Load(const std::basic_string<T>& model_uri) ORT_MUST_USE_RESULT;
@@ -571,8 +583,8 @@ class InferenceSession {
   void ShrinkMemoryArenas(const std::vector<AllocatorPtr>& arenas_to_shrink);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  virtual void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                         TransformerLevel graph_optimization_level);
+  virtual common::Status AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
+                                                   TransformerLevel graph_optimization_level);
 
   common::Status TransformGraph(onnxruntime::Graph& graph,
                                 const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
@@ -587,11 +599,6 @@ class InferenceSession {
 
   // Any GraphTransformer/RewriteRule name in this set will not be enabled.
   std::unordered_set<std::string> optimizers_to_disable_;
-#endif
-
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  Status PartitionOrtFormatModel(onnxruntime::Graph& graph, const ExecutionProviders& providers,
-                                 KernelRegistryManager& kernel_registry_manager, SessionState& session_state) const;
 #endif
 
   SessionOptions session_options_;
@@ -695,22 +702,47 @@ class InferenceSession {
   bool is_model_proto_parsed_ = false;
   const Environment& environment_;
 
-  // Bytes from an ORT format model.
-  // We store them currently to make the Load + Initialize behave the same way as for an ONNX model
-  // as we need some of the bytes for the Load (create the Model) and some for the Initialize (create SessionState).
+  // View of the bytes from an ORT format model.
+  // If the session is started with an input byte array contains model data, and the caller
+  // specifies that ORT should use the model bytes directly by setting the session config option
+  // "session.use_ort_model_bytes_directly" to "1"
+  //   We use the the byte array directly without copy to reduce peak memory usage
+  //   (Short term) This will require the user to guarantee the life time of the model data
+  //   until the session is created.
+  //   (Longer term) If we are going to use the memory offsets directly for initializers, the model data
+  //   should be alive until the InferenceSession goes away.
+  // If the session is started with an input byte array contains model data, and the caller does not
+  // specify ORT should use the model bytes directly
+  // Or the session is started with a model_uri
+  //   We store them currently in the ort_format_model_bytes_data_holder_ to make the Load + Initialize
+  //   behave the same way as for an ONNX model, as we need some of the bytes for the Load (create the Model)
+  //   and some for the Initialize (create SessionState).
   // Short term we free them after Initialize.
   // Longer term we may want to directly refer to offsets in this buffer for initializers so we don't need to copy
   // those into new OrtValue instances, at which point we won't free them until the InferenceSession goes away.
-  std::vector<uint8_t> ort_format_model_bytes_;
+  gsl::span<const uint8_t> ort_format_model_bytes_;
+
+  // This holds the actual model data
+  // In case if the session is started with an input byte array contains model data, and the caller
+  // specifies that ORT should use the model bytes directly by setting the session config option
+  // "session.use_ort_model_bytes_directly" to "1", this will be empty
+  std::vector<uint8_t> ort_format_model_bytes_data_holder_;
 
   std::shared_ptr<onnxruntime::AllocatorManager> allocator_manager_;
+
+  // Container to store pre-packed weights to share between sessions.
+  // The life-cycle of the cache itself is maintained by the user and the user will ensure
+  // the cache is valid until any session reliant on it is still in scope.
+  PrepackedWeightsContainer* prepacked_weights_container_ = nullptr;
 };
 
 struct SessionIOBinding {
  public:
   SessionIOBinding(InferenceSession* session);
 
+  const IOBinding* Get() const;
   IOBinding* Get();
+  const InferenceSession* GetInferenceSession() const;
   InferenceSession* GetInferenceSession();
 
  private:

@@ -100,13 +100,14 @@ Status GatherNDBase::PrepareCompute(
       endver,                                                               \
       TIndex,                                                               \
       kCudaExecutionProvider,                                               \
-      KernelDefBuilder()                                                    \
+      (*KernelDefBuilder::Create())                                         \
           .TypeConstraint("T",                                              \
                           std::vector<MLDataType>{                          \
                               DataTypeImpl::GetTensorType<float>(),         \
                               DataTypeImpl::GetTensorType<double>(),        \
                               DataTypeImpl::GetTensorType<MLFloat16>(),     \
                               DataTypeImpl::GetTensorType<int64_t>(),       \
+                              DataTypeImpl::GetTensorType<bool>(),          \
                           })                                                \
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIndex>()),   \
       GatherND<TIndex>);
@@ -117,15 +118,17 @@ Status GatherNDBase::PrepareCompute(
     DataTypeImpl::GetTensorType<double>(),    \
     DataTypeImpl::GetTensorType<MLFloat16>(), \
     DataTypeImpl::GetTensorType<BFloat16>(),  \
+    DataTypeImpl::GetTensorType<bool>(),      \
     DataTypeImpl::GetTensorType<int64_t>() }
-#define GATHER_ND_T_DATA_TYPES float, MLFloat16, double, int64_t, BFloat16
+#define GATHER_ND_T_DATA_TYPES float, MLFloat16, double, int64_t, BFloat16, bool
 #else
 #define GATHER_ND_T_TENSOR_TYPES              \
   { DataTypeImpl::GetTensorType<float>(),     \
     DataTypeImpl::GetTensorType<double>(),    \
     DataTypeImpl::GetTensorType<MLFloat16>(), \
+    DataTypeImpl::GetTensorType<bool>(),      \
     DataTypeImpl::GetTensorType<int64_t>() }
-#define GATHER_ND_T_DATA_TYPES float, MLFloat16, double, int64_t
+#define GATHER_ND_T_DATA_TYPES float, MLFloat16, double, int64_t, bool
 #endif
 
 #define REGISTER_KERNEL_TYPED_GATHER_ND(TIndex, ver)                      \
@@ -135,7 +138,7 @@ Status GatherNDBase::PrepareCompute(
       ver,                                                                \
       TIndex,                                                             \
       kCudaExecutionProvider,                                             \
-      KernelDefBuilder()                                                  \
+      (*KernelDefBuilder::Create())                                       \
           .TypeConstraint("T", GATHER_ND_T_TENSOR_TYPES)                  \
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIndex>()), \
       GatherND<TIndex>);
@@ -192,6 +195,11 @@ Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
   shape.insert(shape.end(), input_shape.GetDims().begin() + last_indices_dimension, input_shape.GetDims().end());
 
   auto output_tensor = context->Output(0, TensorShape(shape));
+
+  // Bail out early in case the output is going to be empty
+  if (output_tensor->Shape().Size() == 0) {
+    return Status::OK();
+  }
 
   // Compute
   int64_t num_slices;
