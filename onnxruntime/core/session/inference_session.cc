@@ -2124,11 +2124,10 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
     for (auto elem : inputs) {
       auto elem_type = utils::GetMLDataType(*elem);
       auto elem_shape_proto = elem->Shape();
-      input_def_map_.insert(
-          {elem->Name(),
-           InputDefMetaData(
-               elem, elem_type,
-               elem_shape_proto ? utils::GetTensorShapeFromTensorShapeProto(*elem_shape_proto) : TensorShape())});
+      input_def_map_.emplace(std::piecewise_construct,
+           std::forward_as_tuple(elem->Name()),
+           std::forward_as_tuple(elem, elem_type,
+               elem_shape_proto ? utils::GetTensorShapeFromTensorShapeProto(*elem_shape_proto) : TensorShape()));
     }
   };
 
