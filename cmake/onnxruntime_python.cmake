@@ -31,8 +31,7 @@ endif()
 if (onnxruntime_ENABLE_EAGER_MODE)
   list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_PREBUILT_PYTORCH_PATH})
   find_package(Torch REQUIRED)
-  # find_library(TORCH_PYTHON_LIBRARY torch_python PATHS "${TORCH_INSTALL_PREFIX}/lib")
-  find_library(TORCH_PYTHON_LIBRARY torch_python)
+  find_library(TORCH_PYTHON_LIBRARY torch_python PATHS "${TORCH_INSTALL_PREFIX}/lib")
   
   file(GLOB onnxruntime_eager_extension_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_ROOT}/orttraining/eager/*.cpp"
@@ -54,7 +53,6 @@ endif()
 if(HAS_CAST_FUNCTION_TYPE)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-cast-function-type")
 endif()
-
 
 # We export symbols using linker and the compiler does not know anything about it
 # There is a problem with classes that have pybind types as members.
@@ -107,7 +105,7 @@ if (onnxruntime_ENABLE_EAGER_MODE)
   # todo: this is because the prebuild pytorch may use a different version of protobuf headers.
   # force the build to find the protobuf headers ort using.
   target_include_directories(onnxruntime_pybind11_state PRIVATE "${REPO_ROOT}/cmake/external/protobuf/src")
-  target_link_libraries(onnxruntime_pybind11_state PUBLIC onnxruntime_eager ${TORCH_LIBRARIES} ${TORCH_PYTHON_LIBRARY})
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_eager ${TORCH_LIBRARIES} ${TORCH_PYTHON_LIBRARY})
   # the ort_aten.g.cpp is generated from tools. currently it has some limitations.
   # todo: fix this
   if (NOT MSVC)
@@ -198,11 +196,6 @@ if (MSVC)
 else()
   set_target_properties(onnxruntime_pybind11_state PROPERTIES SUFFIX ".so")
 endif()
-get_cmake_property(_variableNames VARIABLES)
-list (SORT _variableNames)
-foreach (_variableName ${_variableNames})
-    message(STATUS "${_variableName}=${${_variableName}}")
-endforeach()
 
 # Generate version_info.py in Windows build.
 # Has to be done before onnxruntime_python_srcs is set.
