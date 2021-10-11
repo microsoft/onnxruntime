@@ -10,6 +10,7 @@ Meanwhile, welcome to contribute!
 * Expect developer has basic knowledge of C++, CUDA and python programming.
 * [Transformer Model Optimization Tool Overview](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/README.md)
 * This guide assumes that a valid onnx model exported from the original framework is ready. If there is any issues with model exporting, fp16 conversion, profiling and benchmark. Please refer to the above link.
+* Optional: In case kernel changes are needed, here is the instruction on [building the ONNXRuntime](https://onnxruntime.ai/docs/build/) with packages on [different APIs and Language bindings](https://onnxruntime.ai/docs/build/inferencing.html#apis-and-language-bindings)
 
 ## Rule Of Thumb
 
@@ -21,7 +22,9 @@ ONNXRuntime supports optimized kernels as contrib operators in both CPU and CUDA
 For instance, the entry point of Attention CPU kernel is the [Compute() function](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/contrib_ops/cpu/bert/attention.cc#L408). Similarly, for EmbedLayerNorm CUDA kernel, the entry point is the [ComputeInternal() function](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/contrib_ops/cuda/bert/embed_layer_norm.cc#L36).
 
 ### Graph Fusion
-The main part of the transformer [optimizer](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/optimizer.py) is graph fusion. In the current implementation for bert optimization, it supports a couple of [fusions](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/onnx_model_bert.py#L302) executed in sequence.
+The main part of the transformer [optimizer](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/optimizer.py) is graph fusion. In the current implementation for bert optimization, it supports a couple of [fusions](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/onnx_model_bert.py#L302) executed in order. Each particular graph fusion is an inheritance class of [Fusion](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/fusion_base.py#L13) with fuse() method to implement. For instance, the [fuse()](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/fusion_attention.py#L280) method in attention fusion.
+
+During the process of the fusion
 
 ## Contribution
 [Coding Conventions and Standards](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/docs/Coding_Conventions_and_Standards.md)
