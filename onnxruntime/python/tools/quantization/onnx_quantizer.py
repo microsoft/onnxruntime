@@ -324,7 +324,7 @@ class ONNXQuantizer:
             return weight.data_type == onnx_proto.TensorProto.FLOAT
         if (not self.enable_subgraph_quantization) or (self.parent is None):
             return False
-        return self.parent.is_valid_quantize_weight(weight_name, True)
+        return self.parent.is_valid_quantize_weight(weight_name)
 
     def _get_dynamic_input_quantization_params(self, input_name, nodes_list, qType):
         '''
