@@ -896,7 +896,11 @@ struct ProviderSharedLibrary {
     }
 
     void (*PProvider_SetHost)(void*);
-    Env::Default().GetSymbolFromLibrary(handle_, "Provider_SetHost", (void**)&PProvider_SetHost);
+    error = Env::Default().GetSymbolFromLibrary(handle_, "Provider_SetHost", (void**)&PProvider_SetHost);
+    if (!error.IsOK()) {
+      LOGS_DEFAULT(ERROR) << error.ErrorMessage();
+      return false;
+    }
 
     PProvider_SetHost(&provider_host_);
     return true;
@@ -904,7 +908,10 @@ struct ProviderSharedLibrary {
 
   void Unload() {
     if (handle_) {
-      Env::Default().UnloadDynamicLibrary(handle_);
+      auto status = Env::Default().UnloadDynamicLibrary(handle_);
+      if (!status.IsOK()) {
+        LOGS_DEFAULT(ERROR) << status.ErrorMessage();
+      }
       handle_ = nullptr;
     }
   }
@@ -947,7 +954,11 @@ struct ProviderLibrary {
     }
 
     Provider* (*PGetProvider)();
-    Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider);
+    error = Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider);
+    if (!error.IsOK()) {
+      LOGS_DEFAULT(ERROR) << error.ErrorMessage();
+      return nullptr;
+    }
 
     provider_ = PGetProvider();
     return provider_;
@@ -958,8 +969,12 @@ struct ProviderLibrary {
       if (provider_)
         provider_->Shutdown();
 
-      if (unload_)
-        Env::Default().UnloadDynamicLibrary(handle_);
+      if (unload_) {
+        auto status = Env::Default().UnloadDynamicLibrary(handle_);
+        if (!status.IsOK()) {
+          LOGS_DEFAULT(ERROR) << status.ErrorMessage();
+        }
+      }
 
       handle_ = nullptr;
       provider_ = nullptr;

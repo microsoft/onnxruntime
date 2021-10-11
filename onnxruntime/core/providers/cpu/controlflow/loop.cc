@@ -500,7 +500,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
       // Loop on CUDA if the copy stream is the same as the compute stream.
       // So there is no explicit sync required between the compute and copy streams
       // to avoid data races.
-      session_state_.GetDataTransferMgr().CopyTensor(input.Get<Tensor>(), *output);
+      ORT_RETURN_IF_ERROR(session_state_.GetDataTransferMgr().CopyTensor(input.Get<Tensor>(), *output));
     } else if (input.IsTensorSequence()) {
       if (iter_num_value != 0) {
         // We can move the subgraph outputs directly into the Loop's outputs.
@@ -516,30 +516,28 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
         output->SetType(data.DataType());
 
         AllocatorPtr alloc;
-        auto status = context_.GetTempSpaceAllocator(&alloc);
-        if (!status.IsOK()) {
-          ORT_THROW("Unable to get an allocator");
-        }
+        ORT_RETURN_IF_ERROR(context_.GetTempSpaceAllocator(&alloc));
         for (auto it = data.begin(), end = data.end(); it != end; ++it) {
           Tensor tmp(it->DataType(), onnxruntime::TensorShape(it->Shape()), alloc);
           // Safely use the IDataTransfer abstraction as we only allow using
           // Loop on CUDA if the copy stream is the same as the compute stream.
           // So there is no explicit sync required between the compute and copy streams
           // to avoid data races.
-          session_state_.GetDataTransferMgr().CopyTensor(*it, tmp);
+          ORT_RETURN_IF_ERROR(session_state_.GetDataTransferMgr().CopyTensor(*it, tmp));
           tensors.push_back(std::move(tmp));
         }
 
         output->SetElements(std::move(tensors));
       }
     }
+    return Status::OK();
   };
 
   // copy to Loop output
   if (iter_num_value != 0) {
     for (int i = 0; i < info_.num_loop_carried_vars; ++i) {
       // need to allocate Loop output and copy OrtValue from fetches
-      copy_mlvalue_to_output(fetches[i + 1], i, iter_num_value);  // skip cond
+      ORT_RETURN_IF_ERROR(copy_mlvalue_to_output(fetches[i + 1], i, iter_num_value));  // skip cond
     }
 
     for (int i = info_.num_loop_carried_vars; i < info_.num_outputs; ++i) {
@@ -553,7 +551,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
     // no iterations.
     // copy input loop carried vars to output.
     for (int i = 0; i < info_.num_loop_carried_vars; ++i) {
-      copy_mlvalue_to_output(feeds[i + 2], i, iter_num_value);  // skip iter# and cond
+      ORT_RETURN_IF_ERROR(copy_mlvalue_to_output(feeds[i + 2], i, iter_num_value));  // skip iter# and cond
     }
 
     // create empty outputs for loop outputs using the subgraph output shapes for the rank

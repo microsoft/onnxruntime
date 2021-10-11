@@ -71,7 +71,7 @@ Status ConcatTraining::ComputeInternal(OpKernelContext* ctx) const {
  
     } else {
       // too many inputs, so copy sizes to device memory
-      input_ptr.CopyToGpu();
+      ORT_RETURN_IF_ERROR(input_ptr.CopyToGpu());
       ORT_RETURN_IF_ERROR(ConcatSameConcatDimImpl(Stream(),
                                  element_bytes,
                                  block_size_including_axis_dim,
@@ -84,13 +84,13 @@ Status ConcatTraining::ComputeInternal(OpKernelContext* ctx) const {
   } else {
     // input sizes vary, copy input sizes and range metadata to device
     // todo: pass by value when few inputs
-    input_ptr.CopyToGpu();
+    ORT_RETURN_IF_ERROR(input_ptr.CopyToGpu());
     CudaAsyncBuffer<int64_t> concat_sizes_gpu(this, concat_sizes);
     CudaAsyncBuffer<int64_t> axis_dimension_input_output_mapping_gpu(this, axis_dimension_input_output_mapping);
     CudaAsyncBuffer<int64_t> concat_sizes_range_gpu(this, concat_sizes_range);
-    concat_sizes_gpu.CopyToGpu();
-    axis_dimension_input_output_mapping_gpu.CopyToGpu();
-    concat_sizes_range_gpu.CopyToGpu();
+    ORT_RETURN_IF_ERROR(concat_sizes_gpu.CopyToGpu());
+    ORT_RETURN_IF_ERROR(axis_dimension_input_output_mapping_gpu.CopyToGpu());
+    ORT_RETURN_IF_ERROR(concat_sizes_range_gpu.CopyToGpu());
 
     ORT_RETURN_IF_ERROR(ConcatImpl(Stream(),
                                   element_bytes,

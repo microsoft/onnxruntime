@@ -102,14 +102,14 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       coreml_inner_product->set_inputchannels(b_shape[1]);
       coreml_inner_product->set_outputchannels(b_shape[0]);
       // Add weight (b of MatMul)
-      CreateCoreMLWeight(*coreml_inner_product->mutable_weights(), b_tensor);
+      ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_inner_product->mutable_weights(), b_tensor));
     }
 
     // Add bias if present
     if (input_defs.size() > 2) {
       coreml_inner_product->set_hasbias(true);
       const auto& bias_tensor = *model_builder.GetInitializerTensors().at(input_defs[2]->Name());
-      CreateCoreMLWeight(*coreml_inner_product->mutable_bias(), bias_tensor);
+      ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_inner_product->mutable_bias(), bias_tensor));
     }
   }
 

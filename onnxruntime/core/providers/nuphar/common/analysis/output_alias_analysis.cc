@@ -19,7 +19,7 @@ void OutputAliasAnalysis::Traverse(const std::vector<const Node*>& nodes,
     } else {
       // TODO: change identity to other alias
       bool is_identity = (node->OpType() == "Identity");
-      node->ForEachWithIndex(
+      ORT_THROW_IF_ERROR(node->ForEachWithIndex(
           node->OutputDefs(),
           [&](const NodeArg& def, size_t) {
             if (graph_outputs.count(def.Name()) > 0) {
@@ -38,7 +38,7 @@ void OutputAliasAnalysis::Traverse(const std::vector<const Node*>& nodes,
               }
             }
             return Status::OK();
-          });
+          }));
     }
   }
 }
