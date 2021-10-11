@@ -1,6 +1,10 @@
 #include "mlasi.h"
 #include "convsym.h"
 
+extern "C" {
+MLAS_CONV_SYM_KERNEL MlasConvSymKernelNeon;
+}
+
 void
 MLASCALL MlasConvSymKernelArm64(
     const void* Input,
@@ -109,11 +113,22 @@ MLASCALL MlasConvSymDepthwiseKernelArm64(
     return;
 }
 
+// intrinsics
+// const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchArm64 = {
+//     //MlasConvSymKernelArm64,
+//     MlasConvSymKernelNeon,
+//     MlasConvSymDepthwiseKernelArm64,
+//     16,                                      // KernelChannelCount
+//     1,                                      // KernelOutputCount
+//     16,                                     // KernelDepthwiseChannelCount
+//     4,                                      // KernelDepthwiseOutputCount
+// };
+
 const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchArm64 = {
-    MlasConvSymKernelArm64,
+    MlasConvSymKernelNeon,
     MlasConvSymDepthwiseKernelArm64,
-    16,                                     // KernelChannelCount
-    1,                                      // KernelOutputCount
+    8,                                      // KernelChannelCount
+    2,                                      // KernelOutputCount
     16,                                     // KernelDepthwiseChannelCount
     4,                                      // KernelDepthwiseOutputCount
 };

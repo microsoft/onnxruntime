@@ -51,6 +51,7 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/arm64/QgemmU8X8KernelUdot.asm
         ${MLAS_SRC_DIR}/arm64/SgemmKernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/SgemvKernelNeon.asm
+        ${MLAS_SRC_DIR}/arm64/ConvSymKernelNeon.asm
       )
     else()
       target_sources(onnxruntime_mlas PRIVATE
@@ -266,6 +267,7 @@ else()
           ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelUdot.S
           ${MLAS_SRC_DIR}/aarch64/SgemmKernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/SgemvKernelNeon.S
+          ${MLAS_SRC_DIR}/aarch64/ConvSymKernelNeon.S
           ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
           ${MLAS_SRC_DIR}/convsym_kernel_neon.cpp
