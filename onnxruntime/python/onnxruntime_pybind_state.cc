@@ -76,7 +76,7 @@ CustomOpLibrary::CustomOpLibrary(const char* library_path, OrtSessionOptions& or
     if (status) {
       // TODO: How to handle unload failure ?
       // Currently we ignore the returned status assuming it is successful
-      platform_env.UnloadDynamicLibrary(library_handle_);
+      ORT_IGNORE_RETURN_VALUE(platform_env.UnloadDynamicLibrary(library_handle_));
 
       // Construct error message string
       std::string error_string = status->msg;
@@ -576,10 +576,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         }
       }
     }
-
-    return onnxruntime::CreateExecutionProviderFactory_OpenVINO(&params)->CreateProvider();
+    auto p = onnxruntime::CreateExecutionProviderFactory_OpenVINO(&params)->CreateProvider();
     // Reset global variables config to avoid it being accidentally passed on to the next session
     openvino_device_type.clear();
+    return p;
 #endif
   } else if (type == kNupharExecutionProvider) {
 #if USE_NUPHAR
@@ -957,15 +957,15 @@ void addObjectMethods(py::module& m, Environment& env, ExecutionProviderRegistra
       .value("PRIORITY_BASED", ExecutionOrder::PRIORITY_BASED);
 
   py::enum_<OrtAllocatorType>(m, "OrtAllocatorType")
-      .value("INVALID", OrtAllocatorType::Invalid)
-      .value("ORT_DEVICE_ALLOCATOR", OrtAllocatorType::OrtDeviceAllocator)
-      .value("ORT_ARENA_ALLOCATOR", OrtAllocatorType::OrtArenaAllocator);
+      .value("INVALID", OrtInvalidAllocator)
+      .value("ORT_DEVICE_ALLOCATOR", OrtDeviceAllocator)
+      .value("ORT_ARENA_ALLOCATOR", OrtArenaAllocator);
 
   py::enum_<OrtMemType>(m, "OrtMemType")
-      .value("CPU_INPUT", OrtMemType::OrtMemTypeCPUInput)
-      .value("CPU_OUTPUT", OrtMemType::OrtMemTypeCPUOutput)
-      .value("CPU", OrtMemType::OrtMemTypeCPU)
-      .value("DEFAULT", OrtMemType::OrtMemTypeDefault);
+      .value("CPU_INPUT", OrtMemTypeCPUInput)
+      .value("CPU_OUTPUT", OrtMemTypeCPUOutput)
+      .value("CPU", OrtMemTypeCPU)
+      .value("DEFAULT", OrtMemTypeDefault);
 
   py::class_<OrtDevice> device(m, "OrtDevice", R"pbdoc(ONNXRuntime device informaion.)pbdoc");
   device.def(py::init<OrtDevice::DeviceType, OrtDevice::MemoryType, OrtDevice::DeviceId>())
@@ -1163,7 +1163,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             // is not destructed as long as any session that uses the provided OrtValue initializer is still in scope
             // This is no different than the native APIs
             const OrtValue* ml_value = ml_value_pyobject.attr(PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR).cast<OrtValue*>();
-            options->AddInitializer(name, ml_value);
+            ORT_THROW_IF_ERROR(options->AddInitializer(name, ml_value));
           });
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")

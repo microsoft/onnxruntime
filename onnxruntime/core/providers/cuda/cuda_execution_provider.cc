@@ -8,6 +8,7 @@
 #include "core/providers/cuda/cuda_fence.h"
 #include "core/providers/cuda/cuda_fwd.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
+#include "core/providers/cuda/cuda_profiler.h"
 
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/cuda/cuda_contrib_kernels.h"
@@ -212,6 +213,10 @@ CUDAExecutionProvider::~CUDAExecutionProvider() {
   if (!external_stream_ && stream_) {
     CUDA_CALL(cudaStreamDestroy(stream_));
   }
+}
+
+std::unique_ptr<profiling::EpProfiler> CUDAExecutionProvider::GetProfiler() {
+  return std::make_unique<profiling::CudaProfiler>();
 }
 
 CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadContext() const {
@@ -2268,7 +2273,6 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   // These are usually shape related computation subgraphs
   // Following logic can be extended for other EPs
   std::unordered_set<NodeIndex> cpu_nodes = GetCpuPreferredNodes(graph, Type(), kernel_registries, candidates);
-
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node_index : candidates) {
     if (cpu_nodes.count(node_index) > 0)
@@ -2278,6 +2282,13 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     sub_graph->Nodes().push_back(node_index);
     result.push_back(ComputeCapability::Create(std::move(sub_graph)));
   }
+  /*
+  std::vector<std::unique_ptr<ComputeCapability>> result;
+  for (auto& node_index : candidates) {
+    auto sub_graph = IndexedSubGraph::Create();
+    sub_graph->Nodes().push_back(node_index);
+    result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+  }*/
   return result;
 }
 
