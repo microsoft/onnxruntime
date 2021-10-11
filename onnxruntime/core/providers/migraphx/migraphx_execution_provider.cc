@@ -309,51 +309,25 @@ static bool can_eval_shape_general(const GraphViewer& graph, const Node* node, c
     in_nodes.push_back(&(*nit));
   }
 
-std::cout << "shape_general1.2, node_name = " << node->Name() << std::endl;
   if (node->OpType() == "Shape")
   {
-std::cout << "shape_general2" << std::endl;
     input_nodes.push_back(node->Index());
     return true;
   }
 
   auto inputs = node->InputDefs();
-  // std::cout << "input_num = " << inputs.size() << std::endl;
-  // std::cout << "node_input_num = " << node_input_num(*node) << std::endl;
-
-  std::cout << "Input_name:\t";
   for (std::size_t i = 0; i < inputs.size(); ++i)
   {
     const std::string& input_name = inputs.at(i)->Name();
-    std::cout << input_name << "\t";
-  }
-  std::cout << std::endl;
-  std::cout << "Input_node_name:\t";
-  for (auto nit = node->InputNodesBegin(); nit != node->InputNodesEnd(); ++nit)
-  {
-    std::cout << nit->Name() << "\t";
-  }
-  std::cout << std::endl;
-
-  // std::size_t input_node_index = 0;
-  for (std::size_t i = 0; i < inputs.size(); ++i)
-  {
-    const std::string& input_name = inputs.at(i)->Name();
-std::cout << "shape_general3, input = " << input_name << std::endl;
-    // const std::string& input_name = node_it->Name();
     // If it is an initializer, it can be constant folded
-    // if (graph_utils::IsInitializer(graph, input_name, true))
-    // if (graph.IsConstantInitializer(input_name, false))
     if (IsGraphInitializer(graph, input_name))
     {
-std::cout << "shape_general4" << std::endl;
       continue;
     }
     
     // Input for sure cannot be constant folded
     if (IsGraphInput(graph, input_name))
     {
-std::cout << "shape_general5, inputs_name = " << inputs[i]->Name() << std::endl;
       return false;
     }
 
@@ -363,26 +337,13 @@ std::cout << "shape_general5, inputs_name = " << inputs[i]->Name() << std::endl;
     });
     if (nit == in_nodes.end())
     {
-std::cout << "shape_general6, node_name = " << input_name << std::endl;  
       return false;
     }
 
-//     // get the corresponding input node
-//     // auto input_node = graph_utils::GetInputNode(*node, i);
-//     auto input_node = GetInputNode(*node, input_node_index++);
-//     if (input_node == nullptr)
-//     {
-// std::cout << "shape_general6" << std::endl;
-//       return false;
-//     }
-
     auto input_node = (*nit);
-
     // shape node, it is OK
-std::cout << "shape_general7, input_name = " << input_node->Name() << std::endl;
     if (input_node->OpType() == "Shape")
     {
-std::cout << "shape_general7" << std::endl;
       continue;
     }
 
@@ -391,13 +352,10 @@ std::cout << "shape_general7" << std::endl;
       continue;
     }
 
-std::cout << "shape_general9" << std::endl;
     return false;
   }
 
   input_nodes.push_back(node->Index());
-
-std::cout << "shape_general11" << std::endl;
   return true;
 }
 
@@ -438,17 +396,14 @@ static bool can_eval_node_argument(const GraphViewer& graph, const Node* node, s
 
     if (!can_eval_shape_general(graph, *nit, logger, input_nodes))
     {
-std::cout << "cannot_eval_shape........." << std::endl;
       return false;
     }
   }
 
-std::cout << "eval5" << std::endl;
   return true;
 }
 
 static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, const Node* node, const logging::Logger& logger) {
-  std::cout << "****************************" << node->OpType() << "***************************" << std::endl;
   std::vector<NodeIndex> input_nodes;
   const auto& optype = node->OpType();
   if (optype == "ArgMax" or optype == "ArgMin") {
@@ -587,7 +542,6 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
       return true;
     }
   } else if (optype == "Reshape") {
-    std::cout << "****************************" << node->OpType() << "***************************" << std::endl;
     const auto& args = node->InputDefs();
     if (args.size() == 2) {
       if (can_eval_node_argument(graph_viewer, node, {1}, logger, input_nodes))
@@ -1007,15 +961,6 @@ static std::vector<NodeIndex>
 GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                           /*out*/ std::unordered_set<std::string>& mgx_required_initializers,
                           const logging::Logger& logger) {
-
-  const auto& graph_inputs = graph_viewer.GetInputs();
-  std::cout << "==========Graph inputs==================" << std::endl;
-  for(auto input : graph_inputs)
-  {
-    std::cout << input->Name() << std::endl;
-  }
-  std::cout << "==========Graph inputs==================" << std::endl;
-
   static std::set<std::string> mgx_supported_ops = {"Abs", "Acos", "Acosh", "Add", "And", "ArgMax", "ArgMin",
       "Asin", "Asinh", "Atan", "Atanh", "AveragePool", "BatchNormalization", "Cast", "Ceil", "Clip",
       "Concat", "Constant", "ConstantFill", "ConstantOfShape", "Conv", "Cos", "Cosh", "DequantizeLinear",
