@@ -76,7 +76,7 @@ CustomOpLibrary::CustomOpLibrary(const char* library_path, OrtSessionOptions& or
     if (status) {
       // TODO: How to handle unload failure ?
       // Currently we ignore the returned status assuming it is successful
-      platform_env.UnloadDynamicLibrary(library_handle_);
+      ORT_IGNORE_RETURN_VALUE(platform_env.UnloadDynamicLibrary(library_handle_));
 
       // Construct error message string
       std::string error_string = status->msg;
@@ -1163,7 +1163,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             // is not destructed as long as any session that uses the provided OrtValue initializer is still in scope
             // This is no different than the native APIs
             const OrtValue* ml_value = ml_value_pyobject.attr(PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR).cast<OrtValue*>();
-            options->AddInitializer(name, ml_value);
+            ORT_THROW_IF_ERROR(options->AddInitializer(name, ml_value));
           });
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")

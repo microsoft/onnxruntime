@@ -193,7 +193,7 @@ common::Status If::SetupSubgraphExecutionInfo(const SessionState& session_state,
 
   // find the location all the feeds will be coming from
   std::vector<OrtDevice> feed_locations;
-  controlflow::detail::FindDevicesForValues(session_state, feed_names, feed_locations);
+  ORT_RETURN_IF_ERROR(controlflow::detail::FindDevicesForValues(session_state, feed_names, feed_locations));
 
   std::vector<const OrtMemoryInfo*> fetch_locations;
   fetch_locations.reserve(info->num_outputs);
