@@ -31,10 +31,7 @@ endif()
 if (onnxruntime_ENABLE_EAGER_MODE)
   list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_PREBUILT_PYTORCH_PATH})
   find_package(Torch REQUIRED)
-  # find_library(TORCH_PYTHON_LIBRARY torch_python PATHS "${TORCH_INSTALL_PREFIX}/lib")
-  find_library(TORCH_PYTHON_LIBRARY torch_python)
-  # find_package(MKL REQUIRED)
-  # find_library(MKL_PYTHON_LIBRARY mkl_intel_ilp64)
+  find_library(TORCH_PYTHON_LIBRARY torch_python PATHS "${TORCH_INSTALL_PREFIX}/lib")
   
   file(GLOB onnxruntime_eager_extension_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_ROOT}/orttraining/eager/*.cpp"
@@ -50,17 +47,12 @@ if (onnxruntime_ENABLE_EAGER_MODE)
 endif()
 
 onnxruntime_add_shared_library_module(onnxruntime_pybind11_state ${onnxruntime_pybind_srcs})
-get_target_property(OUT1 onnxruntime_pybind11_state LINK_LIBRARIES)
-message("Linked libraries 1: " ${OUT1})
 if(MSVC)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
 endif()
 if(HAS_CAST_FUNCTION_TYPE)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-cast-function-type")
 endif()
-get_target_property(OUT1 onnxruntime_pybind11_state LINK_LIBRARIES)
-message("Linked libraries 2: " ${OUT1})
-
 
 # We export symbols using linker and the compiler does not know anything about it
 # There is a problem with classes that have pybind types as members.
@@ -77,8 +69,6 @@ if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     #TODO: fix the warnings
     target_compile_options(onnxruntime_pybind11_state PRIVATE "/wd4244")
 endif()
-get_target_property(OUT1 onnxruntime_pybind11_state LINK_LIBRARIES)
-message("Linked libraries 3: " ${OUT1})
 
 onnxruntime_add_include_to_target(onnxruntime_pybind11_state Python::Module Python::NumPy)
 target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${pybind11_INCLUDE_DIRS})
@@ -92,8 +82,6 @@ endif()
 if (onnxruntime_USE_NCCL)
   target_include_directories(onnxruntime_pybind11_state PRIVATE ${NCCL_INCLUDE_DIRS})
 endif()
-get_target_property(OUT1 onnxruntime_pybind11_state LINK_LIBRARIES)
-message("Linked libraries 4: " ${OUT1})
 
 if(APPLE)
   set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/python/exported_symbols.lst")
@@ -109,45 +97,15 @@ endif()
 
 if (onnxruntime_ENABLE_TRAINING)
   target_include_directories(onnxruntime_pybind11_state PRIVATE ${ORTTRAINING_ROOT})
-  get_target_property(OUT1 onnxruntime_pybind11_state LINK_LIBRARIES)
-  message("Linked libraries 1: " ${OUT1})
   target_include_directories(onnxruntime_pybind11_state PRIVATE ${PROJECT_SOURCE_DIR}/external/dlpack/include)
-  get_target_property(OUT1 onnxruntime_pybind11_state LINK_LIBRARIES)
-  message("Linked libraries 2: " ${OUT1})
   target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_training)
-  get_target_property(OUT1 onnxruntime_pybind11_state LINK_LIBRARIES)
-  message("Linked libraries 3: " ${OUT1})
 endif()
 
 if (onnxruntime_ENABLE_EAGER_MODE)
   # todo: this is because the prebuild pytorch may use a different version of protobuf headers.
   # force the build to find the protobuf headers ort using.
   target_include_directories(onnxruntime_pybind11_state PRIVATE "${REPO_ROOT}/cmake/external/protobuf/src")
-  get_target_property(OUT1 onnxruntime_pybind11_state LINK_LIBRARIES)
-  message("Linked libraries 4: " ${OUT1})
-  # target_link_libraries(onnxruntime_pybind11_state PUBLIC onnxruntime_eager ${TORCH_PYTHON_LIBRARY})
-  # target_link_libraries(onnxruntime_pybind11_state PUBLIC "torch")
-  # target_link_libraries(onnxruntime_pybind11_state PUBLIC "torch_library")
-  # target_link_libraries(onnxruntime_pybind11_state PUBLIC "C:/Users/abjindal/Anaconda3/Lib/site-packages/torch/lib/c10.lib")
-  # target_link_libraries(onnxruntime_pybind11_state PUBLIC "C:/Users/abjindal/Anaconda3/Lib/site-packages/torch/lib/kineto.lib")
-  # target_link_libraries(onnxruntime_pybind11_state PUBLIC "C:/Program Files/NVIDIA\ Corporation/NvToolsExt/lib/x64/nvToolsExt64_1.lib")
-  # target_link_libraries(onnxruntime_pybind11_state PUBLIC "C:/Program Files/NVIDIA\ GPU\ Computing\ Toolkit/CUDA/v10.2/lib/x64/cudart_static.lib")
-  # target_link_libraries(onnxruntime_pybind11_state PUBLIC "C:/Users/abjindal/Anaconda3/Lib/site-packages/torch/lib/caffe2_nvrtc.lib")
-  # target_link_libraries(onnxruntime_pybind11_state PUBLIC "C:/Users/abjindal/Anaconda3/Lib/site-packages/torch/lib/c10_cuda.lib")
-  get_target_property(OUT1 "torch" LINK_LIBRARIES)
-  get_target_property(OUT2 "torch_library" LINK_LIBRARIES)
-  message("Linked libraries 4.1: " torch_library)
-  message("Linked libraries MKL Python Lib: " ${MKL_PYTHON_LIBRARY})
-  message("Linked libraries TORCH: " ${TORCH_LIBRARIES})
-  target_link_libraries(onnxruntime_pybind11_state PUBLIC onnxruntime_eager ${TORCH_LIBRARIES} ${TORCH_PYTHON_LIBRARY})
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE ${MKL_PYTHON_LIBRARY})
-  get_target_property(OUT2 onnxruntime_pybind11_state LINK_LIBRARIES)
-  message("Linked libraries 5: " ${OUT2})
-  if (NOT (MKL_PYTHON_LIBRARY STREQUAL ""))
-    message("Linked libraries TORCH: " ${TORCH_LIBRARIES})
-    # get_filename_component(MKL_PYTHON_LIBRARY_PATH ${MKL_PYTHON_LIBRARY} DIRECTORY)
-    # target_link_directories(onnxruntime_pybind11_state PRIVATE ${MKL_PYTHON_LIBRARY_PATH})
-  endif()
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_eager ${TORCH_LIBRARIES} ${TORCH_PYTHON_LIBRARY})
   # the ort_aten.g.cpp is generated from tools. currently it has some limitations.
   # todo: fix this
   if (NOT MSVC)
@@ -157,8 +115,6 @@ if (onnxruntime_ENABLE_EAGER_MODE)
     set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_tensor.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
   endif()
 endif()
-get_target_property(OUT1 onnxruntime_pybind11_state LINK_LIBRARIES)
-message("Linked libraries 5.1: " ${OUT1})
 
 target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_session
@@ -185,34 +141,22 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_flatbuffers
     ${pybind11_lib}
 )
-get_target_property(OUT1 onnxruntime_pybind11_state LINK_LIBRARIES)
-message("Linked libraries 6: " ${OUT1})
 
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_language_interop onnxruntime_pyop)
 endif()
-get_target_property(OUT1 onnxruntime_pybind11_state LINK_LIBRARIES)
-message("Linked libraries 7: " ${OUT1})
 
 set(onnxruntime_pybind11_state_dependencies
     ${onnxruntime_EXTERNAL_DEPENDENCIES}
     ${pybind11_dep}
 )
-get_target_property(OUT1 onnxruntime_pybind11_state LINK_LIBRARIES)
-message("Linked libraries 7.1: " ${OUT1})
 set_property(TARGET onnxruntime_pybind11_state APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_DELAYLOAD_FLAGS})
-get_target_property(OUT1 onnxruntime_pybind11_state LINK_LIBRARIES)
-message("Linked libraries 7.2: " ${OUT1})
 add_dependencies(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_dependencies})
-get_target_property(OUT1 onnxruntime_pybind11_state LINK_LIBRARIES)
-message("Linked libraries 8: " ${OUT1})
 
 if (MSVC)
   set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG}")
   # if MSVC, pybind11 looks for release version of python lib (pybind11/detail/common.h undefs _DEBUG)
   target_link_libraries(onnxruntime_pybind11_state PRIVATE Python::Module)
-  get_target_property(OUT1 onnxruntime_pybind11_state LINK_LIBRARIES)
-  message("Linked libraries 9: " ${OUT1})
 elseif (APPLE)
   set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG} -undefined dynamic_lookup")
   set_target_properties(onnxruntime_pybind11_state PROPERTIES
@@ -239,8 +183,6 @@ if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
 else()
   target_link_libraries(onnxruntime_pybind11_state PRIVATE ${onnxruntime_EXTERNAL_LIBRARIES})
 endif()
-get_target_property(OUT1 onnxruntime_pybind11_state LINK_LIBRARIES)
-message("Linked libraries 10: " ${OUT1})
 
 set_target_properties(onnxruntime_pybind11_state PROPERTIES PREFIX "")
 set_target_properties(onnxruntime_pybind11_state PROPERTIES FOLDER "ONNXRuntime")
@@ -254,13 +196,6 @@ if (MSVC)
 else()
   set_target_properties(onnxruntime_pybind11_state PROPERTIES SUFFIX ".so")
 endif()
-get_target_property(OUT1 onnxruntime_pybind11_state LINK_LIBRARIES)
-message("Linked libraries 11: " ${OUT1})
-get_cmake_property(_variableNames VARIABLES)
-list (SORT _variableNames)
-foreach (_variableName ${_variableNames})
-    message(STATUS "${_variableName}=${${_variableName}}")
-endforeach()
 
 # Generate version_info.py in Windows build.
 # Has to be done before onnxruntime_python_srcs is set.
@@ -341,17 +276,23 @@ if (onnxruntime_ENABLE_TRAINING)
   file(GLOB onnxruntime_python_ortmodule_experimental_json_config_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/experimental/json_config/*.py"
   )
+  file(GLOB onnxruntime_python_ortmodule_experimental_hierarchical_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/experimental/hierarchical_ortmodule/*.py"
+  )
   file(GLOB onnxruntime_python_ortmodule_torch_cpp_ext_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/*.py"
   )
   file(GLOB onnxruntime_python_ortmodule_torch_cpp_ext_aten_op_executor_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/aten_op_executor/*"
+    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/cpu/aten_op_executor/*"
   )
   file(GLOB onnxruntime_python_ortmodule_torch_cpp_ext_torch_interop_utils_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/torch_interop_utils/*"
+    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/cpu/torch_interop_utils/*"
   )
   file(GLOB onnxruntime_python_ortmodule_torch_cpp_ext_torch_gpu_allocator_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/torch_gpu_allocator/*"
+    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/cuda/torch_gpu_allocator/*"
+  )
+  file(GLOB onnxruntime_python_ortmodule_torch_cpp_ext_adam_optimizer_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/cuda/adam_optimizer/*"
   )
 else()
   file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
@@ -584,10 +525,12 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/experimental
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/experimental/json_config
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/experimental/hierarchical_ortmodule
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/aten_op_executor
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/torch_interop_utils
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/torch_gpu_allocator
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cpu/aten_op_executor
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cpu/torch_interop_utils
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/torch_gpu_allocator
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/adam_optimizer
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_capi_training_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training/
@@ -610,17 +553,23 @@ if (onnxruntime_ENABLE_TRAINING)
         ${onnxruntime_python_ortmodule_experimental_json_config_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/experimental/json_config/
     COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_ortmodule_experimental_hierarchical_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/experimental/hierarchical_ortmodule/
+    COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_ortmodule_torch_cpp_ext_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_ortmodule_torch_cpp_ext_aten_op_executor_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/aten_op_executor/
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cpu/aten_op_executor/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_ortmodule_torch_cpp_ext_torch_interop_utils_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/torch_interop_utils/
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cpu/torch_interop_utils/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_ortmodule_torch_cpp_ext_torch_gpu_allocator_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/torch_gpu_allocator/
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/torch_gpu_allocator/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_ortmodule_torch_cpp_ext_adam_optimizer_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/adam_optimizer/
   )
 endif()
 
@@ -717,4 +666,3 @@ endif()
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   include(onnxruntime_language_interop_ops.cmake)
 endif()
-

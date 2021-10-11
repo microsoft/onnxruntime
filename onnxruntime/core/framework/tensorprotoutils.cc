@@ -718,7 +718,7 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* model_path,
                            tensorp->SizeInBytes(), ", Got ", m.GetLen());
   }
 
-  TensorProtoToTensor(env, model_path, tensor_proto, *tensorp);
+  ORT_RETURN_IF_ERROR(TensorProtoToTensor(env, model_path, tensor_proto, *tensorp));
 
   auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   value.Init(tensorp.release(), ml_tensor, ml_tensor->GetDeleteFunc());

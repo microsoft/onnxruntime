@@ -169,16 +169,8 @@ Status ParseArguments(int argc, char* argv[], MnistParameters& params) {
 #ifdef USE_CUDA
     bool use_cuda = flags.count("use_cuda") > 0;
     if (use_cuda) {
-      OrtCUDAProviderOptions info{
-          0,
-          OrtCudnnConvAlgoSearch::EXHAUSTIVE,
-          std::numeric_limits<size_t>::max(),
-          0,
-          true,
-          0,
-          nullptr,
-          nullptr};
-
+      OrtCUDAProviderOptions info;
+      info.do_copy_in_default_stream = true;
       params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_Cuda(&info));
     }
 #endif

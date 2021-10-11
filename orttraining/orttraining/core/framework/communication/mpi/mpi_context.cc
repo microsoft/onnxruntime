@@ -169,6 +169,8 @@ void MPIContext::AddMPIGroup(WorkerGroupType group_type, WorkerGroup& group) {
   ORT_ENFORCE(this->mpi_groups_[group_type].communicator != MPI_COMM_NULL,
               "Failed to add new MPI group for worker group: ",
               DistributedRunContext::GetInstance().GetWorkerGroupName(group_type));
+  //set the group initialized flag
+  this->mpi_groups_[group_type].is_group_initialized = true;
 #else
   ORT_THROW("ORT must be built with MPI to add ", DistributedRunContext::GetInstance().GetWorkerGroupName(group_type), " with group id: ", group.group_id);
 #endif
