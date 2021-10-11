@@ -35,6 +35,7 @@ bool LaunchAttentionKernel(
     bool is_unidirectional,                       // Whether there is unidirecitonal mask.
     int past_sequence_length,                     // Sequence length in past state
     const void* past,                             // Past state input
+    const void* extra_add_qk,                     // Additional Add
     void* present                                 // Present state output
 );
 

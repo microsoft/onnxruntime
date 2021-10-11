@@ -66,7 +66,7 @@ bool QkvToContext(
     const int batch_size, const int sequence_length, const int num_heads, const int head_size, const size_t element_size,
     const T* input, T* output, T* workspace,
     const int* mask_index, const std::vector<int64_t>* mask_index_dims,
-    bool is_unidirectional, int past_sequence_length, const T* past, T* present, bool use_persistent_softmax) {
+    bool is_unidirectional, int past_sequence_length, const T* past, const T* extra_add_qk, T* present, bool use_persistent_softmax) {
   const int all_sequence_length = past_sequence_length + sequence_length;
   const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length, all_sequence_length);
   T* scratch1 = workspace;
@@ -130,8 +130,8 @@ bool QkvToContext(
     const int64_t max_sequence_length = mask_dimension == 4 ? mask_index_dims->at(3) : 0;
 
     T* persistent_softmax_workspace = scratch1; // replace Q*K' in place with masked score if persistent softmax is selected.
-    if (!ComputeSoftmaxWithRawMask<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, mask_index, scratch1, scratch2, is_unidirectional,
-                                      rsqrt_head_size, mask_dimension, static_cast<int>(max_sequence_length),
+    if (!ComputeSoftmaxWithRawMask<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, mask_index, extra_add_qk, scratch1, scratch2, 
+                                      is_unidirectional, rsqrt_head_size, mask_dimension, static_cast<int>(max_sequence_length),
                                       use_persistent_softmax, persistent_softmax_workspace)) {
       return false;
     }
@@ -139,11 +139,11 @@ bool QkvToContext(
     ORT_ENFORCE(nullptr != mask_index_dims && mask_index_dims->size() == 1);
     // mask_index has 1D shape: either (batch_size) or (2*batch_size). Only the later one has start postions.
     const int* mask_start = (mask_index_dims->at(0) > batch_size) ? mask_index + batch_size : nullptr;
-    if (!ComputeSoftmaxWithMask1D<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, mask_index, mask_start, scratch1, scratch2, is_unidirectional)) {
+    if (!ComputeSoftmaxWithMask1D<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, mask_index, mask_start, extra_add_qk, scratch1, scratch2, is_unidirectional)) {
       return false;
     }
   } else {  // no mask
-    if (!ComputeSoftmax<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, scratch1, scratch2, is_unidirectional)) {
+    if (!ComputeSoftmax<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, extra_add_qk, scratch1, scratch2, is_unidirectional)) {
       return false;
     }
   }
@@ -176,6 +176,7 @@ bool LaunchAttentionKernel(
     bool is_unidirectional,
     int past_sequence_length,
     const void* past,
+    const void* extra_add_qk,
     void* present) {
 
   
@@ -188,15 +189,15 @@ bool LaunchAttentionKernel(
                         batch_size, sequence_length, num_heads, head_size, element_size,
                         reinterpret_cast<const half*>(input), reinterpret_cast<half*>(output), reinterpret_cast<half*>(workspace),
                         mask_index, mask_index_dims, is_unidirectional,
-                        past_sequence_length, reinterpret_cast<const half*>(past), reinterpret_cast<half*>(present),
-                        use_persistent_softmax);
+                        past_sequence_length, reinterpret_cast<const half*>(past), reinterpret_cast<const half*>(extra_add_qk), 
+                        reinterpret_cast<half*>(present), use_persistent_softmax);
   } else {
     return QkvToContext(prop, cublas, stream,
                         batch_size, sequence_length, num_heads, head_size, element_size,
                         reinterpret_cast<const float*>(input), reinterpret_cast<float*>(output), reinterpret_cast<float*>(workspace),
                         mask_index, mask_index_dims, is_unidirectional,
-                        past_sequence_length, reinterpret_cast<const float*>(past), reinterpret_cast<float*>(present),
-                        use_persistent_softmax);
+                        past_sequence_length, reinterpret_cast<const float*>(past), reinterpret_cast<const float*>(extra_add_qk), 
+                        reinterpret_cast<float*>(present), use_persistent_softmax);
   }
 }
 
