@@ -72,7 +72,7 @@ ORT_API(onnxruntime::Provider*, GetProvider) {
 ORT_API(size_t, ProviderHashFunc, const void* provider_options){
   ProviderOptions* options = (ProviderOptions*)(provider_options);
   MyProviderInfo info;
-  ProviderOptionsParser{}
+  ORT_IGNORE_RETURN_VALUE(ProviderOptionsParser{}
       .AddValueParser(
           "device_id",
           [&info](const std::string& value_str) -> Status {
@@ -85,7 +85,7 @@ ORT_API(size_t, ProviderHashFunc, const void* provider_options){
             ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.some_config));
             return Status::OK();
           })
-      .Parse(*options);
+      .Parse(*options));
   // use device id as hash key
   return info.device_id;
 }
