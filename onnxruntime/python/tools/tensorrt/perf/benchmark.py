@@ -1071,15 +1071,18 @@ def run_onnxruntime(args, models):
                         "batch_size": batch_size,
                         "sequence_length": 1,
                         "datetime": str(datetime.now()),}
-                     
+                    
+                    repeat_times = args.test_times
+                    if trt in ep: 
+                        repeat_times = 10000
                     if args.track_memory and track_ep_memory(ep): 
                         trtexec = False
                         p = start_memory_tracking()            
-                        result = inference_ort(args, name, sess, ep, inputs, result_template, args.test_times, batch_size)
+                        result = inference_ort(args, name, sess, ep, inputs, result_template, repeat_times, batch_size)
                         success = True if result else False
                         mem_usage = end_memory_tracking(p, trtexec, success)
                     else: 
-                        result = inference_ort(args, name, sess, ep, inputs, result_template, args.test_times, batch_size)
+                        result = inference_ort(args, name, sess, ep, inputs, result_template, repeat_times, batch_size)
                 if result:
                     latency_result[ep] = {}
                     latency_result[ep]["average_latency_ms"] = result["average_latency_ms"]
