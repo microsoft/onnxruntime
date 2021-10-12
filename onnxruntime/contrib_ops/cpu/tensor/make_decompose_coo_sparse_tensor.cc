@@ -43,7 +43,7 @@ Status VerifyFlatIndices(gsl::span<const int64_t> indices_span, int64_t dense_va
   }
   return Status::OK();
 }
-}
+}  // namespace
 
 Status MakeCooSparse::Compute(OpKernelContext* ctx) const {
   const Tensor& dense_shape_input = *ctx->Input<Tensor>(0);
@@ -62,12 +62,12 @@ Status MakeCooSparse::Compute(OpKernelContext* ctx) const {
   const auto indices_ndims = indices_input.Shape().NumDimensions();
   const auto dense_ndims = dense_shape.NumDimensions();
   if (indices_ndims == 1) {
-    VerifyFlatIndices(indices_span, dense_values_count);
+    ORT_RETURN_IF_ERROR(VerifyFlatIndices(indices_span, dense_values_count));
   } else if (indices_ndims == 2) {
     // Sometimes we get indices with a shape {nnz, 1} which is really a 1-D indices
     // so we want to check for that.
     if (indices_span.size() == nnz_values_count) {
-      VerifyFlatIndices(indices_span, dense_values_count);
+      ORT_RETURN_IF_ERROR(VerifyFlatIndices(indices_span, dense_values_count));
     } else {
       ORT_RETURN_IF_NOT(dense_ndims == 2, "Dense shape must be 2-D for 2-D indices");
       ORT_RETURN_IF_NOT(indices_span.size() == nnz_values_count * 2,
@@ -145,8 +145,8 @@ Status SparseDecomposeToDense::Compute(OpKernelContext* ctx) const {
     Tensor& output_indices = *ctx->Output(2, {dst_indices_size});
     if (dst_indices_size > 0) {
       const auto cols = dense_shape.GetDims()[1];
-      sparse_utils::Convert2DCooIndicesTo1D(cols, input_indices.DataAsSpan<int64_t>(),
-                                            output_indices.MutableDataAsSpan<int64_t>());
+      ORT_RETURN_IF_ERROR(sparse_utils::Convert2DCooIndicesTo1D(cols, input_indices.DataAsSpan<int64_t>(),
+                                                                output_indices.MutableDataAsSpan<int64_t>()));
     }
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid COO indices shape: ", input_indices.Shape().ToString());

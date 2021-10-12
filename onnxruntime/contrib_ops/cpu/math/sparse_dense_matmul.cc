@@ -485,7 +485,7 @@ Status SparseToSparseMatMul::Compute(OpKernelContext* ctx) const {
     if (a_1d_coo_span.size() > input_A.NumValues()) {
       a_1d_coo.resize(input_A.NumValues());
       auto converted = gsl::make_span(a_1d_coo);
-      sparse_utils::Convert2DCooIndicesTo1D(a_dims[1], a_1d_coo_span, converted);
+      ORT_RETURN_IF_ERROR(sparse_utils::Convert2DCooIndicesTo1D(a_dims[1], a_1d_coo_span, converted));
       a_1d_coo_span = converted;
     }
   }
@@ -504,7 +504,7 @@ Status SparseToSparseMatMul::Compute(OpKernelContext* ctx) const {
     if (b_1d_coo_span.size() > input_B.NumValues()) {
       b_1d_coo.resize(input_B.NumValues());
       auto converted = gsl::make_span(b_1d_coo);
-      sparse_utils::Convert2DCooIndicesTo1D(b_dims[1], b_1d_coo_span, converted);
+      ORT_RETURN_IF_ERROR(sparse_utils::Convert2DCooIndicesTo1D(b_dims[1], b_1d_coo_span, converted));
       b_1d_coo_span = converted;
     }
   }

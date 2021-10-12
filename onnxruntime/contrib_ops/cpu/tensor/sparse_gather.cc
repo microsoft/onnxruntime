@@ -54,7 +54,7 @@ Status Gather::Compute(OpKernelContext* ctx) const {
     const auto two_d_indices_span = coo_indices.DataAsSpan<int64_t>();
     one_d_indices.resize(two_d_indices_span.size() / 2);
     auto one_d_indices_span = gsl::make_span(one_d_indices);
-    sparse_utils::Convert2DCooIndicesTo1D(cols, two_d_indices_span, one_d_indices_span);
+    ORT_RETURN_IF_ERROR(sparse_utils::Convert2DCooIndicesTo1D(cols, two_d_indices_span, one_d_indices_span));
     input_indices_span = one_d_indices_span;
   } else {
     input_indices_span = coo_indices.DataAsSpan<int64_t>();
