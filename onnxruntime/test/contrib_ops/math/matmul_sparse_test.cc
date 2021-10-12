@@ -670,16 +670,16 @@ TEST(SparseGemm, Test_Transpose_A_B) {
   tester.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(SparseGemm, Test_A_Vector_Matrix_B) {
+TEST(SparseGemm, Test_A_Default_RowVector_Matrix_B) {
   constexpr int64_t rows = 3;
   constexpr int64_t cols = 3;
   const std::vector<int64_t> A_shape = {cols};
-  const std::vector<float> input_data = {
+  const std::vector<float> dense_input_data = {
       0, 1, 2};
 
   std::vector<float> A_values;
   std::vector<int64_t> A_indices;
-  ConvertToCoo(gsl::make_span(input_data), A_shape, A_values, A_indices);
+  ConvertToCoo(gsl::make_span(dense_input_data), A_shape, A_values, A_indices);
   ASSERT_FALSE(A_values.empty());
   ASSERT_EQ(A_values.size(), A_indices.size());
 
@@ -708,8 +708,102 @@ TEST(SparseGemm, Test_A_Vector_Matrix_B) {
   tester.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
+TEST(SparseGemm, Test_Transpose_A_ColVector_Matrix_B) {
+  constexpr int64_t rows = 3;
+  constexpr int64_t cols = 3;
+  // Coumn vector
+  const std::vector<int64_t> A_shape = {rows, 1};
+  const std::vector<float> dense_input_data = {
+      0, 1, 2};
+
+  std::vector<float> A_values;
+  std::vector<int64_t> A_indices;
+  ConvertToCoo(gsl::make_span(dense_input_data), A_shape, A_values, A_indices, false);
+  ASSERT_FALSE(A_values.empty());
+  ASSERT_EQ(A_values.size(), A_indices.size());
+
+  const std::vector<int64_t> B_shape = {rows, cols};
+  const std::vector<float> B_data = {
+      0, 1, 2,
+      6, 7, 8,
+      12, 13, 14};
+
+  std::vector<float> B_values;
+  std::vector<int64_t> B_indices;
+  ConvertToCoo(gsl::make_span(B_data), B_shape, B_values, B_indices);
+
+  const std::vector<int64_t> X_shape = {1, cols};
+  const std::vector<float> X_data = {30, 33, 36};
+  std::vector<float> X_values;
+  std::vector<int64_t> X_indices;
+  std::vector<int64_t> X_indices_flat;
+  ConvertToCoo(gsl::make_span(X_data), X_shape, X_values, X_indices_flat, false);
+
+  OpTester tester("Gemm", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("transA", 1);
+  tester.AddSparseCooInput("A", A_shape, A_values, A_indices);        // 2-D indices
+  tester.AddSparseCooInput("B", B_shape, B_values, B_indices);        // 2-D indices
+  tester.AddSparseCooOutput("X", X_shape, X_values, X_indices_flat);  // output is always 1-D indices
+  tester.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(SparseGemm, Test_A_Default_RowVector_Default_ColVector_B) {
+  // Result is a scalar
+  constexpr int64_t rows = 3;
+  constexpr int64_t cols = 3;
+  const std::vector<int64_t> A_shape = {cols};
+  const std::vector<int64_t> B_shape = {rows};
+  const std::vector<int64_t> X_shape = {1, 1};
+  // Some matches
+  {
+    //const std::vector<float> A_dense_data = {
+    //    0, 1, 2};
+
+    std::vector<float> A_values{1.f, 2.f};
+    std::vector<int64_t> A_indices{1, 2};
+    ASSERT_FALSE(A_values.empty());
+    ASSERT_EQ(A_values.size(), A_indices.size());
+
+    //const std::vector<float> B_data = {0,
+    //                                   1,
+    //                                   2};
+
+    std::vector<float> B_values{1.f, 2.f};
+    std::vector<int64_t> B_indices{1, 2};
+
+    const std::vector<float> X_values{5.f};
+    std::vector<int64_t> X_indices_flat{0};
+
+    OpTester tester("Gemm", 1, onnxruntime::kMSDomain);
+    tester.AddSparseCooInput("A", A_shape, A_values, A_indices);
+    tester.AddSparseCooInput("B", B_shape, B_values, B_indices);
+    tester.AddSparseCooOutput("X", X_shape, X_values, X_indices_flat);  // output is always 1-D indices
+    tester.Run(OpTester::ExpectResult::kExpectSuccess);
+  }
+
+  // No matches
+  {
+    std::vector<float> A_values{1.f};
+    std::vector<int64_t> A_indices{1};
+    ASSERT_FALSE(A_values.empty());
+    ASSERT_EQ(A_values.size(), A_indices.size());
+
+    std::vector<float> B_values{2.f};
+    std::vector<int64_t> B_indices{2};
+
+    const std::vector<float> X_values{0.f};
+    std::vector<int64_t> X_indices_flat{0};
+
+    OpTester tester("Gemm", 1, onnxruntime::kMSDomain);
+    tester.AddSparseCooInput("A", A_shape, A_values, A_indices);
+    tester.AddSparseCooInput("B", B_shape, B_values, B_indices);
+    tester.AddSparseCooOutput("X", X_shape, X_values, X_indices_flat);  // output is always 1-D indices
+    tester.Run(OpTester::ExpectResult::kExpectSuccess);
+  }
+}
+
 // Eigen crashes on this one
-//TEST(SparseGemm, Test_A_Matrix_Vector_B) {
+//TEST(SparseGemm, Test_A_Matrix_ColumnVector_B) {
 //  constexpr int64_t rows = 3;
 //  constexpr int64_t cols = 3;
 //  const std::vector<int64_t> A_shape = {rows, cols};
@@ -734,7 +828,7 @@ TEST(SparseGemm, Test_A_Vector_Matrix_B) {
 //  std::vector<int64_t> B_indices;
 //  ConvertToCoo(gsl::make_span(B_data), B_shape, B_values, B_indices);
 //
-//  const std::vector<int64_t> X_shape = {rows, 1};
+//  const std::vector<int64_t> X_shape = {cols, 1};
 //  const std::vector<float> X_data = {5, 23, 41};
 //  std::vector<float> X_values;
 //  std::vector<int64_t> X_indices;
