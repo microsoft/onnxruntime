@@ -10,6 +10,7 @@ Meanwhile, welcome to contribute!
 * Expect developer has basic knowledge of C++, CUDA and python programming.
 * [Transformer Model Optimization Tool Overview](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/README.md)
 * This guide assumes that a valid onnx model exported from the original framework is ready. If there are any issues with model exporting, fp16 conversion, profiling and benchmark. Please refer to the above link.
+* [Netron](https://github.com/lutzroeder/netron) is an execellent graph visualization tool. [Web version](https://netron.app/)
 * Optional: In case kernel changes are needed, here is the instruction on [building the ONNXRuntime](https://onnxruntime.ai/docs/build/) with packages on [different APIs and Language bindings](https://onnxruntime.ai/docs/build/inferencing.html#apis-and-language-bindings)
 
 ## Rule Of Thumb
@@ -33,12 +34,20 @@ The [onnx_model](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxrun
 * A [mapping](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/onnx_model.py#L41-L56) of edge name to nodes. 
 * [Basic operations](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/onnx_model.py#L120-L181) of input/output, node, initializer.
 * [Match graph patterns](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/onnx_model.py#L310-L385) up-streaming and down-streaming.
-* And so on.
 
 #### Fusion process
 * Match the candidate graph with expected connection pattern. [Example: Gelu fusion](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/fusion_gelu.py#L26-L96), [Attention fusion](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/fusion_attention.py#L281-L441)
 * Construct the fused node with inputs, outputs and the weights obtained from original graph. [Example: Gelu fusion](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/fusion_gelu.py#L99-L102), [Attention fusion](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/fusion_attention.py#L142-L278)
 * Remove the candidate graph. [Example: Gelu fusion](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/fusion_gelu.py#L98), [Attention fusion](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/fusion_attention.py#L468-L472)
+
+After fusing the graph, check the parity between optimized onnx model and original one.
+
+## A Concrete Case
+* The Attention Op and EmbedLayerNorm Op are not fused after running optimization script on a custom transformer-based onnx model.
+* Checked and confirm that these two candidate graphs have identical logic to the current CPU/CUDA kernel implementation.
+* Applied some code changes to the [Attention fusion](https://github.com/microsoft/onnxruntime/compare/wangye/opt#diff-bd125663ee59865deb608c7ec666ac4760b55ce73fc38cc3d463abd0aaa90817) and [EmbedLayerNorm fusion](https://github.com/microsoft/onnxruntime/compare/wangye/opt#diff-bb2157f08cf00e8434e77fcfeeaa960e5e9c6db2df2b637a5f49e48d77a56185)
+* Re-run the script and these two Ops are fused.
+* The parity is OK
 
 ## Contribution
 [Coding Conventions and Standards](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/docs/Coding_Conventions_and_Standards.md)
