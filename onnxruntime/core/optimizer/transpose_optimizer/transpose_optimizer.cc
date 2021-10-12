@@ -146,7 +146,7 @@ static const std::string_view UnsqueezeValue(int64_t opset, api::Graph& graph, c
     graph.ReshapeInitializer(input, new_shape);
     return input;
   }
-  std::unique_ptr<api::Node> node = graph.GetNodeByOutput(input);
+  std::unique_ptr<api::Node> node = graph.GetNodeProducingOutput(input);
   if (node != nullptr && node->IsOp("Squeeze")) {
     const std::vector<std::string_view>& inputs = node->Inputs();
     std::optional<std::vector<int64_t>> squeeze_axes = std::nullopt;
@@ -202,7 +202,7 @@ static const std::string_view TransposeValue(api::Graph& graph, const std::strin
     graph.TransposeInitializer(input, perm);
     return input;
   }
-  std::unique_ptr<api::Node> node = graph.GetNodeByOutput(input);
+  std::unique_ptr<api::Node> node = graph.GetNodeProducingOutput(input);
   if (node != nullptr && node->IsOp("Transpose")) {
     std::optional<std::vector<int64_t>> perm2 = node->GetAttributeInts("perm");
     if (perm2 != std::nullopt) {
@@ -319,7 +319,7 @@ static int EstimateTransposeValueCost(api::Graph& graph, const std::string_view 
   if (constant != nullptr) {
     return 0;
   }
-  std::unique_ptr<api::Node> node = graph.GetNodeByOutput(input);
+  std::unique_ptr<api::Node> node = graph.GetNodeProducingOutput(input);
   if (node != nullptr && node->IsOp("Transpose")) {
     std::optional<std::vector<int64_t>> perm2 = node->GetAttributeInts("perm");
     if (perm2 != std::nullopt) {
@@ -975,7 +975,7 @@ static bool HandleTranspose(HandlerArgs& args) {
     }
     else {
       auto trans_inp_consumers = args.graph.GetValueConsumers(trans_input);
-      std::unique_ptr<api::Node> trans_inp_node = args.graph.GetNodeByOutput(trans_input);
+      std::unique_ptr<api::Node> trans_inp_node = args.graph.GetNodeProducingOutput(trans_input);
       if (trans_inp_node != nullptr && trans_inp_consumers->comprehensive) {
         args.node.SetInput(0, "");
         ReplaceValueReferences(trans_inp_consumers->nodes, trans_input, node_output);
@@ -1195,7 +1195,7 @@ bool Optimize(api::Graph& graph, bool allow_extended_ops) {
       if (inp == "") {
         continue;
       }
-      std::unique_ptr<api::Node> trans = graph.GetNodeByOutput(inp);
+      std::unique_ptr<api::Node> trans = graph.GetNodeProducingOutput(inp);
       if (trans != nullptr && trans->IsOp("Transpose")) {
         std::optional<std::vector<int64_t>> perm = trans->GetAttributeInts("perm");
         if (perm != std::nullopt) {

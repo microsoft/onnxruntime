@@ -17,13 +17,14 @@ namespace onnxruntime {
 
 Status TransposeOptimizer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   auto ort_graph = OrtGraph(graph, cpu_allocator_, logger, /*new_node_ep*/ nullptr);
-  onnx_layout_transformation::Optimize(ort_graph, /*allow_extended_ops*/ false);
+  if (onnx_layout_transformation::Optimize(ort_graph, /*allow_extended_ops*/ false)) {
+    modified = true;
+  }
   GraphViewer graph_viewer(graph);
   auto nodes = std::vector<std::unique_ptr<api::Node>>();
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
     ORT_RETURN_IF_ERROR(Recurse(*graph.GetNode(index), modified, graph_level, logger));
   }
-  graph.Resolve();
   return Status::OK();
 }
 }  // namespace onnxruntime

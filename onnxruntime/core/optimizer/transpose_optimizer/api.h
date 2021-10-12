@@ -87,7 +87,7 @@ struct ValueConsumers {
   // List of nodes in the current graph with value as input
   std::vector<std::unique_ptr<Node>> nodes;
   // True iff all consumers are nodes in the current graph (not graph outputs/nodes in subgraphs)
-  bool comprehensive;
+  bool comprehensive = true;
 };
 
 class Graph {
@@ -102,18 +102,19 @@ class Graph {
   virtual std::unique_ptr<ValueInfo> GetValueInfo(const std::string_view name) const = 0;
   virtual std::unique_ptr<ValueConsumers> GetValueConsumers(const std::string_view name) const = 0;
   // Return nullptr if name is from an input/initializer
-  virtual std::unique_ptr<Node> GetNodeByOutput(const std::string_view name) const = 0;
+  virtual std::unique_ptr<Node> GetNodeProducingOutput(const std::string_view name) const = 0;
 
   /**** Editing ****/
   // Transpose an initializer "in place". Input will always be valid name of an initializer. Update shape for ValueInfo.
-  virtual void TransposeInitializer(const std::string_view name, const std::vector<int64_t> perm) = 0;
+  virtual void TransposeInitializer(const std::string_view name, const std::vector<int64_t>& perm) = 0;
   // Like TransposeInitializer. Product of dims will always match number of elements. Should be fast since
   // data buffer is unchanged.
   virtual void ReshapeInitializer(const std::string_view name, const std::vector<int64_t>& shape) = 0;
   virtual std::unique_ptr<Node> AddNode(const std::string_view op_type, const std::vector<std::string_view>& inputs,
                                         size_t num_outputs = 1, const std::string_view domain = "") = 0;
-  // Deletes a node from the graph. Node instances will never be accessed after deletion.
+  // Deletes a node from the graph. Node instances must have no consumers and will never be accessed after deletion.
   virtual void RemoveNode(Node& node) = 0;
+  // Removes an initializer. Can only be called on initializers with no consumers.
   virtual void RemoveInitializer(const std::string_view name) = 0;
   // Create an int64 initializer with the specified shape and values. Return the name.
   virtual const std::string_view AddInitializerInt64(const std::vector<int64_t>& shape, const std::vector<int64_t>& values) = 0;
