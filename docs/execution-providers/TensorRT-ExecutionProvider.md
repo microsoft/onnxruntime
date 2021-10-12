@@ -25,7 +25,7 @@ Pre-built packages and Docker images are available for Jetpack in the [Jetson Zo
 
 See [Build instructions](../build/eps.md#tensorrt).
 
-The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 7.2.2.
+The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 8.0.3.4.
 
 ## Usage
 ### C/C++
@@ -46,6 +46,7 @@ If some operators in the model are not supported by TensorRT, ONNX Runtime will 
 
 ### Python
 When using the Python wheel from the ONNX Runtime build with TensorRT execution provider, it will be automatically prioritized over the default GPU or CPU execution providers. There is no need to separately register the execution provider.
+*Note that the next release (ORT 1.10) will require explicitly setting the providers parameter if you want to use execution providers other than the default CPU provider when instantiating InferenceSession.*
 
 
 ## Configurations
@@ -64,20 +65,20 @@ Following environment variables can be set for TensorRT execution provider.
 
 * ORT_TENSORRT_INT8_ENABLE: Enable INT8 mode in TensorRT. 1: enabled, 0: disabled. Default value: 0. Note not all Nvidia GPUs support INT8 precision.
 
-* ORT_TENSORRT_INT8_CALIBRATION_TABLE_NAME: Specify INT8 calibration table file name. By default the name is "INT8_calibration_table".
+* ORT_TENSORRT_INT8_CALIBRATION_TABLE_NAME: Specify INT8 calibration table file for non-QDQ models in INT8 mode. Note calibration table should not be provided for QDQ model because TensorRT doesn't allow calibration table to be loded if there is any Q/DQ node in the model. By default the name is empty.
 
-* ORT_TENSORRT_INT8_USE_NATIVE_CALIBRATION_TABLE: Select what calibration table is used. If 1, native TensorRT generated calibration table is used; if 0, ONNXRUNTIME tool generated calibration table is used. Default value: 0.
+* ORT_TENSORRT_INT8_USE_NATIVE_CALIBRATION_TABLE: Select what calibration table is used for non-QDQ models in INT8 mode. If 1, native TensorRT generated calibration table is used; if 0, ONNXRUNTIME tool generated calibration table is used. Default value: 0.
 **Note: Please copy up-to-date calibration table file to ORT_TENSORRT_CACHE_PATH before inference. Calibration table is specific to models and calibration data sets. Whenever new calibration table is generated, old file in the path should be cleaned up or be replaced.
 
 * ORT_TENSORRT_DLA_ENABLE: Enable DLA (Deep Learning Accelerator). 1: enabled, 0: disabled. Default value: 0. Note not all Nvidia GPUs support DLA. 
 
 * ORT_TENSORRT_DLA_CORE: Specify DLA core to execute on. Default value: 0.
  
-* ORT_TENSORRT_ENGINE_CACHE_ENABLE: Enable TensorRT engine caching. The purpose of using engine caching is to save engine build time in the cases that TensorRT may take long time to optimize and build engine. Engine will be cached after it's built at the first time so that next time when inference session is created the engine can be loaded directly from cache. In order to validate that the loaded engine is usable for current inference, engine profile is also cached and loaded along with engine. If current input shapes are in the range of the engine profile, that means the loaded engine can be safely used. Otherwise if input shapes are out of range, profile cache will be updated to cover the new shape and engine will be recreated based on the new profile (and also refreshed in the engine cache). Note each engine is created for specific settings such as precision (FP32/FP16/INT8 etc), workspace, profiles etc, and specific GPUs and it's not portable, so it's essential to make sure those settings are not changing, otherwise the engines need to be rebuilt and cached again. 1: enabled, 0: disabled. Default value: 0.
+* ORT_TENSORRT_ENGINE_CACHE_ENABLE: Enable TensorRT engine caching. The purpose of using engine caching is to save engine build time in the case that TensorRT may take long time to optimize and build engine. Engine will be cached when it's built for the first time so next time when new inference session is created the engine can be loaded directly from cache. In order to validate that the loaded engine is usable for current inference, engine profile is also cached and loaded along with engine. If current input shapes are in the range of the engine profile, the loaded engine can be safely used. Otherwise if input shapes are out of range, profile cache will be updated to cover the new shape and engine will be recreated based on the new profile (and also refreshed in the engine cache). Note each engine is created for specific settings such as model path/name, precision (FP32/FP16/INT8 etc), workspace, profiles etc, and specific GPUs and it's not portable, so it's essential to make sure those settings are not changing, otherwise the engine needs to be rebuilt and cached again. 1: enabled, 0: disabled. Default value: 0.
 **Warning: Please clean up any old engine and profile cache files (.engine and .profile) if any of the following changes:**
-  - Model changes (if there are any changes to the model topology, opset version etc.)
-  - ORT version changes (i.e. moving from ORT version 1.4 to 1.5)
-  - TensorRT version changes (i.e. moving from TensorRT 7.0 to 7.1)
+  - Model changes (if there are any changes to the model topology, opset version, operators etc.)
+  - ORT version changes (i.e. moving from ORT version 1.8 to 1.9)
+  - TensorRT version changes (i.e. moving from TensorRT 7.0 to 8.0)
   - Hardware changes. (Engine and profile files are not portable and optimized for specific Nvidia hardware)
 
 * ORT_TENSORRT_CACHE_PATH: Specify path for TensorRT engine and profile files if ORT_TENSORRT_ENGINE_CACHE_ENABLE is 1, or path for INT8 calibration table file if ORT_TENSORRT_INT8_ENABLE is 1.
@@ -120,6 +121,7 @@ export ORT_TENSORRT_DUMP_SUBGRAPHS = 1
 
 ### Execution Provider Options
 TensorRT configurations can also be set by execution provider option APIs. It's useful when each model and inference session have their own configurations. In this case, execution provider option settings will override any environment variable settings. All configurations should be set explicitly, otherwise default value will be taken. There are one-to-one mappings between environment variables and execution provider options shown as below,
+
 ORT_TENSORRT_MAX_WORKSPACE_SIZE <-> trt_max_workspace_size
 
 ORT_TENSORRT_MAX_PARTITION_ITERATIONS <-> trt_max_partition_iterations

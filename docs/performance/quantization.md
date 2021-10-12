@@ -42,7 +42,7 @@ There are 2 ways to represent quantized ONNX models:
 
 For the last 2 cases, you don't need to quantize the model with quantization tool. OnnxRuntime CPU EP can run them directly as quantized model. TensorRT and NNAPI EP are adding support. 
 
-Picure below shows the equivalent representation with QDQ format and Operator oriented format for quantized Conv. This [E2E](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/quantization/E2E_example_model/image_classification/cpu/run.py) example demonstrates QDQ and Operator Oriented format.
+Picture below shows the equivalent representation with QDQ format and Operator oriented format for quantized Conv. This [E2E](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/quantization/image_classification/cpu/run.py) example demonstrates QDQ and Operator Oriented format.
 
 ![Changes to nodes from basic and extended optimizations](../../images/QDQ_Format.png)
 
@@ -92,7 +92,7 @@ quantized_model = quantize_qat(model_fp32, model_quant)
 
 - Static quantization
 
-  Please refer to [E2E_example_model](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/quantization/E2E_example_model) for an example of static quantization.
+  Please refer to [E2E_example_model](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/quantization) for an example of static quantization.
 
 ### Method selection
 {: .no_toc}
@@ -143,7 +143,7 @@ Models must be opset10 or higher to be quantized. Models with opset < 10 must be
 ## Transformer-based models
 There are specific optimization for transformer-based models, like QAttention for quantization of attention layer. In order to leverage those specific optimization, you need to optimize your models with [Transformer Model Optimization Tool](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers) before quantizing the model.
 
-This [notebook](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/quantization/notebooks/bert) demonstrates the E2E process.
+This [notebook](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/quantization/notebooks/bert) demonstrates the E2E process.
 
 ## Quantization on GPU
 Hardware suppor is required to achieve better performance with quantization on GPUs. You need a device that support Tensor Core int8 computation, like T4, A100. Older hardware won't get benefit.
@@ -154,7 +154,7 @@ ORT leverage TRT EP for quantization on GPU now. Different with CPU EP, TRT take
 - Save quantization parameter into a flatbuffer file
 - Load model and quantization parameter file and run with TRT EP.
 
-We have 2 E2E examples [Yolo V3](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/quantization/E2E_example_model/object_detection/trt/yolov3) and [resnet50](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/quantization/E2E_example_model/image_classification/trt/resnet50) for your reference.
+We have 2 E2E examples [Yolo V3](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/quantization/object_detection/trt/yolov3) and [resnet50](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/quantization/image_classification/trt/resnet50) for your reference.
 
 ## FAQ
 ### Why am I not seeing performance improvements?
@@ -175,3 +175,9 @@ Please refer to [here](#method-selection).
 Reduce-range will quantize the weight with 7-bits. It is designed for U8S8 format on AVX2 and AVX512 (non VNNI) machines to mitigate the [saturation issue](#data-type-selection). Don't need it on VNNI machine.
 
 Per-channel quantization can improve the accuracy for models whose weight ranges are large. Try it firstly if the accuracy loss is large. And you need to enable reduce-range generally on AVX2 and AVX512 machines if per-channel is enabled.
+
+### Why operators like MaxPool is not quantized?
+{: .no_toc}
+
+8-bit type support for some operators like MaxPool is added in ONNX opeset 12. Please check your model version and upgrade it to opset 12 and above if your model version is older.
+

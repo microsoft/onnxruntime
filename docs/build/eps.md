@@ -97,11 +97,11 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
    * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
    * The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter.
  * Install [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 8.0.1.6.
+   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 8.0.3.4.
    * To use earlier versions of TensorRT, prior to building, change the onnx-tensorrt submodule to a branch corresponding to the TensorRT version. e.g. To use TensorRT 7.2.x,
      * cd cmake/external/onnx-tensorrt
      * git remote update
-     * git checkout 7.2
+     * git checkout 7.2.1
      * build as usual (but add the --skip_submodule_sync command so it doesn't update the submodule)
    * The path to TensorRT installation must be provided via the `--tensorrt_home` parameter.
 
@@ -118,10 +118,10 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
 ```
 # to build with the latest supported TensorRT version
 ./build.sh --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home>
-# to build with earlier version. e.g. TensorRT 7.2
+# to build with earlier version. e.g. TensorRT 7.2.1
 cd cmake/external/onnx-tensorrt
 git remote update
-git checkout 7.2
+git checkout 7.2.1
 ./build.sh  --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home> --skip_submodule_sync
 ```
 
@@ -300,6 +300,19 @@ A minimum of two device's should be specified for a valid HETERO or Multi-Device
 
 ```
 Example's: HETERO:MYRIAD,CPU or HETERO:HDDL,GPU,CPU or MULTI:MYRIAD,GPU,CPU
+```
+
+#### Disable subgraph partition Feature
+* Builds the OpenVINO Execution Provider in ONNX Runtime with sub graph partitioning disabled.
+
+* With this option enabled. Fully supported models run on OpenVINO Execution Provider else they completely fall back to default CPU EP.
+
+* To enable this feature during build time. Use `--use_openvino ` `<hardware_option>_NO_PARTITION`
+
+```
+Usage: --use_openvino CPU_FP32_NO_PARTITION or --use_openvino GPU_FP32_NO_PARTITION or
+       --use_openvino GPU_FP16_NO_PARTITION or --use_openvino MYRIAD_FP16_NO_PARTITION or
+       --use_openvino VAD-F_FP32_NO_PARTITION or --use_openvino VAD-M_FP16_NO_PARTITION
 ```
 
 For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document [OpenVINO-ExecutionProvider](../execution-providers/OpenVINO-ExecutionProvider.md)
