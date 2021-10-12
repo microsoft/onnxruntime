@@ -69,7 +69,7 @@ if (args.f || args.force || !fs.existsSync(TEST_DATA_NODE)) {
       if (dir.isDirectory() && fs.existsSync(previousDir) && fs.statSync(previousDir).isDirectory()) {
         if (compareSync(currentDir, previousDir, {compareContent: true}).differences === 0) {
           fs.removeSync(currentDir);
-          count++
+          count++;
         }
       }
     });
