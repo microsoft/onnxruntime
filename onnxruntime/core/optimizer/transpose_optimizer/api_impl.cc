@@ -366,7 +366,8 @@ void OrtGraph::TransposeInitializer(const std::string_view name, const std::vect
                                                  *tensor_proto, *in_tensor);
   ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
 
-  Transpose::DoTranspose(permutations, *in_tensor, *out_tensor);
+  const auto status2 = Transpose::DoTranspose(permutations, *in_tensor, *out_tensor);
+  ORT_ENFORCE(status2.IsOK(), status2.ErrorMessage());
 
   auto* node_arg = graph_.GetNodeArg(name_str);
   TensorShapeProto new_shape;
@@ -517,7 +518,8 @@ void OrtGraph::CopyValueInfo(const std::string_view src_name, const std::string_
     } else {
       dst_arg.SetShape(*shape);
     }
-    dst_arg.UpdateTypeAndShape(*src_arg, /*strict*/ false, /*override_types*/ true, logger_);
+    const auto status = dst_arg.UpdateTypeAndShape(*src_arg, /*strict*/ false, /*override_types*/ true, logger_);
+    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   }
 }
 
