@@ -32,11 +32,11 @@ std::unique_ptr<IExecutionProvider> MIGraphXProviderFactory::CreateProvider() {
   return std::make_unique<MIGraphXExecutionProvider>(info_);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id) {
-  MIGraphXExecutionProviderInfo info;
-  info.device_id = device_id;
-  return std::make_shared<onnxruntime::MIGraphXProviderFactory>(info);
-}
+// std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id) {
+//   MIGraphXExecutionProviderInfo info;
+//   info.device_id = device_id;
+//   return std::make_shared<onnxruntime::MIGraphXProviderFactory>(info);
+// }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(const MIGraphXExecutionProviderInfo& info) {
   return std::make_shared<onnxruntime::MIGraphXProviderFactory>(info);
