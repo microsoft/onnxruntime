@@ -59,50 +59,6 @@ static const onnx::TensorProto* GetInitializer(const Graph& graph, const std::st
   return initializer;
 }
 
-/** Helper that checks if a given NodeArg is an explicitly consumed input by atleast one 
-* provider node and atleast one non-provider node. 
-* Return true if so and false otherwise.
-*/
-static bool IsExplicitlyConsumedByProviderAndNonProviderNode(const NodeArg* arg,
-                                                             Graph& graph,
-                                                             const std::string& provider_name) {
-  bool consumed_by_provider_node = false;
-  bool consumed_by_non_provider_node = false;
-
-  for (auto& node : graph.Nodes()) {
-    if (consumed_by_provider_node && consumed_by_non_provider_node) {
-      break;
-    }
-
-    auto node_provider_type = node.GetExecutionProviderType();
-
-    // The if...else if used below is the same as the one used in TransformerMemcpyImpl::ProcessDefs()
-    // to distinguish between "provider" and "non-provider" nodes
-
-    // Only check this node if we haven't already found an explicit provider consumer
-    if (!consumed_by_provider_node && ((node_provider_type == provider_name) ||
-                                       (node_provider_type == kCudaExecutionProvider &&
-                                        kTensorrtExecutionProvider == provider_name))) {
-      for (auto input_arg : node.InputDefs()) {
-        if (input_arg->Exists() && input_arg == arg) {
-          consumed_by_provider_node = true;
-        }
-      }
-    } else if (!consumed_by_non_provider_node &&
-               node_provider_type != kCudaExecutionProvider &&
-               node_provider_type != kTensorrtExecutionProvider) {
-      // Only check this node if we haven't already found an explicit non-provider consumer
-      for (auto input_arg : node.InputDefs()) {
-        if (input_arg->Exists() && input_arg == arg) {
-          consumed_by_non_provider_node = true;
-        }
-      }
-    }
-  }
-
-  return consumed_by_provider_node && consumed_by_non_provider_node;
-}
-
 // very simple GraphTransformer that uses TransformerMemcpyImpl for each graph
 // and mainly provides the subgraph recursion functionality
 common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
@@ -220,10 +176,8 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
         // (the name will be the same as the parent node's implicit input)
         const auto* node_arg_in_current_graph_level = *provider_input_defs_.find(arg);
 
-        if (IsExplicitlyConsumedByProviderAndNonProviderNode(node_arg_in_current_graph_level, graph_, provider_)) {
-          AddCopyNode(const_cast<onnxruntime::NodeArg*>(node_arg_in_current_graph_level), true);
-          modified = true;
-        }
+        AddCopyNode(const_cast<onnxruntime::NodeArg*>(node_arg_in_current_graph_level), true);
+        modified = true;
       }
     }
   }
@@ -295,13 +249,14 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
         non_provider_input_defs_.insert(arg);
     }
 
-    // TODO: Investigate if we need the following logic
-    // There should be no need to add an implicit def to non_provider_input_defs_.
-    // Since this has been around for sometime, remove after a thorough investigation/ testing.
-    for (const auto* arg : node.ImplicitInputDefs()) {
-      if (arg->Exists())
-        non_provider_input_defs_.insert(arg);
-    }
+    // Never add an implicit def to provider_input_defs_ or non_provider_input_defs_.
+    // This is because we don't want to add copy nodes on account of implicit
+    // inputs to nodes.
+    // We will rely on utils::CopyInputsAcrossDevices() to do the job.
+    //for (const auto* arg : node.ImplicitInputDefs()) {
+    //  if (arg->Exists())
+    //    non_provider_input_defs_.insert(arg);
+    //}
 
     for (auto* arg : node.MutableOutputDefs()) {
       if (arg->Exists())
