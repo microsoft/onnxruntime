@@ -802,6 +802,60 @@ TEST(SparseGemm, Test_A_Default_RowVector_Default_ColVector_B) {
   }
 }
 
+TEST(SparseGemm, Test_A_ColVector_B_RowVector_OuterProduct) {
+  // Result is a matrix of outer dims
+  constexpr int64_t rows = 3;
+  constexpr int64_t cols = 3;
+  const std::vector<int64_t> A_shape = {cols, 1};
+  const std::vector<int64_t> B_shape = {1, rows};
+  const std::vector<int64_t> X_shape = {rows, cols};
+  // Some matches
+  {
+    //const std::vector<float> A_dense_data = {
+    //    0, 1, 2};
+
+    std::vector<float> A_values{1.f, 2.f};
+    std::vector<int64_t> A_indices{1, 2};
+    ASSERT_EQ(A_values.size(), A_indices.size());
+
+    //const std::vector<float> B_data = {0,
+    //                                   1,
+    //                                   2};
+
+    std::vector<float> B_values{1.f, 2.f};
+    std::vector<int64_t> B_indices{1, 2};
+
+    const std::vector<float> X_values{1.f, 2.f, 2.f, 4.f};
+    // 2-d Indices would look like { 1, 1,  1, 2, 2, 1,  2, 2}
+    std::vector<int64_t> X_indices_flat{4, 5, 7, 8};
+
+    OpTester tester("Gemm", 1, onnxruntime::kMSDomain);
+    tester.AddSparseCooInput("A", A_shape, A_values, A_indices);
+    tester.AddSparseCooInput("B", B_shape, B_values, B_indices);
+    tester.AddSparseCooOutput("X", X_shape, X_values, X_indices_flat);  // output is always 1-D indices
+    tester.Run(OpTester::ExpectResult::kExpectSuccess);
+  }
+
+  // No matches
+  {
+    std::vector<float> A_values;
+    std::vector<int64_t> A_indices;
+    ASSERT_EQ(A_values.size(), A_indices.size());
+
+    std::vector<float> B_values;
+    std::vector<int64_t> B_indices;
+
+    const std::vector<float> X_values;
+    std::vector<int64_t> X_indices_flat;
+
+    OpTester tester("Gemm", 1, onnxruntime::kMSDomain);
+    tester.AddSparseCooInput("A", A_shape, A_values, A_indices);
+    tester.AddSparseCooInput("B", B_shape, B_values, B_indices);
+    tester.AddSparseCooOutput("X", X_shape, X_values, X_indices_flat);  // output is always 1-D indices
+    tester.Run(OpTester::ExpectResult::kExpectSuccess);
+  }
+}
+
 // Eigen crashes on this one
 //TEST(SparseGemm, Test_A_Matrix_ColumnVector_B) {
 //  constexpr int64_t rows = 3;

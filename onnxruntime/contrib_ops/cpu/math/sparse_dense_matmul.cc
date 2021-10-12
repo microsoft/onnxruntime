@@ -290,10 +290,6 @@ inline SparseMatrix<float> SparseToSparseMatMulImpl<float>(const SparseToSparseC
   return map_A * ctx.alpha_ * map_B;
 }
 
-inline bool IsVector(const std::vector<int64_t>& dims) {
-  return (dims.size() == 1 || (dims.size() == 2 && (dims[0] == 1 || dims[1] == 1)));
-}
-
 Status CheckOutputDims(int64_t result_rows, int64_t result_cols, SparseTensor& output_tensor) {
   const auto output_rows = (output_tensor.DenseShape().NumDimensions() == 1)
                                ? 1
@@ -333,7 +329,7 @@ Status CheckDimsAndCopyResult(size_t nnz, int64_t result_rows, int64_t result_co
 }
 
 template <class T>
-struct SparseToSparseCoo {
+struct SparseToSparseEigenMatrixB {
   Status operator()(const SparseToSparseComputeCtx& ctx,
                     const std::vector<int64_t>& computed_a_dims,
                     const std::vector<int64_t>& computed_b_dims) const {
@@ -358,130 +354,68 @@ struct SparseToSparseCoo {
   }
 };
 
-inline bool IsRowVector(const std::vector<int64_t>& computed_dims) {
-  return (computed_dims.size() == 2 && computed_dims[0] == 1);
+inline bool IsVector(const std::vector<int64_t>& dims) {
+  return (dims.size() == 1 || (dims.size() == 2 && (dims[0] == 1 || dims[1] == 1)));
 }
 
-inline bool IsColVector(const std::vector<int64_t>& computed_dims) {
-  return (computed_dims.size() == 2 && computed_dims[1] == 1);
+inline bool IsRowVector(const std::vector<int64_t>& computed_dims, bool transpose) {
+  return (computed_dims.size() == 2 && (transpose) ? computed_dims[1] == 1 : computed_dims[0] == 1);
 }
 
-// This is when at least one of the operands is a vector
-// CSR spans are empty for vectors as we directly take
-// COO indices for vectors
-struct SparseVectorComputeCtx {
-  bool matrix_transpose_;
-  float alpha_;
-  bool vector_first_;
-  const std::vector<int64_t>& vector_dims_;
-  const std::vector<int64_t>& matrix_dims_;
-  const SparseTensor& vector_;
-  const SparseTensor& matrix_;
-  gsl::span<const int64_t> vector_coo_;
-  gsl::span<const int64_t> mat_inner_;
-  gsl::span<const int64_t> mat_outer_;
-  SparseTensor& output_;
-};
-
-Status CheckDimsAndCopyVector(size_t nnz, int64_t result_rows,
-                              int64_t result_cols, void* result_values_ptr,
-                              gsl::span<const int64_t> indices,
-                              SparseTensor& output_tensor) {
-  if (nnz == 0) {
-    ORT_IGNORE_RETURN_VALUE(output_tensor.MakeCooData(0, 0));
-    return Status::OK();
-  }
-
-  ORT_RETURN_IF_ERROR(CheckOutputDims(result_rows, result_cols, output_tensor));
-  TensorShape result_values_shape{static_cast<int64_t>(nnz)};
-  Tensor result_values(output_tensor.DataType(), result_values_shape, result_values_ptr, output_tensor.Location());
-  auto coo_mutator = output_tensor.MakeCooData(nnz, nnz);
-  sparse_utils::CopyCpuTensor(result_values, coo_mutator.Values());
-
-  TensorShape indices_shape{static_cast<int64_t>(indices.size())};
-  // const_cast - we know we read it only here
-  Tensor result_indices(DataTypeImpl::GetType<int64_t>(), indices_shape, const_cast<int64_t*>(indices.data()), output_tensor.Location());
-  sparse_utils::CopyCpuTensor(result_indices, coo_mutator.Indices());
-
-  return Status::OK();
+inline bool IsColVector(const std::vector<int64_t>& computed_dims, bool transpose) {
+  return (computed_dims.size() == 2 && (transpose) ? computed_dims[0] == 1 : computed_dims[1] == 1);
 }
 
-// Vector COO indices assumed to be 1-D
-template <class T>
-struct SparseVectorToMatrix {
-  Status operator()(const SparseVectorComputeCtx& ctx) const {
-    const auto& vector_values = ctx.vector_.Values();
-    // If A is a vector, the transpose flag straight, otherwise,
-    // we flip transB because we always create a RowVector mapping
-    const bool is_row_vector = IsRowVector(ctx.vector_dims_);
-    constexpr int64_t rows = 1;
-    const int64_t v_cols = (is_row_vector) ? ctx.vector_dims_[1] : ctx.vector_dims_[0];
-    const std::array<int64_t, 2> outer_indices{0, v_cols};
-    // Always create row major, row vector
-    ConstSparseMatrixMap<T> vector_map(rows, v_cols,
-                                       vector_values.Shape().Size(),
-                                       outer_indices.data(),
-                                       ctx.vector_coo_.data(),
-                                       vector_values.template Data<T>());
-
-    const auto& matrix_values = ctx.matrix_.Values();
-    ConstSparseMatrixMap<T> matrix_map(ctx.matrix_dims_[0], ctx.matrix_dims_[1],
-                                       matrix_values.Shape().Size(),
-                                       ctx.mat_outer_.data(),
-                                       ctx.mat_inner_.data(),
-                                       matrix_values.template Data<T>());
-
-    if (ctx.vector_first_) {
-      // Vector first
-      // Result is a vector
-      SparseMatrix<T> result;
-      if (ctx.matrix_transpose_)
-        result = vector_map * matrix_map.transpose();
-      else
-        result = vector_map * matrix_map;
-
-      const size_t nnz = gsl::narrow<size_t>(result.nonZeros());
-      gsl::span<const int64_t> indices = gsl::make_span<int64_t>(result.innerIndexPtr(), nnz);
-      ORT_RETURN_IF_ERROR(CheckDimsAndCopyVector(nnz, result.rows(), result.cols(), result.valuePtr(), indices, ctx.output_));
-    } else {
-      // Vector second and we always transpose it since we create a row vector.
-      // Result is a vector
-      SparseMatrix<T> result;
-      if (ctx.matrix_transpose_)
-        result = matrix_map.transpose() * vector_map.transpose();
-      else
-        result = result = matrix_map * vector_map.transpose();
-
-      const size_t nnz = gsl::narrow<size_t>(result.nonZeros());
-      gsl::span<const int64_t> indices = gsl::make_span<int64_t>(result.innerIndexPtr(), nnz);
-      ORT_RETURN_IF_ERROR(CheckDimsAndCopyVector(nnz, result.rows(), result.cols(), result.valuePtr(), indices, ctx.output_));
-    }
-
-    return Status::OK();
-  }
-};
-
-struct VectorToVectorCtx {
-  const std::vector<int64_t>& a_computed_dims_;
-  const std::vector<int64_t>& b_computed_dims_;
-  // 1d coo indices
-  gsl::span<const int64_t> a_indices_;
-  gsl::span<const int64_t> b_indices_;
-};
-
+// Used for RowVector to ColVector Mul
 template <typename T>
 struct ScalarAccumulate {
-  Status operator()(const Tensor& A_values, const Tensor& B_values,
+  Status operator()(const Tensor& A_values, const Tensor& B_values, float alpha,
                     const std::vector<std::tuple<size_t, size_t>>& matches,
                     Tensor& output_values) const {
     const T* a_data = A_values.Data<T>();
     const T* b_data = B_values.Data<T>();
     T accum = 0;
     for (const auto& match : matches) {
-      accum += a_data[std::get<0>(match)] * b_data[std::get<1>(match)];
+      accum += Mul(a_data[std::get<0>(match)], alpha, b_data[std::get<1>(match)]);
     }
     T* output_data = output_values.MutableData<T>();
     *output_data = accum;
+    return Status::OK();
+  }
+};
+
+// Used for ColVector to RowVector Mul
+struct VectorOuterProductCtx {
+  const SparseTensor& input_A_;
+  const SparseTensor& input_B_;
+  // 1d coo indices
+  gsl::span<const int64_t> a_indices_;
+  gsl::span<const int64_t> b_indices_;
+  SparseTensor& output_tensor_;
+};
+
+template<typename T>
+struct VectorOuterProduct {
+  Status operator()(const VectorOuterProductCtx& ctx, float alpha) const {
+    gsl::span<const T> a_values = ctx.input_A_.Values().DataAsSpan<T>();
+    gsl::span<const T> b_values = ctx.input_B_.Values().DataAsSpan<T>();
+    ORT_RETURN_IF_NOT(a_values.size() == ctx.a_indices_.size(), "A values size does not match A indices size");
+    ORT_RETURN_IF_NOT(b_values.size() == ctx.b_indices_.size(), "B values size does not match B indices size");
+
+    const auto cols = ctx.output_tensor_.DenseShape().GetDims()[1];
+    // We know output is going to be m*n products of non-zeros (including app defined zeros)
+    const size_t output_size = a_values.size() * b_values.size();
+    auto coo_mutator = ctx.output_tensor_.MakeCooData(output_size, output_size);
+    T* output_data = coo_mutator.Values().MutableData<T>();
+    int64_t* output_indices = coo_mutator.Indices().MutableData<int64_t>();
+    for (size_t a_i = 0, a_limit = ctx.a_indices_.size(); a_i < a_limit; ++a_i)
+      for (size_t b_i = 0, b_limit = ctx.b_indices_.size(); b_i < b_limit; ++b_i) {
+        const auto dest_row = ctx.a_indices_[a_i];
+        const auto dest_col = ctx.b_indices_[b_i];
+        *output_indices++ = dest_row * cols + dest_col;
+        *output_data++ = Mul(a_values[a_i], alpha, b_values[b_i]);
+      }
+
     return Status::OK();
   }
 };
@@ -584,13 +518,12 @@ Status SparseToSparseMatMul::Compute(OpKernelContext* ctx) const {
                                          input_B.Values(), gsl::make_span(inner_indices_B), gsl::make_span(outer_indices_B),
                                          output_tensor};
 
-    return t_disp.InvokeRet<Status, SparseToSparseCoo>(compute_ctx, a_dims, b_dims);
+    return t_disp.InvokeRet<Status, SparseToSparseEigenMatrixB>(compute_ctx, a_dims, b_dims);
   } else if (a_is_vector && b_is_vector) {
     ORT_RETURN_IF_NOT(A_shape.Size() == B_shape.Size(), "Expecting the same dense sizes for vectors");
-    if (IsRowVector(a_dims) && IsColVector(b_dims)) {
+    if (IsRowVector(a_dims, trans_a_attr_) && IsColVector(b_dims, trans_b_attr_)) {
       // Result is a scalar with dense shape [1, 1] and coordinates (0, 0)
       // need to multiply corresponding elements of the vectors
-      // sparse_utils::Advance advance(input_A.DataType()->Size());
       auto coo_mutator = output_tensor.MakeCooData(1, 1);
       int64_t* output_indices = coo_mutator.Indices().MutableData<int64_t>();
       *output_indices = 0;
@@ -609,10 +542,13 @@ Status SparseToSparseMatMul::Compute(OpKernelContext* ctx) const {
           ++b_ind;
         }
       }
-      return t_disp.InvokeRet<Status, ScalarAccumulate>(input_A.Values(), input_B.Values(), matches, coo_mutator.Values());
-    } else if (IsColVector(a_dims) && IsRowVector(b_dims)) {
+      return t_disp.InvokeRet<Status, ScalarAccumulate>(input_A.Values(), input_B.Values(), alpha_attr_, matches, coo_mutator.Values());
+    } else if (IsColVector(a_dims, trans_a_attr_) && IsRowVector(b_dims, trans_b_attr_)) {
+      // Result is a matrix [m, n] of everything non-zero in A to everything non-zero in B
+      VectorOuterProductCtx compute_ctx { input_A, input_B, a_1d_coo_span, b_1d_coo_span, output_tensor};
+      return t_disp.InvokeRet<Status, VectorOuterProduct>(compute_ctx, alpha_attr_);
     } else {
-      ORT_THROW("Report a BUG.");
+      ORT_THROW("Unimplemented or a bug");
     }
   }  // Need to support a is matrix and b is vector and the result is a vector
 

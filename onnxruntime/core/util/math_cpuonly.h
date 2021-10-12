@@ -83,12 +83,6 @@ using SparseMatrix = Eigen::SparseMatrix<T, Eigen::RowMajor, int64_t>;
 template <typename T>
 using ConstSparseMatrixMap = Eigen::Map<const Eigen::SparseMatrix<T, Eigen::RowMajor, int64_t>>;
 
-template<typename T>
-using ConstSparseRowVectorMap = Eigen::Map<const Eigen::SparseVector<T, Eigen::RowMajor, int64_t>>;
-//
-//template <typename T>
-//using ConstSparseColVectorMap = Eigen::Map<const Eigen::SparseVector<T, Eigen::ColMajor, int64_t>>;
-
 template <typename T>
 using ConstEigenArrayMap = Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, Eigen::Dynamic>>;
 

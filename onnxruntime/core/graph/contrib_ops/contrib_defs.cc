@@ -452,8 +452,8 @@ void sparseCompatibleMatmulShapeInference(
 
   auto shape0_raw = getInputShape(ctx, input1Idx);
   auto shape1_raw = getInputShape(ctx, input2Idx);
-  printShape("shape0_raw", shape0_raw);
-  printShape("shape1_raw", shape1_raw);
+  //printShape("shape0_raw", shape0_raw);
+  //printShape("shape1_raw", shape1_raw);
 
   if (shape0_raw.dim_size() == 0 || shape1_raw.dim_size() == 0) {
     fail_shape_inference("Input tensors of wrong rank (0).");
@@ -476,8 +476,8 @@ void sparseCompatibleMatmulShapeInference(
   transpose_shape(transa, shape0_raw, shape0);
   transpose_shape(transb, shape1_raw, shape1);
 
-  printShape("shape0", shape0);
-  printShape("shape1", shape1);
+  //printShape("shape0", shape0);
+  //printShape("shape1", shape1);
 
   // First promote each shape to at least rank-2. This logic is
   // specific to Gemm, not generic broadcasting.
@@ -507,8 +507,8 @@ void sparseCompatibleMatmulShapeInference(
     }
   }
 
-  printShape("shapeL", shapeL);
-  printShape("shapeR", shapeR);
+  //printShape("shapeL", shapeL);
+  //printShape("shapeR", shapeR);
 
   // Check for compatible matrix multiply dimensions
   {
@@ -526,7 +526,7 @@ void sparseCompatibleMatmulShapeInference(
   *resultShape.add_dim() = shapeL.dim(shapeL.dim_size() - 2);
   *resultShape.add_dim() = shapeR.dim(shapeR.dim_size() - 1);
 
-  printShape("resultShape", resultShape);
+  //printShape("resultShape", resultShape);
 
   // if the input 2 type was not previously propagate to output
   // we want to make sure that it is the tensor type of input 2
