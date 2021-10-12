@@ -520,7 +520,6 @@ Status SparseToSparseMatMul::Compute(OpKernelContext* ctx) const {
 
     return t_disp.InvokeRet<Status, SparseToSparseEigenMatrixB>(compute_ctx, a_dims, b_dims);
   } else if (a_is_vector && b_is_vector) {
-    ORT_RETURN_IF_NOT(A_shape.Size() == B_shape.Size(), "Expecting the same dense sizes for vectors");
     if (IsRowVector(a_dims, trans_a_attr_) && IsColVector(b_dims, trans_b_attr_)) {
       // Result is a scalar with dense shape [1, 1] and coordinates (0, 0)
       // need to multiply corresponding elements of the vectors
