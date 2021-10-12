@@ -23,6 +23,7 @@ file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cc_srcs CONFIGURE_DEPENDS
 file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cu"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/trt_fused_multihead_attention/*.cpp"
 )
 
 file(GLOB_RECURSE onnxruntime_rocm_contrib_ops_cc_srcs CONFIGURE_DEPENDS

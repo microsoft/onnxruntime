@@ -28,6 +28,7 @@ limitations under the License.
 #include "attention_impl.h"
 #include "attention_softmax.h"
 #include "transformer_common.h"
+#include "trt_fused_multihead_attention/qkvToContext.h"
 
 using namespace onnxruntime::cuda;
 using namespace cub;
@@ -185,6 +186,18 @@ bool LaunchAttentionKernel(
   bool use_persistent_softmax = options->IsPrecisionMode() && !options->DisablePersistentSoftmax();
 
   if (element_size == 2) {
+    bool use_trt = true;
+    if (use_trt) {
+      std::unique_ptr<fastertransformer::MHARunner> dispatcher_fp16;
+      int sm = 70;
+      int S = -1;
+      dispatcher_fp16.reset(new fastertransformer::FusedMHARunnerFP16v2(head_size, head_size, sm, 1.0f));
+      S = dispatcher_fp16->getSFromMaxSeqLen(sequence_length);
+      int B = batch_size;
+      dispatcher_fp16->setup(S, B);
+      dispatcher_fp16->run(reinterpret_cast<const half*>(input), nullptr, mask_index, nullptr, reinterpret_cast<half*>(output), stream);
+      return true;
+    }
     return QkvToContext(prop, cublas, stream,
                         batch_size, sequence_length, num_heads, head_size, element_size,
                         reinterpret_cast<const half*>(input), reinterpret_cast<half*>(output), reinterpret_cast<half*>(workspace),
