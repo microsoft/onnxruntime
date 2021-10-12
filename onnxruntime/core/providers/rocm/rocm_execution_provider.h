@@ -85,10 +85,20 @@ class ROCMExecutionProvider : public IExecutionProvider {
   int GetDeviceId() const override { return info_.device_id; }
   const hipDeviceProp_t& GetDeviceProp() const { return device_prop_; };
 
+  bool GetMiopenConvUseMaxWorkspace() const { return info_.miopen_conv_use_max_workspace; }
+
   ProviderOptions GetProviderOptions() const override {
     return ROCMExecutionProviderInfo::ToProviderOptions(info_);
   }
-  
+
+  template <typename T>
+  IAllocatorUniquePtr<T> GetTransientScratchBuffer(size_t count_or_bytes) const {
+    if (count_or_bytes == 0)
+      return nullptr;
+
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes, true);
+  }
+
   void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
   static AllocatorPtr CreateRocmAllocator(OrtDevice::DeviceId device_id, size_t rocm_mem_limit, ArenaExtendStrategy arena_extend_strategy,
                                           ROCMExecutionProviderExternalAllocatorInfo external_alloc_info);
