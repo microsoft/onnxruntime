@@ -72,10 +72,8 @@ Status BiasDropout::ComputeInternal(OpKernelContext* context) const {
   if (bias == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "Bias input of BiasDropout is not available.");
   const TensorShape& bias_shape = bias->Shape();
   const int64_t dim = bias_shape.GetDims().back();
-  bool has_same_shape_bias = false;
-  if (bias_shape == x_shape) {
-    has_same_shape_bias = true;
-  } else {
+  bool has_same_shape_bias = (bias_shape == x_shape);
+  if (!has_same_shape_bias) {
     if (bias_shape.NumDimensions() != 1) {
       return Status(common::ONNXRUNTIME, common::FAIL, "Bias input is not a 1D tensor.");
     }

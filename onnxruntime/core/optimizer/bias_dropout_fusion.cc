@@ -120,9 +120,12 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     } else {
       const int last_dim_shape1 = input1_shape->dim_size() - 1;
       const int last_dim_shape2 = input2_shape->dim_size() - 1;
-      if (!utils::HasDimValue(input1_shape->dim(last_dim_shape1)) ||
-          !utils::HasDimValue(input2_shape->dim(last_dim_shape2)) ||
-          input1_shape->dim(last_dim_shape1).dim_value() != input2_shape->dim(last_dim_shape2).dim_value()) {
+      if ((!utils::HasDimValue(input1_shape->dim(last_dim_shape1)) ||
+           !utils::HasDimValue(input2_shape->dim(last_dim_shape2)) ||
+           input1_shape->dim(last_dim_shape1).dim_value() != input2_shape->dim(last_dim_shape2).dim_value()) &&
+          (!utils::HasDimParam(input1_shape->dim(last_dim_shape1)) ||
+           !utils::HasDimParam(input2_shape->dim(last_dim_shape2)) ||
+           input1_shape->dim(last_dim_shape1).dim_param() != input2_shape->dim(last_dim_shape2).dim_param())) {
         continue;
       }
       if (input1_shape->dim_size() == 1) {
