@@ -81,10 +81,8 @@ inline std::ostream& operator<<(std::ostream& out, const std::tuple<Arguments...
   
     const std::size_t length = sizeof...(Arguments);
  
-    // Using std::apply to print elements
     std::apply(
  
-        // A lambda function
         [length, &out](auto const&... ps) {
             std::size_t k = 0;
  
