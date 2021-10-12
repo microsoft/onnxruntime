@@ -69,10 +69,10 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   coreml_batch_norm->set_computemeanvar(false);
   coreml_batch_norm->set_instancenormalization(false);
 
-  CreateCoreMLWeight(*coreml_batch_norm->mutable_gamma(), scale_tensor);   // scale
-  CreateCoreMLWeight(*coreml_batch_norm->mutable_beta(), bias_tensor);     // B
-  CreateCoreMLWeight(*coreml_batch_norm->mutable_mean(), mean_tensor);     // mean
-  CreateCoreMLWeight(*coreml_batch_norm->mutable_variance(), var_tensor);  // var
+  ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_batch_norm->mutable_gamma(), scale_tensor));   // scale
+  ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_batch_norm->mutable_beta(), bias_tensor));     // B
+  ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_batch_norm->mutable_mean(), mean_tensor));     // mean
+  ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_batch_norm->mutable_variance(), var_tensor));  // var
 
   *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
   *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();

@@ -293,7 +293,7 @@ Status TrainingRunner::Initialize() {
 Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader,
                            const MapStringToString& mapped_dimensions) {
   if (MPIContext::GetInstance().GetWorldRank() == 0 && !params_.model_actual_running_graph_path.empty()) {
-    session_.Save(params_.model_actual_running_graph_path, TrainingSession::SaveOption::NO_RELOAD);
+    ORT_RETURN_IF_ERROR(session_.Save(params_.model_actual_running_graph_path, TrainingSession::SaveOption::NO_RELOAD));
   }
 
   // maybe in the future we can support an evaluation-only run
@@ -1135,13 +1135,13 @@ Status TrainingRunner::Evaluate(TrainingSession& session, IDataLoader& data_load
     std::vector<std::string> fetch_names;
     std::vector<OrtValue> fetches;
 
-    PrepareFeedNamesAndFeeds(EvaluateStep,
-                             data_loader,
-                             *test_data,
-                             nullptr,
-                             batch_idx,
-                             feed_names,
-                             feeds);
+    ORT_RETURN_IF_ERROR(PrepareFeedNamesAndFeeds(EvaluateStep,
+                                                 data_loader,
+                                                 *test_data,
+                                                 nullptr,
+                                                 batch_idx,
+                                                 feed_names,
+                                                 feeds));
     if (!session.GetDropoutEvalFeeds().empty()) {
       float eval_ratio = 0.0f;
       for (auto& dropout_ratio : session.GetDropoutEvalFeeds()) {
@@ -1163,9 +1163,9 @@ Status TrainingRunner::Evaluate(TrainingSession& session, IDataLoader& data_load
       }
     }
 
-    PrepareFetchNamesAndFetches(EvaluateStep,
-                                fetch_names,
-                                fetches);
+    ORT_RETURN_IF_ERROR(PrepareFetchNamesAndFetches(EvaluateStep,
+                                                    fetch_names,
+                                                    fetches));
 
     run_options.only_execute_path_to_fetches = true;
     run_options.training_mode = false;

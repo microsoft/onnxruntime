@@ -251,7 +251,7 @@ Status RegisterCpuContribKernels(KernelRegistry& kernel_registry) {
     ORT_RETURN_IF_ERROR(RegisterNchwcKernels(kernel_registry));
   }
 
-  RegisterQuantizationKernels(kernel_registry);
+  ORT_RETURN_IF_ERROR(RegisterQuantizationKernels(kernel_registry));
 
   return Status::OK();
 }

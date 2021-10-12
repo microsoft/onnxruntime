@@ -242,12 +242,13 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                                   const TensorShape& bias_shape,
                                   const Tensor*& mask_index,
                                   const Tensor* past,
+                                  const Tensor* extra_add_qk,
                                   const int max_threads_per_block) const {
   if (num_heads_ > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past, nullptr);
+  return CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past, extra_add_qk);
 }
 
 Tensor* AttentionBase::GetPresent(OpKernelContext* context,

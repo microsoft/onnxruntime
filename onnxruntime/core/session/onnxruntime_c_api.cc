@@ -71,22 +71,6 @@ using namespace onnxruntime;
 #endif
 #endif
 
-// Return the OrtStatus if it indicates an error
-#define ORT_API_RETURN_IF_ERROR(expr) \
-  do {                                \
-    auto _status = (expr);            \
-    if (_status)                      \
-      return _status;                 \
-  } while (0)
-
-// Convert internal onnxruntime::Status to OrtStatus and return if there's an error
-#define ORT_API_RETURN_IF_STATUS_NOT_OK(expr) \
-  do {                                        \
-    auto _status = (expr);                    \
-    if (!_status.IsOK())                      \
-      return ToOrtStatus(_status);            \
-  } while (0)
-
 #define TENSOR_READ_API_BEGIN                          \
   API_IMPL_BEGIN                                       \
   auto v = reinterpret_cast<const ::OrtValue*>(value); \
@@ -519,13 +503,14 @@ ORT_API_STATUS_IMPL(OrtApis::AddCustomOpDomain, _Inout_ OrtSessionOptions* optio
 ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions* options, _In_ const char* library_path, void** library_handle) {
   API_IMPL_BEGIN
 
-  Env::Default().LoadDynamicLibrary(library_path, false, library_handle);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(Env::Default().LoadDynamicLibrary(library_path, false, library_handle));
   if (!*library_handle)
     return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOpsLibrary: Failed to load library");
 
   OrtStatus*(ORT_API_CALL * RegisterCustomOps)(OrtSessionOptions * options, const OrtApiBase* api);
 
-  Env::Default().GetSymbolFromLibrary(*library_handle, "RegisterCustomOps", (void**)&RegisterCustomOps);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(Env::Default().GetSymbolFromLibrary(*library_handle, "RegisterCustomOps",
+                                                                      (void**)&RegisterCustomOps));
   if (!RegisterCustomOps)
     return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOpsLibrary: Entry point RegisterCustomOps not found in library");
 
