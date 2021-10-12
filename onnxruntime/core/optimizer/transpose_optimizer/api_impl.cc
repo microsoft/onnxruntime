@@ -92,12 +92,12 @@ void OrtValueInfo::UnsqueezeDims(const std::vector<int64_t>& axes) {
   }
   size_t rank = shape_proto->dim_size();
   TensorShapeProto new_shape;
-  int32_t j = 0;
-  int32_t i = 0;
+  int j = 0;
+  int64_t i = 0;
   while (true) {
     if (std::find(axes.begin(), axes.end(), i) != axes.end()) {
       new_shape.add_dim()->set_dim_value(1);
-    } else if (j < rank) {
+    } else if (gsl::narrow_cast<size_t>(j) < rank) {
       auto& dim = *new_shape.add_dim();
       const auto& src_dim = shape_proto->dim(j);
       CopyDim(src_dim, dim);
@@ -126,7 +126,7 @@ std::vector<int64_t> OrtTensor::DataInt64() const {
   const auto status = utils::TensorProtoToTensor(Env::Default(), graph_.ModelPath().ToPathString().c_str(),
                                                  tensor_proto_, *tensor);
   const int64_t* data = tensor->Data<int64_t>();
-  size_t num_elements = tensor->Shape().Size();
+  size_t num_elements = gsl::narrow_cast<size_t>(tensor->Shape().Size());
   std::vector<int64_t> int_data(num_elements);
   for (size_t i = 0; i < num_elements; ++i) {
     int_data[i] = *data++;

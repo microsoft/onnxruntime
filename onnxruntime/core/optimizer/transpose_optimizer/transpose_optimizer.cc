@@ -80,14 +80,15 @@ static std::unique_ptr<api::Node> MakeSqueezeOrUnsqueeze(int64_t opset, api::Gra
 // Returns whether perm is a valid permutation (contains each value from 0 to perm.size() - 1 exactly once)
 bool IsValidPerm(const std::vector<int64_t>& perm) {
   size_t rank = perm.size();
-  int64_t rank_int = gsl::narrow<int64_t, size_t>(rank);
+  int64_t rank_int = gsl::narrow_cast<int64_t>(rank);
   std::vector<bool> used_dims(rank);
   for (size_t i = 0; i < rank; ++i) {
     int64_t x = perm[i];
-    if (x < 0 || x >= rank_int || used_dims[x]) {
+    size_t x_size_t = gsl::narrow_cast<size_t>(x);
+    if (x < 0 || x >= rank_int || used_dims[x_size_t]) {
       return false;
     }
-    used_dims[x] = true;
+    used_dims[x_size_t] = true;
   }
   return true;
 }
