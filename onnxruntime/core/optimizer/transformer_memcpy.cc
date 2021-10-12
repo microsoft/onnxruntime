@@ -63,9 +63,9 @@ static const onnx::TensorProto* GetInitializer(const Graph& graph, const std::st
 * provider node and atleast one non-provider node. 
 * Return true if so and false otherwise.
 */
-static bool IsExplicitlyConsumedByProviderAndNonProviderNodeInCurrentGraphLevel(const NodeArg* arg,
-                                                                                Graph& graph,
-                                                                                const std::string& provider_name) {
+static bool IsExplicitlyConsumedByProviderAndNonProviderNode(const NodeArg* arg,
+                                                             Graph& graph,
+                                                             const std::string& provider_name) {
   bool consumed_by_provider_node = false;
   bool consumed_by_non_provider_node = false;
 
@@ -199,25 +199,13 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
 
   // Process implicit inputs in subgraphs that is explicitly consumed
   // on both provider and non-provider nodes. This is mimicking
-  // logic for graph inputs for implicit graph inputs.
-  std::unordered_set<std::string> graph_implicit_inputs;
-  bool is_subgraph = graph_.IsSubgraph();
-
-  if (is_subgraph) {
+  // logic for explicit graph inputs.
+  if (graph_.IsSubgraph()) {
     for (auto arg : graph_.ParentNode()->ImplicitInputDefs()) {
-      if (arg->Exists()) {
-        graph_implicit_inputs.insert(arg->Name());
-      }
-    }
-  }
-
-  if (is_subgraph && !graph_implicit_inputs.empty()) {
-    for (auto arg : provider_input_defs_) {
-      if (non_provider_input_defs_.count(arg)) {
-        // We only care about implicit inputs - if it isn't an implicit input,
-        // we would have already added copy nodes in all the logic blocks above.
-        bool is_implicit_input = (graph_implicit_inputs.find(arg->Name()) != graph_implicit_inputs.end());
-
+      // Looking into `provider_input_defs_` and `non_provider_input_defs_`
+      // using NodeArg pointers from the outer scope is okay because the
+      // comparator is only name based (and doesn't compare raw pointers)
+      if (provider_input_defs_.count(arg) && non_provider_input_defs_.count(arg)) {
         // There should be at-least one explicit consumer of the NodeArg
         // in both the provider node list and the non-provider node list.
         // If there are no explicit consumers in both lists, we don't want
@@ -228,9 +216,12 @@ bool TransformerMemcpyImpl::ModifyGraph(const KernelRegistryManager& kernel_regi
         // copy nodes in that case either as subgraph copy logic will take
         // it to the required device (i.e.) we don't need to care about it here.
 
-        if (is_implicit_input &&
-            IsExplicitlyConsumedByProviderAndNonProviderNodeInCurrentGraphLevel(arg, graph_, provider_)) {
-          AddCopyNode(const_cast<onnxruntime::NodeArg*>(arg), true);
+        // Be sure to use the NodeArg* relevant to the current graph level
+        // (the name will be the same as the parent node's implicit input)
+        const auto* node_arg_in_current_graph_level = *provider_input_defs_.find(arg);
+
+        if (IsExplicitlyConsumedByProviderAndNonProviderNode(node_arg_in_current_graph_level, graph_, provider_)) {
+          AddCopyNode(const_cast<onnxruntime::NodeArg*>(node_arg_in_current_graph_level), true);
           modified = true;
         }
       }
