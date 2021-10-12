@@ -5,6 +5,7 @@
 
 from typing import Dict, List, Tuple, Union
 from logging import getLogger
+from coloredlogs import check_style
 from onnx import helper, TensorProto, NodeProto
 from onnx_model import OnnxModel
 from fusion_base import Fusion
@@ -111,9 +112,7 @@ class FusionEmbedLayerNoMask(Fusion):
         """
         path1 = self.model.match_parent_path(position_embedding_gather, ['Expand', 'Shape'], [1, 1])
         if path1 is None:
-            path1 = self.model.match_parent_path(position_embedding_gather, ['Expand', 'Where', 'Reshape', 'Shape'], [1, 1, 2, 0])
-            if path1 is None:
-                return False
+            return False
 
         expand, shape = path1
         if shape.input[0] != input_ids:
@@ -350,7 +349,8 @@ class FusionEmbedLayerNoMask(Fusion):
         return int32_output, input_cast_node
 
     def create_fused_node(self, input_ids: str, layernorm: NodeProto, word_embedding_gather: NodeProto,
-                          position_embedding_gather: NodeProto, segment_embedding_gather: Union[None, NodeProto]):
+                          position_embedding_gather: NodeProto, segment_embedding_gather: Union[None, NodeProto],
+                          add_output = False):
         """Create an EmbedLayerNormalization node. Note that segment embedding is optional.
 
         Args:
@@ -388,9 +388,13 @@ class FusionEmbedLayerNoMask(Fusion):
                 input_ids, '', word_embedding_gather.input[0], position_embedding_gather.input[0], '', gamma, beta
             ]
 
+        embed_node_outputs = [node_name + "_output", node_name + "_dummy_mask_index"]
+        if add_output:
+            embed_node_outputs.append(node_name + "_add_output")
+
         embed_node = helper.make_node('EmbedLayerNormalization',
                                       embed_node_inputs,
-                                      outputs=[node_name + "_output", node_name + "_dummy_mask_index"],
+                                      outputs=embed_node_outputs,
                                       name=node_name)
 
         embed_node.domain = "com.microsoft"
@@ -399,6 +403,11 @@ class FusionEmbedLayerNoMask(Fusion):
         for att in layernorm.attribute:
             if att.name == 'epsilon':
                 embed_node.attribute.extend([att])
+
+        if add_output:
+            embed_node.attribute.extend(
+                [helper.make_attribute("add_output", 1)])
+
         # Set default value to 1e-12 if no attribute is found.
         # OnnxRuntime 1.2.0 or older has no epsilon attribute. The optimized model can only work for 1.3.0 or later.
         if len(embed_node.attribute) == 0:
@@ -417,6 +426,82 @@ class FusionEmbedLayerNoMask(Fusion):
         self.model.replace_input_of_all_nodes(layernorm.output[0], embed_node.output[0])
         # use prune graph to remove nodes that is not needed
         self.prune_graph = True
+
+    def is_add_output_needed(self, add_before_layer_norm):
+        """Check that Add before layer norm has an output to add before next layernorm
+
+        Args:
+            add_before_layer_norm (NodeProto): Add before any LayerNormalization node in topological order of graph
+
+        Returns:
+            bool: whether there is an extra output needed out of embed layer norm node
+        """
+
+        nodes = self.model.get_children(add_before_layer_norm)
+
+        add_child_node = None
+        for node in nodes:
+            if 'Add' in node.name:
+                add_child_node = node
+                break
+
+        if add_child_node == None:
+            return False
+
+        return True
+
+    def fuse_gpt2(self, layernorm, add_before_layernorm, input_name_to_nodes, output_name_to_node):
+        #graph checks
+        # gpt2 has no segment embedding, subgraph pattern is like
+        #     input_ids  position_ids
+        #        |        |
+        #     Gather    Gather
+        #          \   /
+        #           Add _ _ _ _ _
+        #            |           |
+        #    LayerNormalization  |
+        #            |           |
+        #         Attention      |
+        #            |           |
+        #          Matmul        |
+        #            |          /
+        #           Add        /
+        #             \       /
+        #                Add
+        two_gather = self.match_two_gather(add_before_layernorm)
+        if two_gather is None:
+            return False
+
+        add_output = add_before_layernorm.output[0]
+
+        word_embedding_gather, position_embedding_gather = two_gather
+        input_ids = word_embedding_gather.input[1]
+        position_ids = position_embedding_gather.input[1]
+
+        if not self.check_attention_subgraph(layernorm, input_name_to_nodes, is_distil_bert=True):
+            return False
+
+        if not self.check_embedding(word_embedding_gather, None, position_embedding_gather):
+            return False
+
+        optional_add_output = False
+        if self.is_add_output_needed(add_before_layernorm):
+            optional_add_output = True
+
+        # make the fused node
+        embed_node = self.create_fused_node(input_ids, layernorm, word_embedding_gather, position_embedding_gather,
+                                           None, optional_add_output)
+
+        # direct the output to another add too
+        self.model.replace_input_of_all_nodes(layernorm.output[0], embed_node.output[0])
+        if optional_add_output:
+            # TODO Vish embed_node optional name get by name instead of index.
+            self.model.replace_input_of_all_nodes(add_output, embed_node.output[2])
+
+        # remove input position_ids input from graph
+        self.model.remove_node(position_ids)
+
+        return True
 
     def fuse_distilbert(self, layernorm, add_before_layernorm, input_name_to_nodes, output_name_to_node):
         """Fuse embedding layer for DistilBert
@@ -511,6 +596,9 @@ class FusionEmbedLayerNoMask(Fusion):
             add_before_layernorm = first_add_path[0]
         else:  # SkipLayerNormalization
             add_before_layernorm = node  # Add is fused into SkipLayerNormalization
+
+        if self.fuse_gpt2(node, add_before_layernorm, input_name_to_nodes, output_name_to_node):
+            return
 
         if self.fuse_distilbert(node, add_before_layernorm, input_name_to_nodes, output_name_to_node):
             return

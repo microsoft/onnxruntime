@@ -30,6 +30,10 @@ template <typename T>
 EmbedLayerNorm<T>::EmbedLayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
   ORT_ENFORCE(epsilon_ >= 0);
+
+  int64_t add_output;
+  ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("add_output", &add_output).IsOK());
+  add_output_ = add_output == 1 ? true : false;
 }
 
 template <typename T>
@@ -54,6 +58,11 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   TensorShape mask_index_shape({input_dims[0]});
   Tensor* mask_index = context->Output(1, mask_index_shape);
 
+  Tensor* add_output = nullptr;
+  if (add_output_) {
+    add_output = context->Output(2, output_shape);
+  }
+
   int batch_size = static_cast<int>(input_dims[0]);
   int sequence_length = static_cast<int>(input_dims[1]);
   size_t element_size = sizeof(T);
@@ -62,6 +71,7 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
           Stream(),
           output->template MutableData<T>(),
           mask_index->template MutableData<int32_t>(),
+          add_output_ ? add_output->template MutableData<T>() : nullptr,
           input_ids->template Data<int32_t>(),
           nullptr == segment_ids ? nullptr : segment_ids->template Data<int32_t>(),
           nullptr == mask ? nullptr : mask->template Data<int32_t>(),

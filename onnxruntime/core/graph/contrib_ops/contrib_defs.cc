@@ -261,6 +261,12 @@ void embedLayerNormalizationShapeInference(InferenceContext& ctx) {
   ONNX_NAMESPACE::TensorShapeProto mask_index_shape;
   *mask_index_shape.add_dim() = input_ids_dims[0];
   updateOutputShape(ctx, 1, mask_index_shape);
+
+  // extra add output has the same shape as output[0] 
+  int64_t add_output_attr = getAttribute(ctx, "add_output", 0);
+  if (add_output_attr) {
+    updateOutputShape(ctx, 2, output_shape);
+  }
 }
 }  // namespace ONNX_NAMESPACE
 
@@ -689,6 +695,7 @@ will be calculated.)DOC";
       .SinceVersion(1)
       .SetDoc(EmbedLayerNormalization_ver1_doc)
       .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultEmbedLayerNormEpsilon)
+      .Attr("add_output", "Boolean to indicates if the node outputs an extra add output", AttributeProto::INT, OPTIONAL_VALUE)
       .Input(0, "input_ids", "2D words IDs with shape (batch_size, sequence_length)", "T1")
       .Input(1, "segment_ids", "2D segment IDs with shape (batch_size, sequence_length)", "T1", OpSchema::Optional)
       .Input(2, "word_embedding", "2D with shape (,hidden_size)", "T")
@@ -699,6 +706,7 @@ will be calculated.)DOC";
       .Input(7, "mask", "2D attention mask with shape (batch_size, sequence_length)", "T1", OpSchema::Optional)
       .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
       .Output(1, "mask_index", "1D mask_index tensor with shape (batch_size)", "T1")
+      .Output(2, "add_output", "output of word_embedding and position_embedding sum without layer normalization", "T", OpSchema::Optional)
       .TypeConstraint("T1", {"tensor(int32)"}, "Constrain input and output integer tensors types")
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output float tensors types.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::embedLayerNormalizationShapeInference);
@@ -2856,7 +2864,7 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       .Attr("seed", "(Optional) Seed to the random generator, if not specified we will auto generate one.", AttributeProto::INT, OPTIONAL_VALUE)
       .AllowUncheckedAttributes()
       .Input(0, "data", "The input data as Tensor.", "T")
-      .Input(1, "bias", "The bias input, a vector with the same shape as last dim of data OR same shape with data", "T")
+      .Input(1, "bias", "The bias input, a vector with the same shape as last dim of data", "T")
       .Input(2, "residual", "The residual input, must have the same shape as data", "T", OpSchema::Optional)
       .Input(3, "ratio",
              "The ratio of random dropout, with value in [0, 1). If this input was not set, "
