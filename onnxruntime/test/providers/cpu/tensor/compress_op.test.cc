@@ -125,6 +125,29 @@ TEST(CompressTest, Compress_default_axis) {
   test.Run();
 }
 
+// Test that we accumulate to a buffer that does not overflow
+TEST(CompressTest, Compress_default_axis_issue_9247_cumulative_sum_overflow) {
+  OpTester test("Compress", 9);
+
+  // Generate input longer than 127
+  constexpr size_t elements = 150;
+  std::vector<float> input;
+  for (size_t i = 0; i < elements; ++i) {
+    input.push_back(static_cast<float>(i));
+  }
+
+  // Let's select all of the elements
+  std::unique_ptr<bool[]> all_true = std::make_unique<bool[]>(elements);
+  std::fill_n(all_true.get(), elements, true);
+  std::vector<int64_t> output_shape{static_cast<int64_t>(elements)};
+
+  test.AddInput<float>("input", {2, 75}, input);
+  test.AddInput<bool>("condition", output_shape, all_true.get(), elements);
+  // Should get all of the input
+  test.AddOutput<float>("output", output_shape, input);
+  test.Run();
+}
+
 TEST(CompressTest, Compress0_string) {
   OpTester test("Compress", 9);
 

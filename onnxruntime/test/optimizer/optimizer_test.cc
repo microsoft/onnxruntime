@@ -15,6 +15,7 @@
 #include "test/framework/test_utils.h"
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
+#include "asserts.h"
 #include "gtest/gtest.h"
 
 using namespace std;
@@ -57,7 +58,7 @@ TEST(OptimizerTest, Basic) {
   std::vector<NodeArg*> tmp_inputs{inputs[0].get(), inputs[1].get()};
   std::vector<NodeArg*> tmp_outputs{outputs[0].get()};
   graph.AddNode("a", "Add", "a", tmp_inputs, tmp_outputs);
-  graph.Resolve();
+  ASSERT_STATUS_OK(graph.Resolve());
 
   std::vector<const Node*> nodes;
   for (auto& node : graph.Nodes()) {
@@ -97,7 +98,7 @@ TEST(OptimizerTest, Basic) {
     ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
 
     std::vector<OrtValue> fetches;
-    frame.GetOutputs(fetches);
+    ASSERT_STATUS_OK(frame.GetOutputs(fetches));
     auto& tensor = fetches[0].Get<Tensor>();
     const std::vector<int32_t> found(tensor.template Data<int32_t>(), tensor.template Data<int32_t>() + tensor_dim);
     std::vector<int32_t> expected;

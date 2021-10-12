@@ -363,7 +363,7 @@ Status ConvGrad<T>::ComputeInternal(OpKernelContext* context) const {
 
 template <typename T>
 Status ConvGrad<T>::ComputeInputGradient() const {
-  AlgoIterator<T_BwdDataPerf>(args_).TryAll(
+  return AlgoIterator<T_BwdDataPerf>(args_).TryAll(
       static_cast<const CUDAExecutionProvider*>(Info().GetExecutionProvider()),
       [&](const T_BwdDataPerf& algo_perf) -> Status {
         const auto one = Consts<CudaT>::One;
@@ -375,12 +375,11 @@ Status ConvGrad<T>::ComputeInputGradient() const {
             algo_perf.algo, workspace.get(), algo_perf.memory, &zero, args_.x_tensor, args_.dx_data));
         return Status::OK();
       });
-  return Status::OK();
 }
 
 template <typename T>
 Status ConvGrad<T>::ComputeWeightGradient() const {
-  AlgoIterator<T_BwdFilterPerf>(args_).TryAll(
+  return AlgoIterator<T_BwdFilterPerf>(args_).TryAll(
       static_cast<const CUDAExecutionProvider*>(Info().GetExecutionProvider()),
       [&](const T_BwdFilterPerf& algo_perf) -> Status {
         const auto one = Consts<CudaT>::One;
@@ -392,7 +391,6 @@ Status ConvGrad<T>::ComputeWeightGradient() const {
             algo_perf.algo, workspace.get(), algo_perf.memory, &zero, args_.w_desc, args_.dw_data));
         return Status::OK();
       });
-  return Status::OK();
 }
 
 template <typename T>

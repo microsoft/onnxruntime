@@ -96,13 +96,13 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
 
       if (da_output_tensor) {
         std::vector<int64_t> a_output_dims = prepended_dimension_1(a_shape, dy_shape.NumDimensions());
-        ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+        ORT_RETURN_IF_ERROR((ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
             temp_da_data,
             dy_shape,
             da_data,
             TensorShape({}),
             CUDNN_REDUCE_TENSOR_ADD,
-            a_output_dims);
+            a_output_dims)));
       }
       break;
     }
@@ -125,13 +125,13 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
 
       if (db_output_tensor) {
         std::vector<int64_t> b_output_dims = prepended_dimension_1(b_shape, dy_shape.NumDimensions());
-        ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+        ORT_RETURN_IF_ERROR((ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
             temp_db_data,
             dy_shape,
             db_data,
             TensorShape({}),
             CUDNN_REDUCE_TENSOR_ADD,
-            b_output_dims);
+            b_output_dims)));
       }
       break;
     }
@@ -170,13 +170,13 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
 
       if (db_output_tensor) {
         std::vector<int64_t> b_output_dims = prepended_dimension_1(b_shape, dy_shape.NumDimensions());
-        ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+        ORT_RETURN_IF_ERROR((ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
             temp_db_data,
             dy_shape,
             db_data,
             b_shape,
             CUDNN_REDUCE_TENSOR_ADD,
-            b_output_dims);
+            b_output_dims)));
       }
       break;
     }
@@ -217,24 +217,24 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
 
       if (need_reduce_da) {
         std::vector<int64_t> a_output_dims = prepended_dimension_1(a_shape, dy_shape.NumDimensions());
-        ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+        ORT_RETURN_IF_ERROR((ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
             da_data_ref,
             dy_shape,
             da_data,
             a_shape,
             CUDNN_REDUCE_TENSOR_ADD,
-            a_output_dims);
+            a_output_dims)));
       }
 
       if (need_reduce_db) {
         std::vector<int64_t> b_output_dims = prepended_dimension_1(b_shape, dy_shape.NumDimensions());
-        ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+        ORT_RETURN_IF_ERROR((ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
             db_data_ref,
             dy_shape,
             db_data,
             b_shape,
             CUDNN_REDUCE_TENSOR_ADD,
-            b_output_dims);
+            b_output_dims)));
       }
     }
   }

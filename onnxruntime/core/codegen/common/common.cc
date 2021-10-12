@@ -101,14 +101,14 @@ const onnxruntime::Node* GetInputNode(const Node& node, const NodeArg* def) {
   for (auto iter = node.InputNodesBegin(); iter != node.InputNodesEnd(); ++iter) {
     const onnxruntime::Node& p = *iter;
     bool found = false;
-    p.ForEachWithIndex(
+    ORT_THROW_IF_ERROR(p.ForEachWithIndex(
         p.OutputDefs(),
         [&found, &input_name](const onnxruntime::NodeArg& out_def, size_t) {
           if (input_name == out_def.Name()) {
             found = true;
           }
           return Status::OK();
-        });
+        }));
     if (found)
       input_node = &p;
   }
@@ -151,10 +151,10 @@ std::unique_ptr<ComputeCapability> ToCapacity(const onnxruntime::GraphViewer& gr
           return Status::OK();
         };
     // handle current graph's inputs
-    node.ForEachWithIndex(node.InputDefs(), process_input_fn);
+    ORT_THROW_IF_ERROR(node.ForEachWithIndex(node.InputDefs(), process_input_fn));
     // nodes' implicit inputs also need to be collected. They need to
     // be promoted to being explicit inputs for everything to work.
-    node.ForEachWithIndex(node.ImplicitInputDefs(), process_input_fn);
+    ORT_THROW_IF_ERROR(node.ForEachWithIndex(node.ImplicitInputDefs(), process_input_fn));
 
     // Handle outouts
     // two cases are considerd as outputs
@@ -177,12 +177,12 @@ std::unique_ptr<ComputeCapability> ToCapacity(const onnxruntime::GraphViewer& gr
       const Node& out_node = p.GetNode();
 
       // preprocess for the case 1
-      out_node.ForEachWithIndex(
+      ORT_THROW_IF_ERROR(out_node.ForEachWithIndex(
           out_node.InputDefs(),
           [&input_names_from_the_output_node](const onnxruntime::NodeArg& in_def, size_t) {
             input_names_from_the_output_node.insert(in_def.Name());
             return Status::OK();
-          });
+          }));
 
       // handle the case 2
       if (node_indices.count(out_node.Index()) == 0) {
@@ -192,7 +192,7 @@ std::unique_ptr<ComputeCapability> ToCapacity(const onnxruntime::GraphViewer& gr
     }
 
     // handle case 1 and 3
-    node.ForEachWithIndex(
+    ORT_THROW_IF_ERROR(node.ForEachWithIndex(
         node.OutputDefs(),
         [&](const onnxruntime::NodeArg& def, size_t) {
           if (input_names_from_the_output_node.count(def.Name()) == 0 ||
@@ -200,7 +200,7 @@ std::unique_ptr<ComputeCapability> ToCapacity(const onnxruntime::GraphViewer& gr
             InsertOutputToSubgraph(&def);
           }
           return Status::OK();
-        });
+        }));
   }
 
   // Handle subgraph's initializers
@@ -222,8 +222,8 @@ std::unique_ptr<ComputeCapability> ToCapacity(const onnxruntime::GraphViewer& gr
               }
               return Status::OK();
             };
-        n.ForEachWithIndex(n.InputDefs(), add_input_fn);
-        n.ForEachWithIndex(n.ImplicitInputDefs(), add_input_fn);
+        ORT_THROW_IF_ERROR(n.ForEachWithIndex(n.InputDefs(), add_input_fn));
+        ORT_THROW_IF_ERROR(n.ForEachWithIndex(n.ImplicitInputDefs(), add_input_fn));
       }
     }
   }

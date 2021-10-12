@@ -106,9 +106,9 @@ TEST(TransformerTest, MemcpyTransformerTest) {
 
   KernelRegistryManager kernel_registry_manager;
   ExecutionProviders execution_providers;
-  execution_providers.Add(onnxruntime::kCudaExecutionProvider, DefaultCudaExecutionProvider());
-  execution_providers.Add(onnxruntime::kCpuExecutionProvider,
-                          std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo()));
+  ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCudaExecutionProvider, DefaultCudaExecutionProvider()));
+  ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCpuExecutionProvider,
+                                           std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo())));
   KernelRegistryManager test_registry_manager;
   ASSERT_STATUS_OK(test_registry_manager.RegisterKernels(execution_providers));
 
@@ -161,9 +161,9 @@ TEST(TransformerTest, MemcpyTransformerTestCudaFirst) {
 
   KernelRegistryManager kernel_registry_manager;
   ExecutionProviders execution_providers;
-  execution_providers.Add(onnxruntime::kCudaExecutionProvider, DefaultCudaExecutionProvider());
-  execution_providers.Add(onnxruntime::kCpuExecutionProvider,
-                          std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo()));
+  ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCudaExecutionProvider, DefaultCudaExecutionProvider()));
+  ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCpuExecutionProvider,
+                                           std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo())));
   KernelRegistryManager test_registry_manager;
   ASSERT_STATUS_OK(test_registry_manager.RegisterKernels(execution_providers));
 
@@ -281,9 +281,9 @@ TEST(TransformerTest, TestInitializerDuplicationInSubgraph) {
 
   KernelRegistryManager kernel_registry_manager;
   ExecutionProviders execution_providers;
-  execution_providers.Add(onnxruntime::kCudaExecutionProvider, DefaultCudaExecutionProvider());
-  execution_providers.Add(onnxruntime::kCpuExecutionProvider,
-                          std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo()));
+  ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCudaExecutionProvider, DefaultCudaExecutionProvider()));
+  ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCpuExecutionProvider,
+                                           std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo())));
   KernelRegistryManager test_registry_manager;
   ASSERT_STATUS_OK(test_registry_manager.RegisterKernels(execution_providers));
 
