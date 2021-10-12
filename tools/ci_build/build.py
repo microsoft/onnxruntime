@@ -898,7 +898,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                        "-Donnxruntime_USE_OPENVINO_MULTI=" + (
                            "ON" if args.use_openvino.startswith("MULTI") else "OFF")]
 
-    # TensorRT and OpenVINO providers currently only supports
+    # TensorRT and OpenVINO providers currently only support
     # full_protobuf option.
     if (args.use_full_protobuf or args.use_tensorrt or
             args.use_openvino or args.use_vitisai or args.gen_doc):
