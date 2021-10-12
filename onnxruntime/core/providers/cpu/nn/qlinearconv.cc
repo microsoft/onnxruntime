@@ -13,6 +13,87 @@
 
 namespace onnxruntime {
 
+struct QLinearConvLocalContext {
+  int64_t N;
+  int64_t M;
+  int64_t C;
+  uint8_t X_zero_point_value;
+  uint8_t Y_zero_point_value;
+  uint8_t W_zero_point_value;
+  TensorShape input_shape;
+  TensorShape output_shape;
+  std::vector<int64_t> kernel_shape;
+  std::vector<int64_t> pads;
+  std::vector<int64_t> dilations;
+  std::vector<int64_t> strides;
+  std::vector<float> output_scales;
+  const int32_t* column_sums;
+};
+
+struct QLinearConvSym {
+  const QLinearConvLocalContext* conv_attrs;
+  int64_t output_image_size;
+  int64_t kernel_size;
+  int64_t kernel_rank;
+  int32_t thread_count;
+  bool is_depthwise_conv;
+  const uint8_t* input_data;
+  uint8_t* output_data;
+  const uint8_t* padding_data;
+  uint8_t const** indirection_buffer;
+  const void* packed_W_buffer;
+  void operator()(ptrdiff_t batch) {
+    auto work = concurrency::ThreadPool::PartitionWork(batch, thread_count, static_cast<ptrdiff_t>(output_image_size));
+    int64_t output_start = static_cast<int64_t>(work.start);
+    int64_t output_count = static_cast<int64_t>(work.end - work.start);
+
+    uint8_t const** worker_indirection_buffer = nullptr;
+    if (indirection_buffer) {
+      worker_indirection_buffer = indirection_buffer + output_start * kernel_size;
+      math::Im2col<uint8_t, StorageOrder::NHWC>()(
+          input_data,
+          conv_attrs->C,
+          conv_attrs->input_shape.GetDims().data(),
+          conv_attrs->output_shape.GetDims().data(),
+          conv_attrs->kernel_shape.data(),
+          conv_attrs->strides.data(),
+          conv_attrs->dilations.data(),
+          conv_attrs->pads.data(),
+          static_cast<ptrdiff_t>(kernel_rank),
+          output_start,
+          output_count,
+          worker_indirection_buffer,
+          padding_data);
+    }
+
+    auto* worker_output = output_data + output_start * conv_attrs->M;
+
+    MLAS_CONV_SYM_PARAMS conv_params = {};
+    if (worker_indirection_buffer) {
+      conv_params.InputIndirection = worker_indirection_buffer;
+    } else {
+      conv_params.InputDirect = input_data + output_start * conv_attrs->C;
+    }
+    conv_params.Filter = packed_W_buffer;
+    conv_params.Output = worker_output;
+    conv_params.InputChannels = static_cast<size_t>(conv_attrs->C);
+    conv_params.OutputChannels = static_cast<size_t>(conv_attrs->M);
+    conv_params.OutputCount = static_cast<size_t>(output_count);
+    conv_params.KernelSize = static_cast<size_t>(kernel_size);
+    conv_params.Bias = conv_attrs->column_sums;
+    conv_params.Scale = conv_attrs->output_scales.data();
+    conv_params.PerChannelScale = conv_attrs->output_scales.size() > 1;
+    conv_params.OutputZeroPoint = conv_attrs->Y_zero_point_value;
+
+    if (is_depthwise_conv) {
+      MlasConvSymDepthwise(conv_params);
+    } else {
+      MlasConvSym(conv_params);
+    }
+    return;
+  }
+};
+
 class QLinearConv : public OpKernel {
  public:
   explicit QLinearConv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
@@ -104,7 +185,9 @@ class QLinearConv : public OpKernel {
     return output_scales;
   }
 
-  static int32_t ComputeThreadCount(int64_t output_image_size, int64_t group_output_channels, int64_t kernel_dim) {
+  static int32_t ComputeThreadCount(int64_t output_image_size,
+                                    int64_t group_output_channels,
+                                    int64_t kernel_dim) {
     // Replicate the logic from MlasGemmU8X8Schedule to control the number of
     // worker threads used for the convolution.
     int32_t maximum_thread_count;
@@ -390,65 +473,67 @@ Status QLinearConv::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prep
 }
 
 Status QLinearConv::Compute(OpKernelContext* context) const {
+    QLinearConvLocalContext local_context;
+
   const Tensor* X = context->Input<Tensor>(InputTensors::IN_X);
   const Tensor* W = is_W_packed_ ? nullptr : context->Input<Tensor>(InputTensors::IN_W);
   const auto& W_shape = W ? W->Shape() : W_shape_;
   const bool is_W_signed = (W != nullptr) ? W->IsDataType<int8_t>() : is_W_signed_;
 
-  const int64_t N = X->Shape()[0];
-  const int64_t M = W_shape[0];
+  local_context.N = X->Shape()[0];
+  local_context.M = W_shape[0];
 
-  uint8_t X_zero_point_value;
-  uint8_t Y_zero_point_value;
-  uint8_t W_zero_point_value;
-  ComputeOffset(context, M, X_zero_point_value, Y_zero_point_value, W_zero_point_value);
-  std::vector<float> output_scales = ComputeOutputScale(context, M);
+  ComputeOffset(context,
+                local_context.M,
+                local_context.X_zero_point_value,
+                local_context.Y_zero_point_value,
+                local_context.W_zero_point_value);
+  std::vector<float> output_scales = ComputeOutputScale(context, local_context.M);
 
   const Tensor* B = context->Input<Tensor>(InputTensors::IN_BIAS);
 
   ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X->Shape(), W_shape, channels_last_));
 
-  std::vector<int64_t> kernel_shape;
-  ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W_shape, kernel_shape));
+  ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W_shape, local_context.kernel_shape));
 
   const size_t kernel_rank = kernel_shape.size();
 
-  std::vector<int64_t> pads(conv_attrs_.pads);
-  if (pads.empty()) {
-    pads.resize(kernel_rank * 2, 0);
+  local_context.pads = conv_attrs_.pads;
+  if (local_context.pads.empty()) {
+      local_context.pads.resize(kernel_rank * 2, 0);
   }
-  std::vector<int64_t> dilations(conv_attrs_.dilations);
-  if (dilations.empty()) {
-    dilations.resize(kernel_rank, 1);
+  local_context.dilations = conv_attrs_.dilations;
+  if (local_context.dilations.empty()) {
+      local_context.dilations.resize(kernel_rank, 1);
   }
-  std::vector<int64_t> strides(conv_attrs_.strides);
-  if (strides.empty()) {
-    strides.resize(kernel_rank, 1);
+  local_context.strides = conv_attrs_.strides;
+  if (local_context.strides.empty()) {
+      local_context.strides.resize(kernel_rank, 1);
   }
 
-  const int64_t C = X->Shape()[channels_last_ ? 1 + kernel_rank : 1];
+  local_context.C = X->Shape()[channels_last_ ? 1 + kernel_rank : 1];
   const size_t spatial_dim_start = channels_last_ ? 1 : 2;
   const size_t spatial_dim_end = spatial_dim_start + kernel_rank;
 
-  std::vector<int64_t> Y_dims({N});
+  std::vector<int64_t> Y_dims({ local_context.N});
   if (!channels_last_) {
-    Y_dims.push_back(M);
+    Y_dims.push_back(local_context.M);
   }
-  TensorShape input_shape = X->Shape().Slice(spatial_dim_start, spatial_dim_end);
-  ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
+  local_context.input_shape = X->Shape().Slice(spatial_dim_start, spatial_dim_end);
+  ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(local_context.input_shape, local_context.kernel_shape, local_context.strides, local_context.dilations, local_context.pads, Y_dims));
   if (channels_last_) {
-    Y_dims.push_back(M);
+    Y_dims.push_back(local_context.M);
   }
   Tensor* Y = context->Output(OutputTensors::OUT_Y, TensorShape(Y_dims));
-  TensorShape output_shape = Y->Shape().Slice(spatial_dim_start, spatial_dim_end);
+  local_context.output_shape = Y->Shape().Slice(spatial_dim_start, spatial_dim_end);
 
   // Bail out early if one of the dimensions is zero.
   if (Y->Shape().Size() == 0) {
     return Status::OK();
   }
 
-  const int64_t input_image_size = input_shape.Size();
-  const int64_t output_image_size = output_shape.Size();
+  const int64_t input_image_size = local_context.input_shape.Size();
+  const int64_t output_image_size = local_context.output_shape.Size();
   const int64_t kernel_size = TensorShape(kernel_shape).Size();
 
   AllocatorPtr alloc;
@@ -476,7 +561,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
 
   int64_t group_count = conv_attrs_.group;
   int64_t group_input_channels = W_shape[1];
-  int64_t group_output_channels = M / group_count;
+  int64_t group_output_channels = local_context.M / group_count;
 
   // Test for depthwise convolution.
   const bool is_depthwise_conv = ((is_symmetric_conv_ || reordered_W != nullptr) && group_input_channels == 1 && group_output_channels == 1);
@@ -488,8 +573,8 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
     group_count = 1;
   }
 
-  const int64_t X_offset = C * input_image_size;
-  const int64_t Y_offset = M * output_image_size;
+  const int64_t X_offset = local_context.C * input_image_size;
+  const int64_t Y_offset = local_context.M * output_image_size;
   const int64_t kernel_dim = group_input_channels * kernel_size;
   const int64_t col_buffer_size = kernel_dim * output_image_size;
 
@@ -542,14 +627,14 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
     // the im2col transform.
     auto* indirection_data = alloc->Alloc(SafeInt<size_t>(sizeof(const uint8_t*)) * kernel_size * output_image_size);
     indirection_buffer = BufferUniquePtr(indirection_data, BufferDeleter(alloc));
-    padding_data.resize(static_cast<size_t>(C), X_zero_point_value);
+    padding_data.resize(static_cast<size_t>(local_context.C), local_context.X_zero_point_value);
   }
 
   int32_t thread_count = ComputeThreadCount(output_image_size, group_output_channels, kernel_dim);
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
   thread_count = std::min(thread_count, concurrency::ThreadPool::DegreeOfParallelism(thread_pool));
 
-  for (int64_t image_id = 0; image_id < N; ++image_id) {
+  for (int64_t image_id = 0; image_id < local_context.N; ++image_id) {
     const auto* input_data = Xdata;
     auto* output_data = Ydata;
 
@@ -558,7 +643,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
       MlasTranspose(
           Xdata,
           static_cast<uint8_t*>(transpose_input_buffer.get()),
-          static_cast<size_t>(C),
+          static_cast<size_t>(local_context.C),
           static_cast<size_t>(input_image_size));
       input_data = static_cast<uint8_t*>(transpose_input_buffer.get());
       output_data = static_cast<uint8_t*>(transpose_output_buffer.get());
