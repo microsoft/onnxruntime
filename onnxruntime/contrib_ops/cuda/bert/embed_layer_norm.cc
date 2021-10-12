@@ -90,6 +90,25 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
     return Status(common::ONNXRUNTIME, common::FAIL);
   }
 
+  const auto* output_data = output->Data<T>();
+  const auto* add_output_data = add_output_ ? add_output->Data<T>() : nullptr;
+
+  const float num = 0.0;
+
+  /*
+  for (int b = 0; b < input_dims[0]; b++) {
+    for (int s = 0; s < input_dims[1]; s++) {
+      for (int hi = 0; hi < hidden_size; hi++) {
+        
+        //std::cout << "{" << output_data[b * input_dims[0] + s * input_dims[1] + hi] << "," 
+          //<< ((add_output_data != nullptr) ? add_output_data[b * input_dims[0] + s * input_dims[1] + hi] : num)
+          //<< "},";
+      }
+      std::cout << std::endl;
+      }
+  }
+  */
+
   return Status::OK();
 }
 
