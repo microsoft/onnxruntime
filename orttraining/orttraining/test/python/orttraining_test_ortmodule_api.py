@@ -916,6 +916,40 @@ def test_gradient_correctness_pool2d(pool_type):
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=5e-3, atol=4e-3)
 
+@pytest.mark.parametrize("pool_type", ['MaxPool', 'AvgPool'])
+@pytest.mark.parametrize("stride", [None, 2])
+def test_export_correctness_pool2d(pool_type, stride):
+    class NeuralNetPool2d(torch.nn.Module):
+        def __init__(self):
+            super(NeuralNetPool2d, self).__init__()
+            self.conv = torch.nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
+            self.pool_type = pool_type
+            
+
+        def forward(self, input):
+            x = self.conv(input)
+            if pool_type == 'MaxPool':
+                output = torch.nn.functional.max_pool2d(x, kernel_size=3, stride=stride)
+            elif pool_type == 'AvgPool':
+                output = torch.nn.functional.avg_pool2d(x, kernel_size=3, stride=stride)
+            return output
+
+    N, C, H, W = 8, 3, 224, 224
+    device = 'cuda'
+    pt_model = NeuralNetPool2d().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input):
+        prediction = model(input)
+        return prediction
+
+    for _ in range(10):
+        input = torch.randn(N, C, H, W, device=device)
+        pt_prediction = run_step(pt_model, input)
+        ort_prediction = run_step(ort_model, input)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+
 def test_gradient_correctness_argmax_unfold():
     class NeuralNetUnfold(torch.nn.Module):
         def __init__(self, input_size, hidden_size, unfold_dim, unfold_size, unfold_step):

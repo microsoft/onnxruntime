@@ -87,6 +87,9 @@ def multinomial(g, self, num_samples, replacement=False, generator=None):
 
 @register_symbolic('max_pool2d')
 def max_pool2d(g, self, kernel_size, stride, padding, dilation, ceil_mode):
+    stride_val = sym_help._maybe_get_const(stride, 'is')
+    if not stride_val:
+        stride = kernel_size
     return g.op("com.microsoft::ATenOp", self, kernel_size, stride, padding, dilation, ceil_mode,
                 name_s='aten::max_pool2d_with_indices', outputs=2)[0]
 
@@ -103,6 +106,9 @@ def argmax(g, input, dim, keepdim):
 
 @register_symbolic('avg_pool2d')
 def avg_pool2d(g, self, kernel_size, stride, padding, ceil_mode, count_include_pad, divisor_override):
+    stride_val = sym_help._maybe_get_const(stride, 'is')
+    if not stride_val:
+        stride = kernel_size
     return g.op("com.microsoft::ATenOp", self, kernel_size, stride, padding, ceil_mode,
                 count_include_pad, divisor_override, name_s='aten::avg_pool2d')
 
