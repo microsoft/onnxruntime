@@ -77,12 +77,10 @@ inline std::ostream& operator<<(std::ostream& out, const ORTLogHelper<at::Tensor
 }
 
 template<typename... Arguments>
-inline std::ostream& operator<<(std::ostream& out, const std::tuple<Arguments...> args) {
-  
+inline std::ostream& operator<<(std::ostream& out, const std::tuple<Arguments...>& args) {  
     const std::size_t length = sizeof...(Arguments);
  
-    std::apply(
- 
+    std::apply( 
         [length, &out](auto const&... ps) {
             std::size_t k = 0;
  
