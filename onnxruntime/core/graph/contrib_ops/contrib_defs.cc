@@ -419,6 +419,20 @@ void FusedMatMulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   updateOutputShape(ctx, 0, resultShape);
 }
 
+void printShape(const std::string& name, const TensorShapeProto& shape) {
+  std::cout << name << ": ";
+  for (auto d : shape.dim()) {
+    if (d.has_dim_value()) {
+      std::cout << " " << d.dim_value() << ",";
+    } else if (d.has_dim_param()) {
+      std::cout << " \'" << d.dim_param() << "\',";
+    } else {
+      std::cout << " ?,";
+    }
+  }
+  std::cout << std::endl;
+}
+
 // input1Idx - sparse matrix
 // input2Idx - dense matrix.
 // Output is dense
@@ -426,38 +440,79 @@ void sparseCompatibleMatmulShapeInference(
     ONNX_NAMESPACE::InferenceContext& ctx,
     int input1Idx,
     int input2Idx) {
+
+  auto transAAttr = ctx.getAttribute("transA");
+  const bool transa = transAAttr ? static_cast<int>(transAAttr->i()) != 0 : false;
+  auto transBAttr = ctx.getAttribute("transB");
+  const bool transb = transBAttr ? static_cast<int>(transBAttr->i()) != 0 : false;
+
   if (!hasInputShape(ctx, input1Idx) || !hasInputShape(ctx, input2Idx)) {
     return;
   }
 
-  const auto shape0 = getInputShape(ctx, input1Idx);
-  const auto shape1 = getInputShape(ctx, input2Idx);
+  auto shape0_raw = getInputShape(ctx, input1Idx);
+  auto shape1_raw = getInputShape(ctx, input2Idx);
+  printShape("shape0_raw", shape0_raw);
+  printShape("shape1_raw", shape1_raw);
 
-  if (shape0.dim_size() == 0 || shape1.dim_size() == 0) {
+  if (shape0_raw.dim_size() == 0 || shape1_raw.dim_size() == 0) {
     fail_shape_inference("Input tensors of wrong rank (0).");
   }
 
-  ONNX_NAMESPACE::TensorShapeProto shapeL, shapeR;
+  auto transpose_shape = [](bool trans, const TensorShapeProto& shape_raw, TensorShapeProto& target) {
+    const auto rank = shape_raw.dim_size();
+    if (rank > 1) {
+      for (int i = 0; i < rank - 2; ++i) {
+        *target.add_dim() = shape_raw.dim(i);
+      }
+      *target.add_dim() = shape_raw.dim(trans ? rank - 1 : rank - 2);
+      *target.add_dim() = shape_raw.dim(trans ? rank - 2 : rank - 1);
+    } else {
+      target = shape_raw;
+    }
+  };
+
+  ONNX_NAMESPACE::TensorShapeProto shape0, shape1;
+  transpose_shape(transa, shape0_raw, shape0);
+  transpose_shape(transb, shape1_raw, shape1);
+
+  printShape("shape0", shape0);
+  printShape("shape1", shape1);
 
   // First promote each shape to at least rank-2. This logic is
-  // specific to matmul, not generic broadcasting.
+  // specific to Gemm, not generic broadcasting.
+  ONNX_NAMESPACE::TensorShapeProto shapeL, shapeR;
   {
     if (shape0.dim_size() == 1) {
-      shapeL.add_dim()->set_dim_value(1);
-      *shapeL.add_dim() = shape0.dim(0);
+      if (transa) {
+        *shapeL.add_dim() = shape0.dim(0);
+        shapeL.add_dim()->set_dim_value(1);
+      } else {
+        shapeL.add_dim()->set_dim_value(1);
+        *shapeL.add_dim() = shape0.dim(0);
+      }
     } else {
       *shapeL.mutable_dim() = shape0.dim();
     }
     if (shape1.dim_size() == 1) {
-      *shapeR.add_dim() = shape1.dim(0);
-      shapeR.add_dim()->set_dim_value(1);
+      if (transb) {
+        shapeR.add_dim()->set_dim_value(1);
+        *shapeR.add_dim() = shape1.dim(0);
+      } else {
+        *shapeR.add_dim() = shape1.dim(0);
+        shapeR.add_dim()->set_dim_value(1);
+      }
     } else {
       *shapeR.mutable_dim() = shape1.dim();
     }
   }
 
+  printShape("shapeL", shapeL);
+  printShape("shapeR", shapeR);
+
   // Check for compatible matrix multiply dimensions
   {
+    // Both original 1-D or 2-D were transposed already if needed
     auto dimL = shapeL.dim(shapeL.dim_size() - 1);
     auto dimR = shapeR.dim(shapeR.dim_size() - 2);
     if (dimL.has_dim_value() && dimR.has_dim_value() &&
@@ -466,31 +521,12 @@ void sparseCompatibleMatmulShapeInference(
     }
   }
 
+  /// XXX: Broadcasting removed given specific needs to distinguish row/col vectors
   ONNX_NAMESPACE::TensorShapeProto resultShape;
+  *resultShape.add_dim() = shapeL.dim(shapeL.dim_size() - 2);
+  *resultShape.add_dim() = shapeR.dim(shapeR.dim_size() - 1);
 
-  // Now call out to generic multidimensional broadcasting for
-  // the broadcastable prefixes.
-  {
-    ONNX_NAMESPACE::TensorShapeProto prefixShapeL, prefixShapeR;
-    for (int i = 0; i < shapeL.dim_size() - 2; ++i) {
-      *prefixShapeL.add_dim() = shapeL.dim(i);
-    }
-    for (int i = 0; i < shapeR.dim_size() - 2; ++i) {
-      *prefixShapeR.add_dim() = shapeR.dim(i);
-    }
-    bidirectionalBroadcastShapeInference(
-        prefixShapeL, prefixShapeR, resultShape);
-  }
-
-  // Back to matmul-specific. Add the trailing dimensions back in.
-  {
-    if (shape0.dim_size() != 1) {
-      *resultShape.add_dim() = shapeL.dim(shapeL.dim_size() - 2);
-    }
-    if (shape1.dim_size() != 1) {
-      *resultShape.add_dim() = shapeR.dim(shapeR.dim_size() - 1);
-    }
-  }
+  printShape("resultShape", resultShape);
 
   // if the input 2 type was not previously propagate to output
   // we want to make sure that it is the tensor type of input 2
@@ -1982,45 +2018,45 @@ COO format.
         propagateElemTypeFromDtypeToOutput(ctx, element_type, 0, TypeProto::kSparseTensorType);
       });
 
-static const char* SparseDecomposeToDense_doc = R"DOC(
+  static const char* SparseDecomposeToDense_doc = R"DOC(
     This is a utility op that decomposes a Sparse Tensor in COO format
     to three dense tensors (dense_shape, values, 1-D indices).)DOC";
 
-ONNX_CONTRIB_OPERATOR_SCHEMA(SparseDecomposeToDense)
-    .SetDomain(kMSDomain)
-    .SinceVersion(1)
-    .Input(0, "SparseCooInput", "A Sparse Tensor in COO format.", "T")
-    .Output(0, "DenseShape", "A 1-D tensor that contains a dense shape of the original dense tensor.", "T2")
-    .Output(1, "Values", "A dense tensor that contains values.", "T1")
-    .Output(2, "Indices", "A dense tensor that contains either 1-D (common case) or 2-D COO indices.", "T2")
-    .TypeConstraint("T", all_sparse_tensor_types_with_bfloat(), "All supported types")
-    .TypeConstraint("T1", OpSchema::all_tensor_types_with_bfloat(), "All supported types")
-    .TypeConstraint("T2", {"tensor(int64)"}, "Index type")
-    .SetDoc(SparseDecomposeToDense_doc)
-    .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-      propagateElemTypeFromDtypeToOutput(ctx, TensorProto_DataType_INT64, 0, TypeProto::kTensorType);  // dense shape
-      TensorShapeProto dense_shape_shape;
-      if (hasInputShape(ctx, 0)) {
-        const auto& dense_shape = getInputShape(ctx, 0);
-        dense_shape_shape.add_dim()->set_dim_value(dense_shape.dim_size());
-      } else {
-        dense_shape_shape.add_dim();
-      }
-      updateOutputShape(ctx, 0, dense_shape_shape);
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SparseDecomposeToDense)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "SparseCooInput", "A Sparse Tensor in COO format.", "T")
+      .Output(0, "DenseShape", "A 1-D tensor that contains a dense shape of the original dense tensor.", "T2")
+      .Output(1, "Values", "A dense tensor that contains values.", "T1")
+      .Output(2, "Indices", "A dense tensor that contains either 1-D (common case) or 2-D COO indices.", "T2")
+      .TypeConstraint("T", all_sparse_tensor_types_with_bfloat(), "All supported types")
+      .TypeConstraint("T1", OpSchema::all_tensor_types_with_bfloat(), "All supported types")
+      .TypeConstraint("T2", {"tensor(int64)"}, "Index type")
+      .SetDoc(SparseDecomposeToDense_doc)
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromDtypeToOutput(ctx, TensorProto_DataType_INT64, 0, TypeProto::kTensorType);  // dense shape
+        TensorShapeProto dense_shape_shape;
+        if (hasInputShape(ctx, 0)) {
+          const auto& dense_shape = getInputShape(ctx, 0);
+          dense_shape_shape.add_dim()->set_dim_value(dense_shape.dim_size());
+        } else {
+          dense_shape_shape.add_dim();
+        }
+        updateOutputShape(ctx, 0, dense_shape_shape);
 
-      auto input_type = ctx.getInputType(0);
-      if (nullptr == input_type) {
-        fail_type_inference("Input 0 expected to have type but instead is null");
-      }
-      const auto input_values_type = getTensorElementType(*input_type);
-      propagateElemTypeFromDtypeToOutput(ctx, input_values_type, 1, TypeProto::kTensorType);  // values
-      TensorShapeProto output_shape_1_2;
-      output_shape_1_2.add_dim();
-      updateOutputShape(ctx, 1, output_shape_1_2);
+        auto input_type = ctx.getInputType(0);
+        if (nullptr == input_type) {
+          fail_type_inference("Input 0 expected to have type but instead is null");
+        }
+        const auto input_values_type = getTensorElementType(*input_type);
+        propagateElemTypeFromDtypeToOutput(ctx, input_values_type, 1, TypeProto::kTensorType);  // values
+        TensorShapeProto output_shape_1_2;
+        output_shape_1_2.add_dim();
+        updateOutputShape(ctx, 1, output_shape_1_2);
 
-      propagateElemTypeFromDtypeToOutput(ctx, TensorProto_DataType_INT64, 2, TypeProto::kTensorType);  // indices
-      updateOutputShape(ctx, 2, output_shape_1_2);
-    });
+        propagateElemTypeFromDtypeToOutput(ctx, TensorProto_DataType_INT64, 2, TypeProto::kTensorType);  // indices
+        updateOutputShape(ctx, 2, output_shape_1_2);
+      });
 
   static const char* NonZero_doc = R"DOC(
   Behaves similar to https://github.com/onnx/onnx/blob/master/docs/Operators.md#NonZero
