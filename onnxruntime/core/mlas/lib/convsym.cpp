@@ -18,14 +18,14 @@ Abstract:
 #include "mlasi.h"
 
 //
-//
+// Define the kernel flags
 //
 
 #define MLAS_CONV_SYM_FLAG_INPUT_DIRECT             0x00000001
 #define MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE        0x00000002
 
 //
-//
+// Define the post-processing parameters: bias and re-quant params
 //
 
 struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
@@ -212,26 +212,17 @@ MlasConvSymPackWSize(
 
     } else {
 
-        if (ConvSymDispatch->Kernel == nullptr) {
-            return 0;
-        }
-
-        if ((InputChannels % ConvSymDispatch->KernelInputChannelAlignment) != 0) {
-            return 0;
-        }
-
         size_t OutputChannelPackCount = ConvSymDispatch->FilterOutputChannelPackCount;
-        if (OutputChannels < OutputChannelPackCount) {
+
+        if (ConvSymDispatch->Kernel == nullptr ||
+            OutputChannels < OutputChannelPackCount ||
+            (InputChannels % ConvSymDispatch->KernelInputChannelAlignment) != 0 ||
+            (OutputChannels % ConvSymDispatch->KernelOutputChannelAlignment) != 0
+            ) {
             return 0;
         }
-
-        if ((OutputChannels % ConvSymDispatch->KernelOutputChannelAlignment) != 0) {
-            return 0;
-        }
-
 
         size_t AlignedOutputChannels = (OutputChannels + OutputChannelPackCount - 1) / OutputChannelPackCount * OutputChannelPackCount;
-
         return AlignedOutputChannels * InputChannels * KernelSize;
     }
 }
@@ -282,7 +273,7 @@ MlasConvSymPackW(
 
                         for (size_t ic_pack = 0; ic_pack < ic_pack_size; ic_pack++) {
 
-                            *(PackedW++) = *(W + (oc + oc_pack) * kernel_dim + (ic + ic_pack) * KernelSize + ki);
+                            *(PackedW++) = W[(oc + oc_pack) * kernel_dim + (ic + ic_pack) * KernelSize + ki];
 
                         }
 
@@ -399,10 +390,6 @@ MlasConvSymDepthwise(
     if (Params.PerChannelScale) {
         KernelFlags |= MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE;
     }
-
-    //
-    //
-    //
 
     MLAS_CONV_SYM_POST_PROCESS_PARAMS PostProcessParams = {};
 

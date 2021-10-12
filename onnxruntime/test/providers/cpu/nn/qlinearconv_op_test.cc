@@ -565,10 +565,9 @@ class QLinearConvOpTester {
   }
 
   void Run() {
-    // for (bool all_input_initializer_except_x : std::initializer_list<bool>{false, true}) {
-    //   Run(all_input_initializer_except_x);
-    // }
-    Run(true);
+    for (bool all_input_initializer_except_x : std::initializer_list<bool>{false, true}) {
+      Run(all_input_initializer_except_x);
+    }
   }
 };
 
