@@ -18,9 +18,9 @@ The graph fusion transforms a certain graph structure to a single fused node. Th
 
 ### Kernel Implementation
 ONNXRuntime supports optimized kernels as contrib operators in both CPU and CUDA Execution Provider. 
-* The definition of the optimized kernels can be found in [contrib_defs.cc](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/core/graph/contrib_ops/contrib_defs.cc). 
-* The CPU implementation of the optimized kernels can be found under [/contrib_ops/cpu/bert](https://github.com/microsoft/onnxruntime/tree/rel-1.9.0/onnxruntime/contrib_ops/cpu/bert). 
-* The CUDA implementation of the optimized kernels can be found under [/contrib_ops/cuda/bert](https://github.com/microsoft/onnxruntime/tree/rel-1.9.0/onnxruntime/contrib_ops/cuda/bert).
+* The definition of the optimized kernels can be found in [onnxruntime/core/graph/contrib_ops/contrib_defs.cc](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/core/graph/contrib_ops/contrib_defs.cc). 
+* The CPU implementation of the optimized kernels can be found under [onnxruntime/contrib_ops/cpu/bert](https://github.com/microsoft/onnxruntime/tree/rel-1.9.0/onnxruntime/contrib_ops/cpu/bert). 
+* The CUDA implementation of the optimized kernels can be found under [onnxruntime/contrib_ops/cuda/bert](https://github.com/microsoft/onnxruntime/tree/rel-1.9.0/onnxruntime/contrib_ops/cuda/bert).
 * [Tests](https://github.com/microsoft/onnxruntime/tree/rel-1.9.0/onnxruntime/test/contrib_ops)
 
 For instance, the entry point of Attention CPU kernel is the [Compute()](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/contrib_ops/cpu/bert/attention.cc#L408) function. Similarly, for EmbedLayerNorm CUDA kernel, the entry point is the [ComputeInternal()](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/contrib_ops/cuda/bert/embed_layer_norm.cc#L36) function.
@@ -28,10 +28,17 @@ For instance, the entry point of Attention CPU kernel is the [Compute()](https:/
 ### Graph Fusion
 The main part of the transformer [optimizer](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/optimizer.py) is graph fusion. In the current implementation for bert optimization, it supports a couple of [fusions](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/onnx_model_bert.py#L302) executed in order. Each particular graph fusion is an inheritance class of [Fusion](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/fusion_base.py#L13) with fuse() method to implement. For instance, the [fuse()](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/fusion_attention.py#L280) method in attention fusion.
 
+The [onnx_model](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/onnx_model.py#L19) class provides many useful functions to modify onnx graph including not limited to:
+* Retrive all graph nodes with [self.nodes()](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/onnx_model.py#L58)
+* A [mapping](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/onnx_model.py#L41-L56) of edge name to nodes. 
+* [Basic operations](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/onnx_model.py#L120-L181) of input/output, node, initializer.
+* [Match graph patterns](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/onnx_model.py#L310-L385) up-streaming and down-streaming.
+* And so on.
+
 #### Fusion process
-* Match the candidate graph with expected connection pattern. [Example: Gelu fusion](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/fusion_gelu.py#L26-L96)
-* Construct the fused node with inputs, outputs and the weights obtained from original graph. [Example: Gelu fusion](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/fusion_gelu.py#L99-L102)
-* Remove the candidate graph. [Example: Gelu fusion](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/fusion_gelu.py#L98)
+* Match the candidate graph with expected connection pattern. [Example: Gelu fusion](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/fusion_gelu.py#L26-L96), [Attention fusion](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/fusion_attention.py#L281-L441)
+* Construct the fused node with inputs, outputs and the weights obtained from original graph. [Example: Gelu fusion](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/fusion_gelu.py#L99-L102), [Attention fusion](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/fusion_attention.py#L142-L278)
+* Remove the candidate graph. [Example: Gelu fusion](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/fusion_gelu.py#L98), [Attention fusion](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/fusion_attention.py#L468-L472)
 
 ## Contribution
 [Coding Conventions and Standards](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/docs/Coding_Conventions_and_Standards.md)
