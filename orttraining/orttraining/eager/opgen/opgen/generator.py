@@ -363,7 +363,9 @@ class ORTGen:
     writer.writeline()
     writer.writeline('TORCH_LIBRARY_IMPL(aten, ORT, m) {')
     writer.push_indent()
-    writer.writeline('ORT_LOG_DEBUG << "ATen init";')
+    writer.writeline('// Get the training environment to ensure the logger is initialized')
+    writer.writeline('onnxruntime::python::GetTrainingORTEnv();')
+    writer.writeline('ORT_LOG_INFO << "ATen init";')
 
     for mapped_func in generated_funcs:
       cpp_func, torch_func = mapped_func.cpp_func, mapped_func.cpp_func.torch_func
@@ -394,7 +396,7 @@ class ORTGen:
     writer.writeline()
     writer.writeline('void GenerateCustomOpsBindings(pybind11::module_ m) {')
     writer.push_indent()
-    writer.writeline('ORT_LOG_DEBUG << "GenerateCustomOpsBindings init";')
+    writer.writeline('ORT_LOG_INFO << "GenerateCustomOpsBindings init";')
 
     for mapped_func in generated_funcs:
       cpp_func = mapped_func.cpp_func

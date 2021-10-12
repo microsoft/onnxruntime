@@ -75,3 +75,9 @@ onnx::AttributeProto create_ort_attribute(
 
 } // namespace eager
 } // namespace torch_ort
+
+namespace onnxruntime{
+  namespace python{
+    Environment& GetTrainingORTEnv();
+  }
+}
