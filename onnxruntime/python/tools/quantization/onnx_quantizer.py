@@ -243,24 +243,9 @@ class ONNXQuantizer:
             return self.parent.find_initializer_in_path(initializer_name)
         return False
 
-    # TODO This is a temporary fix to stop exporting QAttention with qkv_hidden_sizes
-    # attribute. This needs to be removed once the QAttention for varied q,k,v sizes
-    # is implemented
-    def is_node_excused_from_quant(self, node):
-        if 'Attention' in node.name:
-            print(node.attribute)
-            for attr in node.attribute:
-                if 'qkv_hidden_sizes' == attr.name:
-                    return True
-
-        return False
-
     def should_quantize(self, node):
         if self.nodes_to_quantize is not None and len(
                 self.nodes_to_quantize) != 0 and node.name not in self.nodes_to_quantize:
-            return False
-
-        if self.is_node_excused_from_quant(node):
             return False
 
         if (node.op_type not in self.op_types_to_quantize):
