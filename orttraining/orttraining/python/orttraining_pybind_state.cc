@@ -20,6 +20,8 @@
 
 #include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
 
+#include "orttraining/python/orttraining_pybind_common.h"
+
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 #include "orttraining/core/framework/torch/custom_function_register.h"
 #endif
@@ -35,6 +37,33 @@ using namespace onnxruntime::logging;
 using namespace onnxruntime::training;
 
 Environment& GetTrainingORTEnv();
+ORTTrainingPythonEnv& GetTrainingEnv();
+
+void ResolveExtraProviderOptions(const std::vector<std::string>& provider_types,
+                                 const ProviderOptionsVector& original_provider_options_vector,
+                                 ProviderOptionsVector& merged_options){
+  auto& training_env = GetTrainingEnv();
+  std::size_t j = 0;  // index for provider_options_vector
+  for (const std::string& type : provider_types) {
+    auto it = training_env.ext_execution_provider_info_map_.find(type);
+    if (it == training_env.ext_execution_provider_info_map_.end()){
+      if (j < original_provider_options_vector.size() && !original_provider_options_vector[j].empty()) {
+        merged_options.push_back(original_provider_options_vector[j]);
+      }
+    }else{
+      ProviderOptions options = it->second.second;
+      options.insert({kExecutionProviderSharedLibraryPath, it->second.first});
+      if (j < original_provider_options_vector.size() && !original_provider_options_vector[j].empty()) {
+        for (auto [k, v] : original_provider_options_vector[j]){
+          options.insert({k, v});
+        }
+      }
+      merged_options.push_back(options);
+    }
+
+    j += 1;
+  }
+}
 
 struct TrainingParameters {
   std::string loss_output_name;
@@ -521,7 +550,10 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
 #endif
         const auto config_result = ConfigureSessionForTraining(static_cast<PipelineTrainingSession*>(sess->GetSessionHandle()), parameters);
 
-        InitializeSession(sess->GetSessionHandle(), ep_registration_fn, provider_types, provider_options);
+        ProviderOptionsVector merged_options;
+        ResolveExtraProviderOptions(provider_types, provider_options, merged_options);
+
+        InitializeSession(sess->GetSessionHandle(), ep_registration_fn, provider_types, merged_options);
 
         return config_result;
       })
@@ -535,8 +567,10 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
           CopyMPIContextToTrainingParameters(parameters, sess->GetSessionHandle()->GetLogger());
 #endif
         const auto config_result = ConfigureSessionForTraining(static_cast<PipelineTrainingSession*>(sess->GetSessionHandle()), parameters);
+        ProviderOptionsVector merged_options;
+        ResolveExtraProviderOptions(provider_types, provider_options, merged_options);
 
-        InitializeSession(sess->GetSessionHandle(), ep_registration_fn, provider_types, provider_options);
+        InitializeSession(sess->GetSessionHandle(), ep_registration_fn, provider_types, merged_options);
 
         return config_result;
       })

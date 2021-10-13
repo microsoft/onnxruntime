@@ -66,6 +66,10 @@ if (onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_THROWING)
   set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s DISABLE_EXCEPTION_THROWING=0")
 endif()
 
+if (onnxruntime_ENABLE_WEBASSEMBLY_PROFILING)
+  set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " --profiling --profiling-funcs")
+endif()
+
 if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
   if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
     set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=ortWasmSimdThreaded -s USE_PTHREADS=1")
