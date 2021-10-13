@@ -827,6 +827,74 @@ Enforce no repetition of n-grams. Scores are set to `-inf` for tokens that form 
       });
 }
 
+void RelPartialLearnableAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+  // Type inference
+  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+  // Shape inference
+  if (hasInputShape(ctx, 0) && hasInputShape(ctx, 2) && hasInputShape(ctx, 4) && hasInputShape(ctx, 5)) {
+    auto& input_shape = getInputShape(ctx, 0);
+    auto& input_dims = input_shape.dim();
+    if (input_dims.size() != 3) {
+      fail_shape_inference("Inputs 0 shall be 3 dimensions");
+    }
+
+    auto& pos_emb_shape = getInputShape(ctx, 2);
+    auto& pos_emb_dims = pos_emb_shape.dim();
+    if (pos_emb_dims.size() != 3) {
+      fail_shape_inference("Inputs 2 shall be 3 dimensions");
+    }
+
+    auto& u_shape = getInputShape(ctx, 4);
+    auto& u_dims = u_shape.dim();
+    if (u_dims.size() != 2) {
+      fail_shape_inference("Inputs 4 shall be 2 dimensions");
+    }
+
+    auto& v_shape = getInputShape(ctx, 5);
+    auto& v_dims = v_shape.dim();
+    if (v_dims.size() != 5) {
+      fail_shape_inference("Inputs 5 shall be 2 dimensions");
+    }
+
+    ONNX_NAMESPACE::TensorShapeProto output_shape;
+    for (auto& dim : input_dims) {
+      *output_shape.add_dim() = dim;
+    }
+
+    updateOutputShape(ctx, 0, output_shape);
+  }
+}
+
+void RegisterTransfoXLSchemas() {
+  static const char* RelPartialLearnableAttention_ver1_doc = R"DOC(
+RelPartial...
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(RelPartialLearnableAttention)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(RelPartialLearnableAttention_ver1_doc)
+      .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+      .Attr("head_size", "Size of attention heads", AttributeProto::INT)
+      .Attr("d_model", "Dimension of hidden states", AttributeProto::INT)
+      .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, d_model)", "T")
+      .Input(1, "input_weight", "2D input tensor with shape (d_model, 3 * num_heads * head_size)", "T")
+      .Input(2, "pos_emb", "3D input tensor with shape (batch_size, sequence_length, d_model)", "T")
+      .Input(3, "pos_emb_weight", "2D input tensor with shape (d_model, num_heads * head_size)", "T")
+      .Input(4, "u", "2D input tensor with shape (num_heads, head_size)", "T")
+      .Input(5, "v", "2D input tensor with shape (num_heads, head_size)", "T")
+      .Input(6, "output_weight", "2D input tensor with shape (num_heads * head_size, d_model)", "T")
+      .Input(7, "attn_mask", "Attention mask with shape (sequence_length, sequence_length).", "M", OpSchema::Optional)
+      .Input(8, "mems", "Memories with shape (?, ?, ?).", "T", OpSchema::Optional)
+      .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, d_model)", "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
+      .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask index to integer types")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        RelPartialLearnableAttentionTypeAndShapeInference(ctx);
+      });
+}
+
 void RegisterContribSchemas() {
   // Register removed experimental ops for backward compatibility.
   // Experimental operators do not have version history. However, RS5 takes bunch of experimental operators
@@ -3196,6 +3264,7 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
 
   RegisterNhwcSchemas();
   RegisterBertSchemas();
+  RegisterTransfoXLSchemas();
 
 #ifdef BUILD_MS_EXPERIMENTAL_OPS
   onnxruntime::signal::RegisterSignalSchemas();
