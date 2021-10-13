@@ -43,6 +43,12 @@ class SimpleTest {
         runSigmoidModelTestImpl(1, true)
     }
 
+    @Test
+    fun runFailedTest() {
+        reportHelper.label("runFailedTest")
+        Assert.assertTrue("This failure is intentional", false)
+    }
+
     @Throws(IOException::class)
     private fun readModel(fileName: String): ByteArray {
         return InstrumentationRegistry.getInstrumentation().context.assets.open(fileName)
