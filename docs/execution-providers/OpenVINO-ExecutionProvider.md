@@ -62,7 +62,11 @@ For more information on Multi-Device plugin of OpenVINO, please refer to the fol
 
 ### Save/Load blob feature for OpenVINO EP
 
-This feature enables users to save and load the blobs directly. These pre-compiled blobs can be directly loaded on to the specific hardware device target and inferencing can be done. This feature is only supported on MyriadX(VPU) hardware device target and not supported for other plugin's like CPU, GPU, etc.
+This feature enables users to save and load the blobs directly. These pre-compiled blobs can be directly loaded on to the specific hardware device target and inferencing can be done. This feature is only supported on MyriadX(VPU) hardware device target.
+
+Starting from OpenVINO 2021.4 version, this feature is supported in OpenVINO-EP using Model caching mechanism from OpenVINO.[documentation](https://docs.openvinotoolkit.org/latest/openvino_docs_IE_DG_Model_caching_overview.html).
+
+This feature is now available for MyriadX(VPU) and iGPU from OpenVINO 2021.4. Currently, this feature is not supported for Intel CPU's.
 
 Improved overall inferencing time, since this feature eliminates the preliminary steps of creating a network from the model. Here, the pre-compiled blob is directly imported on to the device target.
 
@@ -80,22 +84,51 @@ Refer to [Configuration Options](#configuration-options) for more information ab
 
 This flow enables users to import/load the pre-compiled blob directly if available readily. This option is enabled by explicitly setting the path to the blob using environment variables and setting the OV_USE_COMPILED_NETWORK flag to true.
 
+This flow only works for MyriadX(VPU) device.
+
 For Linux:
 ```
 export OV_USE_COMPILED_NETWORK=1
-export OV_BLOB_PATH =<path to the blob>
+export OV_BLOB_PATH=<path to the blob>
+Example: export OV_BLOB_PATH=/home/blobs_dir/model.blob
 ```
 
 For Windows:
 ```
 set OV_USE_COMPILED_NETWORK=1
-set OV_BLOB_PATH =<path to the blob>
+set OV_BLOB_PATH=<path to the blob>
+Example: set OV_BLOB_PATH=\home\blobs_dir\model.blob
 ```
+
+compile_tool:
+
+The device specific Myriadx blobs can be generated using an offline tool called compile_tool from OpenVINO Toolkit.[documentation](https://docs.openvinotoolkit.org/latest/openvino_inference_engine_tools_compile_tool_README.html).
 
 ### Support for INT8 Quantized models
 
 Starting from the OpenVINO EP 2021.4 Release, int8 models will be supported on CPU and GPU.
 However, int8 support won't be available for VPU.
+
+### Support for Weights saved in external files
+
+Starting from the OpenVINO EP 2021.4 Release, support for external weights is added. OpenVINO™ EP now  supports ONNX models that store weights in external files. It is especially useful for models larger than 2GB because of protobuf limitations.[documentation](https://docs.openvinotoolkit.org/latest/openvino_docs_IE_DG_ONNX_Support.html).
+
+Converting and Saving an ONNX Model to External Data:
+Use the ONNX API's.[documentation](https://github.com/onnx/onnx/blob/master/docs/ExternalData.md#converting-and-saving-an-onnx-model-to-external-data).
+
+Example:
+```bash
+import onnx
+onnx_model = onnx.load("model.onnx") # Your model in memory as ModelProto
+onnx.save_model(onnx_model, 'saved_model.onnx', save_as_external_data=True, all_tensors_to_one_file=True, location='data/weights_data', size_threshold=1024, convert_attribute=False)
+```
+
+Note:
+1. In the above script, model.onnx is loaded and then gets saved into a file called 'saved_model.onnx' which won't have the weights but this new onnx model now will have the relative path to where the weights file is located. The weights file 'weights_data' will now contain the weights of the model and the weights from the original model gets saved at /data/weights_data.
+
+2. Now, you can use this 'saved_model.onnx' file to infer using your sample. But remember, the weights file location can't be changed. The weights have to be present at /data/weights_data
+
+3. Install the latest ONNX Python package using pip to run these ONNX Python API's successfully.
 
 ## Configuration Options
 
@@ -366,8 +399,22 @@ In order to showcase what you can do with the OpenVINO Execution Provider for ON
 ### Python API
 [Object detection with tinyYOLOv2 in Python](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/python/OpenVINO_EP/tiny_yolo_v2_object_detection)
 
+[Object detection with YOLOv4 in Python](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/python/OpenVINO_EP/yolov4_object_detection)
+
 ### C/C++ API
 [Image classification with Squeezenet in CPP](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_cxx/OpenVINO_EP/squeezenet_classification)
 
 ### Csharp API
-[Object detection with YOLOv3 in C#](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_sharp)
+[Object detection with YOLOv3 in C#](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_sharp/OpenVINO_EP/yolov3_object_detection)
+
+## Blogs/Tutorials
+
+### Overview of OpenVINO Execution Provider for ONNX Runtime
+[OpenVINO Execution Provider](https://www.intel.com/content/www/us/en/artificial-intelligence/posts/faster-inferencing-with-one-line-of-code.html)
+
+### Tutorial on how to use OpenVINO™ Execution Provider for ONNX Runtime Docker Containers
+[Docker Containers](https://www.intel.com/content/www/us/en/artificial-intelligence/posts/openvino-execution-provider-docker-container.html)
+
+### Tutorial on how to use OpenVINO™ Execution Provider for ONNX Runtime python wheel packages
+[Python Pip Wheel Packages](https://www.intel.com/content/www/us/en/artificial-intelligence/posts/openvino-execution-provider-for-onnx-runtime.html)
+
