@@ -13,6 +13,17 @@ jobs:
       $(Build.SourcesDirectory)/java/gradlew --no-daemon clean assembleDebug assembleDebugAndroidTest
     workingDirectory: $(Build.BinariesDirectory)
 
+  - script: |
+      cd $(Build.SourcesDirectory)/java/src/test/android
+      appcenter test run espresso \
+        --app "gwang-05tf/AppCenter-Espresso-E2E-Example" \
+        --devices 581708da \
+        --app-path ./app/build/outputs/apk/debug/app-debug.apk \
+        --test-series "master" \
+        --locale "en_US" \
+        --build-dir ./app/build/outputs/apk/androidTest/debug \
+        --token $(AppCenterAPIToken)
+
   # - script: |
   #     python3 tools/python/run_android_emulator.py \
   #       --android-sdk-root ${ANDROID_SDK_ROOT} \
