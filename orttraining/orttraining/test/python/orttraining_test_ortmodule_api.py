@@ -3328,7 +3328,7 @@ def test_ortmodule_string_inputs_are_ignored():
     x = torch.randn(1, 2)
 
     out = ort_model(x, 'hello')
-    assert out == x+1
+    _test_helpers.assert_values_are_close(out, x+1)
 
 def test_ortmodule_list_input():
     class ListNet(torch.nn.Module):
