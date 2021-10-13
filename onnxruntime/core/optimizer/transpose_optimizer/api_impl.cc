@@ -71,12 +71,12 @@ void OrtValueInfo::PermuteDims(const std::vector<int64_t>& perm) {
   if (shape_proto == nullptr) {
     return;
   }
-  ORT_ENFORCE(perm.size() == (size_t)shape_proto->dim_size(), "Permutation ", perm, " length does not match shape ",
-              shape_proto->dim_size());
+  //ORT_ENFORCE(perm.size() == (size_t)shape_proto->dim_size(), "Permutation ", perm, " length does not match shape ",
+  //            shape_proto->dim_size());
   TensorShapeProto new_shape;
   for (int64_t p : perm) {
-    ORT_ENFORCE(0 <= p && (int)p < shape_proto->dim_size(), "Permutation ", perm, " out of bounds for shape ",
-                shape_proto->dim_size());
+    //ORT_ENFORCE(0 <= p && (int)p < shape_proto->dim_size(), "Permutation ", perm, " out of bounds for shape ",
+    //            shape_proto->dim_size());
     auto& dim = *new_shape.add_dim();
     const auto& src_dim = shape_proto->dim((int)p);
     CopyDim(src_dim, dim);
@@ -421,7 +421,7 @@ std::unique_ptr<api::Node> OrtGraph::AddNode(const std::string_view op_type,
   std::vector<NodeArg*> input_args;
   std::vector<NodeArg*> output_args;
 
-  for (const auto input : inputs) {
+  for (const auto& input : inputs) {
     NodeArg* arg = &graph_.GetOrCreateNodeArg(std::string(input), nullptr);
     input_args.push_back(arg);
   }
