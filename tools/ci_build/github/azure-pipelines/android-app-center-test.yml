@@ -8,8 +8,10 @@ jobs:
     displayName: Setup gradle wrapper to use gradle 6.8.3
 
   - script: |
-    cd $(Build.SourcesDirectory)/java/src/test/android
-    $(Build.SourcesDirectory)/java/gradlew --no-daemon clean assembleDebug assembleDebugAndroidTest
+      set -e -x
+      cd $(Build.SourcesDirectory)/java/src/test/android
+      $(Build.SourcesDirectory)/java/gradlew --no-daemon clean assembleDebug assembleDebugAndroidTest
+    workingDirectory: $(Build.BinariesDirectory)
 
   # - script: |
   #     python3 tools/python/run_android_emulator.py \
