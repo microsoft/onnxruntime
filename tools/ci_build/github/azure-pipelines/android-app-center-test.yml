@@ -1,5 +1,5 @@
 jobs:
-- job: Android_CI
+- job: Android_App_Center_CI
   pool:
     vmImage: 'macOS-10.15'
   timeoutInMinutes: 60
@@ -12,6 +12,7 @@ jobs:
       cd $(Build.SourcesDirectory)/java/src/test/android
       $(Build.SourcesDirectory)/java/gradlew --no-daemon clean assembleDebug assembleDebugAndroidTest
     workingDirectory: $(Build.BinariesDirectory)
+    displayName: Build test binaries
 
   - script: |
       cd $(Build.SourcesDirectory)/java/src/test/android
@@ -23,6 +24,8 @@ jobs:
         --locale "en_US" \
         --build-dir ./app/build/outputs/apk/androidTest/debug \
         --token $(AppCenterAPIToken)
+    workingDirectory: $(Build.BinariesDirectory)
+    displayName: Run E2E tests on App Center
 
   # - script: |
   #     python3 tools/python/run_android_emulator.py \
