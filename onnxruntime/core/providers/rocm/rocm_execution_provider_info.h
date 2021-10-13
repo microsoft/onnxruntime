@@ -42,6 +42,7 @@ struct ROCMExecutionProviderInfo {
   bool has_user_compute_stream{false};
   void* user_compute_stream{nullptr};
   ROCMExecutionProviderExternalAllocatorInfo external_allocator_info{};
+  bool miopen_conv_use_max_workspace{false};
 
   static ROCMExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const ROCMExecutionProviderInfo& info);
