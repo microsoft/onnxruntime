@@ -7,7 +7,7 @@ jobs:
   - script: |
       set -e -x
       cd $(Build.SourcesDirectory)/java/src/test/android
-      ./gradlew --no-daemon clean assembleDebug assembleDebugAndroidTest
+      gradle --no-daemon clean assembleDebug assembleDebugAndroidTest
     workingDirectory: $(Build.BinariesDirectory)
     displayName: Build test binaries
 
