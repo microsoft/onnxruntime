@@ -1123,6 +1123,13 @@ namespace OperatorHelper
         return { std::move(EdgeShapes(outputDimensions)) };
     }
 
+    bool EinSumHelper::IsMatMulOperatorType() const noexcept
+    {
+        return m_recognizedOperatorType == RecognizedOperatorType::MatMul || 
+            m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeA || 
+            m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeB;
+    }
+
     std::vector<EdgeShapes> MatMulHelperBase::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputCount() >= 2);
