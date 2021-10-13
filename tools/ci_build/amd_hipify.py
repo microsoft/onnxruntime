@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import concurrent.futures
 import os
 import subprocess
 from logger import get_logger
@@ -322,9 +323,9 @@ def hipify(src_file_path, dst_file_path):
     if do_write:
         with open(dst_file_path, 'w') as f:
             f.write(s)
-        log.debug('Hipified: "{}" -> "{}"'.format(src_file_path, dst_file_path))
+        return 'Hipified: "{}" -> "{}"'.format(src_file_path, dst_file_path)
     else:
-        log.debug('Repeated: "{}" -> "{}"'.format(src_file_path, dst_file_path))
+        return 'Repeated: "{}" -> "{}"'.format(src_file_path, dst_file_path)
 
 
 def list_files(prefix, path):
@@ -338,29 +339,31 @@ def list_files(prefix, path):
 
 
 def amd_hipify(config_build_dir):
-    cuda_contrib_path = os.path.join(contrib_ops_path, 'cuda')
-    rocm_contrib_path = os.path.join(config_build_dir, 'amdgpu', contrib_ops_path, 'rocm')
-    contrib_files = list_files(cuda_contrib_path, '')
-    for file in contrib_files:
-        if file not in contrib_ops_excluded_files:
-            src_file_path = os.path.join(cuda_contrib_path, file)
-            dst_file_path = os.path.join(rocm_contrib_path, file)
-            hipify(src_file_path, dst_file_path)
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        cuda_contrib_path = os.path.join(contrib_ops_path, 'cuda')
+        rocm_contrib_path = os.path.join(config_build_dir, 'amdgpu', contrib_ops_path, 'rocm')
+        contrib_files = list_files(cuda_contrib_path, '')
+        contrib_results = [executor.submit(hipify, os.path.join(cuda_contrib_path, f), os.path.join(rocm_contrib_path, f))
+                           for f in contrib_files if f not in contrib_ops_excluded_files]
 
-    cuda_provider_path = os.path.join(providers_path, 'cuda')
-    rocm_provider_path = os.path.join(config_build_dir, 'amdgpu', providers_path, 'rocm')
-    provider_files = list_files(cuda_provider_path, '')
-    for file in provider_files:
-        if file not in provider_excluded_files:
-            src_file_path = os.path.join(cuda_provider_path, file)
-            dst_file_path = os.path.join(rocm_provider_path, file)
-            hipify(src_file_path, dst_file_path)
+        cuda_provider_path = os.path.join(providers_path, 'cuda')
+        rocm_provider_path = os.path.join(config_build_dir, 'amdgpu', providers_path, 'rocm')
+        provider_files = list_files(cuda_provider_path, '')
+        provider_results = [executor.submit(hipify, os.path.join(cuda_provider_path, f), os.path.join(rocm_provider_path, f))
+                            for f in provider_files if f not in provider_excluded_files]
 
-    cuda_training_path = os.path.join(training_ops_path, 'cuda')
-    rocm_training_path = os.path.join(config_build_dir, 'amdgpu', training_ops_path, 'rocm')
-    training_files = list_files(cuda_training_path, '')
-    for file in training_files:
-        if file not in training_ops_excluded_files:
-            src_file_path = os.path.join(cuda_training_path, file)
-            dst_file_path = os.path.join(rocm_training_path, file)
-            hipify(src_file_path, dst_file_path)
+        cuda_training_path = os.path.join(training_ops_path, 'cuda')
+        rocm_training_path = os.path.join(config_build_dir, 'amdgpu', training_ops_path, 'rocm')
+        training_files = list_files(cuda_training_path, '')
+        training_results = [executor.submit(hipify, os.path.join(cuda_training_path, f), os.path.join(rocm_training_path, f))
+                            for f in training_files if f not in training_ops_excluded_files]
+        # explicitly wait so that hipify warnings finish printing before logging the hipify statements
+        concurrent.futures.wait(contrib_results)
+        concurrent.futures.wait(provider_results)
+        concurrent.futures.wait(training_results)
+        for result in contrib_results:
+            log.debug(result.result())
+        for result in provider_results:
+            log.debug(result.result())
+        for result in training_results:
+            log.debug(result.result())
