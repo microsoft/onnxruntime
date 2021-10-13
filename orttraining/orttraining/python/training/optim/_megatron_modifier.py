@@ -10,6 +10,7 @@
 # --------------------------------------------------------------------------
 
 import types
+import warnings
 from numpy import inf
 from ._modifier import FP16OptimizerModifier, check_overflow, clip_grad_norm_fp32
 
@@ -21,9 +22,10 @@ class LegacyMegatronLMModifier(FP16OptimizerModifier):
 
     def can_be_modified(self):
         return self.check_requirements(["_check_overflow", "clip_master_grads"],
-                                       require_apex=True, require_torch_non_finote_check=True)
+                                       require_apex=True, require_torch_non_finite_check=True)
 
     def override_function(self):
+        warnings.warn('Megatron-LM fp16_optimizer functions are overrided with faster implementation.', UserWarning)
         def clip_master_grads(target, max_norm, norm_type=2):
             """
             Clips fp32 master gradients via ``torch.nn.utils.clip_grad_norm``.

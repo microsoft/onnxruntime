@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from ._modifer import OptimizerModifierTypeRegistry
+from ._modifier_registry import OptimizerModifierTypeRegistry
 
 def FP16_Optimizer(optimizer, **kwargs):
     """

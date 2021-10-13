@@ -10,19 +10,8 @@
 
 import torch
 from numpy import inf
-from ._ds_modifier import DeepSpeedZeROModifier
-from ._megatron_modifier import LegacyMegatronLMModifier
 from .multi_tensor_apply import MultiTensorApply
 multi_tensor_applier = MultiTensorApply(2048 * 32)
-
-
-LEAGCY_MEGATRON_LM_OPTIMIZER_NAME = "megatron.fp16.fp16.FP16_Optimizer"
-DEEPSPEED_ZERO1_AND_ZERO2_OPTIMIZER_NAME = "deepspeed.runtime.zero.stage2.FP16_DeepSpeedZeroOptimizer"
-
-OptimizerModifierTypeRegistry = {
-    LEAGCY_MEGATRON_LM_OPTIMIZER_NAME: LegacyMegatronLMModifier,
-    DEEPSPEED_ZERO1_AND_ZERO2_OPTIMIZER_NAME : DeepSpeedZeROModifier,
-}
 
 class FP16OptimizerModifier(object):
     def __init__(self, optimizer) -> None:
@@ -33,14 +22,13 @@ class FP16OptimizerModifier(object):
         if self.can_be_modified():
             self.override_function()
 
-    def check_requirements(self, required_funcs, require_apex=False, require_torch_non_finote_check=False):
+    def check_requirements(self, required_funcs, require_apex=False, require_torch_non_finite_check=False):
         try:
             if require_apex:
                 import amp_C
-            if require_torch_non_finote_check:
+            if require_torch_non_finite_check:
                 _ = torch._amp_foreach_non_finite_check_and_unscale_
-        except Exception as error:
-            # Error handling
+        except Exception as _:
             return False
 
         if not required_funcs:
