@@ -1,6 +1,11 @@
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+#
+# Copyright (c) 2020, NVIDIA CORPORATION.
+# Some functions in this file are adapted from following sources:
+# - clip_grad_norm_fp32 : https://github.com/NVIDIA/Megatron-LM/blob/5ac5571ba0265af4c491ee0af1508ca7589450c6/megatron/optimizer/clip_grads.py#L29
+# - check_overflow_for_grads : https://github.com/NVIDIA/Megatron-LM/blob/5ac5571ba0265af4c491ee0af1508ca7589450c6/megatron/optimizer/optimizer.py#L341
 # --------------------------------------------------------------------------
 
 import torch
@@ -31,7 +36,8 @@ def check_overflow_for_grads(grad_data):
 
 def clip_grad_norm_fp32(parameters, max_norm, norm_type,
                         get_horizontal_model_parallel_rank=None, get_horizontal_model_parallel_group=None):
-    from apex.multi_tensor_apply import multi_tensor_applier
+    from .multi_tensor_apply import MultiTensorApply
+    multi_tensor_applier = MultiTensorApply(2048 * 32)
     import amp_C
 
     horizontal_model_parallel_grad_norm_aggregation = False

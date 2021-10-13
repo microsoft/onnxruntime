@@ -1,6 +1,13 @@
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+#
+# Copyright 2020 The Microsoft DeepSpeed Team
+# Copyright (c) 2020, NVIDIA CORPORATION.
+# Some functions in this file are adapted from following sources:
+# - has_overflow_serial : https://github.com/microsoft/DeepSpeed/blob/d8e9ef6f99e27bb95e10bd146d145b3372b4cfda/deepspeed/runtime/zero/stage2.py#L1792
+# - get_grad_norm_direct : https://github.com/microsoft/DeepSpeed/blob/d8e9ef6f99e27bb95e10bd146d145b3372b4cfda/deepspeed/runtime/zero/stage2.py#L1466
+# - has_overflow_partitioned_grads_serial : https://github.com/microsoft/DeepSpeed/blob/d8e9ef6f99e27bb95e10bd146d145b3372b4cfda/deepspeed/runtime/zero/stage2.py#L1799
 # --------------------------------------------------------------------------
 
 import torch
@@ -14,7 +21,6 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
 
     def can_be_modified(self):
         try:
-            from apex.multi_tensor_apply import multi_tensor_applier
             import amp_C
             _ = torch._amp_foreach_non_finite_check_and_unscale_
         except Exception as error:
@@ -33,7 +39,8 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
 
     def override_function(self):
         def get_grad_norm_direct(target, gradients, params, norm_type=2):
-            from apex.multi_tensor_apply import multi_tensor_applier
+            from .multi_tensor_apply import MultiTensorApply
+            multi_tensor_applier = MultiTensorApply(2048 * 32)
             import amp_C
             def is_model_parallel_parameter(p):
                 return hasattr(p, 'model_parallel') and p.model_parallel

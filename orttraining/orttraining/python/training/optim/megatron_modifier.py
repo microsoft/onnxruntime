@@ -1,6 +1,12 @@
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+#
+# Copyright 2020 The Microsoft DeepSpeed Team
+# Copyright (c) 2020, NVIDIA CORPORATION.
+# Some functions in this file are adapted from following sources:
+# - _check_overflow : https://github.com/microsoft/DeepSpeedExamples/blob/590364d482b592c3a8a44c28141a8139c7918c55/Megatron-LM-v1.1.5-ZeRO3/megatron/fp16/fp16.py#L294
+# - clip_master_grads : https://github.com/microsoft/DeepSpeedExamples/blob/590364d482b592c3a8a44c28141a8139c7918c55/Megatron-LM-v1.1.5-ZeRO3/megatron/fp16/fp16.py#L332
 # --------------------------------------------------------------------------
 
 import torch
@@ -16,7 +22,6 @@ class LegacyMegatronLMModifier(FP16OptimizerModifier):
 
     def can_be_modified(self):
         try:
-            from apex.multi_tensor_apply import multi_tensor_applier
             import amp_C
             _ = torch._amp_foreach_non_finite_check_and_unscale_
         except Exception as error:

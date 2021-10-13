@@ -327,7 +327,6 @@ if enable_training:
                      'onnxruntime.training.ortmodule',
                      'onnxruntime.training.ortmodule.experimental',
                      'onnxruntime.training.ortmodule.experimental.json_config',
-                     'onnxruntime.training.ortmodule.experimental.optimizer',
                      'onnxruntime.training.ortmodule.experimental.hierarchical_ortmodule',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor',
