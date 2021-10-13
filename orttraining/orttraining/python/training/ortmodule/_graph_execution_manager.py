@@ -8,7 +8,8 @@ from . import (_utils,
                _io,
                _logger,
                _onnx_models,
-               _are_deterministic_algorithms_enabled)
+               _are_deterministic_algorithms_enabled,
+               ONNX_OPSET_VERSION)
 from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension_if_needed
 from ._custom_autograd_function import custom_autograd_function_enabler
 from ._custom_autograd_function_exporter import _post_process_after_export
@@ -71,13 +72,15 @@ class _SkipCheck(IntFlag):
 
 
 class GraphExecutionManager(GraphExecutionInterface):
-    def __init__(self, module, debug_options: DebugOptions, fallback_manager: _FallbackManager):
+    def __init__(self, module, debug_options: DebugOptions, fallback_manager: _FallbackManager,
+                 opset_version=ONNX_OPSET_VERSION):
         """Manages construction and execution of ONNX graphs"""
 
         super(GraphExecutionManager, self).__init__(module._original_module)
 
         # IMPORTANT: Debug and Fallback must the configured first
         self._debug_options = debug_options
+        self._opset_version = opset_version
         self._fallback_manager = fallback_manager
 
         # Original and flattened (tranformed) output module
@@ -361,7 +364,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                     _logger.suppress_os_stream_output(log_level=self._debug_options.logging.log_level):
                 required_export_kwargs = {'input_names': self._input_info.names,
                                           'output_names': output_names,
-                                          'opset_version': ONNX_OPSET_VERSION,
+                                          'opset_version': self._opset_version,
                                           'do_constant_folding': False,
                                           'training': self._export_mode,
                                           'dynamic_axes': self._input_info.dynamic_axes,

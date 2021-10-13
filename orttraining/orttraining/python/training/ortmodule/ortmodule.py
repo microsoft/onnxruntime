@@ -8,7 +8,7 @@ from ._torch_module_pytorch import TorchModulePytorch
 from ._torch_module_ort import TorchModuleORT
 from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 from ._custom_gradient_registry import CustomGradientRegistry
-from . import _utils
+from . import _utils, ONNX_OPSET_VERSION
 from .debug_options import DebugOptions
 from ._fallback import (_FallbackManager,
                         _FallbackPolicy,
@@ -37,9 +37,10 @@ class ORTModule(torch.nn.Module):
     Args:
         module (torch.nn.Module): User's PyTorch module that ORTModule specializes
         debug_options (:obj:`DebugOptions`, optional): debugging options for ORTModule.
+        opset_version (int): opset version of the onnx export
     """
 
-    def __init__(self, module, debug_options=None):
+    def __init__(self, module, debug_options=None, opset_version=ONNX_OPSET_VERSION):
 
         # NOTE: torch.nn.Modules that call setattr on their internal attributes regularly
         #       (for example PyTorch Lightning), will trigger regular re-exports. This is
@@ -70,7 +71,8 @@ class ORTModule(torch.nn.Module):
 
             super(ORTModule, self).__init__()
 
-            self._torch_module = TorchModuleFactory()(module, debug_options, self._fallback_manager)
+            self._torch_module = TorchModuleFactory()(module, debug_options, self._fallback_manager,
+                                                      opset_version=opset_version)
 
             # Create forward dynamically, so each ORTModule instance will have its own copy.
             # This is needed to be able to copy the forward signatures from the original PyTorch models

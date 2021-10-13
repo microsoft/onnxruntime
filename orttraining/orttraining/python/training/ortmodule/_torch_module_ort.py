@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 # _torch_module_ort.py
 
-from . import _io
+from . import _io, ONNX_OPSET_VERSION
 from .debug_options import DebugOptions
 from ._graph_execution_manager_factory import GraphExecutionManagerFactory
 from ._torch_module_interface import TorchModuleInterface
@@ -17,7 +17,8 @@ T = TypeVar('T', bound='torch.nn.Module')
 
 
 class TorchModuleORT(TorchModuleInterface):
-    def __init__(self, module: torch.nn.Module, debug_options: DebugOptions, fallback_manager: _FallbackManager):
+    def __init__(self, module: torch.nn.Module, debug_options: DebugOptions, fallback_manager: _FallbackManager,
+                 opset_version=ONNX_OPSET_VERSION):
         super().__init__(module)
         self._flattened_module = _io._FlattenedModule(module)
 
@@ -37,7 +38,8 @@ class TorchModuleORT(TorchModuleInterface):
         functools.update_wrapper(
             self.forward.__func__, self._original_module.forward.__func__)
 
-        self._execution_manager = GraphExecutionManagerFactory(self._flattened_module, debug_options, fallback_manager)
+        self._execution_manager = GraphExecutionManagerFactory(self._flattened_module, debug_options, fallback_manager,
+                                                               opset_version=opset_version)
 
     def _apply(self, fn):
         """Override original method to delegate execution to the flattened PyTorch user module"""

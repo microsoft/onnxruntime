@@ -7,7 +7,8 @@ from . import (_utils,
                _io,
                _logger,
                _are_deterministic_algorithms_enabled,
-               _use_deterministic_algorithms)
+               _use_deterministic_algorithms,
+               ONNX_OPSET_VERSION)
 from ._graph_execution_manager import (GraphExecutionManager,
                                        _RunStateInfo,
                                        _SkipCheck)
@@ -26,9 +27,10 @@ class InferenceManager(GraphExecutionManager):
     InferenceManager is resposible for building and running the forward graph of the inference model
     """
 
-    def __init__(self, model, debug_options: DebugOptions, fallback_manager: _FallbackManager):
-        super().__init__(model, debug_options, fallback_manager)
-        self._export_mode = torch.onnx.TrainingMode.EVAL
+    def __init__(self, model, debug_options: DebugOptions, fallback_manager: _FallbackManager,
+                 opset_version=ONNX_OPSET_VERSION):
+        super().__init__(model, debug_options, fallback_manager, opset_version=opset_version)
+        self._export_mode = torch.onnx.TrainingMode.EV
 
     @staticmethod
     def execution_session_run_forward(execution_session, onnx_model, device, *inputs):
