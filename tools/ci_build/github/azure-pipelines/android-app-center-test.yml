@@ -4,13 +4,10 @@ jobs:
     vmImage: 'macOS-10.15'
   timeoutInMinutes: 60
   steps:
-  - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
-    displayName: Setup gradle wrapper to use gradle 6.8.3
-
   - script: |
       set -e -x
       cd $(Build.SourcesDirectory)/java/src/test/android
-      $(Build.SourcesDirectory)/java/gradlew --no-daemon clean assembleDebug assembleDebugAndroidTest
+      ./gradlew --no-daemon clean assembleDebug assembleDebugAndroidTest
     workingDirectory: $(Build.BinariesDirectory)
     displayName: Build test binaries
 
