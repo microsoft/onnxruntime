@@ -1815,10 +1815,6 @@ foreach(target_name ${ONNXRUNTIME_TARGETS})
   include(${target_name}.cmake)
 endforeach()
 
-if(MSVC AND onnxruntime_ENABLE_EAGER_MODE)
-  target_compile_options(onnxruntime_eager PUBLIC "/wd4100" "/wd4324" "/wd4458" "/wd4127" "/wd4193" "/wd4624" "/wd4702")
-endif()
-
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES log)
 endif()

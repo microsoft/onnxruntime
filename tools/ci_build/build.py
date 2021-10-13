@@ -613,24 +613,15 @@ def run_subprocess(args, cwd=None, capture_stdout=False, dll_path=None,
 
     my_env = os.environ.copy()
     if dll_path:
-        if is_windows():
-            my_env["PATH"] = dll_path + os.pathsep + my_env["PATH"]
+        if "LD_LIBRARY_PATH" in my_env:
+            my_env["LD_LIBRARY_PATH"] += os.pathsep + dll_path
         else:
-            if "LD_LIBRARY_PATH" in my_env:
-                my_env["LD_LIBRARY_PATH"] += os.pathsep + dll_path
-            else:
-                my_env["LD_LIBRARY_PATH"] = dll_path
+            my_env["LD_LIBRARY_PATH"] = dll_path
     if python_path:
-        if is_windows():
-            if "PYTHONPATH" in my_env:
-                my_env["PYTHONPATH"] = python_path + os.pathsep + my_env["PYTHONPATH"]
-            else:
-                my_env["PYTHONPATH"] = python_path
+        if "PYTHONPATH" in my_env:
+            my_env["PYTHONPATH"] += os.pathsep + python_path
         else:
-            if "PYTHONPATH" in my_env:
-                my_env["PYTHONPATH"] += os.pathsep + python_path
-            else:
-                my_env["PYTHONPATH"] = python_path
+            my_env["PYTHONPATH"] = python_path
 
     my_env.update(env)
 
