@@ -105,7 +105,15 @@ if (onnxruntime_ENABLE_EAGER_MODE)
   # todo: this is because the prebuild pytorch may use a different version of protobuf headers.
   # force the build to find the protobuf headers ort using.
   target_include_directories(onnxruntime_pybind11_state PRIVATE "${REPO_ROOT}/cmake/external/protobuf/src")
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_eager ${TORCH_LIBRARIES} ${TORCH_PYTHON_LIBRARY})
+  # Commenting this out for linking MKL error and adding individual libraries
+  # target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_eager ${TORCH_LIBRARIES} ${TORCH_PYTHON_LIBRARY})
+  target_include_directories(onnxruntime_pybind11_state PRIVATE "${TORCH_INSTALL_PREFIX}/include" "${TORCH_INSTALL_PREFIX}/include/torch/csrc/api/include")
+  if (MSVC)
+    target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_eager "${TORCH_INSTALL_PREFIX}/lib/torch.lib" "${TORCH_INSTALL_PREFIX}/lib/torch_cpu.lib" "${TORCH_INSTALL_PREFIX}/lib/c10.lib" "${TORCH_INSTALL_PREFIX}/lib/kineto.lib" ${TORCH_PYTHON_LIBRARY})
+  else()
+    target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_eager "${TORCH_INSTALL_PREFIX}/lib/libtorch.so" ${TORCH_PYTHON_LIBRARY})
+  endif()
+
   # the ort_aten.g.cpp is generated from tools. currently it has some limitations.
   # todo: fix this
   if (NOT MSVC)
@@ -115,7 +123,7 @@ if (onnxruntime_ENABLE_EAGER_MODE)
     set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_tensor.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
   endif()
   if (MSVC)
-    target_compile_options(onnxruntime_pybind11_state PUBLIC "/wd4100" "/wd4324" "/wd4458" "/wd4127" "/wd4193" "/wd4624" "/wd4702")
+    target_compile_options(onnxruntime_pybind11_state PUBLIC "/wd4100" "/wd4324" "/wd4458" "/wd4127" "/wd4193" "/wd4624" "/wd4702" "/wd4244" "/wd4275" "/wd4267")
   endif()
 endif()
 
