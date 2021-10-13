@@ -35,18 +35,24 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     RelPartialLearnableAttention<float>);
 
 Status RelPartialLearnableAttentionBase::CheckInputs(const TensorShape& input_shape,
+                                                     const TensorShape& input_weights_shape,
                                                      const TensorShape& pos_emb_shape,
-                                                     const TensorShape& u_shape,
-                                                     const TensorShape& v_shape,
+                                                     const TensorShape& pos_emb_weights_shape,
+                                                     const TensorShape& r_w_bias_shape,
+                                                     const TensorShape& r_r_bias_shape,
+                                                     const TensorShape& output_weights_shape,
                                                      const Tensor*& attn_mask,
                                                      const Tensor*& mems) const {
   // Input shapes:
-  //   input       : (batch_size, sequence_length, d_model)
-  //   pos_emb     : (batch_size, sequence_length, d_model)
-  //   u           : (num_heads, head_size)
-  //   v           : (batch_size, sequence_length, d_model)
-  //   attn_mask   : nullptr, (sequence_length, sequence_length)
-  //   mems        : nullptr
+  //   input               : (batch_size, sequence_length, d_model)
+  //   input_weights       : (d_model, 3 * num_heads * head_size)
+  //   pos_emb             : (batch_size, sequence_length, d_model)
+  //   pos_emb_weights     : (d_model, num_heads * head_size)
+  //   r_w_bias            : (num_heads, head_size)
+  //   r_r_bias            : (num_heads, head_size)
+  //   output_weights      : (num_heads * head_size, d_model)
+  //   attn_mask           : nullptr, (sequence_length, sequence_length)
+  //   mems                : nullptr
 
   const auto& dims = input_shape.GetDims();
   if (dims.size() != 3) {
@@ -56,6 +62,18 @@ Status RelPartialLearnableAttentionBase::CheckInputs(const TensorShape& input_sh
   int batch_size = static_cast<int>(dims[0]);
   int sequence_length = static_cast<int>(dims[1]);
   int d_model = static_cast<int>(dims[2]);
+
+  const auto& input_weights_dims = input_weights_shape.GetDims();
+  if (input_weights_dims.size() != 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'input_weights' is expected to have 2 dimensions, got ",
+                           input_weights_dims.size());
+  }
+  if (static_cast<int>(input_weights_dims[0]) != d_model) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'input_weights' dimension 0 shall have same length as dimension 2 of input 0");
+  }
+  if (static_cast<int>(input_weights_dims[1]) != 3 * num_heads_ * head_size_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'input_weights' dimension 1 shall have same length as 3 * num_heads * head_size");
+  }
 
   const auto& pos_emb_dims = pos_emb_shape.GetDims();
   if (pos_emb_dims.size() != 3) {
@@ -69,28 +87,52 @@ Status RelPartialLearnableAttentionBase::CheckInputs(const TensorShape& input_sh
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'pos_emb' dimension 0 shall have same length as dimension 2 of input 0");
   }
 
-  const auto& u_dims = u_shape.GetDims();
-  if (u_dims.size() != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'u' is expected to have 2 dimensions, got ",
-                           u_dims.size());
+  const auto& pos_emb_weights_dims = pos_emb_weights_shape.GetDims();
+  if (pos_emb_weights_dims.size() != 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'pos_emb_weights' is expected to have 2 dimensions, got ",
+                           pos_emb_weights_dims.size());
   }
-  if (static_cast<int>(u_dims[0]) != num_heads_) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'u' dimension 0 shall have same length as num_heads");
+  if (static_cast<int>(pos_emb_weights_dims[0]) != d_model) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'pos_emb_weights' dimension 0 shall have same length as dimension 2 of input 0");
   }
-  if (static_cast<int>(u_dims[1]) != head_size_) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'u' dimension 1 shall have same length as head_size");
+  if (static_cast<int>(pos_emb_weights_dims[1]) != num_heads_ * head_size_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'pos_emb_weights' dimension 1 shall have same length as num_heads * head_size");
   }
 
-  const auto& v_dims = v_shape.GetDims();
-  if (v_dims.size() != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'v' is expected to have 2 dimensions, got ",
-                           v_dims.size());
+  const auto& r_w_bias_dims = r_w_bias_shape.GetDims();
+  if (r_w_bias_dims.size() != 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'r_w_bias' is expected to have 2 dimensions, got ",
+                           r_w_bias_dims.size());
   }
-  if (static_cast<int>(v_dims[0]) != num_heads_) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'v' dimension 0 shall have same length as num_heads");
+  if (static_cast<int>(r_w_bias_dims[0]) != num_heads_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'r_w_bias' dimension 0 shall have same length as num_heads");
   }
-  if (static_cast<int>(v_dims[1]) != head_size_) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'v' dimension 1 shall have same length as head_size");
+  if (static_cast<int>(r_w_bias_dims[1]) != head_size_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'r_w_bias' dimension 1 shall have same length as head_size");
+  }
+
+  const auto& r_r_bias_dims = r_r_bias_shape.GetDims();
+  if (r_r_bias_dims.size() != 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'r_r_bias' is expected to have 2 dimensions, got ",
+                           r_r_bias_dims.size());
+  }
+  if (static_cast<int>(r_r_bias_dims[0]) != num_heads_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'r_r_bias' dimension 0 shall have same length as num_heads");
+  }
+  if (static_cast<int>(r_r_bias_dims[1]) != head_size_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'r_r_bias' dimension 1 shall have same length as head_size");
+  }
+
+  const auto& output_weights_dims = output_weights_shape.GetDims();
+  if (output_weights_dims.size() != 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'output_weights' is expected to have 2 dimensions, got ",
+                           output_weights_dims.size());
+  }
+  if (static_cast<int>(output_weights_dims[0]) != num_heads_ * head_size_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'output_weights' dimension 0 shall have same length as num_heads * head_size");
+  }
+  if (static_cast<int>(output_weights_dims[1]) != d_model) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'output_weights' dimension 1 shall have same length as dimension 2 of input 0");
   }
 
   if (attn_mask != nullptr) {  // attn_mask is optional
@@ -114,9 +156,12 @@ Status RelPartialLearnableAttentionBase::CheckInputs(const TensorShape& input_sh
 }
 
 Status RelPartialLearnableAttentionBase::CheckInputs(const TensorShape& input_shape,
+                                                     const TensorShape& input_weights_shape,
                                                      const TensorShape& pos_emb_shape,
-                                                     const TensorShape& u_shape,
-                                                     const TensorShape& v_shape,
+                                                     const TensorShape& pos_emb_weights_shape,
+                                                     const TensorShape& r_w_bias_shape,
+                                                     const TensorShape& r_r_bias_shape,
+                                                     const TensorShape& output_weights_shape,
                                                      const Tensor*& attn_mask,
                                                      const Tensor*& mems,
                                                      const int max_threads_per_block) const {
@@ -124,7 +169,7 @@ Status RelPartialLearnableAttentionBase::CheckInputs(const TensorShape& input_sh
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(input_shape, pos_emb_shape, u_shape, v_shape, attn_mask, mems);
+  return CheckInputs(input_shape, input_weights_shape, pos_emb_shape, pos_emb_weights_shape, r_w_bias_shape, r_r_bias_shape, output_weights, attn_mask, mems);
 }
 
 template <typename T>
@@ -134,20 +179,23 @@ RelPartialLearnableAttention<T>::RelPartialLearnableAttention(const OpKernelInfo
 template <typename T>
 Status RelPartialLearnableAttention<T>::Compute(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
-  const Tensor* input_weight = context->Input<Tensor>(1);
+  const Tensor* input_weights = context->Input<Tensor>(1);
   const Tensor* pos_emb = context->Input<Tensor>(2);
-  const Tensor* pos_emb_weight = context->Input<Tensor>(3);
-  const Tensor* u = context->Input<Tensor>(4);
-  const Tensor* v = context->Input<Tensor>(5);
-  const Tensor* output_weight = context->Input<Tensor>(6);
+  const Tensor* pos_emb_weights = context->Input<Tensor>(3);
+  const Tensor* r_w_bias = context->Input<Tensor>(4);
+  const Tensor* r_r_bias = context->Input<Tensor>(5);
+  const Tensor* output_weights = context->Input<Tensor>(6);
 
   const Tensor* attn_mask = context->Input<Tensor>(7);
   const Tensor* mems = context->Input<Tensor>(8);
 
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
+                                  input_weights->Shape(),
                                   pos_emb->Shape(),
-                                  u->Shape(),
-                                  v->Shape(),
+                                  pos_emb_weights->Shape(),
+                                  r_w_bias->Shape(),
+                                  r_r_bias->Shape(),
+                                  output_weights->Shape(),
                                   attn_mask,
                                   mems));
 
@@ -164,20 +212,6 @@ Status RelPartialLearnableAttention<T>::Compute(OpKernelContext* context) const 
 
   constexpr size_t element_size = sizeof(T);
 
-  int q_hidden_size = 0;
-  int k_hidden_size = 0;
-  int v_hidden_size = 0;
-  if (qkv_hidden_sizes_.size() == 0) {
-    q_hidden_size = hidden_size;
-    k_hidden_size = hidden_size;
-    v_hidden_size = hidden_size;
-  } else {
-    q_hidden_size = static_cast<int>(qkv_hidden_sizes_[0]);
-    k_hidden_size = static_cast<int>(qkv_hidden_sizes_[1]);
-    v_hidden_size = static_cast<int>(qkv_hidden_sizes_[2]);
-  }
-  const int qkv_head_size[3] = {q_hidden_size / num_heads_, k_hidden_size / num_heads_, v_hidden_size / num_heads_};
-
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
@@ -186,20 +220,19 @@ Status RelPartialLearnableAttention<T>::Compute(OpKernelContext* context) const 
   // gemm_data(BS, NT) = input(BS, D) x weights(D, NT) + bias(NT)
   // D (input_hidden_size) is hidden dimension of input, where D could be larger than any of the hidden_sizes
   // (NH) when model is pruned. T = H1 + H2 + H3, where H1, H2, H3 are head sizes of Q, K, V respectively
-  auto gemm_data = allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * (q_hidden_size + k_hidden_size + v_hidden_size) * element_size);
+  auto gemm_data = allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * (3 * d_model) * element_size);
   BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(allocator));
 
   auto Q = reinterpret_cast<T*>(gemm_data);
-  auto K = Q + static_cast<size_t>(batch_size) * sequence_length * q_hidden_size;
-  auto V = K + static_cast<size_t>(batch_size) * sequence_length * k_hidden_size;
+  auto K = Q + static_cast<size_t>(batch_size) * sequence_length * d_model;
+  auto V = K + static_cast<size_t>(batch_size) * sequence_length * d_model;
 
   T* QKV[3] = {Q, K, V};
 
   {
     const int loop_len = 3 * batch_size * num_heads_;
     const auto* input_data = input->template Data<T>();
-    const auto* weights_data = weights ? weights->template Data<T>() : nullptr;
-    const auto* bias_data = bias->template Data<T>();
+    const auto* input_weights_data = input_weights->template Data<T>();
 
     const double cost =
         static_cast<double>(sequence_length) * static_cast<double>(head_size) * static_cast<double>(input_hidden_size);

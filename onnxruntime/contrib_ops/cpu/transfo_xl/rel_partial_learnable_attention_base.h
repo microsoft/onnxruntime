@@ -13,9 +13,12 @@ class RelPartialLearnableAttentionBase {
  public:
   // This check function is specifically used in cuda
   Status CheckInputs(const TensorShape& input_shape,
+                     const TensorShape& input_weights_shape,
                      const TensorShape& pos_emb_shape,
-                     const TensorShape& u_shape,
-                     const TensorShape& v_shape,
+                     const TensorShape& pos_emb_weights_shape,
+                     const TensorShape& r_w_bias_shape,
+                     const TensorShape& r_r_bias_shape,
+                     const TensorShape& output_weights_shape,
                      const Tensor*& attn_mask,
                      const Tensor*& mems,
                      const int max_threads_per_block) const;
@@ -36,15 +39,18 @@ class RelPartialLearnableAttentionBase {
   }
 
   Status CheckInputs(const TensorShape& input_shape,
+                     const TensorShape& input_weights_shape,
                      const TensorShape& pos_emb_shape,
-                     const TensorShape& u_shape,
-                     const TensorShape& v_shape,
+                     const TensorShape& pos_emb_weights_shape,
+                     const TensorShape& r_w_bias_shape,
+                     const TensorShape& r_r_bias_shape,
+                     const TensorShape& output_weights_shape,
                      const Tensor*& attn_mask,
                      const Tensor*& mems) const;
 
-  int num_heads_;           // number of attention heads
-  int head_size_;           // size of attention heads
-  int d_model_;           // dimension of hidden states
+  int num_heads_;  // number of attention heads
+  int head_size_;  // size of attention heads
+  int d_model_;    // dimension of hidden states
 };
 
 }  // namespace contrib

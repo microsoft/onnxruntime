@@ -832,29 +832,11 @@ void RelPartialLearnableAttentionTypeAndShapeInference(ONNX_NAMESPACE::Inference
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
   // Shape inference
-  if (hasInputShape(ctx, 0) && hasInputShape(ctx, 2) && hasInputShape(ctx, 4) && hasInputShape(ctx, 5)) {
+  if (hasInputShape(ctx, 0)) {
     auto& input_shape = getInputShape(ctx, 0);
     auto& input_dims = input_shape.dim();
     if (input_dims.size() != 3) {
       fail_shape_inference("Inputs 0 shall be 3 dimensions");
-    }
-
-    auto& pos_emb_shape = getInputShape(ctx, 2);
-    auto& pos_emb_dims = pos_emb_shape.dim();
-    if (pos_emb_dims.size() != 3) {
-      fail_shape_inference("Inputs 2 shall be 3 dimensions");
-    }
-
-    auto& u_shape = getInputShape(ctx, 4);
-    auto& u_dims = u_shape.dim();
-    if (u_dims.size() != 2) {
-      fail_shape_inference("Inputs 4 shall be 2 dimensions");
-    }
-
-    auto& v_shape = getInputShape(ctx, 5);
-    auto& v_dims = v_shape.dim();
-    if (v_dims.size() != 5) {
-      fail_shape_inference("Inputs 5 shall be 2 dimensions");
     }
 
     ONNX_NAMESPACE::TensorShapeProto output_shape;
@@ -879,12 +861,12 @@ RelPartial...
       .Attr("head_size", "Size of attention heads", AttributeProto::INT)
       .Attr("d_model", "Dimension of hidden states", AttributeProto::INT)
       .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, d_model)", "T")
-      .Input(1, "input_weight", "2D input tensor with shape (d_model, 3 * num_heads * head_size)", "T")
+      .Input(1, "input_weights", "2D input tensor with shape (d_model, 3 * num_heads * head_size)", "T")
       .Input(2, "pos_emb", "3D input tensor with shape (batch_size, sequence_length, d_model)", "T")
-      .Input(3, "pos_emb_weight", "2D input tensor with shape (d_model, num_heads * head_size)", "T")
-      .Input(4, "u", "2D input tensor with shape (num_heads, head_size)", "T")
-      .Input(5, "v", "2D input tensor with shape (num_heads, head_size)", "T")
-      .Input(6, "output_weight", "2D input tensor with shape (num_heads * head_size, d_model)", "T")
+      .Input(3, "pos_emb_weights", "2D input tensor with shape (d_model, num_heads * head_size)", "T")
+      .Input(4, "r_w_bias", "2D input tensor with shape (num_heads, head_size)", "T")
+      .Input(5, "r_r_bias", "2D input tensor with shape (num_heads, head_size)", "T")
+      .Input(6, "output_weights", "2D input tensor with shape (num_heads * head_size, d_model)", "T")
       .Input(7, "attn_mask", "Attention mask with shape (sequence_length, sequence_length).", "M", OpSchema::Optional)
       .Input(8, "mems", "Memories with shape (?, ?, ?).", "T", OpSchema::Optional)
       .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, d_model)", "T")
