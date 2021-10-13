@@ -17,6 +17,9 @@ from ._multi_tensor_apply import MultiTensorApply
 class FusedAdam(torch.optim.Optimizer):
     """Implements Adam algorithm.
 
+    The algorithmic implementation is mathematically equivalent to Transformers/AdamW
+    as defined here: https://github.com/huggingface/transformers/blob/61f64262692ac7dc90e2e0bdeb7e79d9cd607a66/src/transformers/optimization.py#L349-L370
+
     Currently GPU-only.
 
     This version of fused Adam implements 2 fusions.
@@ -59,6 +62,9 @@ class FusedAdam(torch.optim.Optimizer):
                  weight_decay=0.,
                  amsgrad=False,
                  set_grad_none=False):
+
+        # The FusedAdam implementation is mathematically equivalent to
+        # transformers AdamW. The input arguments also have the same defaults.
 
         if amsgrad:
             raise RuntimeError('FusedAdam does not support the AMSGrad variant.')
