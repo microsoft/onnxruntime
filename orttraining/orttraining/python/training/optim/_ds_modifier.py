@@ -10,10 +10,15 @@
 # - has_overflow_partitioned_grads_serial : https://github.com/microsoft/DeepSpeed/blob/d8e9ef6f99e27bb95e10bd146d145b3372b4cfda/deepspeed/runtime/zero/stage2.py#L1799
 # --------------------------------------------------------------------------
 
+from distutils.version import LooseVersion
 import torch
 import types
+import warnings
 from numpy import inf
-from .modifier import FP16OptimizerModifier, check_overflow, check_overflow_for_grads
+
+from ._modifier import FP16OptimizerModifier, check_overflow, check_overflow_for_grads
+from .multi_tensor_apply import MultiTensorApply
+multi_tensor_applier = MultiTensorApply(2048 * 32)
 
 class DeepSpeedZeROModifier(FP16OptimizerModifier):
     def __init__(self, optimizer, **kwargs) -> None:
@@ -21,26 +26,21 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
 
     def can_be_modified(self):
         try:
-            import amp_C
-            _ = torch._amp_foreach_non_finite_check_and_unscale_
+            import deepspeed
+            v = LooseVersion(deepspeed.__version__)
+            if v > LooseVersion("0.5.4") or v < LooseVersion("0.4.0"):
+                warnings.warn('Unsupported DeepSpeed version to override, skipped.', UserWarning)
+                return False
         except Exception as error:
             # Error handling
             return False
-        has_overflow_serial_function = getattr(self._optimizer, "has_overflow_serial", None)
-        get_grad_norm_direct_function = getattr(self._optimizer, "get_grad_norm_direct", None)
-        has_overflow_partitioned_grads_serial = getattr(self._optimizer, "has_overflow_partitioned_grads_serial", None)
-        if not has_overflow_serial_function or not callable(has_overflow_serial_function):
-            return False
-        if not get_grad_norm_direct_function or not callable(get_grad_norm_direct_function):
-            return False
-        if not has_overflow_partitioned_grads_serial or not callable(has_overflow_partitioned_grads_serial):
-            return False
-        return True
+
+        return self.check_requirements(["has_overflow_serial", "get_grad_norm_direct", "has_overflow_partitioned_grads_serial"],
+                                       require_apex=True, require_torch_non_finote_check=True)
+
 
     def override_function(self):
         def get_grad_norm_direct(target, gradients, params, norm_type=2):
-            from .multi_tensor_apply import MultiTensorApply
-            multi_tensor_applier = MultiTensorApply(2048 * 32)
             import amp_C
             def is_model_parallel_parameter(p):
                 return hasattr(p, 'model_parallel') and p.model_parallel
@@ -59,10 +59,26 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
                 total_norm = total_norm_cuda[0].item()
             else:
                 total_norm = 0.0
+
+                #### THIS IS THE ORIGINAL IMPLEMENTATION ####
+                # # if dist.get_rank() == 0:
+                # #    logger.info(f"Total Norm beginning {total_norm}")
+                # for g, p in zip(gradients, params):
+                #     # Pipeline parallelism may replicate parameters. Avoid multi-counting.
+                #     if hasattr(p, 'ds_pipe_replicated') and p.ds_pipe_replicated:
+                #         continue
+                #     if is_model_parallel_parameter(p) or (self.model_parallel_rank == 0):
+                #         param_norm = g.data.double().norm(2)
+                #         total_norm += param_norm.item()**2
+                # # Sum across all model parallel GPUs.
+                # total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+                #### END OF THE ORIGINAL IMPLEMENTATION ####
+
+                #### THIS IS THE FASTER IMPLEMENTATION ####
                 grads_for_norm = []
                 for g, p in zip(gradients, params):
                     if is_model_parallel_parameter(p) or (target.model_parallel_rank == 0):
-                        # deepspeed original give a double type conversion here, not sure whether this is impacting some models.
+                        # BE NOTED: deepspeed original give a double type conversion here, not sure whether this is impacting some models.
                         # https://github.com/microsoft/DeepSpeed/blob/9e5c0c5c3ecabb68b7e9dffac0e9b8d167e3cab8/deepspeed/runtime/zero/stage2.py#L1501
                         # grads_for_norm.append(g.data.double())
                         grads_for_norm.append(g.data)
@@ -83,6 +99,7 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
                     total_norm_cuda = grad_norm ** norm_type
                 else:
                     total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+                #### END OF THE FASTER IMPLEMENTATION ####
 
                 # Sum across all model parallel GPUs.
                 torch.distributed.all_reduce(total_norm_cuda,
@@ -101,14 +118,34 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
             return total_norm
 
         def has_overflow_serial(target, params, is_grad_list=False):
+            #### THIS IS THE ORIGINAL IMPLEMENTATION ####
+            # for p in params:
+            #     if p.grad is not None and self._has_inf_or_nan(p.grad.data):
+            #         return True
+            #
+            # return False
+            #### END OF THE ORIGINAL IMPLEMENTATION ####
+
+            #### THIS IS THE FASTER IMPLEMENTATION ####
             return check_overflow(params)
+            #### END OF THE FASTER IMPLEMENTATION ####
 
         def has_overflow_partitioned_grads_serial(target):
+            #### THIS IS THE ORIGINAL IMPLEMENTATION ####
+            # for i in range(len(self.fp16_groups)):
+            #     for j, grad in enumerate(self.averaged_gradients[i]):
+            #         if grad is not None and self._has_inf_or_nan(grad.data, j):
+            #             return True
+            # return False
+            #### END OF THE ORIGINAL IMPLEMENTATION ####
+
+            #### THIS IS THE FASTER IMPLEMENTATION ####
             for i in range(len(target.fp16_groups)):
                 grad_data = [grad.data for grad in target.averaged_gradients[i] if grad is not None]
                 if check_overflow_for_grads(grad_data):
                     return True
             return False
+            #### END OF THE FASTER IMPLEMENTATION ####
 
         self._optimizer.has_overflow_serial = types.MethodType(has_overflow_serial, self._optimizer)
         self._optimizer.get_grad_norm_direct = types.MethodType(get_grad_norm_direct, self._optimizer)

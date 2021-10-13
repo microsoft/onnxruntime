@@ -10,6 +10,19 @@
 
 import torch
 from numpy import inf
+from ._ds_modifier import DeepSpeedZeROModifier
+from ._megatron_modifier import LegacyMegatronLMModifier
+from .multi_tensor_apply import MultiTensorApply
+multi_tensor_applier = MultiTensorApply(2048 * 32)
+
+
+LEAGCY_MEGATRON_LM_OPTIMIZER_NAME = "megatron.fp16.fp16.FP16_Optimizer"
+DEEPSPEED_ZERO1_AND_ZERO2_OPTIMIZER_NAME = "deepspeed.runtime.zero.stage2.FP16_DeepSpeedZeroOptimizer"
+
+OptimizerModifierTypeRegistry = {
+    LEAGCY_MEGATRON_LM_OPTIMIZER_NAME: LegacyMegatronLMModifier,
+    DEEPSPEED_ZERO1_AND_ZERO2_OPTIMIZER_NAME : DeepSpeedZeROModifier,
+}
 
 class FP16OptimizerModifier(object):
     def __init__(self, optimizer) -> None:
@@ -19,6 +32,23 @@ class FP16OptimizerModifier(object):
     def apply(self):
         if self.can_be_modified():
             self.override_function()
+
+    def check_requirements(self, required_funcs, require_apex=False, require_torch_non_finote_check=False):
+        try:
+            if require_apex:
+                import amp_C
+            if require_torch_non_finote_check:
+                _ = torch._amp_foreach_non_finite_check_and_unscale_
+        except Exception as error:
+            # Error handling
+            return False
+
+        if not required_funcs:
+            for func_name in required_funcs:
+                func = getattr(self._optimizer, func_name, None)
+                if not func or not callable(func):
+                    return False
+        return True
 
 def check_overflow(params):
     grad_data = [p.grad.data for p in params if p.grad is not None]
@@ -36,8 +66,6 @@ def check_overflow_for_grads(grad_data):
 
 def clip_grad_norm_fp32(parameters, max_norm, norm_type,
                         get_horizontal_model_parallel_rank=None, get_horizontal_model_parallel_group=None):
-    from .multi_tensor_apply import MultiTensorApply
-    multi_tensor_applier = MultiTensorApply(2048 * 32)
     import amp_C
 
     horizontal_model_parallel_grad_norm_aggregation = False
