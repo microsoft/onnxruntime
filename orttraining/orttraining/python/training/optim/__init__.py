@@ -29,19 +29,19 @@ def FP16_Optimizer(optimizer, **kwargs):
         1. DeepSpeed ZeRO Optimizer Override：
 
         >>> from onnxruntime.training.optim import FP16_Optimizer
-        >>>    model, optimizer, _, lr_scheduler = deepspeed.initialize(
-        >>>        model=model,
-        >>>        optimizer=optimizer,
-        >>>        args=args,
-        >>>        lr_scheduler=lr_scheduler,
-        >>>        mpu=mpu,
-        >>>        dist_init_required=False)
-        >>>    if args.fp16:
-        >>>        optimizer = FP16_Optimizer(optimizer)
+        >>> model, optimizer, _, lr_scheduler = deepspeed.initialize(
+        >>>     model=model,
+        >>>     optimizer=optimizer,
+        >>>     args=args,
+        >>>     lr_scheduler=lr_scheduler,
+        >>>     mpu=mpu,
+        >>>     dist_init_required=False)
+        >>> if args.fp16:
+        >>>     optimizer = FP16_Optimizer(optimizer)
 
         2. Megatron-LM-v1.1.5 Optimizer Override:
 
-        >>> from onnxruntime.training.ortmodule.optim import FP16_Optimizer as ORT_FP16_Optimizer
+        >>> from onnxruntime.training.optim import FP16_Optimizer as ORT_FP16_Optimizer
         >>> optimizer = Adam(param_groups,
         >>>                     lr=args.lr,
         >>>                     weight_decay=args.weight_decay,
@@ -59,7 +59,7 @@ def FP16_Optimizer(optimizer, **kwargs):
         >>>                                     'delayed_shift': args.hysteresis},
         >>>                                verbose=True)
         >>>     optimizer = ORT_FP16_Optimizer(optimizer,
-        >>>                                    get_tensor_model_parallel_rank=mpu.get_model_parallel_rank, 
+        >>>                                    get_tensor_model_parallel_rank=mpu.get_model_parallel_rank,
         >>>                                    get_tensor_model_parallel_group=mpu.get_model_parallel_group)
 
     Args:
