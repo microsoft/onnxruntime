@@ -58,7 +58,7 @@ Also, if you want to cross-compile for Apple Silicon in an Intel-based MacOS mac
 #### Notes
 
 * Please note that these instructions build the debug build, which may have performance tradeoffs
-* To build the version from each release (which include Windows, Linux, and Mac variants), see these .yml files for reference: [CPU](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/azure-pipelines/nuget/cpu-esrp-pipeline.yml), [GPU](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/azure-pipelines/nuget/gpu-esrp-pipeline.yml)
+* To build the version from each release (which include Windows, Linux, and Mac variants), see these [.yml files](https://github.com/microsoft/onnxruntime/tree/master/tools/ci_build/github/azure-pipelines/nuget) for reference
 * The build script runs all unit tests by default for native builds and skips tests by default for cross-compiled builds.
   To skip the tests, run with `--build` or `--update --build`.
 * If you need to install protobuf 3.6.1 from source code (cmake/external/protobuf), please note:

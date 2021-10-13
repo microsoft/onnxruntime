@@ -17,7 +17,7 @@ ONNX Runtime can accelerate training and inferencing popular Hugging Face NLP mo
 
 ## Accelerate Hugging Face model inferencing
 
-* [General export and inference: Hugging Face Transformers](https://github.com/huggingface/transformers/blob/master/notebooks/04-onnx-export.ipynb)
+* [General export and inference: Hugging Face Transformers](https://github.com/huggingface/notebooks/blob/master/examples/onnx-export.ipynb)
 * [Accelerate GPT2 model on CPU](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/notebooks/Inference_GPT2_with_OnnxRuntime_on_CPU.ipynb)
 * [Accelerate BERT model on CPU](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/notebooks/PyTorch_Bert-Squad_OnnxRuntime_CPU.ipynb)
 * [Accelerate BERT model on GPU](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/notebooks/PyTorch_Bert-Squad_OnnxRuntime_GPU.ipynb)

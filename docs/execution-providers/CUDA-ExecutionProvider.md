@@ -17,7 +17,7 @@ The CUDA Execution Provider enables hardware accelerated computation on Nvidia C
 {:toc}
 
 ## Install
-Pre-built binaries of ONNX Runtime with CUDA EP are published for most language bindings. Please reference [How to - Install ORT](../install.html#inference).
+Pre-built binaries of ONNX Runtime with CUDA EP are published for most language bindings. Please reference [Install ORT](../install).
 
 
 ## Requirements

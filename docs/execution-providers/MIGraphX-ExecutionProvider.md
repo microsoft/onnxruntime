@@ -31,12 +31,12 @@ Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MiGraphX(sf, device_i
 
 You can check [here](https://github.com/scxiao/ort_test/tree/master/char_rnn) for a specific c/c++ program.
 
-The C API details are [here](../get-started/with-c.html.md).
+The C API details are [here](../get-started/with-c.md).
 
 ### Python
 When using the Python wheel from the ONNX Runtime build with MIGraphX execution provider, it will be automatically
 prioritized over the default GPU or CPU execution providers. There is no need to separately register the execution
-provider. Python APIs details are [here](/python/api_summary).
+provider. Python APIs details are [here](https://onnxruntime.ai/docs/api/python/api_summary.html).
 *Note that the next release (ORT 1.10) will require explicitly setting the providers parameter if you want to use execution provider other than the default CPU provider when instantiating InferenceSession.*
 
 You can check [here](https://github.com/scxiao/ort_test/tree/master/python/run_onnx) for a python script to run an

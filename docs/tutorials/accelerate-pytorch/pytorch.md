@@ -19,4 +19,4 @@ ONNX Runtime can be used to accelerate PyTorch models inferencing.
 ## Accelerate PyTorch model inferencing
 {: .no_toc }
 
-* [Accelerate reduced size BERT model through quantization](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/quantization/notebooks/bert/Bert-GLUE_OnnxRuntime_quantization.ipynb)
+* [Accelerate reduced size BERT model through quantization](https://github.com/microsoft/onnxruntime-inference-examples/blob/main/quantization/notebooks/bert/Bert-GLUE_OnnxRuntime_quantization.ipynb)

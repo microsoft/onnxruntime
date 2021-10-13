@@ -2,7 +2,7 @@
 title: Mobile
 parent: Get Started
 toc: true
-nav_order: 6
+nav_order: 7
 ---
 # Get Started with ORT for Mobile
 {: .no_toc }
@@ -46,4 +46,4 @@ OrtSession session = env.createSession(<path to model>, opsession_optionstions);
 ```
 
 ## Learn More
-- [Mobile Tutorial](./Tutorials/Mobile/)
+- [Mobile Tutorial](../tutorials/mobile)

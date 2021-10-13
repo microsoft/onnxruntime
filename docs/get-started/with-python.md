@@ -238,7 +238,7 @@ If using pip, run pip install `--upgrade pip` prior to downloading.
 |[onnxruntime](https://pypi.org/project/onnxruntime)|CPU (Release)| Windows (x64), Linux (x64, ARM64), Mac (X64),  |
 |[ort-nightly](https://test.pypi.org/project/ort-nightly)|CPU (Dev)    | Same as above |
 |[onnxruntime-gpu](https://pypi.org/project/onnxruntime-gpu)|GPU (Release)| Windows (x64), Linux (x64, ARM64) |
-|[ort-gpu-nightly](https://test.pypi.org/project/ort-gpu-nightly)|GPU (Dev) | Same as above |
+|[ort-nightly-gpu](https://test.pypi.org/project/ort-nightly-gpu)|GPU (Dev) | Same as above |
 
 
 For Python compiler version notes, see [this page](https://github.com/microsoft/onnxruntime/tree/master/docs/Python_Dev_Notes.md)
@@ -251,5 +251,5 @@ Python 3.6 - 3.9
 - [Python Tutorials](../tutorials/api-basics)
 * [TensorFlow with ONNX Runtime](../tutorials/tf-get-started.md)
 * [PyTorch with ONNX Runtime](https://pytorch.org/tutorials/advanced/super_resolution_with_onnxruntime.html)
-* [scikit-learn with ONNX Runtime](https://www.onnxruntime.ai/python/tutorial.html)
+* [scikit-learn with ONNX Runtime](http://onnx.ai/sklearn-onnx/index_tutorial.html)
  

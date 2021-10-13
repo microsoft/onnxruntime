@@ -188,7 +188,7 @@ These instructions are for JetPack SDK 4.6.
 
 ## oneDNN
 
-See more information on ondDNN (formerly DNNL) [here](../execution-providers/DNNL-ExecutionProvider.md).
+See more information on ondDNN (formerly DNNL) [here](../execution-providers/oneDNN-ExecutionProvider.md).
 
 ### Build Instructions
 {: .no_toc }
