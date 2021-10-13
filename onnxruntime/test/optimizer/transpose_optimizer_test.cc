@@ -93,40 +93,6 @@ int EstimateTransposeCost(const Graph& graph) {
   return cost;
 }
 
-
-TEST(TransposeOptimizerTests, TestSum) {
-  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
-    auto* input0_arg = MakeInput<float>(builder, {{-1, -1, 3, 4}}, {1, 2, 3, 4}, 0.0, 1.0);
-    auto* input1_arg = MakeInput<float>(builder, {{-1, 3}}, {2, 3}, 0.0, 1.0);
-    auto* const_1 = builder.MakeInitializer<float>({2, 3}, 0.0, 1.0);
-    auto* transpose_1_out_0 = builder.MakeIntermediate();
-    auto* transpose_2_out_0 = builder.MakeOutput();
-    auto* sum_1_out_0 = builder.MakeOutput();
-    auto* transpose_3_out_0 = builder.MakeOutput();
-    auto* identity_1_out_0 = builder.MakeOutput();
-
-    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
-    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    builder.AddNode("Sum", {transpose_1_out_0, const_1, input1_arg, const_1}, {sum_1_out_0});
-    auto& transpose_2 = builder.AddNode("Transpose", {sum_1_out_0}, {transpose_2_out_0});
-    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
-    auto& transpose_3 = builder.AddNode("Transpose", {sum_1_out_0}, {transpose_3_out_0});
-    transpose_3.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
-    builder.AddNode("Identity", {const_1}, {identity_1_out_0});
-  };
-
-  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
-    int transpose_cost = EstimateTransposeCost(session.GetGraph());
-    EXPECT_EQ(transpose_cost, 6);
-  };
-
-  TransformerTester(build_test_case_1,
-                    check_optimized_graph_1,
-                    TransformerLevel::Default,
-                    TransformerLevel::Level1,
-                    /*opset_version*/ 15);
-}
-
 TEST(TransposeOptimizerTests, TestSplit) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({4, 6, 10}, 0.0, 1.0);
@@ -407,7 +373,7 @@ TEST(TransposeOptimizerTests, TestAdd) {
                     /*opset_version*/ 15);
 }
 
-TEST(TransposeOptimizerTests, TestMul2) {
+TEST(TransposeOptimizerTests, TestTransposeValueTwice) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({4, 6, 10}, 0.0, 1.0);
     auto* input1_arg = builder.MakeInput<float>({4, 10}, 0.0, 1.0);

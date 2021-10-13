@@ -195,7 +195,7 @@ void OrtNode::SetAttributeInts(const std::string_view name, const std::vector<in
 void OrtNode::CopyAttributes(const api::Node& node) {
   const OrtNode& ort_node = static_cast<const OrtNode&>(node);
   const NodeAttributes& attributes = ort_node.node_.GetAttributes();
-  for (const auto pair : attributes) {
+  for (const auto& pair : attributes) {
     node_.AddAttribute(pair.first, pair.second);
   }
 }
@@ -233,7 +233,7 @@ void OrtNode::SetInput(size_t i, const std::string_view name) {
   auto& mutable_input_defs = node_.MutableInputDefs();
   NodeArg* old_node_arg = mutable_input_defs[i];
   if (old_node_arg->Exists()) {
-    // Input may be referenced multiple times. Only remove from consuemers if all references are gone.
+    // Input may be referenced multiple times. Only remove from consumers if all references are gone.
     size_t usages = 0;
     for (const auto* node_arg : mutable_input_defs) {
       if (node_arg == old_node_arg) {

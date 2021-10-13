@@ -25,6 +25,8 @@ struct HandlerArgs {
   bool skip_cost_check;
 };
 
+typedef bool HandlerFunction(HandlerArgs& args);
+
 
 /////// <Helper Utils> ///////
 /* Small utilities for editing nodes and manipulating axes/permutations */
@@ -98,8 +100,8 @@ static std::vector<int64_t> InvertPerm(const std::vector<int64_t>& perm) {
   size_t rank = perm.size();
   auto perm_inv = std::vector<int64_t>(rank);
   for (size_t i = 0; i < rank; ++i) {
-    size_t j = gsl::narrow<size_t, int64_t>(perm[i]);
-    perm_inv[j] = gsl::narrow<int64_t, size_t>(i);
+    size_t j = gsl::narrow_cast<size_t>(perm[i]);
+    perm_inv[j] = gsl::narrow_cast<int64_t>(i);
   }
   return perm_inv;
 }
@@ -108,7 +110,7 @@ static std::vector<int64_t> InvertPerm(const std::vector<int64_t>& perm) {
 static std::vector<int64_t> ComposePerm(const std::vector<int64_t>& perm1, const std::vector<int64_t>& perm2) {
   std::vector<int64_t> perm;
   for (int64_t p : perm2) {
-    perm.push_back(perm1[gsl::narrow<size_t, int64_t>(p)]);
+    perm.push_back(perm1[gsl::narrow_cast<size_t>(p)]);
   }
   return perm;
 }
@@ -131,7 +133,7 @@ static std::vector<int64_t> UnsqueezeShape(const std::vector<int64_t>& shape, co
   auto new_shape = std::vector<int64_t>(new_rank);
   for (int64_t a : axes) {
     // Fill unsqueezed axes with 1s
-    new_shape[gsl::narrow<size_t, int64_t>(a)] = 1;
+    new_shape[gsl::narrow_cast<size_t>(a)] = 1;
   }
   size_t j = 0;
   for (size_t i = 0; i < new_rank; i++) {
@@ -159,7 +161,7 @@ static std::vector<int64_t> UnsqueezePerm(const std::vector<int64_t>& axes, cons
     if (a < 0) {
       a += new_rank;
     }
-    axes_bit_map[gsl::narrow<size_t, int64_t>(a)] = true;
+    axes_bit_map[gsl::narrow_cast<size_t>(a)] = true;
   }
   std::vector<int64_t> axes_map;  // maps old axes to new (unsqueezed) axes
   for (size_t i = 0; i < new_rank; ++i) {
@@ -174,7 +176,7 @@ static std::vector<int64_t> UnsqueezePerm(const std::vector<int64_t>& axes, cons
       new_perm.push_back(i);
     } else {
       // Take next axis from perm
-      size_t perm_axis = gsl::narrow<size_t, int64_t>(perm[j++]);
+      size_t perm_axis = gsl::narrow_cast<size_t>(perm[j++]);
       new_perm.push_back(axes_map[perm_axis]);
     }
   }
@@ -372,6 +374,21 @@ static int EstimateValueRank(api::Graph& graph, const std::string_view input) {
   return rank;
 }
 
+static HandlerFunction* GetHandler(api::Node& node, bool allow_extended_ops);
+
+static bool CanLikelyRemoveTranspose(api::Graph& graph, api::Node& transpose) {
+  auto consumers = graph.GetValueConsumers(transpose.Outputs()[0]);
+  if (!consumers->comprehensive) {
+    return false;
+  }
+  for (auto& node : consumers->nodes) {
+    if (GetHandler(*node, true) == nullptr) {
+      return false;
+    }
+  }
+  return true;
+}
+
 static int EstimateTransposeValueCost(api::Graph& graph, const std::string_view input, const std::vector<int64_t>& perm_inv) {
   std::unique_ptr<api::Tensor> constant = graph.GetConstant(input);
   if (constant != nullptr) {
@@ -381,7 +398,7 @@ static int EstimateTransposeValueCost(api::Graph& graph, const std::string_view 
   if (node != nullptr && node->IsOp("Transpose")) {
     std::optional<std::vector<int64_t>> perm2 = node->GetAttributeInts("perm");
     if (perm2 != std::nullopt) {
-      if (*perm2 == perm_inv) {
+      if (*perm2 == perm_inv && CanLikelyRemoveTranspose(graph, *node)) {
         return -EstimateValueRank(graph, input);
       } else {
         return 0;
@@ -1141,8 +1158,6 @@ static bool HandleMaxPool(HandlerArgs& args) {
   return true;
 }
 
-typedef bool HandlerFunction(HandlerArgs& args);
-
 static const std::unordered_map<std::string_view, HandlerFunction*> handler_map {
 
   {"Cast", &HandleSimpleNode}, {"Exp", &HandleSimpleNode}, {"Identity", &HandleSimpleNode},
@@ -1206,30 +1221,41 @@ static const std::unordered_map<std::string_view, HandlerFunction*> extended_han
   {"MaxPool", &HandleMaxPool},
 };
 
-bool ProcessTranspose(HandlerArgs& args, bool allow_extended_ops) {
+static HandlerFunction* GetHandler(api::Node& node, bool allow_extended_ops) {
   std::string key;
-  auto domain = args.node.Domain();
-  auto op_type = args.node.OpType();
+  auto domain = node.Domain();
+  auto op_type = node.OpType();
   if (domain == "") {
     key = std::string(op_type);
   } else if (domain == "com.microsoft") {
     key = "com.microsoft." + std::string(op_type);
   } else {
-    return false;
+    return nullptr;
   }
 
   auto match = handler_map.find(key);
   if (match != handler_map.end()) {
     HandlerFunction* fn = match->second;
-    return fn(args);
+    return fn;
   } else if (allow_extended_ops) {
     match = extended_handler_map.find(key);
     if (match != extended_handler_map.end()) {
       HandlerFunction* fn = match->second;
-      return fn(args);
+      return fn;
     }
   }
-  return false;
+  return nullptr;
+}
+
+bool ProcessTranspose(HandlerArgs& args, bool allow_extended_ops) {
+  if (!CanLikelyRemoveTranspose(args.graph, args.transpose)) {
+    return false;
+  }
+  HandlerFunction* fn = GetHandler(args.node, allow_extended_ops);
+  if (fn == nullptr) {
+    return false;
+  }
+  return fn(args);
 }
 
 bool Optimize(api::Graph& graph, bool allow_extended_ops) {
