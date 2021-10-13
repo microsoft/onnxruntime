@@ -22,8 +22,45 @@ def get_full_qualified_type_name(o):
 
 def FP16_Optimizer(optimizer, **kwargs):
     """
-    Simple wrapper to replace inefficient FP16_Optimizer function calls implemented by library for example
+    Simple wrapper to replace inefficient FP16_Optimizer function calls implemented by libraries for example
         Apex, DeepSpeed, Megatron-LM.
+
+    Usage:
+        1. DeepSpeed ZeRO Optimizer Override：
+
+        >>> from onnxruntime.training.optim import FP16_Optimizer
+        >>>    model, optimizer, _, lr_scheduler = deepspeed.initialize(
+        >>>        model=model,
+        >>>        optimizer=optimizer,
+        >>>        args=args,
+        >>>        lr_scheduler=lr_scheduler,
+        >>>        mpu=mpu,
+        >>>        dist_init_required=False)
+        >>>    if args.fp16:
+        >>>        optimizer = FP16_Optimizer(optimizer)
+
+        2. Megatron-LM-v1.1.5 Optimizer Override:
+
+        >>> from onnxruntime.training.ortmodule.optim import FP16_Optimizer as ORT_FP16_Optimizer
+        >>> optimizer = Adam(param_groups,
+        >>>                     lr=args.lr,
+        >>>                     weight_decay=args.weight_decay,
+        >>>                     betas=(args.adam_beta1, args.adam_beta2),
+        >>>                     eps=args.adam_eps)
+
+        >>> # Wrap into fp16 optimizer.
+        >>> if args.fp16:
+        >>>     optimizer = FP16_Optimizer(optimizer,
+        >>>                                static_loss_scale=args.loss_scale,
+        >>>                                dynamic_loss_scale=args.dynamic_loss_scale,
+        >>>                                dynamic_loss_args={
+        >>>                                     'scale_window': args.loss_scale_window,
+        >>>                                     'min_scale': args.min_scale,
+        >>>                                     'delayed_shift': args.hysteresis},
+        >>>                                verbose=True)
+        >>>     optimizer = ORT_FP16_Optimizer(optimizer,
+        >>>                                    get_tensor_model_parallel_rank=mpu.get_model_parallel_rank, 
+        >>>                                    get_tensor_model_parallel_group=mpu.get_model_parallel_group)
 
     Args:
         optimizer: the FP16_Optimizer instance
