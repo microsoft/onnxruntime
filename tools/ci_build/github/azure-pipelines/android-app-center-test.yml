@@ -1,0 +1,28 @@
+jobs:
+- job: Android_CI
+  pool:
+    vmImage: 'macOS-10.15'
+  timeoutInMinutes: 60
+  steps:
+  - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
+    displayName: Setup gradle wrapper to use gradle 6.8.3
+
+  - script: |
+    cd $(Build.SourcesDirectory)/java/src/test/android
+    $(Build.SourcesDirectory)/java/gradlew --no-daemon clean assembleDebug assembleDebugAndroidTest
+
+  # - script: |
+  #     python3 tools/python/run_android_emulator.py \
+  #       --android-sdk-root ${ANDROID_SDK_ROOT} \
+  #       --create-avd --system-image "system-images;android-30;google_apis;x86_64" \
+  #       --start --emulator-extra-args="-partition-size 4096" \
+  #       --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+  #   displayName: Start Android emulator
+
+  # - script: |
+  #     python3 tools/python/run_android_emulator.py \
+  #       --android-sdk-root ${ANDROID_SDK_ROOT} \
+  #       --stop \
+  #       --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+  #   displayName: Stop Android emulator
+  #   condition: always()
