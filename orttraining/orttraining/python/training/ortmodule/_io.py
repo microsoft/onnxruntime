@@ -226,6 +226,8 @@ def deepcopy_model_input(*inputs, **kwargs):
 class _TensorStub(object):
     '''Tensor stub class used to represent model's input or output'''
 
+    __slots__ = ['name', 'dtype', 'shape', 'shape_dims']
+
     def __init__(self, name=None, dtype=None, shape=None, shape_dims=None):
         self.name = name
         self.dtype = dtype
@@ -282,31 +284,30 @@ def unflatten_user_output(output_schema, outputs):
 
         if isinstance(user_output, abc.Sequence):
             sequence_type = type(user_output)
-            user_output = list(user_output)
-            for idx in range(len(user_output)):
-                user_output[idx] = _replace_stub_with_tensor_value(user_output[idx], outputs, output_idx)
-            try:
-                # namedtuple can be created by passing the list sequence to method _make
-                user_output = sequence_type._make(user_output)
-            except AttributeError:
-                # If attribute error encountered, create the sequence directly
-                user_output = sequence_type(user_output)
+            if hasattr(sequence_type, '_make'):  # namedtuple
+                sequence_type = type(user_output)
+                user_output = sequence_type._make(
+                    _replace_stub_with_tensor_value(uo, outputs, output_idx)
+                    for idx, uo in enumerate(user_output))
+            else:
+                user_output = sequence_type(
+                    _replace_stub_with_tensor_value(uo, outputs, output_idx)
+                    for idx, uo in enumerate(user_output))
         elif isinstance(user_output, abc.Mapping):
+            new_user_output = type(user_output)()
             for key in sorted(user_output):
-                user_output[key] = _replace_stub_with_tensor_value(user_output[key], outputs, output_idx)
+                new_user_output[key] = _replace_stub_with_tensor_value(user_output[key], outputs, output_idx)
+            user_output = new_user_output
         else:
             raise wrap_exception(ORTModuleIOError,
                                  TypeError(f'ORTModule does not support the following model output type {type(user_output)}.'))
 
         return user_output
 
-    # Replace every _TensorStub value in the schema with the torch.Tensor outputs calculated
-    output_schema_copy = copy.deepcopy(output_schema)
-
     # It is expected that the outputs are ordered in the way defined in the exported onnx model
     # which is the order in which the output schema was saved.
     output_idx = [0]
-    user_output = _replace_stub_with_tensor_value(output_schema_copy, outputs, output_idx)
+    user_output = _replace_stub_with_tensor_value(output_schema, outputs, output_idx)
     return user_output
 
 
