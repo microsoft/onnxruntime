@@ -4206,13 +4206,15 @@ def test_sigmoid_grad_opset13():
         ort_x = copy.deepcopy(pt_x)
         ort_prediction, ort_loss = run_step(ort_model, ort_x)
         pt_prediction, pt_loss = run_step(pt_model, pt_x)
-        for name in ['exported_model', 'optimized_model', 'optimized_pre_grad_model']:
-            onx = getattr(model_onx, name)
-            opv = None
-            for op in onx.opset_import:
-                if op.domain == '':
-                    opv = op.version
-            assert opv == 13
+        if step == 0:
+            model_onx = ort_model._torch_module._execution_manager._training_manager._onnx_models
+            for name in ['exported_model', 'optimized_model', 'optimized_pre_grad_model']:
+                onx = getattr(model_onx, name)
+                opv = None
+                for op in onx.opset_import:
+                    if op.domain == '':
+                        opv = op.version
+                assert opv == 13
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_values_are_close(ort_x.grad, pt_x.grad)
         _test_helpers.assert_values_are_close(ort_loss, pt_loss)
