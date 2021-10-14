@@ -9,7 +9,7 @@ nav_order: 2
 # Initial setup
 
 - [Initial setup for ONNX Runtime Mobile](../mobile/initial-setup.md)
-- [Initial setup for ONNX Runtime Web](TBD)
+- [Initial setup for ONNX Runtime Web](../web/initial-setup.md)
 
 -------
 

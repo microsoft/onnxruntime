@@ -15,6 +15,8 @@ The configuration file that was generated during [model conversion](./model-conv
 
 The general ONNX Runtime inferencing [build instructions](../../build/inferencing.md#build-instructions) apply, with additional options being specified to reduce the binary size.
 
+See also build instructions for [Android/iOS](../../build/android-ios.md) and [Web](../../build/web.md).
+
 ## Contents
 {: .no_toc}
 
