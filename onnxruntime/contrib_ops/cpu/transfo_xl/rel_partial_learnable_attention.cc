@@ -24,11 +24,10 @@ class RelPartialLearnableAttention : public OpKernel, public RelPartialLearnable
 };
 
 // These ops are internal-only, so register outside of onnx
-ONNX_OPERATOR_TYPED_KERNEL_EX(
+ONNX_OPERATOR_KERNEL_EX(
     RelPartialLearnableAttention,
     kMSDomain,
     1,
-    float,
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),

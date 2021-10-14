@@ -32,6 +32,7 @@ namespace contrib {
 void RegisterContribSchemas();
 void RegisterNchwcSchemas();
 void RegisterNhwcSchemas();
+void RegisterTransfoXLSchemas();
 void RegisterQuantizationSchemas();
 
 constexpr const float kDefaultSkipLayerNormEpsilon = 1e-12f;

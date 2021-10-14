@@ -33,7 +33,7 @@ static void RunRelPartialLearnableAttentionTest(
   input_d_model = (input_d_model == 0 ? d_model : input_d_model);  // By default, no pruning.
 
   int min_cuda_architecture = use_float16 ? 530 : 0;
-  bool enable_cuda = HasCudaEnvironment(min_cuda_architecture) && !is_weights_constant && !only_enable_cpu;
+  bool enable_cuda = HasCudaEnvironment(min_cuda_architecture) && !only_enable_cpu;
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get()) && !use_float16 && !only_enable_cuda;
 
   if (enable_cpu || enable_cuda) {
@@ -87,7 +87,11 @@ static void RunRelPartialLearnableAttentionTest(
         tester.AddInput<float>("mems", mems_dims, mems_data);
       }
     } else {
-      tester.AddOptionalInputEdge<float>();
+      if (use_float16) {
+        tester.AddOptionalInputEdge<MLFloat16>();
+      } else {
+        tester.AddOptionalInputEdge<float>();
+      }
     }
 
     if (enable_cuda) {
@@ -104,35 +108,7 @@ static void RunRelPartialLearnableAttentionTest(
   }
 }
 
-static void RunRelPartiaLearnableAttentionTest(
-    const std::vector<float>& input_data,            // input: [batch_size, sequence_length, d_model]
-    const std::vector<float>& input_weights_data,    // input_weights: [d_model, 3 * num_heads * head_size]
-    const std::vector<float>& pos_emb_data,          // pos_emb: [batch_size, sequence_length, d_model]
-    const std::vector<float>& pos_emb_weights_data,  // pos_emb_weights: [d_model, num_heads * head_size]
-    const std::vector<float>& r_w_bias_data,         // r_w_bias: [num_heads, head_size]
-    const std::vector<float>& r_r_bias_data,         // r_r_bias: [num_heads, head_size]
-    const std::vector<float>& output_weights_data,   // output_weights: [num_heads * head_size, d_model]
-    const std::vector<int32_t>& attn_mask_data,      // attn_mask: [sequence_length, sequence_length] or empty
-    const std::vector<float>& mems_data,             // mems: [batch_size, sequence_length + memory_length, d_model] or empty
-    const std::vector<float>& output_data,           // output: [batch_size, sequence_length, d_model]
-    int batch_size,
-    int sequence_length,
-    int d_model,
-    int number_of_heads,
-    int head_size,
-    bool use_float16 = false,
-    int memory_length = 0,
-    int input_d_model = 0,
-    bool only_enable_cuda = false,
-    bool only_enable_cpu = false) {
-  RunRelPartiaLearnableAttentionTest(input_data, input_weights_data, pos_emb, pos_emb_weights,
-                                     r_w_bias_data, r_r_bias_data, output_weights_data, attn_mask_data,
-                                     mems_data, output_data, batch_size, sequence_length, d_model,
-                                     number_of_heads, head_size, use_float16, input_d_model,
-                                     only_enable_cuda, only_enable_cpu);
-}
-
-TEST(RelPartiaLearnableAttentionTest, RelPartiaLearnableAttentionBatch1) {
+TEST(RelPartialLearnableAttentionTest, RelPartialLearnableAttentionBatch1) {
   int batch_size = 1;
   int sequence_length = 2;
   int d_model = 4;
@@ -143,22 +119,43 @@ TEST(RelPartiaLearnableAttentionTest, RelPartiaLearnableAttentionBatch1) {
       0.8f, -0.5f, 0.0f, 1.f,
       0.5f, 0.2f, 0.3f, -0.6f};
 
-  std::vector<float> weight_data = {
+  std::vector<float> input_weights_data = {
       0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
       0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
       0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
       0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
 
-  std::vector<float> bias_data = {
+  std::vector<float> pos_emb_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
+
+  std::vector<float> pos_emb_weights_data = {
+      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
+      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
+      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
+      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
+
+  std::vector<float> r_w_bias_data = {
       -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
 
-  std::vector<int32_t> mask_index_data = {2L};
+  std::vector<float> r_r_bias_data = {
+      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
+
+  std::vector<float> output_weights_data = {
+      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
+      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
+      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
+      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
+
+  std::vector<int32_t> attn_mask_data = {};
+
+  std::vector<float> mems_data = {};
 
   std::vector<float> output_data = {
       3.1495983600616455f, 0.10843668878078461f, 4.25f, 5.6499996185302734f,
       3.9696791172027588f, 0.073143675923347473f, 4.2499995231628418f, 5.6499991416931152f};
 
-  RunRelPartiaLearnableAttentionTest(input_data, input_weights_data, pos_emb_data, pos_emb_weights_data,
+  RunRelPartialLearnableAttentionTest(input_data, input_weights_data, pos_emb_data, pos_emb_weights_data,
                                      r_w_bias_data, r_r_bias_data, output_weights_data, attn_mask_data,
                                      mems_data, output_data, batch_size, sequence_length, d_model,
                                      number_of_heads, head_size);
