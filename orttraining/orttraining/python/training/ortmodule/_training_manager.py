@@ -14,6 +14,7 @@ from ._graph_execution_manager import (GraphExecutionManager,
 from ._execution_agent import TrainingAgent
 from .debug_options import DebugOptions
 from ._fallback import (ORTModuleFallbackException,
+                        ORTModuleOrtVectorException,
                         _FallbackPolicy,
                         _FallbackManager)
 
@@ -51,7 +52,7 @@ class TrainingManager(GraphExecutionManager):
                 forward_inputs.push_back(dlp, input.dtype == torch.bool)
             except RuntimeError as e:
                 # This may happen when sparse is used.
-                raise ORTModuleFallbackException(
+                raise ORTModuleOrtVectorException(
                     "Unable to store a vector into OrtValueVector instance (%r)." % e)
 
         forward_outputs = C.OrtValueVector()

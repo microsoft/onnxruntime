@@ -64,6 +64,18 @@ class ORTModuleONNXModelException(ORTModuleFallbackException):
     pass
 
 
+class ORTModuleOrtVectorException(ORTModuleFallbackException):
+    '''Trigger fallback for OrtVector related exceptions.
+
+    This exception is raised during the model execution when the data format
+    is unexpected such as sparse format.
+    '''
+
+    pass
+
+
+
+
 def wrap_exception(new_exception: ORTModuleFallbackException, raised_exception: Exception) -> ORTModuleFallbackException:
     '''Wraps `raised_exception` exception as cause for the returned `new_exception` exception'''
 
