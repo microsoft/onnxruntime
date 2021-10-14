@@ -185,8 +185,18 @@ def _post_process_after_export(exported_model, enable_custom_autograd_function, 
 
 
 def _post_process_enabling_autograd_fallback(exported_model):
+    registered_name_mappings = {}
+    for kclass in torch.autograd.Function.__subclasses__():
+        # Collect mapping of class names to full qualified class names.
+        if kclass.__name__ not in registered_name_mappings:
+            registered_name_mappings[kclass.__name__] = []
+        full_qualified_name = kclass.__module__ + '.' + kclass.__qualname__
+        registered_name_mappings[kclass.__name__].append(full_qualified_name)
+
+        # Register function with class names.
+        register_torch_autograd_function(kclass.__name__, kclass)
+
     index = 0
-    autograd_func_names = set()
     for node in exported_model.graph.node:
         if node.domain == 'com.microsoft' and node.op_type in ["PythonOp"]:
             output_names = list(node.output)
@@ -195,32 +205,21 @@ def _post_process_enabling_autograd_fallback(exported_model):
             node.output.extend(output_names)
             for attr in node.attribute:
                 if attr.name == 'name':
-                    autograd_func_names.add(attr.s)
+                    kclass_name = attr.s
+                    # If the duplicated function is used in ONNX graph, we will fail in case of a wrong function call.
+                    # Todo: remove this trick once exporter can support fully qualified name for PythonOp.
+                    if kclass_name in registered_name_mappings and len(registered_name_mappings[kclass_name] > 1):
+                        error_msg = 'More than one torch.autograd.Function named {}, but probabbly in different namespace. ' \
+                                    'The conflicting autograd.Functions are: {}. Currently torch exporter cannot ' \
+                                    'differentiate them with full qualified name, so there is a risk exported PythonOp calls a ' \
+                                    'wrong autograd.Function.'.format(kclass.__name__, ','.join(registered_name_mappings[kclass_name]))
+                        raise wrap_exception(ORTModuleONNXModelException,
+                                            RuntimeError(error_msg))
+
+                    break
+
         if not node.name:
             node.name = node.op_type + "_id_" + str(index)
             index += 1
-
-    registered_names = {}
-    for kclass in torch.autograd.Function.__subclasses__():
-        full_qualified_name = kclass.__module__ + '.' + kclass.__qualname__
-        if kclass.__name__ in registered_names:
-            error_msg = '{} already registered, there seems to be multiple torch.autograd.Function ' \
-                        'with same name, but probabbly in different namespace. ' \
-                        'The conflicting autograd.Functions are: {} ' \
-                        ' {}. '.format(kclass.__name__, full_qualified_name, registered_names[kclass.__name__])
-
-            # If the duplicated function is used in ONNX graph, we will fail in case of a wrong function call.
-            # Otherwise, we will only give a warning.
-            # Todo: remove this trick once exporter can support fully qualified name for PythonOp.
-            if kclass.__name__ in autograd_func_names:
-                raise wrap_exception(ORTModuleONNXModelException,
-                                     RuntimeError(error_msg + "Currently torch exporter cannot ' \
-                                                 'differentiate them with full qualified name, so there is a risk exported PythonOp calls a ' \
-                                                 'wrong autograd.Function."))
-            else:
-                warnings.warn(error_msg, UserWarning)
-
-        registered_names[kclass.__name__] = full_qualified_name
-        register_torch_autograd_function(kclass.__name__, kclass)
 
     return exported_model
