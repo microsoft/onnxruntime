@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <torch/extension.h>
+#include "ort_eager_common.h"
 #include <core/framework/ort_value.h>
 #include "core/common/status.h"
 #include <core/framework/provider_options.h>

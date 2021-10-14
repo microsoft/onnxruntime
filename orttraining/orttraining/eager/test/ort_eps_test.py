@@ -5,6 +5,10 @@ import unittest
 import torch
 import onnxruntime_pybind11_state as torch_ort
 import os
+import sys
+
+def is_windows():
+    return sys.platform.startswith("win")
 from io import StringIO
 import sys
 import threading
@@ -86,7 +90,10 @@ class OutputGrabber(object):
 
 class OrtEPTests(unittest.TestCase):
   def get_test_execution_provider_path(self):
-      return os.path.join('.', 'libtest_execution_provider.so')
+      if is_windows():
+        return os.path.join('.', 'test_execution_provider.dll')
+      else:
+        return os.path.join('.', 'libtest_execution_provider.so')
 
   def test_import_custom_eps(self):
     torch_ort.set_device(0, 'CPUExecutionProvider', {})
