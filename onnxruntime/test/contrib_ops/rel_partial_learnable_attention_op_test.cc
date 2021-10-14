@@ -113,52 +113,48 @@ TEST(RelPartialLearnableAttentionTest, RelPartialLearnableAttentionBatch1) {
   int sequence_length = 2;
   int d_model = 4;
   int number_of_heads = 2;
-  int head_size = 4;
+  int head_size = 2;
 
   std::vector<float> input_data = {
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f};
+      1.f, 1.f, 1.f, 1.f,
+      1.f, 1.f, 1.f, 1.f};
 
   std::vector<float> input_weights_data = {
-      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
-      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
-      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
-      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
+      1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f,
+      1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f,
+      1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f,
+      1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f};
 
   std::vector<float> pos_emb_data = {
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f};
+      1.f, 1.f, 1.f, 1.f,
+      1.f, 1.f, 1.f, 1.f};
 
   std::vector<float> pos_emb_weights_data = {
-      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
-      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
-      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
-      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
+      1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f,
+      1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f,};
 
   std::vector<float> r_w_bias_data = {
-      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
+      1.f, 1.f, 1.f, 1.f};
 
   std::vector<float> r_r_bias_data = {
-      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
+       1.f, 1.f, 1.f, 1.f};
 
   std::vector<float> output_weights_data = {
-      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
-      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
-      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
-      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
+      1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f,
+      1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f,};
 
   std::vector<int32_t> attn_mask_data = {};
 
   std::vector<float> mems_data = {};
 
   std::vector<float> output_data = {
-      3.1495983600616455f, 0.10843668878078461f, 4.25f, 5.6499996185302734f,
-      3.9696791172027588f, 0.073143675923347473f, 4.2499995231628418f, 5.6499991416931152f};
+      1.f, 1.f, 1.f, 1.f,
+      1.f, 1.f, 1.f, 1.f};
 
   RunRelPartialLearnableAttentionTest(input_data, input_weights_data, pos_emb_data, pos_emb_weights_data,
-                                     r_w_bias_data, r_r_bias_data, output_weights_data, attn_mask_data,
-                                     mems_data, output_data, batch_size, sequence_length, d_model,
-                                     number_of_heads, head_size);
+                                      r_w_bias_data, r_r_bias_data, output_weights_data, attn_mask_data,
+                                      mems_data, output_data, batch_size, sequence_length, d_model,
+                                      number_of_heads, head_size);
 }
 
 }  // namespace test

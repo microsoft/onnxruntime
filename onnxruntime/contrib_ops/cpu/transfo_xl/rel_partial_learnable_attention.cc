@@ -262,12 +262,12 @@ Status RelPartialLearnableAttention<T>::Compute(OpKernelContext* context) const 
         // TODO!! memcpy here makes it not worthwhile to use Gemm batch. Possible to post process?
         // broadcast NH -> (B.N.S.H) for each of Q, K, V
         // const T* broadcast_data_src = bias_offset;
-        // T* broadcast_data_dest = QKV[qkv_index] + qkv_offset;
+        T* broadcast_data_dest = QKV[qkv_index] + qkv_offset;
 
-        // for (int seq_index = 0; seq_index < sequence_length; seq_index++) {
-        //   memcpy(broadcast_data_dest, broadcast_data_src, head_size_ * sizeof(T));
-        //   broadcast_data_dest += head_size_;
-        // }
+        for (int seq_index = 0; seq_index < sequence_length; seq_index++) {
+          // memcpy(broadcast_data_dest, broadcast_data_src, head_size_ * sizeof(T));
+          broadcast_data_dest += head_size_;
+        }
 
         //                   original           transposed            iteration
         // A: input          (BxSxD)            (B.)S x D             S x D
