@@ -58,3 +58,27 @@ onnxruntime/python/version_info.py
 # direnv, posh-direnv
 .envrc
 .psenvrc
+
+
+*__pycache__*
+x86_64-linux*
+i686-linux*
+x86_64-darwin*
+aarch64-darwin*
+aarch64-linux*
+armv6l-linux*
+armv7l-linux*
+.othermachines*
+*.Pike8.0
+*.CoffeScript
+*.Vim
+.idea*
+.ipynb_endpoints*
+.ipynb_entrypoints*
+.ipynb_checkpoints*
+*.pdf
+*.npz
+_storaged.cache/*
+_data/*
+build/*
+*_local_*
