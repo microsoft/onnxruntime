@@ -86,35 +86,11 @@ jobs:
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
 
-  - powershell: |
-     $Env:USE_MSVC_STATIC_RUNTIME=1
-     $Env:ONNX_ML=1
-     $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
-     python setup.py bdist_wheel
-     python -m pip uninstall -y onnx -qq
-     Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
-    workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
-    displayName: 'Install ONNX'
-
-  - task: NuGetToolInstaller@0
-    displayName: Use Nuget 5.7.0
-    inputs:
-      versionSpec: 5.7.0
-
-  - task: NuGetCommand@2
-    displayName: 'NuGet restore'
-    inputs:
-      command: 'restore'
-      feedsToUse: 'config'
-      restoreSolution: '$(Build.SourcesDirectory)\packages.config'
-      nugetConfigPath: '$(Build.SourcesDirectory)\NuGet.config'
-      restoreDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
-
   - task: PythonScript@0
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_eager_mode --enable_training --enable_pybind --cmake_generator "Visual Studio 16 2019"  --build_shared_lib '
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --build_eager_mode --enable_training --enable_pybind --cmake_generator "Visual Studio 16 2019"'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: VSBuild@1
