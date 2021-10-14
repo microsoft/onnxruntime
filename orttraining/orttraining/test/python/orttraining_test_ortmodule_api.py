@@ -4136,26 +4136,18 @@ def test_ortmodule_fused_adam_optimizer_correctness():
         pt_loss = run_step(pt_model, x1)
         ort_loss = run_step(ort_model, x2)
 
+        for pt_param, ort_param in zip(pt_model.parameters(), ort_model.parameters()):
+            ort_param.grad = copy.deepcopy(pt_param.grad)
+
         _test_helpers.assert_values_are_close(pt_loss, ort_loss)
-        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, reset_gradient=False, atol=0.01, rtol=0.001)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, reset_gradient=False)
 
         if (step+1) % ga_steps == 0:
             run_optim_step(transformers_adamw_optimizer)
             run_optim_step(ort_fused_adam_optimizer)
 
         for pt_param, ort_param in zip(pt_model.parameters(), ort_model.parameters()):
-            _test_helpers.assert_values_are_close(pt_param, ort_param, atol=0.01, rtol=0.001)
-
-
-        if (step+1) % 20 == 0:
-            # after every 20 steps, course correct to prevent params from diverging too much.
-            # Divergence is expected because:
-            # - Some of the operations in transformers AdamW are done in double precision (in python)/
-            #   Operations such as (1-beta)... are done in double precision.
-            # - All operations in FusedAdam are done in single precision or mixed precision.
-            #   But never in double precision.
-            for pt_param, ort_param in zip(pt_model.parameters(), ort_model.parameters()):
-                ort_param.data = copy.deepcopy(pt_param.data)
+            _test_helpers.assert_values_are_close(pt_param, ort_param, atol=1e-4, rtol=1e-5)
 
 def test_sigmoid_grad():
     class NeuralNetSigmoid(torch.nn.Module):
