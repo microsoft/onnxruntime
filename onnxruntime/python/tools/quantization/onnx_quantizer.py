@@ -495,14 +495,16 @@ class ONNXQuantizer:
     def _get_quantize_input_nodes(self, node, input_index, qType, given_scale_name=None, given_zp_name=None):
         '''
         Given an input for a node (which is not a initializer), this function
-            - add nodes to compute zero point and scale for this input if they don't exist.
-            - add new QuantizeLinear node to quantize the input.
-            parameter node: node being quantized in NodeProto format.
-            parameter input_index: index of input in node.input.
-            parameter qType: type to quantize to.
-            parameter given_scale_name: if those inputs need to be quanitzed using this scale tensor.
-            parameter given_zp_name: if those inputs to be quantized using this zeropoint tensor.
-            return: List of newly created nodes in NodeProto format.
+
+        - add nodes to compute zero point and scale for this input if they don't exist.
+        - add new QuantizeLinear node to quantize the input.
+
+        :param node: node being quantized in NodeProto format.
+        :param input_index: index of input in node.input.
+        :param qType: type to quantize to.
+        :param given_scale_name: if those inputs need to be quanitzed using this scale tensor.
+        :param given_zp_name: if those inputs to be quantized using this zeropoint tensor.
+        :return: List of newly created nodes in NodeProto format.
         '''
         input_name = node.input[input_index]
         output_name = input_name + "_quantized"
