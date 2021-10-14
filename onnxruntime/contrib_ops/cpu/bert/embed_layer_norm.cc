@@ -29,7 +29,7 @@ EmbedLayerNormBase::EmbedLayerNormBase(const OpKernelInfo& op_kernel_info) : OpK
   ORT_ENFORCE(epsilon_ >= 0);
 
   int64_t add_output;
-  add_output_ = op_kernel_info.GetAttr<int64_t>("add_output_", &add_output).IsOK();
+  add_output_ = op_kernel_info.GetAttr<int64_t>("add_output", &add_output).IsOK();
 }
 
 float EmbedLayerNormBase::epsilon() const {
