@@ -1,10 +1,16 @@
 ---
 title: ONNX Model Conversion
-parent: Deploy ONNX Runtime Mobile
+parent: Deploy ORT format model
 grand_parent: Tutorials
 has_children: false
 nav_order: 3
 ---
+
+# ONNX Model Conversion
+
+## Contents
+{: .no_toc}
+
 * TOC
 {:toc}
 
@@ -13,7 +19,7 @@ nav_order: 3
 Conversion of ONNX format models to ORT format utilizes the ONNX Runtime python package, as the model is loaded into ONNX Runtime and optimized as part of the conversion process. 
 
 For ONNX Runtime version 1.8 and later the conversion script is run directly from the ONNX Runtime python package.<br>
-For earlier versions, the conversion script is run from the local ONNX Runtime repository created during the [initial setup](./initial-setup.md#clone-onnx-runtime-repository).
+For earlier versions, the conversion script is run from the local ONNX Runtime repository.
 
 ### Basic processing
 

@@ -1,13 +1,13 @@
 ---
 title: Custom Build
-parent: Deploy ONNX Runtime Mobile
+parent: Deploy ORT format model
 grand_parent: Tutorials
 has_children: false
 nav_order: 4
 ---
 {::options toc_levels="2..4" /}
 
-# ONNX Runtime Mobile Custom Build
+# ONNX Runtime Custom Minimal Build
 
 Creating a custom 'minimal' build of ONNX Runtime gives you control over what is included in order to minimize the binary size whilst satisfying the needs of your scenario. 
 
@@ -31,7 +31,7 @@ The follow options can be used to reduce the build size:
     - A minimal build will ONLY support loading and executing ORT format models
     - RTTI is disabled by default in this build, unless the Python bindings (`--build_wheel`) are enabled.
     - If you wish to enable execution providers that compile kernels such as NNAPI or CoreML specify `--minimal_build extended`.
-      - See [here](./using-nnapi-coreml-with-ort-mobile.md) for details on using NNAPI and CoreML with ONNX Runtime Mobile
+      - See [here](../mobile/using-nnapi-coreml-with-ort-mobile.md) for details on using NNAPI and CoreML with ONNX Runtime Mobile
 
 ##### Reduce build to required operator kernels
   - `--include_ops_by_config` [REQUIRED] 

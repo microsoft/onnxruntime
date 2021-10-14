@@ -1,6 +1,6 @@
 ---
 title: Limitations
-parent: Deploy ONNX Runtime Mobile
+parent: Deploy ORT format model
 grand_parent: Tutorials
 nav_order: 7
 ---

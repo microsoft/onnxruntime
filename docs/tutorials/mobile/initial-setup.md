@@ -3,7 +3,7 @@ title: Initial setup
 parent: Deploy ONNX Runtime Mobile
 grand_parent: Tutorials
 has_children: false
-nav_order: 2
+nav_order: 1
 ---
 
 {::options toc_levels="2..3" /}
@@ -112,4 +112,4 @@ If you are using the `master` branch in the git repository you should use the ni
 
 -------
 
-Next: [Converting ONNX models to ORT format](./model-conversion.md)
+Next: [Converting ONNX models to ORT format](../ort-format-model/model-conversion.md)

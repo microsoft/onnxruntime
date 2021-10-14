@@ -2,7 +2,7 @@
 title: Enabling NNAPI or CoreML Execution Providers
 parent: Deploy ONNX Runtime Mobile
 grand_parent: Tutorials
-nav_order: 6
+nav_order: 2
 ---
 
 ## Using NNAPI and CoreML with ONNX Runtime Mobile
@@ -35,4 +35,4 @@ Once you have all the necessary components setup, follow the instructions to [cr
 
 -------
 
-Next: [Limitations](./limitations.md)
+Next: [Limitations](../ort-format-model/limitations.md)
