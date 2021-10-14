@@ -26,8 +26,7 @@ _FALLBACK_INIT_EXCEPTION = None
 ORTMODULE_FALLBACK_POLICY = _FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE |\
                             _FallbackPolicy.FALLBACK_UNSUPPORTED_DATA |\
                             _FallbackPolicy.FALLBACK_UNSUPPORTED_TORCH_MODEL |\
-                            _FallbackPolicy.FALLBACK_UNSUPPORTED_ONNX_MODEL |\
-                            _FallbackPolicy.FALLBACK_FORCE_TORCH_FORWARD
+                            _FallbackPolicy.FALLBACK_UNSUPPORTED_ONNX_MODEL
 ORTMODULE_FALLBACK_RETRY = False
 ORTMODULE_IS_DETERMINISTIC = torch.are_deterministic_algorithms_enabled()
 

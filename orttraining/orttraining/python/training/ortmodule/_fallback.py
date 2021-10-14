@@ -90,8 +90,7 @@ class _FallbackManager(object):
                                                                                             ORTModuleDeviceException,
                                                                                             ORTModuleIOError,
                                                                                             ORTModuleTorchModelException,
-                                                                                            ORTModuleONNXModelException,
-                                                                                            RuntimeError},  # unsupported sparse
+                                                                                            ORTModuleONNXModelException},
                                       _FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE.value: {ORTModuleDeviceException},
                                       _FallbackPolicy.FALLBACK_UNSUPPORTED_DATA.value: {ORTModuleIOError},
                                       _FallbackPolicy.FALLBACK_UNSUPPORTED_TORCH_MODEL.value: {ORTModuleTorchModelException},
