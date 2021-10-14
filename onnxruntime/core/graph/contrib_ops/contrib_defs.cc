@@ -850,7 +850,11 @@ void RelPartialLearnableAttentionTypeAndShapeInference(ONNX_NAMESPACE::Inference
 
 void RegisterTransfoXLSchemas() {
   static const char* RelPartialLearnableAttention_ver1_doc = R"DOC(
-RelPartial...
+Relative Partial-Learnable Multi-Head Attention incorporates relative positional encondings
+to keep the positional information coherent when reusing states within a multi-head attention layer.
+The attention mask (sequence_length, sequence_length) is optional and used to mask the usage of future tokens, which is a common setting
+in autoregressive tasks. Additionally, memories (extension of previous states) can be used to feed
+additional information into the multi-head attentions.
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(RelPartialLearnableAttention)
@@ -868,7 +872,7 @@ RelPartial...
       .Input(5, "r_r_bias", "2D input tensor with shape (num_heads, head_size)", "T")
       .Input(6, "output_weights", "2D input tensor with shape (num_heads * head_size, d_model)", "T")
       .Input(7, "attn_mask", "Attention mask with shape (sequence_length, sequence_length).", "M", OpSchema::Optional)
-      .Input(8, "mems", "Memories with shape (?, ?, ?).", "T", OpSchema::Optional)
+      .Input(8, "mems", "Memories with shape (batch_size, sequence_length + memory_length, d_model).", "T", OpSchema::Optional)
       .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, d_model)", "T")
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
       .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask index to integer types")

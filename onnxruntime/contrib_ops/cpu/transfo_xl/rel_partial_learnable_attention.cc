@@ -52,7 +52,7 @@ Status RelPartialLearnableAttentionBase::CheckInputs(const TensorShape& input_sh
   //   r_r_bias            : (num_heads, head_size)
   //   output_weights      : (num_heads * head_size, d_model)
   //   attn_mask           : nullptr, (sequence_length, sequence_length)
-  //   mems                : nullptr
+  //   mems                : nullptr, (batch_size, sequence_length + memory_length, d_model)
 
   const auto& dims = input_shape.GetDims();
   if (dims.size() != 3) {
@@ -150,6 +150,11 @@ Status RelPartialLearnableAttentionBase::CheckInputs(const TensorShape& input_sh
   }
 
   if (mems != nullptr) {  // mems is optional
+    const auto& mems_dims = mems->Shape().GetDims();
+    if (mems_dims.size() != 3) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'mems' is expected to have 3 dimensions, got ",
+                             mems_dims.size());
+    }
   }
 
   return Status::OK();
@@ -169,7 +174,7 @@ Status RelPartialLearnableAttentionBase::CheckInputs(const TensorShape& input_sh
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(input_shape, input_weights_shape, pos_emb_shape, pos_emb_weights_shape, r_w_bias_shape, r_r_bias_shape, output_weights, attn_mask, mems);
+  return CheckInputs(input_shape, input_weights_shape, pos_emb_shape, pos_emb_weights_shape, r_w_bias_shape, r_r_bias_shape, output_weights_shape, attn_mask, mems);
 }
 
 template <typename T>
@@ -235,31 +240,27 @@ Status RelPartialLearnableAttention<T>::Compute(OpKernelContext* context) const 
     const auto* input_weights_data = input_weights->template Data<T>();
 
     const double cost =
-        static_cast<double>(sequence_length) * static_cast<double>(head_size) * static_cast<double>(input_hidden_size);
+        static_cast<double>(sequence_length) * static_cast<double>(head_size_) * static_cast<double>(d_model);
     ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const int batch_index = static_cast<int>((i / 3) / num_heads_);
         const int head_index = static_cast<int>((i / 3) % num_heads_);
         const int qkv_index = static_cast<int>(i % 3);
 
-        int input_offset = batch_index * sequence_length * input_hidden_size;
+        int input_offset = batch_index * sequence_length * d_model;
 
         T* qkv_dest = QKV[qkv_index];
         int head_size = qkv_head_size[qkv_index];
         int weights_offset = 0;
-        int bias_offset = qkv_index * q_hidden_size + head_index * head_size;
+        int bias_offset = qkv_index * d_model + head_index * head_size;
 
-        if (!is_prepack_) {
-          weights_offset = bias_offset;
-        } else {
-          weights_offset = head_index * head_size;
-        }
+        weights_offset = bias_offset;
 
         int qkv_offset = (batch_index * num_heads_ + head_index) * (sequence_length * head_size);
 
         // TODO!! memcpy here makes it not worthwhile to use Gemm batch. Possible to post process?
         // broadcast NH -> (B.N.S.H) for each of Q, K, V
-        const T* broadcast_data_src = bias_data + bias_offset;
+        const T* broadcast_data_src = bias_offset;
         T* broadcast_data_dest = QKV[qkv_index] + qkv_offset;
 
         for (int seq_index = 0; seq_index < sequence_length; seq_index++) {
@@ -271,50 +272,32 @@ Status RelPartialLearnableAttention<T>::Compute(OpKernelContext* context) const 
         // A: input          (BxSxD)            (B.)S x D             S x D
         // B: weights        (DxNxT)             D x (N.)T            D x H
         // C: QKV[qkv_index] (BxNxSxT)          (B.N.)S x T           S x H
-        if (is_prepack_) {
-          uint8_t* packed_weight;
-          packed_weight = static_cast<uint8_t*>(packed_weights_[qkv_index].get()) + packed_weights_size_[qkv_index] * (weights_offset / head_size);
-
-          MlasGemm(
-              CblasNoTrans,               // TransA = no
-              sequence_length,            // M      = S
-              head_size,                  // N      = H
-              input_hidden_size,          // K      = D
-              1.0f,                       // alpha
-              input_data + input_offset,  // A
-              input_hidden_size,          // lda    = D
-              packed_weight,              // B
-              1.0f,                       // beta
-              qkv_dest + qkv_offset,      // C
-              head_size,                  // ldc
-              nullptr);                   // use single-thread
-        } else {
-          math::GemmEx<float, ThreadPool>(
-              CblasNoTrans,                                   // TransA = no
-              CblasNoTrans,                                   // TransB = no
-              sequence_length,                                // M      = S
-              head_size,                                      // N      = H
-              input_hidden_size,                              // K      = D
-              1.0f,                                           // alpha
-              input_data + input_offset,                      // A
-              input_hidden_size,                              // lda    = D
-              weights_data + weights_offset,                  // B
-              q_hidden_size + k_hidden_size + v_hidden_size,  // ldb = NH1 + NH2 + NH3
-              1.0f,                                           // beta
-              qkv_dest + qkv_offset,                          // C
-              head_size,                                      // ldc
-              nullptr                                         // use single-thread
-          );
-        }
+        math::GemmEx<float, ThreadPool>(
+            CblasNoTrans,                                   // TransA = no
+            CblasNoTrans,                                   // TransB = no
+            sequence_length,                                // M      = S
+            head_size,                                      // N      = H
+            d_model,                              // K      = D
+            1.0f,                                           // alpha
+            input_data + input_offset,                      // A
+            d_model,                              // lda    = D
+            input_weights_data + weights_offset,                  // B
+            d_model + d_model + d_model,  // ldb = NH1 + NH2 + NH3
+            1.0f,                                           // beta
+            qkv_dest + qkv_offset,                          // C
+            head_size,                                      // ldc
+            nullptr                                         // use single-thread
+        );
       }
     });
   }
 
   // Compute the attention score and apply the score to V
-  return ApplyRelPartialLearnableAttention(Q, K, V, mask_index, past, output,
-                                           batch_size, sequence_length,
-                                           qkv_head_size[0], qkv_head_size[2], v_hidden_size,
-                                           extra_add_qk, context);
+  return true;
+  // return ApplyRelPartialLearnableAttention(Q, K, V, mask_index, past, output,
+  //                                          batch_size, sequence_length,
+  //                                          qkv_head_size[0], qkv_head_size[2], v_hidden_size,
+  //                                          extra_add_qk, context);
 }
 }  // namespace contrib
 }  // namespace onnxruntime

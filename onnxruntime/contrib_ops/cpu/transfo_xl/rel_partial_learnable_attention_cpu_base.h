@@ -21,17 +21,17 @@ class RelPartialLearnableAttentionCPUBase : public RelPartialLearnableAttentionB
   Status ApplyRelPartialLearnableAttention(const T* Q,                  // Q data with size BxNxSxH
                                            const T* K,                  // K data with size BxNxSxH
                                            const T* V,                  // V value with size BxNxSxH
-                                           const T* R,                  // R value with size BxNxSxH
-                                           const T* U,                  // U value with size NxH
-                                           const T* V,                  // V value with size NxH
+                                          //  const T* R,                  // R value with size BxNxSxH
+                                          //  const T* U,                  // U value with size NxH
+                                          //  const T* V,                  // V value with size NxH
                                            const Tensor* attn_mask,     // attention mask. nullptr if no mask or its size is SxS
-                                           const Tensor* attn_mask,     // memories. nullptr if no memories
+                                           const Tensor* mems,     // memories. nullptr if no memories
                                            Tensor* output,              // output tensor
                                            int batch_size,              // batch size
                                            int sequence_length,         // sequence length
                                            int d_model,                 // dimension hidden states
                                            int num_heads,               // number of heads
-                                           int head_size                // head size
+                                           int head_size,               // head size
                                            OpKernelContext* context) const {
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
