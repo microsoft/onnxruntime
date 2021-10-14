@@ -14,6 +14,8 @@ const double MIOPEN_BN_MIN_EPSILON = 1e-5;
 namespace onnxruntime {
 namespace rocm {
 
+#define MIOPEN_CONVOLUTION_FWD_ALGO_COUNT 6
+
 class MiopenTensor final {
  public:
   MiopenTensor();
@@ -32,6 +34,20 @@ class MiopenTensor final {
   Status CreateTensorIfNeeded();
 
   miopenTensorDescriptor_t tensor_;
+};
+
+class MiopenTensorDescriptor final {
+ public:
+  MiopenTensorDescriptor();
+  ~MiopenTensorDescriptor();
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MiopenTensorDescriptor);
+
+  Status Set(const std::vector<int64_t>& filter_dims, miopenDataType_t data_typ);
+
+  operator miopenTensorDescriptor_t() const { return desc_; }
+
+ private:
+  miopenTensorDescriptor_t desc_;
 };
 
 template <typename ElemType>
