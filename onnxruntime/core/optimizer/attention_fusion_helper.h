@@ -870,22 +870,19 @@ struct MatchPastResult {
               --> Gather (indices=1) --> v_Concat(*, ) --> Unsqueeze(axes=0)--------------------------------------------------------------------+
              /                                                                                                                                  v
        [Past] --> Gather (indices=0) --> Transpose (perm=0,1,3,2) --> k_Concat(*, )--> Transpose(perm=0,1,3,2) --> Unsqueeze(axes=0)-->Concat(*, ) --> [Present]
-      OR if transpose optimized: ... --> k_Concat(*, ) --> Transpose(perm=0,1,3,2) --> Unsqueeze(axes=0) --> Transpose(perm=0,1,2,4,3)-->Concat(*, ) --> [Present]
+      OR**    ... Gather (indices=0) --> k_Concat(*, ) --> Unsqueeze(axes=0) --> Concat(*, ) --> [Present]   **if transpose optimized
 */
 bool MatchPastSubgraph(Graph& graph, const Node& k_concat, const Node& v_concat, bool transpose_optimized_pattern,
                        MatchPastResult& result, const logging::Logger& logger) {
   DEBUG_LOG("Start MatchPastSubgraph");
 
-  const Node* past_k_transpose_ptr;
   const Node* past_k_gather_ptr;
-  const Node* present_k_transpose_ptr;
   const Node* present_k_unsqueeze_ptr;
   const Node* present_concat_ptr;
 
   std::vector<const Node::EdgeEnd*> edges;
+  std::vector<NodeIndex> node_indices;
 
-  size_t expected_k_concat_outputs;
-  size_t expected_past_k_transpose_outputs;
   if (transpose_optimized_pattern) {
     std::vector<graph_utils::EdgeEndToMatch> past_k_path{
         {0, 0, "Gather", {1, 11, 13}, kOnnxDomain}};
@@ -897,26 +894,14 @@ bool MatchPastSubgraph(Graph& graph, const Node& k_concat, const Node& v_concat,
     past_k_gather_ptr = &edges[0]->GetNode();
 
     std::vector<graph_utils::EdgeEndToMatch> present_k_path{
-        {0, 0, "Transpose", {1, 13}, kOnnxDomain},
         {0, 0, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
-        {0, 0, "Transpose", {1, 13}, kOnnxDomain},
         {0, 0, "Concat", {4, 11, 13}, kOnnxDomain}};
     if (!graph_utils::FindPath(k_concat, false, present_k_path, edges, logger)) {
       DEBUG_LOG("Failed to find path for present_k");
       return false;
     }
-    past_k_transpose_ptr = &edges[0]->GetNode();
-    present_k_unsqueeze_ptr = &edges[1]->GetNode();
-    present_k_transpose_ptr = &edges[2]->GetNode();
-    present_concat_ptr = &edges[3]->GetNode();
-
-    std::vector<int64_t> perm;
-    if (!(graph_utils::GetRepeatedNodeAttributeValues(*present_k_transpose_ptr, "perm", perm) && perm.size() == 5 && perm[0] == 0 && perm[1] == 1 && perm[2] == 2 && perm[3] == 4 && perm[4] == 3)) {
-      DEBUG_LOG("present_k_transpose perm attribute not matched");
-      return false;
-    }
-    expected_k_concat_outputs = 1;
-    expected_past_k_transpose_outputs = 2;
+    present_k_unsqueeze_ptr = &edges[0]->GetNode();
+    present_concat_ptr = &edges[1]->GetNode();
   } else {
     std::vector<graph_utils::EdgeEndToMatch> past_k_path{
         {0, 0, "Transpose", {1, 13}, kOnnxDomain},
@@ -926,7 +911,7 @@ bool MatchPastSubgraph(Graph& graph, const Node& k_concat, const Node& v_concat,
       DEBUG_LOG("Failed to find path for past_k");
       return false;
     }
-    past_k_transpose_ptr = &edges[0]->GetNode();
+    const Node& past_k_transpose = edges[0]->GetNode();
     past_k_gather_ptr = &edges[1]->GetNode();
 
     std::vector<graph_utils::EdgeEndToMatch> present_k_path{
@@ -937,22 +922,29 @@ bool MatchPastSubgraph(Graph& graph, const Node& k_concat, const Node& v_concat,
       DEBUG_LOG("Failed to find path for present_k");
       return false;
     }
-    present_k_transpose_ptr = &edges[0]->GetNode();
+    const Node& present_k_transpose = edges[0]->GetNode();
     present_k_unsqueeze_ptr = &edges[1]->GetNode();
     present_concat_ptr = &edges[2]->GetNode();
 
     std::vector<int64_t> perm;
-    if (!(graph_utils::GetRepeatedNodeAttributeValues(*present_k_transpose_ptr, "perm", perm) && perm.size() == 4 && perm[0] == 0 && perm[1] == 1 && perm[2] == 3 && perm[3] == 2)) {
+    if (!(graph_utils::GetRepeatedNodeAttributeValues(present_k_transpose, "perm", perm) && perm.size() == 4 && perm[0] == 0 && perm[1] == 1 && perm[2] == 3 && perm[3] == 2)) {
       DEBUG_LOG("present_k_transpose perm attribute not matched");
       return false;
     }
-    expected_k_concat_outputs = 2;
-    expected_past_k_transpose_outputs = 1;
+    if (!(graph_utils::GetRepeatedNodeAttributeValues(past_k_transpose, "perm", perm) && perm.size() == 4 && perm[0] == 0 && perm[1] == 1 && perm[2] == 3 && perm[3] == 2)) {
+      DEBUG_LOG("past_k_transpose perm attribute not matched");
+      return false;
+    }
+    if (!optimizer_utils::CheckOutputEdges(graph, past_k_transpose, 1) ||
+        !optimizer_utils::CheckOutputEdges(graph, present_k_transpose, 1)) {
+      DEBUG_LOG("Output edge count not expected for nodes in past subgraph");
+      return false;
+    }
+    node_indices.push_back(past_k_transpose.Index());
+    node_indices.push_back(present_k_transpose.Index());
   }
 
-  const Node& past_k_transpose = *past_k_transpose_ptr;
   const Node& past_k_gather = *past_k_gather_ptr;
-  const Node& present_k_transpose = *present_k_transpose_ptr;
   const Node& present_k_unsqueeze = *present_k_unsqueeze_ptr;
   const Node& present_concat = *present_concat_ptr;
 
@@ -969,12 +961,6 @@ bool MatchPastSubgraph(Graph& graph, const Node& k_concat, const Node& v_concat,
   const Node& past_v_gather = edges[2]->GetNode();
   if (past_v_concat.Index() != v_concat.Index()) {
     DEBUG_LOG("Failed to match v_concat");
-    return false;
-  }
-
-  std::vector<int64_t> perm;
-  if (!(graph_utils::GetRepeatedNodeAttributeValues(past_k_transpose, "perm", perm) && perm.size() == 4 && perm[0] == 0 && perm[1] == 1 && perm[2] == 3 && perm[3] == 2)) {
-    DEBUG_LOG("past_k_transpose perm attribute not matched");
     return false;
   }
 
@@ -1006,10 +992,8 @@ bool MatchPastSubgraph(Graph& graph, const Node& k_concat, const Node& v_concat,
     return false;
   }
 
-  if (!optimizer_utils::CheckOutputEdges(graph, k_concat, expected_k_concat_outputs) ||
-      !optimizer_utils::CheckOutputEdges(graph, past_k_transpose, expected_past_k_transpose_outputs) ||
+  if (!optimizer_utils::CheckOutputEdges(graph, k_concat, 2) ||
       !optimizer_utils::CheckOutputEdges(graph, past_k_gather, 1) ||
-      !optimizer_utils::CheckOutputEdges(graph, present_k_transpose, 1) ||
       !optimizer_utils::CheckOutputEdges(graph, present_k_unsqueeze, 1) ||
       present_concat.GetOutputEdgesCount() != 0 ||  // present_concat only has a graph output, but no output edges to other nodes.
       !optimizer_utils::CheckOutputEdges(graph, present_v_unsqueeze, 1) ||
@@ -1018,17 +1002,14 @@ bool MatchPastSubgraph(Graph& graph, const Node& k_concat, const Node& v_concat,
     DEBUG_LOG("Output edge count not expected for nodes in past subgraph");
     return false;
   }
-  result.node_indices = {
-      k_concat.Index(),
-      past_k_transpose.Index(),
-      past_k_gather.Index(),
-      present_k_transpose.Index(),
-      present_k_unsqueeze.Index(),
-      present_concat.Index(),
-      present_v_unsqueeze.Index(),
-      past_v_concat.Index(),
-      past_v_gather.Index()};
-
+  node_indices.push_back(k_concat.Index());
+  node_indices.push_back(past_k_gather.Index());
+  node_indices.push_back(present_k_unsqueeze.Index());
+  node_indices.push_back(present_concat.Index());
+  node_indices.push_back(present_v_unsqueeze.Index());
+  node_indices.push_back(past_v_concat.Index());
+  node_indices.push_back(past_v_gather.Index());
+  result.node_indices = node_indices;
   result.past = graph.GetNode(past_v_gather.Index())->MutableInputDefs()[0];
   result.present = graph.GetNode(present_concat.Index())->MutableOutputDefs()[0];
 
@@ -1465,6 +1446,7 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
   const Node* k_concat = nullptr;
   // If the transpose optimizer pushed a transpose, the pattern will be different.
   bool transpose_optimized_pattern = false;
+  const Node* opt_k_transpose = nullptr;
   if (has_past) {
     k_concat = graph_utils::GetInputNode(qk_matmul, 1);
     if (k_concat == nullptr) {
@@ -1472,7 +1454,14 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
     }
     if (graph_utils::IsSupportedOptypeVersionAndDomain(*k_concat, "Transpose", {1, 13}, kOnnxDomain)) {
       transpose_optimized_pattern = true;
-      k_concat = graph_utils::GetInputNode(*k_concat, 0);
+      DEBUG_LOG("Using transpose optimized pattern");
+      opt_k_transpose = k_concat;
+      std::vector<int64_t> perm;
+      if (!(graph_utils::GetRepeatedNodeAttributeValues(*opt_k_transpose, "perm", perm) && perm.size() == 4 && perm[0] == 0 && perm[1] == 1 && perm[2] == 3 && perm[3] == 2)) {
+        DEBUG_LOG("opt_k_transpose perm attribute not matched");
+        return false;
+      }
+      k_concat = graph_utils::GetInputNode(*opt_k_transpose, 0);
       if (k_concat == nullptr) {
         return false;
       }
@@ -1568,6 +1557,9 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
   nodes_to_remove.insert(nodes_to_remove.end(), gemm0_result.node_indices.begin(), gemm0_result.node_indices.end());
   if (has_past) {
     nodes_to_remove.insert(nodes_to_remove.end(), past_result.node_indices.begin(), past_result.node_indices.end());
+    if (transpose_optimized_pattern) {
+      nodes_to_remove.push_back(opt_k_transpose->Index());
+    }
   }
   SetMaskNodesToRemove(graph, mask_nodes, nodes_to_remove);
 

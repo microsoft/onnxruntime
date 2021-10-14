@@ -1248,7 +1248,7 @@ static HandlerFunction* GetHandler(api::Node& node, bool allow_extended_ops) {
 }
 
 bool ProcessTranspose(HandlerArgs& args, bool allow_extended_ops) {
-  if (!CanLikelyRemoveTranspose(args.graph, args.transpose)) {
+  if (!CanLikelyRemoveTranspose(args.graph, args.transpose) && !args.node.IsOp("Transpose")) {
     return false;
   }
   HandlerFunction* fn = GetHandler(args.node, allow_extended_ops);
