@@ -448,10 +448,10 @@ namespace Dml
         gsl::span<const std::byte> value // Data type agnostic value, treated as raw bits
         ) const noexcept try
     {
-        auto mlTensor = MLOperatorTensor(dst).GetDataInterface().Get();
+        auto mlTensor = MLOperatorTensor(dst).GetDataInterface();
         if (mlTensor != nullptr)
         {
-            const AllocationInfo* dstAllocInfo = m_allocator->DecodeDataHandle(mlTensor);
+            const AllocationInfo* dstAllocInfo = m_allocator->DecodeDataHandle(mlTensor.Get());
             ID3D12Resource* dstData = dstAllocInfo->GetResource();
             m_context->FillBufferWithPattern(dstData, value);
         }
