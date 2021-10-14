@@ -231,6 +231,13 @@ class SparseToSparseMatMul final : public OpKernel {
   Status Compute(OpKernelContext*) const override;
 
  private:
+
+  Status EigenCompute(const SparseTensor& input_A,
+                      const SparseTensor& input_B,
+                      std::vector<int64_t> a_dims,
+                      std::vector<int64_t> b_dims,
+                      SparseTensor& output_tensor) const;
+
   float alpha_attr_;
   bool trans_a_attr_;
   bool trans_b_attr_;
@@ -245,6 +252,59 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", BuildKernelDefSparseConstraintsFromTypeList<SparseGemmSupportedTypes>())
         .TypeConstraint("T1", BuildKernelDefConstraintsFromTypeList<SparseGemmSupportedTypes>()),
     SparseToSparseMatMul);
+
+namespace {
+Status CheckOutputDims(int64_t result_rows, int64_t result_cols, SparseTensor& output_tensor) {
+  const auto output_rows = (output_tensor.DenseShape().NumDimensions() == 1)
+                               ? 1
+                               : output_tensor.DenseShape().GetDims()[0];
+
+  ORT_RETURN_IF_NOT(output_rows == result_rows, "Result rows does not match output tensor rows");
+
+  const auto output_cols = (output_tensor.DenseShape().NumDimensions() == 1)
+                               ? output_tensor.DenseShape().GetDims()[0]
+                               : output_tensor.DenseShape().GetDims()[1];
+
+  ORT_RETURN_IF_NOT(output_cols == result_cols, "Result cols does not match output tensor cols");
+
+  return Status::OK();
+}
+
+Status CheckDimsAndCopyResult(size_t nnz, int64_t result_rows, int64_t result_cols,
+                              void* result_values_ptr, gsl::span<const int64_t> inner_span,
+                              gsl::span<const int64_t> outer_span,
+                              SparseTensor& output_tensor) {
+  if (nnz == 0) {
+    ORT_IGNORE_RETURN_VALUE(output_tensor.MakeCooData(0, 0));
+    return Status::OK();
+  }
+
+  ORT_RETURN_IF_ERROR(CheckOutputDims(result_rows, result_cols, output_tensor));
+
+  TensorShape result_values_shape{static_cast<int64_t>(nnz)};
+  Tensor result_values(output_tensor.DataType(), result_values_shape, result_values_ptr, output_tensor.Location());
+  auto coo_mutator = output_tensor.MakeCooData(nnz, nnz);
+  sparse_utils::CopyCpuTensor(result_values, coo_mutator.Values());
+
+  ORT_RETURN_IF_ERROR(sparse_utils::ConvertCsrIndicesToCooIndices(result_cols, inner_span, outer_span,
+                                                                  coo_mutator.Indices().template MutableDataAsSpan<int64_t>()));
+
+  return Status::OK();
+}
+
+inline bool IsVector(const std::vector<int64_t>& dims) {
+  return (dims.size() == 1 || (dims.size() == 2 && (dims[0] == 1 || dims[1] == 1)));
+}
+
+inline bool IsRowVector(const std::vector<int64_t>& computed_dims, bool transpose) {
+  return (computed_dims.size() == 2 && (transpose) ? computed_dims[1] == 1 : computed_dims[0] == 1);
+}
+
+inline bool IsColVector(const std::vector<int64_t>& computed_dims, bool transpose) {
+  return (computed_dims.size() == 2 && (transpose) ? computed_dims[0] == 1 : computed_dims[1] == 1);
+}
+
+} // namespace
 
 #if !defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
 namespace {
@@ -290,44 +350,6 @@ inline SparseMatrix<float> SparseToSparseMatMulImpl<float>(const SparseToSparseC
   return map_A * ctx.alpha_ * map_B;
 }
 
-Status CheckOutputDims(int64_t result_rows, int64_t result_cols, SparseTensor& output_tensor) {
-  const auto output_rows = (output_tensor.DenseShape().NumDimensions() == 1)
-                               ? 1
-                               : output_tensor.DenseShape().GetDims()[0];
-
-  ORT_RETURN_IF_NOT(output_rows == result_rows, "Result rows does not match output tensor rows");
-
-  const auto output_cols = (output_tensor.DenseShape().NumDimensions() == 1)
-                               ? output_tensor.DenseShape().GetDims()[0]
-                               : output_tensor.DenseShape().GetDims()[1];
-
-  ORT_RETURN_IF_NOT(output_cols == result_cols, "Result cols does not match output tensor cols");
-
-  return Status::OK();
-}
-
-Status CheckDimsAndCopyResult(size_t nnz, int64_t result_rows, int64_t result_cols,
-                              void* result_values_ptr, gsl::span<const int64_t> inner_span,
-                              gsl::span<const int64_t> outer_span,
-                              SparseTensor& output_tensor) {
-  if (nnz == 0) {
-    ORT_IGNORE_RETURN_VALUE(output_tensor.MakeCooData(0, 0));
-    return Status::OK();
-  }
-
-  ORT_RETURN_IF_ERROR(CheckOutputDims(result_rows, result_cols, output_tensor));
-
-  TensorShape result_values_shape{static_cast<int64_t>(nnz)};
-  Tensor result_values(output_tensor.DataType(), result_values_shape, result_values_ptr, output_tensor.Location());
-  auto coo_mutator = output_tensor.MakeCooData(nnz, nnz);
-  sparse_utils::CopyCpuTensor(result_values, coo_mutator.Values());
-
-  ORT_RETURN_IF_ERROR(sparse_utils::ConvertCsrIndicesToCooIndices(result_cols, inner_span, outer_span,
-                                                                  coo_mutator.Indices().template MutableDataAsSpan<int64_t>()));
-
-  return Status::OK();
-}
-
 template <class T>
 struct SparseToSparseEigenMatrixB {
   Status operator()(const SparseToSparseComputeCtx& ctx,
@@ -354,17 +376,73 @@ struct SparseToSparseEigenMatrixB {
   }
 };
 
-inline bool IsVector(const std::vector<int64_t>& dims) {
-  return (dims.size() == 1 || (dims.size() == 2 && (dims[0] == 1 || dims[1] == 1)));
+}  // namespace
+
+Status SparseToSparseMatMul::EigenCompute(const SparseTensor& input_A,
+                                          const SparseTensor& input_B,
+                                          std::vector<int64_t> a_dims, 
+                                          std::vector<int64_t> b_dims,
+                                          SparseTensor& output_tensor) const {
+  const bool a_is_vector = IsVector(a_dims);
+
+  std::vector<int64_t> inner_indices_A;
+  std::vector<int64_t> outer_indices_A;
+
+  const auto& coo_indices_a = input_A.AsCoo().Indices();
+  ORT_RETURN_IF_ERROR(sparse_utils::ConvertCooIndicesToCsrIndices(a_dims, coo_indices_a.Shape().NumDimensions(),
+                                                                  coo_indices_a.DataAsSpan<int64_t>(),
+                                                                  inner_indices_A, outer_indices_A));
+
+  bool a_transpose = trans_a_attr_;
+  if (a_is_vector) {
+    // For vectors conversion to CSR takes place as if it was a row vector
+    // therefore, we need to flip transpose flag and swap dims
+    if (IsColVector(a_dims, false)) {
+      a_transpose = !a_transpose;
+      std::swap(a_dims[0], a_dims[1]);
+    }
+  }
+
+  const bool b_is_vector = IsVector(b_dims);
+  std::vector<int64_t> inner_indices_B;
+  std::vector<int64_t> outer_indices_B;
+  const auto& coo_indices_b = input_B.AsCoo().Indices();
+  ORT_RETURN_IF_ERROR(sparse_utils::ConvertCooIndicesToCsrIndices(b_dims, coo_indices_b.Shape().NumDimensions(),
+                                                                  coo_indices_b.DataAsSpan<int64_t>(),
+                                                                  inner_indices_B, outer_indices_B));
+  bool b_transpose = trans_b_attr_;
+  if (b_is_vector) {
+    // For vectors conversion to CSR takes place as if it was a row vector
+    // therefore, we need to flip transpose flag and swap dims
+    if (IsColVector(b_dims, false)) {
+      b_transpose = !b_transpose;
+      std::swap(b_dims[0], b_dims[1]);
+    }
+  }
+
+  utils::MLTypeCallDispatcherFromTypeList<SparseGemmSupportedTypes> t_disp(input_A.GetElementType());
+
+  SparseToSparseComputeCtx compute_ctx{a_transpose, b_transpose, alpha_attr_,
+                                       input_A.Values(), gsl::make_span(inner_indices_A), gsl::make_span(outer_indices_A),
+                                       input_B.Values(), gsl::make_span(inner_indices_B), gsl::make_span(outer_indices_B),
+                                       output_tensor};
+
+  return t_disp.InvokeRet<Status, SparseToSparseEigenMatrixB>(compute_ctx, a_dims, b_dims);
 }
 
-inline bool IsRowVector(const std::vector<int64_t>& computed_dims, bool transpose) {
-  return (computed_dims.size() == 2 && (transpose) ? computed_dims[1] == 1 : computed_dims[0] == 1);
+#else
+
+Status SparseToSparseMatMul::EigenCompute(const SparseTensor&,
+                                          const SparseTensor&,
+                                          std::vector<int64_t>,
+                                          std::vector<int64_t>,
+                                          SparseTensor&) const {
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Eigen Gemm sparse not supported on 32-bit builds");
 }
 
-inline bool IsColVector(const std::vector<int64_t>& computed_dims, bool transpose) {
-  return (computed_dims.size() == 2 && (transpose) ? computed_dims[0] == 1 : computed_dims[1] == 1);
-}
+#endif  // !defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
+
+namespace {
 
 // Used for RowVector to ColVector Mul
 // The functor will multiply all non-zeros in A to all non-zeros in B
@@ -495,12 +573,6 @@ struct VectorOuterProduct {
 
 }  // namespace
 
-#endif  // !defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
-
-#if defined(__i386__) || defined(_M_IX86) || defined(__wasm__) || defined(__ANDROID__)
-Status SparseToSparseMatMul::Compute(OpKernelContext*) const {
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Gemm sparse not supported on 32-bit builds");
-#else
 Status SparseToSparseMatMul::Compute(OpKernelContext* ctx) const {
   const SparseTensor& input_A = *ctx->Input<SparseTensor>(0);
   const SparseTensor& input_B = *ctx->Input<SparseTensor>(1);
@@ -540,30 +612,10 @@ Status SparseToSparseMatMul::Compute(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  const bool a_is_vector = IsVector(a_dims);
-  const bool b_is_vector = IsVector(b_dims);
+  return EigenCompute(input_A, input_B, a_dims, b_dims, output_tensor);
 
-  std::vector<int64_t> inner_indices_A;
-  std::vector<int64_t> outer_indices_A;
-  //std::vector<int64_t> a_1d_coo;
-  //gsl::span<const int64_t> a_1d_coo_span;
-  // If b is matrix, then Eigen supports A as vector and as matrix
-  //  if (!b_is_vector) {
-
-  const auto& coo_indices_a = input_A.AsCoo().Indices();
-  ORT_RETURN_IF_ERROR(sparse_utils::ConvertCooIndicesToCsrIndices(a_dims, coo_indices_a.Shape().NumDimensions(),
-                                                                  coo_indices_a.DataAsSpan<int64_t>(),
-                                                                  inner_indices_A, outer_indices_A));
-
-  bool a_transpose = trans_a_attr_;
-  if (a_is_vector) {
-    // For vectors conversion to CSR takes place as if it was a row vector
-    // therefore, we need to flip transpose flag and swap dims
-    if (IsColVector(a_dims, false)) {
-      a_transpose = !a_transpose;
-      std::swap(a_dims[0], a_dims[1]);
-    }
-  }
+  //const bool a_is_vector = IsVector(a_dims);
+  //const bool b_is_vector = IsVector(b_dims);
 
   //} else if (a_is_vector) {
   //  a_1d_coo_span = input_A.AsCoo().Indices().DataAsSpan<int64_t>();
@@ -575,24 +627,9 @@ Status SparseToSparseMatMul::Compute(OpKernelContext* ctx) const {
   //  }
   //}
 
-  std::vector<int64_t> inner_indices_B;
-  std::vector<int64_t> outer_indices_B;
   //std::vector<int64_t> b_1d_coo;
   //gsl::span<const int64_t> b_1d_coo_span;
   //  if (!b_is_vector) {
-  const auto& coo_indices_b = input_B.AsCoo().Indices();
-  ORT_RETURN_IF_ERROR(sparse_utils::ConvertCooIndicesToCsrIndices(b_dims, coo_indices_b.Shape().NumDimensions(),
-                                                                  coo_indices_b.DataAsSpan<int64_t>(),
-                                                                  inner_indices_B, outer_indices_B));
-  bool b_transpose = trans_b_attr_;
-  if (b_is_vector) {
-    // For vectors conversion to CSR takes place as if it was a row vector
-    // therefore, we need to flip transpose flag and swap dims
-    if (IsColVector(b_dims, false)) {
-      b_transpose = !b_transpose;
-      std::swap(b_dims[0], b_dims[1]);
-    }
-  }
 
   //} else {
   //  b_1d_coo_span = input_B.AsCoo().Indices().DataAsSpan<int64_t>();
@@ -604,16 +641,10 @@ Status SparseToSparseMatMul::Compute(OpKernelContext* ctx) const {
   //  }
   //}
 
-  utils::MLTypeCallDispatcherFromTypeList<SparseGemmSupportedTypes> t_disp(input_A.GetElementType());
+  // utils::MLTypeCallDispatcherFromTypeList<SparseGemmSupportedTypes> t_disp(input_A.GetElementType());
   //  if (!b_is_vector) {
   // This branch works when A is a vector. If A is a vector here, it can only be a Row vector, which is fine.
   // Convert indices to CSR for now so we can use Eigen
-  SparseToSparseComputeCtx compute_ctx{a_transpose, b_transpose, alpha_attr_,
-                                       input_A.Values(), gsl::make_span(inner_indices_A), gsl::make_span(outer_indices_A),
-                                       input_B.Values(), gsl::make_span(inner_indices_B), gsl::make_span(outer_indices_B),
-                                       output_tensor};
-
-  return t_disp.InvokeRet<Status, SparseToSparseEigenMatrixB>(compute_ctx, a_dims, b_dims);
   //} else if (a_is_vector && b_is_vector) {
   //  if (IsRowVector(a_dims, trans_a_attr_) && IsColVector(b_dims, trans_b_attr_)) {
   //    // Result is a scalar with dense shape [1, 1] and coordinates (0, 0)
@@ -634,7 +665,6 @@ Status SparseToSparseMatMul::Compute(OpKernelContext* ctx) const {
   //}  // Need to support a is matrix and b is vector and the result is a vector
 
   // return Status::OK();
-#endif  //!defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
 }
 
 }  // namespace contrib
