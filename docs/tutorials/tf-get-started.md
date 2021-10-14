@@ -106,4 +106,4 @@ If your model fails to convert please read our [README](https://github.com/onnx/
 
 ## Next Steps
 
-- [More tutorials: accelerate Tensorflow models](../tensorflow)
+- [More tutorials: accelerate Tensorflow models](./tensorflow)

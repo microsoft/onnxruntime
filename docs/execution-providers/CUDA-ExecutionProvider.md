@@ -17,7 +17,7 @@ The CUDA Execution Provider enables hardware accelerated computation on Nvidia C
 {:toc}
 
 ## Install
-Pre-built binaries of ONNX Runtime with CUDA EP are published for most language bindings. Please reference [How to - Install ORT](../install.html#inference).
+Pre-built binaries of ONNX Runtime with CUDA EP are published for most language bindings. Please reference [Install ORT](../install).
 
 
 ## Requirements
@@ -25,6 +25,7 @@ Please reference table below for official GPU packages dependencies for the ONNX
 
 |ONNX Runtime|CUDA|cuDNN|Notes|
 |---|---|---|---|
+|1.9|11.4|8.2.4 (Linux)<br/>8.2.2.26 (Windows)|libcudart 11.4.43<br/>libcufft 10.5.2.100<br/>libcurand 10.2.5.120<br/>libcublasLt 11.6.1.51<br/>libcublas 11.6.1.51<br/>libcudnn 8.2.4<br/>libcupti.so 2021.2.2|
 |1.8|11.0.3|8.0.4 (Linux)<br/>8.0.2.39 (Windows)|libcudart 11.0.221<br/>libcufft 10.2.1.245<br/>libcurand 10.2.1.245<br/>libcublasLt 11.2.0.252<br/>libcublas 11.2.0.252<br/>libcudnn 8.0.4<br/>libcupti.so 2020.1.1|
 |1.7|11.0.3|8.0.4 (Linux)<br/>8.0.2.39 (Windows)|libcudart 11.0.221<br/>libcufft 10.2.1.245<br/>libcurand 10.2.1.245<br/>libcublasLt 11.2.0.252<br/>libcublas 11.2.0.252<br/>libcudnn 8.0.4|
 |1.5-1.6|10.2|8.0.3|CUDA 11 can be built from source|

@@ -19,7 +19,7 @@ ONNX Runtime functions as part of an ecosystem of tools and platforms to deliver
 * [Azure Container Instance: Facial Expression Recognition](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-inference-facial-expression-recognition-deploy.ipynb){:target="_blank"}
 * [Azure Container Instance: MNIST](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-inference-mnist-deploy.ipynb){:target="_blank"}
 * [Azure Container Instance: Image classification (Resnet)](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-modelzoo-aml-deploy-resnet50.ipynb){:target="_blank"}
-* [Azure Kubernetes Services: FER+](https://github.com/microsoft/onnxruntime/tree/master/docs/python/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb){:target="_blank"}
+* [Azure Kubernetes Services: FER+](https://github.com/microsoft/onnxruntime/blob/master/docs/python/inference/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb){:target="_blank"}
 * [Azure IoT Sedge (Intel UP2 device with OpenVINO)](https://github.com/Azure-Samples/onnxruntime-iot-edge/blob/master/AzureML-OpenVINO/README.md){:target="_blank"}
 * [Automated Machine Learning](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/automated-machine-learning/classification-bank-marketing-all-features/auto-ml-classification-bank-marketing-all-features.ipynb){:target="_blank"}
 
@@ -31,7 +31,7 @@ ONNX Runtime functions as part of an ecosystem of tools and platforms to deliver
 * [Azure Video Analytics: YOLOv3 and TinyYOLOv3](https://github.com/Azure/live-video-analytics/tree/master/utilities/video-analysis/yolov3-onnx){:target="_blank"}
 
 ## Azure SQL Edge
-* [ML predictions in Azure SQL Edge and Azure SQL Managed Instance](https://docs.microsoft.com/en-us/azure/azure-sql-edge/deploy-onnxJ){:target="_blank"}
+* [ML predictions in Azure SQL Edge and Azure SQL Managed Instance](https://docs.microsoft.com/en-us/azure/azure-sql-edge/deploy-onnx){:target="_blank"}
 
 ## Azure Synapse Analytics
 * [ML predictions in Synapse SQL](https://docs.microsoft.com/en-us/azure/synapse-analytics/sql-data-warehouse/sql-data-warehouse-predict){:target="_blank"}

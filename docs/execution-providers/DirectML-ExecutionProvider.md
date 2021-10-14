@@ -22,7 +22,7 @@ The DirectML Execution Provider currently uses DirectML version 1.4.2.
 {:toc}
 
 ## Install
-Pre-built packages of ORT with the DirectML EP is published on Nuget.org. See [How to: Install ORT](./install).
+Pre-built packages of ORT with the DirectML EP is published on Nuget.org. See: [Install ORT](../install).
 
 ## Requirements
 
