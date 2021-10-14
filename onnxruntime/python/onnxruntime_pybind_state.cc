@@ -1021,8 +1021,8 @@ Set this option to false if you don't want it. Default is True.)pbdoc")
 File path to serialize optimized model to.
 Optimized model is not serialized unless optimized_model_filepath is set.
 Serialized model format will default to ONNX unless:
- - add_session_config_entry is used to set 'session.save_model_format' to 'ORT', or
- - there is no 'session.save_model_format' config entry and optimized_model_filepath ends in '.ort' (case insensitive)
+- add_session_config_entry is used to set 'session.save_model_format' to 'ORT', or
+- there is no 'session.save_model_format' config entry and optimized_model_filepath ends in '.ort' (case insensitive)
 
 )pbdoc")
       .def_readwrite("enable_mem_pattern", &PySessionOptions::enable_mem_pattern,
