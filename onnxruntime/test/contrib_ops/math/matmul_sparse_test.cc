@@ -856,45 +856,45 @@ TEST(SparseGemm, Test_A_ColVector_B_RowVector_OuterProduct) {
   }
 }
 
-// Eigen crashes on this one
-//TEST(SparseGemm, Test_A_Matrix_ColumnVector_B) {
-//  constexpr int64_t rows = 3;
-//  constexpr int64_t cols = 3;
-//  const std::vector<int64_t> A_shape = {rows, cols};
-//  const std::vector<float> input_data = {
-//      0, 1, 2,
-//      6, 7, 8,
-//      12, 13, 14};
-//
-//
-//  std::vector<float> A_values;
-//  std::vector<int64_t> A_indices;
-//  ConvertToCoo(gsl::make_span(input_data), A_shape, A_values, A_indices);
-//  ASSERT_FALSE(A_values.empty());
-//  ASSERT_EQ(A_values.size() * 2, A_indices.size());
-//
-//  const std::vector<int64_t> B_shape = {cols};
-//  const std::vector<float> B_data = {
-//      0, 1, 2};
-//
-//
-//  std::vector<float> B_values;
-//  std::vector<int64_t> B_indices;
-//  ConvertToCoo(gsl::make_span(B_data), B_shape, B_values, B_indices);
-//
-//  const std::vector<int64_t> X_shape = {cols, 1};
-//  const std::vector<float> X_data = {5, 23, 41};
-//  std::vector<float> X_values;
-//  std::vector<int64_t> X_indices;
-//  std::vector<int64_t> X_indices_flat;
-//  ConvertToCoo(gsl::make_span(X_data), X_shape, X_values, X_indices_flat, false);
-//
-//  OpTester tester("Gemm", 1, onnxruntime::kMSDomain);
-//  tester.AddSparseCooInput("A", A_shape, A_values, A_indices);        // 2-D indices
-//  tester.AddSparseCooInput("B", B_shape, B_values, B_indices);        // 2-D indices
-//  tester.AddSparseCooOutput("X", X_shape, X_values, X_indices_flat);  // output is always 1-D indices
-//  tester.Run(OpTester::ExpectResult::kExpectSuccess);
-//}
+TEST(SparseGemm, Test_A_Matrix_ColumnVector_B) {
+  constexpr int64_t rows = 3;
+  constexpr int64_t cols = 3;
+  const std::vector<int64_t> A_shape = {rows, cols};
+  const std::vector<float> input_data = {
+      0, 1, 2,
+      6, 7, 8,
+      12, 13, 14};
+
+
+  std::vector<float> A_values;
+  std::vector<int64_t> A_indices;
+  ConvertToCoo(gsl::make_span(input_data), A_shape, A_values, A_indices);
+  ASSERT_FALSE(A_values.empty());
+  ASSERT_EQ(A_values.size() * 2, A_indices.size());
+
+  const std::vector<int64_t> B_shape = {cols, 1};
+  const std::vector<float> B_data = {
+      0, 1, 2};
+
+
+  std::vector<float> B_values;
+  std::vector<int64_t> B_indices;
+  constexpr bool two_d_indices_false = false;
+  ConvertToCoo(gsl::make_span(B_data), B_shape, B_values, B_indices, two_d_indices_false);
+
+  const std::vector<int64_t> X_shape = {cols, 1};
+  const std::vector<float> X_data = {5, 23, 41};
+  std::vector<float> X_values;
+  std::vector<int64_t> X_indices;
+  std::vector<int64_t> X_indices_flat;
+  ConvertToCoo(gsl::make_span(X_data), X_shape, X_values, X_indices_flat, false);
+
+  OpTester tester("Gemm", 1, onnxruntime::kMSDomain);
+  tester.AddSparseCooInput("A", A_shape, A_values, A_indices);        // 2-D indices
+  tester.AddSparseCooInput("B", B_shape, B_values, B_indices);        // 2-D indices
+  tester.AddSparseCooOutput("X", X_shape, X_values, X_indices_flat);  // output is always 1-D indices
+  tester.Run(OpTester::ExpectResult::kExpectSuccess);
+}
 
 #endif  // //!defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
 #endif  // !defined(DISABLE_SPARSE_TENSORS)

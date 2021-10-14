@@ -7,6 +7,7 @@
 
 #include "core/framework/allocator.h"
 #include "gsl/gsl"
+#include <functional>
 
 #ifndef SHARED_PROVIDER
 #include "core/framework/sparse_tensor.h"
@@ -192,15 +193,18 @@ Status ConvertIndicesTo1DAndCopy(const SparseTensor& input_sparse, SparseTensor:
 /// The function performs conversion of input COO indices into
 /// CSR indices and places results into inner_indices and outer_indices vectors.
 /// In case we have a 1-D dense shape (a vector) then the inner indices is a just a copy
-/// of input_indices and we have two entries in the outer_indices.
+/// of input_indices and we have two entries in the outer_indices. Thus, the CSR produced
+/// as if the input was a row vector. Make sure to flip the transpose flag and swap the dims
+/// if the vector is really a column vector.
 /// </summary>
+/// <param name="computed_dims">shape that was adjusted for 2-D</param>
 /// <param name="input_indices_ndims">indices either 1-D or 2-D indices</param>
 /// <param name="input_indices"></param>
 /// <param name="inner_indices"></param>
 /// <param name="outer_indices"></param>
 /// <returns></returns>
-Status ConvertCooIndicesToCsrIndices(const TensorShape& dense_shape, size_t input_indices_ndims,
-                                     gsl::span<const int64_t> input_indices,
+Status ConvertCooIndicesToCsrIndices(const std::vector<int64_t>& computed_dims, size_t input_indices_ndims,
+                                     const gsl::span<const int64_t>& input_indices,
                                      std::vector<int64_t>& inner_indices,
                                      std::vector<int64_t>& outer_indices);
 
@@ -243,6 +247,18 @@ inline void CopySparseCpuValues(const SparseTensor& src, Tensor& output_values) 
 /// <param name="src"></param>
 /// <param name="tgt"></param>
 void CopyCpuSparseCooTensor(const SparseTensor& src, SparseTensor& tgt);
+
+/// <summary>
+/// Scans input indices for matching indices and fires callback with its
+/// relative offsets so one can retrieve values and indices. Used for products
+/// of sparse matrices
+/// </summary>
+/// <param name="a_indices">1d coo indices</param>
+/// <param name="b_indices">1d coo indices</param>
+/// <param name="match_cb">callback for match of indices</param>
+void ScanForSparseMatches(const gsl::span<const int64_t>& a_indices,
+                          const gsl::span<const int64_t>& b_indices,
+                          std::function<void(size_t, size_t)> match_cb);
 
 }  // namespace sparse_utils
 }  // namespace onnxruntime

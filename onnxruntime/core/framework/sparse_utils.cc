@@ -523,9 +523,11 @@ Status ConvertIndicesTo1DAndCopy(const SparseTensor& input_sparse, SparseTensor:
   return Status::OK();
 }
 
-Status ConvertCooIndicesToCsrIndices(const TensorShape& dense_shape, size_t input_indices_ndims,
-                                     gsl::span<const int64_t> input_indices,
-                                     std::vector<int64_t>& inner_indices, std::vector<int64_t>& outer_indices) {
+Status ConvertCooIndicesToCsrIndices(const std::vector<int64_t>& computed_dims, size_t input_indices_ndims,
+                                     const gsl::span<const int64_t>& input_indices,
+                                     std::vector<int64_t>& inner_indices,
+                                     std::vector<int64_t>& outer_indices) {
+  assert(computed_dims.size() == 2);
   // Fully sparse case
   if (input_indices.empty()) {
     inner_indices.clear();
@@ -533,49 +535,52 @@ Status ConvertCooIndicesToCsrIndices(const TensorShape& dense_shape, size_t inpu
     return Status::OK();
   }
 
-  if (dense_shape.NumDimensions() == 1) {
-    ORT_RETURN_IF_NOT(input_indices_ndims == 1, "COO indices must be 1-D for 1-D dense shape");
+  if (computed_dims[0] == 1 || computed_dims[1] == 1) {  // Row Vector
+    ORT_RETURN_IF_NOT(input_indices_ndims == 1, "COO indices must be 1-D for vectors");
     inner_indices.reserve(input_indices.size());
     inner_indices.insert(inner_indices.end(), input_indices.cbegin(), input_indices.cend());
     outer_indices.push_back(0);
     outer_indices.push_back(gsl::narrow<int64_t>(inner_indices.size()));
-  } else if (dense_shape.NumDimensions() == 2) {
-    const auto rows = dense_shape.GetDims()[0];
-    const auto cols = dense_shape.GetDims()[1];
+    assert(input_indices.size() == inner_indices.size());
+    assert(outer_indices.size() == 2U);
+  } else { // matrix
+    const auto rows = computed_dims[0];
+    const auto cols = computed_dims[1];
     outer_indices.reserve(static_cast<size_t>(rows + 1));
     outer_indices.push_back(0);
     int64_t row = 0;
     if (input_indices_ndims == 1) {
       inner_indices.reserve(input_indices.size());
       for (auto idx : input_indices) {
-        auto cur_row = idx / cols;
-        auto cur_col = idx - cur_row * cols;
+        const auto cur_row = idx / cols;
+        const auto cur_col = idx - cur_row * cols;
         for (int64_t sz = static_cast<int64_t>(inner_indices.size()); row < cur_row; ++row) {
           outer_indices.push_back(sz);
         }
         inner_indices.push_back(cur_col);
       }
+      assert(input_indices.size() == inner_indices.size());
     } else if (input_indices_ndims == 2) {
       inner_indices.reserve(input_indices.size() / 2);
       for (size_t i = 0, limit = input_indices.size(); i < limit; i += 2) {
-        auto cur_row = input_indices[i];
-        auto cur_col = input_indices[i + 1];
+        const auto cur_row = input_indices[i];
+        const auto cur_col = input_indices[i + 1];
         for (int64_t sz = static_cast<int64_t>(inner_indices.size()); row < cur_row; ++row) {
           outer_indices.push_back(sz);
         }
         inner_indices.push_back(cur_col);
       }
-      // Need to add entries for all the rows that are still missing
-      for (int64_t sz = static_cast<int64_t>(inner_indices.size()); row < rows; ++row) {
-        outer_indices.push_back(sz);
-      }
+      assert(input_indices.size() / 2 == inner_indices.size());
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid COO indices shape with ndim: ", input_indices_ndims);
     }
-    outer_indices.push_back(static_cast<int64_t>(inner_indices.size()));
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CSR indices only applicable to matrices. DenseShape: ", dense_shape.ToString());
+    // Need to add entries for all the rows that are still missing
+    for (int64_t sz = static_cast<int64_t>(inner_indices.size()); row < rows; ++row) {
+      outer_indices.push_back(sz);
+    }
+    assert(outer_indices.size() == static_cast<size_t>(rows) + 1);
   }
+
   return Status::OK();
 }
 
@@ -598,6 +603,24 @@ Status ConvertCsrIndicesToCooIndices(int64_t cols, gsl::span<const int64_t> inpu
   }
 
   return Status::OK();
+}
+
+void ScanForSparseMatches(const gsl::span<const int64_t>& a_indices,
+                          const gsl::span<const int64_t>& b_indices,
+                          std::function<void(size_t, size_t)> match_cb) {
+  size_t a_ind = 0, a_limit = a_indices.size();
+  size_t b_ind = 0, b_limit = b_indices.size();
+  while (a_ind < a_limit && b_ind < b_limit) {
+    auto a_v = a_indices[a_ind];
+    auto b_v = b_indices[b_ind];
+    if (a_v == b_v) {
+      match_cb(a_ind++, b_ind++);
+    } else if (a_v < b_v) {
+      ++a_ind;
+    } else {
+      ++b_ind;
+    }
+  }
 }
 
 }  // namespace sparse_utils
