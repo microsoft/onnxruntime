@@ -755,7 +755,6 @@ class GraphImpl implements Graph, Graph.Transformer {
         const next = this._allData[node.outputs[0]]._to;
         if (next.length === 1 && this.isActivation(this._nodes[next[0]])) {
           const child = this._nodes[next[0]];
-          node.attributes.set('__internal_activation', 'string', (child.opType));
           if (child.opType === 'Clip') {
             if (child.inputs.length === 1) {
               try {
@@ -765,13 +764,17 @@ class GraphImpl implements Graph, Graph.Transformer {
                 node.attributes.set('__clip_min', 'float', MIN_CLIP);
                 node.attributes.set('__clip_max', 'float', MAX_CLIP);
               }
-            } else if (child.inputs.length >= 3) {
+            } else if (
+                child.inputs.length >= 3 && this._allData[child.inputs[1]].tensor !== undefined &&
+                this._allData[child.inputs[2]].tensor !== undefined) {
               node.attributes.set('__clip_min', 'float', this._allData[child.inputs[1]].tensor!.floatData[0]);
               node.attributes.set('__clip_max', 'float', this._allData[child.inputs[2]].tensor!.floatData[0]);
             } else {
-              throw new Error('Cannot fuse Clip with Conv');
+              // Skip fusion with clip node since clip min and clip max are not coming from initializer
+              continue;
             }
           }
+          node.attributes.set('__internal_activation', 'string', (child.opType));
           this.deleteNode(next[0]);
         }
       }
