@@ -17,6 +17,7 @@ constexpr const char* kConvExhaustiveSearch = "conv_exhaustive_search";
 constexpr const char* kGpuExternalAlloc = "gpu_external_alloc";
 constexpr const char* kGpuExternalFree = "gpu_external_free";
 constexpr const char* kGpuExternalEmptyCache = "gpu_external_empty_cache";
+constexpr const char* kMiopenConvUseMaxWorkspace = "miopen_conv_use_max_workspace";
 }  // namespace provider_option_names
 }  // namespace rocm
 
@@ -71,9 +72,10 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
                     "Invalid device ID: ", info.device_id,
                     ", must be between 0 (inclusive) and ", num_devices, " (exclusive).");
                 return Status::OK();
-              }) 
+              })
           .AddAssignmentToReference(rocm::provider_option_names::kMemLimit, info.gpu_mem_limit)
           .AddAssignmentToReference(rocm::provider_option_names::kConvExhaustiveSearch, info.miopen_conv_exhaustive_search)
+          .AddAssignmentToReference(rocm::provider_option_names::kMiopenConvUseMaxWorkspace, info.miopen_conv_use_max_workspace)
           .AddAssignmentToEnumReference(
               rocm::provider_option_names::kArenaExtendStrategy,
               arena_extend_strategy_mapping, info.arena_extend_strategy)

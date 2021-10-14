@@ -916,6 +916,40 @@ def test_gradient_correctness_pool2d(pool_type):
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=5e-3, atol=4e-3)
 
+@pytest.mark.parametrize("pool_type", ['MaxPool', 'AvgPool'])
+@pytest.mark.parametrize("stride", [None, 2])
+def test_export_correctness_pool2d(pool_type, stride):
+    class NeuralNetPool2d(torch.nn.Module):
+        def __init__(self):
+            super(NeuralNetPool2d, self).__init__()
+            self.conv = torch.nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
+            self.pool_type = pool_type
+            
+
+        def forward(self, input):
+            x = self.conv(input)
+            if pool_type == 'MaxPool':
+                output = torch.nn.functional.max_pool2d(x, kernel_size=3, stride=stride)
+            elif pool_type == 'AvgPool':
+                output = torch.nn.functional.avg_pool2d(x, kernel_size=3, stride=stride)
+            return output
+
+    N, C, H, W = 8, 3, 224, 224
+    device = 'cuda'
+    pt_model = NeuralNetPool2d().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input):
+        prediction = model(input)
+        return prediction
+
+    for _ in range(10):
+        input = torch.randn(N, C, H, W, device=device)
+        pt_prediction = run_step(pt_model, input)
+        ort_prediction = run_step(ort_model, input)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+
 def test_gradient_correctness_argmax_unfold():
     class NeuralNetUnfold(torch.nn.Module):
         def __init__(self, input_size, hidden_size, unfold_dim, unfold_size, unfold_step):
@@ -4107,3 +4141,37 @@ def test_ortmodule_fused_adam_optimizer_correctness():
 
             for pt_param, ort_param in zip(pt_model.parameters(), ort_model.parameters()):
                 _test_helpers.assert_values_are_close(pt_param, ort_param)
+
+
+def test_sigmoid_grad():
+    class NeuralNetSigmoid(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(NeuralNetSigmoid, self).__init__()
+
+            self.fc1 = torch.nn.Linear(input_size, hidden_size)
+            self.sigmoid = torch.nn.Sigmoid()
+
+        def forward(self, input1):
+            out = self.fc1(input1)
+            out = self.sigmoid(out)
+            return out
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, loss
+    device = 'cuda'
+
+    N, D_in, H, D_out = 120, 15360, 500, 15360
+    pt_model = NeuralNetSigmoid(D_in, H, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    for step in range(1000):
+        pt_x = torch.randn(N, D_in, device=device, requires_grad=True)
+        ort_x = copy.deepcopy(pt_x)
+        ort_prediction, ort_loss = run_step(ort_model, ort_x)
+        pt_prediction, pt_loss = run_step(pt_model, pt_x)
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_values_are_close(ort_x.grad, pt_x.grad)
+        _test_helpers.assert_values_are_close(ort_loss, pt_loss)

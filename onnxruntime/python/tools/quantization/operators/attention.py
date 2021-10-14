@@ -20,6 +20,13 @@ class AttentionQuant(QuantOperatorBase):
         node = self.node
         assert (node.op_type == "Attention")
 
+        # TODO This is a temporary fix to stop exporting QAttention with qkv_hidden_sizes
+        # attribute. This needs to be removed once the QAttention for varied q,k,v sizes
+        # is implemented
+        for attr in node.attribute:
+            if 'qkv_hidden_sizes' == attr.name:
+                return super().quantize()
+
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
             self.quantizer.quantize_inputs(node, [0, 1], reduce_range=True, op_level_per_channel=True)
         if quantized_input_names is None:

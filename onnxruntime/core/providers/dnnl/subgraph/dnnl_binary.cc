@@ -23,8 +23,8 @@ void DnnlBinary::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     ORT_THROW("op type not supported");
   }
 
-  auto src_0_ori_md = sp.GetMemory(node.Input(IN_A).Name()).get_desc();
-  auto src_1_ori_md = sp.GetMemory(node.Input(IN_B).Name()).get_desc();
+  auto src_0_ori_md = sp.GetMemory(node.Input(IN_A)).get_desc();
+  auto src_1_ori_md = sp.GetMemory(node.Input(IN_B)).get_desc();
 
   auto src_0_dims = src_0_ori_md.dims();
   auto src_1_dims = src_1_ori_md.dims();

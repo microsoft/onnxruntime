@@ -120,7 +120,7 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(
       std::make_unique<RuleBasedGraphTransformer>(GenerateRuleBasedTransformerName(level),
                                                   compatible_execution_providers);
   for (auto& entry : rewrite_rules_to_register) {
-    rule_transformer->Register(std::move(entry));
+    ORT_THROW_IF_ERROR(rule_transformer->Register(std::move(entry)));
   }
 
   return rule_transformer;
