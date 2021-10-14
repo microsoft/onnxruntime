@@ -27,16 +27,24 @@ REGISTER_KERNEL_TYPED(float)
 EmbedLayerNormBase::EmbedLayerNormBase(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
   ORT_ENFORCE(epsilon_ >= 0);
+
+  int64_t add_output;
+  add_output_ = op_kernel_info.GetAttr<int64_t>("add_output_", &add_output).IsOK();
 }
 
 float EmbedLayerNormBase::epsilon() const {
   return epsilon_;
 }
 
+inline bool EmbedLayerNormBase::is_add_output() const {
+  return add_output_;
+}
+
 template <typename T>
 EmbedLayerNorm<T>::EmbedLayerNorm(const OpKernelInfo& op_kernel_info)
     : EmbedLayerNormBase(op_kernel_info) {
 }
+
 
 template <typename T>
 Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
@@ -58,6 +66,13 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
 
   TensorShape mask_index_shape({input_dims[0]});
   Tensor* mask_index = context->Output(1, mask_index_shape);
+
+  Tensor* add_output = nullptr;
+  T* add_output_data = nullptr;
+  if (is_add_output()) {
+    add_output = context->Output(2, output_shape);
+    add_output_data = add_output->template MutableData<T>();
+  }
 
   int batch_size = static_cast<int>(input_dims[0]);
   int sequence_length = static_cast<int>(input_dims[1]);
@@ -101,6 +116,10 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
       }
 
       T* y = output_data + index * hidden_size;
+      T* y1 = nullptr;
+      if (is_add_output()) {
+        y1 = add_output_data + index * hidden_size;
+      }
       const T* input_word_embedding = word_embedding_data + word_col_index * hidden_size;
       const T* input_position_embedding = position_embedding_data + position_col_index * hidden_size;
       const T* input_segment_embedding = (nullptr == segment_embedding_data) ? nullptr : segment_embedding_data + segment_col_index * hidden_size;
@@ -111,6 +130,9 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
         if (nullptr != segment_embedding_data)
           subtotal += input_segment_embedding[i];
         y[i] = subtotal;
+        if (is_add_output()) {
+          y1[i] = subtotal;
+        }
         sum += subtotal;
       }
       T mean = sum / hidden_size;

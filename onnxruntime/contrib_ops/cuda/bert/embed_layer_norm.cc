@@ -32,8 +32,7 @@ EmbedLayerNorm<T>::EmbedLayerNorm(const OpKernelInfo& op_kernel_info) : CudaKern
   ORT_ENFORCE(epsilon_ >= 0);
 
   int64_t add_output;
-  ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("add_output", &add_output).IsOK());
-  add_output_ = add_output == 1 ? true : false;
+  add_output_ = op_kernel_info.GetAttr<int64_t>("add_output", &add_output).IsOK();
 }
 
 template <typename T>
@@ -89,25 +88,6 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
     CUDA_CALL(cudaGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);
   }
-
-  const auto* output_data = output->Data<T>();
-  const auto* add_output_data = add_output_ ? add_output->Data<T>() : nullptr;
-
-  const float num = 0.0;
-
-  /*
-  for (int b = 0; b < input_dims[0]; b++) {
-    for (int s = 0; s < input_dims[1]; s++) {
-      for (int hi = 0; hi < hidden_size; hi++) {
-        
-        //std::cout << "{" << output_data[b * input_dims[0] + s * input_dims[1] + hi] << "," 
-          //<< ((add_output_data != nullptr) ? add_output_data[b * input_dims[0] + s * input_dims[1] + hi] : num)
-          //<< "},";
-      }
-      std::cout << std::endl;
-      }
-  }
-  */
 
   return Status::OK();
 }

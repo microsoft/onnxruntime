@@ -9,6 +9,7 @@ namespace cuda {
 bool LaunchEmbedLayerNormKernel(cudaStream_t stream,
                                 void* output,                     // output tensor
                                 void* mask_index,                 // output mask index
+                                void* add_output,                 // output add 
                                 const int* input_ids,             // input word IDs
                                 const int* segment_ids,           // input segment IDs
                                 const int* input_mask,            // input mask
