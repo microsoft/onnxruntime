@@ -958,7 +958,7 @@ TEST(TransposeOptimizerTests, TestReduceSumNoAxesInput_2) {
 TEST(TransposeOptimizerTests, TestReduceSumNonconstKeepdimsTrue) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<float>(builder, {{-1, 4, -1, 5}}, {2, 4, 6, 5}, 0.0, 1.0);
-    auto* input1_arg = MakeInput<int64_t>(builder, {{}}, {}, {-1});
+    auto* input1_arg = MakeInput<int64_t>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {-1});
     auto* const_1 = builder.MakeInitializer<int64_t>({2}, {0, -1});
     auto* transpose_1_out_0 = builder.MakeIntermediate();
     auto* add_1_out_0 = builder.MakeIntermediate();
@@ -986,7 +986,7 @@ TEST(TransposeOptimizerTests, TestReduceSumNonconstKeepdimsTrue) {
 TEST(TransposeOptimizerTests, TestReduceSumNonconstKeepdimsFalse) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<float>(builder, {{-1, 4, -1, 5}}, {2, 4, 6, 5}, 0.0, 1.0);
-    auto* input1_arg = MakeInput<int64_t>(builder, {{}}, {}, {-1});
+    auto* input1_arg = MakeInput<int64_t>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {-1});
     auto* const_1 = builder.MakeInitializer<int64_t>({2}, {0, -1});
     auto* transpose_1_out_0 = builder.MakeIntermediate();
     auto* add_1_out_0 = builder.MakeIntermediate();
