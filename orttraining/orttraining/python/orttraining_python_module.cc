@@ -26,7 +26,8 @@ const CUDAExecutionProviderInfo GetCudaExecutionProviderInfo(ProviderInfo_CUDA* 
 #endif
 
 #ifdef USE_ROCM
-const ROCMExecutionProviderInfo GetROCMExecutionProviderInfo(const ProviderOptionsMap& provider_options_map);
+const ROCMExecutionProviderInfo GetRocmExecutionProviderInfo(ProviderInfo_ROCM* rocm_provider_info,
+                                                             const ProviderOptionsMap& provider_options_map);
 #endif
 
 void addGlobalMethods(py::module& m, Environment& env);
@@ -89,14 +90,17 @@ bool GetProviderInstanceHash(const std::string& type,
   }
   else if (type == kRocmExecutionProvider){
 #ifdef USE_ROCM
-    const ROCMExecutionProviderInfo info = GetROCMExecutionProviderInfo(provider_options_map);
+  if(auto* rocm_provider_info = TryGetProviderInfo_ROCM()){
+    const ROCMExecutionProviderInfo info = GetRocmExecutionProviderInfo(rocm_provider_info,
+                                                                        provider_options_map);
     hash = static_cast<size_t>(info.device_id) ^
-           info.gpu_mem_limit ^
+           info. gpu_mem_limit ^
            (static_cast<size_t>(info.arena_extend_strategy) << 16) ^
            (static_cast<size_t>(info.miopen_conv_exhaustive_search) << 18) ^
            (static_cast<size_t>(info.do_copy_in_default_stream) << 20) ^
            (static_cast<size_t>(info.has_user_compute_stream) << 22);
     return true;
+  }
 #endif
   }
   else{

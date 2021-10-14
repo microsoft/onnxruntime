@@ -1,12 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/rocm/reduction/reduction_ops.h"
-
-#include "core/framework/data_types_internal.h"
-#include "core/framework/op_kernel_context_internal.h"
-#include "core/providers/common.h"
+#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cpu/tensor/utils.h"
+#include "core/providers/rocm/reduction/reduction_ops.h"
 #include "core/providers/rocm/miopen_common.h"
 #include "core/providers/rocm/math/binary_elementwise_ops_impl.h"
 #include "core/providers/rocm/math/binary_elementwise_ops.h"
@@ -17,113 +14,138 @@ namespace onnxruntime {
 namespace rocm {
 
 // opset 11 explicitly added support for negative axis. implementation already allowed it.
-#define REGISTER_KERNEL_TYPED(name, T)                                          \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      1, 10,                                                                    \
-      T,                                                                        \
-      kRocmExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                 \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      11, 12,                                                                   \
-      T,                                                                        \
-      kRocmExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                 \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      13,                                                                       \
-      T,                                                                        \
-      kRocmExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define REGISTER_KERNEL_TYPED(name, T)                                                     \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      1, 10,                                                                               \
+      T,                                                                                   \
+      kRocmExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                            \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      11, 12,                                                                              \
+      T,                                                                                   \
+      kRocmExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                            \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      13,                                                                                  \
+      T,                                                                                   \
+      kRocmExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);
+
+#define REGISTER_KERNEL_VERSIONED_TYPED_12(name, T)                                        \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      1, 10,                                                                               \
+      T,                                                                                   \
+      kRocmExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                            \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      11, 11,                                                                              \
+      T,                                                                                   \
+      kRocmExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                            \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      12, 12,                                                                              \
+      T,                                                                                   \
+      kRocmExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 
 // Register those with changes in OpSet12.
-#define REGISTER_KERNEL_TYPED_12(name, T)                                       \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      1, 10,                                                                    \
-      T,                                                                        \
-      kRocmExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                 \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      11, 11,                                                                   \
-      T,                                                                        \
-      kRocmExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                 \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      12, 12,                                                                   \
-      T,                                                                        \
-      kRocmExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                 \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      13,                                                                       \
-      T,                                                                        \
-      kRocmExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(name, T)                                \
+  REGISTER_KERNEL_VERSIONED_TYPED_12(name, T)                                              \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      13,                                                                                  \
+      T,                                                                                   \
+      kRocmExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);
+
+#define REGISTER_KERNEL_VERSIONED_TYPED_13(name, T)                                        \
+  REGISTER_KERNEL_VERSIONED_TYPED_12(name, T)                                              \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      13, 13,                                                                              \
+      T,                                                                                   \
+      kRocmExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);
+
+// Register ReduceMin int64_t support in OpSet14.
+#define REGISTER_KERNEL_TYPED_14(name, T)                                                  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      14,                                                                                  \
+      T,                                                                                   \
+      kRocmExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 
 // ROCM ArgMax/ArgMin doesn't have OpSet12 implementation (with select_last_index attr), keep it in OpSet11 for now.
-#define REGISTER_KERNEL_TYPED_11(name, T)                                       \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      1, 10,                                                                    \
-      T,                                                                        \
-      kRocmExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                 \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      11,                                                                       \
-      T,                                                                        \
-      kRocmExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define REGISTER_KERNEL_TYPED_11(name, T)                                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      1, 10,                                                                               \
+      T,                                                                                   \
+      kRocmExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                            \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      11,                                                                                  \
+      T,                                                                                   \
+      kRocmExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 
 // Register with the latest version 13
-#define REGISTER_KERNEL_TYPED_13(name, T)                                       \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      1, 10,                                                                    \
-      T,                                                                        \
-      kRocmExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                 \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      11, 12,                                                                   \
-      T,                                                                        \
-      kRocmExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                 \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      13,                                                                       \
-      T,                                                                        \
-      kRocmExecutionProvider,                                                   \
-      KernelDefBuilder()                                                        \
-          .InputMemoryType(OrtMemTypeCPUInput, 1)                               \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),               \
+#define REGISTER_KERNEL_TYPED_13(name, T)                                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      1, 10,                                                                               \
+      T,                                                                                   \
+      kRocmExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                            \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      11, 12,                                                                              \
+      T,                                                                                   \
+      kRocmExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                            \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      13,                                                                                  \
+      T,                                                                                   \
+      kRocmExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create())                                                        \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),                          \
       name<T>);
 
 // TODO ReduceKernel::ReduceKernelShared() is still used by some other training classes though it's not used here - this should be refactored.
@@ -211,8 +233,7 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
       input_data_buffer = GetScratchBuffer<T>(input_count);
       input_data = reinterpret_cast<HipT*>(input_data_buffer.get());
       fast_divmod tmp_div;
-      Impl_Mul<HipT>(Stream(),
-                     static_cast<int32_t>(SimpleBroadcast::NoBroadcast), nullptr,
+      Impl_Mul<HipT>(Stream(), static_cast<int32_t>(SimpleBroadcast::NoBroadcast), nullptr,
                      reinterpret_cast<const HipT*>(X), nullptr,
                      reinterpret_cast<const HipT*>(X), nullptr,
                      tmp_div, tmp_div,
@@ -247,8 +268,7 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
                      prepare.fdm_H, prepare.fdm_C,
                      reinterpret_cast<HipT*>(exp_result), input_count);
 
-      Impl_Exp<HipT>(Stream(),
-                     reinterpret_cast<HipT*>(exp_result),
+      Impl_Exp<HipT>(Stream(), reinterpret_cast<HipT*>(exp_result),
                      reinterpret_cast<HipT*>(exp_result),
                      input_count);
 
@@ -259,15 +279,13 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
           &zero, output_tensor, reinterpret_cast<HipT*>(log_sum_result)));
 
       // Log(Sum)
-      Impl_Log<HipT>(Stream(),
-                     reinterpret_cast<HipT*>(log_sum_result),
+      Impl_Log<HipT>(Stream(), reinterpret_cast<HipT*>(log_sum_result),
                      reinterpret_cast<HipT*>(log_sum_result),
                      output_count);
 
       // Log + ReduceMax
       fast_divmod tmp_div;
-      Impl_Add<HipT>(Stream(),
-                     static_cast<int32_t>(SimpleBroadcast::NoBroadcast), nullptr,
+      Impl_Add<HipT>(Stream(), static_cast<int32_t>(SimpleBroadcast::NoBroadcast), nullptr,
                      reinterpret_cast<HipT*>(log_sum_result), nullptr,
                      reinterpret_cast<HipT*>(Y), nullptr,
                      tmp_div, tmp_div,
@@ -313,8 +331,7 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
   }
 
   if (calculate_log_) {
-    Impl_Log<HipT>(Stream(),
-                   reinterpret_cast<HipT*>(Y),
+    Impl_Log<HipT>(Stream(), reinterpret_cast<HipT*>(Y),
                    reinterpret_cast<HipT*>(Y),
                    output_count);
   }
@@ -603,15 +620,13 @@ Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, Pr
       }
 
       // Log(Sum)
-      Impl_Log<HipT>(stream,
-                     reinterpret_cast<HipT*>(log_sum_result),
+      Impl_Log<HipT>(stream, reinterpret_cast<HipT*>(log_sum_result),
                      reinterpret_cast<HipT*>(log_sum_result),
                      output_count);
 
       // Log + ReduceMax
       fast_divmod tmp_div;
-      Impl_Add<HipT>(stream,
-                     static_cast<int32_t>(SimpleBroadcast::NoBroadcast), nullptr,
+      Impl_Add<HipT>(stream, static_cast<int32_t>(SimpleBroadcast::NoBroadcast), nullptr,
                      reinterpret_cast<HipT*>(log_sum_result), nullptr,
                      reinterpret_cast<HipT*>(output.template MutableData<T>()), nullptr,
                      tmp_div, tmp_div,
@@ -721,88 +736,88 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, miopenR
                                                    calculate_log_, calculate_sqt_, log_sum_exp_, fast_reduction);
 }
 
-#define SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(T)                                                                              \
-  template <>                                                                                                                \
-  template <>                                                                                                                \
-  Status ReduceKernel<true>::ComputeImpl<T, MIOPEN_REDUCE_TENSOR_NO_INDICES>(                                                \
-      OpKernelContext * ctx, miopenReduceTensorOp_t miopen_reduce_op) const {                                                \
-    typedef typename ToHipType<T>::MappedType HipT;                                                                          \
-    const Tensor* X = ctx->Input<Tensor>(0);                                                                                 \
-    std::vector<int64_t> axes;                                                                                               \
-    size_t num_inputs = ctx->InputCount();                                                                                   \
-    if (num_inputs == 2) {                                                                                                   \
-      const Tensor* axes_tensor = ctx->Input<Tensor>(1);                                                                     \
-      ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");                                                             \
-      ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1, "An axes tensor must be a vector tensor.");                     \
-      auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);                                                             \
-      const auto* data = axes_tensor->template Data<int64_t>();                                                              \
-      axes.assign(data, data + nDims);                                                                                       \
-    } else {                                                                                                                 \
-      axes.assign(axes_.begin(), axes_.end());                                                                               \
-    }                                                                                                                        \
-                                                                                                                             \
-    if (axes.empty() && noop_with_empty_axes_) {                                                                             \
-      auto* Y = ctx->Output(0, X->Shape());                                                                                  \
-      HIP_RETURN_IF_ERROR(hipMemcpyAsync(Y->template MutableData<T>(), X->template Data<T>(), X->SizeInBytes(),              \
-                                         hipMemcpyDeviceToDevice, Stream()));                                                \
-      return Status::OK();                                                                                                   \
-    }                                                                                                                        \
-                                                                                                                             \
-    PrepareReduceMetadata prepare_reduce_metadata;                                                                           \
-    ORT_RETURN_IF_ERROR(PrepareForReduce(X, keepdims_, axes, prepare_reduce_metadata));                                      \
-                                                                                                                             \
-    Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);                                                \
-                                                                                                                             \
-    int64_t input_count = prepare_reduce_metadata.input_count;                                                               \
-    int64_t output_count = prepare_reduce_metadata.output_count;                                                             \
-    std::vector<int64_t>& input_dims_miopen = prepare_reduce_metadata.input_dims_miopen;                                     \
-    std::vector<int64_t>& output_dims_miopen = prepare_reduce_metadata.output_dims_miopen;                                   \
-                                                                                                                             \
-    if (input_count == 0) {                                                                                                  \
-      assert(Y->Shape().Size() == 0);                                                                                        \
-      return Status::OK();                                                                                                   \
-    }                                                                                                                        \
-                                                                                                                             \
-    if (input_count == output_count) {                                                                                       \
-      if (Y->template MutableData<T>() != X->template Data<T>()) {                                                           \
-        HIP_RETURN_IF_ERROR(hipMemcpyAsync(Y->template MutableData<T>(), X->template Data<T>(),                              \
-                                           input_count * sizeof(T), hipMemcpyDeviceToDevice, Stream()));                     \
-      }                                                                                                                      \
-      return Status::OK();                                                                                                   \
-    }                                                                                                                        \
-                                                                                                                             \
-    HIP_RETURN_IF_ERROR(hipMemsetAsync(Y->MutableDataRaw(), 0, Y->SizeInBytes(), Stream()));                                 \
-                                                                                                                             \
-    size_t indices_bytes = 0;                                                                                                \
-    size_t workspace_bytes = 0;                                                                                              \
-    MiopenTensor input_tensor;                                                                                               \
-    MiopenTensor output_tensor;                                                                                              \
-    MiopenReduceDescriptor reduce_desc;                                                                                      \
-                                                                                                                             \
-    miopenDataType_t miopen_type_X = miopenFloat;                                                                            \
-    IAllocatorUniquePtr<float> temp_X = GetScratchBuffer<float>(input_count);                                                \
-    Impl_Cast<HipT, float>(Stream(), reinterpret_cast<const HipT*>(X->template Data<T>()), temp_X.get(), X->Shape().Size()); \
-                                                                                                                             \
-    ORT_RETURN_IF_ERROR(reduce_desc.Set(miopen_reduce_op, miopen_type_X, MIOPEN_REDUCE_TENSOR_NO_INDICES));                  \
-    ORT_RETURN_IF_ERROR(input_tensor.Set(input_dims_miopen, miopen_type_X));                                                 \
-    ORT_RETURN_IF_ERROR(output_tensor.Set(output_dims_miopen, miopen_type_X));                                               \
-    MIOPEN_RETURN_IF_ERROR(                                                                                                  \
-        miopenGetReductionIndicesSize(MiopenHandle(), reduce_desc, input_tensor, output_tensor, &indices_bytes));            \
-    MIOPEN_RETURN_IF_ERROR(                                                                                                  \
-        miopenGetReductionWorkspaceSize(MiopenHandle(), reduce_desc, input_tensor, output_tensor, &workspace_bytes));        \
-    IAllocatorUniquePtr<uint32_t> indices_rocm = GetScratchBuffer<uint32_t>(indices_bytes);                                  \
-    IAllocatorUniquePtr<HipT> workspace_rocm = GetScratchBuffer<HipT>(workspace_bytes);                                      \
-                                                                                                                             \
-    const auto one = Consts<float>::One;                                                                                     \
-    const auto zero = Consts<float>::Zero;                                                                                   \
-    auto temp_Y = GetScratchBuffer<float>(output_count);                                                                     \
-    MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(MiopenHandle(), reduce_desc, indices_rocm.get(), indices_bytes,                \
-                                              workspace_rocm.get(), workspace_bytes, &one, input_tensor, temp_X.get(),       \
-                                              &zero, output_tensor, temp_Y.get()));                                          \
-                                                                                                                             \
-    Impl_Cast<float, HipT>(Stream(), temp_Y.get(), reinterpret_cast<HipT*>(Y->template MutableData<T>()), output_count);     \
-                                                                                                                             \
-    return Status::OK();                                                                                                     \
+#define SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(T)                                                                                \
+  template <>                                                                                                                  \
+  template <>                                                                                                                  \
+  Status ReduceKernel<true>::ComputeImpl<T, MIOPEN_REDUCE_TENSOR_NO_INDICES>(                                                  \
+      OpKernelContext * ctx, miopenReduceTensorOp_t miopen_reduce_op) const {                                                  \
+    typedef typename ToHipType<T>::MappedType HipT;                                                                            \
+    const Tensor* X = ctx->Input<Tensor>(0);                                                                                   \
+    std::vector<int64_t> axes;                                                                                                 \
+    size_t num_inputs = ctx->InputCount();                                                                                     \
+    if (num_inputs == 2) {                                                                                                     \
+      const Tensor* axes_tensor = ctx->Input<Tensor>(1);                                                                       \
+      ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");                                                               \
+      ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1, "An axes tensor must be a vector tensor.");                       \
+      auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);                                                               \
+      const auto* data = axes_tensor->template Data<int64_t>();                                                                \
+      axes.assign(data, data + nDims);                                                                                         \
+    } else {                                                                                                                   \
+      axes.assign(axes_.begin(), axes_.end());                                                                                 \
+    }                                                                                                                          \
+                                                                                                                               \
+    if (axes.empty() && noop_with_empty_axes_) {                                                                               \
+      auto* Y = ctx->Output(0, X->Shape());                                                                                    \
+      HIP_RETURN_IF_ERROR(hipMemcpyAsync(Y->template MutableData<T>(), X->template Data<T>(), X->SizeInBytes(),                \
+                                         hipMemcpyDeviceToDevice, Stream()));                                                  \
+      return Status::OK();                                                                                                     \
+    }                                                                                                                          \
+                                                                                                                               \
+    PrepareReduceMetadata prepare_reduce_metadata;                                                                             \
+    ORT_RETURN_IF_ERROR(PrepareForReduce(X, keepdims_, axes, prepare_reduce_metadata));                                        \
+                                                                                                                               \
+    Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);                                                  \
+                                                                                                                               \
+    int64_t input_count = prepare_reduce_metadata.input_count;                                                                 \
+    int64_t output_count = prepare_reduce_metadata.output_count;                                                               \
+    std::vector<int64_t>& input_dims_miopen = prepare_reduce_metadata.input_dims_miopen;                                       \
+    std::vector<int64_t>& output_dims_miopen = prepare_reduce_metadata.output_dims_miopen;                                     \
+                                                                                                                               \
+    if (input_count == 0) {                                                                                                    \
+      assert(Y->Shape().Size() == 0);                                                                                          \
+      return Status::OK();                                                                                                     \
+    }                                                                                                                          \
+                                                                                                                               \
+    if (input_count == output_count) {                                                                                         \
+      if (Y->template MutableData<T>() != X->template Data<T>()) {                                                             \
+        HIP_RETURN_IF_ERROR(hipMemcpyAsync(Y->template MutableData<T>(), X->template Data<T>(),                                \
+                                           input_count * sizeof(T), hipMemcpyDeviceToDevice, Stream()));                       \
+      }                                                                                                                        \
+      return Status::OK();                                                                                                     \
+    }                                                                                                                          \
+                                                                                                                               \
+    HIP_RETURN_IF_ERROR(hipMemsetAsync(Y->MutableDataRaw(), 0, Y->SizeInBytes(), Stream()));                                   \
+                                                                                                                               \
+    size_t indices_bytes = 0;                                                                                                  \
+    size_t workspace_bytes = 0;                                                                                                \
+    MiopenTensor input_tensor;                                                                                                 \
+    MiopenTensor output_tensor;                                                                                                \
+    MiopenReduceDescriptor reduce_desc;                                                                                        \
+                                                                                                                               \
+    miopenDataType_t miopen_type_X = miopenFloat;                                                                              \
+    IAllocatorUniquePtr<float> temp_X = GetScratchBuffer<float>(input_count);                                                  \
+    Impl_Cast<HipT, float>(Stream(), reinterpret_cast<const HipT*>(X->template Data<T>()), temp_X.get(), X->Shape().Size());   \
+                                                                                                                               \
+    ORT_RETURN_IF_ERROR(reduce_desc.Set(miopen_reduce_op, miopen_type_X, MIOPEN_REDUCE_TENSOR_NO_INDICES));                    \
+    ORT_RETURN_IF_ERROR(input_tensor.Set(input_dims_miopen, miopen_type_X));                                                   \
+    ORT_RETURN_IF_ERROR(output_tensor.Set(output_dims_miopen, miopen_type_X));                                                 \
+    MIOPEN_RETURN_IF_ERROR(                                                                                                    \
+        miopenGetReductionIndicesSize(MiopenHandle(), reduce_desc, input_tensor, output_tensor, &indices_bytes));              \
+    MIOPEN_RETURN_IF_ERROR(                                                                                                    \
+        miopenGetReductionWorkspaceSize(MiopenHandle(), reduce_desc, input_tensor, output_tensor, &workspace_bytes));          \
+    IAllocatorUniquePtr<uint32_t> indices_rocm = GetScratchBuffer<uint32_t>(indices_bytes);                                    \
+    IAllocatorUniquePtr<HipT> workspace_rocm = GetScratchBuffer<HipT>(workspace_bytes);                                        \
+                                                                                                                               \
+    const auto one = Consts<float>::One;                                                                                       \
+    const auto zero = Consts<float>::Zero;                                                                                     \
+    auto temp_Y = GetScratchBuffer<float>(output_count);                                                                       \
+    MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(MiopenHandle(), reduce_desc, indices_rocm.get(), indices_bytes,                  \
+                                              workspace_rocm.get(), workspace_bytes, &one, input_tensor, temp_X.get(),         \
+                                              &zero, output_tensor, temp_Y.get()));                                            \
+                                                                                                                               \
+    Impl_Cast<float, HipT>(Stream(), temp_Y.get(), reinterpret_cast<HipT*>(Y->template MutableData<T>()), output_count);       \
+                                                                                                                               \
+    return Status::OK();                                                                                                       \
   }
 
 SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(int32_t)
@@ -813,10 +828,10 @@ SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(uint8_t)
 namespace ReductionOps {
 
 template <typename T, miopenReduceTensorIndices_t ReduceTensorIndices>
-Tensor ReduceCompute(ROCMExecutionProvider& rocm_ep, miopenReduceTensorOp_t miopen_reduce_op, AllocatorPtr allocator,
-                     const Tensor& input, const std::vector<int64_t>& axes,
-                     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
-                     bool fast_reduction, const TensorShape* input_shape_override) {
+std::unique_ptr<Tensor> ReduceCompute(ROCMExecutionProvider& rocm_ep, miopenReduceTensorOp_t miopen_reduce_op, AllocatorPtr allocator,
+                                      const Tensor& input, const std::vector<int64_t>& axes,
+                                      bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
+                                      bool fast_reduction, const TensorShape* input_shape_override) {
   PrepareReduceMetadata prepare_reduce_metadata;
   auto status = PrepareForReduce(&input,
                                  keep_dims,
@@ -828,9 +843,9 @@ Tensor ReduceCompute(ROCMExecutionProvider& rocm_ep, miopenReduceTensorOp_t miop
     ORT_THROW(ONNXRUNTIME, FAIL, "Failed to perform reduce op: ", status.ErrorMessage());
   }
 
-  Tensor output(input.DataType(), prepare_reduce_metadata.squeezed_output_dims, allocator);
+  auto output = Tensor::Create(input.DataType(), prepare_reduce_metadata.squeezed_output_dims, allocator);
 
-  status = ReduceComputeCore<T, ReduceTensorIndices>(rocm_ep, input, prepare_reduce_metadata, output, miopen_reduce_op, axes,
+  status = ReduceComputeCore<T, ReduceTensorIndices>(rocm_ep, input, prepare_reduce_metadata, *output, miopen_reduce_op, axes,
                                                      calculate_log, calculate_sqt, log_sum_exp, fast_reduction, input_shape_override);
 
   if (!status.IsOK()) {
@@ -842,21 +857,21 @@ Tensor ReduceCompute(ROCMExecutionProvider& rocm_ep, miopenReduceTensorOp_t miop
 
 // Explicit template instantiation (needed to be used in einsum_auxiliary_ops.cc)
 
-template Tensor ReduceCompute<float, MIOPEN_REDUCE_TENSOR_NO_INDICES>(
+template std::unique_ptr<Tensor> ReduceCompute<float, MIOPEN_REDUCE_TENSOR_NO_INDICES>(
     ROCMExecutionProvider& rocm_ep, miopenReduceTensorOp_t miopen_reduce_op,
     AllocatorPtr allocator,
     const Tensor& input, const std::vector<int64_t>& axes,
     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
     bool fast_reduction, const TensorShape* input_shape_override);
 
-// template Tensor ReduceCompute<double, MIOPEN_REDUCE_TENSOR_NO_INDICES>(
+// template std::unique_ptr<Tensor> ReduceCompute<double, MIOPEN_REDUCE_TENSOR_NO_INDICES>(
 //     ROCMExecutionProvider& rocm_ep, miopenReduceTensorOp_t miopen_reduce_op,
 //     AllocatorPtr allocator,
 //     const Tensor& input, const std::vector<int64_t>& axes,
 //     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
 //     bool fast_reduction, const TensorShape* input_shape_override);
 
-template Tensor ReduceCompute<MLFloat16, MIOPEN_REDUCE_TENSOR_NO_INDICES>(
+template std::unique_ptr<Tensor> ReduceCompute<MLFloat16, MIOPEN_REDUCE_TENSOR_NO_INDICES>(
     ROCMExecutionProvider& rocm_ep, miopenReduceTensorOp_t miopen_reduce_op,
     AllocatorPtr allocator,
     const Tensor& input, const std::vector<int64_t>& axes,
@@ -880,22 +895,31 @@ REGISTER_KERNEL_HFD_11(ArgMin)
 REGISTER_KERNEL_HFD(ReduceL1)
 REGISTER_KERNEL_HFD(ReduceL2)
 
-REGISTER_KERNEL_TYPED_12(ReduceMax, MLFloat16)
-REGISTER_KERNEL_TYPED_12(ReduceMax, float)
-// REGISTER_KERNEL_TYPED_12(ReduceMax, double)
-REGISTER_KERNEL_TYPED_12(ReduceMax, int32_t)
-REGISTER_KERNEL_TYPED_12(ReduceMax, int64_t)
-REGISTER_KERNEL_TYPED_12(ReduceMax, int8_t)
-REGISTER_KERNEL_TYPED_12(ReduceMax, uint8_t)
+REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, MLFloat16)
+REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, float)
+// REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, double)
+REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, int32_t)
+REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, int64_t)
+REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, int8_t)
+REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, uint8_t)
 
 REGISTER_KERNEL_HFD(ReduceMean)
 
-REGISTER_KERNEL_TYPED_12(ReduceMin, MLFloat16)
-REGISTER_KERNEL_TYPED_12(ReduceMin, float)
-// REGISTER_KERNEL_TYPED_12(ReduceMin, double)
-REGISTER_KERNEL_TYPED_12(ReduceMin, int32_t)
-REGISTER_KERNEL_TYPED_12(ReduceMin, int8_t)
-REGISTER_KERNEL_TYPED_12(ReduceMin, uint8_t)
+REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, MLFloat16)
+REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, float)
+// REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, double)
+REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, int32_t)
+REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, int64_t)
+REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, int8_t)
+REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, uint8_t)
+
+REGISTER_KERNEL_TYPED_14(ReduceMin, MLFloat16)
+REGISTER_KERNEL_TYPED_14(ReduceMin, float)
+//REGISTER_KERNEL_TYPED_14(ReduceMin, double)
+REGISTER_KERNEL_TYPED_14(ReduceMin, int32_t)
+REGISTER_KERNEL_TYPED_14(ReduceMin, int8_t)
+REGISTER_KERNEL_TYPED_14(ReduceMin, uint8_t)
+REGISTER_KERNEL_TYPED_14(ReduceMin, int64_t)
 
 REGISTER_KERNEL_HFD(ReduceProd)
 

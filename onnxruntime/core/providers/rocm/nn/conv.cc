@@ -76,7 +76,7 @@ Status SliceOutUnwantedOutputSection(hipStream_t stream,
                                      size_t element_size) {
   SliceOp::PrepareForComputeMetadata compute_metadata(input_dims);
 
-  SliceBase::PrepareForCompute(starts, ends, axes, compute_metadata);
+  ORT_THROW_IF_ERROR(SliceBase::PrepareForCompute(starts, ends, axes, compute_metadata));
 
   // As a sanity check, ensure that the slice operator's output shape matches with the expected output shape
   ORT_ENFORCE(compute_metadata.output_dims_ == output_dims);
@@ -304,8 +304,9 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
   // To deal with asymmetric padding, we may have over-padded on one or both sides of the spatial dimensions
   // This may have lead to extra results that are unnecessary and hence we slice that off here
   if (s_.post_slicing_required) {
-    SliceOutUnwantedOutputSection(Stream(), s_.y_data, s_.y_dims_with_adjusted_pads, s_.Y->MutableDataRaw(),
-                                  s_.y_dims, s_.slice_starts, s_.slice_ends, s_.slice_axes, s_.element_size);
+    ORT_RETURN_IF_ERROR(SliceOutUnwantedOutputSection(Stream(), s_.y_data, s_.y_dims_with_adjusted_pads,
+                                                      s_.Y->MutableDataRaw(), s_.y_dims, s_.slice_starts,
+                                                      s_.slice_ends, s_.slice_axes, s_.element_size));
   }
   return Status::OK();
 }
