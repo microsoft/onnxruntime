@@ -6,12 +6,10 @@
 #include <set>
 #include <vector>
 
-#include "core/graph/constants.h"
 #include "core/framework/allocatormgr.h"
-#include "core/framework/bfc_arena.h"
+#include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"
-#include "core/providers/rocm/gpu_data_transfer.h"
 #include "core/providers/rocm/rocm_execution_provider_info.h"
 #include "core/providers/rocm/rocm_pch.h"
 #include "core/providers/rocm/shared_inc/rocm_utils.h"
@@ -34,21 +32,11 @@ class ROCMExecutionProvider : public IExecutionProvider {
   Status OnRunEnd() override;
 
   const void* GetExecutionHandle() const noexcept override {
-    // The HIP interface does not return anything interesting.
+    // The ROCM interface does not return anything interesting.
     return nullptr;
   }
 
-  Status SetComputeStream(void* stream) override {
-    if (stream != stream_) {
-      if (stream_) {
-        HIP_CALL(hipStreamDestroy(stream_));
-      }
-
-      external_stream_ = true;
-      stream_ = static_cast<hipStream_t>(stream);
-    }
-    return Status::OK();
-  }
+  Status SetComputeStream(void* stream) override;
 
   void* GetComputeStream() const override { return static_cast<void*>(stream_); }
 
@@ -84,6 +72,8 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
   int GetDeviceId() const override { return info_.device_id; }
   const hipDeviceProp_t& GetDeviceProp() const { return device_prop_; };
+  int GetMiopenConvExhaustiveSearch() const { return info_.miopen_conv_exhaustive_search; }
+  bool DoCopyOnDefaultStream() const { return info_.do_copy_in_default_stream; }
 
   bool GetMiopenConvUseMaxWorkspace() const { return info_.miopen_conv_use_max_workspace; }
 
@@ -101,7 +91,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
   void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
   static AllocatorPtr CreateRocmAllocator(OrtDevice::DeviceId device_id, size_t rocm_mem_limit, ArenaExtendStrategy arena_extend_strategy,
-                                          ROCMExecutionProviderExternalAllocatorInfo external_alloc_info);
+                                          ROCMExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
 
  private:
   ROCMExecutionProviderInfo info_;
@@ -119,8 +109,8 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
   class PerThreadContext final {
    public:
-    PerThreadContext(OrtDevice::DeviceId device_id, hipStream_t stream, size_t gpu_mem_limit, ArenaExtendStrategy arena_extend_strategy,
-                     ROCMExecutionProviderExternalAllocatorInfo external_alloc_info);
+    PerThreadContext(OrtDevice::DeviceId device_id, hipStream_t stream, size_t rocm_mem_limit, ArenaExtendStrategy arena_extend_strategy,
+                     ROCMExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
     ~PerThreadContext();
 
     rocblas_handle RocblasHandle() const {
@@ -180,9 +170,21 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
   using PerThreadContextMap = std::unordered_map<const ROCMExecutionProvider*, std::weak_ptr<PerThreadContext>>;
   // thread local PerThreadContext cache
+
+  struct ContextCacheHolder {
+    ContextCacheHolder() {
+      // Keep a weak pointer to the object, if the weak pointer can be locked, then the shared pointer is still around, so we can reset it
+      RunOnUnload([&, weak_p_ = std::weak_ptr<PerThreadContextMap>(p)] {
+        if (auto lock = weak_p_.lock())
+          p.reset();
+      });
+    }
+    std::shared_ptr<PerThreadContextMap> p = std::make_shared<PerThreadContextMap>();
+  };
+
   static const std::shared_ptr<PerThreadContextMap>& PerThreadContextCache() {
-    thread_local const auto per_thread_context_cache = std::make_shared<PerThreadContextMap>();
-    return per_thread_context_cache;
+    thread_local const ContextCacheHolder per_thread_context_cache;
+    return per_thread_context_cache.p;
   }
 
   struct PerThreadContextState {
