@@ -155,6 +155,9 @@ Status RelPartialLearnableAttentionBase::CheckInputs(const TensorShape& input_sh
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'mems' is expected to have 3 dimensions, got ",
                              mems_dims.size());
     }
+    if (static_cast<int>(mems_dims[0]) != batch_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'mems' dimension 0 shall have same length as dimension 0 of input 0");
+    }
   }
 
   return Status::OK();
@@ -222,9 +225,9 @@ Status RelPartialLearnableAttention<T>::Compute(OpKernelContext* context) const 
 
   auto* tp = context->GetOperatorThreadPool();
   // Compute Q, K, V
-  // gemm_data(BS, NT) = input(BS, D) x weights(D, NT) + bias(NT)
-  // D (input_hidden_size) is hidden dimension of input, where D could be larger than any of the hidden_sizes
-  // (NH) when model is pruned. T = H1 + H2 + H3, where H1, H2, H3 are head sizes of Q, K, V respectively
+  // gemm_data(BS, NT) = input(BS, D) x weights(D, NT)
+  // D (d_model) is hidden dimension of input
+  // NT stands for 3 * num_heads * head_size
   auto gemm_data = allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * (3 * d_model) * element_size);
   BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(allocator));
 
@@ -250,23 +253,22 @@ Status RelPartialLearnableAttention<T>::Compute(OpKernelContext* context) const 
         int input_offset = batch_index * sequence_length * d_model;
 
         T* qkv_dest = QKV[qkv_index];
-        int head_size = qkv_head_size[qkv_index];
         int weights_offset = 0;
-        int bias_offset = qkv_index * d_model + head_index * head_size;
+        int bias_offset = qkv_index * d_model + head_index * head_size_;
 
         weights_offset = bias_offset;
 
-        int qkv_offset = (batch_index * num_heads_ + head_index) * (sequence_length * head_size);
+        int qkv_offset = (batch_index * num_heads_ + head_index) * (sequence_length * head_size_);
 
         // TODO!! memcpy here makes it not worthwhile to use Gemm batch. Possible to post process?
         // broadcast NH -> (B.N.S.H) for each of Q, K, V
-        const T* broadcast_data_src = bias_offset;
-        T* broadcast_data_dest = QKV[qkv_index] + qkv_offset;
+        // const T* broadcast_data_src = bias_offset;
+        // T* broadcast_data_dest = QKV[qkv_index] + qkv_offset;
 
-        for (int seq_index = 0; seq_index < sequence_length; seq_index++) {
-          memcpy(broadcast_data_dest, broadcast_data_src, head_size * sizeof(T));
-          broadcast_data_dest += head_size;
-        }
+        // for (int seq_index = 0; seq_index < sequence_length; seq_index++) {
+        //   memcpy(broadcast_data_dest, broadcast_data_src, head_size_ * sizeof(T));
+        //   broadcast_data_dest += head_size_;
+        // }
 
         //                   original           transposed            iteration
         // A: input          (BxSxD)            (B.)S x D             S x D
@@ -276,7 +278,7 @@ Status RelPartialLearnableAttention<T>::Compute(OpKernelContext* context) const 
             CblasNoTrans,                                   // TransA = no
             CblasNoTrans,                                   // TransB = no
             sequence_length,                                // M      = S
-            head_size,                                      // N      = H
+            head_size_,                                      // N      = H
             d_model,                              // K      = D
             1.0f,                                           // alpha
             input_data + input_offset,                      // A
@@ -285,7 +287,7 @@ Status RelPartialLearnableAttention<T>::Compute(OpKernelContext* context) const 
             d_model + d_model + d_model,  // ldb = NH1 + NH2 + NH3
             1.0f,                                           // beta
             qkv_dest + qkv_offset,                          // C
-            head_size,                                      // ldc
+            head_size_,                                      // ldc
             nullptr                                         // use single-thread
         );
       }
@@ -293,11 +295,10 @@ Status RelPartialLearnableAttention<T>::Compute(OpKernelContext* context) const 
   }
 
   // Compute the attention score and apply the score to V
-  return true;
-  // return ApplyRelPartialLearnableAttention(Q, K, V, mask_index, past, output,
-  //                                          batch_size, sequence_length,
-  //                                          qkv_head_size[0], qkv_head_size[2], v_hidden_size,
-  //                                          extra_add_qk, context);
+  return ApplyRelPartialLearnableAttention(Q, K, V, pos_emb, pos_emb_weights, r_w_bias, r_r_bias,
+                                           output_weights, attn_mask, mems, output,
+                                           batch_size, sequence_length, d_model,
+                                           num_heads_, head_size_, context);
 }
 }  // namespace contrib
 }  // namespace onnxruntime
