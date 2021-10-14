@@ -208,13 +208,12 @@ def _post_process_enabling_autograd_fallback(exported_model):
                     kclass_name = attr.s
                     # If the duplicated function is used in ONNX graph, we will fail in case of a wrong function call.
                     # Todo: remove this trick once exporter can support fully qualified name for PythonOp.
-                    if kclass_name in registered_name_mappings and len(registered_name_mappings[kclass_name] > 1):
+                    if kclass_name in registered_name_mappings and len(registered_name_mappings[kclass_name]) > 1:
                         error_msg = 'More than one torch.autograd.Function named {}, but probabbly in different namespace. ' \
                                     'The conflicting autograd.Functions are: {}. Currently torch exporter cannot ' \
                                     'differentiate them with full qualified name, so there is a risk exported PythonOp calls a ' \
                                     'wrong autograd.Function.'.format(kclass.__name__, ','.join(registered_name_mappings[kclass_name]))
-                        raise wrap_exception(ORTModuleONNXModelException,
-                                            RuntimeError(error_msg))
+                        raise wrap_exception(ORTModuleONNXModelException, RuntimeError(error_msg))
 
                     break
 
