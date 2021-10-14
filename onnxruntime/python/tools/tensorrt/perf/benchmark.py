@@ -1073,7 +1073,7 @@ def run_onnxruntime(args, models):
                         "datetime": str(datetime.now()),}
                     
                     repeat_times = args.test_times
-                    if trt in ep: 
+                    if trt in ep or cuda in ep: 
                         repeat_times = 10000
                     if args.track_memory and track_ep_memory(ep): 
                         trtexec = False
