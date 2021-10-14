@@ -31,10 +31,12 @@
 #include "core/platform/env.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
-#include "core/providers/cuda/cuda_provider_factory.h"
 #ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
-#elif USE_ROCM
+#endif
+#ifdef USE_ROCM
+#include "core/providers/rocm/rocm_provider_factory.h"
 #include "core/providers/rocm/gpu_data_transfer.h"
 #endif
 #include "core/session/environment.h"
@@ -68,6 +70,9 @@ namespace onnxruntime {
 
 #ifdef USE_CUDA
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
+#endif
+#ifdef USE_ROCM
+ProviderInfo_ROCM& GetProviderInfo_ROCM();
 #endif
 
 class FuseAdd : public OpKernel {
@@ -195,7 +200,7 @@ static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, Prov
   if (provider_type == kCpuExecutionProvider) {
     node.SetExecutionProviderType(provider_type);
   } else {
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
     node.SetExecutionProviderType(provider_type);
 #endif
   }
@@ -353,9 +358,10 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
 #ifdef USE_CUDA
     cudaStream_t stream = static_cast<cudaStream_t>(gpu_provider->GetComputeStream());
     st = GetProviderInfo_CUDA().CreateGPUDataTransfer(stream)->CopyTensor(rtensor, *cpu_tensor.get(), 0);
-#elif USE_ROCM
+#endif
+#ifdef USE_ROCM
     hipStream_t stream = static_cast<hipStream_t>(gpu_provider->GetComputeStream());
-    st = GPUDataTransfer(stream).CopyTensor(rtensor, *cpu_tensor.get(), 0);
+    st = GetProviderInfo_ROCM().CreateGPUDataTransfer(stream)->CopyTensor(rtensor, *cpu_tensor.get(), 0);
 #endif
     ASSERT_TRUE(st.IsOK());
     OrtValue ml_value;
@@ -618,6 +624,9 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
 #ifdef USE_CUDA
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #endif
+#ifdef USE_ROCM
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
+#endif
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_STATUS_OK(session_object.Initialize());
 
@@ -866,13 +875,10 @@ static void TestBindHelper(const std::string& log_str,
     auto provider = DefaultCudaExecutionProvider();
     gpu_provider = provider.get();
     ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
-#elif USE_ROCM
-    ROCMExecutionProviderInfo epi;
-    epi.device_id = 0;
-
-    auto provider = std::make_unique<ROCMExecutionProvider>(epi);
+#endif
+#ifdef USE_ROCM
+    auto provider = DefaultRocmExecutionProvider();
     gpu_provider = provider.get();
-
     ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
 #endif
   }
@@ -1487,12 +1493,10 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   so.session_logid = "InferenceSessionTests.Test3LayerNestedSubgraph";
   InferenceSession session_object{so, GetEnvironment()};
 
-#ifdef USE_CUDA
+#if USE_CUDA
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #elif USE_ROCM
-  ROCMExecutionProviderInfo epi;
-  epi.device_id = 0;
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<ROCMExecutionProvider>(epi)));
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
 #endif
 
   status = session_object.Load(model_file_name);
@@ -1625,12 +1629,10 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
   so.session_logid = "InferenceSessionTests.Test2LayerNestedSubgraph";
   InferenceSession session_object{so, GetEnvironment()};
 
-#ifdef USE_CUDA
+#if USE_CUDA
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #elif USE_ROCM
-  ROCMExecutionProviderInfo epi;
-  epi.device_id = 0;
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<ROCMExecutionProvider>(epi)));
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
 #endif
 
   status = session_object.Load(model_file_name);

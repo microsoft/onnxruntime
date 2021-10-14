@@ -24,7 +24,6 @@
 #include "onnxruntime/core/providers/acl/acl_provider_factory.h"
 #include "onnxruntime/core/providers/armnn/armnn_provider_factory.h"
 #include "onnxruntime/core/providers/coreml/coreml_provider_factory.h"
-#include "onnxruntime/core/providers/rocm/rocm_provider_factory.h"
 #ifdef USE_DML
 #include "onnxruntime/core/providers/dml/dml_provider_factory.h"
 #endif
@@ -551,12 +550,12 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addCor
  * Signature: (JJI)V
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addROCM
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint deviceID, jlong memLimit) {
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint deviceID) {
     (void)jobj;
   #ifdef USE_ROCM
-    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_ROCM((OrtSessionOptions*) handle, deviceID, (size_t) memLimit));
+    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_ROCM((OrtSessionOptions*) handle, deviceID));
   #else
-    (void)apiHandle;(void)handle;(void)deviceID;(void)memLimit; // Parameters used when ROCM is defined.
+    (void)apiHandle;(void)handle;(void)deviceID; // Parameters used when ROCM is defined.
     throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with ROCM support.");
   #endif
 }

@@ -321,18 +321,22 @@ const CUDAExecutionProviderInfo GetCudaExecutionProviderInfo(ProviderInfo_CUDA* 
 #endif
 
 #ifdef USE_ROCM
-const ROCMExecutionProviderInfo GetROCMExecutionProviderInfo(const ProviderOptionsMap& provider_options_map) {
+const ROCMExecutionProviderInfo GetRocmExecutionProviderInfo(ProviderInfo_ROCM* rocm_provider_info,
+                                                             const ProviderOptionsMap& provider_options_map){
+  ORT_ENFORCE(rocm_provider_info);
   const auto it = provider_options_map.find(kRocmExecutionProvider);
-  return it != provider_options_map.end()
-             ? ROCMExecutionProviderInfo::FromProviderOptions(it->second)
-             : [&]() {
-                 ROCMExecutionProviderInfo info{};
-                 info.device_id = cuda_device_id;
-                 info.gpu_mem_limit = gpu_mem_limit;
-                 info.arena_extend_strategy = arena_extend_strategy;
-                 info.external_allocator_info = external_allocator_info;
-                 return info;
-               }();
+  ROCMExecutionProviderInfo info;
+  if (it != provider_options_map.end())
+    rocm_provider_info->ROCMExecutionProviderInfo__FromProviderOptions(it->second, info);
+  else{
+    info.device_id = cuda_device_id;
+    info.gpu_mem_limit = gpu_mem_limit;
+    info.arena_extend_strategy = arena_extend_strategy;
+    info.miopen_conv_exhaustive_search = miopen_conv_exhaustive_search;
+    info.do_copy_in_default_stream = do_copy_in_default_stream;
+    info.external_allocator_info = external_allocator_info;
+  }
+  return info;
 }
 #endif
 
@@ -520,13 +524,23 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kRocmExecutionProvider) {
 #ifdef USE_ROCM
-    const ROCMExecutionProviderInfo info = GetROCMExecutionProviderInfo(provider_options_map);
-
-    // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
-    // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
-    // since FromProviderOptions might contain external CUDA allocator.
-    external_allocator_info = info.external_allocator_info;
-    return onnxruntime::CreateExecutionProviderFactory_ROCM(info)->CreateProvider();
+    if(auto* rocm_provider_info = TryGetProviderInfo_ROCM())
+    {
+      const ROCMExecutionProviderInfo info = GetRocmExecutionProviderInfo(rocm_provider_info,
+                                                                    provider_options_map);
+      
+      // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
+      // exist are are in-use. Neverthless, it is used to return ROCMAllocator, hence we must try to initialize it here if we can
+      // since FromProviderOptions might contain external ROCM allocator.
+      external_allocator_info = info.external_allocator_info;
+      return rocm_provider_info->CreateExecutionProviderFactory(info)->CreateProvider();
+    }
+    else
+    {
+      if(!Env::Default().GetEnvironmentVar("ROCM_PATH").empty()) {
+        ORT_THROW("ROCM_PATH is set but ROCM wasn't able to be loaded. Please install the correct version of ROCM and MIOpen as mentioned in the GPU requirements page, make sure they're in the PATH, and that your GPU is supported.");
+      }
+    }
 #endif
   } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL

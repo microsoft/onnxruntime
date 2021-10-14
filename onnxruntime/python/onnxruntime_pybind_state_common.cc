@@ -24,21 +24,22 @@ OrtDevice::DeviceId cuda_device_id = 0;
 // TODO remove deprecated global config
 size_t gpu_mem_limit = std::numeric_limits<size_t>::max();
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
 #ifdef USE_CUDA
 // TODO remove deprecated global config
 OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearchExhaustive;
 // TODO remove deprecated global config
 bool do_copy_in_default_stream = true;
 onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocator_info{};
+// TODO remove deprecated global config
+onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
 
 #ifdef USE_ROCM
-#include "core/providers/rocm/rocm_execution_provider.h"
-#include "core/providers/rocm/rocm_allocator.h"
+// TODO remove deprecated global config
+bool miopen_conv_exhaustive_search = false;
+// TODO remove deprecated global config
+bool do_copy_in_default_stream = true;
 onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info{};
-#endif
-
 // TODO remove deprecated global config
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
