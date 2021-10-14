@@ -1730,7 +1730,12 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
 
   // info all execution providers InferenceSession:Run ended
   for (auto* xp : exec_providers_to_stop) {
-    auto status = xp->OnRunEnd();
+    bool sync_stream = true;
+    // running forward subgraph
+    if (state.GetProgramCounterStart() == 0) {
+      sync_stream = false;
+    }
+    auto status = xp->OnRunEnd(sync_stream);
     ORT_CHECK_AND_SET_RETVAL(status);
   }
 

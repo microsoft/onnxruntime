@@ -306,7 +306,7 @@ Status ROCMExecutionProvider::OnRunStart() {
   return Status::OK();
 }
 
-Status ROCMExecutionProvider::OnRunEnd() {
+Status ROCMExecutionProvider::OnRunEnd(bool /*sync_stream*/) {
   // record deferred release event on default stream, and release per_thread_context
   auto current_deferred_release_event = GetPerThreadContext().GetCurrentDeferredReleaseEvent();
   HIP_RETURN_IF_ERROR(hipEventRecord(current_deferred_release_event, static_cast<hipStream_t>(GetComputeStream())));

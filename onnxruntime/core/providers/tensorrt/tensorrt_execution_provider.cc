@@ -645,7 +645,7 @@ std::unique_ptr<IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() cons
   return onnxruntime::CreateGPUDataTransfer(static_cast<void*>(GetComputeStream()));
 }
 
-Status TensorrtExecutionProvider::OnRunEnd() {
+Status TensorrtExecutionProvider::OnRunEnd(bool /*sync_stream*/) {
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(GetComputeStream())));
   return Status::OK();
 }
