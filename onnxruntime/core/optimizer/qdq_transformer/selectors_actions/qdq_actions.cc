@@ -135,7 +135,7 @@ void SetOptionalZeroPoint::UpdateNodes(Graph& graph, const NodesToOptimize& sele
     }
 
     auto& node_arg = graph.GetOrCreateNodeArg(zp_tensor_proto.name(), nullptr);
-    if (has_zp_input) {
+    if (!has_zp_input) {
       input_defs.push_back(&node_arg);
     } else {
       input_defs[InputIndex::ZERO_POINT_ID] = &node_arg;
@@ -168,6 +168,14 @@ const ONNX_NAMESPACE::TensorProto SetOptionalZeroPoint::optional_zero_point_uint
 Status QDQReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
   SetOptionalZeroPoint::UpdateNodes(graph, selected_nodes);
   return ReplaceWithNew::Run(graph, selected_nodes);
+}
+
+Status QDQReplaceWithNew::RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,
+                                     const RuntimeOptimizationSaveContext& save_context,
+                                     SavedState& saved_state, bool& graph_modified) const {
+  SetOptionalZeroPoint::UpdateNodes(graph, selected_nodes);
+  graph_modified = true;
+  return ReplaceWithNew::RunForSave(graph, selected_nodes, save_context, saved_state, graph_modified);
 }
 
 UnaryReplaceWithQLinear::UnaryReplaceWithQLinear(const std::string& domain)

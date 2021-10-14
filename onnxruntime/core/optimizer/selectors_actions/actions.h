@@ -7,7 +7,9 @@
 
 #include "core/common/common.h"
 #include "core/graph/graph_utils.h"  // TODO: Minimize usage of this given we want to use Actions in a minimal build
+#include "core/graph/runtime_optimization_record.h"
 #include "core/optimizer/selectors_actions/helpers.h"
+#include "core/optimizer/selectors_actions/runtime_optimization_save_context.h"
 
 namespace onnxruntime {
 
@@ -16,8 +18,23 @@ class Node;
 
 // actions that are applied to a set of nodes identified during selection
 struct Action {
-  virtual Status Run(Graph&, const NodesToOptimize& selected_nodes) const = 0;
+  struct SavedState {
+    std::vector<uint64_t> produced_node_kernel_def_hashes;
+  };
+
   virtual ~Action() = default;
+
+  virtual Status Run(Graph& graph, const NodesToOptimize& selected_nodes) const = 0;
+
+  // saving interface
+  virtual Status RunForSave(Graph& /*graph*/, const NodesToOptimize& /*selected_nodes*/,
+                            const RuntimeOptimizationSaveContext& /*save_context*/,
+                            SavedState& /*saved_state*/, bool& /*graph_modified*/) const {
+    // do nothing by default
+    return Status::OK();
+  }
+
+  virtual bool ShouldRunForSave() const { return false; }
 
  protected:
   Action() = default;
@@ -33,6 +50,24 @@ struct MultiAction : public Action {
     }
 
     return Status::OK();
+  }
+
+  Status RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,
+                    const RuntimeOptimizationSaveContext& save_context,
+                    SavedState& saved_state, bool& graph_modified) const override {
+    for (const auto& action : actions_) {
+      ORT_RETURN_IF_ERROR(action->RunForSave(graph, selected_nodes, save_context, saved_state, graph_modified));
+    }
+
+    return Status::OK();
+  }
+
+  bool ShouldRunForSave() const override {
+    for (const auto& action : actions_) {
+      if (action->ShouldRunForSave()) return true;
+    }
+
+    return false;
   }
 
   // can't copy/assign actions_
@@ -63,7 +98,7 @@ struct MergeIntoTarget : public Action {
   MergeIntoTarget(std::vector<NodeAndMoveInfo>&& value_moves) : value_moves_{std::move(value_moves)} {}
 
  private:
-  Status Run(Graph&, const NodesToOptimize& selected_nodes) const override;
+  Status Run(Graph& graph, const NodesToOptimize& selected_nodes) const override;
 
   std::vector<NodeAndMoveInfo> value_moves_;
   RemoveNodes node_remover_{true};  // preserve target node when removing selected_nodes
@@ -76,7 +111,13 @@ struct ReplaceWithNew : public Action {
                  const std::string& op_name,
                  std::vector<NodeAndMoveInfo>&& value_moves);
 
-  Status Run(Graph&, const NodesToOptimize& selected_nodes) const override;
+  Status Run(Graph& graph, const NodesToOptimize& selected_nodes) const override;
+
+  Status RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,
+                    const RuntimeOptimizationSaveContext& save_context,
+                    SavedState& saved_state, bool& graph_modified) const override;
+
+  bool ShouldRunForSave() const override { return true; }
 
  private:
   // support usage where operator name is determined at runtime from the selected nodes

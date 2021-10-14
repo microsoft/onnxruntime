@@ -8,10 +8,10 @@ namespace onnxruntime {
 #if !defined(ORT_MINIMAL_BUILD)
 SelectorActionTransformer::SelectorActionTransformer(const std::string& name,
                                                      SelectorsAndActions&& selectors_and_actions,
-                                                     bool save)
+                                                     optional<RuntimeOptimizationSaveContext> save_context)
     : GraphTransformer{name},
       selectors_and_actions_{std::move(selectors_and_actions)},
-      save_{save} {
+      runtime_optimization_save_context_{std::move(save_context)} {
   // setup a map so we lookup by operator type efficiently
   for (const auto& map_entry : selectors_and_actions_.SelectorsAndActionsMap()) {
     for (const auto& op_info : map_entry.second->ops_and_versions) {
@@ -24,9 +24,11 @@ SelectorActionTransformer::SelectorActionTransformer(const std::string& name,
 #else
 SelectorActionTransformer::SelectorActionTransformer(const std::string& name,
                                                      SelectorsAndActions&& selectors_and_actions,
-                                                     bool /*save*/)
+                                                     optional<RuntimeOptimizationSaveContext> save_context)
     : GraphTransformer{name},
-      selectors_and_actions_{std::move(selectors_and_actions)} {}
+      selectors_and_actions_{std::move(selectors_and_actions)} {
+  ORT_ENFORCE(!save_context.has_value(), "Saving runtime optimizations is not supported in a minimal build.");
+}
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -66,10 +68,10 @@ Status SelectorActionTransformer::MatchAndProcess(Graph& graph, Node& node, bool
       break;
     }
 
-    const auto& selector_and_actions = *op_rule->second;
+    const auto& selector_and_action = *op_rule->second;
 
     // check the supported versions if specified
-    const auto& versions = selector_and_actions.ops_and_versions.find(node.OpType())->second;
+    const auto& versions = selector_and_action.ops_and_versions.find(node.OpType())->second;
     if (!versions.empty()) {
       if (std::find(versions.cbegin(), versions.cend(), node.SinceVersion()) == versions.cend()) {
         break;
@@ -77,19 +79,43 @@ Status SelectorActionTransformer::MatchAndProcess(Graph& graph, Node& node, bool
     }
 
     std::unique_ptr<NodesToOptimize> node_group;
-    if (!selector_and_actions.selector->Select(graph, node, node_group)) {
+    if (!selector_and_action.selector->Select(graph, node, node_group)) {
       break;
     }
 
     LOGS(logger, VERBOSE) << "Matched " << node.OpType();
 
-    if (save_) {
-      // TODO: save to Graph using transformer and action name so the node groups and actions are scoped to a
-      // specific transformer.
-      // e.g. map<transformer name, map<action name, vector<NodesToOptimizeIndexes>>>
-      ORT_NOT_IMPLEMENTED("TODO: Save the selected nodes into the Graph.");
+    if (runtime_optimization_save_context_.has_value()) {
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+      const auto& action = *selector_and_action.action;
+
+      Action::SavedState action_saved_state{};
+      if (action.ShouldRunForSave()) {
+        status = action.RunForSave(graph, *node_group, *runtime_optimization_save_context_, action_saved_state,
+                                   modified);
+        if (!status.IsOK()) {
+          break;
+        }
+      }
+
+      if (graph.MutableRuntimeOptimizations().AddRecord(
+              Name(),
+              RuntimeOptimizationRecord{
+                  selector_and_action.name,
+                  node_group->ToIndexes(),
+                  action_saved_state.produced_node_kernel_def_hashes})) {
+        modified = true;
+      } else {
+        LOGS(logger, WARNING) << "Attempted to add runtime optimization but it already exists. Name: "
+                              << Name() << "." << selector_and_action.name;
+      }
+#else
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAILED,
+                               "Saving runtime optimizations is not enabled in this build.");
+      break;
+#endif
     } else {
-      status = selector_and_actions.action->Run(graph, *node_group);
+      status = selector_and_action.action->Run(graph, *node_group);
       if (!status.IsOK()) {
         break;
       }

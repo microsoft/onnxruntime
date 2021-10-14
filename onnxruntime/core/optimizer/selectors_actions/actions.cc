@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/selectors_actions/actions.h"
+
+#include "core/framework/op_kernel.h"
 #include "core/optimizer/selectors_actions/helpers.h"
 #include "core/optimizer/utils.h"
 
@@ -16,7 +18,7 @@ namespace {
 // As we can't easily remove a NodeArg from the Node::OutputDefs for the node being removed, we do not check if the
 // node provides graph outputs here. The optimizer must correctly handle nodes producing graph outputs
 // and not attempt to delete one of those nodes unless it has created a new source for the graph output.
-bool CanSafelyRemoveNode(Node& node_to_remove, const std::unordered_set<const Node*>& removal_set) {
+bool CanSafelyRemoveNode(const Node& node_to_remove, const std::unordered_set<const Node*>& removal_set) {
   bool safe = true;
   for (auto iter = node_to_remove.OutputEdgesBegin(), end = node_to_remove.OutputEdgesEnd(); iter != end; ++iter) {
     if (removal_set.find(&iter->GetNode()) == removal_set.cend()) {
@@ -51,7 +53,7 @@ Status RemoveNodes::Run(Graph& graph, const NodesToOptimize& selected_nodes) con
 }
 
 Status MergeIntoTarget::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
-  ORT_RETURN_IF_ERROR(MoveInputOutput(graph, selected_nodes, selected_nodes.Target(), value_moves_));
+  ORT_RETURN_IF_ERROR(MoveInputOutput(graph, selected_nodes, selected_nodes.Target(), value_moves_, false));
 
   return node_remover_.Run(graph, selected_nodes);
 }
@@ -63,9 +65,9 @@ ReplaceWithNew::ReplaceWithNew(const std::string& domain,
 }
 
 Status ReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
-  auto& target = selected_nodes.Target();
+  const auto& target = selected_nodes.Target();
 
-  std::string op_type = OpType(selected_nodes);
+  const std::string op_type = OpType(selected_nodes);
 
   // create node. we'll populate the input and output defs via moves
   auto& replacement = graph.AddNode(target.Name(),
@@ -78,8 +80,38 @@ Status ReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes) 
 
   replacement.SetExecutionProviderType(kCpuExecutionProvider);
 
-  ORT_RETURN_IF_ERROR(MoveInputOutput(graph, selected_nodes, replacement, value_moves_));
+  ORT_RETURN_IF_ERROR(MoveInputOutput(graph, selected_nodes, replacement, value_moves_, false));
   return node_remover_.Run(graph, selected_nodes);
+}
+
+Status ReplaceWithNew::RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,
+                                  const RuntimeOptimizationSaveContext& save_context,
+                                  SavedState& saved_state, bool& graph_modified) const {
+  // make temporary node, use it to look up kernel def hash, remove temporary node
+  const auto& target = selected_nodes.Target();
+  const std::string op_type = OpType(selected_nodes);
+  Node& new_node = graph.AddNode(target.Name(),
+                                 op_type,
+                                 target.Description(),
+                                 {},
+                                 {},
+                                 &target.GetAttributes(),
+                                 domain_);
+
+  ORT_RETURN_IF_ERROR(MoveInputOutput(graph, selected_nodes, new_node, value_moves_, true));
+  new_node.SetExecutionProviderType(kCpuExecutionProvider);
+  ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(new_node),
+                    "Failed to set op schema for synthesized node.");
+
+  const KernelCreateInfo* kernel_create_info{};
+  ORT_RETURN_IF_ERROR(save_context.kernel_registry_manager.get().SearchKernelRegistry(new_node, &kernel_create_info));
+  const auto new_node_kernel_def_hash = kernel_create_info->kernel_def->GetHash();
+  saved_state.produced_node_kernel_def_hashes.push_back(new_node_kernel_def_hash);
+
+  graph.RemoveNode(new_node.Index());
+
+  graph_modified = true;
+  return Status::OK();
 }
 
 }  // namespace onnxruntime

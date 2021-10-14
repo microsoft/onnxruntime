@@ -693,7 +693,7 @@ Status Node::LoadEdgesFromOrtFormat(const onnxruntime::experimental::fbs::NodeEd
                 "input index: ", fbs_node_edges.node_index(), " is not the same as this node's index:", index_);
 
   auto add_edges = [&graph](const flatbuffers::Vector<const onnxruntime::experimental::fbs::EdgeEnd*>* fbs_edges,
-                            EdgeSet& edge_set, const std::string dst_name) -> Status {
+                            EdgeSet& edge_set, const std::string& dst_name) -> Status {
     if (fbs_edges) {
       for (const auto* fbs_edge : *fbs_edges) {
         ORT_RETURN_IF(nullptr == fbs_edge, "Node::LoadEdgesFromOrtFormat, edge is missing for ", dst_name);
@@ -2107,7 +2107,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
     // Check all <arg_count> actual parameters (corresponding to the k-th input)
     // match the formal parameter definition (i-th argument).
     for (int j = 0; j < arg_count; ++j, ++k) {
-      auto& input_def = node.MutableDefinitions().input_defs[k];
+      const auto* input_def = node.GetDefinitions().input_defs[k];
       if (!input_def->Exists())
         continue;
 
@@ -2393,8 +2393,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
 
     NodeProto node_proto;
     node.ToProto(node_proto);
-    auto& node_name = node.Name();
-    auto& domain = node.Domain();
+    const auto& node_name = node.Name();
 
     if (!node.Op()) {
       {
@@ -2410,16 +2409,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         ORT_RETURN_IF_ERROR(status);
       }
 
-      auto maxInclusiveVersion = DomainToVersionMap().find(domain)->second;
-      node.op_ = schema_registry_->GetSchema(node.OpType(), maxInclusiveVersion, node.Domain());
-
-      if (node.op_) {
-        node.since_version_ = node.op_->since_version();
-
-        if (node.op_->Deprecated()) {
-          node.op_ = nullptr;
-        }
-      }
+      SetOpSchemaFromRegistryForNode(node);
 
       if (!node.op_ || (node.op_ && (node.op_->HasFunction() || node.op_->HasContextDependentFunction()))) {
         InitFunctionBodyForNode(node);
@@ -3645,6 +3635,29 @@ Status Graph::SetGraphInputsOutputs() {
 
 IOnnxRuntimeOpSchemaCollectionPtr Graph::GetSchemaRegistry() const {
   return schema_registry_;
+}
+
+bool Graph::SetOpSchemaFromRegistryForNode(Node& node) {
+  if (node.op_ != nullptr) return true;
+
+  node.op_ = [&]() -> const ONNX_NAMESPACE::OpSchema* {
+    const auto domain_to_version_it = DomainToVersionMap().find(node.Domain());
+    if (domain_to_version_it == DomainToVersionMap().end()) {
+      return nullptr;
+    }
+    const auto max_inclusive_version = domain_to_version_it->second;
+    return schema_registry_->GetSchema(node.OpType(), max_inclusive_version, node.Domain());
+  }();
+
+  if (node.op_) {
+    node.since_version_ = node.op_->since_version();
+
+    if (node.op_->Deprecated()) {
+      node.op_ = nullptr;
+    }
+  }
+
+  return node.op_ != nullptr;
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

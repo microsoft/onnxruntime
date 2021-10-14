@@ -36,6 +36,7 @@
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
+#include "core/optimizer/selectors_actions/runtime_optimization_save_context.h"
 #include "core/optimizer/transformer_memcpy.h"
 #include "core/platform/Barrier.h"
 #include "core/platform/ort_mutex.h"
@@ -2225,13 +2226,25 @@ void InferenceSession::InitLogger(logging::LoggingManager* logging_manager) {
 // Registers all the predefined transformers with transformer manager
 void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
                                                  TransformerLevel graph_optimization_level) {
+  const bool saving_runtime_optimizations =
+      session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigSaveRuntimeOptimizations, "0") == "1";
+
   const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);
     if (graph_optimization_level >= level) {
       // Generate and register transformers for level
-      auto transformers_to_register = optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep,
-                                                                            optimizers_to_disable_);
+      std::vector<std::unique_ptr<GraphTransformer>> transformers_to_register = [&]() {
+        if (level != TransformerLevel::Level1 && saving_runtime_optimizations) {
+          RuntimeOptimizationSaveContext save_context{kernel_registry_manager_};
+          return optimizer_utils::GenerateTransformersForRuntimeOptimizations(level, save_context,
+                                                                              optimizers_to_disable_);
+        } else {
+          return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep,
+                                                       optimizers_to_disable_);
+        }
+      }();
+
       for (auto& entry : transformers_to_register) {
         transformer_manager.Register(std::move(entry), level);
       }

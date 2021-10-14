@@ -3,23 +3,13 @@
 
 #pragma once
 
+#include "core/graph/runtime_optimization_record.h"
+
 namespace onnxruntime {
 
 //
 // Selection helpers
 //
-
-// Struct to serialize the node indexes in an ORT format model.
-// Use EmptyNodeIndex for nullptr entries in the vectors for missing optional inputs
-struct NodesToOptimizeIndexes {
-  std::vector<NodeIndex> nodes;
-  int num_inputs;
-  int num_outputs;
-  bool variadic_input;
-  bool variadic_output;
-  int num_variadic_inputs;
-  int num_variadic_outputs;
-};
 
 // Group of nodes that will be optimized. The group will either be merged into the target node, or a new node
 // will be created to replace the entire group, including the target node.
@@ -204,9 +194,10 @@ struct NodeAndMoveInfo {
 
 // helpers for moving inputs/outputs and their edges between nodes
 Status MoveInputOutput(Graph& graph, const NodesToOptimize& selected_nodes, Node& dest,
-                       const std::vector<NodeAndMoveInfo>& moves);
+                       const std::vector<NodeAndMoveInfo>& moves, bool only_update_dest_definitions);
 
-Status MoveInputOutput(Graph& graph, Node& src, Node& dest, const ValueMoveInfo& move_info);
+Status MoveInputOutput(Graph& graph, Node& src, Node& dest, const ValueMoveInfo& move_info,
+                       bool only_update_dest_definitions);
 
 //
 // Helpers to make the 'move' configuration more easily read

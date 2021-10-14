@@ -69,9 +69,13 @@ static const char* const kOrtSessionOptionsConfigAllowIntraOpSpinning = "session
 // has to guarantee that the model bytes are valid until the ORT session using the model bytes is destroyed.
 static const char* const kOrtSessionOptionsConfigUseORTModelBytesDirectly = "session.use_ort_model_bytes_directly";
 
-// NNAPI EP keys begin
-// Note: These options should be specified prior to appending the NNAPI EP to the session options object in order for
-// them to take effect.
+// save runtime optimizations instead of applying them
+// "0": disabled, "1": enabled
+// The default is "0".
+static const char* const kOrtSessionOptionsConfigSaveRuntimeOptimizations = "optimization.save_runtime_optimizations";
+
+// Note: The options specific to an EP should be specified prior to appending that EP to the session options object in
+// order for them to take effect.
 
 // Specifies a list of stop op types. Nodes of a type in the stop op types and nodes downstream from them will not be
 // run by the NNAPI EP.
