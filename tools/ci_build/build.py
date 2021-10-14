@@ -617,7 +617,7 @@ def run_subprocess(args, cwd=None, capture_stdout=False, dll_path=None,
             if "PATH" in my_env:
                 my_env["PATH"] = dll_path + os.pathsep + my_env["PATH"]
             else:
-                my_env["PATH"] = = dll_path
+                my_env["PATH"] = dll_path
         else:
             if "LD_LIBRARY_PATH" in my_env:
                 my_env["LD_LIBRARY_PATH"] += os.pathsep + dll_path
