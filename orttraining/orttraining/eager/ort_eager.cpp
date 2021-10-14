@@ -35,7 +35,7 @@ at::Tensor ORTTensor_FromDLPack(const py::object& dlpack_tensor)
 }
 
 void addObjectMethodsForEager(py::module& m){
-  ORT_LOG_DEBUG << "pybind11 module init";
+  ORT_LOG_INFO << "pybind11 module init";
 
   m.def(
     "device",

@@ -62,7 +62,7 @@ std::vector<std::vector<NodeIndex>> DNNLExecutionProvider::GetSupportedNodes(con
     auto node_idx = node_indices[i];
     const auto* node(graph_viewer.GetNode(node_idx));
 
-    bool supported = opManager_.IsNodeSupported(node);
+    bool supported = opManager_.IsNodeSupported(node, graph_viewer);
 
     if (debug_log_) {
       LOGS_DEFAULT(ERROR) << "Operator type: [" << node->OpType()
