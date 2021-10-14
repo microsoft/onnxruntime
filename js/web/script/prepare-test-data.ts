@@ -14,6 +14,7 @@ const TEST_DATA_ROOT = path.join(__dirname, '..', 'test', 'data');
 const TEST_DATA_NODE = path.join(TEST_DATA_ROOT, 'node');
 
 const TEST_DATA_OPSET_VERSIONS = [
+  ['v13', 'rel-1.8.1'],
   ['v12', 'rel-1.7.0'],
   ['v11', 'rel-1.6.1'],
   ['v10', 'rel-1.5.0'],
