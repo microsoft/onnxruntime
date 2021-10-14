@@ -672,3 +672,8 @@ def test_ortmodule_fallback_sparse(is_training, torch_forward):
             torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
             optimizer.step()
             break
+
+    model_copied = copy.deepcopy(model)
+    assert model_copied is not model_copied
+    pkl = pickle.dump(model)
+    assert pkl is not None
