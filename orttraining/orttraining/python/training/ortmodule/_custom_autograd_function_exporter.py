@@ -205,7 +205,7 @@ def _post_process_enabling_autograd_fallback(exported_model):
             node.output.extend(output_names)
             for attr in node.attribute:
                 if attr.name == 'name':
-                    kclass_name = attr.s
+                    kclass_name = attr.s.decode('utf-8') if isinstance(attr.s, bytes) else attr.s
                     # If the duplicated function is used in ONNX graph, we will fail in case of a wrong function call.
                     # Todo: remove this trick once exporter can support fully qualified name for PythonOp.
                     if kclass_name in registered_name_mappings and len(registered_name_mappings[kclass_name]) > 1:
