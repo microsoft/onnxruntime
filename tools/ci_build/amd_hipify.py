@@ -340,22 +340,22 @@ def list_files(prefix, path):
 
 def amd_hipify(config_build_dir):
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        cuda_contrib_path = os.path.join(contrib_ops_path, 'cuda')
-        rocm_contrib_path = os.path.join(config_build_dir, 'amdgpu', contrib_ops_path, 'rocm')
-        contrib_files = list_files(cuda_contrib_path, '')
-        contrib_results = [executor.submit(hipify, os.path.join(cuda_contrib_path, f), os.path.join(rocm_contrib_path, f))
+        cuda_path = os.path.join(contrib_ops_path, 'cuda')
+        rocm_path = os.path.join(config_build_dir, 'amdgpu', contrib_ops_path, 'rocm')
+        contrib_files = list_files(cuda_path, '')
+        contrib_results = [executor.submit(hipify, os.path.join(cuda_path, f), os.path.join(rocm_path, f))
                            for f in contrib_files if f not in contrib_ops_excluded_files]
 
-        cuda_provider_path = os.path.join(providers_path, 'cuda')
-        rocm_provider_path = os.path.join(config_build_dir, 'amdgpu', providers_path, 'rocm')
-        provider_files = list_files(cuda_provider_path, '')
-        provider_results = [executor.submit(hipify, os.path.join(cuda_provider_path, f), os.path.join(rocm_provider_path, f))
+        cuda_path = os.path.join(providers_path, 'cuda')
+        rocm_path = os.path.join(config_build_dir, 'amdgpu', providers_path, 'rocm')
+        provider_files = list_files(cuda_path, '')
+        provider_results = [executor.submit(hipify, os.path.join(cuda_path, f), os.path.join(rocm_path, f))
                             for f in provider_files if f not in provider_excluded_files]
 
-        cuda_training_path = os.path.join(training_ops_path, 'cuda')
-        rocm_training_path = os.path.join(config_build_dir, 'amdgpu', training_ops_path, 'rocm')
-        training_files = list_files(cuda_training_path, '')
-        training_results = [executor.submit(hipify, os.path.join(cuda_training_path, f), os.path.join(rocm_training_path, f))
+        cuda_path = os.path.join(training_ops_path, 'cuda')
+        rocm_path = os.path.join(config_build_dir, 'amdgpu', training_ops_path, 'rocm')
+        training_files = list_files(cuda_path, '')
+        training_results = [executor.submit(hipify, os.path.join(cuda_path, f), os.path.join(rocm_path, f))
                             for f in training_files if f not in training_ops_excluded_files]
         # explicitly wait so that hipify warnings finish printing before logging the hipify statements
         concurrent.futures.wait(contrib_results)
