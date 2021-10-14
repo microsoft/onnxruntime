@@ -27,7 +27,7 @@ inline Status PrepareForComputeHelper(const std::vector<int64_t>& raw_starts,
   std::vector<int64_t> axes(raw_axes);
   if (axes.empty()) {
     //axes are omitted, they are set to[0, ..., ndim - 1]
-    axes.resize(compute_metadata.starts_.size());
+    axes.resize(raw_starts.size());
     std::iota(axes.begin(), axes.end(), 0);
   }
 
@@ -77,7 +77,7 @@ inline Status PrepareForComputeHelper(const std::vector<int64_t>& raw_starts,
 
   if (axes.empty()) {
     // axes are omitted, they are set to[0, ..., ndim - 1]
-    axes.resize(compute_metadata.starts_.size());
+    axes.resize(raw_starts.size());
     std::iota(axes.begin(), axes.end(), 0);
   }
 
