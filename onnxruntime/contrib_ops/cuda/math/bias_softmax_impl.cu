@@ -232,7 +232,7 @@ SPECIALIZED_BIAS_SOFTMAX_IMPL(MLFloat16)
 // For large element count we fall back to explicit Add kernel + CUDA DNN library
 // note: This is an unhappy path! There is no performance benefit for the fusion.
 template <typename T>
-void DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
+Status DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
     cudaStream_t stream,
     cudnnHandle_t cudaDnnHandle,
     int element_count,
@@ -298,8 +298,8 @@ void DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
   const auto alpha = Consts<CudaT>::One;
   const auto beta = Consts<CudaT>::Zero;
   CudnnTensor input_tensor, output_tensor;
-  input_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>());
-  output_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>());
+  ORT_RETURN_IF_ERROR(input_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
+  ORT_RETURN_IF_ERROR(output_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
   cudnnSoftmaxForward(
       cudaDnnHandle,
       CUDNN_SOFTMAX_ACCURATE,
@@ -310,20 +310,22 @@ void DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
       &beta,
       output_tensor,
       Y_data);
+
+  return Status::OK();
 }
 
-#define SPECIALIZED_BIAS_SOFTMAX_IMPL_VIA_DNN(T)                \
-  template void DispatchBiasSoftMaxForwardViaDnnLibraryImpl<T>( \
-      cudaStream_t stream,                                      \
-      cudnnHandle_t cudaDnnHandle,                              \
-      int element_count,                                        \
-      int batch_count,                                          \
-      int broadcast_axis,                                       \
-      int softmax_axis,                                         \
-      const onnxruntime::TensorShape& X_shape,                  \
-      const Tensor* X_data,                                     \
-      const onnxruntime::TensorShape& B_shape,                  \
-      const Tensor* B_data,                                     \
+#define SPECIALIZED_BIAS_SOFTMAX_IMPL_VIA_DNN(T)                  \
+  template Status DispatchBiasSoftMaxForwardViaDnnLibraryImpl<T>( \
+      cudaStream_t stream,                                        \
+      cudnnHandle_t cudaDnnHandle,                                \
+      int element_count,                                          \
+      int batch_count,                                            \
+      int broadcast_axis,                                         \
+      int softmax_axis,                                           \
+      const onnxruntime::TensorShape& X_shape,                    \
+      const Tensor* X_data,                                       \
+      const onnxruntime::TensorShape& B_shape,                    \
+      const Tensor* B_data,                                       \
       Tensor* Y_data);
 
 SPECIALIZED_BIAS_SOFTMAX_IMPL_VIA_DNN(double)

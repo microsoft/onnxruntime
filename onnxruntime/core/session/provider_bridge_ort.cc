@@ -842,6 +842,7 @@ struct ProviderHostImpl : ProviderHost {
   bool Tensor__IsDataType_float(const Tensor* p) noexcept override { return p->IsDataType<float>(); }
   bool Tensor__IsDataType_double(const Tensor* p) noexcept override { return p->IsDataType<double>(); }
   bool Tensor__IsDataType_MLFloat16(const Tensor* p) noexcept override { return p->IsDataType<MLFloat16>(); }
+  bool Tensor__IsDataType_BFloat16(const Tensor* p) noexcept override { return p->IsDataType<BFloat16>(); }
   bool Tensor__IsDataTypeString(const Tensor* p) noexcept override { return p->IsDataTypeString(); }
 
   const TensorShape& Tensor__Shape(const Tensor* p) override { return p->Shape(); }
@@ -918,7 +919,11 @@ struct ProviderSharedLibrary {
     }
 
     void (*PProvider_SetHost)(void*);
-    Env::Default().GetSymbolFromLibrary(handle_, "Provider_SetHost", (void**)&PProvider_SetHost);
+    error = Env::Default().GetSymbolFromLibrary(handle_, "Provider_SetHost", (void**)&PProvider_SetHost);
+    if (!error.IsOK()) {
+      LOGS_DEFAULT(ERROR) << error.ErrorMessage();
+      return false;
+    }
 
     PProvider_SetHost(&provider_host_);
     return true;
@@ -926,7 +931,10 @@ struct ProviderSharedLibrary {
 
   void Unload() {
     if (handle_) {
-      Env::Default().UnloadDynamicLibrary(handle_);
+      auto status = Env::Default().UnloadDynamicLibrary(handle_);
+      if (!status.IsOK()) {
+        LOGS_DEFAULT(ERROR) << status.ErrorMessage();
+      }
       handle_ = nullptr;
     }
   }
@@ -969,7 +977,11 @@ struct ProviderLibrary {
     }
 
     Provider* (*PGetProvider)();
-    Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider);
+    error = Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider);
+    if (!error.IsOK()) {
+      LOGS_DEFAULT(ERROR) << error.ErrorMessage();
+      return nullptr;
+    }
 
     provider_ = PGetProvider();
     return provider_;
@@ -980,8 +992,12 @@ struct ProviderLibrary {
       if (provider_)
         provider_->Shutdown();
 
-      if (unload_)
-        Env::Default().UnloadDynamicLibrary(handle_);
+      if (unload_) {
+        auto status = Env::Default().UnloadDynamicLibrary(handle_);
+        if (!status.IsOK()) {
+          LOGS_DEFAULT(ERROR) << status.ErrorMessage();
+        }
+      }
 
       handle_ = nullptr;
       provider_ = nullptr;

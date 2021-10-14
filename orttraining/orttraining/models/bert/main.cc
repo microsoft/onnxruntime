@@ -634,7 +634,7 @@ void setup_training_params(BertParameters& params) {
     if (params.gpu_mem_limit_in_gb > 0) {
       info.gpu_mem_limit = gsl::narrow<size_t>(params.gpu_mem_limit_in_gb * 1024 * 1024 * 1024);
     }
-    info.miopen_conv_exhaustive_search = 1; // true, exhaustive search (slow)
+    info.miopen_conv_exhaustive_search = true; // true, exhaustive search (slow)
 
     params.providers.emplace(kRocmExecutionProvider, CreateExecutionProviderFactory_Rocm(&info));
     params.input_allocator = CreateROCMPinnedAllocator(info.device_id, CUDA_PINNED);

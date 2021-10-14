@@ -186,7 +186,7 @@ ProviderInfo_ROCM* TryGetProviderInfo_ROCM();
 ProviderInfo_ROCM& GetProviderInfo_ROCM();
 namespace python {
 // TODO remove deprecated global config
-extern int miopen_conv_exhaustive_search;
+extern bool miopen_conv_exhaustive_search;
 // TODO remove deprecated global config
 extern bool do_copy_in_default_stream;
 extern onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info;

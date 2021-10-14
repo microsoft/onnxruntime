@@ -192,6 +192,17 @@ TEST(SliceTest, Slice2D_TwoAxesEque) {
                       {});
 }
 
+TEST(SliceTest, Slice2D_DefaultAxes) {
+  RunSliceTest<float>({2, 2},
+                      {1.0f, 2.0f, 3.0f, 4.0f},
+                      {0},
+                      {1},
+                      {},  // default axes
+                      {},  // default steps
+                      {1, 2},
+                      {1.0f, 2.0f});
+}
+
 TEST(SliceTest, Slice3D) {
   RunSliceTest<float>({3, 3, 3},
                       {111.0f, 112.0f, 113.0f,

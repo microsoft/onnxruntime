@@ -4,9 +4,30 @@
 #pragma once
 
 #include "core/providers/shared_library/provider_api.h"
+#include <unordered_set>
 
 namespace onnxruntime {
 
+// redefinition of `enum TensorProto_DataType : int` to help code readability by using shorter names.
+enum ORT_DataType : int {
+  type_undefined = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED,
+  type_float32 = ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+  type_uint8 = ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+  type_int8 = ONNX_NAMESPACE::TensorProto_DataType_INT8,
+  type_uint16 = ONNX_NAMESPACE::TensorProto_DataType_UINT16,
+  type_int16 = ONNX_NAMESPACE::TensorProto_DataType_INT16,
+  type_int32 = ONNX_NAMESPACE::TensorProto_DataType_INT32,
+  type_int64 = ONNX_NAMESPACE::TensorProto_DataType_INT64,
+  type_string = ONNX_NAMESPACE::TensorProto_DataType_STRING,
+  type_bool = ONNX_NAMESPACE::TensorProto_DataType_BOOL,
+  type_float16 = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+  type_double = ONNX_NAMESPACE::TensorProto_DataType_DOUBLE,
+  type_uint32 = ONNX_NAMESPACE::TensorProto_DataType_UINT32,
+  type_uint64 = ONNX_NAMESPACE::TensorProto_DataType_UINT64,
+  type_complex64 = ONNX_NAMESPACE::TensorProto_DataType_COMPLEX64,
+  type_complex128 = ONNX_NAMESPACE::TensorProto_DataType_COMPLEX128,
+  type_bfloat16 = ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16
+};
 /**
  * Pure virtual base class
  *
@@ -28,45 +49,22 @@ class DnnlNodeCapability {
    * @return true if the onnxRuntime::Node is supported in the
    * DnnlExecutionProvider return false otherwise.
    */
-  virtual bool Supported(const Node* node) const = 0;
+  virtual bool Supported(const Node* node, const GraphViewer& graph_viewer) const = 0;
 };
 
 /**
  * Default impelementation of the DnnlNodeCapability interface
  * This class can be used if the only thing needed to
- * decided if the we are capable of running the node using
- * the DnnlExecutionProvider is the input data type.
+ * decided if the we are capable of running the node
+ * is the input data type.
  *
- * The default constructor assumes that "float" data
+ * The default constructor assumes that type_float32 data
  * type is supported and no other data types.
  *
- * To add additional data types an array of data types
- * can be passed as strings i.e.
- * `DnnlDefaultNodeCapability({"float", "int8"})`
+ * To add additional data types an array of ORT_DataTypes
+ * can be passed into the custructor i.e.
+ * `DnnlDefaultNodeCapability({type_float32, type_int8})`
  * Would indicate that "float" and "int8" are supported.
- *
- * At this time the possible data types strings are:
- * - "float"
- * - "float16"
- * - "bfloat16"
- * - "double"
- * - "int8"
- * - "int16"
- * - "int32"
- * - "int64"
- * - "uint8"
- * - "uint16"
- * - "uint32"
- * - "uint64"
- * - "complex64"
- * - "complex128"
- * - "string"
- * - "bool"
- *
- * The strings are from the data_type_utils.cc
- * TypesWrapper::TypesWrapper() member function. If a type
- * is expected but not found in the above list see if it is
- * assigned in the data_type_utils.cc file.
  *
  * This currently only checks the data type of input[0]. If
  * this does not work for the Node then this class will need
@@ -76,15 +74,43 @@ class DnnlNodeCapability {
 class DnnlDefaultNodeCapability : public DnnlNodeCapability {
  public:
   DnnlDefaultNodeCapability();
-  DnnlDefaultNodeCapability(std::vector<std::string> inputTypes);
+  DnnlDefaultNodeCapability(std::vector<ORT_DataType> inputTypes);
 
-  bool Supported(const Node* node) const override;
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  protected:
   bool IsTypeSupported(const Node* node) const;
 
  private:
-  std::vector<std::string> inputTypes_;
+  std::vector<ORT_DataType> inputTypes_;
+};
+
+/*
+* Works similar to the `DnnlDefaultNodeCapability` class except that this
+* will check the input of all input nodes.
+*
+* Example usage:
+* std::unordered_set T1 = {type_float32};
+* std::unordered_set T2 = {type_uint8, type_int32, type_float32};
+* DnnlDefaultMultiInputNodeCapability({T1, T2});
+*
+* The number of inputs and the number of unordered_sets must match. For this reason
+* this capability class is not sutable for nodes that may have a varible number of
+* inputs.
+*
+* All types for all inputs must be specified.
+*/
+class DnnlDefaultMultiInputNodeCapability : public DnnlNodeCapability {
+ public:
+  DnnlDefaultMultiInputNodeCapability(std::vector<std::unordered_set<ORT_DataType>> inputTypes);
+
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+
+ protected:
+  bool IsTypeSupported(const Node* node) const;
+
+ private:
+  std::vector<std::unordered_set<ORT_DataType>> inputTypes_;
 };
 
 /**
@@ -96,9 +122,9 @@ class DnnlDefaultNodeCapability : public DnnlNodeCapability {
  */
 class DnnlPoolNodeCapability : public DnnlDefaultNodeCapability {
  public:
-  DnnlPoolNodeCapability() : DnnlDefaultNodeCapability({"float"}) {}
+  DnnlPoolNodeCapability() : DnnlDefaultNodeCapability({type_float32}) {}
 
-  bool Supported(const Node* node) const override;
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
   bool IsAttributeSupported(const Node* node) const;
@@ -111,9 +137,9 @@ class DnnlPoolNodeCapability : public DnnlDefaultNodeCapability {
  */
 class DnnlBatchNormalizationNodeCapability : public DnnlDefaultNodeCapability {
  public:
-  DnnlBatchNormalizationNodeCapability() : DnnlDefaultNodeCapability({"float"}) {}
+  DnnlBatchNormalizationNodeCapability() : DnnlDefaultNodeCapability({type_float32}) {}
 
-  bool Supported(const Node* node) const override;
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
   bool IsDimensionSupported(const Node* node) const;
@@ -126,9 +152,9 @@ class DnnlBatchNormalizationNodeCapability : public DnnlDefaultNodeCapability {
  */
 class DnnlReduceMeanNodeCapability : public DnnlDefaultNodeCapability {
  public:
-  DnnlReduceMeanNodeCapability() : DnnlDefaultNodeCapability({"float"}) {}
+  DnnlReduceMeanNodeCapability() : DnnlDefaultNodeCapability({type_float32}) {}
 
-  bool Supported(const Node* node) const override;
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
   bool IsAttributeSupported(const Node* node) const;
@@ -142,9 +168,9 @@ class DnnlReduceMeanNodeCapability : public DnnlDefaultNodeCapability {
  */
 class DnnlSoftmaxNodeCapability : public DnnlDefaultNodeCapability {
  public:
-  DnnlSoftmaxNodeCapability() : DnnlDefaultNodeCapability({"float"}) {}
+  DnnlSoftmaxNodeCapability() : DnnlDefaultNodeCapability({type_float32}) {}
 
-  bool Supported(const Node* node) const override;
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
   bool IsAttributeSupported(const Node* node) const;
@@ -155,9 +181,9 @@ class DnnlSoftmaxNodeCapability : public DnnlDefaultNodeCapability {
  */
 class DnnlMatMulNodeCapability : public DnnlDefaultNodeCapability {
  public:
-  DnnlMatMulNodeCapability() : DnnlDefaultNodeCapability({"float"}) {}
+  DnnlMatMulNodeCapability() : DnnlDefaultNodeCapability({type_float32}) {}
 
-  bool Supported(const Node* node) const override;
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
   bool IsDimensionSupported(const Node* node) const;
@@ -168,9 +194,9 @@ class DnnlMatMulNodeCapability : public DnnlDefaultNodeCapability {
  */
 class DnnlMatMulIntegerNodeCapability : public DnnlDefaultNodeCapability {
  public:
-  DnnlMatMulIntegerNodeCapability() : DnnlDefaultNodeCapability({"int8", "uint8"}) {}
+  DnnlMatMulIntegerNodeCapability() : DnnlDefaultNodeCapability({type_int8, type_uint8}) {}
 
-  bool Supported(const Node* node) const override;
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
   bool IsDimensionSupported(const Node* node) const;
@@ -186,9 +212,9 @@ class DnnlSumNodeCapability : public DnnlDefaultNodeCapability {
   // Onnx reports support for float, float16, bfloat16, and double
   // Onnxruntime only has unittests for float and double.
   // To enable float16 and bfloat16 we will should add tests to verify those data types.
-  DnnlSumNodeCapability() : DnnlDefaultNodeCapability({"float" /*, "float16", "bfloat16", "int8", "uint8"*/}) {}
+  DnnlSumNodeCapability() : DnnlDefaultNodeCapability({type_float32 /*, type_float16, type_bfloat16, type_int8, type_uint8*/}) {}
 
-  bool Supported(const Node* node) const override;
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
   bool IsDimensionSupported(const Node* node) const;
@@ -199,22 +225,39 @@ class DnnlSumNodeCapability : public DnnlDefaultNodeCapability {
  */
 class DnnlBinaryNodeCapability : public DnnlDefaultNodeCapability {
  public:
-  DnnlBinaryNodeCapability() : DnnlDefaultNodeCapability({"int8", "uint8", "float"}) {}
+  DnnlBinaryNodeCapability() : DnnlDefaultNodeCapability({type_int8, type_uint8, type_float32}) {}
 
-  bool Supported(const Node* node) const override;
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
   bool IsDimensionSupported(const Node* node) const;
 };
 
+/**
+* Decide if an Elementwise op is supported by DnnlExecutionProvider
+* Elementwise ops are:
+* Abs, Elu, Exp, Log, Relu, Round, Sigmoid, Softplus, Sqrt, Tanh
+*/
 class DnnlElementwiseCapability : public DnnlDefaultNodeCapability {
  public:
-  DnnlElementwiseCapability() : DnnlDefaultNodeCapability({"float"}) {}
+  DnnlElementwiseCapability() : DnnlDefaultNodeCapability({type_float32}) {}
 
-  bool Supported(const Node* node) const override;
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
   bool IsDimensionSupported(const Node* node) const;
+};
+
+class DnnlPowNodeCapability : public DnnlDefaultMultiInputNodeCapability {
+ public:
+  DnnlPowNodeCapability()
+    : DnnlDefaultMultiInputNodeCapability({/*T */{type_float32},
+                                           /*T1*/{type_uint8, type_int8, type_int32, type_float32}}) {}
+
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+
+ private:
+  bool IsDimensionSupported(const Node* node, const GraphViewer& graph_viewe) const;
 };
 
 /**
@@ -222,13 +265,28 @@ class DnnlElementwiseCapability : public DnnlDefaultNodeCapability {
  */
 class DnnlGemmNodeCapability : public DnnlDefaultNodeCapability {
  public:
-  DnnlGemmNodeCapability() : DnnlDefaultNodeCapability({"float"}) {}
+  DnnlGemmNodeCapability() : DnnlDefaultNodeCapability({type_float32}) {}
 
-  bool Supported(const Node* node) const override;
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
   DnnlMatMulNodeCapability _matmul;
   DnnlBinaryNodeCapability _binary;
+};
+
+class DnnlReshapeNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlReshapeNodeCapability() : DnnlDefaultNodeCapability({type_float32,
+                                                           type_float16,
+                                                           type_bfloat16,
+                                                           type_int32,
+                                                           type_int8,
+                                                           type_uint8}) {}
+
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+
+ private:
+  bool IsDimensionSupported(const Node* node) const;
 };
 
 }  // namespace onnxruntime
