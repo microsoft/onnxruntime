@@ -444,6 +444,7 @@ Status SparseToSparseMatMul::EigenCompute(const SparseTensor&,
 
 namespace {
 
+#if 0
 // Used for RowVector to ColVector Mul
 // The functor will multiply all non-zeros in A to all non-zeros in B
 // and will produce appropriate indices for each of the products.
@@ -519,7 +520,7 @@ struct MatrixToVector {
         auto a_row_indices_span = ctx.a_inner_.subspan(row_indices_start, row_nnz_len);
         auto a_row_values_span = a_values_span.subspan(row_indices_start, row_nnz_len);
         T accum = 0;
-        auto accum_cb = [&accum, &a_row_values_span, alpha, b_values_data](size_t a_offset, size_t b_offset) {
+        auto accum_cb = [&accum, &a_row_indices_span , & a_row_values_span, alpha, b_values_data](size_t a_offset, size_t b_offset) {
           accum += Mul(a_row_indices_span[a_offset], alpha, b_values_data[b_offset]);
         };
         sparse_utils::ScanForSparseMatches(a_row_indices_span, ctx.b_1d_coo_, accum_cb);
@@ -570,7 +571,7 @@ struct VectorOuterProduct {
     return Status::OK();
   }
 };
-
+#endif
 }  // namespace
 
 Status SparseToSparseMatMul::Compute(OpKernelContext* ctx) const {
