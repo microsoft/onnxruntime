@@ -1,6 +1,6 @@
 # Transformer Model Optimization Tool Dev Guide
 
-Transformer model optimization tool applies some of the latest graph variations. However, it cannot cover all the cases especially for the new ones that are coming out of academics. This guide will give you an overall introduction of how the graph transformation works and how to optimize your custom transformer-based model with limited code changes on graph fusion logic and kernels implementations. 
+Transformer model optimization tool applies to BERT, GPT-2 and some variations (like Roberta, DistilBert etc). However, it cannot cover all the cases especially for the new ones that are coming out of academics. This guide will give you an overall introduction of how the graph transformation works and how to optimize your custom transformer-based model with limited code changes on graph fusion logic and kernels implementations. 
 
 The objective of the Dev Guide is to enable more transformer-based models to take advantage of ONNXRuntime optimized kernels.
 
