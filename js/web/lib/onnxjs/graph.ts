@@ -7,7 +7,7 @@ import {Attribute} from './attribute';
 import {onnxruntime} from './ort-schema/ort-generated';
 import ortFbs = onnxruntime.experimental.fbs;
 import {Tensor} from './tensor';
-import {LongUtil, ProtoUtil, ClipUtil} from './util';
+import {LongUtil, ProtoUtil, MIN_CLIP, MAX_CLIP} from './util';
 
 export declare namespace Graph {
   export interface Shape {
@@ -762,8 +762,8 @@ class GraphImpl implements Graph, Graph.Transformer {
                 node.attributes.set('__clip_min', 'float', child.attributes.getFloat('min'));
                 node.attributes.set('__clip_max', 'float', child.attributes.getFloat('max'));
               } catch (e) {
-                node.attributes.set('__clip_min', 'float', ClipUtil.MIN_CLIP);
-                node.attributes.set('__clip_max', 'float', ClipUtil.MAX_CLIP);
+                node.attributes.set('__clip_min', 'float', MIN_CLIP);
+                node.attributes.set('__clip_max', 'float', MAX_CLIP);
               }
             } else if (child.inputs.length >= 3) {
               node.attributes.set('__clip_min', 'float', this._allData[child.inputs[1]].tensor!.floatData[0]);

@@ -38,6 +38,8 @@
       "test_basic_conv_without_padding",
       "test_batchnorm_epsilon",
       "test_batchnorm_example",
+      "test_cast_DOUBLE_to_FLOAT",
+      "test_cast_FLOAT_to_DOUBLE",
       "v{7,8,9,10}/test_clip_splitbounds",
       "v{7,8,9,10}/test_clip_outbounds",
       "v{7,8,9,10}/test_clip_inbounds",

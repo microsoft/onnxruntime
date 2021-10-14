@@ -1082,15 +1082,13 @@ export class PoolConvUtil {
     }
 
     // adjust dilation value
-    if (dilations !== undefined) {
-      for (let dim = 0; dim < kernelShape.length; dim++) {
-        if (dim < dilations.length) {
-          if (dilations[dim] < 0) {
-            throw new Error('dilations should be greater than or equal to 1');
-          }
-        } else {
-          dilations.push(1);
+    for (let dim = 0; dim < kernelShape.length; dim++) {
+      if (dim < dilations.length) {
+        if (dilations[dim] < 0) {
+          throw new Error('dilations should be greater than or equal to 1');
         }
+      } else {
+        dilations.push(1);
       }
     }
 
@@ -1246,9 +1244,5 @@ export class PoolConvUtil {
   }
 }
 
-export class ClipUtil {
-  // eslint-disable-next-line @typescript-eslint/naming-convention
-  static readonly MIN_CLIP = -3.4028234663852886e+38;
-  // eslint-disable-next-line @typescript-eslint/naming-convention
-  static readonly MAX_CLIP = 3.4028234663852886e+38;
-}
+export const MIN_CLIP = -3.4028234663852886e+38;
+export const MAX_CLIP = 3.4028234663852886e+38;

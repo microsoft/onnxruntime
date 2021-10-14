@@ -162,8 +162,8 @@ function validateTestList() {
         const testCaseName = typeof testCase === 'string' ? testCase : testCase.name;
         let found = false;
         for (const testGroup of nodeTest) {
-          found =
-              found || testGroup.tests.some(test => minimatch(test.modelUrl, path.join('**', testCaseName, '*.onnx')));
+          found = found ||
+              testGroup.tests.some(test => minimatch(test.modelUrl, path.join('**', testCaseName, '*.+(onnx|ort)')));
         }
         if (!found) {
           throw new Error(`node model test case '${testCaseName}' in test list does not exist.`);
