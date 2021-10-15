@@ -203,9 +203,6 @@ def optimize_model(input: str,
     if opt_level is None:
         opt_level = default_opt_level
 
-    # TODO Vish remove this for final conversion
-    only_onnxruntime = False
-
     temp_model_path = None
     if opt_level > 1:
         # Disable some optimizers that might cause failure in symbolic shape inference or attention fusion.
@@ -225,10 +222,8 @@ def optimize_model(input: str,
     if only_onnxruntime and not temp_model_path:
         logger.warning("Please specify a positive value for opt_level when only_onnxruntime is True")
 
-    #TODO Vish remove this 
-    #model = load_model(temp_model_path or input)
+    model = load_model(temp_model_path or input)
 
-    model  = load_model(input)
     if only_onnxruntime:
         optimizer = optimizer_class(model, num_heads, hidden_size)
     else:
