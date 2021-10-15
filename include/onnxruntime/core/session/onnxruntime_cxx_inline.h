@@ -510,6 +510,16 @@ inline SessionOptions& SessionOptions::AppendExecutionProvider_TensorRT(const Or
   return *this;
 }
 
+inline SessionOptions& SessionOptions::SetCreateThreadFn(void* thread_create_fn) {
+  ThrowOnError(GetApi().SessionOptionsSetCreateThreadFn(p_, thread_create_fn));
+  return *this;
+}
+
+inline SessionOptions& SessionOptions::SetJoinThreadFn(void* join_thread_fn) {
+  ThrowOnError(GetApi().SessionOptionsSetJoinThreadFn(p_, join_thread_fn));
+  return *this;
+}
+
 inline SessionOptions& SessionOptions::AppendExecutionProvider_OpenVINO(const OrtOpenVINOProviderOptions& provider_options) {
   ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_OpenVINO(p_, &provider_options));
   return *this;

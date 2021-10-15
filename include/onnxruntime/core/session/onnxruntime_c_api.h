@@ -1489,6 +1489,9 @@ struct OrtApi {
   */
   ORT_API2_STATUS(UnregisterAllocator, _Inout_ OrtEnv* env,
                   _In_ const OrtMemoryInfo* mem_info);
+
+  ORT_API2_STATUS(SessionOptionsSetCreateThreadFn, _In_ OrtSessionOptions* options, _In_ void* create_thread_fn);
+  ORT_API2_STATUS(SessionOptionsSetJoinThreadFn, _In_ OrtSessionOptions* options, _In_ void* join_thread_fn);
 };
 
 /*

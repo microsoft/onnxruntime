@@ -2036,6 +2036,20 @@ ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensor
 }
 #endif
 
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCreateThreadFn, _In_ OrtSessionOptions* options, _In_ void* create_thread_fn) {
+  API_IMPL_BEGIN
+  options->value.create_thread_fn = create_thread_fn;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetJoinThreadFn, _In_ OrtSessionOptions* options, _In_ void* join_thread_fn) {
+  API_IMPL_BEGIN
+  options->value.join_thread_fn = join_thread_fn;
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString,
@@ -2294,6 +2308,9 @@ static constexpr OrtApi ort_api_1_to_9 = {
     &OrtApis::EnableOrtCustomOps,
     &OrtApis::RegisterAllocator,
     &OrtApis::UnregisterAllocator,
+
+    &OrtApis::SessionOptionsSetCreateThreadFn,
+    &OrtApis::SessionOptionsSetJoinThreadFn,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

@@ -332,6 +332,9 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& AppendExecutionProvider_ROCM(const OrtROCMProviderOptions& provider_options);
   SessionOptions& AppendExecutionProvider_OpenVINO(const OrtOpenVINOProviderOptions& provider_options);
   SessionOptions& AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options);
+
+  SessionOptions& SetCreateThreadFn(void* thread_create_fn);
+  SessionOptions& SetJoinThreadFn(void* join_thread_fn);
 };
 
 struct ModelMetadata : Base<OrtModelMetadata> {

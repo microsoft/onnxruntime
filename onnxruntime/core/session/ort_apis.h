@@ -288,4 +288,8 @@ ORT_API(void, ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProvide
 ORT_API_STATUS_IMPL(EnableOrtCustomOps, _Inout_ OrtSessionOptions* options);
 ORT_API_STATUS_IMPL(RegisterAllocator, _Inout_ OrtEnv* env, _In_ OrtAllocator* allocator);
 ORT_API_STATUS_IMPL(UnregisterAllocator, _Inout_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info);
+
+ORT_API_STATUS_IMPL(SessionOptionsSetCreateThreadFn, _In_ OrtSessionOptions* options, _In_ void* create_thread_fn);
+ORT_API_STATUS_IMPL(SessionOptionsSetJoinThreadFn, _In_ OrtSessionOptions* options, _In_ void* join_thread_fn);
+
 }  // namespace OrtApis

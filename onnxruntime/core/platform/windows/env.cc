@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+﻿/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -54,20 +54,31 @@ class WindowsThread : public EnvThread {
     unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param);
     Eigen::ThreadPoolInterface* param;
     const ThreadOptions& thread_options;
+    bool is_ort_thread;
   };
 
  public:
   WindowsThread(const ORTCHAR_T* name_prefix, int index,
                 unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param), Eigen::ThreadPoolInterface* param,
-                const ThreadOptions& thread_options)
-      : hThread((HANDLE)_beginthreadex(nullptr, thread_options.stack_size, ThreadMain,
-                                       new Param{name_prefix, index, start_address, param, thread_options}, 0,
-                                       &threadID)) {
+                const ThreadOptions& thread_options) {
+    create_thread_fn = thread_options.create_thread_fn;
+    join_thread_fn = thread_options.join_thread_fn;
+    if (create_thread_fn) {
+      hThread.reset(*((HANDLE*)(create_thread_fn(ThreadMain, new Param{name_prefix, index, start_address, param, thread_options, false}))));
+    } else {
+      hThread.reset((HANDLE)_beginthreadex(nullptr, thread_options.stack_size, ThreadMain,
+                                           new Param{name_prefix, index, start_address, param, thread_options, true}, 0,
+                                           &threadID));
+    }
   }
 
   ~WindowsThread() {
-    DWORD waitStatus = WaitForSingleObject(hThread.get(), INFINITE);
-    FAIL_FAST_LAST_ERROR_IF(waitStatus == WAIT_FAILED);
+    if (join_thread_fn) {
+      join_thread_fn(&hThread);
+    } else {
+      DWORD waitStatus = WaitForSingleObject(hThread.get(), INFINITE);
+      FAIL_FAST_LAST_ERROR_IF(waitStatus == WAIT_FAILED);
+    }
   }
 
 
@@ -78,29 +89,30 @@ class WindowsThread : public EnvThread {
 #pragma warning(disable : 6387)
   static unsigned __stdcall ThreadMain(void* param) {
     std::unique_ptr<Param> p((Param*)param);
-    // TODO: should I try to use SetThreadSelectedCpuSets?
-    if (!p->thread_options.affinity.empty())
-      SetThreadAffinityMask(GetCurrentThread(), p->thread_options.affinity[p->index]);
+    if (p->is_ort_thread) {
+      // TODO: should I try to use SetThreadSelectedCpuSets?
+      if (!p->thread_options.affinity.empty())
+        SetThreadAffinityMask(GetCurrentThread(), p->thread_options.affinity[p->index]);
 #if WINVER >= _WIN32_WINNT_WIN10
-    constexpr SetThreadDescriptionFunc pSetThrDesc = SetThreadDescription;
+      constexpr SetThreadDescriptionFunc pSetThrDesc = SetThreadDescription;
 #elif WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
-    HMODULE kernelModule = GetModuleHandle(TEXT("kernel32.dll"));
-    // kernel32.dll is always loaded
-    assert(kernelModule != nullptr);
-    auto pSetThrDesc =
-        (SetThreadDescriptionFunc)GetProcAddress(kernelModule, "SetThreadDescription");
+      HMODULE kernelModule = GetModuleHandle(TEXT("kernel32.dll"));
+      // kernel32.dll is always loaded
+      assert(kernelModule != nullptr);
+      auto pSetThrDesc =
+          (SetThreadDescriptionFunc)GetProcAddress(kernelModule, "SetThreadDescription");
 #else
-    constexpr SetThreadDescriptionFunc pSetThrDesc = nullptr;
+      constexpr SetThreadDescriptionFunc pSetThrDesc = nullptr;
 #endif
-    if (pSetThrDesc != nullptr) {
-      const ORTCHAR_T* name_prefix =
-          (p->name_prefix == nullptr || wcslen(p->name_prefix) == 0) ? L"onnxruntime" : p->name_prefix;
-      std::wostringstream oss;
-      oss << name_prefix << "-" << p->index;
-      // Ignore the error
-      (void)pSetThrDesc(GetCurrentThread(), oss.str().c_str());
+      if (pSetThrDesc != nullptr) {
+        const ORTCHAR_T* name_prefix =
+            (p->name_prefix == nullptr || wcslen(p->name_prefix) == 0) ? L"onnxruntime" : p->name_prefix;
+        std::wostringstream oss;
+        oss << name_prefix << "-" << p->index;
+        // Ignore the error
+        (void)pSetThrDesc(GetCurrentThread(), oss.str().c_str());
+      }
     }
-
     unsigned ret = 0;
     ORT_TRY {
       ret = p->start_address(p->index, p->param);

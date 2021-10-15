@@ -46,10 +46,19 @@ using PIDType = pid_t;
 using FileOffsetType = off_t;
 #endif
 
+typedef void* (*CreateThreadFunc)(void*,void*);
+typedef void (*JoinThreadFunc)(void*);
+
 class EnvThread {
  public:
   virtual ~EnvThread() = default;
+
+ protected:
+  CreateThreadFunc create_thread_fn{};
+  JoinThreadFunc join_thread_fn{};
 };
+
+
 
 // Parameters that are required to create a set of threads for a thread pool
 struct ThreadOptions {
@@ -67,6 +76,9 @@ struct ThreadOptions {
 
   // Set or unset denormal as zero.
   bool set_denormal_as_zero = false;
+
+  CreateThreadFunc create_thread_fn = nullptr;
+  JoinThreadFunc join_thread_fn = nullptr;
 };
 /// \brief An interface used by the onnxruntime implementation to
 /// access operating system functionality like the filesystem etc.

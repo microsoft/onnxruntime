@@ -98,6 +98,9 @@ struct SessionOptions {
   // configuring this makes sense only when you're using parallel executor
   OrtThreadPoolParams inter_op_param;
 
+  void* create_thread_fn = nullptr;
+  void* join_thread_fn = nullptr;
+
   // For models with symbolic input dimensions (most commonly batch size), specifies a set of values to override those
   // symbolic dimensions with, keyed by dimension parameters.
   std::vector<FreeDimensionOverride> free_dimension_overrides;

@@ -27,6 +27,8 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
       to.affinity = cpu_list;
   }
   to.set_denormal_as_zero = options.set_denormal_as_zero;
+  to.create_thread_fn = reinterpret_cast<CreateThreadFunc>(options.create_thread_fn);
+  to.join_thread_fn = reinterpret_cast<JoinThreadFunc>(options.join_thread_fn);
 
   return std::make_unique<ThreadPool>(env, to, options.name, options.thread_pool_size,
                                               options.allow_spinning);
