@@ -108,40 +108,39 @@ jobs:
       condition: succeededOrFailed()
 
   # Node.js Publish
-  - ${{ if eq(parameters['DoNodejsPack'], 'true') }}:
-    - task: BatchScript@1
-      displayName: 'Setup VS2019 env vars'
-      inputs:
-        filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
-        arguments: 'x64'
-        modifyEnvironment: true
-    - template: win-esrp-dll.yml
-      parameters:
-        FolderPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64'
-        DisplayName: 'ESRP - Sign Node.js binding binaries'
-        DoEsrp: ${{ parameters.DoEsrp }}
-        Pattern: '*.dll,*.node'
+  - task: BatchScript@1
+    displayName: 'Setup VS2019 env vars'
+    inputs:
+      filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
+      arguments: 'x64'
+      modifyEnvironment: true
+  - template: win-esrp-dll.yml
+    parameters:
+      FolderPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64'
+      DisplayName: 'ESRP - Sign Node.js binding binaries'
+      DoEsrp: ${{ parameters.DoEsrp }}
+      Pattern: '*.dll,*.node'
 
-    - script: |
-        del /Q $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64\CodeSignSummary-*.*
-        call npm pack
-        copy $(Build.SourcesDirectory)\js\node\onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
-        xcopy /E /I $(Build.SourcesDirectory)\js\node\prebuilds $(Build.ArtifactStagingDirectory)\prebuilds
-      workingDirectory: '$(Build.SourcesDirectory)\js\node'
-      displayName: 'Create NPM Package'
+  - script: |
+      del /Q $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64\CodeSignSummary-*.*
+      call npm pack
+      copy $(Build.SourcesDirectory)\js\node\onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
+      xcopy /E /I $(Build.SourcesDirectory)\js\node\prebuilds $(Build.ArtifactStagingDirectory)\prebuilds
+    workingDirectory: '$(Build.SourcesDirectory)\js\node'
+    displayName: 'Create NPM Package'
 
-    - task: PublishPipelineArtifact@0
-      displayName: 'Publish Pipeline Artifact: drop-win32_x64'
-      inputs:
-        artifactName: 'drop-win32_x64'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline Artifact: drop-win32_x64'
+    inputs:
+      artifactName: 'drop-win32_x64'
+      targetPath: '$(Build.ArtifactStagingDirectory)'
 
-    # Put an unzipped version there to check if all the binaries are signed.
-    - script: |
-        7z x $(Build.ArtifactStagingDirectory)\prebuilds\onnxruntime-*.tar.gz
-        7z x $(Build.ArtifactStagingDirectory)\onnxruntime-*.tar
-      displayName: 'Unzip package to test'
-      workingDirectory: '$(Build.ArtifactStagingDirectory)'
+  # Put an unzipped version there to check if all the binaries are signed.
+  - script: |
+      7z x $(Build.ArtifactStagingDirectory)\prebuilds\onnxruntime-*.tar.gz
+      7z x $(Build.ArtifactStagingDirectory)\onnxruntime-*.tar
+    displayName: 'Unzip package to test'
+    workingDirectory: '$(Build.ArtifactStagingDirectory)'
 
   - task: DeleteFiles@1
     displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
