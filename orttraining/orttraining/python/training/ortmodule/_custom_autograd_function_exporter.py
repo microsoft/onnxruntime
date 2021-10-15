@@ -212,7 +212,7 @@ def _post_process_enabling_autograd_fallback(exported_model):
                         error_msg = 'More than one torch.autograd.Function named {}, but probabbly in different namespace. ' \
                                     'The conflicting autograd.Functions are: {}. Currently torch exporter cannot ' \
                                     'differentiate them with full qualified name, so there is a risk exported PythonOp calls a ' \
-                                    'wrong autograd.Function.'.format(kclass.__name__, ','.join(registered_name_mappings[kclass_name]))
+                                    'wrong autograd.Function.'.format(kclass_name, ','.join(registered_name_mappings[kclass_name]))
                         raise wrap_exception(ORTModuleONNXModelException, RuntimeError(error_msg))
 
                     break
