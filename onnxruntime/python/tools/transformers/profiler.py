@@ -152,12 +152,10 @@ def parse_profile_results(sess_time, kernel_time_only=False, threshold=0):
             if "provider" in item["args"]:
                 if item["args"]["provider"] == "CPUExecutionProvider":
                     device = "CPU"
-                else:
-                    if item["args"]["provider"] == "CUDAExecutionProvider":
-                        device = "CUDA"
-                    else:
-                        if item["args"]["provider"] == "DmlExecutionProvider":
-                            device = "DML"
+                elif item["args"]["provider"] == "CUDAExecutionProvider":
+                    device = "CUDA"
+                elif item["args"]["provider"] == "DmlExecutionProvider":
+                    device = "DML"
 
                 if node_name not in node_provider:
                     node_provider[node_name] = device
