@@ -66,12 +66,12 @@ class OpData {
   const std::vector<float> segment_embedding_data;
   const std::vector<float> gamma_data;
   const std::vector<float> beta_data;
-  const std::vector<float> add_output_data;
+  const std::vector<float> output_data;
   const std::vector<int32_t> mask_index_data;
   const float epsilon;
   const bool has_mask = true;
   const bool has_segment = true;
-  const std::vector<float> output_data;
+  const std::vector<float> add_output_data;
   const bool has_add_output = false;
 };
 

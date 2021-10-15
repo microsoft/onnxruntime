@@ -121,12 +121,17 @@ static void RunTest(const embedlayernorm::OpData& data,
       if (data.has_mask) {
         tester.AddInput<int32_t>("mask", mask_dims, data.mask_data);
       }
+
       tester.AddOutput<float>("output", output_dims, data.output_data);
     }
     tester.AddOutput<int32_t>("mask_index", mask_index_dims, data.mask_index_data);
     if (add_output_attr) {
       std::vector<int64_t> add_output_dims = output_dims;
-      tester.AddOutput<float>("add_output", add_output_dims, data.add_output_data);
+      if (use_float16) {
+        tester.AddOutput<MLFloat16>("add_output", add_output_dims, ToFloat16(data.add_output_data));
+      } else {
+        tester.AddOutput<float>("add_output", add_output_dims, data.add_output_data);
+      }
     }
 
     if (enable_cuda) {
@@ -151,6 +156,9 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch_AddOutput) {
   RunTest(embedlayernorm::EmbedLayerNormBatch_AddOutput(), false, true);
 }
 
+TEST(EmbedLayerNormTest, EmbedLayerNormBatch_AddOutput_Float16) {
+  RunTest(embedlayernorm::EmbedLayerNormBatch_AddOutput(), true, true);
+}
 TEST(EmbedLayerNormTest, EmbedLayerNormBatch2) {
   RunTest(embedlayernorm::EmbedLayerNormBatch2());
 }
