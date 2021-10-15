@@ -453,7 +453,7 @@ Status NonMaxSuppressionBase::GetThresholdsFromInputs(const PrepareContext& pc, 
 Status GatherBase::PrepareForCompute(OpKernelContext* context, GatherBase::Prepare& p) const { return g_host_cpu.GatherBase__PrepareForCompute(this, context, reinterpret_cast<GatherBase__Prepare&>(p)); }
 Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, UnsqueezeBase::Prepare& p) const { return g_host_cpu.UnsqueezeBase__PrepareCompute(this, ctx, reinterpret_cast<UnsqueezeBase__Prepare&>(p)); }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 bool TileOp::IsTileMemcpy(const TensorShape& input_shape, const int64_t* repeats, size_t rank, bool& is_batched_memcpy, size_t& num_of_elements_per_batch, size_t& num_of_copies_per_batch, size_t& num_of_batch_copies) {
   return g_host_cpu.TileOp__IsTileMemcpy(input_shape, repeats, rank, is_batched_memcpy, num_of_elements_per_batch, num_of_copies_per_batch, num_of_batch_copies);
 }
@@ -512,8 +512,8 @@ Status LongformerAttentionBase::CheckInputs(const TensorShape& input_shape, cons
   return g_host_cpu.LongformerAttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape, mask_shape, global_weights_shape, global_bias_shape, global_shape);
 }
 
-Status AttentionBase::CheckInputs(const TensorShape& input_shape, const TensorShape& weights_shape, const TensorShape& bias_shape, const Tensor*& mask_index, const Tensor* past, const int max_threads_per_block) const {
-  return g_host_cpu.AttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape, mask_index, past, max_threads_per_block);
+Status AttentionBase::CheckInputs(const TensorShape& input_shape, const TensorShape& weights_shape, const TensorShape& bias_shape, const Tensor*& mask_index, const Tensor* past, const Tensor *extra_add_qk, const int max_threads_per_block) const {
+  return g_host_cpu.AttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape, mask_index, past, extra_add_qk, max_threads_per_block);
 }
 Tensor* AttentionBase::GetPresent(OpKernelContext* context, const Tensor* past, int batch_size, int head_size, int sequence_length, int& past_sequence_length) const {
   return g_host_cpu.AttentionBase__GetPresent(this, context, past, batch_size, head_size, sequence_length, past_sequence_length);

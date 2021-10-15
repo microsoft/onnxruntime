@@ -808,6 +808,8 @@ public:
 
     RecognizedOperatorType GetRecognizedOperatorType() const noexcept { return m_recognizedOperatorType; }
 
+    bool IsMatMulOperatorType() const noexcept;
+
 protected:
     void ParseEquationComponents();
     RecognizedOperatorType DetermineRecognizedOperatorType();
