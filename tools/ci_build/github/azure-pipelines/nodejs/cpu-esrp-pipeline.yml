@@ -10,9 +10,6 @@ parameters:
 - name: DoEsrp
   type: boolean
   default: true
-- name: DoCompliance
-  type: boolean
-  default: true
 - name: RunTests
   type: boolean
   default: true
@@ -152,20 +149,19 @@ jobs:
        **/*.pdb
        **/*.dll
 
-  - ${{ if eq(parameters['DoCompliance'], 'true') }}:
-    #Manually set msBuildCommandline so that we can also set CAExcludePath
-    - task: SDLNativeRules@3
-      displayName: 'Run the PREfast SDL Native Rules for MSBuild'
-      inputs:
-        msBuildArchitecture: amd64
-        setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --update --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON $(BuildCommand)'
-        msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln" /p:platform=$(msbuildPlatform) /p:configuration="RelWithDebInfo" /p:CAExcludePath="$(Build.BinariesDirectory);$(Build.SourcesDirectory)\cmake;C:\program files (x86)" /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
-        excludedPaths: '$(Build.BinariesDirectory)#$(Build.SourcesDirectory)\cmake#C:\program files (x86)'
+  #Manually set msBuildCommandline so that we can also set CAExcludePath
+  - task: SDLNativeRules@3
+    displayName: 'Run the PREfast SDL Native Rules for MSBuild'
+    inputs:
+      msBuildArchitecture: amd64
+      setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --update --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON $(BuildCommand)'
+      msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln" /p:platform=$(msbuildPlatform) /p:configuration="RelWithDebInfo" /p:CAExcludePath="$(Build.BinariesDirectory);$(Build.SourcesDirectory)\cmake;C:\program files (x86)" /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
+      excludedPaths: '$(Build.BinariesDirectory)#$(Build.SourcesDirectory)\cmake#C:\program files (x86)'
 
-    - task: PostAnalysis@2
-      displayName: 'Guardian Break'
-      inputs:
-        GdnBreakGdnToolSDLNativeRulesSeverity: Warning
+  - task: PostAnalysis@2
+    displayName: 'Guardian Break'
+    inputs:
+      GdnBreakGdnToolSDLNativeRulesSeverity: Warning
 
   - template: ../templates/component-governance-component-detection-steps.yml
     parameters :
