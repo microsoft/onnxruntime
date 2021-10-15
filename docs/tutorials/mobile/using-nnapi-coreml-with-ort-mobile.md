@@ -1,6 +1,6 @@
 ---
 title: Enabling NNAPI or CoreML Execution Providers
-parent: Deploy ONNX Runtime Mobile
+parent: Deploy on mobile
 grand_parent: Tutorials
 nav_order: 2
 ---

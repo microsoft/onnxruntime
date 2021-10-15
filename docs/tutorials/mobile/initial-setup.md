@@ -1,6 +1,6 @@
 ---
 title: Initial setup
-parent: Deploy ONNX Runtime Mobile
+parent: Deploy on mobile
 grand_parent: Tutorials
 has_children: false
 nav_order: 1
