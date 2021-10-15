@@ -57,7 +57,7 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   Status NonMaxSuppressionBase__PrepareCompute(OpKernelContext* ctx, PrepareContext& pc) override { return NonMaxSuppressionBase::PrepareCompute(ctx, pc); }
   Status NonMaxSuppressionBase__GetThresholdsFromInputs(const PrepareContext& pc, int64_t& max_output_boxes_per_class, float& iou_threshold, float& score_threshold) override { return NonMaxSuppressionBase::GetThresholdsFromInputs(pc, max_output_boxes_per_class, iou_threshold, score_threshold); }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
   // From cpu/tensor/size.h (direct)
   Status Size__Compute(const Size* p, OpKernelContext* context) override { return p->Size::Compute(context); }
   // From cpu/tensor/scatter_nd.h (direct)
