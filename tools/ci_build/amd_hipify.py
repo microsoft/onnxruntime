@@ -143,8 +143,6 @@ provider_excluded_files = [
                 'tensor/resize.h',
                 'tensor/resize_impl.cu',
                 'tensor/resize_impl.h',
-                'tensor/transpose.cc',
-                'tensor/transpose.h',
                 'tensor/upsample.cc',
                 'tensor/upsample.h',
                 'tensor/upsample_impl.cu',
@@ -235,6 +233,7 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace('hipblasCreate', 'rocblas_create_handle')
     s = s.replace('hipblasDestroy', 'rocblas_destroy_handle')
     s = s.replace('hipblasSetStream', 'rocblas_set_stream')
+    s = s.replace('HIPBLAS_OP_T', 'rocblas_operation_transpose')
 
     s = s.replace('RegisterCudaContribKernels', 'RegisterRocmContribKernels')
     s = s.replace('cudaEvent', 'hipEvent')
