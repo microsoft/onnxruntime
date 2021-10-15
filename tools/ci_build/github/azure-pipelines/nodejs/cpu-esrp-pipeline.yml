@@ -7,9 +7,15 @@
 #   always: true
 
 parameters:
-  DoEsrp: 'true'
-  DoCompliance: 'true'
-  RunTests: 'true'
+- name: DoEsrp
+  type: boolean
+  default: true
+- name: DoCompliance
+  type: boolean
+  default: true
+- name: RunTests
+  type: boolean
+  default: true
 
 jobs:
 - job: 'Windows_CI_x64'
