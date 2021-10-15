@@ -5,7 +5,7 @@ has_children: true
 nav_order: 7
 ---
 
-# Deploy ML models on the web
+# Deploy ML models on web
 
 ONNX Runtime Web is supported by version 1.8.0 of ONNX Runtime or later.
 

@@ -1,6 +1,6 @@
 ---
 title: Packaging and Deploy
-parent: Deploy ONNX Runtime Mobile
+parent: Deploy on web
 grand_parent: Tutorials
 has_children: false
 nav_order: 2
