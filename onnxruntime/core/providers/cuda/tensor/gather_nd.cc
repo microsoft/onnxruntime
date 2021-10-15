@@ -107,6 +107,7 @@ Status GatherNDBase::PrepareCompute(
                               DataTypeImpl::GetTensorType<double>(),        \
                               DataTypeImpl::GetTensorType<MLFloat16>(),     \
                               DataTypeImpl::GetTensorType<int64_t>(),       \
+                              DataTypeImpl::GetTensorType<bool>(),          \
                           })                                                \
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIndex>()),   \
       GatherND<TIndex>);
@@ -117,15 +118,17 @@ Status GatherNDBase::PrepareCompute(
     DataTypeImpl::GetTensorType<double>(),    \
     DataTypeImpl::GetTensorType<MLFloat16>(), \
     DataTypeImpl::GetTensorType<BFloat16>(),  \
+    DataTypeImpl::GetTensorType<bool>(),      \
     DataTypeImpl::GetTensorType<int64_t>() }
-#define GATHER_ND_T_DATA_TYPES float, MLFloat16, double, int64_t, BFloat16
+#define GATHER_ND_T_DATA_TYPES float, MLFloat16, double, int64_t, BFloat16, bool
 #else
 #define GATHER_ND_T_TENSOR_TYPES              \
   { DataTypeImpl::GetTensorType<float>(),     \
     DataTypeImpl::GetTensorType<double>(),    \
     DataTypeImpl::GetTensorType<MLFloat16>(), \
+    DataTypeImpl::GetTensorType<bool>(),      \
     DataTypeImpl::GetTensorType<int64_t>() }
-#define GATHER_ND_T_DATA_TYPES float, MLFloat16, double, int64_t
+#define GATHER_ND_T_DATA_TYPES float, MLFloat16, double, int64_t, bool
 #endif
 
 #define REGISTER_KERNEL_TYPED_GATHER_ND(TIndex, ver)                      \

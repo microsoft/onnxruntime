@@ -16,7 +16,7 @@ class DnnlTensor {
  public:
   DnnlTensor(const NodeArg* arg);
   DnnlTensor(std::string name);
-  std::string Name();
+  std::string Name() const;
   dnnl::memory::dims Dim();
   dnnl::memory::data_type Type();
   dnnl::memory::format_tag Format();

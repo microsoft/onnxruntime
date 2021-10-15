@@ -119,7 +119,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
   // build the graph once and reuse it later in the looping logic
   GradientOpTester op_session(op_def.type.c_str(), x_infos, y_infos, op_def.opset_version, op_def.domain.c_str(), false);
   op_session.AddShapeToTensorData(add_shape);
-  InitOpTesterWithGradGraph(op_session, x_infos, y_infos, x_datas, y_datas, attributes);
+  ORT_RETURN_IF_ERROR(InitOpTesterWithGradGraph(op_session, x_infos, y_infos, x_datas, y_datas, attributes));
 
   // currently only supported scalar valued fns - and complex types are not supported
   for (int y_idx = 0; y_idx < static_cast<int>(y_num); y_idx++) {  // for each dy input
@@ -298,7 +298,8 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGradGraph(
     std::vector<std::vector<Y_T>>* y_datas,
     const std::vector<AttributeProto>& attributes) {
   std::unordered_map<std::string, int> extra_domain_to_version{{kMSDomain, 1}, {kOnnxDomain, 9}};
-  InitOpTesterWithGraph(op_session, x_infos, y_infos, x_datas, y_datas, attributes, extra_domain_to_version);
+  ORT_RETURN_IF_ERROR(InitOpTesterWithGraph(op_session, x_infos, y_infos, x_datas, y_datas, attributes,
+                                            extra_domain_to_version));
   // build grad graph
   auto p_model = op_session.GetModelCache();
   auto& graph = p_model->MainGraph();
@@ -349,7 +350,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeNumericJacobianTranspose(
   // build the graph once and reuse it later in the looping logic
   OpTester op_session(op_def.type.c_str(), op_def.opset_version, op_def.domain.c_str(), false);
   op_session.AddShapeToTensorData(add_shape);
-  InitOpTesterWithGraph(op_session, x_infos, y_infos, x_datas, y_datas, attributes);
+  ORT_RETURN_IF_ERROR(InitOpTesterWithGraph(op_session, x_infos, y_infos, x_datas, y_datas, attributes));
 
   for (int x_idx = 0; x_idx < static_cast<int>(x_num); x_idx++) {
     if (!x_infos[x_idx].has_gradient) {
@@ -452,7 +453,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
     std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers /* nullptr */) {
   // Initialize numeric Jacobian to zeros.
   std::vector<std::vector<JAC_T>> jacobian_ns;
-  InitJacobians(x_infos, y_infos, &jacobian_ns);
+  ORT_RETURN_IF_ERROR(InitJacobians(x_infos, y_infos, &jacobian_ns));
   // Compute numeric Jacobian.
   ORT_RETURN_IF_ERROR(ComputeNumericJacobianTranspose(
       op_def, x_infos, y_infos, JAC_T{1e-3f}, x_datas, y_datas, &jacobian_ns, attributes));
@@ -470,7 +471,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
     for (size_t x_gradient_variation = 0; x_gradient_variation < total_gradient_variations; x_gradient_variation++) {
       // Initialize theoretical Jacobians to zeros.
       std::vector<std::vector<JAC_T>> jacobian_ts;
-      InitJacobians(x_infos, y_infos, &jacobian_ts);
+      ORT_RETURN_IF_ERROR(InitJacobians(x_infos, y_infos, &jacobian_ts));
 
       std::vector<TensorInfo> x_infos_gradient_variation = x_infos;
 

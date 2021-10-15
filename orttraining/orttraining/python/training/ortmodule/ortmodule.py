@@ -59,7 +59,8 @@ class ORTModule(torch.nn.Module):
             debug_options = DebugOptions()
 
         # Fallback settings
-        self._fallback_manager = _FallbackManager(policy=ORTMODULE_FALLBACK_POLICY,
+        self._fallback_manager = _FallbackManager(pytorch_module=module,
+                                                  policy=ORTMODULE_FALLBACK_POLICY,
                                                   retry=ORTMODULE_FALLBACK_RETRY)
 
         try:
@@ -101,26 +102,18 @@ class ORTModule(torch.nn.Module):
             _utils.check_for_name_collisions_and_bind_methods_to_ortmodule(self, module)
 
         except ORTModuleFallbackException as e:
-            self._torch_module = TorchModulePytorch(module)
-            # TODO: Rework by implementing the "__getattribute__" method.
-            #       Assigning all default attributes from user's original torch.nn.Module into ORTModule
-            self._backward_hooks = module._backward_hooks
-            self._forward_hooks = module._forward_hooks
-            self._forward_pre_hooks = module._forward_pre_hooks
-            self._parameters = module._parameters
-            self._buffers = module._buffers
-            self._non_persistent_buffers_set = module._non_persistent_buffers_set
-            self._is_full_backward_hook = module._is_full_backward_hook
-            self._state_dict_hooks = module._state_dict_hooks
-            self._load_state_dict_pre_hooks = module._load_state_dict_pre_hooks
-            self._modules = module._modules
-            self.forward = module.forward
+            # Although backend is switched to PyTorch here,
+            # it is up to _FallbackManager to actually terminate execution or fallback
+            _utils.switch_backend_to_pytorch(self, module)
 
             # Exceptions subject to fallback are handled here
             self._fallback_manager.handle_exception(exception=e,
                                                     log_level=debug_options.logging.log_level)
         except Exception as e:
-            self._torch_module = TorchModulePytorch(module)
+            # Although backend is switched to PyTorch here,
+            # it is up to _FallbackManager to actually terminate execution or fallback
+            _utils.switch_backend_to_pytorch(self, module)
+
             # Catch-all FALLBACK_FORCE_TORCH_FORWARD fallback is handled here
             self._fallback_manager.handle_exception(exception=e,
                                                     log_level=debug_options.logging.log_level,

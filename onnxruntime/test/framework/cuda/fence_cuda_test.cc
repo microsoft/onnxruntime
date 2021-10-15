@@ -114,7 +114,7 @@ TEST(CUDAFenceTests, DISABLED_PartOnCPU) {
 
   SessionOptions so;
   FenceCudaTestInferenceSession session(so, GetEnvironment());
-  LoadInferenceSessionFromModel(session, *model);
+  ASSERT_STATUS_OK(LoadInferenceSessionFromModel(session, *model));
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
   ASSERT_TRUE(session.Initialize().IsOK());
   ASSERT_TRUE(1 == CountCopyNodes(graph));
@@ -165,7 +165,7 @@ TEST(CUDAFenceTests, TileWithInitializer) {
 
   SessionOptions so;
   FenceCudaTestInferenceSession session(so, GetEnvironment());
-  LoadInferenceSessionFromModel(session, *model);
+  ASSERT_STATUS_OK(LoadInferenceSessionFromModel(session, *model));
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
   ASSERT_STATUS_OK(session.Initialize());
 
@@ -226,7 +226,7 @@ TEST(CUDAFenceTests, TileWithComputedInput) {
 
   SessionOptions so;
   FenceCudaTestInferenceSession session(so, GetEnvironment());
-  LoadInferenceSessionFromModel(session, *model);
+  ASSERT_STATUS_OK(LoadInferenceSessionFromModel(session, *model));
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
   ASSERT_TRUE(session.Initialize().IsOK());
 

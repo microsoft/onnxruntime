@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/rocm/rocm_provider_factory_creator.h"
 #include "core/providers/rocm/rocm_provider_factory.h"
 
@@ -9,18 +10,30 @@
 #include "gsl/gsl"
 
 #include "core/providers/rocm/rocm_execution_provider.h"
-#include "core/providers/rocm/rocm_execution_provider_info.h"
-#include "core/session/abi_session_options_impl.h"
-#include "core/session/ort_apis.h"
+#include "core/providers/rocm/rocm_allocator.h"
+#include "core/providers/rocm/gpu_data_transfer.h"
+#include "core/providers/rocm/math/unary_elementwise_ops_impl.h"
+
+#if defined(USE_ROCM) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#include "orttraining/training_ops/rocm/communication/nccl_service.h"
+#endif
 
 using namespace onnxruntime;
 
 namespace onnxruntime {
 
-struct HIPProviderFactory : IExecutionProviderFactory {
-  HIPProviderFactory(const ROCMExecutionProviderInfo& info)
+#if defined(USE_ROCM) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+namespace rocm {
+rocm::INcclService& GetINcclService();
+}
+#endif
+
+void Shutdown_DeleteRegistry();
+
+struct ROCMProviderFactory : IExecutionProviderFactory {
+  ROCMProviderFactory(const ROCMExecutionProviderInfo& info)
       : info_{info} {}
-  ~HIPProviderFactory() override {}
+  ~ROCMProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
@@ -28,35 +41,155 @@ struct HIPProviderFactory : IExecutionProviderFactory {
   ROCMExecutionProviderInfo info_;
 };
 
-std::unique_ptr<IExecutionProvider> HIPProviderFactory::CreateProvider() {
+std::unique_ptr<IExecutionProvider> ROCMProviderFactory::CreateProvider() {
   return std::make_unique<ROCMExecutionProvider>(info_);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ROCM(const ROCMExecutionProviderInfo& info) {
-  return std::make_shared<HIPProviderFactory>(info);
+  return std::make_shared<onnxruntime::ROCMProviderFactory>(info);
 }
+
+struct ProviderInfo_ROCM_Impl : ProviderInfo_ROCM {
+  OrtStatus* SetCurrentGpuDeviceId(_In_ int device_id) override {
+    int num_devices;
+    auto hip_err = ::hipGetDeviceCount(&num_devices);
+    if (hip_err != hipSuccess) {
+      return CreateStatus(ORT_FAIL, "Failed to set device id since hipGetDeviceCount failed.");
+    }
+
+    if (device_id >= num_devices) {
+      std::ostringstream ostr;
+      ostr << "Invalid device id. Device id should be less than total number of devices (" << num_devices << ")";
+      return CreateStatus(ORT_INVALID_ARGUMENT, ostr.str().c_str());
+    }
+
+    hip_err = hipSetDevice(device_id);
+    if (hip_err != hipSuccess) {
+      return CreateStatus(ORT_FAIL, "Failed to set device id.");
+    }
+    return nullptr;
+  }
+
+  OrtStatus* GetCurrentGpuDeviceId(_In_ int* device_id) override {
+    auto hip_err = hipGetDevice(device_id);
+    if (hip_err != hipSuccess) {
+      return CreateStatus(ORT_FAIL, "Failed to get device id.");
+    }
+    return nullptr;
+  }
+
+  std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name) override {
+    return std::make_unique<ROCMAllocator>(device_id, name);
+  }
+
+  std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name) override {
+    return std::make_unique<ROCMPinnedAllocator>(device_id, name);
+  }
+
+  std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) override {
+    return std::make_unique<GPUDataTransfer>(static_cast<hipStream_t>(stream));
+  }
+
+  void rocm__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) override {
+    return rocm::Impl_Cast(static_cast<hipStream_t>(stream), input_data, output_data, count);
+  }
+
+  void rocm__Impl_Cast(void* stream, const int32_t* input_data, int64_t* output_data, size_t count) override {
+    return rocm::Impl_Cast(static_cast<hipStream_t>(stream), input_data, output_data, count);
+  }
+
+  void rocm__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) override {
+    return rocm::Impl_Cast(static_cast<hipStream_t>(stream), input_data, output_data, count);
+  }
+
+  void rocm__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) override {
+    return rocm::Impl_Cast(static_cast<hipStream_t>(stream), input_data, output_data, count);
+  }
+
+  bool RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return RocmCall<hipError_t, false>(hipError_t(retCode), exprString, libName, hipError_t(successCode), msg); }
+  bool RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return RocmCall<hipError_t, true>(hipError_t(retCode), exprString, libName, hipError_t(successCode), msg); }
+
+  void CopyGpuToCpu(void* dst_ptr, const void* src_ptr, const size_t size, const OrtMemoryInfo& dst_location, const OrtMemoryInfo& src_location) override {
+    ORT_ENFORCE(dst_location.device.Type() == OrtDevice::CPU);
+
+    // Current ROCM device.
+    int device;
+    HIP_CALL(hipGetDevice(&device));
+
+    if (device != src_location.id) {
+      // Need to switch to the allocating device.
+      HIP_CALL(hipSetDevice(src_location.id));
+      // Copy from GPU to CPU.
+      HIP_CALL(hipMemcpy(dst_ptr, src_ptr, size, hipMemcpyDeviceToHost));
+      // Switch back to current device.
+      HIP_CALL(hipSetDevice(device));
+    } else {
+      // Copy from GPU to CPU.
+      HIP_CALL(hipMemcpy(dst_ptr, src_ptr, size, hipMemcpyDeviceToHost));
+    }
+  }
+
+  // Used by slice_concatenate_test.cc and onnxruntime_pybind_state.cc
+  void rocmMemcpy_HostToDevice(void* dst, const void* src, size_t count) override { HIP_CALL_THROW(hipMemcpy(dst, src, count, hipMemcpyHostToDevice)); }
+  // Used by onnxruntime_pybind_state.cc
+  void rocmMemcpy_DeviceToHost(void* dst, const void* src, size_t count) override { HIP_CALL_THROW(hipMemcpy(dst, src, count, hipMemcpyDeviceToHost)); }
+
+  int hipGetDeviceCount() override {
+    int num_devices = 0;
+    HIP_CALL_THROW(::hipGetDeviceCount(&num_devices));
+    return num_devices;
+  }
+
+  void ROCMExecutionProviderInfo__FromProviderOptions(const ProviderOptions& options, ROCMExecutionProviderInfo& info) override {
+    info = ROCMExecutionProviderInfo::FromProviderOptions(options);
+  }
+
+#if defined(USE_ROCM) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+  rocm::INcclService& GetINcclService() override {
+    return rocm::GetINcclService();
+  }
+#endif
+
+  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const ROCMExecutionProviderInfo& info) override {
+    return std::make_shared<ROCMProviderFactory>(info);
+  }
+
+  std::shared_ptr<IAllocator> CreateRocmAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::ROCMExecutionProviderExternalAllocatorInfo& external_allocator_info, OrtArenaCfg* default_memory_arena_cfg) override {
+    return ROCMExecutionProvider::CreateRocmAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, default_memory_arena_cfg);
+  }
+
+} g_info;
+
+struct ROCM_Provider : Provider {
+  void* GetInfo() override { return &g_info; }
+
+  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
+    auto params = reinterpret_cast<const OrtROCMProviderOptions*>(void_params);
+
+    ROCMExecutionProviderInfo info{};
+    info.device_id = gsl::narrow<OrtDevice::DeviceId>(params->device_id);
+    info.gpu_mem_limit = params->gpu_mem_limit;
+    info.arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(params->arena_extend_strategy);
+    info.miopen_conv_exhaustive_search = params->miopen_conv_exhaustive_search;
+    info.do_copy_in_default_stream = params->do_copy_in_default_stream;
+    info.has_user_compute_stream = params->has_user_compute_stream;
+    info.user_compute_stream = params->user_compute_stream;
+    info.default_memory_arena_cfg = params->default_memory_arena_cfg;
+
+    return std::make_shared<ROCMProviderFactory>(info);
+  }
+
+  void Shutdown() override {
+    Shutdown_DeleteRegistry();
+  }
+
+} g_provider;
 
 }  // namespace onnxruntime
 
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_ROCM, _In_ OrtSessionOptions* options,
-                    int device_id, size_t gpu_mem_limit) {
-  ROCMExecutionProviderInfo info{};
-  info.device_id = gsl::narrow<OrtDevice::DeviceId>(device_id);
-  info.gpu_mem_limit = gpu_mem_limit;
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_ROCM(info));
+extern "C" {
 
-  return nullptr;
+ORT_API(onnxruntime::Provider*, GetProvider) {
+  return &onnxruntime::g_provider;
 }
-
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM,
-                    _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* rocm_options) {
-  ROCMExecutionProviderInfo info{};
-  info.device_id = gsl::narrow<OrtDevice::DeviceId>(rocm_options->device_id);
-  info.gpu_mem_limit = rocm_options->gpu_mem_limit;
-  info.arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(rocm_options->arena_extend_strategy);
-  info.miopen_conv_exhaustive_search = rocm_options->miopen_conv_exhaustive_search;
-
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_ROCM(info));
-
-  return nullptr;
 }
