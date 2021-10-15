@@ -114,7 +114,7 @@ jobs:
       filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
       arguments: 'x64'
       modifyEnvironment: true
-  - template: ../template/win-esrp-dll.yml
+  - template: ../templates/win-esrp-dll.yml
     parameters:
       FolderPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64'
       DisplayName: 'ESRP - Sign Node.js binding binaries'
