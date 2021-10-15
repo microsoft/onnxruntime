@@ -51,8 +51,8 @@ class OpData {
       , epsilon(epsilon)
       , has_mask(has_mask)
       , has_segment(has_segment)
-      , has_add_output(has_add_output)
       , add_output_data(add_output_data)
+      , has_add_output(has_add_output)
   {}
 
   const int batch_size;
@@ -365,8 +365,8 @@ inline OpData EmbedLayerNormBatch_AddOutput() {
                 gamma_data, beta_data, output_data, mask_index_data, kEpsilon,
                 /*has_mask=*/true,
                 /*has_segment=*/false,
-                /*has_add_output*/ true,
-                add_output_data);
+                add_output_data,
+                /*has_add_output*/ true);
 }
 }  // namespace embedlayernorm
 }  // namespace test
