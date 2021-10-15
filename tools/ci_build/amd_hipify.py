@@ -134,7 +134,6 @@ provider_excluded_files = [
                 'shared_inc/fast_divmod.h',
                 'shared_inc/fpgeneric.h',
                 'shared_inc/integer_gemm.h',
-                'tensor/gather_nd_impl.cu',
                 'tensor/quantize_linear.cc',
                 'tensor/quantize_linear.cu',
                 'tensor/quantize_linear.cuh',
