@@ -19,6 +19,7 @@ import os
 import argparse
 import coloredlogs
 import logging
+from onnx import load_model
 import torch
 import numpy
 import json
@@ -309,6 +310,7 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
 
     is_io_float16 = (args.precision == Precision.FLOAT16 and not args.keep_io_types)
 
+    onnx_position_ids = False
     if args.optimize_onnx or args.precision != Precision.FLOAT32:
         output_path = onnx_model_paths[str(args.precision) if args.precision != Precision.INT8 else 'fp32']
 
@@ -316,6 +318,10 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
         gpt2helper.optimize_onnx(raw_onnx_model, output_path, args.precision == Precision.FLOAT16,
                                  model.config.num_attention_heads, model.config.hidden_size,
                                  args.use_external_data_format, **fp16_params)
+        optimized_model = load_model(output_path)
+        for input in optimized_model.graph.input:
+            if input.name == 'position_ids':
+                onnx_position_ids = True
     else:
         output_path = raw_onnx_model
 
@@ -343,12 +349,14 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                                                rtol=args.tolerance,
                                                atol=args.tolerance,
                                                model_class=args.model_class,
-                                               has_position_ids=use_padding,
+                                               has_position_ids= use_padding,
                                                has_attention_mask=use_padding,
                                                test_cases_per_run=args.test_cases,
                                                total_runs=args.test_runs,
-                                               verbose=args.verbose)
+                                               verbose=args.verbose,
+                                               onnx_has_position_ids=onnx_position_ids)
 
+        print(str(parity_result))
         latency = gpt2helper.test_performance(session,
                                               model,
                                               device,
@@ -356,7 +364,7 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                                               total_runs=100,
                                               use_io_binding=True,
                                               model_class=args.model_class,
-                                              has_position_ids=use_padding,
+                                              has_position_ids=use_padding and onnx_position_ids,
                                               has_attention_mask=use_padding,
                                               batch_size=8,
                                               sequence_length=1,

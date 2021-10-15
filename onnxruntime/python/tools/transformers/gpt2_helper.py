@@ -6,6 +6,7 @@
 # This script helps onnx conversion and validation for GPT2 model with past state.
 import os
 import logging
+import onnx
 import torch
 import shutil
 import random
@@ -451,7 +452,7 @@ class Gpt2Helper:
         return outputs, average_latency
 
     @staticmethod
-    def onnxruntime_inference(ort_session, inputs: Gpt2Inputs, total_runs: int = 0):
+    def onnxruntime_inference(ort_session, inputs: Gpt2Inputs, total_runs: int = 0, has_position_ids: bool = True):
         """ Run inference of ONNX model, and returns average latency in ms when total_runs > 0 besides outputs.
         """
         logger.debug(f"start onnxruntime_inference")
@@ -465,11 +466,12 @@ class Gpt2Helper:
         if inputs.attention_mask is not None:
             ort_inputs['attention_mask'] = numpy.ascontiguousarray(inputs.attention_mask.cpu().numpy())
 
-        if inputs.position_ids is not None:
+        if (inputs.position_ids is not None) and has_position_ids:
             ort_inputs['position_ids'] = numpy.ascontiguousarray(inputs.position_ids.cpu().numpy())
 
         ort_outputs = ort_session.run(None, ort_inputs)
         if total_runs == 0:
+            print("Vish Returning after on iteration")
             return ort_outputs
 
         latency = []
@@ -554,14 +556,20 @@ class Gpt2Helper:
                                              output_shapes: Dict[str, List[int]],
                                              total_runs: int = 0,
                                              return_numpy: bool = True,
-                                             include_copy_output_latency: bool = False):
+                                             include_copy_output_latency: bool = False,
+                                             has_position_ids: bool = True):
         """ Inference with IO binding. Returns outputs, and optional latency when total_runs > 0.
         """
         logger.debug(f"start onnxruntime_inference_with_binded_io")
 
         # Bind inputs and outputs to onnxruntime session
-        io_binding = Gpt2Helper.prepare_io_binding(ort_session, inputs.input_ids, inputs.position_ids,
-                                                   inputs.attention_mask, inputs.past, output_buffers, output_shapes)
+        if has_position_ids:
+            position_ids = inputs.position_ids
+        else:
+            position_ids = None
+
+        io_binding = Gpt2Helper.prepare_io_binding(ort_session, inputs.input_ids, position_ids,
+                                                   inputs.attention_mask, inputs.past, output_buffers, output_shapes, has_position_ids)
 
         # Run onnxruntime with io binding
         ort_session.run_with_iobinding(io_binding)
@@ -618,12 +626,12 @@ class Gpt2Helper:
                     has_position_ids=True,
                     has_attention_mask=True,
                     verbose=False,
-                    enable_pickle_output=False):
+                    enable_pickle_output=False,
+                    onnx_has_position_ids=True):
         """ Generate random inputs and compare the results of PyTorch and Onnx Runtime.
         """
 
         config: GPT2Config = model.config
-
         logger.info(
             f"Running parity test (atol={atol}, test_cases={test_cases_per_run}, runs={total_runs}, use_io_binding={use_io_binding}, model_class={model_class}, is_float16={is_float16}) ..."
         )
@@ -644,6 +652,8 @@ class Gpt2Helper:
         max_abs_diff_list = []
         top1_matched_cases_per_run = [0] * total_runs
         total_test_cases = test_cases_per_run * total_runs
+        # Vish override total_test_cases
+        total_test_cases = 100
         for i in range(total_test_cases):
             run_id = int(i / test_cases_per_run)
             sequence_length = random.randint(1, max_seq_len)
@@ -658,12 +668,12 @@ class Gpt2Helper:
                                                        has_attention_mask)
             outputs = Gpt2Helper.pytorch_inference(model, dummy_inputs)
             if use_io_binding:
-                ort_outputs = Gpt2Helper.onnxruntime_inference(ort_session, dummy_inputs)
+                ort_outputs = Gpt2Helper.onnxruntime_inference(ort_session, dummy_inputs, 0, onnx_has_position_ids)
             else:
                 output_shapes = Gpt2Helper.get_output_shapes(batch_size, past_sequence_length, sequence_length, config,
                                                              model_class)
                 ort_outputs = Gpt2Helper.onnxruntime_inference_with_binded_io(ort_session, dummy_inputs, output_buffers,
-                                                                              output_shapes)
+                                                                              output_shapes, onnx_has_position_ids)
 
             is_all_close, max_abs_diff, max_diff_output_index, messages, is_top1_matched = Gpt2Helper.compare_outputs_v2(
                 outputs, ort_outputs, atol=atol)
