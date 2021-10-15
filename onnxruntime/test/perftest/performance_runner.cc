@@ -106,7 +106,7 @@ Status PerformanceRunner::Run() {
   }
 
   // warm up
-  RunOneIteration<true>();
+  ORT_RETURN_IF_ERROR(RunOneIteration<true>());
 
   // TODO: start profiling
   // if (!performance_test_config_.run_config.profile_file.empty())

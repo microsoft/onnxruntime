@@ -177,7 +177,7 @@ try:
                 self._rewrite_ld_preload(to_preload)
                 self._rewrite_ld_preload_cuda(to_preload_cuda)
             _bdist_wheel.run(self)
-            if is_manylinux:
+            if is_manylinux and not disable_auditwheel_repair:
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
                 logger.info('repairing %s for manylinux1', file)
                 try:
@@ -292,6 +292,7 @@ requirements_file = "requirements.txt"
 
 local_version = None
 enable_training = parse_arg_remove_boolean(sys.argv, '--enable_training')
+disable_auditwheel_repair = parse_arg_remove_boolean(sys.argv, '--disable_auditwheel_repair')
 default_training_package_device = parse_arg_remove_boolean(sys.argv, '--default_training_package_device')
 
 package_data = {}
@@ -327,13 +328,17 @@ if enable_training:
                      'onnxruntime.training.ortmodule',
                      'onnxruntime.training.ortmodule.experimental',
                      'onnxruntime.training.ortmodule.experimental.json_config',
+                     'onnxruntime.training.ortmodule.experimental.hierarchical_ortmodule',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions',
-                     'onnxruntime.training.ortmodule.torch_cpp_extensions.aten_op_executor',
-                     'onnxruntime.training.ortmodule.torch_cpp_extensions.torch_interop_utils',
-                     'onnxruntime.training.ortmodule.torch_cpp_extensions.torch_gpu_allocator'])
-    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.aten_op_executor'] = ['*.cc']
-    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.torch_interop_utils'] = ['*.cc']
-    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.torch_gpu_allocator'] = ['*.cc']
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor',
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils',
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator',
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.adam_optimizer'])
+    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor'] = ['*.cc']
+    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils'] = ['*.cc']
+    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator'] = ['*.cc']
+    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.adam_optimizer'] = \
+        ['*.cpp', '*.cu', '*.cuh', '*.h']
     requirements_file = "requirements-training.txt"
     # with training, we want to follow this naming convention:
     # stable:

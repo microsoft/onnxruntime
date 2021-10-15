@@ -8,12 +8,12 @@ FROM centos:7.8.2003
 WORKDIR /code
 
 ARG MY_ROOT=/code
-ARG YUM_OV_PACKAGE=intel-openvino-runtime-centos7-2021.4.582.x86_64
+ARG YUM_OV_PACKAGE=intel-openvino-runtime-centos7-2021.4.689.x86_64
 ARG DEVICE=CPU_FP32
 ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime
 ARG ONNXRUNTIME_BRANCH=master
 
-ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2021.4.582
+ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2021.4.689
 ENV InferenceEngine_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/share
 ENV IE_PLUGINS_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64
 ENV ngraph_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/ngraph/cmake
@@ -58,7 +58,7 @@ RUN yum update -y && \
     yum update -y && yum list intel-openvino* && \
     yum install -y $YUM_OV_PACKAGE && \
     cd ${INTEL_OPENVINO_DIR}/install_dependencies/ && ./install_openvino_dependencies.sh -y && \
-    printf "\nexport LD_LIBRARY_PATH=\${LD_LIBRARY_PATH}:/usr/local/lib\n" >> /opt/intel/openvino_2021.4.582/bin/setupvars.sh && \
+    printf "\nexport LD_LIBRARY_PATH=\${LD_LIBRARY_PATH}:/usr/local/lib\n" >> /opt/intel/openvino_2021.4.689/bin/setupvars.sh && \
     cd /opt/libusb-1.0.22 && \
     /usr/bin/install -c -m 644 libusb-1.0.pc '/usr/local/lib/pkgconfig' && \
     cp /opt/intel/openvino_2021/deployment_tools/inference_engine/external/97-myriad-usbboot.rules /etc/udev/rules.d/ && \

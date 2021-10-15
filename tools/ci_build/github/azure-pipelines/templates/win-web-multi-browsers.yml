@@ -1,0 +1,84 @@
+parameters:
+- name: CommitOverride
+  type: boolean
+  default: false
+
+jobs:
+- job: build_onnxruntime_web_windows
+  pool:
+    vmImage: windows-latest
+  timeoutInMinutes: 30
+  workspace:
+    clean: all
+  steps:
+  - checkout: self
+    submodules: false
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      artifact: '__commit'
+      path: $(Pipeline.Workspace)
+    displayName: 'Get commit SHA'
+    condition: eq('${{ parameters.CommitOverride }}', 'true')
+  - script: |
+     set /p __commit__=<$(Pipeline.Workspace)\__commit.txt
+     git fetch origin +%__commit__%:refs/remotes/origin/%__commit__%
+     git checkout --force %__commit__%
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'Read commit SHA and checkout'
+    condition: eq('${{ parameters.CommitOverride }}', 'true')
+  - script: |
+     git submodule sync -- cmake\external\onnx
+     git submodule update --init -- cmake\external\onnx
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'Checkout submodule onnx'
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '14.x'
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      patterns: 'Release_*/**/*'
+      path: $(Pipeline.Workspace)\artifacts
+    displayName: 'Download WebAssembly artifacts'
+  - task: CopyFiles@2
+    inputs:
+      sourceFolder: $(Pipeline.Workspace)\artifacts
+      contents: |
+        **\*.wasm
+      targetFolder: $(Build.SourcesDirectory)\js\web\dist
+      flattenFolders: true
+    displayName: 'Binplace dist files'
+  - task: CopyFiles@2
+    inputs:
+      sourceFolder: $(Pipeline.Workspace)\artifacts
+      contents: |
+        **\*.js
+      targetFolder: $(Build.SourcesDirectory)\js\web\lib\wasm\binding
+      flattenFolders: true
+    displayName: 'Binplace js files'
+  - script: |
+     npm ci
+    workingDirectory: '$(Build.SourcesDirectory)\js'
+    displayName: 'npm ci /js/'
+  - script: |
+     npm ci
+    workingDirectory: '$(Build.SourcesDirectory)\js\common'
+    displayName: 'npm ci /js/common/'
+  - script: |
+     npm ci
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'npm ci /js/web/'
+  - script: |
+      npm test -- suite0 --wasm-init-timeout=30000 --file-cache
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'npm test (Suite0, Chrome)'
+  - script: |
+      npm test -- suite0 --env=firefox --wasm-init-timeout=30000 --file-cache
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'npm test (Suite0, Firefox)'
+  - script: |
+      npm test -- suite0 --env=edge --wasm-init-timeout=30000 --file-cache
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'npm test (Suite0, Edge)'
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()

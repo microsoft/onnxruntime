@@ -148,20 +148,25 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False):
 
 def quantize_data(data, qType, symmetric, reduce_range=False):
     '''
-        :parameter data: data to quantize
-        :parameter qType: data type to quantize to. Supported types UINT8 and INT8
-        :parameter symmetric: whether symmetric quantization is used or not. This is applied to INT8.
-        :return: minimum, maximum, zero point, scale, and quantized weights
-        To pack weights, we compute a linear transformation
-            - when data type == uint8 mode, from [rmin, rmax] -> [0, 2^{b-1}] and
-            - when data type == int8, from [-m , m] -> [-(2^{b-1}-1), 2^{b-1}-1] where
-                m = max(abs(rmin), abs(rmax))
-        and add necessary intermediate nodes to trasnform quantized weight to full weight using the equation
-        r = S(q-z), where
-            r: real original value
-            q: quantized value
-            S: scale
-            z: zero point
+    :param data: data to quantize
+    :param qType: data type to quantize to. Supported types UINT8 and INT8
+    :param symmetric: whether symmetric quantization is used or not. This is applied to INT8.
+    :return: minimum, maximum, zero point, scale, and quantized weights
+
+    To pack weights, we compute a linear transformation
+    
+    - when data `type == uint8` mode, from `[rmin, rmax]` -> :math:`[0, 2^{b-1}]` and
+    - when data `type == int8`, from `[-m , m]` -> :math:`[-(2^{b-1}-1), 2^{b-1}-1]` where
+        `m = max(abs(rmin), abs(rmax))`
+
+    and add necessary intermediate nodes to trasnform quantized weight to full weight using the equation
+
+    :math:`r = S(q-z)`, where
+    
+    - *r*: real original value
+    - *q*: quantized value
+    - *S*: scale
+    - *z*: zero point
     '''
     rmin = min(data)
     rmax = max(data)

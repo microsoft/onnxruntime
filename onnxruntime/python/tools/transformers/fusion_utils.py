@@ -151,7 +151,7 @@ class FusionUtils:
                     self.model.replace_input_of_all_nodes(node.output[0], node.input[0])
                 self.model.remove_node(node)
         logger.info(f"Removed {len(nodes_to_remove)} Cast nodes with output type same as input")
-        
+
     def remove_useless_reshape_nodes(self):
         """Remove reshape node that is not needed based on symbolic shape inference: input and output has same shape
         """
