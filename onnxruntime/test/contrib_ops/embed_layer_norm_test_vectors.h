@@ -33,8 +33,8 @@ class OpData {
       float epsilon = kEpsilon,
       bool has_mask = true,
       bool has_segment = true,
-      bool has_add_output = false,
-      const std::vector<float>& add_output_data = {})
+      const std::vector<float>& add_output_data = {},
+      bool has_add_output = false)
       : batch_size(batch_size)
       , sequence_size(sequence_size)
       , hidden_size(hidden_size)
