@@ -19,5 +19,11 @@ class BiasGelu : public OpKernel {
   void AddBiasGelu(const T* input, const T* bias, T* temp, T* output, int64_t count) const;
 };
 
+class MulUnsqueezeConcatFused : public OpKernel {
+ public:
+  MulUnsqueezeConcatFused(const OpKernelInfo& info) : OpKernel(info) {}
+  Status Compute(OpKernelContext* context) const override;
+};
+
 }  // namespace contrib
 }  // namespace onnxruntime

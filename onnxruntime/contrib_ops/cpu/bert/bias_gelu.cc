@@ -23,6 +23,14 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     BiasGelu<float, false>);
 
+ONNX_OPERATOR_KERNEL_EX(
+    MulUnsqueezeConcatFused,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()),
+    MulUnsqueezeConcatFused);
+
 // FastGelu uses approximation for Gelu. The formula is 0.5 * (1 + Tanh(x * (C * x * x + B))) * x.
 static constexpr float B = 0.7978845608028654f;    // sqrt(2.0 / M_PI)
 static constexpr float C = 0.035677408136300125f;  // 0.044715 * sqrt(2.0 / M_PI)
@@ -131,6 +139,16 @@ template class BiasGelu<float, false>;
 
 // Instantiation for FastGelu
 template class BiasGelu<float, true>;
+
+Status MulUnsqueezeConcatFused::Compute(OpKernelContext* context) const {
+  auto* output_tensor = context->Output(0, {3});
+  auto* output_data = output_tensor->MutableData<int64_t>();
+  output_data[0] = context->Input<Tensor>(0)->Data<int64_t>()[0];
+  output_data[1] = context->Input<Tensor>(1)->Data<int64_t>()[0] *
+                   context->Input<Tensor>(2)->Data<int64_t>()[0];
+  output_data[2] = context->Input<Tensor>(3)->Data<int64_t>()[0];
+  return Status::OK();
+}
 
 }  // namespace contrib
 }  // namespace onnxruntime
