@@ -471,7 +471,6 @@ class Gpt2Helper:
 
         ort_outputs = ort_session.run(None, ort_inputs)
         if total_runs == 0:
-            print("Vish Returning after on iteration")
             return ort_outputs
 
         latency = []
@@ -652,8 +651,6 @@ class Gpt2Helper:
         max_abs_diff_list = []
         top1_matched_cases_per_run = [0] * total_runs
         total_test_cases = test_cases_per_run * total_runs
-        # Vish override total_test_cases
-        total_test_cases = 100
         for i in range(total_test_cases):
             run_id = int(i / test_cases_per_run)
             sequence_length = random.randint(1, max_seq_len)
