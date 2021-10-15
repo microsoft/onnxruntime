@@ -5,6 +5,7 @@
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 
+#include "core/common/optional.h"
 #include "core/framework/allocator.h"
 #include "gsl/gsl"
 #include <functional>
@@ -178,7 +179,19 @@ struct Advance {
 /// <param name="input_span">original @-d indices</param>
 /// <param name="output_span"></param>
 /// <returns>Status</returns>
-Status Convert2DCooIndicesTo1D(int64_t cols, gsl::span<const int64_t> input_span, gsl::span<int64_t> output_span);
+Status Convert2DCooIndicesTo1D(int64_t cols, const gsl::span<const int64_t>& input_span, gsl::span<int64_t> output_span);
+
+/// <summary>
+/// This function queries coo indices and if they are 1-D returns the original span via output.
+/// If the indices are 2D, it performs a conversion and stores the converted indices in the converted_output
+/// it then returns a span to the converted_output via output
+/// </summary>
+/// <param name="cols">cols dim value</param>
+/// <param name="coo_indices">coo indices tensor</param>
+/// <param name="converted_output">storage in case conversion is necessary</param>
+/// <param name="output">span that points to either the original 1-D indices or to converted_output</param>
+/// <returns></returns>
+Status GetCoo1DIndicesAndMaybeConvert(const SparseTensor& input, nonstd::optional<std::vector<int64_t>>& converted_output, gsl::span<const int64_t>& output);
 
 /// <summary>
 /// Calls Convert2DCooIndicesTo1D() and copies into the coo_mutator
@@ -205,8 +218,30 @@ Status ConvertIndicesTo1DAndCopy(const SparseTensor& input_sparse, SparseTensor:
 /// <returns></returns>
 Status ConvertCooIndicesToCsrIndices(const std::vector<int64_t>& computed_dims, size_t input_indices_ndims,
                                      const gsl::span<const int64_t>& input_indices,
-                                     std::vector<int64_t>& inner_indices,
-                                     std::vector<int64_t>& outer_indices);
+                                     nonstd::optional<std::vector<int64_t>>& inner_indices,
+                                     nonstd::optional<std::vector<int64_t>>& outer_indices);
+
+/// <summary>
+/// The function performs conversion of input COO indices into
+/// CSR indices and places results into inner_indices and outer_indices vectors.
+/// It performs a transpose of the indices on the fly. Essentially, we convert into CSC indices.
+/// In case we have a 1-D dense shape (a vector) then the inner indices is a just a copy
+/// of input_indices and we have two entries in the outer_indices. Thus, the CSR produced
+/// as if the input was a row vector. Make sure to flip the transpose flag and swap the dims
+/// if the vector is really a column vector.
+/// </summary>
+/// <param name="computed_dims">normalized dims (always 2-D)</param>
+/// <param name="input_indices_ndims">coo indices dims</param>
+/// <param name="input_indices"></param>
+/// <param name="inner_indices">output inner indices transposed</param>
+/// <param name="outer_indices">outer indices transposed</param>
+/// <param name="value_mapping">contains indices of values that now correspond to transposed indices</param>
+/// <returns></returns>
+Status ConvertCooIndicesToCsrIndicesAndTranspose(const std::vector<int64_t>& computed_dims, size_t input_indices_ndims,
+                                                 const gsl::span<const int64_t>& input_indices,
+                                                 nonstd::optional<std::vector<int64_t>>& inner_indices,
+                                                 nonstd::optional<std::vector<int64_t>>& outer_indices,
+                                                 nonstd::optional<std::vector<size_t>>& value_mapping);
 
 /// <summary>
 /// Converts Csr indices into 1-D COO indices
@@ -235,7 +270,6 @@ void CopyCpuTensor(const Tensor& src, Tensor& dst);
 inline void CopySparseCpuValues(const SparseTensor& src, Tensor& output_values) {
   CopyCpuTensor(src.Values(), output_values);
 }
-
 
 /// <summary>
 /// Utility to copy data from one sparse tensor to another.

@@ -11,6 +11,7 @@
 #include "core/framework/sparse_tensor.h"
 
 #include "core/util/math_cpuonly.h"
+#include <map>
 
 namespace onnxruntime {
 namespace sparse_utils {
@@ -503,12 +504,33 @@ void CopyCpuSparseCooTensor(const SparseTensor& src, SparseTensor& tgt) {
   }
 }
 
-Status Convert2DCooIndicesTo1D(int64_t cols, gsl::span<const int64_t> input_span, gsl::span<int64_t> output_span) {
+Status Convert2DCooIndicesTo1D(int64_t cols, const gsl::span<const int64_t>& input_span, gsl::span<int64_t> output_span) {
   ORT_RETURN_IF_NOT(input_span.size() % 2 == 0, "2-D indices size must be evenly divisible by 2");
   ORT_RETURN_IF_NOT(output_span.size() * 2 == input_span.size(), "Output span size must be twice less as input_span");
   for (size_t i = 0, dst_idx = 0, limit = input_span.size(); i < limit; i += 2, dst_idx++) {
     int64_t ind = input_span[i] * cols + input_span[i + 1];
     output_span[dst_idx] = ind;
+  }
+  return Status::OK();
+}
+
+Status GetCoo1DIndicesAndMaybeConvert(const SparseTensor& input,
+                                      nonstd::optional<std::vector<int64_t>>& converted_output,
+                                      gsl::span<const int64_t>& output) {
+  const auto& coo_indices = input.AsCoo().Indices();
+  const auto num_dims = coo_indices.Shape().NumDimensions();
+  if (num_dims == 2) {
+    ORT_ENFORCE(input.DenseShape().NumDimensions() == 2, "Expecting dense shape to be 2-D");
+    const auto cols = input.DenseShape().GetDims()[1];
+    const auto ind_span = coo_indices.DataAsSpan<int64_t>();
+    converted_output = nonstd::make_optional<std::vector<int64_t>>();
+    converted_output->resize(ind_span.size() / 2);
+    auto converted_span = gsl::make_span(*converted_output);
+    ORT_THROW_IF_ERROR(sparse_utils::Convert2DCooIndicesTo1D(cols, ind_span, converted_span));
+    output = converted_span;
+  } else {
+    ORT_RETURN_IF_NOT(num_dims == 1, "Expecting indices 1 or 2-D for COO");
+    output = coo_indices.DataAsSpan<int64_t>();
   }
   return Status::OK();
 }
@@ -525,62 +547,132 @@ Status ConvertIndicesTo1DAndCopy(const SparseTensor& input_sparse, SparseTensor:
 
 Status ConvertCooIndicesToCsrIndices(const std::vector<int64_t>& computed_dims, size_t input_indices_ndims,
                                      const gsl::span<const int64_t>& input_indices,
-                                     std::vector<int64_t>& inner_indices,
-                                     std::vector<int64_t>& outer_indices) {
+                                     nonstd::optional<std::vector<int64_t>>& inner_indices,
+                                     nonstd::optional<std::vector<int64_t>>& outer_indices) {
   assert(computed_dims.size() == 2);
   // Fully sparse case
   if (input_indices.empty()) {
-    inner_indices.clear();
-    outer_indices.clear();
     return Status::OK();
   }
 
-  if (computed_dims[0] == 1 || computed_dims[1] == 1) {  // Row Vector
+  ORT_RETURN_IF_NOT(input_indices_ndims == 1 || input_indices_ndims == 2, "Expecting 1D or 2D COO indices");
+
+  inner_indices = nonstd::make_optional<std::vector<int64_t>>();
+  outer_indices = nonstd::make_optional<std::vector<int64_t>>();
+
+  if (computed_dims[0] == 1 || computed_dims[1] == 1) {
     ORT_RETURN_IF_NOT(input_indices_ndims == 1, "COO indices must be 1-D for vectors");
-    inner_indices.reserve(input_indices.size());
-    inner_indices.insert(inner_indices.end(), input_indices.cbegin(), input_indices.cend());
-    outer_indices.push_back(0);
-    outer_indices.push_back(gsl::narrow<int64_t>(inner_indices.size()));
-    assert(input_indices.size() == inner_indices.size());
-    assert(outer_indices.size() == 2U);
-  } else { // matrix
+    inner_indices->reserve(input_indices.size());
+    inner_indices->insert(inner_indices->end(), input_indices.cbegin(), input_indices.cend());
+    outer_indices->push_back(0);
+    outer_indices->push_back(gsl::narrow<int64_t>(inner_indices->size()));
+    assert(input_indices.size() == inner_indices->size());
+    assert(outer_indices->size() == 2U);
+  } else {  // matrix
     const auto rows = computed_dims[0];
     const auto cols = computed_dims[1];
-    outer_indices.reserve(static_cast<size_t>(rows + 1));
-    outer_indices.push_back(0);
+    outer_indices->reserve(static_cast<size_t>(rows + 1));
+    outer_indices->push_back(0);
     int64_t row = 0;
     if (input_indices_ndims == 1) {
-      inner_indices.reserve(input_indices.size());
+      inner_indices->reserve(input_indices.size());
       for (auto idx : input_indices) {
         const auto cur_row = idx / cols;
         const auto cur_col = idx - cur_row * cols;
-        for (int64_t sz = static_cast<int64_t>(inner_indices.size()); row < cur_row; ++row) {
-          outer_indices.push_back(sz);
+        for (int64_t sz = static_cast<int64_t>(inner_indices->size()); row < cur_row; ++row) {
+          outer_indices->push_back(sz);
         }
-        inner_indices.push_back(cur_col);
+        inner_indices->push_back(cur_col);
       }
-      assert(input_indices.size() == inner_indices.size());
-    } else if (input_indices_ndims == 2) {
-      inner_indices.reserve(input_indices.size() / 2);
+      assert(input_indices.size() == inner_indices->size());
+    } else {
+      inner_indices->reserve(input_indices.size() / 2);
       for (size_t i = 0, limit = input_indices.size(); i < limit; i += 2) {
         const auto cur_row = input_indices[i];
         const auto cur_col = input_indices[i + 1];
-        for (int64_t sz = static_cast<int64_t>(inner_indices.size()); row < cur_row; ++row) {
-          outer_indices.push_back(sz);
+        for (int64_t sz = static_cast<int64_t>(inner_indices->size()); row < cur_row; ++row) {
+          outer_indices->push_back(sz);
         }
-        inner_indices.push_back(cur_col);
+        inner_indices->push_back(cur_col);
       }
-      assert(input_indices.size() / 2 == inner_indices.size());
-    } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid COO indices shape with ndim: ", input_indices_ndims);
+      assert(input_indices.size() / 2 == inner_indices->size());
     }
     // Need to add entries for all the rows that are still missing
-    for (int64_t sz = static_cast<int64_t>(inner_indices.size()); row < rows; ++row) {
-      outer_indices.push_back(sz);
+    for (int64_t sz = static_cast<int64_t>(inner_indices->size()); row < rows; ++row) {
+      outer_indices->push_back(sz);
     }
-    assert(outer_indices.size() == static_cast<size_t>(rows) + 1);
+    assert(outer_indices->size() == static_cast<size_t>(rows) + 1);
   }
 
+  return Status::OK();
+}
+
+Status ConvertCooIndicesToCsrIndicesAndTranspose(const std::vector<int64_t>& computed_dims, size_t input_indices_ndims,
+                                                 const gsl::span<const int64_t>& input_indices,
+                                                 nonstd::optional<std::vector<int64_t>>& inner_indices,
+                                                 nonstd::optional<std::vector<int64_t>>& outer_indices,
+                                                 nonstd::optional<std::vector<size_t>>& value_mapping) {
+  assert(computed_dims.size() == 2);
+  // Fully sparse case
+  if (input_indices.empty()) {
+    return Status::OK();
+  }
+
+  ORT_RETURN_IF_NOT(input_indices_ndims == 1 || input_indices_ndims == 2, "Expecting 1D or 2D COO indices");
+
+  inner_indices = nonstd::make_optional<std::vector<int64_t>>();
+  outer_indices = nonstd::make_optional<std::vector<int64_t>>();
+  value_mapping = nonstd::make_optional<std::vector<size_t>>();
+
+  if (computed_dims[0] == 1 || computed_dims[1] == 1) {
+    ORT_RETURN_IF_NOT(input_indices_ndims == 1, "COO indices must be 1-D for vectors");
+    inner_indices->reserve(input_indices.size());
+    inner_indices->insert(inner_indices->end(), input_indices.cbegin(), input_indices.cend());
+    outer_indices->push_back(0);
+    outer_indices->push_back(gsl::narrow<int64_t>(inner_indices->size()));
+    assert(input_indices.size() == inner_indices->size());
+    assert(outer_indices->size() == 2U);
+  } else {  // matrix
+    const auto rows = computed_dims[0];
+    const auto cols = computed_dims[1];
+    std::map<int64_t, std::set<std::tuple<int64_t, size_t>>> col_to_row;
+    // We swap rows and cols
+    size_t offset = 0;
+    if (input_indices_ndims == 1) {
+      for (auto idx : input_indices) {
+        const auto cur_row = idx / cols;
+        const auto cur_col = idx - cur_row * cols;
+        ORT_RETURN_IF_NOT(col_to_row[cur_col].insert(std::make_tuple(cur_row, offset++)).second, "Expecting no dups in the indices");
+      }
+    } else {
+      for (size_t i = 0, limit = input_indices.size(); i < limit; i += 2) {
+        const auto cur_row = input_indices[i];
+        const auto cur_col = input_indices[i + 1];
+        ORT_RETURN_IF_NOT(col_to_row[cur_col].insert(std::make_tuple(cur_row, offset++)).second, "Expecting no dups in the indices");
+      }
+    }
+    outer_indices->reserve(static_cast<size_t>(cols + 1));
+    outer_indices->push_back(0);
+    inner_indices->reserve(input_indices.size());
+    int64_t row = 0;
+    for (const auto& p : col_to_row) {
+      const auto cur_row = p.first;
+      for (int64_t sz = static_cast<int64_t>(inner_indices->size()); row < cur_row; ++row) {
+        outer_indices->push_back(sz);
+      }
+      for (const auto& t : p.second) {
+        inner_indices->push_back(std::get<0>(t));
+        value_mapping->push_back(std::get<1>(t));
+      }
+    }
+    // Need to add entries for all the rows that are still missing
+    for (int64_t sz = static_cast<int64_t>(inner_indices->size()); row < cols; ++row) {
+      outer_indices->push_back(sz);
+    }
+    assert(outer_indices->size() == static_cast<size_t>(cols) + 1);
+    assert(input_indices.size() == inner_indices->size() || input_indices.size() / 2 == inner_indices->size());
+    assert(inner_indices->size() == value_mapping->size());
+  }
   return Status::OK();
 }
 

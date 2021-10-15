@@ -44,21 +44,9 @@ Status Gather::Compute(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
+  nonstd::optional<std::vector<int64_t>> one_d_indices;
   gsl::span<const int64_t> input_indices_span;
-  std::vector<int64_t> one_d_indices;
-  const auto& coo_indices = input_tensor.AsCoo().Indices();
-  if (coo_indices.Shape().NumDimensions() > 1) {
-    ORT_ENFORCE(input_tensor.DenseShape().NumDimensions() == 2,
-                "Invalid sparse tensor. Only 2-D sparse tensors can have 2-D COO indices");
-    const auto cols = input_tensor.DenseShape().GetDims()[1];
-    const auto two_d_indices_span = coo_indices.DataAsSpan<int64_t>();
-    one_d_indices.resize(two_d_indices_span.size() / 2);
-    auto one_d_indices_span = gsl::make_span(one_d_indices);
-    ORT_RETURN_IF_ERROR(sparse_utils::Convert2DCooIndicesTo1D(cols, two_d_indices_span, one_d_indices_span));
-    input_indices_span = one_d_indices_span;
-  } else {
-    input_indices_span = coo_indices.DataAsSpan<int64_t>();
-  }
+  ORT_RETURN_IF_ERROR(sparse_utils::GetCoo1DIndicesAndMaybeConvert(input_tensor, one_d_indices, input_indices_span));
 
   auto gather_indices_span = indices_tensor.DataAsSpan<int64_t>();
   std::vector<int64_t> gather_sorted(gather_indices_span.cbegin(), gather_indices_span.cend());

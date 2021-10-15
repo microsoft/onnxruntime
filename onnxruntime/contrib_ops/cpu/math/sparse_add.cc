@@ -52,25 +52,6 @@ Status CopySparseToOutput(const SparseTensor& input, SparseTensor& output) {
   return Status::OK();
 }
 
-// If the input indices are already 1-D returns a span to it, otherwise, converts to 1-D using
-// converted as a storage and returns span to it
-gsl::span<const int64_t> GetIndicesSpan(const SparseTensor& input, std::vector<int64_t>& converted) {
-  gsl::span<const int64_t> result;
-  const auto& indices = input.AsCoo().Indices();
-  if (indices.Shape().NumDimensions() == 2) {
-    ORT_ENFORCE(input.DenseShape().NumDimensions() == 2, "Expecting dense shape to be 2-D");
-    const auto cols = input.DenseShape().GetDims()[1];
-    const auto ind_span = indices.DataAsSpan<int64_t>();
-    converted.resize(ind_span.size() / 2);
-    auto converted_span = gsl::make_span(converted);
-    ORT_THROW_IF_ERROR(sparse_utils::Convert2DCooIndicesTo1D(cols, ind_span, converted_span));
-    result = converted_span;
-  } else {
-    result = indices.DataAsSpan<int64_t>();
-  }
-  return result;
-}
-
 template <typename T>
 struct Sum {
   void operator()(const void* lhs, size_t lhs_idx, const void* rhs, size_t rhs_idx, void* result, size_t res_idx) const {
@@ -118,11 +99,13 @@ Status Add::Compute(OpKernelContext* ctx) const {
       ORT_RETURN_IF_ERROR(CopySparseToOutput(input_A, output));
     } else {
       // Neither of indices are empty
-      std::vector<int64_t> A_converted_indices;
-      auto A_ind_span = GetIndicesSpan(input_A, A_converted_indices);
+      nonstd::optional<std::vector<int64_t>> A_converted_indices;
+      gsl::span<const int64_t> A_ind_span;
+      ORT_RETURN_IF_ERROR(sparse_utils::GetCoo1DIndicesAndMaybeConvert(input_A, A_converted_indices, A_ind_span));
 
-      std::vector<int64_t> B_converted_indices;
-      auto B_ind_span = GetIndicesSpan(input_B, B_converted_indices);
+      nonstd::optional<std::vector<int64_t>> B_converted_indices;
+      gsl::span<const int64_t> B_ind_span;
+      ORT_RETURN_IF_ERROR(sparse_utils::GetCoo1DIndicesAndMaybeConvert(input_B, B_converted_indices, B_ind_span));
 
       enum Source {
         kInputA = 1,
