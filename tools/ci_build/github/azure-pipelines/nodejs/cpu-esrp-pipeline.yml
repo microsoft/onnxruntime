@@ -167,7 +167,7 @@ jobs:
       inputs:
         GdnBreakGdnToolSDLNativeRulesSeverity: Warning
 
-  - template: templates/component-governance-component-detection-steps.yml
+  - template: ../templates/component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
 
