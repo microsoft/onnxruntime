@@ -20,7 +20,8 @@ const backendsSortedByPriority: string[] = [];
  *
  * @param name - the name as a key to lookup as an execution provider.
  * @param backend - the backend object.
- * @param priority - an integer indicating the priority of the backend. Higher number means higher priority.
+ * @param priority - an integer indicating the priority of the backend. Higher number means higher priority. if priority
+ * < 0, it will be considered as a 'beta' version and will not be used as a fallback backend by default.
  *
  * @internal
  */
@@ -35,13 +36,15 @@ export const registerBackend = (name: string, backend: Backend, priority: number
       throw new Error(`backend "${name}" is already registered`);
     }
 
-    for (let i = 0; i < backendsSortedByPriority.length; i++) {
-      if (backends[backendsSortedByPriority[i]].priority <= priority) {
-        backendsSortedByPriority.splice(i, 0, name);
-        return;
+    if (priority >= 0) {
+      for (let i = 0; i < backendsSortedByPriority.length; i++) {
+        if (backends[backendsSortedByPriority[i]].priority <= priority) {
+          backendsSortedByPriority.splice(i, 0, name);
+          return;
+        }
       }
+      backendsSortedByPriority.push(name);
     }
-    backendsSortedByPriority.push(name);
     return;
   }
 

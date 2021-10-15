@@ -150,6 +150,20 @@ struct ProviderHost {
   virtual bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
 #endif
 
+#ifdef USE_ROCM
+  virtual std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) = 0;
+
+  virtual void rocm__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) = 0;
+  virtual void rocm__Impl_Cast(void* stream, const int32_t* input_data, int64_t* output_data, size_t count) = 0;
+  virtual void rocm__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) = 0;
+  virtual void rocm__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) = 0;
+
+  virtual bool RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+  virtual bool RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+#endif
+
   virtual std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                              const std::string& provider_type,
                                                              const std::vector<const KernelRegistry*>& kernel_registries,
@@ -761,7 +775,7 @@ struct ProviderHost {
   virtual training::DistributedRunContext& GetDistributedRunContextInstance() = 0;
 #endif
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 
   virtual PhiloxGenerator& PhiloxGenerator__Default() = 0;
 

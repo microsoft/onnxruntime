@@ -48,7 +48,7 @@ if (shouldLoadSuiteTestData) {
 // The default backends and opset version lists. Those will be used in suite tests.
 const DEFAULT_BACKENDS: readonly TestRunnerCliArgs.Backend[] =
     args.env === 'node' ? ['cpu', 'wasm'] : ['wasm', 'webgl'];
-const DEFAULT_OPSET_VERSIONS: readonly number[] = [12, 11, 10, 9, 8, 7];
+const DEFAULT_OPSET_VERSIONS: readonly number[] = [13, 12, 11, 10, 9, 8, 7];
 
 const FILE_CACHE_ENABLED = args.fileCache;         // whether to enable file cache
 const FILE_CACHE_MAX_FILE_SIZE = 1 * 1024 * 1024;  // The max size of the file that will be put into file cache
@@ -162,8 +162,8 @@ function validateTestList() {
         const testCaseName = typeof testCase === 'string' ? testCase : testCase.name;
         let found = false;
         for (const testGroup of nodeTest) {
-          found =
-              found || testGroup.tests.some(test => minimatch(test.modelUrl, path.join('**', testCaseName, '*.onnx')));
+          found = found ||
+              testGroup.tests.some(test => minimatch(test.modelUrl, path.join('**', testCaseName, '*.+(onnx|ort)')));
         }
         if (!found) {
           throw new Error(`node model test case '${testCaseName}' in test list does not exist.`);

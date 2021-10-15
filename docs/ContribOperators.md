@@ -359,7 +359,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>data</tt> : T</dt>
 <dd>The input data as Tensor.</dd>
 <dt><tt>bias</tt> : T</dt>
-<dd>The bias input, a vector with the same shape as last dim of data</dd>
+<dd>The bias input, a vector with the same shape as last dim of data OR same shape with data</dd>
 <dt><tt>residual</tt> (optional) : T</dt>
 <dd>The residual input, must have the same shape as data</dd>
 <dt><tt>ratio</tt> (optional) : T1</dt>

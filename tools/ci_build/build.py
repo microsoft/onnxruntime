@@ -359,6 +359,9 @@ def parse_arguments():
         "--enable_wasm_threads", action='store_true',
         help="Enable WebAssembly multi-threads support")
     parser.add_argument(
+        "--enable_wasm_profiling", action='store_true',
+        help="Enable WebAsselby profiling and preserve function names")
+    parser.add_argument(
         "--enable_wasm_debug_info", action='store_true',
         help="Build WebAssembly with DWARF format debug info")
     parser.add_argument(
@@ -611,20 +614,20 @@ def run_subprocess(args, cwd=None, capture_stdout=False, dll_path=None,
     my_env = os.environ.copy()
     if dll_path:
         if is_windows():
-            my_env["PATH"] = dll_path + os.pathsep + my_env["PATH"]
+            if "PATH" in my_env:
+                my_env["PATH"] = dll_path + os.pathsep + my_env["PATH"]
+            else:
+                my_env["PATH"] = dll_path
         else:
             if "LD_LIBRARY_PATH" in my_env:
                 my_env["LD_LIBRARY_PATH"] += os.pathsep + dll_path
             else:
                 my_env["LD_LIBRARY_PATH"] = dll_path
     if python_path:
-        if is_windows():
-            my_env["PYTHONPATH"] = python_path + os.pathsep + my_env["PYTHONPATH"]
+        if "PYTHONPATH" in my_env:
+            my_env["PYTHONPATH"] += os.pathsep + python_path
         else:
-            if "PYTHONPATH" in my_env:
-                my_env["PYTHONPATH"] += os.pathsep + python_path
-            else:
-                my_env["PYTHONPATH"] = python_path
+            my_env["PYTHONPATH"] = python_path
 
     my_env.update(env)
 
@@ -809,6 +812,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                                                                   else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
+        "-Donnxruntime_ENABLE_WEBASSEMBLY_PROFILING=" + ("ON" if args.enable_wasm_profiling else "OFF"),
         "-Donnxruntime_WEBASSEMBLY_MALLOC=" + args.wasm_malloc,
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
         "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS=" + ("ON" if args.enable_external_custom_op_schemas
@@ -894,7 +898,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                        "-Donnxruntime_USE_OPENVINO_MULTI=" + (
                            "ON" if args.use_openvino.startswith("MULTI") else "OFF")]
 
-    # TensorRT and OpenVINO providers currently only supports
+    # TensorRT and OpenVINO providers currently only support
     # full_protobuf option.
     if (args.use_full_protobuf or args.use_tensorrt or
             args.use_openvino or args.use_vitisai or args.gen_doc):
@@ -1702,7 +1706,7 @@ def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, cuda_version, use_rocm, rocm_version, use_dnnl,
         use_tensorrt, use_openvino, use_nuphar, use_vitisai, use_acl, use_armnn, use_dml,
         wheel_name_suffix, enable_training, nightly_build=False, default_training_package_device=False,
-        featurizers_build=False, use_ninja=False):
+        featurizers_build=False, use_ninja=False, build_eager_mode=False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows() and not use_ninja:
@@ -1722,6 +1726,8 @@ def build_python_wheel(
             args.append('--wheel_name_suffix={}'.format(wheel_name_suffix))
         if enable_training:
             args.append("--enable_training")
+        if build_eager_mode:
+            args.append("--disable_auditwheel_repair")
 
         # The following arguments are mutually exclusive
         if use_tensorrt:
@@ -2303,7 +2309,8 @@ def main():
                 nightly_build=nightly_build,
                 default_training_package_device=default_training_package_device,
                 featurizers_build=args.use_featurizers,
-                use_ninja=(args.cmake_generator == 'Ninja')
+                use_ninja=(args.cmake_generator == 'Ninja'),
+                build_eager_mode=args.build_eager_mode
             )
         if args.build_nuget:
             build_nuget_package(
