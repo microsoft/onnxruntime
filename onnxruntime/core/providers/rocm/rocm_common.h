@@ -5,10 +5,12 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/common/status.h"
+#include "core/framework/float16.h"
 #include "core/providers/rocm/rocm_pch.h"
 #include "core/providers/rocm/shared_inc/rocm_call.h"
 #include "core/providers/rocm/shared_inc/fast_divmod.h"
 #include "core/util/math.h"
+#include "gsl/gsl"
 
 namespace onnxruntime {
 namespace rocm {

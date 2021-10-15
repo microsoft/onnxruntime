@@ -19,15 +19,15 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [Asinh](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Asinh) |  |
 | [Atan](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Atan) | [7+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Atan-7) |
 | [Atanh](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Atanh) |  |
-| [AveragePool](https://github.com/onnx/onnx/blob/master/docs/Operators.md#AveragePool) | [7-9](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#AveragePool-7), [10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#AveragePool-10) |
+| [AveragePool](https://github.com/onnx/onnx/blob/master/docs/Operators.md#AveragePool) | [7-9](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#AveragePool-7), [10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#AveragePool-10), [11+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#AveragePool-11) |
 | [BatchNormalization](https://github.com/onnx/onnx/blob/master/docs/Operators.md#BatchNormalization) | [7-8](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#BatchNormalization-7), [9-13](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#BatchNormalization-9), [14](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#BatchNormalization-14), [15+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#BatchNormalization-15) |
 | [Bernoulli](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Bernoulli) |  |
 | [BitShift](https://github.com/onnx/onnx/blob/master/docs/Operators.md#BitShift) |  |
-| [Cast](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Cast) |  |
+| [Cast](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Cast) | [6-8](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Cast-6), [9-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Cast-9), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Cast-13) |
 | [CastLike](https://github.com/onnx/onnx/blob/master/docs/Operators.md#CastLike) |  |
 | [Ceil](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Ceil) | [6-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Ceil-6), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Ceil-13) |
 | [Celu](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Celu) |  |
-| [Clip](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Clip) | [6-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Clip-6) |
+| [Clip](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Clip) | [6-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Clip-6), [11](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Clip-11), [12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Clip-12), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Clip-13) |
 | [Compress](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Compress) |  |
 | [Concat](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Concat) | [4-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Concat-4), [11-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Concat-11), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Concat-13) |
 | [ConcatFromSequence](https://github.com/onnx/onnx/blob/master/docs/Operators.md#ConcatFromSequence) |  |
@@ -85,7 +85,7 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [MatMul](https://github.com/onnx/onnx/blob/master/docs/Operators.md#MatMul) | [1-8](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#MatMul-1), [9-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#MatMul-9), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#MatMul-13) |
 | [MatMulInteger](https://github.com/onnx/onnx/blob/master/docs/Operators.md#MatMulInteger) |  |
 | [Max](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Max) |  |
-| [MaxPool](https://github.com/onnx/onnx/blob/master/docs/Operators.md#MaxPool) | [1-7](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#MaxPool-1), [8-9](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#MaxPool-8) |
+| [MaxPool](https://github.com/onnx/onnx/blob/master/docs/Operators.md#MaxPool) | [1-7](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#MaxPool-1), [8-9](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#MaxPool-8), [10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#MaxPool-10), [11](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#MaxPool-11), [12+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#MaxPool-12) |
 | [MaxRoiPool](https://github.com/onnx/onnx/blob/master/docs/Operators.md#MaxRoiPool) |  |
 | [MaxUnpool](https://github.com/onnx/onnx/blob/master/docs/Operators.md#MaxUnpool) |  |
 | [Mean](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Mean) |  |
@@ -105,7 +105,7 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [OptionalHasElement](https://github.com/onnx/onnx/blob/master/docs/Operators.md#OptionalHasElement) |  |
 | [Or](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Or) | [7+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Or-7) |
 | [PRelu](https://github.com/onnx/onnx/blob/master/docs/Operators.md#PRelu) | [7-8](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#PRelu-7), [9+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#PRelu-9) |
-| [Pad](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Pad) | [2-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pad-2) |
+| [Pad](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Pad) | [2-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pad-2), [11-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pad-11), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pad-13) |
 | [Pow](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Pow) | [7-11](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pow-7), [12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pow-12), [13-14](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pow-13), [15+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pow-15) |
 | [QLinearConv](https://github.com/onnx/onnx/blob/master/docs/Operators.md#QLinearConv) |  |
 | [QLinearMatMul](https://github.com/onnx/onnx/blob/master/docs/Operators.md#QLinearMatMul) |  |
@@ -125,7 +125,7 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [ReduceMean](https://github.com/onnx/onnx/blob/master/docs/Operators.md#ReduceMean) | [1-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#ReduceMean-1), [11-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#ReduceMean-11), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#ReduceMean-13) |
 | [ReduceMin](https://github.com/onnx/onnx/blob/master/docs/Operators.md#ReduceMin) | [1-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#ReduceMin-1), [11](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#ReduceMin-11), [12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#ReduceMin-12), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#ReduceMin-13) |
 | [ReduceProd](https://github.com/onnx/onnx/blob/master/docs/Operators.md#ReduceProd) | [1-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#ReduceProd-1), [11-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#ReduceProd-11), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#ReduceProd-13) |
-| [ReduceSum](https://github.com/onnx/onnx/blob/master/docs/Operators.md#ReduceSum) | [1-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#ReduceSum-1), [11-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#ReduceSum-11), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#ReduceSum-13) |
+| [ReduceSum](https://github.com/onnx/onnx/blob/master/docs/Operators.md#ReduceSum) | [1-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#ReduceSum-1), [11-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#ReduceSum-11) |
 | [ReduceSumSquare](https://github.com/onnx/onnx/blob/master/docs/Operators.md#ReduceSumSquare) | [1-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#ReduceSumSquare-1), [11-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#ReduceSumSquare-11), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#ReduceSumSquare-13) |
 | [Relu](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Relu) | [6-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Relu-6), [13](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Relu-13), [14+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Relu-14) |
 | [Reshape](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Reshape) | [5-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Reshape-5), [13](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Reshape-13), [14+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Reshape-14) |
@@ -152,12 +152,12 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [Sinh](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Sinh) |  |
 | [Size](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Size) |  |
 | [Slice](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Slice) | [1-9](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Slice-1), [10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Slice-10), [11-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Slice-11), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Slice-13) |
-| [Softmax](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Softmax) | [1-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Softmax-1), [11-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Softmax-11), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Softmax-13) |
+| [Softmax](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Softmax) | [1-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Softmax-1), [11-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Softmax-11) |
 | [SoftmaxCrossEntropyLoss](https://github.com/onnx/onnx/blob/master/docs/Operators.md#SoftmaxCrossEntropyLoss) |  |
 | [Softplus](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Softplus) |  |
 | [Softsign](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Softsign) |  |
 | [SpaceToDepth](https://github.com/onnx/onnx/blob/master/docs/Operators.md#SpaceToDepth) |  |
-| [Split](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Split) | [2-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Split-2), [11-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Split-11), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Split-13) |
+| [Split](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Split) | [2-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Split-2), [11-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Split-11) |
 | [SplitToSequence](https://github.com/onnx/onnx/blob/master/docs/Operators.md#SplitToSequence) |  |
 | [Sqrt](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Sqrt) | [6-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Sqrt-6), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Sqrt-13) |
 | [Squeeze](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Squeeze) | [1-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Squeeze-1), [11-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Squeeze-11), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Squeeze-13) |
