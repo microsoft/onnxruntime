@@ -82,7 +82,9 @@ jobs:
 
   - script: |
      python -m pip install -q setuptools wheel numpy
+     python -m pip install -q ninja cmake typing_extensions 
      python -m pip install --pre torch torchvision torchaudio -f https://download.pytorch.org/whl/nightly/cpu/torch_nightly.html
+     python -m pip list
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
 
