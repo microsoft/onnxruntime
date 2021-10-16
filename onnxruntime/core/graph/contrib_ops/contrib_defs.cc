@@ -803,6 +803,56 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
       .TypeConstraint("U", {"tensor(float)"}, "Constrain mean and inv_std_var to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
+  static const char* DecodingGpt_ver1_doc = R"DOC(Decoding of GPT-2 model.)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DecodingGpt)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc(DecodingGpt_ver1_doc)
+      .Attr("batch_size", "Batch size >= 1", AttributeProto::INT)
+      .Attr("candidate_num", "Number of candidate >= 0", AttributeProto::INT)
+      .Attr("probability_threshold", "probability threshold", AttributeProto::FLOAT, 0.0f)
+      .Attr("max_seq_len", "Max sequence length >= 1", AttributeProto::INT)
+      .Attr("head_num", "Number of heads >= 1", AttributeProto::INT)
+      .Attr("size_per_head", "Size per head >= 1", AttributeProto::INT)
+      .Attr("num_layer", "Number of layers >= 1", AttributeProto::INT)
+      .Attr("start_id", "start word ID >= 0", AttributeProto::INT)
+      .Attr("end_id", "end word ID >= 0", AttributeProto::INT)
+      .Attr("temperature", "temperature", AttributeProto::FLOAT, 1.0f)
+      .Attr("is_fuse_qkv", "is_fuse_qkv", AttributeProto::INT)
+      .Input(0, "self_beta", "self beta tensor", "T")
+      .Input(1, "self_gamma", "self gamma tensor", "T")
+      .Input(2, "self_q_kernel", "self q kernel weight", "T")
+      .Input(3, "self_q_bias", "self q bias weight", "T")
+      .Input(4, "self_k_kernel", "self k kernel weight", "T")
+      .Input(5, "self_k_bias", "self k bias weight", "T")
+      .Input(6, "self_v_kernel", "self v kernel weight", "T")
+      .Input(7, "self_v_bias", "self v bias weight", "T")
+      .Input(8, "self_output_kernel", "self output kernel weight", "T")
+      .Input(9, "self_output_bias", "self output bias weight", "T")
+      .Input(10, "ffn_beta", "ffn beta weight", "T")
+      .Input(11, "ffn_gamma", "ffn gamma weight", "T")
+      .Input(12, "ffn_kernel1", "ffn kernel weight 1", "T")
+      .Input(13, "ffn_bias1", "ffn bias weight 1", "T")
+      .Input(14, "ffn_kernel2", "ffn kernel weight 2", "T")
+      .Input(15, "ffn_bias2", "ffn bias weight 2", "T")
+      .Input(16, "decoding_beta", "ffn kernel weight 2", "T")
+      .Input(17, "decoding_gamma", "ffn bias weight 2", "T")
+      .Input(18, "embedding_table", "embedding table", "T")
+      .Input(19, "embedding_kernel", "embedding kernel", "T")
+      .Input(20, "position_encoding_table", "position encoding table", "T")
+      .Input(21, "attention_mask", "attention mask", "T")
+      .Input(22, "start_ids", "start_ids", "T1")
+      .Input(23, "min_start_length", "min_start_length", "T1")
+      .Input(24, "max_start_length", "max_start_length", "T1")
+      .Input(25, "start_lengths", "start_lengths", "T1")
+      .Output(0, "output_ids", "Output word IDs", "T1")
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
+      .TypeConstraint("T1", {"tensor(int32)"}, "Constrain types to int32 tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::embedLayerNormalizationShapeInference);
+
+
 
   static const char* NGramRepeatBlock_ver1_doc = R"DOC(
 Enforce no repetition of n-grams. Scores are set to `-inf` for tokens that form a repeated n-gram if added to the back of the input_ids.

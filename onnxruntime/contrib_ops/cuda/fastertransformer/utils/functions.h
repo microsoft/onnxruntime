@@ -449,9 +449,9 @@ void readAlgoFromConfig(int int8_mode, T1& cublasAlgoMap, T2& parameterMap, bool
     parameterMap.clear();
   FILE* fd;
   if (int8_mode == 0)
-    fd = fopen(GEMM_CONFIG, "r");
+    fopen_s(&fd, GEMM_CONFIG, "r");
   else
-    fd = fopen(IGEMM_CONFIG, "r");
+    fopen_s(&fd, IGEMM_CONFIG, "r");
   if (fd == NULL)
     return;
   int batchCount2, m2, n2, k2, algoId, customOption, tile, splitK_val, swizzle, reductionScheme, workspaceSize, stages;
@@ -500,7 +500,7 @@ void readAlgoFromConfig(T& cublasAlgoMap, int num=-1)
 {
   cublasAlgoMap.clear();
   FILE* fd;
-  fd = fopen("decoding_gemm_config.in", "r");
+  fopen_s(&fd, "decoding_gemm_config.in", "r");
   if (fd == NULL)
     return;
   int batchCount2, m2, n2, k2, algoId, customOption, tile, splitK_val, swizzle, reductionScheme, workspaceSize, stages;
@@ -513,7 +513,7 @@ void readAlgoFromConfig(T& cublasAlgoMap, int num=-1)
     printf("[ERROR] fgets fail at %s:%d \n", __FILE__, __LINE__);
     exit(-1);
   }
-  while(fscanf(fd,"%d %d %d %d %d %d %d %d %d %d %d %d %d %f\n", &dataType, &batchCount2, &m2, &n2, &k2, &algoId, &customOption, &tile, &splitK_val, &swizzle, &reductionScheme, &workspaceSize, &stages, &exec_time)!=EOF)
+  while(fscanf_s(fd,"%d %d %d %d %d %d %d %d %d %d %d %d %d %f\n", &dataType, &batchCount2, &m2, &n2, &k2, &algoId, &customOption, &tile, &splitK_val, &swizzle, &reductionScheme, &workspaceSize, &stages, &exec_time)!=EOF)
   {
     if (dataType != FLOAT_DATATYPE && dataType != HALF_DATATYPE && dataType != INT8_DATATYPE)
     {
@@ -521,7 +521,7 @@ void readAlgoFromConfig(T& cublasAlgoMap, int num=-1)
       continue;
     }
     char mark[256];
-    sprintf(mark, "%d_%d_%d_%d_%d", batchCount2, m2, n2, k2, dataType);
+    sprintf_s(mark, 256, "%d_%d_%d_%d_%d", batchCount2, m2, n2, k2, dataType);
     std::string markStr(mark);
     //workspaceSize should be zero
     if (cublasAlgoMap.find(markStr) == cublasAlgoMap.end())
@@ -564,7 +564,7 @@ void cublasMM_cublasLtMM_wrapper_decoder(cublasLtHandle_t ltHandle, cublasHandle
 
   int findAlgo = 0;
   char mark[1000];
-  sprintf(mark, "%d_%d_%d_%d_%d", batchCount, m, n, k, is_fp16 ? HALF_DATATYPE : FLOAT_DATATYPE);
+  sprintf_s(mark, 1000, "%d_%d_%d_%d_%d", batchCount, m, n, k, is_fp16 ? HALF_DATATYPE : FLOAT_DATATYPE);
   if(cublasAlgoMap.find(mark) != cublasAlgoMap.end())
   {
     findAlgo = 1;
@@ -684,7 +684,7 @@ template <typename T>
 int getAlgoIdFromMap(T& cublasAlgoMap, int batchCount, int m, int n, int k, int dataType)
 {
   char mark[256];
-  sprintf(mark, "%d_%d_%d_%d_%d", batchCount, m, n, k, dataType);
+  sprintf_s(mark, 256, "%d_%d_%d_%d_%d", batchCount, m, n, k, dataType);
   if (cublasAlgoMap.find(mark) != cublasAlgoMap.end())
     return cublasAlgoMap[mark].algoId;
   else

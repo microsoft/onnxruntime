@@ -26,6 +26,13 @@
 #include <fstream>
 #include <sstream>
 
+#ifdef _WIN32
+   #include <io.h> 
+   #define access _access_s
+#else
+   #include <unistd.h>
+#endif
+
 #define MAX_CONFIG_NUM 20
 #define GEMM_NUM 6
 #define COL32_ 32
@@ -61,11 +68,13 @@ enum class OperationType
   FP32,
   FP16
 };
+
 enum class AllocatorType
 {
   CUDA,
   TF,
-  TH
+  TH,
+  ORT
 };
 
 #define PRINT_FUNC_NAME_()                                          \

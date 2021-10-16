@@ -22,7 +22,7 @@
 #include <iostream>
 #include "contrib_ops/cuda/fastertransformer/utils/common.h"
 
-#ifdef BUILD_GPT
+#ifdef PARALLEL_GPT
 #include "nccl.h"
 #include "mpi.h"
 #endif
@@ -31,7 +31,7 @@ struct ParallelParam : AbstractParam
 {
     int rank{0};
     int world_size{1};
-#ifdef BUILD_GPT
+#ifdef PARALLEL_GPT
     ncclComm_t nccl_comm;
 #endif
 
@@ -85,7 +85,7 @@ struct LayerParallelParam : public ParallelParam
     }                                                       \
 } while(0)
 
-#ifdef BUILD_GPT
+#ifdef PARALLEL_GPT
 void get_nccl_uid(int rank, ncclUniqueId *uid);
 #endif
 
@@ -106,7 +106,7 @@ void nccl_recv(T* recv_buf, const int data_size, const int peer, ParallelParam p
 template<typename T>
 void nccl_broadcast(T* buff, const int data_size, const int root, ParallelParam param, cudaStream_t stream);
 
-#ifdef BUILD_GPT
+#ifdef PARALLEL_GPT
 
 template<typename T>
 void nccl_recv(T* recv_buf, const int data_size, const int peer, ncclComm_t comm, cudaStream_t stream);

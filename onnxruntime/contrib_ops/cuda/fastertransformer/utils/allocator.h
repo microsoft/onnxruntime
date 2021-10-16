@@ -41,6 +41,9 @@
 #include "torch/extension.h"
 #endif
 
+#include "core/framework/allocator.h"
+#include "core/framework/buffer_deleter.h"
+
 namespace fastertransformer
 {
 
@@ -82,6 +85,46 @@ public:
     return;
   }
 };
+
+
+
+template <>
+class Allocator<AllocatorType::ORT> : public IAllocator
+{
+  onnxruntime::AllocatorPtr allocator_;
+  cudaStream_t stream_;
+  std::vector<onnxruntime::BufferUniquePtr> *allocated_buffers;
+
+public:
+  Allocator(onnxruntime::AllocatorPtr allocator, cudaStream_t stream) : allocator_(allocator), stream_(stream)
+  {
+    allocated_buffers = new std::vector<onnxruntime::BufferUniquePtr>;
+  }
+
+  void *malloc(size_t size, const bool is_set_zero=true) const
+  {
+    auto* data = size > 0 ? allocator_->Alloc(size): nullptr;
+    onnxruntime::BufferUniquePtr buffer(data, onnxruntime::BufferDeleter(allocator_));
+
+    allocated_buffers->push_back(std::move(buffer));
+    if (is_set_zero==true)
+      cudaMemsetAsync(data, 0, static_cast<long long int>(size), stream_);
+
+    return data;
+  }
+
+  void free(void *ptr) const
+  {
+    return;
+  }
+
+  ~Allocator()
+  {
+    allocated_buffers->clear();
+    delete allocated_buffers;
+  }
+};
+
 
 #ifdef GOOGLE_CUDA
 using namespace tensorflow;

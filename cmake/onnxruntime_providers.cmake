@@ -170,6 +170,7 @@ if (onnxruntime_ENABLE_TRAINING)
     "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_converter.cc"
     "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_converter.h"
   )
+
   set(onnxruntime_providers_dlpack_srcs ${onnxruntime_providers_dlpack_srcs})
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dlpack_srcs})
   list(APPEND onnxruntime_providers_src ${onnxruntime_providers_dlpack_srcs})
@@ -208,6 +209,11 @@ if(HAS_DEPRECATED_COPY)
 endif()
 
 target_include_directories(onnxruntime_providers PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${RE2_INCLUDE_DIR})
+
+# For Decoding GPT2 in parallel
+#if (onnxruntime_PARALLEL_GPT)
+#  target_include_directories(onnxruntime_providers PRIVATE ${NCCL_INCLUDE_DIRS} ${MPI_CXX_INCLUDE_DIRS})
+#endif()
 
 add_dependencies(onnxruntime_providers onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
 

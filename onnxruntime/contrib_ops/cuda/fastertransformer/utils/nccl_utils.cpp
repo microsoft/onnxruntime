@@ -16,7 +16,7 @@
 
 #include "contrib_ops/cuda/fastertransformer/utils/nccl_utils.h"
 
-#ifdef BUILD_GPT
+#ifdef PARALLEL_GPT
 
 void get_nccl_uid(int rank, ncclUniqueId *uid) 
 {
@@ -157,7 +157,7 @@ void nccl_broadcast(T* buff, const int data_size, const int root, ParallelParam 
 
 template void nccl_broadcast(bool* buff, const int data_size, const int root, ParallelParam param, cudaStream_t stream);
 
-#else // BUILD_GPT
+#else // PARALLEL_GPT
 
 template<typename T>
 void all2all_reduce_sum(const T* send_buf, T* recv_buf, const int data_size,

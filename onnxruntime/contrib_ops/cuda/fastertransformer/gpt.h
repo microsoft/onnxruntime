@@ -117,8 +117,8 @@ public:
         K_cache_ = new DataType_ *[1];
         V_cache_ = new DataType_ *[1];
 
-        decoder_ = new OpenDecoder<OpType_>(args_.head_num_, size_per_head, 0 /* memory_hidden_units */, is_fuse_QKV);
-        decoder_->set_max_batch_size(args_.batch_size_);
+        decoder_ = new OpenDecoder<OpType_>(static_cast<int>(args_.head_num_), size_per_head, 0 /* memory_hidden_units */, is_fuse_QKV);
+        decoder_->set_max_batch_size(static_cast<int>(args_.batch_size_));
 
         args_.vocab_size_padded_ = div_up(args_.vocab_size_, 64) * 64;
 
@@ -137,7 +137,7 @@ public:
 
         const int MEM_C = 128;
         size_t embedding_kernel_transposed_padded_size = args_.hidden_units_ * args_.vocab_size_padded_;
-        embedding_kernel_transposed_padded_size = div_up(embedding_kernel_transposed_padded_size, MEM_C) * MEM_C;
+        embedding_kernel_transposed_padded_size = static_cast<size_t>(div_up(static_cast<int>(embedding_kernel_transposed_padded_size), MEM_C) * MEM_C);
 
         // prevent memory misalinged address
         logits_buf_size = (size_t)(ceil(logits_buf_size / 4.)) * 4;
@@ -161,7 +161,7 @@ public:
                                                nullptr,
                                                args_.vocab_size_padded_,
                                                0,
-                                               args_.batch_size_);
+                                               static_cast<int>(args_.batch_size_));
 
         topK_sampling_kernel_kernelLauncher_v2(topk_workspace_,
                                                topk_workspace_size_,
@@ -172,7 +172,7 @@ public:
                                                curandstate_buf_,
                                                args_,
                                                0,
-                                               args_.batch_size_);
+                                               static_cast<int>(args_.batch_size_));
 
         topK_topP_sampling_kernel_kernelLauncher_v2(topk_topp_workspace_,
                                               topk_topp_workspace_size_,
@@ -182,7 +182,7 @@ public:
                                               curandstate_buf_,
                                               args_,
                                               0,
-                                              args_.batch_size_);
+                                              static_cast<int>(args_.batch_size_));
 
         size_t datatype_buf_size = from_tensor_size * 2 + decoder_workspace_size +
                                 cache_size * 2 * (args_.decoder_layers_ / layer_para_size) + decoder_normed_result_buffer_size;
@@ -285,9 +285,9 @@ public:
         PRINT_FUNC_NAME_();
 #endif
         const int input_len = decoding_params.request_input_len;
-        const int max_len = (decoding_params.request_output_len > 0 && input_len + decoding_params.request_output_len <= args_.seq_len_) ?
+        const int max_len = (decoding_params.request_output_len > 0 && input_len + decoding_params.request_output_len <= static_cast<int>(args_.seq_len_)) ?
                             input_len + decoding_params.request_output_len :
-                            args_.seq_len_;
+                            static_cast<int>(args_.seq_len_);
         const int request_batch_size = decoding_params.request_batch_size;
         cudaMemsetAsync(decoding_params.output_ids, 0, sizeof(int) * request_batch_size * max_len, decoding_params.stream);
 #ifndef NDEBUG
@@ -305,9 +305,9 @@ public:
                             sizeof(int) * request_batch_size, cudaMemcpyDeviceToDevice, decoding_params.stream);
             return;
         }
-        const int local_batch_size = ceil(request_batch_size * 1.0 / l_parallel_param_.world_size);
+        const int local_batch_size = (request_batch_size + l_parallel_param_.world_size - 1 ) / l_parallel_param_.world_size;
         const int m = local_batch_size * input_len;
-        const int h_1 = args_.hidden_units_;
+        const int h_1 = static_cast<int>(args_.hidden_units_);
 
         DataType_* from_tensor[2];
         DataType_* decoder_output;
@@ -343,7 +343,7 @@ public:
                                                                 input_len,
                                                                 max_input_len,
                                                                 request_batch_size,
-                                                                args_.hidden_units_, 
+                                                                static_cast<int>(args_.hidden_units_),
                                                                 decoding_params.stream);
             POP_RANGE
 #ifndef NDEBUG
@@ -362,7 +362,7 @@ public:
                 {
                     in_id = layer & 0x1;
                     out_id = 1 - in_id;
-
+#ifdef PARALLEL_GPT
                     if(layer == l_parallel_param_.layers_per_group * l_parallel_param_.rank && layer != 0 && l_parallel_param_.world_size > 1)
                     {
                         const int size = m * t_parallel_param_.local_hidden_units_;
@@ -371,14 +371,14 @@ public:
                         all2all_gather(from_tensor[in_id] + ite * m * h_1, from_tensor[in_id] + ite * m * h_1, size, 
                                     t_parallel_param_, decoding_params.stream);
                     }
-
+#endif
                     decoder_->initialize(decoder_param[layer], decoder_buf_, cublas_workspace_, false);
 #ifndef NDEBUG
                     cudaDeviceSynchronize();
                     check_cuda_error(cudaGetLastError());
 #endif
 
-                    int dummy_decoder_max_seq_len = args_.seq_len_;
+                    int dummy_decoder_max_seq_len = static_cast<int>(args_.seq_len_);
                     // int dummy_decoder_max_seq_len = -1;
                     size_t cache_offset;
                     if(dummy_decoder_max_seq_len == -1)
@@ -407,12 +407,14 @@ public:
                     cudaDeviceSynchronize();
                     check_cuda_error(cudaGetLastError());
 #endif
+#ifdef PARALLEL_GPT
                     if(layer == l_parallel_param_.layers_per_group * (l_parallel_param_.rank + 1) - 1 && layer != args_.decoder_layers_ - 1 && l_parallel_param_.world_size > 1)
                     {
                         const int size = m * t_parallel_param_.local_hidden_units_;
                         nccl_send(from_tensor[out_id] + ite * m * h_1 + size * t_parallel_param_.rank, size, l_parallel_param_.rank + 1,
                                     l_parallel_param_.nccl_comm, decoding_params.stream);
                     }
+#endif                    
                 }
             } // end of for loop of layer
         } // end of for loop of ite
@@ -434,12 +436,12 @@ public:
         const int request_batch_size = decoding_params.request_batch_size;
         const int max_len = (decoding_params.request_output_len > 0 && input_len + decoding_params.request_output_len <= args_.seq_len_) ?
                             input_len + decoding_params.request_output_len :
-                            args_.seq_len_;
+                            static_cast<int>(args_.seq_len_);
 
         assert(request_batch_size <= args_.batch_size_);
         assert(request_batch_size % l_parallel_param_.local_batch_size == 0);
         const int m = request_batch_size;
-        const int k = args_.hidden_units_;
+        const int k = static_cast<int>(args_.hidden_units_);
         const DataType_* embedding_kernel_ptr = nullptr;
 
         cudaMemsetAsync(finished_buf_, false, sizeof(finished_buf_[0]) * request_batch_size, decoding_params.stream);
@@ -485,6 +487,7 @@ public:
             const int ite_num = request_batch_size / local_batch;
             for(size_t ite = 0; ite < ite_num; ite++)
             {
+#ifdef PARALLEL_GPT                
                 if(l_parallel_param_.rank == 0 && l_parallel_param_.world_size > 1)
                 {
                     if(step != (size_t)input_len)
@@ -503,12 +506,13 @@ public:
                         nccl_broadcast(finished_buf_ + ite * local_batch, local_batch, l_parallel_param_.world_size - 1, l_parallel_param_, decoding_params.stream);
                     }
                 }
+#endif
                 if(ite == 0)
                 {
                     cudaMemcpyAsync(h_finished_buf_, finished_buf_, sizeof(bool) * request_batch_size, cudaMemcpyDeviceToHost, decoding_params.stream);
                     cudaStreamSynchronize(decoding_params.stream);
-                    uint sum = 0;
-                    for (uint i = 0; i < request_batch_size; i++)
+                    int sum = 0;
+                    for (int i = 0; i < request_batch_size; i++)
                     {
                         sum += (int)h_finished_buf_[i];
                     }
@@ -528,9 +532,9 @@ public:
                                                             decoding_params.output_ids,
                                                             local_batch,
                                                             m,
-                                                            args_.hidden_units_,
-                                                            step,
-                                                            ite,
+                                                            static_cast<int>(args_.hidden_units_),
+                                                            static_cast<int>(step),
+                                                            static_cast<int>(ite),
                                                             max_input_len,
                                                             decoding_params.d_start_lengths,
                                                             decoding_params.stream);
@@ -548,12 +552,11 @@ public:
                     if(l_parallel_param_.is_valid(layer))
                     {
                         /*
-                            For the first layer (layer-0), from_id is 0. We also stored the embedding lookup 
-                            result in from_tensor_[0]
+                        //For the first layer (layer-0), from_id is 0. We also stored the embedding lookup result in from_tensor_[0]
                         */
                         from_id = layer & 0x1;
                         out_id = 1 - from_id;
-
+#ifdef PARALLEL_GPT
                         if(layer == l_parallel_param_.layers_per_group * l_parallel_param_.rank && layer != 0 && l_parallel_param_.world_size > 1)
                         {
                             const int size = local_batch * t_parallel_param_.local_hidden_units_;
@@ -562,7 +565,7 @@ public:
                             all2all_gather(from_tensor_[from_id], from_tensor_[from_id], size, 
                                            t_parallel_param_, decoding_params.stream);
                         }
-
+#endif
                         /*
                             We use one decoder_ object to process multiple decoder layers. 
 
@@ -577,7 +580,7 @@ public:
                         cudaDeviceSynchronize();
                         check_cuda_error(cudaGetLastError());
 #endif
-                        int dummy_decoder_max_seq_len = args_.seq_len_;
+                        int dummy_decoder_max_seq_len = static_cast<int>(args_.seq_len_);
                         // int dummy_decoder_max_seq_len = -1;
                         size_t cache_offset;
                         if(dummy_decoder_max_seq_len == -1)
@@ -598,23 +601,25 @@ public:
                                             V_cache_[0] + cache_offset,
                                             nullptr, nullptr, // key_mem_cache_ and value_mem_cache_ should be nullptr
                                             nullptr, // memory_sequence_length should be nullptr
-                                            from_tensor_[out_id], step, dummy_decoder_max_seq_len,
+                                            from_tensor_[out_id], static_cast<int>(step), dummy_decoder_max_seq_len,
                                             false, 
-                                            finished_buf_ + ite * local_batch,
+                                            finished_buf_ + static_cast<int>(ite) * local_batch,
                                             max_input_len, 
-                                            decoding_params.d_start_lengths + ite * local_batch);
+                                            decoding_params.d_start_lengths + static_cast<int>(ite) * local_batch);
 
 #ifndef NDEBUG
                         cudaDeviceSynchronize();
                         check_cuda_error(cudaGetLastError());
-#endif          
+#endif
 
+#ifdef PARALLEL_GPT
                         if(layer == l_parallel_param_.layers_per_group * (l_parallel_param_.rank + 1) - 1 && layer != args_.decoder_layers_ - 1 && l_parallel_param_.world_size > 1)
                         {
                             const size_t size = local_batch * t_parallel_param_.local_hidden_units_;
                             nccl_send(from_tensor_[out_id] + size * t_parallel_param_.rank, size, l_parallel_param_.rank + 1, 
                                       l_parallel_param_.nccl_comm, decoding_params.stream);
                         }
+#endif
                     }
                 }
 
@@ -715,6 +720,7 @@ public:
                     check_cuda_error(cudaGetLastError());
 #endif
 
+#ifdef PARALLEL_GPT
                     // reduce and concat the reuslt
                     if(t_parallel_param_.world_size > 1)
                     {
@@ -726,6 +732,7 @@ public:
                         transpose_axis_01_kernelLauncher(logits_buf_, nccl_logits_buf_, 
                                                          t_parallel_param_.world_size, local_batch, n, decoding_params.stream);
                     }
+#endif
 
 #ifndef NDEBUG
                     cudaDeviceSynchronize();
@@ -747,8 +754,8 @@ public:
                                                                 n,
                                                                 decoding_params.d_start_lengths,
                                                                 max_input_len,
-                                                                step,
-                                                                ite,
+                                                                static_cast<int>(step),
+                                                                static_cast<int>(ite),
                                                                 decoding_params.stream);
                         POP_RANGE
                     }
@@ -831,25 +838,26 @@ public:
                 {
                     // Replace the sampled id by start ids
                     set_start_ids_kernelLauncher(decoding_params.output_ids, decoding_params.d_start_ids, max_input_len,
-                                                 step, ite, request_batch_size, local_batch, args_.end_id_, decoding_params.stream);
+                                                static_cast<int>(step), static_cast<int>(ite), request_batch_size, local_batch, args_.end_id_, decoding_params.stream);
                 }
-
+#ifdef PARALLEL_GPT
                 if(l_parallel_param_.rank == l_parallel_param_.world_size - 1 && l_parallel_param_.world_size > 1)
                 {
                     PUSH_RANGE("token/send")
                     nccl_send(decoding_params.output_ids + step * m + ite * local_batch, local_batch, 0, l_parallel_param_.nccl_comm, decoding_params.stream);
                     POP_RANGE
                 }
-
+#endif
 #ifndef NDEBUG
                 cudaDeviceSynchronize();
                 check_cuda_error(cudaGetLastError());
 #endif
-
+#ifdef PARALLEL_GPT
                 if(l_parallel_param_.rank == l_parallel_param_.world_size - 1 && l_parallel_param_.world_size > 1 && step < max_len - 1)
                 {
                     nccl_broadcast(finished_buf_ + ite * local_batch, local_batch, l_parallel_param_.world_size - 1, l_parallel_param_, decoding_params.stream);
                 }
+#endif
 #ifndef NDEBUG
                 cudaDeviceSynchronize();
                 check_cuda_error(cudaGetLastError());
@@ -860,6 +868,7 @@ public:
                 break;
             }
         } // end for decoding step for loop
+#ifdef PARALLEL_GPT        
         if(l_parallel_param_.rank == 0 && l_parallel_param_.world_size > 1)
         {
             for(size_t ite = 0; ite < request_batch_size / local_batch; ite++)
@@ -869,6 +878,7 @@ public:
                           l_parallel_param_.nccl_comm, decoding_params.stream);
             }
         }
+#endif        
     } // end of forward
 
     virtual ~DecodingGpt()

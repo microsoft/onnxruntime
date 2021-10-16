@@ -32,6 +32,7 @@
 #include <cuda_fp16.h>
 #include "contrib_ops/cuda/fastertransformer/utils/nvtx_utils.h"
 #include "contrib_ops/cuda/fastertransformer/utils/nccl_utils.h"
+#include <stdio.h>
 
 // use new attention implementation with [B, H, Dh/x, L, x] cache format for the keys 
  // and [B, H, L, Dh] for values
@@ -125,8 +126,8 @@ public:
         n = t_parallel_param_.local_hidden_units_;
         k = hidden_units_;
         char mark[256], mark2[256];
-        sprintf(mark, "1_%d_%d_%d_%d", n, m, k, dataType);
-        sprintf(mark2, "3_%d_%d_%d_%d", n, m, k, dataType);
+        sprintf_s(mark, 256, "1_%d_%d_%d_%d", n, m, k, dataType);
+        sprintf_s(mark2, 256, "3_%d_%d_%d_%d", n, m, k, dataType);
         if (
             cublasAlgoMap_.find(mark) != cublasAlgoMap_.end() &&
             cublasAlgoMap_.find(mark2) != cublasAlgoMap_.end() &&
@@ -710,11 +711,14 @@ public:
                                             decoder_output, CType_, n,
                                             param_.stream, cublasAlgoMap_,
                                             cublas_workspace_);
-
+#ifdef PARALLEL_GPT
         PUSH_RANGE("Transformer/slf_attn/all2all_reduce")
-        all2all_reduce_sum(decoder_output, decoder_output, m*n,
-                           t_parallel_param_, param_.stream);
-        POP_RANGE  
+        if (t_parallel_param_.world_size > 1) {
+          all2all_reduce_sum(decoder_output, decoder_output, m * n,
+                             t_parallel_param_, param_.stream);
+        }
+        POP_RANGE
+#endif
     }
 
     void masked_multi_head_attention_v2(const DataType_ *from_tensor, DataType_ *key_cache_,
@@ -767,10 +771,14 @@ public:
                                             param_.stream, cublasAlgoMap_,
                                             cublas_workspace_);
 
+#ifdef PARALLEL_GPT
         PUSH_RANGE("Transformer/slf_attn/all2all_reduce")
-        all2all_reduce_sum(decoder_output, decoder_output, m*n,
-                           t_parallel_param_, param_.stream);
-        POP_RANGE  
+        if (t_parallel_param_.world_size > 1) {
+          all2all_reduce_sum(decoder_output, decoder_output, m * n,
+                             t_parallel_param_, param_.stream);
+        }
+        POP_RANGE
+#endif
     }
 
     /* attention with source sentence */
@@ -890,10 +898,16 @@ public:
                                             param_.stream, cublasAlgoMap_,
                                             cublas_workspace_);
 
+#ifdef PARALLEL_GPT
         PUSH_RANGE("Transformer/MLP/all2all_reduce")
-        all2all_reduce_sum(output, output, m*n,
-                           t_parallel_param_, param_.stream);
+        if (t_parallel_param_.world_size > 1) {
+          all2all_reduce_sum(output, output, m * n,
+                             t_parallel_param_, param_.stream);
+        }
         POP_RANGE
+#endif
+
+
     }
 
     void unfused_masked_multi_head_attention(DataType_ *workspace,
@@ -1102,10 +1116,14 @@ public:
                                                 param_.stream, cublasAlgoMap_,
                                                 cublas_workspace_);
 
+#ifdef PARALLEL_GPT
             PUSH_RANGE("Transformer/slf_attn/all2all_reduce")
-            all2all_reduce_sum(decoder_output, decoder_output, m*n,
-                            t_parallel_param_, param_.stream);
+            if (t_parallel_param_.world_size > 1) {
+              all2all_reduce_sum(decoder_output, decoder_output, m * n,
+                                 t_parallel_param_, param_.stream);
+            }
             POP_RANGE
+#endif
         }
     }
 
