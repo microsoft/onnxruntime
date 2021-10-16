@@ -1,10 +1,8 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
 //
-//  ios_package_test_cpp_api.mm
-//  ios_package_testTests
+//  ios_package_testUITests.m
+//  ios_package_testUITests
 //
-//  This file hosts the tests of ORT C++ API, for tests of ORT C API, please see ios_package_test_c_api.mm
+//  Created by gwang on 10/15/21.
 //
 
 #import <XCTest/XCTest.h>
@@ -21,7 +19,7 @@
 #include <onnxruntime/coreml_provider_factory.h>
 #endif
 
-void testSigmoid(bool useCoreML) {
+void testSigmoid(const char* modelPath, bool useCoreML) {
   // This is an e2e test for ORT C++ API
   Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "testCppAPI");
 
@@ -38,8 +36,7 @@ void testSigmoid(bool useCoreML) {
   (void)useCoreML;
 #endif
 
-  NSString* ns_model_path = [[NSBundle mainBundle] pathForResource:@"sigmoid" ofType:@"ort"];
-  Ort::Session session(env, ns_model_path.UTF8String, session_options);
+  Ort::Session session(env, modelPath, session_options);
 
   size_t input_tensor_size = 3 * 4 * 5;
   float input_tensor_values[input_tensor_size];
@@ -70,27 +67,39 @@ void testSigmoid(bool useCoreML) {
   }
 }
 
-@interface ios_package_test_cpp_api : XCTestCase
+@interface ios_package_testUITests : XCTestCase
 
 @end
 
-@implementation ios_package_test_cpp_api
+@implementation ios_package_testUITests
 
 - (void)setUp {
   // Put setup code here. This method is called before the invocation of each test method in the class.
+
+  // In UI tests it is usually best to stop immediately when a failure occurs.
+  self.continueAfterFailure = YES;
+
+  // In UI tests it’s important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
 }
 
 - (void)tearDown {
   // Put teardown code here. This method is called after the invocation of each test method in the class.
 }
 
+- (const std::string)getFilePath {
+  NSBundle* bundle = [NSBundle bundleForClass:[self class]];
+  NSString* ns_model_path = [bundle pathForResource:@"sigmoid" ofType:@"ort"];
+  XCTAssertNotNil(ns_model_path);
+  return ns_model_path.UTF8String;
+}
+
 - (void)testCppAPI_Basic {
-  testSigmoid(false /* useCoreML */);
+  testSigmoid([self getFilePath].c_str(), false /* useCoreML */);
 }
 
 #if COREML_EP_AVAILABLE
 - (void)testCppAPI_Basic_CoreML {
-  testSigmoid(true /* useCoreML */);
+  testSigmoid([self getFilePath].c_str(), true /* useCoreML */);
 }
 #endif
 
