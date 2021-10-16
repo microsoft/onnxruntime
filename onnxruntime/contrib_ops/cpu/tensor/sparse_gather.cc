@@ -44,9 +44,9 @@ Status Gather::Compute(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  nonstd::optional<std::vector<int64_t>> one_d_indices;
-  gsl::span<const int64_t> input_indices_span;
-  ORT_RETURN_IF_ERROR(sparse_utils::GetCoo1DIndicesAndMaybeConvert(input_tensor, one_d_indices, input_indices_span));
+  sparse_utils::IndicesSpan one_d_indices;
+  ORT_RETURN_IF_ERROR(sparse_utils::GetCoo1DIndicesAndMaybeConvert(input_tensor, one_d_indices));
+  const auto& input_indices_span = one_d_indices.Get();
 
   auto gather_indices_span = indices_tensor.DataAsSpan<int64_t>();
   std::vector<int64_t> gather_sorted(gather_indices_span.cbegin(), gather_indices_span.cend());

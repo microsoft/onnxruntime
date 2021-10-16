@@ -64,9 +64,6 @@ Status Add::Compute(OpKernelContext* ctx) const {
   const SparseTensor& input_A = *ctx->Input<SparseTensor>(0);
   const SparseTensor& input_B = *ctx->Input<SparseTensor>(1);
 
-  ORT_RETURN_IF_NOT(input_A.Format() == SparseFormat::kCoo && input_B.Format() == SparseFormat::kCoo,
-                    "Only COO format is supported.");
-
   auto A_dims = input_A.DenseShape().GetDims();
   auto B_dims = input_B.DenseShape().GetDims();
   ORT_RETURN_IF_NOT(!A_dims.empty() && !B_dims.empty(), "Unable to handle empty shapes");
@@ -99,13 +96,13 @@ Status Add::Compute(OpKernelContext* ctx) const {
       ORT_RETURN_IF_ERROR(CopySparseToOutput(input_A, output));
     } else {
       // Neither of indices are empty
-      nonstd::optional<std::vector<int64_t>> A_converted_indices;
-      gsl::span<const int64_t> A_ind_span;
-      ORT_RETURN_IF_ERROR(sparse_utils::GetCoo1DIndicesAndMaybeConvert(input_A, A_converted_indices, A_ind_span));
+      sparse_utils::IndicesSpan A_coo_indices;
+      ORT_RETURN_IF_ERROR(sparse_utils::GetCoo1DIndicesAndMaybeConvert(input_A, A_coo_indices));
+      const auto& A_ind_span = A_coo_indices.Get();
 
-      nonstd::optional<std::vector<int64_t>> B_converted_indices;
-      gsl::span<const int64_t> B_ind_span;
-      ORT_RETURN_IF_ERROR(sparse_utils::GetCoo1DIndicesAndMaybeConvert(input_B, B_converted_indices, B_ind_span));
+      sparse_utils::IndicesSpan B_coo_indices;
+      ORT_RETURN_IF_ERROR(sparse_utils::GetCoo1DIndicesAndMaybeConvert(input_B, B_coo_indices));
+      const auto& B_ind_span = B_coo_indices.Get();
 
       enum Source {
         kInputA = 1,

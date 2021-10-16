@@ -319,11 +319,9 @@ struct SparseToSparseComputeCtx {
   bool transB_;
   float alpha_;
   const Tensor& values_A_;
-  gsl::span<const int64_t> inner_a_;
-  gsl::span<const int64_t> outer_a_;
+  const sparse_utils::CsrIndicesSpan& csr_A_;
   const Tensor& values_B_;
-  gsl::span<const int64_t> inner_b_;
-  gsl::span<const int64_t> outer_b_;
+  const sparse_utils::CsrIndicesSpan& csr_B_;
   SparseTensor& output_;
 };
 
@@ -362,14 +360,14 @@ struct SparseToSparseEigenMatrixB {
                     const std::vector<int64_t>& computed_b_dims) const {
     ConstSparseMatrixMap<T> map_A(computed_a_dims[0], computed_a_dims[1],
                                   ctx.values_A_.Shape().Size(),
-                                  ctx.outer_a_.data(),
-                                  ctx.inner_a_.data(),
+                                  ctx.csr_A_.Outer().data(),
+                                  ctx.csr_A_.Inner().data(),
                                   ctx.values_A_.template Data<T>());
 
     ConstSparseMatrixMap<T> map_B(computed_b_dims[0], computed_b_dims[1],
                                   ctx.values_B_.Shape().Size(),
-                                  ctx.outer_b_.data(),
-                                  ctx.inner_b_.data(),
+                                  ctx.csr_B_.Outer().data(),
+                                  ctx.csr_B_.Inner().data(),
                                   ctx.values_B_.template Data<T>());
 
     SparseMatrix<T> result = SparseToSparseMatMulImpl(ctx, map_A, map_B);
@@ -388,16 +386,10 @@ Status SparseToSparseMatMul::EigenCompute(const SparseTensor& input_A,
                                           std::vector<int64_t> a_dims,
                                           std::vector<int64_t> b_dims,
                                           SparseTensor& output_tensor) const {
+  sparse_utils::CsrIndicesSpan csr_A;
+  ORT_RETURN_IF_ERROR(sparse_utils::GetCsrIndicesAndMaybeConvert(a_dims, input_A, csr_A));
+
   const bool a_is_vector = IsVector(a_dims);
-
-  nonstd::optional<std::vector<int64_t>> inner_indices_A;
-  nonstd::optional<std::vector<int64_t>> outer_indices_A;
-
-  const auto& coo_indices_a = input_A.AsCoo().Indices();
-  ORT_RETURN_IF_ERROR(sparse_utils::ConvertCooIndicesToCsrIndices(a_dims, coo_indices_a.Shape().NumDimensions(),
-                                                                  coo_indices_a.DataAsSpan<int64_t>(),
-                                                                  inner_indices_A, outer_indices_A));
-
   bool a_transpose = trans_a_attr_;
   if (a_is_vector) {
     // For vectors conversion to CSR takes place as if it was a row vector
@@ -408,13 +400,10 @@ Status SparseToSparseMatMul::EigenCompute(const SparseTensor& input_A,
     }
   }
 
+  sparse_utils::CsrIndicesSpan csr_B;
+  ORT_RETURN_IF_ERROR(sparse_utils::GetCsrIndicesAndMaybeConvert(b_dims, input_B, csr_B));
+
   const bool b_is_vector = IsVector(b_dims);
-  nonstd::optional<std::vector<int64_t>> inner_indices_B;
-  nonstd::optional<std::vector<int64_t>> outer_indices_B;
-  const auto& coo_indices_b = input_B.AsCoo().Indices();
-  ORT_RETURN_IF_ERROR(sparse_utils::ConvertCooIndicesToCsrIndices(b_dims, coo_indices_b.Shape().NumDimensions(),
-                                                                  coo_indices_b.DataAsSpan<int64_t>(),
-                                                                  inner_indices_B, outer_indices_B));
   bool b_transpose = trans_b_attr_;
   if (b_is_vector) {
     // For vectors conversion to CSR takes place as if it was a row vector
@@ -428,8 +417,8 @@ Status SparseToSparseMatMul::EigenCompute(const SparseTensor& input_A,
   utils::MLTypeCallDispatcherFromTypeList<SparseGemmSupportedTypes> t_disp(input_A.GetElementType());
 
   SparseToSparseComputeCtx compute_ctx{a_transpose, b_transpose, alpha_attr_,
-                                       input_A.Values(), gsl::make_span(*inner_indices_A), gsl::make_span(*outer_indices_A),
-                                       input_B.Values(), gsl::make_span(*inner_indices_B), gsl::make_span(*outer_indices_B),
+                                       input_A.Values(), csr_A,
+                                       input_B.Values(), csr_B,
                                        output_tensor};
 
   return t_disp.InvokeRet<Status, SparseToSparseEigenMatrixB>(compute_ctx, a_dims, b_dims);
@@ -455,7 +444,7 @@ namespace {
 template <typename T>
 struct ScalarAccumulate {
   void operator()(const Tensor& A_values, const Tensor& B_values, float alpha,
-                  const gsl::span<const int64_t>& a_indices, const gsl::span<const int64_t>& b_indices,
+                  const sparse_utils::IndicesSpan& a_indices, const sparse_utils::IndicesSpan& b_indices,
                   Tensor& output_values) const {
     const T* a_data = A_values.Data<T>();
     const T* b_data = B_values.Data<T>();
@@ -465,7 +454,7 @@ struct ScalarAccumulate {
       accum += Mul(a_data[a_offset], alpha, b_data[b_offset]);
     };
 
-    sparse_utils::ScanForSparseMatches(a_indices, b_indices, match_cb);
+    sparse_utils::ScanForSparseMatches(a_indices.Get(), b_indices.Get(), match_cb);
     *output_values.MutableData<T>() = accum;
   }
 };
@@ -488,18 +477,20 @@ struct VectorOuterProductCtx {
   const SparseTensor& input_A_;
   const SparseTensor& input_B_;
   // 1d coo indices
-  const gsl::span<const int64_t>& a_indices_;
-  const gsl::span<const int64_t>& b_indices_;
+  const sparse_utils::IndicesSpan& a_indices_;
+  const sparse_utils::IndicesSpan& b_indices_;
   SparseTensor& output_tensor_;
 };
 
 template <typename T>
 struct VectorOuterProduct {
   Status operator()(const VectorOuterProductCtx& ctx, float alpha) const {
-    gsl::span<const T> a_values = ctx.input_A_.Values().DataAsSpan<T>();
-    gsl::span<const T> b_values = ctx.input_B_.Values().DataAsSpan<T>();
-    ORT_RETURN_IF_NOT(a_values.size() == ctx.a_indices_.size(), "A values size does not match A indices size");
-    ORT_RETURN_IF_NOT(b_values.size() == ctx.b_indices_.size(), "B values size does not match B indices size");
+    const auto a_values = ctx.input_A_.Values().DataAsSpan<T>();
+    const auto b_values = ctx.input_B_.Values().DataAsSpan<T>();
+    const auto& a_indices = ctx.a_indices_.Get();
+    const auto& b_indices = ctx.b_indices_.Get();
+    ORT_RETURN_IF_NOT(a_values.size() == a_indices.size(), "A values size does not match A indices size");
+    ORT_RETURN_IF_NOT(b_values.size() == b_indices.size(), "B values size does not match B indices size");
 
     const auto cols = ctx.output_tensor_.DenseShape().GetDims()[1];
     // We know output is going to be m*n products of non-zeros (including app defined zeros)
@@ -507,13 +498,13 @@ struct VectorOuterProduct {
     auto coo_mutator = ctx.output_tensor_.MakeCooData(output_size, output_size);
     T* output_data = coo_mutator.Values().MutableData<T>();
     int64_t* output_indices = coo_mutator.Indices().MutableData<int64_t>();
-    const size_t b_limit = ctx.b_indices_.size();
-    for (size_t a_i = 0, a_limit = ctx.a_indices_.size(); a_i < a_limit; ++a_i) {
+    const size_t b_limit = b_indices.size();
+    for (size_t a_i = 0, a_limit = a_indices.size(); a_i < a_limit; ++a_i) {
       const T a_val = a_values[a_i];
-      const auto dest_row = ctx.a_indices_[a_i];
+      const auto dest_row = a_indices[a_i];
       const auto dest_row_offset = dest_row * cols;
       for (size_t b_i = 0; b_i < b_limit; ++b_i) {
-        const auto dest_col = ctx.b_indices_[b_i];
+        const auto dest_col = b_indices[b_i];
         *output_indices++ = dest_row_offset + dest_col;
         *output_data++ = Mul(a_val, alpha, b_values[b_i]);
       }
@@ -524,11 +515,62 @@ struct VectorOuterProduct {
 
 struct MatrixToVectorCtx {
   const Tensor& matrix_values_;
-  const gsl::span<const int64_t>& mat_inner_;
-  const gsl::span<const int64_t>& mat_outer_;
+  const sparse_utils::CsrIndicesSpan& mat_csr_;
   const Tensor& vector_values_;
-  const gsl::span<const int64_t>& b_1d_coo_;
+  const sparse_utils::IndicesSpan& b_1d_coo_;
   SparseTensor& output_tensor_;
+};
+
+template <typename T>
+class MatrixToVectorCallback {
+ protected:
+  gsl::span<const T> matrix_values_;
+  gsl::span<const T> vector_values_;
+  float alpha_ = 1.f;
+  size_t row_offset_ = 0;
+  size_t row_ind_size_ = 0;
+  T accum_ = 0;
+
+ public:
+  MatrixToVectorCallback() = default;
+
+  MatrixToVectorCallback(const MatrixToVectorCtx& ctx, float alpha)
+      : matrix_values_(ctx.matrix_values_.DataAsSpan<T>()),
+        vector_values_(ctx.vector_values_.DataAsSpan<T>()),
+        alpha_(alpha) {
+  }
+
+  // Must be set on on each row
+  void SetRow(size_t offset, size_t row_ind_size) noexcept {
+    row_offset_ = offset;
+    row_ind_size_ = row_ind_size;
+    accum_ = 0;
+  }
+
+  void operator()(size_t a_offset, size_t b_offset) {
+    ORT_ENFORCE(a_offset < row_ind_size_, "a_offset is out of bounds");
+    auto m_offset = row_offset_ + a_offset;
+    accum_ += Mul(matrix_values_[m_offset], alpha_, vector_values_[b_offset]);
+  }
+
+  T GetRowSum() const noexcept { return accum_; }
+};
+
+template <typename T>
+class MatrixTransposeToVectorCallback : public MatrixToVectorCallback<T> {
+ private:
+  gsl::span<const size_t> transposed_value_offsets_;
+
+ public:
+  MatrixTransposeToVectorCallback() = default;
+  MatrixTransposeToVectorCallback(const MatrixToVectorCtx& ctx, float alpha)
+      : MatrixToVectorCallback(ctx, alpha),
+        transposed_value_offsets_(ctx.mat_csr_.TransposedOffsets()) {}
+  void operator()(size_t a_offset, size_t b_offset) {
+    ORT_ENFORCE(a_offset < row_ind_size_, "a_offset is out of bounds");
+    const auto m_offset = transposed_value_offsets_[row_offset_ + a_offset];
+    accum_ += Mul(matrix_values_[m_offset], alpha_, vector_values_[b_offset]);
+  }
 };
 
 // Performs multiplication of matrix to a column vector (or row vector to a matrix)
@@ -539,41 +581,97 @@ struct MatrixToVectorCtx {
 template <typename T>
 struct MatrixToVector {
   Status operator()(const MatrixToVectorCtx& ctx, float alpha) const {
+    const auto& mat_inner = ctx.mat_csr_.Inner();
+    const auto& mat_outer = ctx.mat_csr_.Outer();
     // We know that A is not a fully sparse matrix at this point
     // we must have at least 1 row (actually more since it is not a vector and we handle vectors separately)
     // and outer indices must be at least 2 (for 1 row) or more in size.
-    ORT_RETURN_IF_NOT(ctx.mat_outer_.size() > 1, "A outer indices must have at least 2 in size");
+    ORT_RETURN_IF_NOT(mat_outer.size() > 1, "A outer indices must have at least 2 in size");
+
+    std::function<void(size_t, size_t)> cb_func;
+    MatrixToVectorCallback<T> cb;
+    MatrixTransposeToVectorCallback<T> cb_trans;
+    MatrixToVectorCallback<T>* cb_in_use;
+    if (ctx.mat_csr_.IsTransposed()) {
+      cb_trans = MatrixTransposeToVectorCallback<T>(ctx, alpha);
+      cb_func = [&cb_trans](size_t a_offset, size_t b_offset) {
+        cb_trans(a_offset, b_offset);
+      };
+      cb_in_use = &cb_trans;
+    } else {
+      cb = MatrixToVectorCallback<T>(ctx, alpha);
+      cb_func = [&cb](size_t a_offset, size_t b_offset) {
+        cb(a_offset, b_offset);
+      };
+      cb_in_use = &cb;
+    }
 
     // Scan all the rows and count those that contain any nnz
-    const size_t output_size = CountNonEmptyRows(ctx.mat_outer_);
+    const size_t output_size = CountNonEmptyRows(mat_outer);
 
-    auto matrix_values_span = ctx.matrix_values_.DataAsSpan<T>();
-    const T* vector_values_data = ctx.vector_values_.Data<T>();
     auto coo_mutator = ctx.output_tensor_.MakeCooData(output_size, output_size);
     T* output_data = coo_mutator.Values().MutableData<T>();
     int64_t* output_indices = coo_mutator.Indices().MutableData<int64_t>();
 
     // XXX: This can be parallelized
     // We multiply each row nnz of the of the A matrix to vector B nnz.
-    const size_t outer_limit = ctx.mat_outer_.size() - 1;
+    const size_t outer_limit = mat_outer.size() - 1;
     for (size_t row = 0; row < outer_limit; ++row) {
-      const auto row_indices_start = gsl::narrow<gsl::index>(ctx.mat_outer_[row]);
-      const auto row_nnz_len = gsl::narrow<gsl::index>(ctx.mat_outer_[row + 1]) - row_indices_start;
+      const auto row_indices_start = gsl::narrow<gsl::index>(mat_outer[row]);
+      const auto row_nnz_len = gsl::narrow<gsl::index>(mat_outer[row + 1]) - row_indices_start;
       // We skip rows with no nnz, assuming that application defined zeros still show up in the nnz
       if (row_nnz_len > 0) {
+        cb_in_use->SetRow(row_indices_start, row_nnz_len);
         // Each row of indices has row relative offsets (column number)
-        auto a_row_indices_span = ctx.mat_inner_.subspan(row_indices_start, row_nnz_len);
-        auto a_row_values_span = matrix_values_span.subspan(row_indices_start, row_nnz_len);
-        T accum = 0;
-        auto accum_cb = [&accum, &a_row_values_span, alpha, vector_values_data](size_t a_offset, size_t b_offset) {
-          accum += Mul(a_row_values_span[a_offset], alpha, vector_values_data[b_offset]);
-        };
-        sparse_utils::ScanForSparseMatches(a_row_indices_span, ctx.b_1d_coo_, accum_cb);
-        *output_data++ = accum;
+        auto row_indices_span = mat_inner.subspan(row_indices_start, row_nnz_len);
+        sparse_utils::ScanForSparseMatches(row_indices_span, ctx.b_1d_coo_.Get(), cb_func);
+        *output_data++ = cb_in_use->GetRowSum();
         *output_indices++ = gsl::narrow<int64_t>(row);
       }
     }
     return Status::OK();
+  }
+};
+
+struct MatrixToMatrixCtx {
+  const Tensor& a_values_;
+  const sparse_utils::CsrIndicesSpan& a_csr_;
+  const Tensor& b_values_;
+  const sparse_utils::CsrIndicesSpan& b_csr_;
+  SparseTensor& output_tensor_;
+};
+
+template <typename T>
+struct MatrixToMatrix {
+  Status operator()(const MatrixToMatrixCtx& ctx, float alphat) const {
+    std::function<void(size_t, size_t)> cb_func;
+    const auto& a_inner = ctx.a_csr_.Inner();
+    const auto& a_outer = ctx.a_csr.Outer();
+    const auto& b_inner = ctx.b_csr_.Inner();
+    const auto& b_outer = ctx.b_csr_.Outer();
+
+    const size_t a_outer_limit = a_outer.size() - 1;
+    const size_t b_outer_limit = b_outer.size() - 1;
+    for (size_t row_a = 0; row_a < a_outer_limit; ++row_a) {
+      const auto a_row_start = gsl::narrow<gsl::index>(a_outer[row_a]);
+      const auto a_row_nnz_len = gsl::narrow<gsl::index>(a_outer[row_a + 1]) - a_row_start;
+
+      if (a_row_nnz_len > 0) {
+        auto a_idx_span = a_inner.subspan(a_row_start, a_row_nnz_len);
+        for (size_t col_b = 0; col_b < b_outer_limit; ++col_b) {
+          const auto b_col_start = gsl::narrow<gsl::index>(b_outer[col_b]);
+          const auto b_col_nnz_len = gsl::narrow<gsl::index>(b_outer[col_b + 1]) - b_col_start;
+          // We skip rows with no nnz, assuming that application defined zeros still show up in the nnz
+          if (b_col_nnz_len > 0) {
+            // cb_in_use->SetRow(row_indices_start, row_nnz_len);
+            auto b_idx_span = b_inner.subspan(b_col_start, b_col_nnz_len);
+            sparse_utils::ScanForSparseMatches(a_idx_span, b_idx_span, cb_func);
+            // *output_data++ = cb_in_use->GetRowSum();
+            *output_indices++ = gsl::narrow<int64_t>(row_a);
+          }
+        }
+      }
+    }
   }
 };
 
@@ -589,51 +687,35 @@ Status SparseToSparseMatMul::ComputeImpl(const SparseTensor& input_A, const Spar
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Non-Eigen impl does not support this combination yet");
   }
 
-  nonstd::optional<std::vector<int64_t>> inner_indices_A;
-  nonstd::optional<std::vector<int64_t>> outer_indices_A;
-  nonstd::optional<std::vector<size_t>> value_mapping_A; // only for transpose cases
-  nonstd::optional<std::vector<int64_t>> a_1d_coo;
-  gsl::span<const int64_t> a_1d_coo_span;
+  sparse_utils::CsrIndicesSpan csr_A;
+  sparse_utils::IndicesSpan a_1d_coo;
   if (a_is_vector) {
-    ORT_RETURN_IF_ERROR(sparse_utils::GetCoo1DIndicesAndMaybeConvert(input_A, a_1d_coo, a_1d_coo_span));
+    ORT_RETURN_IF_ERROR(sparse_utils::GetCoo1DIndicesAndMaybeConvert(input_A, a_1d_coo));
   } else {
     if (b_is_vector) {
       // A Matrix to B vector
-      const auto& coo_indices_a = input_A.AsCoo().Indices();
       if (!trans_a_attr_) {
-        ORT_RETURN_IF_ERROR(sparse_utils::ConvertCooIndicesToCsrIndices(a_dims, coo_indices_a.Shape().NumDimensions(),
-                                                                        coo_indices_a.DataAsSpan<int64_t>(),
-                                                                        inner_indices_A, outer_indices_A));
+        ORT_RETURN_IF_ERROR(sparse_utils::GetCsrIndicesAndMaybeConvert(a_dims, input_A, csr_A));
       } else {
         // Transpose indices
-        ORT_RETURN_IF_ERROR(sparse_utils::ConvertCooIndicesToCsrIndicesAndTranspose(a_dims, coo_indices_a.Shape().NumDimensions(),
-                                                                                    coo_indices_a.DataAsSpan<int64_t>(),
-                                                                                    inner_indices_A, outer_indices_A, value_mapping_A));
+        ORT_RETURN_IF_ERROR(sparse_utils::GetCsrIndicesAndTranspose(a_dims, input_A, csr_A));
       }
     }
   }
 
-  nonstd::optional<std::vector<int64_t>> inner_indices_B;
-  nonstd::optional<std::vector<int64_t>> outer_indices_B;
-  nonstd::optional<std::vector<size_t>> value_mapping_B;  // only for transpose cases
-  nonstd::optional<std::vector<int64_t>> b_1d_coo;
-  gsl::span<const int64_t> b_1d_coo_span;
+  sparse_utils::CsrIndicesSpan csr_B;
+  sparse_utils::IndicesSpan b_1d_coo;
   if (b_is_vector) {
-    ORT_RETURN_IF_ERROR(sparse_utils::GetCoo1DIndicesAndMaybeConvert(input_B, b_1d_coo, b_1d_coo_span));
+    ORT_RETURN_IF_ERROR(sparse_utils::GetCoo1DIndicesAndMaybeConvert(input_B, b_1d_coo));
   } else {
     if (a_is_vector) {
       // We do reverse of the transpose flag bc we switch operands places, no need to transpose the vector
       // or the product since the product is a vector
-      const auto& coo_indices_b = input_B.AsCoo().Indices();
       if (trans_b_attr_) {
-        ORT_RETURN_IF_ERROR(sparse_utils::ConvertCooIndicesToCsrIndices(b_dims, coo_indices_b.Shape().NumDimensions(),
-                                                                        coo_indices_b.DataAsSpan<int64_t>(),
-                                                                        inner_indices_B, outer_indices_B));
+        ORT_RETURN_IF_ERROR(sparse_utils::GetCsrIndicesAndMaybeConvert(b_dims, input_B, csr_B));
       } else {
         // Transpose indices
-        ORT_RETURN_IF_ERROR(sparse_utils::ConvertCooIndicesToCsrIndicesAndTranspose(b_dims, coo_indices_b.Shape().NumDimensions(),
-                                                                                    coo_indices_b.DataAsSpan<int64_t>(),
-                                                                                    inner_indices_B, outer_indices_B, value_mapping_B));
+        ORT_RETURN_IF_ERROR(sparse_utils::GetCsrIndicesAndTranspose(b_dims, input_B, csr_B));
       }
     }
   }
@@ -643,37 +725,40 @@ Status SparseToSparseMatMul::ComputeImpl(const SparseTensor& input_A, const Spar
     if (IsRowVector(a_dims, trans_a_attr_) && IsColVector(b_dims, trans_b_attr_)) {
       // Result is a scalar with dense shape [1, 1] and coordinates (0, 0)
       // need to multiply corresponding elements of the vectors
-      assert(!a_1d_coo_span.empty());
-      assert(!b_1d_coo_span.empty());
+      assert(!a_1d_coo.Get().empty());
+      assert(!b_1d_coo.Get().empty());
       auto coo_mutator = output_tensor.MakeCooData(1, 1);
       int64_t* output_indices = coo_mutator.Indices().MutableData<int64_t>();
       *output_indices = 0;
       t_disp.Invoke<ScalarAccumulate>(input_A.Values(), input_B.Values(), alpha_attr_,
-                                      a_1d_coo_span, b_1d_coo_span,
+                                      a_1d_coo, b_1d_coo,
                                       coo_mutator.Values());
       return Status::OK();
     } else if (IsColVector(a_dims, trans_a_attr_) && IsRowVector(b_dims, trans_b_attr_)) {
       // Result is a matrix [m, n] of everything non-zero in A to everything non-zero in B
-      assert(!a_1d_coo_span.empty());
-      assert(!b_1d_coo_span.empty());
-      VectorOuterProductCtx compute_ctx{input_A, input_B, a_1d_coo_span, b_1d_coo_span, output_tensor};
+      assert(!a_1d_coo.Get().empty());
+      assert(!b_1d_coo.Get().empty());
+      VectorOuterProductCtx compute_ctx{input_A, input_B, a_1d_coo, b_1d_coo, output_tensor};
       return t_disp.InvokeRet<Status, VectorOuterProduct>(compute_ctx, alpha_attr_);
     }
   } else if (!a_is_vector && b_is_vector) {
     // Result is a column vector
-    assert(!inner_indices_A->empty());
-    assert(!outer_indices_A->empty());
-    assert(!b_1d_coo_span.empty());
-    MatrixToVectorCtx compute_ctx{input_A.Values(), *inner_indices_A, *outer_indices_A,
-                                  input_B.Values(), b_1d_coo_span,
+    assert(!csr_A.Inner().empty());
+    assert(!b_1d_coo.Get().empty());
+    MatrixToVectorCtx compute_ctx{input_A.Values(), csr_A,
+                                  input_B.Values(), b_1d_coo,
                                   output_tensor};
     return t_disp.InvokeRet<Status, MatrixToVector>(compute_ctx, alpha_attr_);
   } else if (a_is_vector && !b_is_vector) {
-    assert(!inner_indices_B->empty());
-    assert(!outer_indices_B->empty());
-    assert(!a_1d_coo_span.empty());
-    MatrixToVectorCtx compute_ctx{input_B.Values(), *inner_indices_B, *outer_indices_B,
-                                  input_A.Values(), a_1d_coo_span,
+    // This requires B indices to be transposed
+    // because we use B matrix as the first operand.
+    // A vector remains the same.
+    assert(csr_B.IsTransposed());
+    assert(!csr_B.Inner().empty());
+    assert(!csr_B.Outer().empty());
+    assert(!a_1d_coo.Get().empty());
+    MatrixToVectorCtx compute_ctx{input_B.Values(), csr_B,
+                                  input_A.Values(), a_1d_coo,
                                   output_tensor};
     return t_disp.InvokeRet<Status, MatrixToVector>(compute_ctx, alpha_attr_);
   }
@@ -720,7 +805,7 @@ Status SparseToSparseMatMul::Compute(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  //return EigenCompute(input_A, input_B, a_dims, b_dims, output_tensor);
+  // return EigenCompute(input_A, input_B, a_dims, b_dims, output_tensor);
   return ComputeImpl(input_A, input_B, a_dims, b_dims, output_tensor);
 }
 

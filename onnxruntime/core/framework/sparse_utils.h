@@ -172,6 +172,72 @@ struct Advance {
 };
 
 /// <summary>
+/// The class contains a span of indices. If the required indices
+/// do not require conversion, then a conversion
+/// function would simply create the span that points to the original
+/// indices storage such as SparseTensor. If conversion is required,
+/// then converted_ would be instantiated and used as a storage for converted indices
+/// and the span would point to converted_.
+/// </summary>
+class IndicesSpan {
+ private:
+  nonstd::optional<std::vector<int64_t>> converted_;
+  gsl::span<const int64_t> span_;
+
+ public:
+  IndicesSpan() = default;
+  IndicesSpan(IndicesSpan&&) = default;
+  IndicesSpan& operator=(IndicesSpan&&) = default;
+  explicit IndicesSpan(const gsl::span<const int64_t>& s) : converted_(), span_(s) {}
+  explicit IndicesSpan(std::vector<int64_t> converted)
+      : converted_(std::move(converted)), span_(gsl::make_span(*converted_)) {}
+  const gsl::span<const int64_t>& Get() const noexcept { return span_; }
+};
+
+// This class contains CSR indices that are either converted from
+// COO indices (or any other) or if no conversion is necessary, it contains
+// spans that point to the original CSR indices contained within a SparseTensor.
+// If CSR indices were transposed during the conversion, the instance of the class
+// would contain transposed_offsets_ so the new indices offsets can be mapped to the
+// original values contained within a SparseTensor.
+class CsrIndicesSpan {
+ private:
+  IndicesSpan inner_;
+  IndicesSpan outer_;
+  // If indices are transposed then the relative offsets
+  // of indices no longer match values offsets in the original tensors
+  // thus, transposed_offsets_ contain original value offsets that correspond
+  // to the new indices
+  nonstd::optional<std::vector<size_t>> transposed_offsets_;
+
+ public:
+  CsrIndicesSpan() = default;
+  CsrIndicesSpan(CsrIndicesSpan&&) = default;
+  CsrIndicesSpan& operator=(CsrIndicesSpan&&) = default;
+  // Point to the original indices
+  CsrIndicesSpan(const gsl::span<const int64_t>& inner, const gsl::span<const int64_t>& outer)
+      : inner_(inner), outer_(outer) {}
+  // A case of a vector with COO 1-D indices. We then directly map indices
+  // to the original COO and create a small 2 entry outer indices
+  CsrIndicesSpan(const gsl::span<const int64_t>& inner, std::vector<int64_t> outer)
+      : inner_(inner), outer_(std::move(outer)) {}
+  // Both indices are converted
+  CsrIndicesSpan(std::vector<int64_t> inner, std::vector<int64_t> outer)
+      : inner_(std::move(inner)), outer_(std::move(outer)) {}
+  // Converted/transposed
+  CsrIndicesSpan(std::vector<int64_t> inner, std::vector<int64_t> outer, std::vector<size_t> transposed_offsets)
+      : inner_(std::move(inner)), outer_(std::move(outer)), transposed_offsets_(std::move(transposed_offsets)) {}
+  bool IsTransposed() const noexcept { return transposed_offsets_.has_value(); }
+  gsl::span<const size_t> TransposedOffsets() const { 
+    if (transposed_offsets_.has_value())
+      return gsl::make_span(*transposed_offsets_);
+    return gsl::span<const size_t>();
+  }
+  const gsl::span<const int64_t>& Inner() const noexcept { return inner_.Get(); }
+  const gsl::span<const int64_t>& Outer() const noexcept { return outer_.Get(); }
+};
+
+/// <summary>
 /// Converts 2-D COO indices into 1-D flat indices.
 /// The data is assumed to be on CPU.
 /// </summary>
@@ -186,12 +252,10 @@ Status Convert2DCooIndicesTo1D(int64_t cols, const gsl::span<const int64_t>& inp
 /// If the indices are 2D, it performs a conversion and stores the converted indices in the converted_output
 /// it then returns a span to the converted_output via output
 /// </summary>
-/// <param name="cols">cols dim value</param>
-/// <param name="coo_indices">coo indices tensor</param>
-/// <param name="converted_output">storage in case conversion is necessary</param>
-/// <param name="output">span that points to either the original 1-D indices or to converted_output</param>
+/// <param name="input">SparseTensor that contains either COO or CSR indices</param>
+/// <param name="output">span of 1-D COO indices</param>
 /// <returns></returns>
-Status GetCoo1DIndicesAndMaybeConvert(const SparseTensor& input, nonstd::optional<std::vector<int64_t>>& converted_output, gsl::span<const int64_t>& output);
+Status GetCoo1DIndicesAndMaybeConvert(const SparseTensor& input, IndicesSpan& output);
 
 /// <summary>
 /// Calls Convert2DCooIndicesTo1D() and copies into the coo_mutator
@@ -203,45 +267,36 @@ Status GetCoo1DIndicesAndMaybeConvert(const SparseTensor& input, nonstd::optiona
 Status ConvertIndicesTo1DAndCopy(const SparseTensor& input_sparse, SparseTensor::CooMutator& coo_mutator);
 
 /// <summary>
-/// The function performs conversion of input COO indices into
-/// CSR indices and places results into inner_indices and outer_indices vectors.
-/// In case we have a 1-D dense shape (a vector) then the inner indices is a just a copy
-/// of input_indices and we have two entries in the outer_indices. Thus, the CSR produced
+/// If the input is CSR, the function fetches the csr indices spans and returns.
+/// For COO format, the function performs conversion of input COO indices into
+/// CSR indices and places results into csr_span.
+///
+/// In case we have a 1-D dense shape (a vector) then the inner indices points to the original
+/// coo indices and we generate two entries in the outer_indices. Thus, the CSR produced
 /// as if the input was a row vector. Make sure to flip the transpose flag and swap the dims
 /// if the vector is really a column vector.
 /// </summary>
-/// <param name="computed_dims">shape that was adjusted for 2-D</param>
-/// <param name="input_indices_ndims">indices either 1-D or 2-D indices</param>
-/// <param name="input_indices"></param>
-/// <param name="inner_indices"></param>
-/// <param name="outer_indices"></param>
+/// <param name="computed_dims">normalized 2-D dims</param>
+/// <param name="input">input tensor</param>
+/// <param name="csr_span">contains CSR indices</param>
 /// <returns></returns>
-Status ConvertCooIndicesToCsrIndices(const std::vector<int64_t>& computed_dims, size_t input_indices_ndims,
-                                     const gsl::span<const int64_t>& input_indices,
-                                     nonstd::optional<std::vector<int64_t>>& inner_indices,
-                                     nonstd::optional<std::vector<int64_t>>& outer_indices);
+Status GetCsrIndicesAndMaybeConvert(const std::vector<int64_t>& computed_dims,
+                                    const SparseTensor& input, CsrIndicesSpan& csr_span);
 
 /// <summary>
-/// The function performs conversion of input COO indices into
-/// CSR indices and places results into inner_indices and outer_indices vectors.
-/// It performs a transpose of the indices on the fly. Essentially, we convert into CSC indices.
-/// In case we have a 1-D dense shape (a vector) then the inner indices is a just a copy
+/// The function performs transpose of input either CSR or COO indices and outputs transposed
+/// CSR indices.
+/// 
+/// In case input is a 1-D dense shape (a vector) COO then the inner indices is a just a copy
 /// of input_indices and we have two entries in the outer_indices. Thus, the CSR produced
 /// as if the input was a row vector. Make sure to flip the transpose flag and swap the dims
 /// if the vector is really a column vector.
 /// </summary>
-/// <param name="computed_dims">normalized dims (always 2-D)</param>
-/// <param name="input_indices_ndims">coo indices dims</param>
-/// <param name="input_indices"></param>
-/// <param name="inner_indices">output inner indices transposed</param>
-/// <param name="outer_indices">outer indices transposed</param>
-/// <param name="value_mapping">contains indices of values that now correspond to transposed indices</param>
+/// <param name="computed_dims"></param>
+/// <param name="input"></param>
+/// <param name="csr_span"></param>
 /// <returns></returns>
-Status ConvertCooIndicesToCsrIndicesAndTranspose(const std::vector<int64_t>& computed_dims, size_t input_indices_ndims,
-                                                 const gsl::span<const int64_t>& input_indices,
-                                                 nonstd::optional<std::vector<int64_t>>& inner_indices,
-                                                 nonstd::optional<std::vector<int64_t>>& outer_indices,
-                                                 nonstd::optional<std::vector<size_t>>& value_mapping);
+Status GetCsrIndicesAndTranspose(const std::vector<int64_t>& computed_dims, const SparseTensor& input, CsrIndicesSpan& csr_span);
 
 /// <summary>
 /// Converts Csr indices into 1-D COO indices
@@ -292,7 +347,7 @@ void CopyCpuSparseCooTensor(const SparseTensor& src, SparseTensor& tgt);
 /// <param name="match_cb">callback for match of indices</param>
 void ScanForSparseMatches(const gsl::span<const int64_t>& a_indices,
                           const gsl::span<const int64_t>& b_indices,
-                          std::function<void(size_t, size_t)> match_cb);
+                          const std::function<void(size_t, size_t)>& match_cb);
 
 }  // namespace sparse_utils
 }  // namespace onnxruntime
