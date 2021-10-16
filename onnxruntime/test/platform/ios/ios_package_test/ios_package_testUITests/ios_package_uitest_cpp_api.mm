@@ -1,8 +1,10 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 //
-//  ios_package_testUITests.m
-//  ios_package_testUITests
+//  ios_package_test_cpp_api.mm
+//  ios_package_test_cpp_api
 //
-//  Created by gwang on 10/15/21.
+//  This file hosts the tests of ORT C++ API
 //
 
 #import <XCTest/XCTest.h>
@@ -67,11 +69,11 @@ void testSigmoid(const char* modelPath, bool useCoreML) {
   }
 }
 
-@interface ios_package_testUITests : XCTestCase
+@interface ios_package_test_cpp_api : XCTestCase
 
 @end
 
-@implementation ios_package_testUITests
+@implementation ios_package_test_cpp_api
 
 - (void)setUp {
   // Put setup code here. This method is called before the invocation of each test method in the class.

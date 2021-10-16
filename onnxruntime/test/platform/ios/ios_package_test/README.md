@@ -17,8 +17,7 @@ The iOS End-to-End Test App will use CocoaPods to install the Onnx Runtime C/C++
     Here's the [document](http://www.onnxruntime.ai/docs/how-to/deploy-on-mobile.html#1-create-ort-format-model-and-configuration-file-with-required-operators) about how you can convert an ONNX model into ORT format.
 
 ### Tests
-- [Tests for C API ](./ios_package_testTests/ios_package_test_c_api.m)
-- [Tests for C++ API ](./ios_package_testTests/ios_package_test_cpp_api.mm)
+- [Tests for C++ API ](./ios_package_testUITests/ios_package_uitest_cpp_api.mm)
 
 ## Build and Test iOS Framework using [build.py](../../../../../tools/ci_build/build.py)
 
