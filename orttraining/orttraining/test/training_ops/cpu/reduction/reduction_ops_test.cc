@@ -228,6 +228,7 @@ INSTANTIATE_TEST_SUITE_P(ReductionOpTestWrapper, ReductionOpTest, ::testing::Boo
 TEST(ReductionOpTest, ReduceSumTraining_int32) {
   OpTester test("ReduceSumTraining", 1, onnxruntime::kMSDomain);
   test.AddAttribute("keepdims", (int64_t)1);
+  test.AddAttribute("name", "aten::reduce_sum");
   test.AddInput<int32_t>("data", {3, 2, 2},
                          {1, 2,
                           3, 4,

@@ -69,13 +69,13 @@ class OpKernelContext {
     return *output_ptr;
   }
 
-  #if !defined(DISABLE_SPARSE_TENSORS)
+#if !defined(DISABLE_SPARSE_TENSORS)
   // Fetch a sparse-tensor output corresponding to the specified index.
   // shape must specify the shape of the underlying dense-tensor.
   // Memory allocation for the output may happen when this method is invoked,
   // unless static optimization pre-allocates it.
   SparseTensor* OutputSparse(int index, const TensorShape& shape);
-  #endif
+#endif
 
   // Retrieve indexed shape obtained from memory planning before actual
   // computation. If the indexed shape cannot be inferred, this function returns
@@ -168,6 +168,16 @@ class OpKernelContext {
   */
   virtual bool GetUseDeterministicCompute() const {
     return true;
+  }
+
+  template <typename T>
+  MUST_USE_RESULT Status GetAttr(const std::string& name, T* value) const {
+    return kernel_->Info().GetAttr(name, value);
+  }
+
+  template <typename T>
+  MUST_USE_RESULT Status GetAttrs(const std::string& name, std::vector<T>& values) const {
+    return kernel_->Info().GetAttrs(name, values);
   }
 
  protected:

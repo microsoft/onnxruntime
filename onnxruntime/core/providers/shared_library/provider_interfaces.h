@@ -675,6 +675,8 @@ struct ProviderHost {
   virtual Status OpKernelInfo__GetAttrs(const OpKernelInfo* p, const std::string& name, std::vector<float>& values) = 0;
   virtual Status OpKernelInfo__GetAttrs(const OpKernelInfo* p, const std::string& name, std::vector<std::string>& values) = 0;
 
+  virtual std::string OpKernelInfo__GetAttrOrDefault_string(const OpKernelInfo* p, const std::string& name, const std::string& default_value) = 0;
+
   virtual const DataTransferManager& OpKernelInfo__GetDataTransferManager(const OpKernelInfo* p) noexcept = 0;
   virtual const KernelDef& OpKernelInfo__GetKernelDef(const OpKernelInfo* p) = 0;
   virtual bool OpKernelInfo__TryGetConstantInput(const OpKernelInfo* p, int input_index, const Tensor** constant_input_value) = 0;

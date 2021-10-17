@@ -319,7 +319,7 @@ struct ProviderHostImpl : ProviderHost {
   ONNX_NAMESPACE::TensorShapeProto* TypeProto_Tensor__mutable_shape(ONNX_NAMESPACE::TypeProto_Tensor* p) override { return p->mutable_shape(); }
   int32_t TypeProto_Tensor__elem_type(const ONNX_NAMESPACE::TypeProto_Tensor* p) override { return p->elem_type(); }
 
-  //TypeProto_SparseTensor (wrapped)
+  // TypeProto_SparseTensor (wrapped)
 #if !defined(DISABLE_SPARSE_TENSORS)
   bool TypeProto_SparseTensor__has_shape(const ONNX_NAMESPACE::TypeProto_SparseTensor* p) override { return p->has_shape(); }
   const ONNX_NAMESPACE::TensorShapeProto& TypeProto_SparseTensor__shape(const ONNX_NAMESPACE::TypeProto_SparseTensor* p) override {
@@ -771,6 +771,8 @@ struct ProviderHostImpl : ProviderHost {
   Status OpKernelInfo__GetAttrs(const OpKernelInfo* p, const std::string& name, std::vector<float>& values) override { return p->GetAttrs(name, values); }
   Status OpKernelInfo__GetAttrs(const OpKernelInfo* p, const std::string& name, std::vector<std::string>& values) override { return p->GetAttrs(name, values); }
 
+  std::string OpKernelInfo__GetAttrOrDefault_string(const OpKernelInfo* p, const std::string& name, const std::string& default_value) override { return p->GetAttrOrDefault(name, default_value); }
+
   const DataTransferManager& OpKernelInfo__GetDataTransferManager(const OpKernelInfo* p) noexcept override { return p->GetDataTransferManager(); }
   const KernelDef& OpKernelInfo__GetKernelDef(const OpKernelInfo* p) override { return p->GetKernelDef(); }
   bool OpKernelInfo__TryGetConstantInput(const OpKernelInfo* p, int input_index, const Tensor** constant_input_value) override { return p->TryGetConstantInput(input_index, constant_input_value); }
@@ -1151,18 +1153,15 @@ void cudaMemcpy_HostToDevice(void* dst, const void* src, size_t count) {
 }
 
 #ifdef ENABLE_NVTX_PROFILE
-namespace profile
-{
-void NvtxRangeCreator::BeginImpl()
-{
+namespace profile {
+void NvtxRangeCreator::BeginImpl() {
   GetProviderInfo_CUDA().NvtxRangeCreator__BeginImpl(this);
 }
 
-void NvtxRangeCreator::EndImpl()
-{
+void NvtxRangeCreator::EndImpl() {
   GetProviderInfo_CUDA().NvtxRangeCreator__EndImpl(this);
 }
-}
+}  // namespace profile
 #endif
 
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)

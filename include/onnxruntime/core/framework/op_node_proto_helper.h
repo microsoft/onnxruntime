@@ -37,6 +37,8 @@ class OpNodeProtoHelper {
  public:
   explicit OpNodeProtoHelper(const Impl_t* impl) : impl_(impl) {}
 
+  bool HasAttr(const std::string& name) const;
+
   /**
      Get a single attribute
      Call this function for a required attribute or when a default value for an optional attribute is specified in the op schema

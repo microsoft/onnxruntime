@@ -6,6 +6,7 @@
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cpu/reduction/reduction_ops.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
+#include "orttraining/training_ops/cpu/aten_ops/aten_op.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -168,14 +169,9 @@ class ReduceProd final : public ReduceKernel<true> {
 };
 
 template <typename T>
-class ReduceSum final : public ReduceKernel<true> {
+class ReduceSum final : public onnxruntime::contrib::ATenOp {
  public:
-  ReduceSum(const OpKernelInfo& info) : ReduceKernel<true>(info) {
-    fast_reduction_ = true;
-  }
-
-  Status ComputeInternal(OpKernelContext* ctx) const override {
-    return ComputeImpl<T>(ctx, CUDNN_REDUCE_TENSOR_ADD);
+  ReduceSum(const OpKernelInfo& info) : ATenOp(info) {
   }
 };
 

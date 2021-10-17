@@ -9,7 +9,7 @@ from . import (_utils,
                _logger,
                _onnx_models,
                _are_deterministic_algorithms_enabled)
-from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension_if_needed
+from .torch_cpp_extensions.cpu.aten_op_executor import _load_aten_op_executor_cpp_extension
 from ._custom_autograd_function import custom_autograd_function_enabler
 from ._custom_autograd_function_exporter import _post_process_after_export
 from ._graph_execution_interface import GraphExecutionInterface
@@ -99,11 +99,12 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # indicators of some logic have been executed previously thus could be skipped for faster training
         # default is enabled, if not define in os env
-        self._skip_check = _SkipCheck(_SkipCheck.SKIP_CHECK_DEVICE | _SkipCheck.SKIP_CHECK_BUILD_GRADIENT | _SkipCheck.SKIP_CHECK_EXECUTION_AGENT)        
+        self._skip_check = _SkipCheck(
+            _SkipCheck.SKIP_CHECK_DEVICE | _SkipCheck.SKIP_CHECK_BUILD_GRADIENT | _SkipCheck.SKIP_CHECK_EXECUTION_AGENT)
         if os.getenv('ORTMODULE_SKIPCHECK_POLICY') is not None:
             self._skip_check = reduce(lambda x, y: x | y,
                                       [_SkipCheck[name] for name in
-                                        _utils.parse_os_env_skip_check_flags('ORTMODULE_SKIPCHECK_POLICY')])
+                                       _utils.parse_os_env_skip_check_flags('ORTMODULE_SKIPCHECK_POLICY')])
         self._first_skip_check_warning = True
 
         # Graph transformer config
@@ -260,9 +261,12 @@ class GraphExecutionManager(GraphExecutionInterface):
                 provider_option_map["cudnn_conv_algo_search"] = "HEURISTIC"
                 provider_option_map["cudnn_conv_use_max_workspace"] = "1"
             if self._use_external_gpu_allocator:
-                provider_option_map["gpu_external_alloc"] = str(self._torch_alloc)
-                provider_option_map["gpu_external_free"] = str(self._torch_free)
-                provider_option_map["gpu_external_empty_cache"] = str(self._torch_empty_cache)
+                provider_option_map["gpu_external_alloc"] = str(
+                    self._torch_alloc)
+                provider_option_map["gpu_external_free"] = str(
+                    self._torch_free)
+                provider_option_map["gpu_external_empty_cache"] = str(
+                    self._torch_empty_cache)
             provider_options = [provider_option_map, {}]
         elif self._device.type == 'cpu':
             providers = ["CPUExecutionProvider"]
@@ -308,7 +312,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._set_device_from_module(inputs, kwargs)
         self._onnx_models.exported_model = self._get_exported_model(
             schema, *inputs, **kwargs)
-        load_aten_op_executor_cpp_extension_if_needed(self._onnx_models.exported_model)
+        _load_aten_op_executor_cpp_extension()
         if self._debug_options.save_onnx_models.save:
             self._onnx_models.save_exported_model(self._debug_options.save_onnx_models.path,
                                                   self._debug_options.save_onnx_models.name_prefix,
@@ -430,7 +434,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         grad_builder_config.build_gradient_graph = training
         grad_builder_config.graph_transformer_config = self._get_graph_transformer_config()
         grad_builder_config.enable_caching = self._enable_grad_acc_optimization
-        grad_builder_config.loglevel = _logger.ortmodule_loglevel_to_onnxruntime_c_loglevel(self._debug_options.logging.log_level)
+        grad_builder_config.loglevel = _logger.ortmodule_loglevel_to_onnxruntime_c_loglevel(
+            self._debug_options.logging.log_level)
         grad_builder_config.use_memory_efficient_gradient = self._use_memory_efficient_gradient
         self._graph_builder = C.OrtModuleGraphBuilder()
 

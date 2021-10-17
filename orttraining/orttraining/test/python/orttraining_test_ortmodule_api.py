@@ -4176,3 +4176,32 @@ def test_sigmoid_grad():
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_values_are_close(ort_x.grad, pt_x.grad)
         _test_helpers.assert_values_are_close(ort_loss, pt_loss)
+
+
+def test_aten_reduce_sum():
+    class ReduceModule(torch.nn.Module):
+        def __init__(self, axes):
+            super(ReduceModule, self).__init__()
+            self.axes = []
+            self.rank = len(axes)
+            for axis in axes:
+                if axis < 0:
+                    self.axes.append(axis + self.rank)
+                else:
+                    self.axes.append(axis)
+
+        def forward(self, x):
+            y = torch.sum(x, self.axes)
+            return y
+    shape = [1, ]
+    axes = [0, ]
+    pt_model = ReduceModule(axes).to('cuda')
+    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(
+        save_onnx=True, onnx_prefix='reduce_forward_only_model'))
+    n = 100
+    for _ in range(n):
+        pt_x = torch.rand(shape).to('cuda')
+        ort_x = copy.deepcopy(pt_x)
+        y = pt_model(pt_x)
+        z = ort_model(ort_x)
+        _test_helpers.assert_values_are_close(y, z)

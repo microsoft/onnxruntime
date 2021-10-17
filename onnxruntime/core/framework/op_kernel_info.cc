@@ -23,7 +23,8 @@ OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node,
       ort_value_name_idx_map_(ort_value_name_idx_map),
       funcs_mgr_(funcs_mgr),
       data_transfer_mgr_(data_transfer_mgr),
-      proto_helper_context_(node) {}
+      proto_helper_context_(node),
+      op_name_(node.OpType()) {}
 
 OpKernelInfo::OpKernelInfo(const OpKernelInfo& other)
     : OpKernelInfo(other.node_, other.kernel_def_, *other.execution_provider_, other.constant_initialized_tensors_,
@@ -82,4 +83,29 @@ bool OpKernelInfo::TryGetConstantInput(int input_index, const Tensor** constant_
 common::Status OpKernelInfo::GetFusedFuncs(NodeComputeInfo*& compute_info) const {
   return funcs_mgr_.GetFuncs(node_.Name(), compute_info);
 }
+
+std::map<std::string, std::string> onnx_to_aten_op_name = {{"ReduceSum", "aten::sum"}};
+std::map<std::string, std::string> onnx_to_aten_op_overload_name = {{"ReduceSum", "dim_IntList"}};
+
+template <>
+common::Status OpKernelInfo::GetAttr<std::string>(const std::string& name, std::string* value) const {
+  auto it = onnx_to_aten_op_name.find(op_name_);
+  if (name == "name" && false == HasAttr(name) && it != onnx_to_aten_op_name.end()) {
+    *value = it->second;
+    return Status::OK();
+  } else {
+    return OpNodeProtoHelper<ProtoHelperNodeContext>::GetAttr<std::string>(name, value);
+  }
+}
+
+template <>
+std::string OpKernelInfo::GetAttrOrDefault(const std::string& name, const std::string& default_value) const {
+  auto it = onnx_to_aten_op_overload_name.find(op_name_);
+  if (name == "overload_name" && false == HasAttr(name) && it != onnx_to_aten_op_overload_name.end()) {
+    return it->second;
+  } else {
+    return OpNodeProtoHelper<ProtoHelperNodeContext>::GetAttrOrDefault<std::string>(name, default_value);
+  }
+}
+
 }  // namespace onnxruntime
