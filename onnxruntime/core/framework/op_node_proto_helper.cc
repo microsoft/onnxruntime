@@ -73,6 +73,12 @@ inline constexpr int ArrayTypeToAttributeType<std::string>() {
   return AttributeProto_AttributeType_STRINGS;
 }
 
+#define ORT_DEFINE_HAS_ATTR(IMPL_T)          \
+  template <>                                \
+  bool OpNodeProtoHelper<IMPL_T>::HasAttr(   \
+      const std::string& name) const {       \
+    return nullptr != TryGetAttribute(name); \
+  }
 
 #define ORT_DEFINE_GET_ATTR(IMPL_T, T, type)                                                       \
   template <>                                                                                      \
@@ -148,6 +154,10 @@ inline constexpr int ArrayTypeToAttributeType<std::string>() {
   ORT_DEFINE_GET_ATTR(ProtoHelperNodeContext, type, list) \
   ORT_DEFINE_GET_ATTR(InferenceContext, type, list)
 
+#define ORT_DEFINE_HAS_ATTR_SPECIALIZATIONS() \
+  ORT_DEFINE_HAS_ATTR(ProtoHelperNodeContext) \
+  ORT_DEFINE_HAS_ATTR(InferenceContext)
+
 #define ORT_DEFINE_GET_ATTRS_SPECIALIZATIONS(type, list)   \
   ORT_DEFINE_GET_ATTRS(ProtoHelperNodeContext, type, list) \
   ORT_DEFINE_GET_ATTRS(InferenceContext, type, list)
@@ -158,6 +168,9 @@ inline constexpr int ArrayTypeToAttributeType<std::string>() {
 #else
 #define ORT_DEFINE_GET_ATTR_SPECIALIZATIONS(type, list) \
   ORT_DEFINE_GET_ATTR(ProtoHelperNodeContext, type, list)
+
+#define ORT_DEFINE_HAS_ATTR_SPECIALIZATIONS() \
+  ORT_DEFINE_HAS_ATTR(ProtoHelperNodeContext)
 
 #define ORT_DEFINE_GET_ATTRS_SPECIALIZATIONS(type, list) \
   ORT_DEFINE_GET_ATTRS(ProtoHelperNodeContext, type, list)
@@ -179,6 +192,8 @@ ORT_DEFINE_GET_ATTRS_SPECIALIZATIONS(GraphProto, graphs)
 
 ORT_DEFINE_GET_ATTRS_SPAN_SPECIALIZATION(float, floats)
 ORT_DEFINE_GET_ATTRS_SPAN_SPECIALIZATION(int64_t, ints)
+
+ORT_DEFINE_HAS_ATTR_SPECIALIZATIONS()
 
 template <typename Impl_t>
 MUST_USE_RESULT Status OpNodeProtoHelper<Impl_t>::GetAttrsStringRefs(

@@ -10,6 +10,7 @@
 #include "core/graph/graph_viewer.h"
 #include "gsl/gsl"
 
+#include <string>
 namespace onnxruntime {
 
 class OrtValueNameIdxMap;
@@ -47,6 +48,21 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
 
   common::Status GetFusedFuncs(NodeComputeInfo*& compute_info) const;
 
+  template <typename T>
+  MUST_USE_RESULT common::Status GetAttr(const std::string& name, T* value) const {
+    return OpNodeProtoHelper<ProtoHelperNodeContext>::GetAttr(name, value);
+  }
+
+  template <typename T>
+  T GetAttrOrDefault(const std::string& name, const T& default_value) const {
+    return OpNodeProtoHelper<ProtoHelperNodeContext>::GetAttrOrDefault(name, default_value);
+  }
+
+  template <typename T>
+  void GetAttrOrDefault(const std::string& name, T* value, const T& default_value) const {
+    return OpNodeProtoHelper<ProtoHelperNodeContext>::GetAttrOrDefault(name, value, default_value);
+  }
+
  private:
   ORT_DISALLOW_MOVE(OpKernelInfo);
   ORT_DISALLOW_ASSIGNMENT(OpKernelInfo);
@@ -61,6 +77,7 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   const FuncManager& funcs_mgr_;
   const DataTransferManager& data_transfer_mgr_;
   ProtoHelperNodeContext proto_helper_context_;
+  std::string op_name_;
 };
 
 }  // namespace onnxruntime

@@ -802,6 +802,9 @@ inline Status OpKernelInfo::GetAttrs<float>(const std::string& name, std::vector
 template <>
 inline Status OpKernelInfo::GetAttrs<std::string>(const std::string& name, std::vector<std::string>& values) const { return g_host->OpKernelInfo__GetAttrs(this, name, values); }
 
+template <>
+inline std::string OpKernelInfo::GetAttrOrDefault<std::string>(const std::string& name, const std::string& default_value) const { return g_host->OpKernelInfo__GetAttrOrDefault_string(this, name, default_value); }
+
 class SessionState {
  public:
   const DataTransferManager& GetDataTransferMgr() const noexcept { return g_host->SessionState__GetDataTransferMgr(this); }
@@ -946,7 +949,7 @@ struct SparseTensor final {
 };
 #endif
 
-//TensorSeq
+// TensorSeq
 struct TensorSeq final {
   MLDataType DataType() const noexcept { return g_host->TensorSeq__DataType(this); }
   void SetType(MLDataType elem_type) { g_host->TensorSeq__SetType(this, elem_type); }
