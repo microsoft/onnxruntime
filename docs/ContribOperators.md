@@ -359,7 +359,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>data</tt> : T</dt>
 <dd>The input data as Tensor.</dd>
 <dt><tt>bias</tt> : T</dt>
-<dd>The bias input, a vector with the same shape as last dim of data OR same shape with data</dd>
+<dd>The bias input, a vector with the same shape as last dim of data</dd>
 <dt><tt>residual</tt> (optional) : T</dt>
 <dd>The residual input, must have the same shape as data</dd>
 <dt><tt>ratio</tt> (optional) : T1</dt>
@@ -838,6 +838,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>add_output</tt> : int</dt>
+<dd>Boolean to indicates if the node outputs an extra add output</dd>
 <dt><tt>epsilon</tt> : float</dt>
 <dd>The epsilon value to use to avoid division by zero.</dd>
 </dl>
@@ -863,13 +865,15 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>2D attention mask with shape (batch_size, sequence_length)</dd>
 </dl>
 
-#### Outputs
+#### Outputs (2 - 3)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
 <dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
 <dt><tt>mask_index</tt> : T1</dt>
 <dd>1D mask_index tensor with shape (batch_size)</dd>
+<dt><tt>add_output</tt> (optional) : T</dt>
+<dd>output of word_embedding and position_embedding sum without layer normalization</dd>
 </dl>
 
 #### Type Constraints
