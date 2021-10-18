@@ -89,6 +89,19 @@ jobs:
      python -m pip list
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
+  
+  - task: BatchScript@1
+    displayName: 'setup env 2'
+    inputs:
+      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+      modifyEnvironment: true
+      workingFolder: '$(Build.BinariesDirectory)'
+
+  - script: |
+     python -c "import torch; import sys; print(sys.path); print(torch.__file__)"
+     python -m pip list
+    workingDirectory: '$(Build.BinariesDirectory)'
+    displayName: 'Check python modules'
 
   - task: PythonScript@0
     displayName: 'Generate cmake config'
