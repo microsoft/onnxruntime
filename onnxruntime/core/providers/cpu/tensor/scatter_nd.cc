@@ -61,11 +61,20 @@ Status ScatterNDBase::ValidateShapes(const TensorShape& input_shape,
   }
 
   bool is_update_shape_invalid = [&]() {
-    // Validate rank of update tensor
     // Per spec, the rank of the update tensor should be:
     // (Rank of input tensor) + (Rank of indices tensor) -1 - last_indice_dimension
-    if (update_rank != (input_rank + indice_rank - 1 - static_cast<int64_t>(last_indice_dimension))) {
-      //return true;
+    auto expected_rank = input_rank + indice_rank - 1 - static_cast<int64_t>(last_indice_dimension);
+
+    if (update_rank != expected_rank) {
+      // if data and indices are both rank 1 and indices has shape {1} the expected_rank will be zero (i.e. a scalar).
+      // in that case, if 'updates' is rank 1 with shape 1 it is functionally equivalent to a scalar,
+      // so allow that to be considered valid.
+      if (expected_rank == 0 &&
+          input_rank == 1 && indice_rank == 1 && update_shape.Size() == 1) {
+        return false;
+      } else {
+        return true;
+      }
     }
 
     // Validate shape of the update tensor
