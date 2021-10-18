@@ -1173,7 +1173,7 @@ Return Value:
             return;
         }
 
-#elif (defined(MLAS_TARGET_ARM64) && !defined(_WIN32)) || defined(MLAS_TARGET_WASM)
+#elif defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_WASM)
 
         if (TransB == CblasNoTrans) {
             MlasGemvFloatKernel(A, B, C, K, N, ldb, (beta == 0.0f));
@@ -1621,8 +1621,8 @@ MlasGemmBatch(
         ThreadCountN = 1;
     }
 
-    MlasTrySimpleParallel(ThreadPool, 
-        ThreadsPerGemm * static_cast<ptrdiff_t>(BatchSize), 
+    MlasTrySimpleParallel(ThreadPool,
+        ThreadsPerGemm * static_cast<ptrdiff_t>(BatchSize),
         [=](ptrdiff_t tid)
     {
         ptrdiff_t GemmIdx = tid / ThreadsPerGemm;

@@ -25,6 +25,7 @@ parameters:
   default: ''
 
 - name: publish_executables
+  # The executables will only be published if the publish_executables is set to "1"
   displayName: Publish executables such as onnxruntime_perf_test, ...
   type: string
   default: '0'

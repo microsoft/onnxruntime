@@ -168,6 +168,10 @@
         17615601449933173216
     ],
     [
+        "SigmoidGrad com.microsoft CPUExecutionProvider",
+        13197741041840309432
+    ],
+    [
         "SimplifiedLayerNormalizationGrad com.microsoft CPUExecutionProvider",
         9823114592183077488
     ],
