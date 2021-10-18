@@ -331,6 +331,8 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
   endif()
 endif()
 
+add_definitions(-DORT_TRAINING_EXTERNAL_GRAPH_TRANSFORMERS=1)
+
 # ORT build with as much excluded as possible. Supports ORT flatbuffers models only.
 if (onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_MINIMAL_BUILD)

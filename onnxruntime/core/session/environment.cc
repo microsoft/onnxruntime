@@ -39,6 +39,8 @@
 #include "orttraining/core/graph/loss_function_registry.h"
 #include "orttraining/core/graph/optimizer_builder.h"
 #include "orttraining/core/graph/optimizer_graph_builder_registry.h"
+#include "orttraining/core/optimizer/graph_transformer_registry.h"
+
 #endif
 
 namespace onnxruntime {
@@ -254,6 +256,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       training::OptimizerBuilderRegistry::GetInstance().RegisterBuilders();
       training::OptimizerGraphBuilderRegistry::GetInstance().RegisterGraphBuilders();
       // <training schemas>
+      training::GraphTransformerRegistry::GetInstance().RegisterExternalGraphTransformers();
 #endif
     });
 
