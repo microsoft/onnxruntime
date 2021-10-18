@@ -3327,7 +3327,11 @@ def test_ortmodule_string_inputs_are_ignored():
     ort_model = ORTModule(copy.deepcopy(pt_model))
     x = torch.randn(1, 2)
 
-    out = ort_model(x, 'hello')
+    with pytest.warns(UserWarning) as warning_record:
+        out = ort_model(x, 'hello')
+
+    assert len(warning_record) == 2
+    assert "Received input of type <class 'str'> which may be treated as a constant by ORT by default." in warning_record[1].message.args[0]
     _test_helpers.assert_values_are_close(out, x+1)
 
 def test_ortmodule_list_input():

@@ -11,7 +11,7 @@ import warnings
 import gc
 
 from ._fallback import _FallbackManager, ORTModuleIOError, ORTModuleONNXModelException, wrap_exception
-
+from ._utils import warn_of_constant_inputs
 
 class _OutputIdentityOp(torch.autograd.Function):
     '''Internal class used to prepend Identity ops in model's outputs
@@ -316,9 +316,14 @@ def unflatten_user_output(output_schema, outputs):
 def _extract_schema(data):
     """Extract the data schema by replacing every torch.Tensor value with _TensorStub"""
 
-    if data is None or isinstance(data, str):
+    if data is None:
+        return data
+    elif isinstance(data, str):
+        warn_of_constant_inputs(data)
         return data
     elif _PrimitiveType.is_primitive_type(data):
+        if isinstance(data, bool):
+            warn_of_constant_inputs(data)
         return _TensorStub(dtype=_PrimitiveType.get_primitive_dtype(data), shape_dims=0)
     # Depth first traversal to iterate over the data to replace every tensor with a stub
     elif isinstance(data, torch.Tensor):
