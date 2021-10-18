@@ -435,7 +435,7 @@ Return Value:
         mov     rsi,.LConvSymKernelFrame_OutputChannels[rsp]
         mov     rdx,.LConvSymKernelFrame_PostProcessParams[rsp]
         mov     ebp,DWORD PTR .LConvSymKernelFrame_KernelFlags[rsp]
-        call    C_UNDERSCORE(MlasConvSymPostProcessAvx512Core)
+        call    MlasConvSymPostProcessAvx512Core
 
 //
 // Restore non-volatile registers and return.
@@ -639,7 +639,7 @@ Return Value:
         mov     ebx,ebp
         mov     rdx,.LConvSymDepthwiseKernelFrame_PostProcessParams[rsp]
         mov     ebp,DWORD PTR .LConvSymDepthwiseKernelFrame_KernelFlags[rsp]
-        call    C_UNDERSCORE(MlasConvSymPostProcessAvx512Core)
+        call    MlasConvSymPostProcessAvx512Core
 
 //
 // Restore non-volatile registers and return.
@@ -751,7 +751,7 @@ Return Value:
 
 --*/
 
-        FUNCTION_ENTRY MlasConvSymPostProcessAvx512Core
+MlasConvSymPostProcessAvx512Core:
 
 //
 // Apply the bias and convert the block accumulators to intermediate float values.
