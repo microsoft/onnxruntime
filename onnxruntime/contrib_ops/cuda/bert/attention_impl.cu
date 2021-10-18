@@ -28,6 +28,7 @@ limitations under the License.
 #include "attention_impl.h"
 #include "attention_softmax.h"
 #include "transformer_common.h"
+#include "trt_fused_multihead_attention/qkvToContext.h"
 
 using namespace onnxruntime::cuda;
 using namespace cub;
@@ -130,7 +131,7 @@ bool QkvToContext(
     const int64_t max_sequence_length = mask_dimension == 4 ? mask_index_dims->at(3) : 0;
 
     T* persistent_softmax_workspace = scratch1; // replace Q*K' in place with masked score if persistent softmax is selected.
-    if (!ComputeSoftmaxWithRawMask<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, mask_index, extra_add_qk, scratch1, scratch2, 
+    if (!ComputeSoftmaxWithRawMask<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, mask_index, extra_add_qk, scratch1, scratch2,
                                       is_unidirectional, rsqrt_head_size, mask_dimension, static_cast<int>(max_sequence_length),
                                       use_persistent_softmax, persistent_softmax_workspace)) {
       return false;
@@ -179,24 +180,43 @@ bool LaunchAttentionKernel(
     const void* extra_add_qk,
     void* present) {
 
-  
+
   // For testing, environment variable ORT_TRANSFORMER_OPTIONS=1 could enable persistent softmax
   const TransformerOptions* options = TransformerOptions::GetInstance();
   bool use_persistent_softmax = options->IsPrecisionMode() && !options->DisablePersistentSoftmax();
 
   if (element_size == 2) {
-    return QkvToContext(prop, cublas, stream,
-                        batch_size, sequence_length, num_heads, head_size, element_size,
-                        reinterpret_cast<const half*>(input), reinterpret_cast<half*>(output), reinterpret_cast<half*>(workspace),
-                        mask_index, mask_index_dims, is_unidirectional,
-                        past_sequence_length, reinterpret_cast<const half*>(past), reinterpret_cast<const half*>(extra_add_qk), 
-                        reinterpret_cast<half*>(present), use_persistent_softmax);
+    bool use_trt = true;
+    if (use_trt) {
+      std::unique_ptr<fastertransformer::MHARunner> dispatcher_fp16;
+      //int sm = 10 * prop.major + prop.minor;
+      int sm = 75;
+      printf("compute capability: %d\n", sm);
+      dispatcher_fp16.reset(new fastertransformer::FusedMHARunnerFP16(num_heads, head_size, sm));
+      if (dispatcher_fp16->isValid(sequence_length)) {
+        printf("is valid\n");
+        dispatcher_fp16->setup(sequence_length, batch_size);
+        printf("dispatcher_fp16 set up\n");
+        dispatcher_fp16->run(reinterpret_cast<const half*>(input), nullptr, reinterpret_cast<half*>(output), nullptr, stream);
+      } else {
+        printf("is not valid\n");
+        return false;
+      }
+      return true;
+    }
+    return true;
+    // return QkvToContext(prop, cublas, stream,
+    //                     batch_size, sequence_length, num_heads, head_size, element_size,
+    //                     reinterpret_cast<const half*>(input), reinterpret_cast<half*>(output), reinterpret_cast<half*>(workspace),
+    //                     mask_index, mask_index_dims, is_unidirectional,
+    //                     past_sequence_length, reinterpret_cast<const half*>(past), reinterpret_cast<const half*>(extra_add_qk),
+    //                     reinterpret_cast<half*>(present), use_persistent_softmax);
   } else {
     return QkvToContext(prop, cublas, stream,
                         batch_size, sequence_length, num_heads, head_size, element_size,
                         reinterpret_cast<const float*>(input), reinterpret_cast<float*>(output), reinterpret_cast<float*>(workspace),
                         mask_index, mask_index_dims, is_unidirectional,
-                        past_sequence_length, reinterpret_cast<const float*>(past), reinterpret_cast<const float*>(extra_add_qk), 
+                        past_sequence_length, reinterpret_cast<const float*>(past), reinterpret_cast<const float*>(extra_add_qk),
                         reinterpret_cast<float*>(present), use_persistent_softmax);
   }
 }

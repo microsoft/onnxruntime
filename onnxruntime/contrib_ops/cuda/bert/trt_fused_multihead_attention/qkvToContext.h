@@ -25,7 +25,8 @@
 
 //bugbug
 //#include "fastertransformer/utils/common.h"
-#include "fused_multihead_attention_v2.h"
+#include "fused_multihead_attention.h"
+//#include "fused_multihead_attention_v2.h"
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 #include <cublas_v2.h>
@@ -72,16 +73,15 @@ public:
         mNumMats = B * mNumHeads;
     }
 
-    virtual void run(const void* input, const void* mask, void* workspace, void* output, cudaStream_t stream) = 0; 
-    virtual void run(const void* input, const void* mask, const void* seqlen, void* workspace, void* output, cudaStream_t stream) = 0; 
+    virtual void run(const void* qkvPtr, const void* maskPtr, void* output, void* workspace, cudaStream_t stream) = 0;
 
-    virtual void setScaleList(const float scaleQkv, const float dqProbs, const float scaleCtx) = 0;
+    //virtual void setScaleList(const float scaleQkv, const float dqProbs, const float scaleCtx) = 0;
 
     virtual size_t getWorkspaceSize() const = 0;
 
     virtual bool isValid(int s) const = 0;
 
-    virtual int getSFromMaxSeqLen(const int max_seq_len) = 0;
+    //virtual int getSFromMaxSeqLen(const int max_seq_len) = 0;
 protected:
 
     int mS;
@@ -99,24 +99,19 @@ protected:
     float mRsqrtHeadSize;
 };
 
-class FusedMHARunnerFP16v2 : public MHARunner
+class FusedMHARunnerFP16 : public MHARunner
 {
 public:
-    FusedMHARunnerFP16v2(const int numHeads, const int headSize, const int sm, const float q_scaling);
-    ~FusedMHARunnerFP16v2() = default; // for pimpl
+    FusedMHARunnerFP16(const int numHeads, const int headSize, const int sm);
+    ~FusedMHARunnerFP16() = default; // for pimpl
 
     virtual void setup(const int S, const int B) override;
 
-    void run(const void* input, const void* mask, void* workspace, void* output, cudaStream_t stream);
-    void run(const void* input, const void* mask, const void* seqlen, void* workspace, void* output, cudaStream_t stream) override;
-
-    void setScaleList(const float scaleQkv, const float dqProbs, const float scaleCtx) override; 
+    void run(const void* qkvPtr, const void* maskPtr, void* output, void* workspace, cudaStream_t stream) override;
 
     size_t getWorkspaceSize() const override;
 
     bool isValid(int s) const override;
-
-    int getSFromMaxSeqLen(const int max_seq_len) override;
 
 private:
     int mSm;
@@ -124,30 +119,56 @@ private:
     std::unique_ptr<mhaImpl> pimpl;
 };
 
-class FusedMHARunnerInt8v2 : public MHARunner
-{
-public:
-    FusedMHARunnerInt8v2(const int numHeads, const int headSize, const int sm);
-    ~FusedMHARunnerInt8v2() = default; // for pimpl
 
-    void setScaleList(const float scaleQkv, const float dqProbs, const float scaleCtx);
+// class FusedMHARunnerFP16v2 : public MHARunner
+// {
+// public:
+//     FusedMHARunnerFP16v2(const int numHeads, const int headSize, const int sm, const float q_scaling);
+//     ~FusedMHARunnerFP16v2() = default; // for pimpl
 
-    virtual void setup(const int S, const int B) override;
+//     virtual void setup(const int S, const int B) override;
 
-    void run(const void* input, const void* mask, void* workspace, void* output, cudaStream_t stream);
-    void run(const void* input, const void* mask, const void* seqlen, void* workspace, void* output, cudaStream_t stream) override;
+//     void run(const void* input, const void* mask, void* workspace, void* output, cudaStream_t stream);
+//     void run(const void* input, const void* mask, const void* seqlen, void* workspace, void* output, cudaStream_t stream) override;
 
-    size_t getWorkspaceSize() const override;
+//     void setScaleList(const float scaleQkv, const float dqProbs, const float scaleCtx) override; 
 
-    bool isValid(int s) const override;
+//     size_t getWorkspaceSize() const override;
 
-    int getSFromMaxSeqLen(const int max_seq_len) override;
+//     bool isValid(int s) const override;
 
-private:
-    float mDqProbs, mScaleQkv, mScaleCtx;
-    int mSm;
-    class mhaImpl;
-    std::unique_ptr<mhaImpl> pimpl;
-};
+//     int getSFromMaxSeqLen(const int max_seq_len) override;
+
+// private:
+//     int mSm;
+//     class mhaImpl;
+//     std::unique_ptr<mhaImpl> pimpl;
+// };
+
+// class FusedMHARunnerInt8v2 : public MHARunner
+// {
+// public:
+//     FusedMHARunnerInt8v2(const int numHeads, const int headSize, const int sm);
+//     ~FusedMHARunnerInt8v2() = default; // for pimpl
+
+//     void setScaleList(const float scaleQkv, const float dqProbs, const float scaleCtx);
+
+//     virtual void setup(const int S, const int B) override;
+
+//     void run(const void* input, const void* mask, void* workspace, void* output, cudaStream_t stream);
+//     void run(const void* input, const void* mask, const void* seqlen, void* workspace, void* output, cudaStream_t stream) override;
+
+//     size_t getWorkspaceSize() const override;
+
+//     bool isValid(int s) const override;
+
+//     int getSFromMaxSeqLen(const int max_seq_len) override;
+
+// private:
+//     float mDqProbs, mScaleQkv, mScaleCtx;
+//     int mSm;
+//     class mhaImpl;
+//     std::unique_ptr<mhaImpl> pimpl;
+// };
 
 } // namespace fastertransformer
