@@ -789,6 +789,7 @@ static bool HandleShape(HandlerArgs& args) {
   return true;
 }
 
+// Reorder pads according to perm. Pads length is twice perm length (all starts then all ends).
 static std::vector<int64_t> PermutePads(const std::vector<int64_t>& pads, const std::vector<int64_t>& perm) {
   size_t rank = perm.size();
   std::vector<int64_t> new_pads;
@@ -825,6 +826,8 @@ static bool HandlePad(HandlerArgs& args) {
   std::string_view pads_input = args.node.Inputs()[1];
   std::vector<int64_t> pads_shape { (int64_t)rank * 2 };
   std::shared_ptr<api::Tensor> pads_const = args.ctx.graph.GetConstant(pads_input);
+
+  // Case 1: pads is a constant
   if (pads_const != nullptr) {
     auto pads = pads_const->DataInt64();
     std::vector<int64_t> new_pads = PermutePads(pads, args.perm_inv);
@@ -836,13 +839,16 @@ static bool HandlePad(HandlerArgs& args) {
     return true;
   }
 
-  std::vector<int64_t> pads_perm = args.perm_inv;
-  for (int64_t p : args.perm_inv) {
-    pads_perm.push_back(p + rank);
-  }
-  std::string_view pads_perm_const = args.ctx.graph.AddInitializerInt64(pads_shape, pads_perm);
+  // Case 2: pads is computed. Use Gather to reorder pads.
 
-  std::vector<std::string_view> gather_inputs { pads_input, pads_perm_const };
+  // Form indices using perm_inv twice
+  std::vector<int64_t> gather_indices = args.perm_inv;
+  for (int64_t p : args.perm_inv) {
+    gather_indices.push_back(p + rank);
+  }
+  std::string_view gather_indices_const = args.ctx.graph.AddInitializerInt64(pads_shape, gather_indices);
+
+  std::vector<std::string_view> gather_inputs{pads_input, gather_indices_const};
   auto gather_ptr = args.ctx.graph.AddNode("Gather", gather_inputs);
   api::Node& gather = *gather_ptr;
   std::string_view gather_output = gather.Outputs()[0];
@@ -1081,7 +1087,7 @@ static bool HandleArgMinMax(HandlerArgs& args) {
   return true;
 }
 
-static bool HandleSlice(HandlerArgs& args) {
+bool HandleSlice(HandlerArgs& args) {
   if (args.transpose_input_index != 0) return false;
   size_t rank = args.perm.size();
 
@@ -1346,7 +1352,7 @@ static const std::unordered_map<std::string_view, HandlerFunction*> handler_map 
 
   {"Squeeze", &HandleSqueeze},
   {"Unsqueeze", &HandleUnsqueeze},
-  {"Slice", &HandleSlice},
+  //{"Slice", &HandleSlice},
   {"Tile", &HandleTile},
 
   {"Softmax", &HandleSoftHardMax}, {"Hardmax", &HandleSoftHardMax}, {"LogSoftmax", &HandleSoftHardMax},
