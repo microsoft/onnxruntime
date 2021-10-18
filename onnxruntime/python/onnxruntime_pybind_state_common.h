@@ -123,6 +123,10 @@ struct OrtStatus {
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #endif
+#ifdef USE_ROCM
+#include "core/providers/rocm/rocm_provider_factory.h"
+#include "core/providers/rocm/rocm_execution_provider_info.h"
+#endif
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #endif
@@ -161,7 +165,6 @@ extern std::string nuphar_settings;
 #include "core/providers/dml/dml_provider_factory.h"
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
 #ifdef USE_CUDA
 namespace onnxruntime {
 ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
@@ -172,26 +175,23 @@ extern OrtCudnnConvAlgoSearch cudnn_conv_algo_search;
 // TODO remove deprecated global config
 extern bool do_copy_in_default_stream;
 extern onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocator_info;
+extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 }  // namespace python
 }  // namespace onnxruntime
 #endif
 
 #ifdef USE_ROCM
-#include "core/providers/rocm/rocm_execution_provider.h"
-#include "core/providers/rocm/rocm_allocator.h"
-#include "core/providers/rocm/rocm_provider_factory_creator.h"
 namespace onnxruntime {
+ProviderInfo_ROCM* TryGetProviderInfo_ROCM();
+ProviderInfo_ROCM& GetProviderInfo_ROCM();
 namespace python {
-extern onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info;
-}
-}  // namespace onnxruntime
-#endif
-
 // TODO remove deprecated global config
-namespace onnxruntime {
-namespace python {
+extern bool miopen_conv_exhaustive_search;
+// TODO remove deprecated global config
+extern bool do_copy_in_default_stream;
+extern onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info;
 extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
-}
+}  // namespace python
 }  // namespace onnxruntime
 #endif
 
