@@ -170,7 +170,7 @@ class TestBertOptimization(unittest.TestCase):
         input = _get_test_model_path('gpt2_past_mask')
         model = optimize_model(input, 'gpt2', num_heads=2, hidden_size=4)
         expected_node_count = {
-            'EmbedLayerNormalization': 0,
+            'EmbedLayerNormalization': 1,
             'Attention': 1,
             'Gelu': 0,
             'FastGelu': 1,
