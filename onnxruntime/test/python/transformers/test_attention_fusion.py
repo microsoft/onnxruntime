@@ -25,6 +25,7 @@ class TestFusion(unittest.TestCase):
         optimized_model.topological_sort()
 
         expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'models', expected_model_filename)
+        print(expected_model_path)
         expected_model = OnnxModel(onnx.load(expected_model_path))
         expected_model.topological_sort()
 

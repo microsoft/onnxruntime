@@ -175,7 +175,7 @@ class TestBertOptimization(unittest.TestCase):
             'Gelu': 0,
             'FastGelu': 1,
             'BiasGelu': 0,
-            'LayerNormalization': 2,
+            'LayerNormalization': 1,
             'SkipLayerNormalization': 0
         }
         self.verify_node_count(model, expected_node_count, 'test_gpt2_past_mask')
