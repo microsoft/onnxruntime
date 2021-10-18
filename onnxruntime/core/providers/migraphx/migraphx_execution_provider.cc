@@ -1027,13 +1027,13 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   ToGraphProtoInternal(graph_viewer, *model_proto->mutable_graph());
   model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
-  std::string onnx_string_buffer;
-  model_proto->SerializeToString(onnx_string_buffer);
+  // std::string onnx_string_buffer;
+  // model_proto->SerializeToString(onnx_string_buffer);
 
-  // debugging, write onnx to a buffer for debugging
-  std::ofstream ofs("ort_getcapability.onnx", std::ios::out);
-  ofs.write(onnx_string_buffer.data(), onnx_string_buffer.size());
-  ofs.close();
+  // // debugging, write onnx to a buffer for debugging
+  // std::ofstream ofs("ort_getcapability.onnx", std::ios::out);
+  // ofs.write(onnx_string_buffer.data(), onnx_string_buffer.size());
+  // ofs.close();
 
   // This is a list of initializers that migraphx considers as constants.
   // Example weights, reshape shape etc.
@@ -1041,15 +1041,15 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   const auto unsupported_nodes = GetUnsupportedNodeIndices(graph_viewer, mgx_required_initializers, *GetLogger());
   
   //Debug code ===========================
-  if(unsupported_nodes.size() > 0)
-  {
-    std::cout << "Unsupported_node_num = " << unsupported_nodes.size() << std::endl;
-    for(auto idx : unsupported_nodes)
-    {
-      const auto& node = graph_viewer.GetNode(idx);
-      std::cout << "node_name = " << node->OpType() << std::endl;
-    }
-  }
+  // if(unsupported_nodes.size() > 0)
+  // {
+  //   std::cout << "Unsupported_node_num = " << unsupported_nodes.size() << std::endl;
+  //   for(auto idx : unsupported_nodes)
+  //   {
+  //     const auto& node = graph_viewer.GetNode(idx);
+  //     std::cout << "node_name = " << node->OpType() << std::endl;
+  //   }
+  // }
   //======================================
 
   //If all ops are supported, no partitioning is required. Short-circuit and avoid splitting.
