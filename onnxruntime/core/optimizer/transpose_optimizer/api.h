@@ -19,12 +19,34 @@ namespace api {
  *     This allows for lazy creation of API class instances.
  */
 
+enum class DataType : int32_t {
+  UNDEFINED = 0,
+  FLOAT = 1,   // float
+  UINT8 = 2,   // uint8_t
+  INT8 = 3,    // int8_t
+  UINT16 = 4,  // uint16_t
+  INT16 = 5,   // int16_t
+  INT32 = 6,   // int32_t
+  INT64 = 7,   // int64_t
+  STRING = 8,  // string
+  BOOL = 9,    // bool
+  FLOAT16 = 10,
+  DOUBLE = 11,
+  UINT32 = 12,
+  UINT64 = 13,
+  COMPLEX64 = 14,
+  COMPLEX128 = 15,
+  BFLOAT16 = 16,
+};
+
 // A constant tensor value used by initializers and attributes
 class Tensor {
  public:
   // TODO: how to deal with optional/seq/map tensors
   virtual std::vector<int64_t> Shape() const = 0;
+  virtual DataType DType() const = 0;
   virtual std::vector<int64_t> DataInt64() const = 0;
+  virtual std::vector<int32_t> DataInt32() const = 0;
   virtual ~Tensor(){};
 };
 
@@ -35,6 +57,8 @@ class ValueInfo {
   virtual const std::string_view Name() const = 0;
   // nullptr if rank is unknown, -1 for unknown dims
   virtual std::optional<std::vector<int64_t>> Shape() const = 0;
+  // UNDEFINED if unknown
+  virtual DataType DType() const = 0;
 
   /**** Editing ****/
   // nullptr if rank is unknown, -1 for unknown dims
@@ -118,6 +142,7 @@ class Graph {
   virtual void RemoveInitializer(const std::string_view name) = 0;
   // Create an int64 initializer with the specified shape and values. Return the name.
   virtual const std::string_view AddInitializerInt64(const std::vector<int64_t>& shape, const std::vector<int64_t>& values) = 0;
+  virtual const std::string_view AddInitializerInt32(const std::vector<int64_t>& shape, const std::vector<int32_t>& values) = 0;
   // "Moves" an output from one node to another, (effectively transfering the output name, shape, type,
   // and all consumers, even those in subgraphs). Source node should be given a new output name. The destination
   // node's output is guaranteed to have no consumers before the call and can be deleted once replaced.

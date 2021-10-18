@@ -40,6 +40,22 @@ std::optional<std::vector<int64_t>> OrtValueInfo::Shape() const {
   return shape.GetDims();
 }
 
+api::DataType OrtValueInfo::DType() const {
+  const auto* node_arg = graph_.GetNodeArg(name_);
+
+  if (node_arg == nullptr) {
+    return api::DataType::UNDEFINED;
+  }
+  const auto* type = node_arg->TypeAsProto();
+  if (!utils::HasTensorType(*type)) {
+    return api::DataType::UNDEFINED;
+  }
+  if (!utils::HasElementType(*type)) {
+    return api::DataType::UNDEFINED;
+  }
+  return gsl::narrow_cast<api::DataType>(type->tensor_type().elem_type());
+}
+
 void OrtValueInfo::SetShape(const std::vector<int64_t>* shape) {
   auto& node_arg = graph_.GetOrCreateNodeArg(name_, nullptr);
   if (shape == nullptr) {
@@ -118,20 +134,39 @@ std::vector<int64_t> OrtTensor::Shape() const {
   return shape;
 }
 
-std::vector<int64_t> OrtTensor::DataInt64() const {
+api::DataType OrtTensor::DType() const {
+  return gsl::narrow_cast<api::DataType>(tensor_proto_.data_type());
+}
+
+std::unique_ptr<onnxruntime::Tensor> OrtTensor::MakeTensor() const {
   const DataTypeImpl* tensor_dtype = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto_.data_type())->GetElementType();
   auto tensor_shape_dims = utils::GetTensorShapeFromTensorProto(tensor_proto_);
   TensorShape tensor_shape{std::move(tensor_shape_dims)};
-  const auto tensor = onnxruntime::Tensor::Create(tensor_dtype, tensor_shape, cpu_allocator_);
+  auto tensor = onnxruntime::Tensor::Create(tensor_dtype, tensor_shape, cpu_allocator_);
   const auto status = utils::TensorProtoToTensor(Env::Default(), graph_.ModelPath().ToPathString().c_str(),
                                                  tensor_proto_, *tensor);
-  const int64_t* data = tensor->Data<int64_t>();
-  size_t num_elements = gsl::narrow_cast<size_t>(tensor->Shape().Size());
-  std::vector<int64_t> int_data(num_elements);
+  return tensor;
+}
+
+template<typename T>
+std::vector<T> IntsFromTensor(const onnxruntime::Tensor& tensor) {
+  const T* data = tensor.Data<T>();
+  size_t num_elements = gsl::narrow_cast<size_t>(tensor.Shape().Size());
+  std::vector<T> int_data(num_elements);
   for (size_t i = 0; i < num_elements; ++i) {
     int_data[i] = *data++;
   }
   return int_data;
+}
+
+std::vector<int64_t> OrtTensor::DataInt64() const {
+  const auto tensor = MakeTensor();
+  return IntsFromTensor<int64_t>(*tensor);
+}
+
+std::vector<int32_t> OrtTensor::DataInt32() const {
+  const auto tensor = MakeTensor();
+  return IntsFromTensor<int32_t>(*tensor);
 }
 
 
@@ -470,16 +505,33 @@ void OrtGraph::RemoveInitializer(const std::string_view name) {
   graph_.RemoveInitializedTensor(std::string(name));
 }
 
-const std::string_view OrtGraph::AddInitializerInt64(const std::vector<int64_t>& shape,
-                                                     const std::vector<int64_t>& values) {
-  std::string name = graph_.GenerateNodeArgName("const_transpose_optimizer");
+template<typename T, onnx::TensorProto_DataType DType>
+inline ONNX_NAMESPACE::TensorProto TensorProtoFromInts(std::string& name, const std::vector<int64_t>& shape,
+                                                       const std::vector<T>& values) {
   ONNX_NAMESPACE::TensorProto tensor_proto;
-  tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  tensor_proto.set_data_type(DType);
   tensor_proto.set_name(name);
-  tensor_proto.set_raw_data(values.data(), values.size() * sizeof(int64_t));
+  tensor_proto.set_raw_data(values.data(), values.size() * sizeof(T));
   for (int64_t dim : shape) {
     tensor_proto.add_dims(dim);
   }
+  return tensor_proto;
+}
+
+const std::string_view OrtGraph::AddInitializerInt64(const std::vector<int64_t>& shape,
+                                                     const std::vector<int64_t>& values) {
+  std::string name = graph_.GenerateNodeArgName("const_transpose_optimizer");
+  ONNX_NAMESPACE::TensorProto tensor_proto =
+      TensorProtoFromInts<int64_t, ONNX_NAMESPACE::TensorProto_DataType_INT64>(name, shape, values);
+  const auto& node_arg = graph_utils::AddInitializer(graph_, tensor_proto);
+  return node_arg.Name();
+}
+
+const std::string_view OrtGraph::AddInitializerInt32(const std::vector<int64_t>& shape,
+                                                     const std::vector<int32_t>& values) {
+  std::string name = graph_.GenerateNodeArgName("const_transpose_optimizer");
+  ONNX_NAMESPACE::TensorProto tensor_proto =
+      TensorProtoFromInts<int32_t, ONNX_NAMESPACE::TensorProto_DataType_INT32>(name, shape, values);
   const auto& node_arg = graph_utils::AddInitializer(graph_, tensor_proto);
   return node_arg.Name();
 }

@@ -533,7 +533,7 @@ static const std::string_view TransposeOutput(OptimizerCtx& ctx, api::Node& node
   return old_output;
 }
 
-// Inserts a Transpose op on all node outputs and updates the shapes of the node outputs.
+// Inserts a Transpose op on all node outputs and updates the shapes of the node outputs. Skips if perm is identity.
 // See TransposeOutput for details on shape updates.
 static void TransposeOutputs(OptimizerCtx& ctx, api::Node& node, const std::vector<int64_t>& perm) {
   if (IsIdentityPerm(perm)) {
@@ -861,38 +861,43 @@ static bool HandlePad(HandlerArgs& args) {
 
 static bool HandleReduceOp(HandlerArgs& args) {
   if (args.transpose_input_index != 0) return false;
-  // TODO: compress this impl
 
   int64_t keepdims = args.node.GetAttributeIntDefault("keepdims", 1);
 
   std::optional<std::vector<int64_t>> axes = args.node.GetAttributeInts("axes");
-  // TODO: (compress impl) empty axes
-  if (axes == std::nullopt) {
-    if (keepdims != 0) {
-      TransposeFirstInput(args.ctx, args.node, args.perm_inv);
-      TransposeOutputs(args.ctx, args.node, args.perm);
-    } else {
-      TransposeFirstInput(args.ctx, args.node, args.perm_inv);
-    }
-    return true;
-  }
-  if (!NormalizeAndValidateAxes(*axes, args.perm.size())) {
-    return false;
-  }
-  std::vector<int64_t> new_axes = SortedAxesForTransposedInput(*axes, args.perm);
-  args.node.SetAttributeInts("axes", new_axes);
 
-  if (keepdims != 0) {
-    TransposeFirstInput(args.ctx, args.node, args.perm_inv);
-    TransposeOutputs(args.ctx, args.node, args.perm);
-    return true;
+  // Permutation for output transpose depends on which axes are removed
+  std::vector<int64_t> out_perm;
+
+  if (axes == std::nullopt) {
+    // Default case is reduce over all dims
+    if (keepdims == 0) {
+      // Output rank is 0.
+      out_perm = {};
+    } else {
+      out_perm = args.perm;
+    }
+
+  } else {
+
+    if (!NormalizeAndValidateAxes(*axes, args.perm.size())) {
+      return false;
+    }
+
+    std::vector<int64_t> new_axes = SortedAxesForTransposedInput(*axes, args.perm);
+    args.node.SetAttributeInts("axes", new_axes);
+
+    if (keepdims == 0) {
+      out_perm = SqueezePerm(new_axes, args.perm);
+    } else {
+      out_perm = args.perm;
+    }
   }
-  else {
-    TransposeFirstInput(args.ctx, args.node, args.perm_inv);
-    std::vector<int64_t> new_perm = SqueezePerm(new_axes, args.perm);
-    TransposeOutputs(args.ctx, args.node, new_perm);
-    return true;
-  }
+
+  TransposeFirstInput(args.ctx, args.node, args.perm_inv);
+  TransposeOutputs(args.ctx, args.node, out_perm);
+
+  return true;
 }
 
 static bool HandleReduceSum(HandlerArgs& args) {
@@ -1087,7 +1092,31 @@ static bool HandleArgMinMax(HandlerArgs& args) {
   return true;
 }
 
-bool HandleSlice(HandlerArgs& args) {
+static std::string_view AddIntInitializerMatchingDtype(api::Graph& graph, std::vector<int64_t> values, api::DataType dtype) {
+  std::vector<int64_t> shape{(int64_t)values.size()};
+  if (dtype == api::DataType::INT32) {
+    std::vector<int32_t> values_int32;
+    for (int64_t v : values) {
+      values_int32.push_back((int32_t)v);
+    }
+    return graph.AddInitializerInt32(shape, values_int32);
+  }
+  return graph.AddInitializerInt64(shape, values);
+}
+
+static std::vector<int64_t> TensorIntData(api::Tensor& tensor, api::DataType dtype) {
+  if (dtype == api::DataType::INT32) {
+    std::vector<int32_t> values_int32 = tensor.DataInt32();
+    std::vector<int64_t> values;
+    for (int32_t v : values_int32) {
+      values.push_back((int64_t)v);
+    }
+    return values;
+  }
+  return tensor.DataInt64();
+}
+
+static bool HandleSlice(HandlerArgs& args) {
   if (args.transpose_input_index != 0) return false;
   size_t rank = args.perm.size();
 
@@ -1122,7 +1151,9 @@ bool HandleSlice(HandlerArgs& args) {
   }
   std::vector<int64_t> new_axes;
   if (inputs.size() < 4 || inputs[3] == "") {
-    const std::optional<std::vector<int64_t>> starts_shape = args.ctx.graph.GetValueInfo(inputs[1])->Shape();
+    auto starts_value_info = args.ctx.graph.GetValueInfo(inputs[1]);
+    const std::optional<std::vector<int64_t>> starts_shape = starts_value_info->Shape();
+    api::DataType int_dtype = starts_value_info->DType();
     if (starts_shape == std::nullopt || starts_shape->size() != 1 || (*starts_shape)[0] < 0) {
       return false;
     }
@@ -1130,8 +1161,7 @@ bool HandleSlice(HandlerArgs& args) {
     for (size_t i = 0; i < ndims; ++i) {
       new_axes.push_back(args.perm[i]);
     }
-    std::vector<int64_t> axes_shape { (int64_t)new_axes.size() };
-    std::string_view new_axes_const = args.ctx.graph.AddInitializerInt64(axes_shape, new_axes);
+    std::string_view new_axes_const = AddIntInitializerMatchingDtype(args.ctx.graph, new_axes, int_dtype);
     if (inputs.size() == 3) {
       args.node.AddInput(new_axes_const);
     } else {
@@ -1143,13 +1173,14 @@ bool HandleSlice(HandlerArgs& args) {
     if (axes_const == nullptr) {
       return false;
     }
-    auto axes = axes_const->DataInt64();
+    api::DataType int_dtype = axes_const->DType();
+    auto axes = TensorIntData(*axes_const, int_dtype);
     if (!NormalizeAndValidateAxes(axes, rank)) {
       return false;
     }
     new_axes = AxesForTransposedInput(axes, args.perm);
     std::vector<int64_t> axes_shape { (int64_t)new_axes.size() };
-    std::string_view new_axes_const = args.ctx.graph.AddInitializerInt64(axes_shape, new_axes);
+    std::string_view new_axes_const = AddIntInitializerMatchingDtype(args.ctx.graph, new_axes, int_dtype);
     args.node.SetInput(3, new_axes_const);
     if (!args.ctx.graph.HasValueConsumers(axes_inp)) {
       args.ctx.graph.RemoveInitializer(axes_inp);
@@ -1352,7 +1383,7 @@ static const std::unordered_map<std::string_view, HandlerFunction*> handler_map 
 
   {"Squeeze", &HandleSqueeze},
   {"Unsqueeze", &HandleUnsqueeze},
-  //{"Slice", &HandleSlice},
+  {"Slice", &HandleSlice},
   {"Tile", &HandleTile},
 
   {"Softmax", &HandleSoftHardMax}, {"Hardmax", &HandleSoftHardMax}, {"LogSoftmax", &HandleSoftHardMax},

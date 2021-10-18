@@ -22,6 +22,7 @@ class OrtValueInfo : public api::ValueInfo {
   OrtValueInfo(onnxruntime::Graph& graph, std::string name) : graph_(graph), name_(name){};
   const std::string_view Name() const override;
   std::optional<std::vector<int64_t>> Shape() const override;
+  api::DataType DType() const override;
 
   void SetShape(const std::vector<int64_t>* shape) override;
   void PermuteDims(const std::vector<int64_t>& perm) override;
@@ -38,8 +39,11 @@ class OrtTensor : public api::Tensor {
   const onnx::TensorProto& TensorProto() {
     return tensor_proto_;
   }
+  std::unique_ptr<onnxruntime::Tensor> MakeTensor() const;
   std::vector<int64_t> Shape() const override;
+  api::DataType DType() const override;
   std::vector<int64_t> DataInt64() const override;
+  std::vector<int32_t> DataInt32() const override;
 };
 
 class OrtGraph;
@@ -94,6 +98,7 @@ class OrtGraph : public api::Graph {
   void RemoveNode(api::Node& node);
   void RemoveInitializer(const std::string_view name);
   const std::string_view AddInitializerInt64(const std::vector<int64_t>& shape, const std::vector<int64_t>& values);
+  const std::string_view AddInitializerInt32(const std::vector<int64_t>& shape, const std::vector<int32_t>& values);
   void MoveOutput(api::Node& src_node, size_t src_idx, api::Node& dst_node, size_t dst_idx);
   void CopyValueInfo(const std::string_view src_name, const std::string_view dst_name);
 };

@@ -93,6 +93,7 @@ int EstimateTransposeCost(const Graph& graph) {
   return cost;
 }
 
+
 TEST(TransposeOptimizerTests, TestSum) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<float>(builder, {{-1, -1, 3, 4}}, {1, 2, 3, 4}, 0.0, 1.0);
@@ -1702,7 +1703,7 @@ TEST(TransposeOptimizerTests, TestSlice) {
                     /*opset_version*/ 7);
 }
 
-TEST(TransposeOptimizerTests, TestSlice_2) {
+TEST(TransposeOptimizerTests, TestSliceNoAxes) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({2, 4, 6, 5}, 0.0, 1.0);
     auto* transpose_1_out_0 = builder.MakeIntermediate();
@@ -1759,7 +1760,7 @@ TEST(TransposeOptimizerTests, TestSliceOpset15) {
                     /*opset_version*/ 15);
 }
 
-TEST(TransposeOptimizerTests, TestSliceOpset15_2) {
+TEST(TransposeOptimizerTests, TestSliceNoAxesOpset15) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({2, 4, 6, 5}, 0.0, 1.0);
     auto* const_1 = builder.MakeInitializer<int64_t>({4}, {1, -3, 0, 0});
@@ -1771,6 +1772,65 @@ TEST(TransposeOptimizerTests, TestSliceOpset15_2) {
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
     builder.AddNode("Slice", {transpose_1_out_0, const_1, const_2}, {slice_1_out_0});
+    auto& transpose_2 = builder.AddNode("Transpose", {slice_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 15);
+}
+
+TEST(TransposeOptimizerTests, TestSliceNegativeAxesInt32) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({2, 4, 6, 5}, 0.0, 1.0);
+    auto* const_1 = builder.MakeInitializer<int32_t>({2}, {1, -3});
+    auto* const_2 = builder.MakeInitializer<int32_t>({2}, {2, 4});
+    auto* const_3 = builder.MakeInitializer<int32_t>({2}, {1, -2});
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* slice_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    builder.AddNode("Slice", {transpose_1_out_0, const_1, const_2, const_3}, {slice_1_out_0});
+    auto& transpose_2 = builder.AddNode("Transpose", {slice_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 15);
+}
+
+TEST(TransposeOptimizerTests, TestSliceStepsInt32) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({2, 4, 6, 5}, 0.0, 1.0);
+    auto* const_1 = builder.MakeInitializer<int32_t>({2}, {1, 4});
+    auto* const_2 = builder.MakeInitializer<int32_t>({2}, {2, -3});
+    auto* const_3 = builder.MakeInitializer<int32_t>({2}, {1, -2});
+    auto* const_4 = builder.MakeInitializer<int32_t>({2}, {2, -1});
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* slice_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    builder.AddNode("Slice", {transpose_1_out_0, const_1, const_2, const_3, const_4}, {slice_1_out_0});
     auto& transpose_2 = builder.AddNode("Transpose", {slice_1_out_0}, {transpose_2_out_0});
     transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
   };
