@@ -64,7 +64,7 @@ class WindowsThread : public EnvThread {
     create_thread_fn = thread_options.create_thread_fn;
     join_thread_fn = thread_options.join_thread_fn;
     if (create_thread_fn) {
-      hThread.reset(*((HANDLE*)(create_thread_fn(ThreadMain, new Param{name_prefix, index, start_address, param, thread_options, false}))));
+      hThread.reset((HANDLE)(create_thread_fn(ThreadMain, new Param{name_prefix, index, start_address, param, thread_options, false})));
     } else {
       hThread.reset((HANDLE)_beginthreadex(nullptr, thread_options.stack_size, ThreadMain,
                                            new Param{name_prefix, index, start_address, param, thread_options, true}, 0,
@@ -74,7 +74,7 @@ class WindowsThread : public EnvThread {
 
   ~WindowsThread() {
     if (join_thread_fn) {
-      join_thread_fn(&hThread);
+      join_thread_fn(hThread.get());
     } else {
       DWORD waitStatus = WaitForSingleObject(hThread.get(), INFINITE);
       FAIL_FAST_LAST_ERROR_IF(waitStatus == WAIT_FAILED);
