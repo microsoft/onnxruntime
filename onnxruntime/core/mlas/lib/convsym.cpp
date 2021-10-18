@@ -298,7 +298,7 @@ MlasConvSymFixupInputZeroPoint(
     const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = MlasPlatform.ConvSymDispatch;
 
     if (ConvSymDispatch != nullptr && ConvSymDispatch->FixupInputZeroPoint) {
-        return zero_point_value ^ 0x80;
+        return static_cast<int32_t>(zero_point_value) - 128;
     }
     return zero_point_value;
 }
