@@ -239,6 +239,26 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         self._graph_info = self._graph_builder.get_graph_info()
 
+        num_user_input_grads = len(self._input_info.require_grad_names)
+        self._graph_input_output_mapping = []
+        require_grad_names_set = set(self._input_info.require_grad_names)
+        require_grad_names_index = 0
+        for input_name in self._graph_info.user_input_names:
+            # Append to the results the backward output for each input that required grad
+            if input_name in require_grad_names_set:
+                self._graph_input_output_mapping.append(require_grad_names_index)
+                require_grad_names_index += 1
+            else:
+                self._graph_input_output_mapping.append(-1)
+
+        initializer_index = num_user_input_grads
+        for initializer_name in self._graph_info.initializer_names:
+            if initializer_name in self._graph_initializer_names_to_train:
+                self._graph_input_output_mapping.append(initializer_index)
+                initializer_index += 1
+            else:
+                self._graph_input_output_mapping.append(-1)
+
     def _get_session_config(self):
         """Creates and returns the session configuration to be used for the ExecutionAgent"""
 

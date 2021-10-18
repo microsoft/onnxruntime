@@ -61,7 +61,7 @@ class TrainingManager(GraphExecutionManager):
         return user_outputs, run_info
 
     def _create_autofunction_class(self):
-        
+
         class _ORTModuleFunction(torch.autograd.Function):
             '''Use a custom torch.autograd.Function to associate self.backward_graph as the
             gradient implementation for self.forward_graph.'''
@@ -155,35 +155,11 @@ class TrainingManager(GraphExecutionManager):
                 # affect peak memory usage in a subsequent graph run.
                 del ctx.run_info.state
                 # Return input and initializer gradients
-                num_user_input_grads = len(self._input_info.require_grad_names)
-                results = []
-                require_grad_names_set = set(self._input_info.require_grad_names)
-                require_grad_names_index = 0
-                for input_name in self._graph_info.user_input_names:
-                    # Append to the results the backward output for each input that required grad
-                    if input_name in require_grad_names_set:
-                        results.append(_utils._torch_tensor_from_dl_pack(
-                            backward_outputs.dlpack_at(require_grad_names_index),
-                            backward_outputs[require_grad_names_index], self._device))
-                        require_grad_names_index += 1
-                    else:
-                        # input_name is not found in the self._input_info.require_grad_names list
-                        # Append None to results for each input that did not require grad
-                        results.append(None)
-
-                # Append gradients of initializer to results
-                # Go over each initializer, check if it required grad and append to results accordingly
-                initializer_index = num_user_input_grads
-                for initializer_name in self._graph_info.initializer_names:
-                    if initializer_name in self._graph_initializer_names_to_train:
-                        results.append(_utils._torch_tensor_from_dl_pack(
-                            backward_outputs.dlpack_at(initializer_index),
-                            backward_outputs[initializer_index], self._device))
-                        initializer_index += 1
-                    else:
-                        results.append(None)
-
-                return tuple(results)        
+                def get_gradient(idx):
+                    return _utils._torch_tensor_from_dl_pack(backward_outputs.dlpack_at(idx),
+                                                             backward_outputs[idx],
+                                                             self._is_ort_device) if idx != -1 else None
+                return tuple(map(get_gradient, self._graph_input_output_mapping))
 
         return _ORTModuleFunction
 
@@ -325,6 +301,8 @@ class TrainingManager(GraphExecutionManager):
                                               session_options,
                                               providers,
                                               provider_options)
+
+        self._is_ort_device = (self._device.type == 'ort')
 
     def _reinitialize_graph_builder(self, input_info):
         """Return true if the module graph builder was reinitialized"""

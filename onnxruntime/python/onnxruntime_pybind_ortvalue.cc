@@ -211,6 +211,10 @@ void addOrtValueMethods(pybind11::module& m) {
       .def("to_dlpack", [](OrtValue* ort_value) -> py::object {
         return py::reinterpret_steal<py::object>(ToDlpack(*ort_value));
       })
+      .def("is_bool_tensor", [](const OrtValue* ort_value) -> bool {
+        return ort_value->IsTensor() &&
+               ort_value->Get<Tensor>().GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_BOOL;
+      })
       .def_static("from_dlpack", [](py::object data, bool is_bool_tensor = false) {
         return FromDlpack(data.ptr(), is_bool_tensor);
       })
