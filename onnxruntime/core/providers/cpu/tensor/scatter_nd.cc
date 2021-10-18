@@ -65,7 +65,7 @@ Status ScatterNDBase::ValidateShapes(const TensorShape& input_shape,
     // Per spec, the rank of the update tensor should be:
     // (Rank of input tensor) + (Rank of indices tensor) -1 - last_indice_dimension
     if (update_rank != (input_rank + indice_rank - 1 - static_cast<int64_t>(last_indice_dimension))) {
-      return true;
+      //return true;
     }
 
     // Validate shape of the update tensor
