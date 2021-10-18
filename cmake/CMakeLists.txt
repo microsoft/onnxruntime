@@ -837,11 +837,6 @@ set(SAFEINT_INCLUDE_DIR ${REPO_ROOT}/cmake/external/SafeInt)
 add_library(safeint_interface INTERFACE)
 target_include_directories(safeint_interface INTERFACE ${SAFEINT_INCLUDE_DIR})
 
-set(OPTIONAL_LITE_INCLUDE_DIR ${REPO_ROOT}/cmake/external/optional-lite/include)
-if (onnxruntime_DISABLE_EXCEPTIONS)
-  add_compile_definitions(optional_CONFIG_NO_EXCEPTIONS=1)
-endif()
-
 if (onnxruntime_PREFER_SYSTEM_LIB)
   find_package(boost_mp11)
 endif()
