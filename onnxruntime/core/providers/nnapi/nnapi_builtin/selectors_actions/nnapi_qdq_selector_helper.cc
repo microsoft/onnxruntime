@@ -2,9 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selector_helper.h"
-
-using namespace ONNX_NAMESPACE;
-using namespace ::onnxruntime::common;
+#include "gsl/gsl"
 
 namespace onnxruntime {
 
@@ -12,7 +10,7 @@ namespace onnxruntime {
 // Selections
 //
 
-ConstNodesToOptimize::ConstNodesToOptimize(std::vector<const Node*>& input_nodes,
+inline ConstNodesToOptimize::ConstNodesToOptimize(std::vector<const Node*>& input_nodes,
                                            const Node& target_node,
                                            std::vector<const Node*>& output_nodes,
                                            int num_input_defs, int num_output_defs)

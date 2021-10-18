@@ -13,6 +13,7 @@
 #include "model_builder.h"
 #include "op_builder.h"
 #include "op_support_checker.h"
+#include "../nnapi_execution_provider.cc"
 
 namespace onnxruntime {
 namespace nnapi {
@@ -737,8 +738,8 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node&
       model_builder.GetNNAPIFeatureLevel(),
       model_builder.UseNCHW(),
   };
-
-  ORT_RETURN_IF_NOT(IsNodeSupported(node, model_builder.GetGraphViewer(), params), "Unsupported operator ", node.OpType());
+  auto qdq_node_group = GetQDQNodeGroup(model_builder.GetGraphViewer(), node);
+  ORT_RETURN_IF_NOT(IsNodeSupported(node, model_builder.GetGraphViewer(), params, qdq_node_group), "Unsupported operator ", node.OpType());
   ORT_RETURN_IF_ERROR(AddToModelBuilderImpl(model_builder, node));
   LOGS_DEFAULT(VERBOSE) << "Operator name: [" << node.Name()
                         << "] type: [" << node.OpType() << "] was added";
@@ -1360,6 +1361,8 @@ void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
   const auto& op = node.OpType();
   const auto input_defs = node.InputDefs();
 
+  // TODO: Conv node in qdq group - different addinitializerstoskip
+
   // skip the weight for conv as we need to transpose
   if (op == "QLinearConv") {
     AddBinaryOpQuantizationScaleAndZeroPointToSkip(model_builder, node);
@@ -1412,6 +1415,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   }
 
   const auto& weight = input_defs[w_idx]->Name();
+  // TODO: Weight_tensor is from conv node -> get from dq node
   const auto& weight_tensor = *initializers.at(weight);
   auto conv_type = GetConvType(node, model_builder.GetGraphViewer().GetAllInitializedTensors());
   bool conv_2d = (conv_type == ConvType::Regular),
@@ -2195,6 +2199,7 @@ class DequantizeLinearOpBuilder : public BaseOpBuilder {
 };
 
 void DequantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+  // TODO: check if it is a dq in qdq_structure
   const auto input_defs(node.InputDefs());
 
   model_builder.AddInitializerToSkip(input_defs[1]->Name());
@@ -2204,6 +2209,7 @@ void DequantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builde
 }
 
 Status DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+  // TODO: check if it is a dq in a qdq_structure -> do not add dequantize
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto input_defs(node.InputDefs());

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/optimizer/qdq_transformer/selectors_actions/nnapi_qdq_actions.h"
+#include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_actions.h"
 
 #include "core/optimizer/qdq_transformer/qdq_util.h"
 

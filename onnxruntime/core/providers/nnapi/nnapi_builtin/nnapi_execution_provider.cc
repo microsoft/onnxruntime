@@ -54,19 +54,30 @@ std::unordered_set<std::string> GetPartitioningStopOps(const optional<std::strin
   return stop_ops_set;
 }
 
-std::unique_ptr<ConstNodesToOptimize> IsNodeInQDQGroup(std::vector<std::unique_ptr<ConstNodesToOptimize>>& qdq_node_groups, const Node& node) {
-  std::unique_ptr<ConstNodesToOptimize> qdq_node_group;
+bool IsNodeInQDQGroup(std::vector<std::unique_ptr<ConstNodesToOptimize>>& qdq_node_groups, const Node& node) {
   for (auto& group : qdq_node_groups) {
     if (group != nullptr) {
       if (std::find(group->AllNodes().begin(), group->AllNodes().end(), &node) != group->AllNodes().end()) {
-        LOGS_DEFAULT(VERBOSE) << "Node:" << node.Name() << "belongs to a qdq node group.";
+        LOGS_DEFAULT(VERBOSE) << "Node:" << node.Name() << "  belongs to a qdq node group.";
         // Issue: node in the same group? nullptr?
-        qdq_node_group = std::move(group);
-        return qdq_node_group;
+        return true;
       }
     }
   }
-  return nullptr;
+  return false;
+}
+
+std::unique_ptr<ConstNodesToOptimize> GetQDQNodeGroup(const onnxruntime::GraphViewer& graph_viewer, const Node& node) {
+  std::unique_ptr<ConstNodesToOptimize> qdq_node_group;
+  NNAPISelectorActionTransformer nnapi_selector_action_transformer("NNAPISAT", CreateNNAPISelectorsAndActions());
+  qdq_node_group = nnapi_selector_action_transformer.Match(graph_viewer.GetGraph(), node);
+
+  if (qdq_node_group != nullptr) {
+    std::cout << "[Compile] - QDQ Node Group found: " << node.OpType() << " with matched node's name: " << node.Name() << "\n"
+              << std::endl;
+  }
+
+  return qdq_node_group;
 }
 
 }  // namespace
@@ -143,13 +154,8 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   std::vector<std::unique_ptr<ConstNodesToOptimize>> qdq_node_groups;
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
     const auto* node = graph_viewer.GetNode(index);
-    NNAPISelectorActionTransformer nnapi_selector_action_transformer("NNAPISAT", CreateNNAPISelectorsAndActions());
-    auto qdq_node_group = nnapi_selector_action_transformer.Match(graph_viewer.GetGraph(), *node);
-
-    if (qdq_node_group != nullptr) {
-      std::cout << "QDQ Node Group added: " << node->OpType() << " with matched node's name: " << node->Name() << std::endl;
-      qdq_node_groups.emplace_back(std::move(qdq_node_group));
-    }
+    auto qdq_node_group = GetQDQNodeGroup(graph_viewer, *node);
+    qdq_node_groups.emplace_back(std::move(qdq_node_group));
   }
 
   const auto excluded_nodes = utils::CreateExcludedNodeSet(graph_viewer, partitioning_stop_ops_);
@@ -157,7 +163,6 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
   std::unordered_set<std::string> node_outputs_in_current_group{};
 
-  // TODO: add extra passed-in params: Node group struct
   const auto is_node_supported = [&](const Node& node) -> bool {
     bool supported = false;
 
@@ -168,25 +173,31 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     // 2. if yes, check input/target/output nodes in the `qdq_node_group` structure
     //    any of the nodes in the group is not supported then set const bool supported = false; (how to save checked?)
     // directly check if node belongs to one of the qdq_node_group in qdq_node_groups
-    std::unique_ptr<ConstNodesToOptimize> qdq_group;
+    bool is_node_in_qdq_group = false;
+    std::unique_ptr<ConstNodesToOptimize> qdq_node_group;
     if (!qdq_node_groups.empty()) {
-      qdq_group = IsNodeInQDQGroup(qdq_node_groups, node);
+      is_node_in_qdq_group = IsNodeInQDQGroup(qdq_node_groups, node);
     }
 
-    if (qdq_group != nullptr) {
+    if (is_node_in_qdq_group) {
+      //TODO: Record if group is checked not supported to avoid redundant checking
+
       // if a node is in a QDQ structure:
-      if (!qdq_group->IsCheckedNotSupported()) {
+      /*  if (!qdq_group->IsCheckedNotSupported()) {
         supported = !excluded &&
                     nnapi::IsNodeSupportedInGroup(node, graph_viewer, params,
-                                                  node_outputs_in_current_group);  // related to internal quantization node?
+                                                  node_outputs_in_current_group, qdq_group);  // related to internal quantization node?
         if (!supported) {
           qdq_group->is_checked_ = true;
           qdq_group->is_supported_ = false;
         }
       } else {
         supported = false;
-      }
+      } */
 
+      supported = !excluded &&
+                  nnapi::IsNodeSupportedInGroup(node, graph_viewer, params,
+                                                node_outputs_in_current_group, qdq_node_group);  // related to internal quantization node?
       LOGS_DEFAULT(VERBOSE) << "QDQ Group: Operator type: [" << node.OpType()
                             << "] index: [" << node.Index()
                             << "] name: [" << node.Name()
@@ -196,7 +207,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     } else {
       supported = !excluded &&
                   nnapi::IsNodeSupportedInGroup(node, graph_viewer, params,
-                                                node_outputs_in_current_group);
+                                                node_outputs_in_current_group, qdq_node_group);
       LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node.OpType()
                             << "] index: [" << node.Index()
                             << "] name: [" << node.Name()

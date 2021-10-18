@@ -434,19 +434,20 @@ bool IsInternalQuantizationSupported(const Node& node, const std::unordered_set<
   return true;
 }
 
-bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const OpSupportCheckParams& params) {
+bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const OpSupportCheckParams& params, std::unique_ptr<ConstNodesToOptimize>& qdq_group) {
   const auto& op_support_checkers = GetOpSupportCheckers();
   if (!Contains(op_support_checkers, node.OpType()))
     return false;
 
   const auto* op_support_checker = op_support_checkers.at(node.OpType());
-  return op_support_checker->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node, params);
+  return op_support_checker->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node, params, qdq_group);
 }
 
 bool IsNodeSupportedInGroup(const Node& node, const GraphViewer& graph_viewer,
                             const OpSupportCheckParams& params,
-                            const std::unordered_set<std::string>& node_outputs_in_group) {
-  if (!IsNodeSupported(node, graph_viewer, params))
+                            const std::unordered_set<std::string>& node_outputs_in_group,
+                            std::unique_ptr<ConstNodesToOptimize>& qdq_group) {
+  if (!IsNodeSupported(node, graph_viewer, params, qdq_group))
     return false;
 
   // We also want to check if the node is supported as an internal quantized node

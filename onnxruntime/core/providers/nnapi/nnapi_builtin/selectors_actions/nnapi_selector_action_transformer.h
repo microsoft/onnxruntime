@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <core/graph/graph.h>
 #include "core/providers/nnapi/nnapi_builtin/selectors_actions/nnapi_qdq_selector_helper.h"
 
 namespace onnxruntime {

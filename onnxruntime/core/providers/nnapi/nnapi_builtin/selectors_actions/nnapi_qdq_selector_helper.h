@@ -3,7 +3,13 @@
 
 #pragma once
 
+#include <vector>
+
+#include "core/common/common.h"
+
 namespace onnxruntime {
+
+class Node;
 
 class ConstNodesToOptimize {
  public:
@@ -72,7 +78,7 @@ class ConstNodesToOptimize {
 
   bool is_checked_{false};
   bool is_supported_{true};
-/* 
+  /* 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ConstNodesToOptimize); */
 
  private:
