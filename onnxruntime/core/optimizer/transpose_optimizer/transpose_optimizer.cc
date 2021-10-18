@@ -10,19 +10,21 @@
 
 namespace onnx_layout_transformation {
 
-// Struct containing information for a handler functions. Decreases binary size and allows perm_inv to be precomputed.
-struct HandlerArgs {
+struct OptimizerCtx {
   int64_t opset;
   api::Graph& graph;
+  bool allow_extended_ops;
+  bool skip_cost_check;
+};
+
+// Struct containing information for a handler functions. Decreases binary size and allows perm_inv to be precomputed.
+struct HandlerArgs {
+  OptimizerCtx& ctx;
   api::Node& transpose;
   api::Node& node;
   const std::vector<int64_t>& perm;
   const std::vector<int64_t>& perm_inv;
-  /// <summary>
-  /// Allows handlers to selectively optimize transposes attached to a specific node input
-  /// </summary>
   size_t transpose_input_index;
-  bool skip_cost_check;
 };
 
 typedef bool HandlerFunction(HandlerArgs& args);
@@ -70,12 +72,15 @@ static std::unique_ptr<api::Node> MakeSqueezeOrUnsqueeze(int64_t opset, api::Gra
   if (opset < 13) {
     return MakeNode1Attr(graph, op_type, input, "axes", axes);
   }
+
   std::vector<int64_t> axes_shape;
   axes_shape.push_back(axes.size());
   const std::string_view axes_initializer = graph.AddInitializerInt64(axes_shape, axes);
+
   std::vector<std::string_view> inputs;
   inputs.push_back(input);
   inputs.push_back(axes_initializer);
+
   return graph.AddNode(op_type, inputs);
 }
 
@@ -233,8 +238,9 @@ static std::vector<int64_t> SqueezePerm(const std::vector<int64_t>& axes, const 
   // Add perm entries for retained axes.
   std::vector<int64_t> new_perm;
   for (int64_t p : perm) {
-    if (!is_removed_axis[(size_t)p]) {
-      new_perm.push_back(axes_map[(size_t)p]);
+    size_t p_size_t = gsl::narrow_cast<size_t>(p);
+    if (!is_removed_axis[p_size_t]) {
+      new_perm.push_back(axes_map[p_size_t]);
     }
   }
 
@@ -249,7 +255,7 @@ static std::vector<int64_t> AxesForTransposedInput(const std::vector<int64_t>& a
                                                    const std::vector<int64_t>& perm) {
   std::vector<int64_t> new_axes;
   for (int64_t a : axes) {
-    new_axes.push_back(perm[(size_t)a]);
+    new_axes.push_back(perm[gsl::narrow_cast<size_t>(a)]);
   }
   return new_axes;
 }
@@ -265,7 +271,9 @@ static std::vector<int64_t> SortedAxesForTransposedInput(const std::vector<int64
   // Mark axes to include
   std::vector<bool> should_include_axis(perm.size());
   for (int64_t a : axes) {
-    should_include_axis[(size_t)perm[(size_t)a]] = true;
+    size_t a_size_t = gsl::narrow_cast<size_t>(a);
+    size_t new_axis = gsl::narrow_cast<size_t>(perm[a_size_t]);
+    should_include_axis[new_axis] = true;
   }
 
   // Create sorted result.
@@ -291,14 +299,13 @@ static const std::string_view HelpHandleUnsqueeze(HandlerArgs& args, const std::
 // Replaces ith input to node with unsqueezed value. Might create a new Unsqueeze node, find an existing one,
 // or reshape an initializer. Unsqueezing can be necessary before transposing inputs of a node that supports
 // broadcasting.
-static void UnsqueezeInput(int64_t opset, api::Graph& graph, api::Node& node, size_t i,
-                           const std::vector<int64_t>& axes) {
+static void UnsqueezeInput(OptimizerCtx& ctx, api::Node& node, size_t i, const std::vector<int64_t>& axes) {
   std::string_view input = node.Inputs()[i];
   // Remove this node as a consumer
   node.SetInput(i, "");
 
-  std::unique_ptr<api::Tensor> constant = graph.GetConstant(input);
-  auto consumers = graph.GetValueConsumers(input);
+  std::unique_ptr<api::Tensor> constant = ctx.graph.GetConstant(input);
+  auto consumers = ctx.graph.GetValueConsumers(input);
 
   // Case 1: input is a constant with a known list of consumer nodes
   if (constant != nullptr && consumers->comprehensive) {
@@ -306,27 +313,27 @@ static void UnsqueezeInput(int64_t opset, api::Graph& graph, api::Node& node, si
     // to counteract its effect. If they later Unsqueeze the same input, the Squeeze nodes will simply be deleted
     // (see Case 2).
     if (consumers->nodes.size() > 0) {
-      auto squeeze_ptr = MakeSqueezeOrUnsqueeze(opset, graph, "Squeeze", input, axes);
+      auto squeeze_ptr = MakeSqueezeOrUnsqueeze(ctx.opset, ctx.graph, "Squeeze", input, axes);
       api::Node& squeeze = *squeeze_ptr;
       const std::string_view sq_out = squeeze.Outputs()[0];
-      graph.CopyValueInfo(input, sq_out);
+      ctx.graph.CopyValueInfo(input, sq_out);
       ReplaceValueReferences(consumers->nodes, input, sq_out);
     }
     auto new_shape = UnsqueezeShape(constant->Shape(), axes);
-    graph.ReshapeInitializer(input, new_shape);
+    ctx.graph.ReshapeInitializer(input, new_shape);
     node.SetInput(i, input);
     return;
   }
 
   // Case 2: input is a Squeeze node with matching axes
-  std::unique_ptr<api::Node> inp_node = graph.GetNodeProducingOutput(input);
+  std::unique_ptr<api::Node> inp_node = ctx.graph.GetNodeProducingOutput(input);
   if (inp_node != nullptr && inp_node->IsOp("Squeeze")) {
     const std::vector<std::string_view>& inp_node_inputs = inp_node->Inputs();
     std::optional<std::vector<int64_t>> squeeze_axes = std::nullopt;
-    if (*graph.Opset() < 13) {
+    if (ctx.opset < 13) {
       squeeze_axes = inp_node->GetAttributeInts("axes");
     } else if (inp_node_inputs.size() == 2) {
-      std::unique_ptr<api::Tensor> axes_const = graph.GetConstant(inp_node_inputs[1]);
+      std::unique_ptr<api::Tensor> axes_const = ctx.graph.GetConstant(inp_node_inputs[1]);
       if (axes_const != nullptr) {
         squeeze_axes = axes_const->DataInt64();
       }
@@ -335,9 +342,9 @@ static void UnsqueezeInput(int64_t opset, api::Graph& graph, api::Node& node, si
     if (squeeze_axes != std::nullopt && *squeeze_axes == axes) {
       // Remove the Squeeze node if possible
       if (consumers->comprehensive && consumers->nodes.size() == 0) {
-        graph.RemoveNode(*inp_node);
-        if (*graph.Opset() >= 13 && !graph.HasValueConsumers(inp_node_inputs[1])) {
-          graph.RemoveInitializer(inp_node_inputs[1]);
+        ctx.graph.RemoveNode(*inp_node);
+        if (ctx.opset >= 13 && !ctx.graph.HasValueConsumers(inp_node_inputs[1])) {
+          ctx.graph.RemoveInitializer(inp_node_inputs[1]);
         }
       }
       node.SetInput(i, inp_node_inputs[0]);
@@ -348,11 +355,11 @@ static void UnsqueezeInput(int64_t opset, api::Graph& graph, api::Node& node, si
   }
 
   // Case 3: Add an Unsqueeze node.
-  auto squeeze_ptr = MakeSqueezeOrUnsqueeze(opset, graph, "Unsqueeze", input, axes);
+  auto squeeze_ptr = MakeSqueezeOrUnsqueeze(ctx.opset, ctx.graph, "Unsqueeze", input, axes);
   api::Node& squeeze = *squeeze_ptr;
   const std::string_view sq_out = squeeze.Outputs()[0];
-  graph.CopyValueInfo(input, sq_out);
-  graph.GetValueInfo(sq_out)->UnsqueezeDims(axes);
+  ctx.graph.CopyValueInfo(input, sq_out);
+  ctx.graph.GetValueInfo(sq_out)->UnsqueezeDims(axes);
 
   // The transpose optimizer attempts to complete all optimization in a single pass. Adding Unsqueeze ops to inputs
   // is one of the few operations that violates the normal traversal order. If the input to the new Unsqueeze is
@@ -361,7 +368,7 @@ static void UnsqueezeInput(int64_t opset, api::Graph& graph, api::Node& node, si
     auto perm = inp_node->GetAttributeInts("perm");
     if (perm != std::nullopt) {
       auto perm_inv = InvertPerm(*perm);
-      HandlerArgs args{opset, graph, *inp_node, squeeze, *perm, perm_inv, 0, false};
+      HandlerArgs args{ctx, *inp_node, squeeze, *perm, perm_inv, 0};
       const auto new_input = HelpHandleUnsqueeze(args, axes);
       // Use output from optimization (likely from pushed transpose)
       node.SetInput(i, new_input);
@@ -374,32 +381,32 @@ static void UnsqueezeInput(int64_t opset, api::Graph& graph, api::Node& node, si
 
 // Replaces ith input to node with transposed value. Might create a new Transpose node, find an existing one,
 // or transpose an initializer.
-static void TransposeInput(api::Graph& graph, api::Node& node, size_t i,
+static void TransposeInput(OptimizerCtx& ctx, api::Node& node, size_t i,
                            const std::vector<int64_t>& perm, const std::vector<int64_t>& perm_inv) {
   std::string_view input = node.Inputs()[i];
   // Remove this node as a consumer
   node.SetInput(i, "");
-  std::unique_ptr<api::Tensor> constant = graph.GetConstant(input);
-  auto consumers = graph.GetValueConsumers(input);
+  std::unique_ptr<api::Tensor> constant = ctx.graph.GetConstant(input);
+  auto consumers = ctx.graph.GetValueConsumers(input);
 
   // Case 1: input is a constant with a known list of consumer nodes
   if (constant != nullptr && consumers->comprehensive) {
     if (consumers->nodes.size() > 0) {
       // Transpose the initializer. If there are existing consumers, add Transpose nodes to them using perm_inv
       // to counteract the effect. These Transposes will hopefully be optimized out later.
-      auto transpose_inv_ptr = MakeTranspose(graph, input, perm_inv);
+      auto transpose_inv_ptr = MakeTranspose(ctx.graph, input, perm_inv);
       api::Node& transpose_inv = *transpose_inv_ptr;
       const std::string_view transpose_out = transpose_inv.Outputs()[0];
-      graph.CopyValueInfo(input, transpose_out);
+      ctx.graph.CopyValueInfo(input, transpose_out);
       ReplaceValueReferences(consumers->nodes, input, transpose_out);
     }
-    graph.TransposeInitializer(input, perm);
+    ctx.graph.TransposeInitializer(input, perm);
     node.SetInput(i, input);
     return;
   }
 
   // Case 2: input is a Transpose node
-  std::unique_ptr<api::Node> inp_node = graph.GetNodeProducingOutput(input);
+  std::unique_ptr<api::Node> inp_node = ctx.graph.GetNodeProducingOutput(input);
   if (inp_node != nullptr && inp_node->IsOp("Transpose")) {
     std::optional<std::vector<int64_t>> perm2 = inp_node->GetAttributeInts("perm");
     if (perm2 != std::nullopt) {
@@ -407,7 +414,7 @@ static void TransposeInput(api::Graph& graph, api::Node& node, size_t i,
       if (*perm2 == perm_inv) {
         std::string_view pre_transpose_value = inp_node->Inputs()[0];
         if (consumers->comprehensive && consumers->nodes.size() == 0) {
-          graph.RemoveNode(*inp_node);
+          ctx.graph.RemoveNode(*inp_node);
         }
         node.SetInput(i, pre_transpose_value);
         return;
@@ -416,13 +423,13 @@ static void TransposeInput(api::Graph& graph, api::Node& node, size_t i,
       // Otherwise, compose the perm and Transpose pre_transpose_value. Cost is the same and we may be able to remove
       // the other Transpose.
       const std::vector<int64_t>& perm_combined = ComposePerm(*perm2, perm);
-      auto transpose_ptr = MakeTranspose(graph, inp_node->Inputs()[0], perm_combined);
+      auto transpose_ptr = MakeTranspose(ctx.graph, inp_node->Inputs()[0], perm_combined);
       api::Node& transpose = *transpose_ptr;
       const std::string_view transpose_out = transpose.Outputs()[0];
-      graph.CopyValueInfo(input, transpose_out);
-      graph.GetValueInfo(transpose_out)->PermuteDims(perm);
+      ctx.graph.CopyValueInfo(input, transpose_out);
+      ctx.graph.GetValueInfo(transpose_out)->PermuteDims(perm);
       if (consumers->comprehensive && consumers->nodes.size() == 0) {
-        graph.RemoveNode(*inp_node);
+        ctx.graph.RemoveNode(*inp_node);
       }
       node.SetInput(i, transpose_out);
       return;
@@ -439,32 +446,38 @@ static void TransposeInput(api::Graph& graph, api::Node& node, size_t i,
   }
 
   // Case 4: Add a new Transpose op
-  auto transpose_ptr = MakeTranspose(graph, input, perm);
+  auto transpose_ptr = MakeTranspose(ctx.graph, input, perm);
   api::Node& transpose = *transpose_ptr;
   const std::string_view transpose_out = transpose.Outputs()[0];
-  graph.CopyValueInfo(input, transpose_out);
-  graph.GetValueInfo(transpose_out)->PermuteDims(perm);
+  ctx.graph.CopyValueInfo(input, transpose_out);
+  ctx.graph.GetValueInfo(transpose_out)->PermuteDims(perm);
   node.SetInput(i, transpose_out);
 }
 
-// Unsqueezes inputs of node to have uniform rank. Returns false if input ranks are unknown or exceed the target rank.
-static bool NormalizeInputRanks(int64_t opset, api::Graph& graph, api::Node& node, size_t target_rank, 
-                                std::vector<size_t>* input_indices = nullptr) {
-  auto inputs = node.Inputs();
+static std::unique_ptr<std::vector<size_t>> SetInputIndicesIfNull(api::Node& node,
+                                                                  std::vector<size_t>*& input_indices) {
   std::unique_ptr<std::vector<size_t>> indices_storage;
   if (input_indices == nullptr) {
-    size_t num_inputs = inputs.size();
+    size_t num_inputs = node.Inputs().size();
     indices_storage = std::make_unique<std::vector<size_t>>(num_inputs);
     for (size_t i = 0; i < num_inputs; ++i) {
       (*indices_storage)[i] = i;
     }
     input_indices = &(*indices_storage);
   }
+  return indices_storage;
+}
+
+// Unsqueezes inputs of node to have uniform rank. Returns false if input ranks are unknown or exceed the target rank.
+static bool NormalizeInputRanks(OptimizerCtx ctx, api::Node& node, size_t target_rank, 
+                                std::vector<size_t>* input_indices = nullptr) {
+  auto inputs = node.Inputs();
+  auto indices_storage = SetInputIndicesIfNull(node, input_indices);
 
   // Get and validate input ranks
   std::vector<size_t> ranks;
   for (size_t i : *input_indices) {
-    std::optional<std::vector<int64_t>> shape = graph.GetValueInfo(inputs[i])->Shape();
+    std::optional<std::vector<int64_t>> shape = ctx.graph.GetValueInfo(inputs[i])->Shape();
     if (shape == std::nullopt || shape->size() > target_rank) {
       return false;
     }
@@ -479,7 +492,7 @@ static bool NormalizeInputRanks(int64_t opset, api::Graph& graph, api::Node& nod
       for (size_t j = 0; j < rank_diff; ++j) {
         axes.push_back(j);
       }
-      UnsqueezeInput(opset, graph, node, (*input_indices)[k], axes);
+      UnsqueezeInput(ctx, node, (*input_indices)[k], axes);
     }
   }
   return true;
@@ -487,56 +500,48 @@ static bool NormalizeInputRanks(int64_t opset, api::Graph& graph, api::Node& nod
 
 // Transposes specified inputs (or all by default) according to perm.
 // NOTE: if a Transpose is expected to be above an input to this node, use the inverse of its permutation to cancel it. 
-static void TransposeInputs(api::Graph& graph, api::Node& node, const std::vector<int64_t>& perm,
-                            std::vector<size_t>* indices = nullptr) {
-  std::unique_ptr<std::vector<size_t>> indices_storage;
-  if (indices == nullptr) {
-    size_t num_inputs = node.Inputs().size();
-    indices_storage = std::make_unique<std::vector<size_t>>(num_inputs);
-    for (size_t i = 0; i < num_inputs; ++i) {
-      (*indices_storage)[i] = i;
-    }
-    indices = &(*indices_storage);
-  }
+static void TransposeInputs(OptimizerCtx& ctx, api::Node& node, const std::vector<int64_t>& perm,
+                            std::vector<size_t>* input_indices = nullptr) {
+  auto indices_storage = SetInputIndicesIfNull(node, input_indices);
   auto perm_inv = InvertPerm(perm);
-  for (size_t j : *indices) {
-    TransposeInput(graph, node, j, perm, perm_inv);
+  for (size_t j : *input_indices) {
+    TransposeInput(ctx, node, j, perm, perm_inv);
   }
   return;
 }
 
-inline static void TransposeFirstInput(api::Graph& graph, api::Node& node, const std::vector<int64_t>& perm) {
+inline static void TransposeFirstInput(OptimizerCtx& ctx, api::Node& node, const std::vector<int64_t>& perm) {
   std::vector<size_t> indices {0};
-  TransposeInputs(graph, node, perm, &indices);
+  TransposeInputs(ctx, node, perm, &indices);
 }
 
 // Inserts a Transpose op on the ith output of a node. Returns the new, transposed output.
 // Updates shape information assuming that the output from the node will have a transposed shape (using perm_inv)
 // but the overall (returned) output will match the initial shape.
-static const std::string_view TransposeOutput(api::Graph& graph, api::Node& node, size_t i,
+static const std::string_view TransposeOutput(OptimizerCtx& ctx, api::Node& node, size_t i,
                                               const std::vector<int64_t>& perm,
                                               const std::vector<int64_t>& perm_inv) {
   // Make transpose without input, then add it to avoid cyclic reference.
-  auto transpose_ptr = MakeTranspose(graph, "", perm);
+  auto transpose_ptr = MakeTranspose(ctx.graph, "", perm);
   api::Node& transpose = *transpose_ptr;
-  graph.MoveOutput(node, i, transpose, 0);
+  ctx.graph.MoveOutput(node, i, transpose, 0);
   const std::string_view new_output = node.Outputs()[i];
   transpose.SetInput(0, new_output);
   const std::string_view old_output = transpose.Outputs()[0];
-  graph.CopyValueInfo(old_output, new_output);
-  graph.GetValueInfo(new_output)->PermuteDims(perm_inv);
+  ctx.graph.CopyValueInfo(old_output, new_output);
+  ctx.graph.GetValueInfo(new_output)->PermuteDims(perm_inv);
   return old_output;
 }
 
 // Inserts a Transpose op on all node outputs and updates the shapes of the node outputs.
 // See TransposeOutput for details on shape updates.
-static void TransposeOutputs(api::Graph& graph, api::Node& node, const std::vector<int64_t>& perm) {
+static void TransposeOutputs(OptimizerCtx& ctx, api::Node& node, const std::vector<int64_t>& perm) {
   if (IsIdentityPerm(perm)) {
     return;
   }
   auto perm_inv = InvertPerm(perm);
   for (size_t j = 0; j < node.Outputs().size(); ++j) {
-    TransposeOutput(graph, node, j, perm, perm_inv);
+    TransposeOutput(ctx, node, j, perm, perm_inv);
   }
 }
 
@@ -610,19 +615,11 @@ static int EstimateTransposeValueCost(api::Graph& graph, const std::string_view 
 
 // Estimates total cost of transposing a node's inputs. Negative if transposing is beneficial.
 static int EstimateTransposeInputsCost(api::Graph& graph, api::Node& node, const std::vector<int64_t>& perm_inv,
-                                       std::vector<size_t>* indices = nullptr) {
+                                       std::vector<size_t>* input_indices = nullptr) {
+  auto indices_storage = SetInputIndicesIfNull(node, input_indices);
   auto inputs = node.Inputs();
-  std::unique_ptr<std::vector<size_t>> indices_storage;
-  if (indices == nullptr) {
-    size_t num_inputs = inputs.size();
-    indices_storage = std::make_unique<std::vector<size_t>>(num_inputs);
-    for (size_t i = 0; i < num_inputs; ++i) {
-      (*indices_storage)[i] = i;
-    }
-    indices = &(*indices_storage);
-  }
   int cost = 0;
-  for (size_t j : *indices) {
+  for (size_t j : *input_indices) {
     cost += EstimateTransposeValueCost(graph, inputs[j], perm_inv);
   }
   return cost;
@@ -634,37 +631,52 @@ static int EstimateTransposeInputsCost(api::Graph& graph, api::Node& node, const
 // Op-specific optimization code. Handlers are called on nodes of a given optype with at least one Transpose as input.
 // Handlers are responsible for determining if optimization should occur and performing it. They return a bool
 // indicating whether the graph was modified.
+//
+// When making handlers, there are some things to be careful of:
+//   - Ops can have multiple opsets. Check the model opset to determine the right spec. The opset is always within
+//     the optimizers min/max opset range.
+//   - Read the full spec and watch out for optional inputs, attributes, etc.
+//   - Shapes (ValueInfo) must be kept up-to-date on all values
+//   - Add tests for the op (transpose_optimizer_test.cc)
+//   - Return false if and only if no changes have been made to the graph. Do all checks up front before starting
+//     modifications
+//   - If the op has multiple inputs to transpose, make sure EstimateTransposeInputsCost is < 0.
 
-static bool HandleSimpleNodeBase(HandlerArgs& args, bool broadcast, std::vector<size_t>* input_indices = nullptr) {
-  // input_indices must be null if broadcast is true (TODO: why?)
+// Common helper for making handlers.
+static bool HandleSimpleNodeBase(HandlerArgs& args, bool broadcast_inputs,
+                                 std::vector<size_t>* input_indices = nullptr) {
   size_t rank = args.perm.size();
-  if (!args.skip_cost_check && (input_indices == nullptr || input_indices->size() > 1) 
-      && EstimateTransposeInputsCost(args.graph, args.node, args.perm, input_indices) >= 0) {
+  if (!args.ctx.skip_cost_check && (input_indices == nullptr || input_indices->size() > 1) 
+      && EstimateTransposeInputsCost(args.ctx.graph, args.node, args.perm, input_indices) >= 0) {
     return false;
   }
-  if (broadcast && !NormalizeInputRanks(args.opset, args.graph, args.node, rank, input_indices)) {
+  if (broadcast_inputs && !NormalizeInputRanks(args.ctx, args.node, rank, input_indices)) {
     return false;
   }
-  TransposeInputs(args.graph, args.node, args.perm_inv, input_indices);
-  TransposeOutputs(args.graph, args.node, args.perm);
+  TransposeInputs(args.ctx, args.node, args.perm_inv, input_indices);
+  TransposeOutputs(args.ctx, args.node, args.perm);
   return true;
 }
 
+// Node with all inputs broadcastable
 static bool HandleSimpleNodeBroadcast(HandlerArgs& args) {
-  return HandleSimpleNodeBase(args, /*broadcast*/ true);
+  return HandleSimpleNodeBase(args, /*broadcast_inputs*/ true);
 }
 
+// Transposes all inputs and all outputs
 static bool HandleSimpleNode(HandlerArgs& args) {
-  return HandleSimpleNodeBase(args, /*broadcast*/ false);
+  return HandleSimpleNodeBase(args, /*broadcast_inputs*/ false);
 }
 
+// Transposes 1st input and all outputs
 static bool HandleSimpleNode1Inp(HandlerArgs& args) {
   if (args.transpose_input_index != 0) return false;
-  std::vector<size_t> indices {0};
-  return HandleSimpleNodeBase(args, /*broadcast*/ false, &indices);
+  std::vector<size_t> input_indices {0};
+  return HandleSimpleNodeBase(args, /*broadcast_inputs*/ false, &input_indices);
 }
 
-static bool HandleSimpleNodeAxis(HandlerArgs& args, bool has_default, int64_t default_axis=0) {
+// Transposes all inputs and all outputs. Updates axis attribute.
+static bool HandleSimpleNodeWithAxis(HandlerArgs& args, bool has_default, int64_t default_axis=0) {
   size_t rank = args.perm.size();
   std::optional<int64_t> axis = args.node.GetAttributeInt("axis");
   if (axis == std::nullopt) {
@@ -678,7 +690,7 @@ static bool HandleSimpleNodeAxis(HandlerArgs& args, bool has_default, int64_t de
     *axis += rank;
   }
   if (*axis < 0 || (uint64_t)*axis >= args.perm.size()) return false;
-  if (!HandleSimpleNodeBase(args, /*broadcast*/ false)) {
+  if (!HandleSimpleNodeBase(args, /*broadcast_inputs*/ false)) {
     return false;
   }
   args.node.SetAttributeInt("axis", args.perm[(size_t)*axis]);
@@ -686,45 +698,53 @@ static bool HandleSimpleNodeAxis(HandlerArgs& args, bool has_default, int64_t de
 }
 
 static bool HandleSplit(HandlerArgs& args) {
-  return HandleSimpleNodeAxis(args, /*has_default*/ true, /*default_axis*/ 0);
+  return HandleSimpleNodeWithAxis(args, /*has_default*/ true, /*default_axis*/ 0);
 }
 
 static bool HandleConcat(HandlerArgs& args) {
-  return HandleSimpleNodeAxis(args, /*has_default*/ false);
+  return HandleSimpleNodeWithAxis(args, /*has_default*/ false);
 }
 
+// Handles Softmax, Hardmax, and LogSoftmax
 static bool HandleSoftHardMax(HandlerArgs& args) {
-  // TODO: add rank to args?
+  if (args.ctx.opset >= 13) {
+    return HandleSimpleNodeWithAxis(args, /*has_default*/ true, /*default_axis*/ -1);
+  }
+
+  // In opset < 13, the input is coerced into 2D then expanded back after.
+  // The 'axis' attribute is the division point of the coercion.
   size_t rank = args.perm.size();
-  if (args.opset >= 13) {
-    return HandleSimpleNodeAxis(args, /*has_default*/ true, /*default_axis*/ -1);
-  }
-  int64_t axis = 1;
-  std::optional<int64_t> axis_attr = args.node.GetAttributeInt("axis");
-  if (axis_attr != std::nullopt) {
-    axis = *axis_attr;
-  }
+  int64_t axis = args.node.GetAttributeIntDefault("axis", 1);
   // TODO: consolidate this?
   if (axis < 0) {
     axis += rank;
   }
   if (axis < 0 || (uint64_t)axis >= rank) return false;
+
+  // We can optimize only if the transpose does not move axes across the boundary. (normally this is the case)
   for (size_t i = 0; i < rank; ++i) {
-    bool to_lhs = i < (uint64_t)axis;
+    size_t axis_size_t = gsl::narrow_cast<size_t>(axis);
+    bool to_lhs = i < axis_size_t;
     bool from_lhs = args.perm[i] < axis;
     if (to_lhs != from_lhs) {
       return false;
     }
   }
+
+  // No need to update axis.
   return HandleSimpleNode(args);
 }
 
 static bool HandleShape(HandlerArgs& args) {
-  TransposeInputs(args.graph, args.node, args.perm_inv);
+  // Shape(Transpose(x, perm)) => Gather(Shape(x), perm)
+  TransposeInputs(args.ctx, args.node, args.perm_inv);
   size_t rank = args.perm.size();
 
   std::vector<int64_t> new_perm;
-  if (args.opset >= 15) {
+  // For opset 15, Shape(Transpose(x, perm))[starts:stops] = Gather(Shape(x), perm[starts:stops])
+  if (args.ctx.opset >= 15) {
+
+    // Assign new_perm = perm[starts:stops]
     int64_t start = args.node.GetAttributeIntDefault("start", 0);
     int64_t end = args.node.GetAttributeIntDefault("end", (int64_t)rank);
     if (start < 0) {
@@ -744,21 +764,25 @@ static bool HandleShape(HandlerArgs& args) {
     new_perm = args.perm;
   }
 
+  // Make new_perm initializer
   std::vector<int64_t> perm_shape {(int64_t)new_perm.size()};
-  const std::string_view perm_const = args.graph.AddInitializerInt64(perm_shape, new_perm);
+  const std::string_view perm_const = args.ctx.graph.AddInitializerInt64(perm_shape, new_perm);
 
+  // Add the Gather node
   std::vector<std::string_view> gather_inputs;
-  gather_inputs.push_back("");
+  gather_inputs.push_back(""); // Avoid cyclic reference
   gather_inputs.push_back(perm_const);
-  auto gather_ptr = args.graph.AddNode("Gather", gather_inputs);
+  auto gather_ptr = args.ctx.graph.AddNode("Gather", gather_inputs);
   api::Node& gather = *gather_ptr;
   gather.SetAttributeInt("axis", 0);
-  args.graph.MoveOutput(args.node, 0, gather, 0);
+  args.ctx.graph.MoveOutput(args.node, 0, gather, 0);
   const std::string_view new_output = args.node.Outputs()[0];
-  gather.SetInput(0, new_output);
-  args.graph.CopyValueInfo(gather.Outputs()[0], new_output);
+  gather.SetInput(0, new_output); // Assign Gather input
+
+  // Fix shapes
+  args.ctx.graph.CopyValueInfo(gather.Outputs()[0], new_output);
   if (new_perm.size() != rank) {
-    auto info = args.graph.GetValueInfo(new_output);
+    auto info = args.ctx.graph.GetValueInfo(new_output);
     std::vector<int64_t> new_shape {(int64_t)rank};
     info->SetShape(&new_shape);
   }
@@ -780,7 +804,7 @@ static std::vector<int64_t> PermutePads(const std::vector<int64_t>& pads, const 
 static bool HandlePad(HandlerArgs& args) {
   if (args.transpose_input_index != 0) return false;
   size_t rank = args.perm.size();
-  int64_t opset = args.opset;
+  int64_t opset = args.ctx.opset;
 
   if (opset < 11) {
     std::optional<std::vector<int64_t>> pads = args.node.GetAttributeInts("pads");
@@ -791,8 +815,8 @@ static bool HandlePad(HandlerArgs& args) {
     args.node.SetAttributeInts("pads", new_pads);
   }
 
-  TransposeFirstInput(args.graph, args.node, args.perm_inv);
-  TransposeOutputs(args.graph, args.node, args.perm);
+  TransposeFirstInput(args.ctx, args.node, args.perm_inv);
+  TransposeOutputs(args.ctx, args.node, args.perm);
 
   if (opset < 11) {
     return true;
@@ -800,14 +824,14 @@ static bool HandlePad(HandlerArgs& args) {
 
   std::string_view pads_input = args.node.Inputs()[1];
   std::vector<int64_t> pads_shape { (int64_t)rank * 2 };
-  std::shared_ptr<api::Tensor> pads_const = args.graph.GetConstant(pads_input);
+  std::shared_ptr<api::Tensor> pads_const = args.ctx.graph.GetConstant(pads_input);
   if (pads_const != nullptr) {
     auto pads = pads_const->DataInt64();
     std::vector<int64_t> new_pads = PermutePads(pads, args.perm_inv);
-    std::string_view new_pads_const = args.graph.AddInitializerInt64(pads_shape, new_pads);
+    std::string_view new_pads_const = args.ctx.graph.AddInitializerInt64(pads_shape, new_pads);
     args.node.SetInput(1, new_pads_const);
-    if (!args.graph.HasValueConsumers(pads_input)) {
-      args.graph.RemoveInitializer(pads_input);
+    if (!args.ctx.graph.HasValueConsumers(pads_input)) {
+      args.ctx.graph.RemoveInitializer(pads_input);
     }
     return true;
   }
@@ -816,13 +840,13 @@ static bool HandlePad(HandlerArgs& args) {
   for (int64_t p : args.perm_inv) {
     pads_perm.push_back(p + rank);
   }
-  std::string_view pads_perm_const = args.graph.AddInitializerInt64(pads_shape, pads_perm);
+  std::string_view pads_perm_const = args.ctx.graph.AddInitializerInt64(pads_shape, pads_perm);
 
   std::vector<std::string_view> gather_inputs { pads_input, pads_perm_const };
-  auto gather_ptr = args.graph.AddNode("Gather", gather_inputs);
+  auto gather_ptr = args.ctx.graph.AddNode("Gather", gather_inputs);
   api::Node& gather = *gather_ptr;
   std::string_view gather_output = gather.Outputs()[0];
-  args.graph.CopyValueInfo(pads_input, gather_output);
+  args.ctx.graph.CopyValueInfo(pads_input, gather_output);
   gather.SetAttributeInt("axis", 0);
   args.node.SetInput(1, gather_output);
 
@@ -839,10 +863,10 @@ static bool HandleReduceOp(HandlerArgs& args) {
   // TODO: (compress impl) empty axes
   if (axes == std::nullopt) {
     if (keepdims != 0) {
-      TransposeFirstInput(args.graph, args.node, args.perm_inv);
-      TransposeOutputs(args.graph, args.node, args.perm);
+      TransposeFirstInput(args.ctx, args.node, args.perm_inv);
+      TransposeOutputs(args.ctx, args.node, args.perm);
     } else {
-      TransposeFirstInput(args.graph, args.node, args.perm_inv);
+      TransposeFirstInput(args.ctx, args.node, args.perm_inv);
     }
     return true;
   }
@@ -853,14 +877,14 @@ static bool HandleReduceOp(HandlerArgs& args) {
   args.node.SetAttributeInts("axes", new_axes);
 
   if (keepdims != 0) {
-    TransposeFirstInput(args.graph, args.node, args.perm_inv);
-    TransposeOutputs(args.graph, args.node, args.perm);
+    TransposeFirstInput(args.ctx, args.node, args.perm_inv);
+    TransposeOutputs(args.ctx, args.node, args.perm);
     return true;
   }
   else {
-    TransposeFirstInput(args.graph, args.node, args.perm_inv);
+    TransposeFirstInput(args.ctx, args.node, args.perm_inv);
     std::vector<int64_t> new_perm = SqueezePerm(new_axes, args.perm);
-    TransposeOutputs(args.graph, args.node, new_perm);
+    TransposeOutputs(args.ctx, args.node, new_perm);
     return true;
   }
 }
@@ -869,7 +893,7 @@ static bool HandleReduceSum(HandlerArgs& args) {
   if (args.transpose_input_index != 0) return false;
   // TODO: compress this impl
 
-  if (args.opset < 13) {
+  if (args.ctx.opset < 13) {
     return HandleReduceOp(args);
   }
 
@@ -881,7 +905,7 @@ static bool HandleReduceSum(HandlerArgs& args) {
   if (inputs.size() < 2 || inputs[1] == "") {
     empty_axes = true;
   } else {
-    axes_const = args.graph.GetConstant(inputs[1]);
+    axes_const = args.ctx.graph.GetConstant(inputs[1]);
     if (axes_const != nullptr && axes_const->DataInt64().size() == 0) {
       empty_axes = true;
     }
@@ -889,10 +913,10 @@ static bool HandleReduceSum(HandlerArgs& args) {
   if (empty_axes) {
     int64_t noop_with_empty_axes = args.node.GetAttributeIntDefault("noop_with_empty_axes", 0);
     if (noop_with_empty_axes != 0 || keepdims != 0) {
-      TransposeFirstInput(args.graph, args.node, args.perm_inv);
-      TransposeOutputs(args.graph, args.node, args.perm);
+      TransposeFirstInput(args.ctx, args.node, args.perm_inv);
+      TransposeOutputs(args.ctx, args.node, args.perm);
     } else {
-      TransposeFirstInput(args.graph, args.node, args.perm_inv);
+      TransposeFirstInput(args.ctx, args.node, args.perm_inv);
     }
     return true;
   }
@@ -907,22 +931,22 @@ static bool HandleReduceSum(HandlerArgs& args) {
   }
   std::vector<int64_t> new_axes = SortedAxesForTransposedInput(axes, args.perm);
   std::vector<int64_t> axes_shape { (int64_t)new_axes.size() };
-  std::string_view new_axes_const = args.graph.AddInitializerInt64(axes_shape, new_axes);
+  std::string_view new_axes_const = args.ctx.graph.AddInitializerInt64(axes_shape, new_axes);
   std::string_view axes_inp = inputs[1];
   args.node.SetInput(1, new_axes_const);
-  if (!args.graph.HasValueConsumers(axes_inp)) {
-    args.graph.RemoveInitializer(axes_inp);
+  if (!args.ctx.graph.HasValueConsumers(axes_inp)) {
+    args.ctx.graph.RemoveInitializer(axes_inp);
   }
 
   if (keepdims != 0) {
-    TransposeFirstInput(args.graph, args.node, args.perm_inv);
-    TransposeOutputs(args.graph, args.node, args.perm);
+    TransposeFirstInput(args.ctx, args.node, args.perm_inv);
+    TransposeOutputs(args.ctx, args.node, args.perm);
     return true;
   }
   else {
-    TransposeFirstInput(args.graph, args.node, args.perm_inv);
+    TransposeFirstInput(args.ctx, args.node, args.perm_inv);
     std::vector<int64_t> new_perm = SqueezePerm(new_axes, args.perm);
-    TransposeOutputs(args.graph, args.node, new_perm);
+    TransposeOutputs(args.ctx, args.node, new_perm);
     return true;
   }
 
@@ -933,7 +957,7 @@ static bool HandleSqueeze(HandlerArgs& args) {
   if (args.transpose_input_index != 0) return false;
   const std::vector<size_t> indices { 0 };
   std::vector<int64_t> new_axes;
-  if (args.opset < 13) {
+  if (args.ctx.opset < 13) {
     std::optional<std::vector<int64_t>> axes = args.node.GetAttributeInts("axes");
     // TODO: (compress impl) empty axes
     if (axes == std::nullopt || !NormalizeAndValidateAxes(*axes, args.perm.size())) {
@@ -950,7 +974,7 @@ static bool HandleSqueeze(HandlerArgs& args) {
     if (axes_inp == "") {
       return false;
     }
-    std::unique_ptr<api::Tensor> axes_const = args.graph.GetConstant(axes_inp);
+    std::unique_ptr<api::Tensor> axes_const = args.ctx.graph.GetConstant(axes_inp);
     if (axes_const == nullptr) {
       return false;
     }
@@ -960,29 +984,29 @@ static bool HandleSqueeze(HandlerArgs& args) {
     }
     new_axes = SortedAxesForTransposedInput(axes, args.perm);
     std::vector<int64_t> axes_shape { (int64_t)new_axes.size() };
-    std::string_view new_axes_const = args.graph.AddInitializerInt64(axes_shape, new_axes);
+    std::string_view new_axes_const = args.ctx.graph.AddInitializerInt64(axes_shape, new_axes);
     args.node.SetInput(1, new_axes_const);
-    if (!args.graph.HasValueConsumers(axes_inp)) {
-      args.graph.RemoveInitializer(axes_inp);
+    if (!args.ctx.graph.HasValueConsumers(axes_inp)) {
+      args.ctx.graph.RemoveInitializer(axes_inp);
     }
   }
-  TransposeFirstInput(args.graph, args.node, args.perm_inv);
+  TransposeFirstInput(args.ctx, args.node, args.perm_inv);
   std::vector<int64_t> new_perm = SqueezePerm(new_axes, args.perm);
-  TransposeOutputs(args.graph, args.node, new_perm);
+  TransposeOutputs(args.ctx, args.node, new_perm);
   return true;
 }
 
 
 static const std::string_view HelpHandleUnsqueeze(HandlerArgs& args, const std::vector<int64_t>& axes) {
-  TransposeFirstInput(args.graph, args.node, args.perm_inv);
+  TransposeFirstInput(args.ctx, args.node, args.perm_inv);
   std::vector<int64_t> new_perm = UnsqueezePerm(axes, args.perm);
-  return TransposeOutput(args.graph, args.node, 0, new_perm, InvertPerm(new_perm));
+  return TransposeOutput(args.ctx, args.node, 0, new_perm, InvertPerm(new_perm));
 }
 
 static bool HandleUnsqueeze(HandlerArgs& args) {
   if (args.transpose_input_index != 0) return false;
   std::vector<int64_t> axes;
-  if (args.opset < 13) {
+  if (args.ctx.opset < 13) {
     std::optional<std::vector<int64_t>> axes_attr = args.node.GetAttributeInts("axes");
     // TODO: (compress impl) empty axes
     if (axes_attr == std::nullopt) {
@@ -991,7 +1015,7 @@ static bool HandleUnsqueeze(HandlerArgs& args) {
     axes = *axes_attr;
   } else {
     const std::vector<std::string_view>& inputs = args.node.Inputs();
-    std::unique_ptr<api::Tensor> axes_const = args.graph.GetConstant(inputs[1]);
+    std::unique_ptr<api::Tensor> axes_const = args.ctx.graph.GetConstant(inputs[1]);
     if (axes_const == nullptr) {
       return false;
     }
@@ -1009,11 +1033,11 @@ static bool HandleQuantizeDequantizeLinear(HandlerArgs& args) {
   if (args.transpose_input_index != 0) return false;
   size_t rank = args.perm.size();
 
-  if (args.opset >= 13) {
+  if (args.ctx.opset >= 13) {
     auto inputs = args.node.Inputs();
     bool all_scalars = true;
     for (size_t i = 1; i < 3; ++i) {
-      std::optional<std::vector<int64_t>> inp_shape = args.graph.GetValueInfo(inputs[i])->Shape();
+      std::optional<std::vector<int64_t>> inp_shape = args.ctx.graph.GetValueInfo(inputs[i])->Shape();
       if (inp_shape == std::nullopt || inp_shape->size() > 0) {
         all_scalars = false;
       }
@@ -1030,8 +1054,8 @@ static bool HandleQuantizeDequantizeLinear(HandlerArgs& args) {
     }
   }
 
-  TransposeFirstInput(args.graph, args.node, args.perm_inv);
-  TransposeOutputs(args.graph, args.node, args.perm);
+  TransposeFirstInput(args.ctx, args.node, args.perm_inv);
+  TransposeOutputs(args.ctx, args.node, args.perm);
 
   return true;
 }
@@ -1048,11 +1072,11 @@ static bool HandleArgMinMax(HandlerArgs& args) {
   std::vector<int64_t> new_axes {new_axis};
   args.node.SetAttributeInt("axis", new_axis);
 
-  TransposeInputs(args.graph, args.node, args.perm_inv);
+  TransposeInputs(args.ctx, args.node, args.perm_inv);
   if (keepdims != 0) {
-    TransposeOutputs(args.graph, args.node, args.perm);
+    TransposeOutputs(args.ctx, args.node, args.perm);
   } else {
-    TransposeOutputs(args.graph, args.node, SqueezePerm(new_axes, args.perm));
+    TransposeOutputs(args.ctx, args.node, SqueezePerm(new_axes, args.perm));
   }
   return true;
 }
@@ -1061,7 +1085,7 @@ static bool HandleSlice(HandlerArgs& args) {
   if (args.transpose_input_index != 0) return false;
   size_t rank = args.perm.size();
 
-  if (args.opset < 10) {
+  if (args.ctx.opset < 10) {
     std::optional<std::vector<int64_t>> axes = args.node.GetAttributeInts("axes");
     if (axes == std::nullopt) {
       std::optional<std::vector<int64_t>> starts = args.node.GetAttributeInts("starts");
@@ -1081,8 +1105,8 @@ static bool HandleSlice(HandlerArgs& args) {
     }
     std::vector<int64_t> new_axes = AxesForTransposedInput(*axes, args.perm);
     args.node.SetAttributeInts("axes", new_axes);
-    TransposeFirstInput(args.graph, args.node, args.perm_inv);
-    TransposeOutputs(args.graph, args.node, args.perm);
+    TransposeFirstInput(args.ctx, args.node, args.perm_inv);
+    TransposeOutputs(args.ctx, args.node, args.perm);
     return true;
   }
 
@@ -1092,7 +1116,7 @@ static bool HandleSlice(HandlerArgs& args) {
   }
   std::vector<int64_t> new_axes;
   if (inputs.size() < 4 || inputs[3] == "") {
-    const std::optional<std::vector<int64_t>> starts_shape = args.graph.GetValueInfo(inputs[1])->Shape();
+    const std::optional<std::vector<int64_t>> starts_shape = args.ctx.graph.GetValueInfo(inputs[1])->Shape();
     if (starts_shape == std::nullopt || starts_shape->size() != 1 || (*starts_shape)[0] < 0) {
       return false;
     }
@@ -1101,7 +1125,7 @@ static bool HandleSlice(HandlerArgs& args) {
       new_axes.push_back(args.perm[i]);
     }
     std::vector<int64_t> axes_shape { (int64_t)new_axes.size() };
-    std::string_view new_axes_const = args.graph.AddInitializerInt64(axes_shape, new_axes);
+    std::string_view new_axes_const = args.ctx.graph.AddInitializerInt64(axes_shape, new_axes);
     if (inputs.size() == 3) {
       args.node.AddInput(new_axes_const);
     } else {
@@ -1109,7 +1133,7 @@ static bool HandleSlice(HandlerArgs& args) {
     }
   } else {
     std::string_view axes_inp = inputs[3];
-    std::unique_ptr<api::Tensor> axes_const = args.graph.GetConstant(axes_inp);
+    std::unique_ptr<api::Tensor> axes_const = args.ctx.graph.GetConstant(axes_inp);
     if (axes_const == nullptr) {
       return false;
     }
@@ -1119,14 +1143,14 @@ static bool HandleSlice(HandlerArgs& args) {
     }
     new_axes = AxesForTransposedInput(axes, args.perm);
     std::vector<int64_t> axes_shape { (int64_t)new_axes.size() };
-    std::string_view new_axes_const = args.graph.AddInitializerInt64(axes_shape, new_axes);
+    std::string_view new_axes_const = args.ctx.graph.AddInitializerInt64(axes_shape, new_axes);
     args.node.SetInput(3, new_axes_const);
-    if (!args.graph.HasValueConsumers(axes_inp)) {
-      args.graph.RemoveInitializer(axes_inp);
+    if (!args.ctx.graph.HasValueConsumers(axes_inp)) {
+      args.ctx.graph.RemoveInitializer(axes_inp);
     }
   }
-  TransposeFirstInput(args.graph, args.node, args.perm_inv);
-  TransposeOutputs(args.graph, args.node, args.perm);
+  TransposeFirstInput(args.ctx, args.node, args.perm_inv);
+  TransposeOutputs(args.ctx, args.node, args.perm);
   return true;
 }
 
@@ -1136,29 +1160,29 @@ static bool HandleTile(HandlerArgs& args) {
   std::vector<int64_t> perm_shape {(int64_t)rank};
 
   std::string_view repeats_inp = args.node.Inputs()[1];
-  std::unique_ptr<api::Tensor> repeats_const = args.graph.GetConstant(repeats_inp);
+  std::unique_ptr<api::Tensor> repeats_const = args.ctx.graph.GetConstant(repeats_inp);
   if (repeats_const != nullptr) {
     const std::vector<int64_t>& repeats = repeats_const->DataInt64();
     std::vector<int64_t> new_repeats;
     for (int64_t p : args.perm_inv) {
       new_repeats.push_back(repeats[(size_t)p]);
     }
-    std::string_view new_repeats_const = args.graph.AddInitializerInt64(perm_shape, new_repeats);
+    std::string_view new_repeats_const = args.ctx.graph.AddInitializerInt64(perm_shape, new_repeats);
     args.node.SetInput(1, new_repeats_const);
-    if (!args.graph.HasValueConsumers(repeats_inp)) {
-      args.graph.RemoveInitializer(repeats_inp);
+    if (!args.ctx.graph.HasValueConsumers(repeats_inp)) {
+      args.ctx.graph.RemoveInitializer(repeats_inp);
     }
   } else {
-    std::string_view perm_inv_const = args.graph.AddInitializerInt64(perm_shape, args.perm_inv);
+    std::string_view perm_inv_const = args.ctx.graph.AddInitializerInt64(perm_shape, args.perm_inv);
     std::vector<std::string_view> gather_inputs {repeats_inp, perm_inv_const};
-    auto gather_node_ptr = args.graph.AddNode("Gather", gather_inputs);
+    auto gather_node_ptr = args.ctx.graph.AddNode("Gather", gather_inputs);
     api::Node& gather_node = *gather_node_ptr;
     std::string_view gather_output = gather_node.Outputs()[0];
-    args.graph.CopyValueInfo(repeats_inp, gather_output);
+    args.ctx.graph.CopyValueInfo(repeats_inp, gather_output);
     args.node.SetInput(1, gather_output);
   }
-  TransposeFirstInput(args.graph, args.node, args.perm_inv);
-  TransposeOutputs(args.graph, args.node, args.perm);
+  TransposeFirstInput(args.ctx, args.node, args.perm_inv);
+  TransposeOutputs(args.ctx, args.node, args.perm);
   return true;
 }
 
@@ -1174,13 +1198,13 @@ static bool HandleTranspose(HandlerArgs& args) {
   const std::string_view transpose_input = args.transpose.Inputs()[0];
   const std::string_view node_output = args.node.Outputs()[0];
   if (args.perm_inv == *node_perm) {
-    auto consumers = args.graph.GetValueConsumers(args.node.Outputs()[0]);
+    auto consumers = args.ctx.graph.GetValueConsumers(args.node.Outputs()[0]);
     if (consumers->comprehensive) {
       ReplaceValueReferences(consumers->nodes, node_output, transpose_input);
     }
     else {
-      auto transpose_inp_consumers = args.graph.GetValueConsumers(transpose_input);
-      std::unique_ptr<api::Node> transpose_inp_node = args.graph.GetNodeProducingOutput(transpose_input);
+      auto transpose_inp_consumers = args.ctx.graph.GetValueConsumers(transpose_input);
+      std::unique_ptr<api::Node> transpose_inp_node = args.ctx.graph.GetNodeProducingOutput(transpose_input);
       if (transpose_inp_node != nullptr && transpose_inp_consumers->comprehensive) {
         args.node.SetInput(0, "");
         ReplaceValueReferences(transpose_inp_consumers->nodes, transpose_input, node_output);
@@ -1189,23 +1213,23 @@ static bool HandleTranspose(HandlerArgs& args) {
         for (i = 0; i < transpose_inp_outputs.size(); ++i) {
           if (transpose_inp_outputs[i] == transpose_input) break;
         }
-        args.graph.MoveOutput(args.node, 0, *transpose_inp_node, i);
+        args.ctx.graph.MoveOutput(args.node, 0, *transpose_inp_node, i);
       } else {
         std::vector<std::string_view> single_empty_input {""};
-        auto identity_ptr = args.graph.AddNode("Identity", single_empty_input);
+        auto identity_ptr = args.ctx.graph.AddNode("Identity", single_empty_input);
         api::Node& identity = *identity_ptr;
-        args.graph.MoveOutput(args.node, 0, identity, 0);
+        args.ctx.graph.MoveOutput(args.node, 0, identity, 0);
         identity.SetInput(0, transpose_input);
       }
     }
-    args.graph.RemoveNode(args.node);
+    args.ctx.graph.RemoveNode(args.node);
   } else {
     std::vector<int64_t> new_perm = ComposePerm(args.perm, *node_perm);
     args.node.SetAttributeInts("perm", new_perm);
     args.node.SetInput(0, transpose_input);
   }
-  if (!args.graph.HasValueConsumers(args.transpose.Outputs()[0])) {
-    args.graph.RemoveNode(args.transpose);
+  if (!args.ctx.graph.HasValueConsumers(args.transpose.Outputs()[0])) {
+    args.ctx.graph.RemoveNode(args.transpose);
   }
   return true;
 }
@@ -1218,7 +1242,7 @@ static bool HandleQLinearConcat(HandlerArgs& args) {
   for (size_t i = 2; i < num_inputs; i += 3) {
     indices.push_back(i);
   }
-  if (EstimateTransposeInputsCost(args.graph, args.node, args.perm, &indices) >= 0) {
+  if (!args.ctx.skip_cost_check && EstimateTransposeInputsCost(args.ctx.graph, args.node, args.perm, &indices) >= 0) {
     return false;
   }
 
@@ -1233,14 +1257,14 @@ static bool HandleQLinearConcat(HandlerArgs& args) {
     return false;
   }
   args.node.SetAttributeInt("axis", args.perm[(size_t)*axis]);
-  TransposeInputs(args.graph, args.node, args.perm_inv, &indices);
-  TransposeOutputs(args.graph, args.node, args.perm);
+  TransposeInputs(args.ctx, args.node, args.perm_inv, &indices);
+  TransposeOutputs(args.ctx, args.node, args.perm);
   return true;
 }
 
 static bool HandleQLinearBinaryOp(HandlerArgs& args) {
   std::vector<size_t> indices { 0, 3 };
-  return HandleSimpleNodeBase(args, /*broadcast*/ true, &indices);
+  return HandleSimpleNodeBase(args, /*broadcast_inputs*/ true, &indices);
 }
 
 static bool HandleQLinearPoolOp(HandlerArgs& args) {
@@ -1252,8 +1276,8 @@ static bool HandleQLinearPoolOp(HandlerArgs& args) {
   auto p = ChannelLastToFirstPerm(rank);
   if ((!channels_last && args.perm == p) || (channels_last && args.perm_inv == p)) {
     args.node.SetAttributeInt("channels_last", 1 - channels_last);
-    TransposeFirstInput(args.graph, args.node, args.perm_inv);
-    TransposeOutputs(args.graph, args.node, args.perm);
+    TransposeFirstInput(args.ctx, args.node, args.perm_inv);
+    TransposeOutputs(args.ctx, args.node, args.perm);
     return true;
   }
   return false;
@@ -1269,13 +1293,13 @@ static bool HandleMaxPool(HandlerArgs& args) {
     return false;
   }
   auto inputs = args.node.Inputs();
-  std::shared_ptr<api::Node> new_node = args.graph.AddNode("NhwcMaxPool", inputs, /*num_outputs*/ 1, "com.microsoft");
+  std::shared_ptr<api::Node> new_node = args.ctx.graph.AddNode("NhwcMaxPool", inputs, /*num_outputs*/ 1, "com.microsoft");
   new_node->CopyAttributes(args.node);
   new_node->ClearAttribute("storage_order");
-  args.graph.MoveOutput(args.node, 0, *new_node, 0);
-  args.graph.RemoveNode(args.node);
-  TransposeFirstInput(args.graph, *new_node, args.perm_inv);
-  TransposeOutputs(args.graph, *new_node, args.perm);
+  args.ctx.graph.MoveOutput(args.node, 0, *new_node, 0);
+  args.ctx.graph.RemoveNode(args.node);
+  TransposeFirstInput(args.ctx, *new_node, args.perm_inv);
+  TransposeOutputs(args.ctx, *new_node, args.perm);
   return true;
 }
 
@@ -1368,21 +1392,23 @@ static HandlerFunction* GetHandler(api::Node& node, bool allow_extended_ops) {
   return nullptr;
 }
 
-bool ProcessTranspose(HandlerArgs& args, bool allow_extended_ops) {
-  if (!CanLikelyRemoveTranspose(args.graph, args.transpose) && !args.node.IsOp("Transpose")) {
+bool ProcessTranspose(HandlerArgs& args) {
+  if (!args.ctx.skip_cost_check &&
+      !CanLikelyRemoveTranspose(args.ctx.graph, args.transpose) &&
+      !args.node.IsOp("Transpose")) {
     return false;
   }
-  HandlerFunction* fn = GetHandler(args.node, allow_extended_ops);
+  HandlerFunction* fn = GetHandler(args.node, args.ctx.allow_extended_ops);
   if (fn == nullptr) {
     return false;
   }
   return fn(args);
 }
 
-bool Optimize(api::Graph& graph, bool allow_extended_ops) {
+std::optional<OptimizerCtx> MakeOptimizerContext(api::Graph& graph, bool allow_extended_ops) {
   auto opset = graph.Opset();
   if (opset == std::nullopt || *opset > kMaxSupportedOpset || *opset < kMinSupportedOpset) {
-    return false;
+    return std::nullopt;
   }
   if (allow_extended_ops) {
     auto ms_opset = graph.Opset("com.microsoft");
@@ -1390,7 +1416,13 @@ bool Optimize(api::Graph& graph, bool allow_extended_ops) {
       allow_extended_ops = false;
     }
   }
-  const std::vector<std::unique_ptr<api::Node>> nodes = graph.Nodes();
+  OptimizerCtx ctx{*opset, graph, allow_extended_ops, /*skip_cost_check*/ false};
+  return ctx;
+}
+
+bool OptimizeImpl(OptimizerCtx& ctx) {
+  
+  const std::vector<std::unique_ptr<api::Node>> nodes = ctx.graph.Nodes();
   bool changed = false;
   for (size_t i = 0; i < nodes.size(); ++i) {
     api::Node& node = *nodes[i];
@@ -1400,13 +1432,13 @@ bool Optimize(api::Graph& graph, bool allow_extended_ops) {
       if (inp == "") {
         continue;
       }
-      std::unique_ptr<api::Node> transpose = graph.GetNodeProducingOutput(inp);
+      std::unique_ptr<api::Node> transpose = ctx.graph.GetNodeProducingOutput(inp);
       if (transpose != nullptr && transpose->IsOp("Transpose")) {
         std::optional<std::vector<int64_t>> perm = transpose->GetAttributeInts("perm");
         if (perm != std::nullopt) {
           std::vector<int64_t> perm_inv = InvertPerm(*perm);
-          HandlerArgs ctx = { *opset, graph, *transpose, node, *perm, perm_inv, j, false };
-          if (ProcessTranspose(ctx, allow_extended_ops)) {
+          HandlerArgs args = {ctx, *transpose, node, *perm, perm_inv, j};
+          if (ProcessTranspose(args)) {
             changed = true;
             break;
           }
@@ -1417,7 +1449,20 @@ bool Optimize(api::Graph& graph, bool allow_extended_ops) {
   return changed;
 }
 
-static bool ChangeLayout(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler*>& layout_handler_map, bool last_to_first, bool allow_extended_ops) {
+bool Optimize(api::Graph& graph, bool allow_extended_ops) {
+  auto ctx = MakeOptimizerContext(graph, allow_extended_ops);
+  if (ctx == std::nullopt) {
+    return false;
+  }
+  return OptimizeImpl(*ctx);
+}
+
+static bool ChangeLayout(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler*>& layout_handler_map,
+                         bool last_to_first, bool allow_extended_ops) {
+  auto ctx = MakeOptimizerContext(graph, allow_extended_ops);
+  if (ctx == std::nullopt) {
+    return false;
+  }
   const std::vector<std::unique_ptr<api::Node>> nodes = graph.Nodes();
   bool changed = false;
   for (size_t i = 0; i < nodes.size(); ++i) {
@@ -1461,8 +1506,8 @@ static bool ChangeLayout(api::Graph& graph, std::unordered_map<std::string_view,
       if (last_to_first) {
         std::swap(perm, perm_inv);
       }
-      TransposeFirstInput(graph, *node, perm_inv);
-      TransposeOutputs(graph, *node, perm);
+      TransposeFirstInput(*ctx, *node, perm_inv);
+      TransposeOutputs(*ctx, *node, perm);
       changed = true;
     }
   }
