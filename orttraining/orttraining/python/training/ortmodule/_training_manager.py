@@ -49,12 +49,7 @@ class TrainingManager(GraphExecutionManager):
         forward_inputs.reserve(len(inputs))
         for input in inputs:
             dlp = _utils._torch_tensor_to_dlpack(input)
-            try:
-                forward_inputs.push_back(dlp, input.dtype == torch.bool)
-            except RuntimeError as e:
-                # This may happen when sparse is used.
-                raise ORTModuleIOError(
-                    "Unable to store a vector into OrtValueVector instance (%r)." % e)
+            forward_inputs.push_back(dlp, input.dtype == torch.bool)
 
         forward_outputs = C.OrtValueVector()
         # Run and return module outputs.

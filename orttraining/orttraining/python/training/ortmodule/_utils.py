@@ -52,6 +52,9 @@ def _torch_tensor_to_dlpack(tensor):
         # We need to convert bool tensor to unit8 tensor to workaround this.
         # DLPack is discussing how to support bool type, we can remove this workaround once both DLPack
         # and PyTorch support bool type.
+        if not tensor.is_contiguous():
+            raise ORTModuleIOError(
+                "ONly contiguous tensors are supported.")
         if tensor.dtype == torch.bool and LooseVersion(torch.__version__) >= LooseVersion('1.10.0'):
             tensor = tensor.to(torch.uint8)
         return to_dlpack(tensor)
