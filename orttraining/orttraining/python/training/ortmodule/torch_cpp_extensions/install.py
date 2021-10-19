@@ -48,8 +48,8 @@ def build_torch_cpp_extensions():
     os.chdir(ORTMODULE_TORCH_CPP_DIR)
 
     # Extensions might leverage CUDA/ROCM versions internally
-    os.environ["ONNXRUNTIME_CUDA_VERSION"] = ONNXRUNTIME_CUDA_VERSION
-    os.environ["ONNXRUNTIME_ROCM_VERSION"] = ONNXRUNTIME_ROCM_VERSION
+    os.environ["ONNXRUNTIME_CUDA_VERSION"] = ONNXRUNTIME_CUDA_VERSION if not ONNXRUNTIME_CUDA_VERSION is None else ''
+    os.environ["ONNXRUNTIME_ROCM_VERSION"] = ONNXRUNTIME_ROCM_VERSION if not ONNXRUNTIME_ROCM_VERSION is None else ''
 
     ############################################################################
     # Pytorch CPP Extensions that DO require CUDA/ROCM
