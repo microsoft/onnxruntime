@@ -52,7 +52,6 @@ if (onnxruntime_ENABLE_TRAINING)
 endif()
 
 if (onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH)
-  message(DEBUG!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!Transformers)
   list(APPEND onnxruntime_optimizer_src_patterns
     "${onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH}/*.cc"
     "${onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH}/*.cpp"

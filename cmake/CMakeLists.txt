@@ -335,7 +335,6 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
 endif()
 
 if (onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH)
-  message(DEBUG!!!!!!!!!!!!!!!!!!!!!!)
   add_definitions(-DORT_TRAINING_EXTERNAL_GRAPH_TRANSFORMERS=1)
 endif()
 
