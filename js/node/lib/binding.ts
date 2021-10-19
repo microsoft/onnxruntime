@@ -21,8 +21,8 @@
  */
                       Binding {
                     InferenceSession {
-    loadModel(modelPath: string, options: SessionOptions): void;
-    loadModel(buffer: ArrayBuffer, byteOffset: number, byteLength: number, options: SessionOptions): void;
+    loadModel(modelPath: string, options: SessionOptions):    ;
+    loadModel(buffer: ArrayBuffer, byteOffset: number, byteLength: number, options: SessionOptions):    ;
 
              inputNames: string[];
              outputNames: string[];
@@ -38,6 +38,6 @@
 // export 
              binding =
     // eslint-disable-next-line typescript-eslint/no-require-imports, typescript-eslint/no-var-requires
-            (`../bin/napi-v3/${process.platform}/${process.arch}/onnxruntime_binding.node`) as
+            (`../bin/napi-v3/${process.platform}/${process.arch}/onnxruntime_binding.node`) 
     // eslint-disable-next-line typescript-eslint/naming-convention
     {InferenceSession: Binding.InferenceSessionConstructor};
