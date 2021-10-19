@@ -14,7 +14,6 @@ from ._graph_execution_manager import (GraphExecutionManager,
 from ._execution_agent import TrainingAgent
 from .debug_options import DebugOptions
 from ._fallback import (ORTModuleFallbackException,
-                        ORTModuleIOError,
                         _FallbackPolicy,
                         _FallbackManager)
 
