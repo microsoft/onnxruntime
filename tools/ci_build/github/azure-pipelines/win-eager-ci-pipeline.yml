@@ -1,0 +1,162 @@
+parameters:
+- name: RunOnnxRuntimeTests
+  displayName: Run Tests?
+  type: boolean
+  default: true
+
+jobs:
+- job: 'build'
+  pool: 'Win-CPU-2019'
+  strategy:
+    matrix:
+      x64_debug:
+        BuildConfig: 'Debug'
+        UseOmp: '--use_openmp'
+        EnvSetupScript: setup_env_eager.bat
+        buildArch: x64
+        additionalBuildFlags: --use_dnnl --build_java --build_nodejs
+        msbuildPlatform: x64
+        isX86: false
+      x64_release:
+        BuildConfig: 'RelWithDebInfo'
+        UseOmp: ''
+        EnvSetupScript: setup_env_eager.bat
+        buildArch: x64
+        additionalBuildFlags: --use_dnnl --build_java --build_nodejs
+        msbuildPlatform: x64
+        isX86: false
+      x86_release:
+        BuildConfig: 'RelWithDebInfo'
+        UseOmp: ''
+        EnvSetupScript: setup_env_x86.bat
+        buildArch: x86
+        additionalBuildFlags:
+        msbuildPlatform: Win32
+        isX86: true
+  variables:
+    OrtPackageId: 'Microsoft.ML.OnnxRuntime'
+    MsbuildArguments: '-maxcpucount'
+    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true    
+    setVcvars: true
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  steps:
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.8'
+      addToPath: true
+      architecture: $(buildArch)
+
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '12.x'
+      force32bit: $(isX86)
+
+  - task: JavaToolInstaller@0
+    #Our build machine doesn't have java x86
+    condition: and(succeeded(), eq(variables['buildArch'], 'x64'))
+    inputs:
+      versionSpec: '11'
+      jdkArchitectureOption: $(buildArch)
+      jdkSourceOption: 'PreInstalled'
+
+  - task: BatchScript@1
+    displayName: 'setup env'
+    inputs:
+      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+      modifyEnvironment: true
+      workingFolder: '$(Build.BinariesDirectory)'
+
+  - script: |
+     set ORT_DOXY_SRC=$(Build.SourcesDirectory)
+     set ORT_DOXY_OUT=$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)
+     mkdir %ORT_DOXY_SRC% 
+     mkdir %ORT_DOXY_OUT%
+     "C:\Program Files\doxygen\bin\doxygen.exe" $(Build.SourcesDirectory)\tools\ci_build\github\Doxyfile_csharp.cfg
+     
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'API Documentation Check and generate'
+
+  - script: |
+     python -m pip install -q setuptools wheel numpy
+     python -m pip install -q ninja cmake typing_extensions
+     python -m pip install Cerberus dataclasses pandas protobuf scikit-learn scipy tqdm 
+     python -m pip install --pre torch torchvision torchaudio -f https://download.pytorch.org/whl/nightly/cpu/torch_nightly.html
+     python -c "import torch; import sys; print(sys.path); print(torch.__file__); import ctypes; print(ctypes.WinDLL('c10.dll'))"
+     python -c "import ctypes; print(ctypes.WinDLL('c10.dll'))"
+     python -m pip list
+    workingDirectory: '$(Build.BinariesDirectory)'
+    displayName: 'Install python modules'
+  
+  - task: BatchScript@1
+    displayName: 'setup env 2'
+    inputs:
+      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+      modifyEnvironment: true
+      workingFolder: '$(Build.BinariesDirectory)'
+
+  - script: |
+     python -c "import torch; import sys; print(sys.path); print(torch.__file__)"
+     python -m pip list
+    workingDirectory: '$(Build.BinariesDirectory)'
+    displayName: 'Check python modules'
+
+  - task: PythonScript@0
+    displayName: 'Generate cmake config'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --build_eager_mode --enable_training --enable_pybind'
+      workingDirectory: '$(Build.BinariesDirectory)'
+
+  - task: VSBuild@1
+    displayName: 'Build'
+    inputs:
+      solution: '$(Build.BinariesDirectory)\$(BuildConfig)\onnxruntime.sln'
+      platform: $(msbuildPlatform)
+      configuration: $(BuildConfig)
+      msbuildArgs: $(MsbuildArguments)
+      msbuildArchitecture: $(buildArch)
+      maximumCpuCount: true
+      logProjectEvents: false
+      workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
+      createLogFile: true
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Restore nuget packages'
+    inputs:
+      command: restore
+      projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      configuration: '$(BuildConfig)'
+      arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OrtPackageId=$(OrtPackageId)'
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+  - task: DeleteFiles@1
+    displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
+    condition: and(succeeded(), eq(variables['BuildConfig'], 'RelWithDebInfo'))
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+      Contents: |
+       **/*.obj
+       **/*.pdb
+       **/*.dll
+
+  - task: PostAnalysis@2
+    displayName: 'Guardian Break'
+    condition: and(succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['BuildConfig'], 'RelWithDebInfo')))
+    inputs:
+      GdnBreakGdnToolSDLNativeRulesSeverity: Warning
+
+  - task: PublishTestResults@2
+    displayName: 'Publish unit test results'
+    inputs:
+      testResultsFiles: '**/*.results.xml'
+      searchFolder: '$(Build.BinariesDirectory)/$(BuildConfig)'
+      testRunTitle: 'Unit Test Run'
+    condition: succeededOrFailed()
+
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
