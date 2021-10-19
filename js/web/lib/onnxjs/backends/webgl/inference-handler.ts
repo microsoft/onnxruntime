@@ -239,6 +239,12 @@ export class WebGLInferenceHandler implements InferenceHandler {
     return outputTensor;
   }
 
+  cast(input: Tensor, type: Tensor.DataType): Tensor {
+    const inputTD = this.getOrCreateTextureData(input, TextureType.unpacked);
+    const newTextureData = this.createTextureDataFromTexture(inputTD as TextureLayout, type, inputTD.texture);
+    return newTextureData.tensor;
+  }
+
   private createTextureDataFromTexture(
       layout: TextureLayout, dataType: Tensor.DataType, texture: WebGLTexture, tensor?: Tensor, tensorId?: Tensor.Id) {
     const textureData: TextureData = {

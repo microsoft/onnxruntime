@@ -72,7 +72,7 @@ template <>
 __device__ __inline__ double _Round(double a) { return rint(a); }
 
 template <>
-__device__ __inline__ half _Round(half a) { 
+__device__ __inline__ half _Round(half a) {
   return hrint(a);
 }
 
@@ -86,7 +86,9 @@ template <>
 __device__ __inline__ double _Cos(double a) { return cos(a); }
 
 template <>
-__device__ __inline__ half _Cos(half a) { return hcos(a); }
+__device__ __inline__ half _Cos(half a) {
+  return hcos(a);
+}
 
 template <typename T>
 __device__ __inline__ T _Sin(T a);
@@ -98,7 +100,9 @@ template <>
 __device__ __inline__ double _Sin(double a) { return sin(a); }
 
 template <>
-__device__ __inline__ half _Sin(half a) { return hsin(a); }
+__device__ __inline__ half _Sin(half a) {
+  return hsin(a);
+}
 
 template <typename T>
 __device__ __inline__ T _Exp(T a);
@@ -185,8 +189,7 @@ __device__ __inline__ T _Gelu(T a) {
   return a * _Normcdf(a);
 }
 
-
-// We would like to use 64-bit integer to support large matrices. However, HIP seems to support only 32-bit integer
+// We would like to use 64-bit integer to support large matrices. However, ROCM seems to support only 32-bit integer
 // For now, use int32_t to ensure that both Linux and Windows see this as 32 bit integer type.
 #ifndef HIP_LONG
 #define HIP_LONG int32_t
@@ -211,37 +214,36 @@ struct alignas(sizeof(T) * vec_size) aligned_vector {
   T val[vec_size];
 };
 
-#define CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N)          \
-  HIP_LONG id = blockDim.x * blockIdx.x + threadIdx.x;     \
-  if (id >= N)                                              \
+#define CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N)     \
+  HIP_LONG id = blockDim.x * blockIdx.x + threadIdx.x; \
+  if (id >= N)                                         \
     return;
 
+// HIP_KERNEL_ASSERT is a macro that wraps an assert() call inside rocm kernels.
+// TODO ROCM added support recently, should verify.
 #define HIP_KERNEL_ASSERT(...)
+//#define HIP_KERNEL_ASSERT(...) assert(__VA_ARGS__)
 
 // WARP related definitions and functions
 constexpr int GPU_WARP_SIZE = 64;
 
 template <typename T>
-__device__ __forceinline__ T WARP_SHFL(T value, int srcLane, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)
-{
+__device__ __forceinline__ T WARP_SHFL(T value, int srcLane, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
   return __shfl(value, srcLane, width);
 }
 
 template <typename T>
-__device__ __forceinline__ T WARP_SHFL_XOR(T value, int laneMask, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)
-{
+__device__ __forceinline__ T WARP_SHFL_XOR(T value, int laneMask, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
   return __shfl_xor(value, laneMask, width);
 }
 
 template <typename T>
-__device__ __forceinline__ T WARP_SHFL_UP(T value, unsigned int delta, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)
-{
+__device__ __forceinline__ T WARP_SHFL_UP(T value, unsigned int delta, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
   return __shfl_up(value, delta, width);
 }
 
 template <typename T>
-__device__ __forceinline__ T WARP_SHFL_DOWN(T value, unsigned int delta, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)
-{
+__device__ __forceinline__ T WARP_SHFL_DOWN(T value, unsigned int delta, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
   return __shfl_down(value, delta, width);
 }
 

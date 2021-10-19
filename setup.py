@@ -177,7 +177,7 @@ try:
                 self._rewrite_ld_preload(to_preload)
                 self._rewrite_ld_preload_cuda(to_preload_cuda)
             _bdist_wheel.run(self)
-            if is_manylinux:
+            if is_manylinux and not disable_auditwheel_repair:
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
                 logger.info('repairing %s for manylinux1', file)
                 try:
@@ -292,6 +292,7 @@ requirements_file = "requirements.txt"
 
 local_version = None
 enable_training = parse_arg_remove_boolean(sys.argv, '--enable_training')
+disable_auditwheel_repair = parse_arg_remove_boolean(sys.argv, '--disable_auditwheel_repair')
 default_training_package_device = parse_arg_remove_boolean(sys.argv, '--default_training_package_device')
 
 package_data = {}
