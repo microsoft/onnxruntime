@@ -18,6 +18,7 @@
 
 #include "multi_tensor_apply.cuh"
 #include "type_shim.h"
+#include <cmath>
 
 #define BLOCK_SIZE 512
 #define ILP 4
@@ -36,21 +37,13 @@ struct AdamFunctor {
                                                TensorListMetadata<4>& tl,
                                                const float beta1,
                                                const float beta2,
-                                               const float beta1_correction,
-                                               const float beta2_correction,
                                                const float epsilon,
                                                const float lr,
+                                               const float lr_corrected,
                                                adamMode_t mode,
                                                const float decay)
     {
-        // I'd like this kernel to propagate infs/nans.
-        // if(*noop_gmem == 1)
-        //   return;
-
         int tensor_loc = tl.block_to_tensor[blockIdx.x];
-
-        // potentially use to pass in list of scalar
-        // int tensor_num = tl.start_tensor_this_launch + tensor_loc;
 
         int chunk_idx = tl.block_to_chunk[blockIdx.x];
         int n = tl.sizes[tensor_loc];
@@ -96,19 +89,15 @@ struct AdamFunctor {
                     r_g[ii] = r_g[ii] + (decay * r_p[ii]);
                     r_m[ii] = beta1 * r_m[ii] + (1 - beta1) * r_g[ii];
                     r_v[ii] = beta2 * r_v[ii] + (1 - beta2) * r_g[ii] * r_g[ii];
-                    MATH_T next_m_unbiased = r_m[ii] / beta1_correction;
-                    MATH_T next_v_unbiased = r_v[ii] / beta2_correction;
-                    MATH_T denom = sqrtf(next_v_unbiased) + epsilon;
-                    MATH_T update = next_m_unbiased / denom;
-                    r_p[ii] = r_p[ii] - (lr * update);
+                    MATH_T denom = sqrtf(r_v[ii]) + epsilon;
+                    r_p[ii] = r_p[ii] - (lr_corrected * r_m[ii] / denom);
                 } else {  // weight decay
+                    // Adapted to be mathematically equivalent to transformers AdamW
                     r_m[ii] = beta1 * r_m[ii] + (1 - beta1) * r_g[ii];
                     r_v[ii] = beta2 * r_v[ii] + (1 - beta2) * r_g[ii] * r_g[ii];
-                    MATH_T next_m_unbiased = r_m[ii] / beta1_correction;
-                    MATH_T next_v_unbiased = r_v[ii] / beta2_correction;
-                    MATH_T denom = sqrtf(next_v_unbiased) + epsilon;
-                    MATH_T update = (next_m_unbiased / denom) + (decay * r_p[ii]);
-                    r_p[ii] = r_p[ii] - (lr * update);
+                    MATH_T denom = sqrtf(r_v[ii]) + epsilon;
+                    r_p[ii] = r_p[ii] - (lr_corrected * r_m[ii] / denom);
+                    r_p[ii] = r_p[ii] - (lr * decay * r_p[ii]);
                 }
             }
 #pragma unroll
@@ -139,10 +128,12 @@ void multi_tensor_adam_cuda(int chunk_size,
     using namespace at;
 
     // Handle bias correction mode
-    float bias_correction1 = 1.0f, bias_correction2 = 1.0f;
+    double bias_correction1 = 1.0, bias_correction2 = 1.0;
+    float lr_corrected = lr;
     if (bias_correction == 1) {
         bias_correction1 = 1 - std::pow(beta1, step);
         bias_correction2 = 1 - std::pow(beta2, step);
+        lr_corrected *= std::sqrt(bias_correction2) / bias_correction1;
     }
 
     // Assume single type across p,g,m1,m2 now
@@ -156,10 +147,9 @@ void multi_tensor_adam_cuda(int chunk_size,
                                                          AdamFunctor<scalar_t_0>(),
                                                          beta1,
                                                          beta2,
-                                                         bias_correction1,
-                                                         bias_correction2,
                                                          epsilon,
                                                          lr,
+                                                         lr_corrected,
                                                          (adamMode_t)mode,
                                                          weight_decay);)
 
