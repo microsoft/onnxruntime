@@ -565,6 +565,10 @@ def parse_arguments():
         "--enable_external_custom_op_schemas", action='store_true',
         help="Enable registering user defined custom operation schemas at shared library load time.\
               This feature is only supported/available on Ubuntu.")
+    
+    parser.add_argument(
+        "--external_graph_transformer_path", type=str,
+        help="path to the external graph transformer dir.")
 
     return parser.parse_args()
 
@@ -818,6 +822,10 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS=" + ("ON" if args.enable_external_custom_op_schemas
                                                               else "OFF"),
     ]
+    if args.external_graph_transformer_path:
+        import pdb
+        pdb.set_trace()
+        cmake_args.append("-Donnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH=" + args.external_graph_transformer_path)
     # It should be default ON in CI build pipelines, and OFF in packaging pipelines.
     # And OFF for the people who are not actively developing onnx runtime.
     add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_DEV_MODE", use_dev_mode(args))

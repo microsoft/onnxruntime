@@ -172,6 +172,9 @@ set(ONNX_CUSTOM_PROTOC_EXECUTABLE "" CACHE STRING "Specify custom protoc executa
 # pre-build python path
 option(onnxruntime_PREBUILT_PYTORCH_PATH "Path to pytorch installation dir")
 
+# external transformer src path
+option(onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH "Path to external transformer src dir")
+
 if(APPLE)
     if(NOT CMAKE_OSX_ARCHITECTURES)
         message("Building ONNX Runtime for ${CMAKE_HOST_SYSTEM_PROCESSOR}")
@@ -331,7 +334,10 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
   endif()
 endif()
 
-add_definitions(-DORT_TRAINING_EXTERNAL_GRAPH_TRANSFORMERS=1)
+if (onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH)
+  message(DEBUG!!!!!!!!!!!!!!!!!!!!!!)
+  add_definitions(-DORT_TRAINING_EXTERNAL_GRAPH_TRANSFORMERS=1)
+endif()
 
 # ORT build with as much excluded as possible. Supports ORT flatbuffers models only.
 if (onnxruntime_MINIMAL_BUILD)
