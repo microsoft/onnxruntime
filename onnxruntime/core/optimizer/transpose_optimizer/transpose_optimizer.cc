@@ -1563,7 +1563,7 @@ bool ProcessTranspose(HandlerArgs& args, std::unordered_set<std::string>& output
     return false;
   }
   auto input_indices = info->transposible_inputs_fn(args.ctx, args.node);
-  if (!args.ctx.skip_cost_check && !args.node.IsOp("Transpose")) {
+  if (!args.ctx.skip_cost_check && !args.node.IsOp("Transpose") && !args.node.IsOp("MaxPool")) {
     int cost = EstimateTransposeInputsCost(args.ctx.graph, args.node, args.perm, &input_indices);
     if (cost < 0 && info->transpose_outputs) {
       bool has_output_leading_to_transpose = false;
