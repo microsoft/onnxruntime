@@ -262,9 +262,8 @@ void embedLayerNormalizationShapeInference(InferenceContext& ctx) {
   *mask_index_shape.add_dim() = input_ids_dims[0];
   updateOutputShape(ctx, 1, mask_index_shape);
 
-  // extra add output has the same shape as output[0] 
-  int64_t add_output_attr = getAttribute(ctx, "add_output", 0);
-  if (add_output_attr) {
+  // currently only one extra output so this works.
+  if (ctx.getNumOutputs() > 2) {
     updateOutputShape(ctx, 2, output_shape);
   }
 }
@@ -695,7 +694,6 @@ will be calculated.)DOC";
       .SinceVersion(1)
       .SetDoc(EmbedLayerNormalization_ver1_doc)
       .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultEmbedLayerNormEpsilon)
-      .Attr("add_output", "Boolean to indicates if the node outputs an extra add output", AttributeProto::INT, OPTIONAL_VALUE)
       .Input(0, "input_ids", "2D words IDs with shape (batch_size, sequence_length)", "T1")
       .Input(1, "segment_ids", "2D segment IDs with shape (batch_size, sequence_length)", "T1", OpSchema::Optional)
       .Input(2, "word_embedding", "2D with shape (,hidden_size)", "T")

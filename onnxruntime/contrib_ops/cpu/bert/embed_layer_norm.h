@@ -15,11 +15,9 @@ class EmbedLayerNormBase : public OpKernel {
 
  protected:
   float epsilon() const;
-  bool is_add_output() const;
 
  private:
   float epsilon_;
-  bool add_output_;
 };
 
 template <typename T>

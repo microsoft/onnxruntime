@@ -33,8 +33,7 @@ class OpData {
       float epsilon = kEpsilon,
       bool has_mask = true,
       bool has_segment = true,
-      const std::vector<float>& add_output_data = {},
-      bool has_add_output = false)
+      const std::vector<float>& add_output_data = {})
       : batch_size(batch_size)
       , sequence_size(sequence_size)
       , hidden_size(hidden_size)
@@ -52,7 +51,6 @@ class OpData {
       , has_mask(has_mask)
       , has_segment(has_segment)
       , add_output_data(add_output_data)
-      , has_add_output(has_add_output)
   {}
 
   const int batch_size;
@@ -72,7 +70,6 @@ class OpData {
   const bool has_mask = true;
   const bool has_segment = true;
   const std::vector<float> add_output_data;
-  const bool has_add_output = false;
 };
 
 inline OpData EmbedLayerNormBatch1() {
@@ -365,8 +362,7 @@ inline OpData EmbedLayerNormBatch_AddOutput() {
                 gamma_data, beta_data, output_data, mask_index_data, kEpsilon,
                 /*has_mask=*/true,
                 /*has_segment=*/false,
-                add_output_data,
-                /*has_add_output*/ true);
+                add_output_data);
 }
 }  // namespace embedlayernorm
 }  // namespace test

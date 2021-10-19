@@ -838,8 +838,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>add_output</tt> : int</dt>
-<dd>Boolean to indicates if the node outputs an extra add output</dd>
 <dt><tt>epsilon</tt> : float</dt>
 <dd>The epsilon value to use to avoid division by zero.</dd>
 </dl>

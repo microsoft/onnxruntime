@@ -12,7 +12,7 @@ namespace test {
 
 static void RunTest(const embedlayernorm::OpData& data,
                     bool use_float16 = false,
-                    bool add_output_attr = false) {
+                    bool add_output = false) {
   int min_cuda_architecture = use_float16 ? 530 : 0;
 
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
@@ -88,9 +88,6 @@ static void RunTest(const embedlayernorm::OpData& data,
                                  ToFloat16(data.beta_data),
                                  /*is_initializer=*/true);
       tester.AddAttribute("epsilon", data.epsilon);
-      if (add_output_attr) {
-        tester.AddAttribute<int64_t>("add_output", 1);
-      }
       if (data.has_mask) {
         tester.AddInput<int32_t>("mask", mask_dims, data.mask_data);
       }
@@ -115,9 +112,6 @@ static void RunTest(const embedlayernorm::OpData& data,
       tester.AddInput<float>("gamma", gamma_dims, data.gamma_data, /*is_initializer=*/true);
       tester.AddInput<float>("beta", beta_dims, data.beta_data, /*is_initializer=*/true);
       tester.AddAttribute("epsilon", data.epsilon);
-      if (add_output_attr) {
-        tester.AddAttribute<int64_t>("add_output", 1);
-      }
       if (data.has_mask) {
         tester.AddInput<int32_t>("mask", mask_dims, data.mask_data);
       }
@@ -125,7 +119,7 @@ static void RunTest(const embedlayernorm::OpData& data,
       tester.AddOutput<float>("output", output_dims, data.output_data);
     }
     tester.AddOutput<int32_t>("mask_index", mask_index_dims, data.mask_index_data);
-    if (add_output_attr) {
+    if (add_output) {
       std::vector<int64_t> add_output_dims = output_dims;
       if (use_float16) {
         tester.AddOutput<MLFloat16>("add_output", add_output_dims, ToFloat16(data.add_output_data));

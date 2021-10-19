@@ -349,14 +349,14 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                                                rtol=args.tolerance,
                                                atol=args.tolerance,
                                                model_class=args.model_class,
-                                               has_position_ids= use_padding,
+                                               has_position_ids=use_padding,
                                                has_attention_mask=use_padding,
                                                test_cases_per_run=args.test_cases,
                                                total_runs=args.test_runs,
                                                verbose=args.verbose,
                                                onnx_has_position_ids=onnx_position_ids)
 
-        print(str(parity_result))
+        logger.debug(f"Parity result:{parity_result}")
         latency = gpt2helper.test_performance(session,
                                               model,
                                               device,

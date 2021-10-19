@@ -5,7 +5,6 @@
 
 from typing import Dict, List, Tuple, Union
 from logging import getLogger
-from coloredlogs import check_style
 from onnx import helper, TensorProto, NodeProto
 from onnx_model import OnnxModel
 from fusion_base import Fusion
@@ -404,10 +403,6 @@ class FusionEmbedLayerNoMask(Fusion):
             if att.name == 'epsilon':
                 embed_node.attribute.extend([att])
 
-        if add_output:
-            embed_node.attribute.extend(
-                [helper.make_attribute("add_output", 1)])
-
         # Set default value to 1e-12 if no attribute is found.
         # OnnxRuntime 1.2.0 or older has no epsilon attribute. The optimized model can only work for 1.3.0 or later.
         if len(embed_node.attribute) == 0:
@@ -495,7 +490,6 @@ class FusionEmbedLayerNoMask(Fusion):
         # direct the output to another add too
         self.model.replace_input_of_all_nodes(layernorm.output[0], embed_node.output[0])
         if optional_add_output:
-            # TODO Vish embed_node optional name get by name instead of index.
             self.model.replace_input_of_all_nodes(add_output, embed_node.output[2])
 
         # remove input position_ids input from graph
