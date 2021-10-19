@@ -276,7 +276,6 @@ def generate_files(list, args):
         args.target_architecture == 'x64' or args.target_architecture == 'x86')
 
     is_windows_build = is_windows()
-    is_macos_build = is_macos()
 
     nuget_dependencies = {}
 
