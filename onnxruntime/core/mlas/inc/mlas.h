@@ -332,7 +332,6 @@ MlasGemm(
                   M, N, K, &DataParams, 1, ThreadPool);
 }
 
-
 /**
  * @brief Supply matrices data information to double precision gemm functions
  */
@@ -373,7 +372,6 @@ MlasGemmBatch(
     size_t BatchSize,
     MLAS_THREADPOOL* ThreadPool
     );
-
 
 /**
  * @brief  Double precision matrix/matrix multiply operation (DGEMM)
@@ -552,7 +550,6 @@ struct MLAS_GEMM_U8X8_DATA_PARAMS {
     const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor = nullptr;
 };
 
-
 void
 MLASCALL
 MlasGemm(
@@ -708,6 +705,59 @@ MlasConvDepthwise(
     size_t Channels,
     size_t OutputCount,
     size_t KernelSize
+    );
+
+//
+// Symmetric quantized integer convolution routines.
+//
+
+size_t
+MlasConvSymPackWSize(
+    size_t GroupCount,
+    size_t InputChannels,
+    size_t OutputChannels,
+    size_t KernelSize
+    );
+
+void
+MlasConvSymPackW(
+    size_t GroupCount,
+    size_t InputChannels,
+    size_t OutputChannels,
+    size_t KernelSize,
+    const int8_t* W,
+    int8_t* PackedW,
+    size_t PackedWSize
+    );
+
+int32_t
+MlasConvSymFixupInputZeroPoint(
+    uint8_t zero_point_value
+    );
+
+struct MLAS_CONV_SYM_PARAMS {
+    const uint8_t* InputDirect;
+    const uint8_t* const* InputIndirection;
+    const void* Filter;
+    uint8_t* Output;
+    size_t InputChannels;
+    size_t OutputChannels;
+    size_t OutputCount;
+    size_t KernelSize;
+    const int32_t* Bias;
+    const float* Scale;
+    bool PerChannelScale;
+    uint8_t OutputZeroPoint;
+};
+
+void
+MlasConvSym(
+    const MLAS_CONV_SYM_PARAMS& Params
+    );
+
+void
+MlasConvSymDepthwise(
+    const MLAS_CONV_SYM_PARAMS& Params
     );
 
 //
