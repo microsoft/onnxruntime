@@ -33,6 +33,7 @@ DnnlOpManager::DnnlOpManager() {
   dnnl_ops_map_.emplace(std::make_pair("Sigmoid", std::unique_ptr<DnnlNodeCapability>(new DnnlElementwiseCapability())));
   dnnl_ops_map_.emplace(std::make_pair("Softmax", std::unique_ptr<DnnlNodeCapability>(new DnnlSoftmaxNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("Softplus", std::unique_ptr<DnnlNodeCapability>(new DnnlElementwiseCapability())));
+  dnnl_ops_map_.emplace(std::make_pair("Squeeze", std::unique_ptr<DnnlNodeCapability>(new DnnlSqueezeNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("Sqrt", std::unique_ptr<DnnlNodeCapability>(new DnnlElementwiseCapability())));
   dnnl_ops_map_.emplace(std::make_pair("Sub", std::unique_ptr<DnnlNodeCapability>(new DnnlBinaryNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("Sum", std::unique_ptr<DnnlNodeCapability>(new DnnlSumNodeCapability())));

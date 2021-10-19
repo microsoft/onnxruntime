@@ -519,4 +519,24 @@ bool DnnlDynamicQuantizeLinearNodeCapability::Supported(const Node* node, const 
   return true;
 }
 
+
+// DnnlSqueezeCapability class
+//-------------------------------------
+bool DnnlSqueezeNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
+  if (!IsTypeSupported(node)) return false;
+  if (!IsDimensionSupported(node)) return false;
+  return true;
+}
+bool DnnlSqueezeNodeCapability::IsDimensionSupported(const Node* node) const {
+  // we don't support scalar output
+  auto node_out = node->OutputDefs()[0];
+  if (node_out->Exists() &&
+      node_out->Shape() != nullptr &&
+      node_out->Shape()->dim_size() == 0) {
+    return false;
+  }
+  return true;
+}
+
 }  // namespace onnxruntime

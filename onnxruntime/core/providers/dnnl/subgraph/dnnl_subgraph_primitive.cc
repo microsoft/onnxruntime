@@ -18,6 +18,7 @@
 #include "dnnl_reshape.h"
 #include "dnnl_softmax.h"
 #include "dnnl_softmaxgrad.h"
+#include "dnnl_squeeze.h"
 #include "dnnl_sum.h"
 #include "dnnl_transpose.h"
 
@@ -75,6 +76,8 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlReshape().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Softmax") {
       DnnlSoftmax().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Squeeze") {
+      DnnlSqueeze().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Sum") {
       DnnlSum().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Transpose") {
