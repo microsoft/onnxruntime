@@ -323,7 +323,7 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace('__ROCM_ARCH__', '__CUDA_ARCH__')  # semantically different meanings, cannot hipify
 
     # Deletions
-    s = s.replace('#include "device_atomic_functions.h"', '') # HIP atomics in main hip header already
+    s = s.replace('#include "device_atomic_functions.h"', '')  # HIP atomics in main hip header already
 
     do_write = True
     if os.path.exists(dst_file_path):
