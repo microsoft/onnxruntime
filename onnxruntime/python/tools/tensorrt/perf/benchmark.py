@@ -193,7 +193,8 @@ def get_max_memory(trtexec):
     pid = df['pid'].iloc[0]
     if trtexec: 
         pid = get_trtexec_pid(df, pid) 
-    
+    logger.info(pid) 
+    logger.info(df)
     mem_series = df.loc[df['pid'] == pid, ' used_gpu_memory [MiB]']
     max_mem = max(mem_series.str.replace(' MiB','').astype(int))
     return max_mem
