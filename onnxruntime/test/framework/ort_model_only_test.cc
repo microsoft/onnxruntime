@@ -44,11 +44,11 @@ static void RunOrtModel(const OrtModelTestInfo& test_info) {
   SessionOptions so;
   so.session_logid = test_info.logid;
   for (const auto& config : test_info.configs) {
-    so.config_options.AddConfigEntry(config.first.c_str(), config.second.c_str());
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(config.first.c_str(), config.second.c_str()));
   }
 
   if (test_info.disable_copy_ort_buffer) {
-    so.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseORTModelBytesDirectly, "1");
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseORTModelBytesDirectly, "1"));
   }
 
   std::vector<char> model_data;
@@ -229,7 +229,7 @@ static void SaveAndCompareModels(const std::string& onnx_file, const std::basic_
   so.session_logid = "SerializeToOrtFormat";
   so.optimized_model_filepath = ort_file;
   // not strictly necessary - type should be inferred from the filename
-  so.config_options.AddConfigEntry(kOrtSessionOptionsConfigSaveModelFormat, "ORT");
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigSaveModelFormat, "ORT"));
   InferenceSessionWrapper session_object{so, GetEnvironment()};
 
   // create .ort file during Initialize due to values in SessionOptions
@@ -240,7 +240,7 @@ static void SaveAndCompareModels(const std::string& onnx_file, const std::basic_
   so2.session_logid = "LoadOrtFormat";
   // not strictly necessary - type should be inferred from the filename, but to be sure we're testing what we
   // think we're testing set it.
-  so2.config_options.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT");
+  ASSERT_STATUS_OK(so2.config_options.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
 
   // load serialized version
   InferenceSessionWrapper session_object2{so2, GetEnvironment()};
@@ -414,7 +414,7 @@ TEST(OrtModelOnlyTests, LoadSparseInitializersOrtFormat) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/ort_minimal_test_models/sparse_initializer_handling.onnx.ort");
   SessionOptions so;
   so.session_logid = "LoadOrtFormat";
-  so.config_options.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT");
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
   InferenceSessionWrapper session_object{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object.Load(ort_file));
   ASSERT_STATUS_OK(session_object.Initialize());

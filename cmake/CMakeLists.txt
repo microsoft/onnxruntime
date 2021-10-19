@@ -149,6 +149,7 @@ option(onnxruntime_ENABLE_WEBASSEMBLY_THREADS "Enable this option to create WebA
 option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING "Enable this option to turn on exception catching" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_THROWING "Enable this option to turn on exception throwing even if the build disabled exceptions support" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO "Enable this option to turn on DWARF format debug info" OFF)
+option(onnxruntime_ENABLE_WEBASSEMBLY_PROFILING "Enable this option to turn on WebAssembly profiling and preserve function names" OFF)
 
 # Enable bitcode for iOS
 option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
@@ -1497,6 +1498,36 @@ if(onnxruntime_USE_OPENVINO)
 
   if(onnxruntime_USE_OPENVINO_VAD_F)
     add_definitions(-DOPENVINO_CONFIG_VAD_F=1)
+  endif()
+
+  if(onnxruntime_USE_OPENVINO_MYRIAD_NP)
+    add_definitions(-DOPENVINO_CONFIG_MYRIAD=1)
+    add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
+  endif()
+
+  if(onnxruntime_USE_OPENVINO_GPU_FP32_NP)
+    add_definitions(-DOPENVINO_CONFIG_GPU_FP32=1)
+    add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
+  endif()
+
+  if(onnxruntime_USE_OPENVINO_GPU_FP16_NP)
+    add_definitions(-DOPENVINO_CONFIG_GPU_FP16=1)
+    add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
+  endif()
+
+  if(onnxruntime_USE_OPENVINO_CPU_FP32_NP)
+    add_definitions(-DOPENVINO_CONFIG_CPU_FP32=1)
+    add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
+  endif()
+
+  if(onnxruntime_USE_OPENVINO_VAD_M_NP)
+    add_definitions(-DOPENVINO_CONFIG_VAD_M=1)
+    add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
+  endif()
+
+  if(onnxruntime_USE_OPENVINO_VAD_F_NP)
+    add_definitions(-DOPENVINO_CONFIG_VAD_F=1)
+    add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
   endif()
 
   if(onnxruntime_USE_OPENVINO_HETERO)
