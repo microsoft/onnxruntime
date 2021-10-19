@@ -558,7 +558,7 @@ and present state are optional. Present state could appear in output even when p
                 "or (batch_size, sequence_length, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).", "M", OpSchema::Optional)
       .Input(4, "past", "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).", "T", OpSchema::Optional)
       .Input(5, "extra_add", "additional add to QxK' with shape (batch_size, num_heads, sequence_length, sequence_length).", "T", OpSchema::Optional)
-      .Output(0, "output", "3D output tensor with shape (batch_size, append_length, hidden_size)", "T")
+      .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
       .Output(1, "present", "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)", "T", OpSchema::Optional)
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
       .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask index to integer types")

@@ -114,7 +114,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>3D output tensor with shape (batch_size, append_length, hidden_size)</dd>
+<dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
 <dt><tt>present</tt> (optional) : T</dt>
 <dd>present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)</dd>
 </dl>
