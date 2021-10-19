@@ -119,6 +119,7 @@ Return Value:
         mov     v27.16b,v26.16b
         mov     v29.16b,v28.16b
         mov     v31.16b,v30.16b
+        mov     w17, #128
 
 // Nested loops, inner loop: input channel; outter loop: kernel size
 // Each inner iteration processes 8 input channels, 2 output pixels, 8 output channels.
@@ -164,8 +165,13 @@ Return Value:
         blo     .LConvSym.8InputChannels     // less than 16 deep, no unroll
 
         ldp     d4,d5,[x1]
+        dup     v2.8b, w17
         ldp     d0,d6,[x13],16
+        eor     v0.8b, v0.8b, v2.8b
+        eor     v6.8b, v6.8b, v2.8b
         ldp     d1,d7,[x15],16
+        eor     v1.8b, v1.8b, v2.8b
+        eor     v7.8b, v7.8b, v2.8b
         ldp     d8,d9,[x1,64]
 
         subs    x14,x14,16              // input channel - 16
@@ -232,10 +238,15 @@ Return Value:
         SUBS    x14, x14, 16
         SMLAL   v14.8h, v9.8b, v6.8b
         LDP     d0, d6, [x13], 16       // Read A0
+        dup     v2.8b, w17
+        eor     v0.8b, v0.8b, v2.8b
+        eor     v6.8b, v6.8b, v2.8b
         SMLAL   v15.8h, v9.8b, v7.8b
 
         SADALP  v28.4s, v12.8h
         LDP     d1, d7, [x15], 16       // Read A1
+        eor     v1.8b, v1.8b, v2.8b
+        eor     v7.8b, v7.8b, v2.8b
         SADALP  v29.4s, v13.8h
         SADALP  v30.4s, v14.8h
         LDP     d8, d9, [x1, 64]        // Read B
@@ -318,7 +329,7 @@ Return Value:
 
 .LConvSym.BroadcastScaleValue:
         LD1R   {v4.4s},[x12]                // load scale Value
-        mov    v5.8b, v4.8b
+        mov    v5.16b, v4.16b
 
 .LConvSym.AccumulatorsToFloat:
         ADDP    v16.4s,v16.4s,v18.4s
@@ -378,8 +389,11 @@ Return Value:
 
 .LConvSym.8InputChannels:
         LDR     d0, [x13]
+        dup     v2.8b, w17
+        eor     v0.8b, v0.8b, v2.8b
         LDP     d4, d5, [x1]
         LDR     d1, [x15]
+        eor     v1.8b, v1.8b, v2.8b
         LDP     d6, d7, [x1, 16]
         SMULL   v2.8h, v4.8b, v0.8b
         SMULL   v3.8h, v4.8b, v1.8b

@@ -174,10 +174,10 @@ const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchArm64 = {
     nullptr,
     8,                                      // FilterInputChannelPackCount
     8,                                      // FilterOutputChannelPackCount
-    64,                                     // KernelChannelCount
+    8,                                      // KernelChannelCount
     2,                                      // KernelOutputCount
     1,                                      // KernelInputChannelAlignment
-    8,                                      // KernelOutputChannelAlignment
+    1,                                      // KernelOutputChannelAlignment
     64,                                     // KernelDepthwiseChannelCount
     6,                                      // KernelDepthwiseOutputCount
     true,                                   // FixupInputZeroPoint
@@ -231,6 +231,7 @@ MlasConvSymPackWSize(
     } else {
 
         size_t OutputChannelPackCount = ConvSymDispatch->FilterOutputChannelPackCount;
+        size_t InputChannelPackCount = ConvSymDispatch->FilterInputChannelPackCount;
 
         if (ConvSymDispatch->Kernel == nullptr ||
             OutputChannels < OutputChannelPackCount ||
@@ -241,7 +242,8 @@ MlasConvSymPackWSize(
         }
 
         size_t AlignedOutputChannels = (OutputChannels + OutputChannelPackCount - 1) / OutputChannelPackCount * OutputChannelPackCount;
-        return AlignedOutputChannels * InputChannels * KernelSize;
+        size_t AlignedInputChannels = (InputChannels + InputChannelPackCount - 1) / InputChannelPackCount * InputChannelPackCount;
+        return AlignedOutputChannels * AlignedInputChannels * KernelSize;
     }
 }
 
