@@ -11,9 +11,11 @@ namespace eager {
 
 struct ORTGuardImpl final : public c10::impl::DeviceGuardImplInterface {
   ORTGuardImpl() {
+    ORT_LOG_FN();
   }
 
   explicit ORTGuardImpl(at::DeviceType t) {
+    ORT_LOG_FN(t);
     AT_ASSERT(t == at::DeviceType::ORT);
   }
 
