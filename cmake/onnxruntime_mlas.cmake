@@ -10,6 +10,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/qgemm.cpp
   ${MLAS_SRC_DIR}/qdwconv.cpp
   ${MLAS_SRC_DIR}/convolve.cpp
+  ${MLAS_SRC_DIR}/convsym.cpp
   ${MLAS_SRC_DIR}/pooling.cpp
   ${MLAS_SRC_DIR}/transpose.cpp
   ${MLAS_SRC_DIR}/reorder.cpp
@@ -120,6 +121,8 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/amd64/QgemvU8S8KernelAvx512Core.asm
       ${MLAS_SRC_DIR}/amd64/QgemvU8S8KernelAvx512Vnni.asm
       ${MLAS_SRC_DIR}/amd64/QgemvU8S8KernelAvxVnni.asm
+      ${MLAS_SRC_DIR}/amd64/ConvSymKernelAvx2.asm
+      ${MLAS_SRC_DIR}/amd64/ConvSymKernelAvx512Core.asm
       ${MLAS_SRC_DIR}/amd64/DgemmKernelSse2.asm
       ${MLAS_SRC_DIR}/amd64/DgemmKernelAvx.asm
       ${MLAS_SRC_DIR}/amd64/DgemmKernelFma3.asm
@@ -384,6 +387,7 @@ else()
           ${MLAS_SRC_DIR}/x86_64/QgemmU8U8KernelAvx2.S
           ${MLAS_SRC_DIR}/x86_64/QgemvU8S8KernelAvxVnni.S
           ${MLAS_SRC_DIR}/x86_64/QgemmU8X8KernelAvx2.S
+          ${MLAS_SRC_DIR}/x86_64/ConvSymKernelAvx2.S
           ${MLAS_SRC_DIR}/x86_64/DgemmKernelFma3.S
           ${MLAS_SRC_DIR}/x86_64/SgemmKernelFma3.S
           ${MLAS_SRC_DIR}/x86_64/SconvKernelFma3.S
@@ -410,6 +414,7 @@ else()
           ${MLAS_SRC_DIR}/x86_64/QgemvU8S8KernelAvx512Core.S
           ${MLAS_SRC_DIR}/x86_64/QgemvU8S8KernelAvx512Vnni.S
           ${MLAS_SRC_DIR}/x86_64/QgemmU8X8KernelAvx512Core.S
+          ${MLAS_SRC_DIR}/x86_64/ConvSymKernelAvx512Core.S
         )
         set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES COMPILE_FLAGS "-mavx512bw -mavx512dq -mavx512vl")
 
