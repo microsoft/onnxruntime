@@ -83,7 +83,7 @@ jobs:
 
   steps:
 
-    - script: 'ps aux'
+    - script: 'nvidia-smi --query-compute-apps=pid,used_memory --format=csv -l 1'
 
     # - ${{ if eq(parameters.BuildORT, true) }}:
 
