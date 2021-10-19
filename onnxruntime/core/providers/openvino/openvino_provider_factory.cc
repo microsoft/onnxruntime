@@ -4,8 +4,6 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/openvino_provider_factory.h"
 #include "openvino_execution_provider.h"
-#include "openvino_gpu_allocator.h"
-#include "openvino_gpu_data_transfer.h"
 
 namespace onnxruntime {
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
@@ -49,12 +47,6 @@ struct ProviderInfo_OpenVINO_Impl : ProviderInfo_OpenVINO {
   std::vector<std::string> GetAvailableDevices() const override {
     InferenceEngine::Core ie_core;
     return ie_core.GetAvailableDevices();
-  }
-  std::unique_ptr<IAllocator> CreateOVGPUAllocator() const override {
-    return std::make_unique<onnxruntime::OpenVINOAllocator>();
-  }
-  std::unique_ptr<IDataTransfer> CreateOVGPUDataTransfer() const override {
-    return std::make_unique<onnxruntime::OVGPUDataTransfer>();
   }
 } g_info;
 

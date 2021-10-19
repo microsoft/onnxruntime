@@ -750,6 +750,7 @@ struct ProviderHost {
   virtual ptrdiff_t Tensor__ByteOffset(const Tensor* p) = 0;
   virtual size_t Tensor__SizeInBytes(const Tensor* p) = 0;
   virtual const OrtMemoryInfo& Tensor__Location(const Tensor* p) = 0;
+  virtual int8_t Tensor__DeviceType(const Tensor *p) = 0;
   virtual int32_t Tensor__GetElementType(const Tensor* p) = 0;
   virtual MLDataType Tensor__DataType(const Tensor* p) = 0;
 

@@ -1092,6 +1092,12 @@ inline T* CustomOpApi::GetTensorMutableData(_Inout_ OrtValue* value) {
   return data;
 }
 
+inline int8_t CustomOpApi::GetTensorDeviceType(_In_ const OrtValue* value) {
+  int8_t device_type;
+  ThrowOnError(api_.GetTensorDeviceType(value, &device_type)); 
+  return device_type;
+}
+
 template <typename T>
 inline const T* CustomOpApi::GetTensorData(_Inout_ const OrtValue* value) {
   return GetTensorMutableData<T>(const_cast<OrtValue*>(value));

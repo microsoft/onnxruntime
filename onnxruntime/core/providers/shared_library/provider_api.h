@@ -239,9 +239,7 @@ inline OrtStatus* CreateStatus(OrtErrorCode code, _In_ const char* msg) noexcept
 std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info);
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name);
 std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
-std::unique_ptr<IAllocator> CreateOVGPUAllocator();
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream);
-std::unique_ptr<IDataTransfer> CreateOVGPUDataTransfer();
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                    const std::string& provider_type,

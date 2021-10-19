@@ -257,14 +257,6 @@ std::unique_ptr<IDataTransfer> GetDataTransfer(const OrtDevice& src_device, cons
     }
   }
 #endif
-#ifdef USE_OPENVINO
-  if (src_device.Type() == OrtDevice::GPU || dst_device.Type() == OrtDevice::GPU) {
-    if (auto* provider_info = GetProviderInfo_OpenVINO()) {
-      std::cout << "I am here\n";
-      return provider_info->CreateOVGPUDataTransfer();
-    }
-  }
-#endif
   ORT_THROW("Not able to find appropriate IDataTransfer to copy sparse data");
 }
 
@@ -2092,6 +2084,14 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::GetTensorDeviceType, _In_ const OrtValue* value, _Out_ int8_t* out) {
+  TENSOR_READ_API_BEGIN
+  int8_t device_type = tensor.DeviceType();
+  *out = device_type;
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString,
@@ -2199,8 +2199,8 @@ static constexpr OrtApi ort_api_1_to_10 = {
     &OrtApis::CreateTensorWithDataAsOrtValue,
     &OrtApis::IsTensor,
     &OrtApis::GetTensorMutableData,
-    &OrtApis::FillStringTensor,
 
+    &OrtApis::FillStringTensor,
     &OrtApis::GetStringTensorDataLength,
     &OrtApis::GetStringTensorContent,
 
@@ -2366,6 +2366,7 @@ static constexpr OrtApi ort_api_1_to_10 = {
     // End of Version 9 - DO NOT MODIFY ABOVE (see above text for more information)
 
     // Version 10 - In development, feel free to add/remove/rearrange here
+    &OrtApis::GetTensorDeviceType
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
