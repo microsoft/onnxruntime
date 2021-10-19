@@ -17,6 +17,9 @@ class EmbedLayerNormalizationQuant(QuantOperatorBase):
         node = self.node
         assert (node.op_type == "EmbedLayerNormalization")
 
+        if len(node.output) > 2:
+            return super().quantize()
+
         '''
         Pre-quantization EmbedLayerNorm inputs:
         [0] input_ids (int32)
