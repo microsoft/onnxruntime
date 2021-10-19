@@ -1014,14 +1014,33 @@ bool DataOps::op_is_supported(std::string name, std::vector<SupportedOp>& op_lis
       if (op_list[i].version <= version_id_) {
         auto it = op_list[i].device_type.begin();
         while (it != op_list[i].device_type.end()) {
+          //status variable is set to True if it's Hetero/Multi device type
+          bool status = false;
+
           //if device supported is all then we support it
           if (*it == "All") {
             return true;
           }
 
+          if (device_id_.find("HETERO") == 0) {
+              status = true;
+              if (device_id_.find(*it) != std::string::npos) {
+                return true;
+              }
+          }
+
+          if (device_id_.find("MULTI") == 0) {
+              status = true;
+              if (device_id_.find(*it) == std::string::npos) {
+                return false;
+              }
+          }
+
           //check for device supported
-          if (device_id_.find(*it) != std::string::npos) {
-            return true;
+          if (status == false) {
+            if (device_id_.find(*it) != std::string::npos) {
+              return true;
+            }
           }
 
           it++;
