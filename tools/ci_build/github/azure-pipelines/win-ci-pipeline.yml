@@ -40,7 +40,7 @@ jobs:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true    
     setVcvars: true
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
-  timeoutInMinutes: 120
+  timeoutInMinutes: 180
   workspace:
     clean: all
   steps:
