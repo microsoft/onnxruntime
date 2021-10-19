@@ -99,6 +99,9 @@ set(onnxruntime_providers_src ${onnxruntime_providers_common_srcs} ${onnxruntime
 
 # disable contrib ops conditionally
 if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+  if(onnxruntime_DISABLE_SPARSE_TENSORS)
+    list(FILTER onnxruntime_cpu_contrib_ops_srcs EXCLUDE REGEX ".*/sparse/.*")
+  endif()
   # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
   source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cpu_contrib_ops_srcs})
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_contrib_ops_srcs})

@@ -1562,6 +1562,10 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     executables.append('onnxruntime_shared_lib_test.exe')
                     executables.append('onnxruntime_global_thread_pools_test.exe')
                     executables.append('onnxruntime_api_tests_without_env.exe')
+
+                if not args.disable_contrib_ops:
+                    executables.append('onnxruntime_sparse_tests.exe')
+
                 run_subprocess(
                     ['vstest.console.exe', '--parallel',
                      '--TestAdapterPath:..\\googletestadapter.0.17.1\\build\\_common',  # noqa
@@ -1575,6 +1579,10 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     executables.append('onnxruntime_shared_lib_test')
                     executables.append('onnxruntime_global_thread_pools_test')
                     executables.append('onnxruntime_api_tests_without_env')
+                    
+                if not args.disable_contrib_ops:
+                    executables.append('onnxruntime_sparse_tests')
+
                 for exe in executables:
                     run_subprocess([os.path.join(cwd, exe)], cwd=cwd, dll_path=dll_path)
 

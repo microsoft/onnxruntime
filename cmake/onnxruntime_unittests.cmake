@@ -265,9 +265,7 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
     list(APPEND onnxruntime_test_providers_src_patterns
       "${TEST_SRC_DIR}/contrib_ops/*.h"
-      "${TEST_SRC_DIR}/contrib_ops/*.cc"
-      "${TEST_SRC_DIR}/contrib_ops/math/*.h"
-      "${TEST_SRC_DIR}/contrib_ops/math/*.cc")
+      "${TEST_SRC_DIR}/contrib_ops/*.cc")
   endif()
 
 else()
@@ -667,6 +665,7 @@ AddTest(
     onnx_test_data_proto nlohmann_json::nlohmann_json
   DEPENDS ${all_dependencies}
 )
+
 if(NOT MSVC)
   target_compile_options(onnxruntime_test_all PRIVATE "-Wno-parentheses")
 endif()
@@ -698,6 +697,30 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " -s USE_PTHREADS=1 -s PROXY_TO_PTHREAD=1")
   endif()
+endif()
+
+if(NOT onnxruntime_DISABLE_CONTRIB_OPS AND NOT onnxruntime_DISABLE_SPARSE_TENSORS)
+
+  file(GLOB_RECURSE onnxruntime_sparse_tests_src 
+   "${TEST_SRC_DIR}/contrib_ops/sparse/*.h"
+   "${TEST_SRC_DIR}/contrib_ops/sparse/*.cc")
+
+  AddTest(
+    TARGET onnxruntime_sparse_tests
+    SOURCES 
+     ${onnxruntime_sparse_tests_src}
+    "${TEST_SRC_DIR}/providers/provider_test_utils.cc"
+    "${TEST_SRC_DIR}/providers/provider_test_utils.h"
+    "${TEST_SRC_DIR}/framework/test_utils.cc"
+    "${TEST_SRC_DIR}/framework/TestAllocatorManager.cc"
+    "${TEST_SRC_DIR}/framework/TestAllocatorManager.h"
+     ${onnxruntime_unittest_main_src}
+    LIBS
+      onnx_test_runner_common ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
+      onnx_test_data_proto onnxruntime_framework
+    DEPENDS ${all_dependencies}
+    )
+    set_target_properties(onnxruntime_sparse_tests PROPERTIES FOLDER "ONNXRuntimeTest")
 endif()
 
 set(test_data_target onnxruntime_test_all)
