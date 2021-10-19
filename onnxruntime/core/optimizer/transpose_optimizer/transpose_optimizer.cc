@@ -4,6 +4,7 @@
 #include <iostream>
 #include <algorithm>
 #include <unordered_map>
+#include <unordered_set>
 #include <gsl/gsl>
 
 #include "api.h"
@@ -28,6 +29,14 @@ struct HandlerArgs {
 };
 
 typedef bool HandlerFunction(HandlerArgs& args);
+
+typedef std::vector<size_t> TransposibleInputsFn(OptimizerCtx& ctx, api::Node& node);
+
+struct HandlerInfo {
+  TransposibleInputsFn* transposible_inputs_fn;
+  HandlerFunction* handler_fn;
+  bool transpose_outputs = true;
+};
 
 
 /////// <Helper Utils> ///////
@@ -570,7 +579,7 @@ static int EstimateValueRank(api::Graph& graph, const std::string_view input) {
   return rank;
 }
 
-static HandlerFunction* GetHandler(api::Node& node, bool allow_extended_ops);
+static const HandlerInfo* GetHandler(api::Node& node, bool allow_extended_ops);
 
 // Returns true if the provided transpose node is only consumed by nodes we can likely push it through.
 static bool CanLikelyRemoveTranspose(api::Graph& graph, api::Node& transpose) {
@@ -658,14 +667,47 @@ static bool HandleSimpleNodeBase(HandlerArgs& args, bool broadcast_inputs,
   return true;
 }
 
+// Transposes all inputs and all outputs
+static bool HandleSimpleNode(HandlerArgs& args) {
+  return HandleSimpleNodeBase(args, /*broadcast_inputs*/ false);
+}
+
+std::vector<size_t> AllInputs(OptimizerCtx& ctx, api::Node& node) {
+  (void)ctx;
+  (void)node;
+  std::vector<size_t> indices;
+  size_t num_inputs = node.Inputs().size();
+  for (size_t i = 0; i < num_inputs; ++i) {
+    indices.push_back(i);
+  }
+  return indices;
+}
+
+constexpr HandlerInfo simple_node_handler = {&AllInputs, &HandleSimpleNode};
+
 // Node with all inputs broadcastable
 static bool HandleSimpleNodeBroadcast(HandlerArgs& args) {
   return HandleSimpleNodeBase(args, /*broadcast_inputs*/ true);
 }
 
-// Transposes all inputs and all outputs
-static bool HandleSimpleNode(HandlerArgs& args) {
-  return HandleSimpleNodeBase(args, /*broadcast_inputs*/ false);
+std::vector<size_t> NonScalarInputs(OptimizerCtx& ctx, api::Node& node) {
+  auto inputs = node.Inputs();
+  std::vector<size_t> indices;
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    auto info = ctx.graph.GetValueInfo(inputs[i]);
+    if (info->Shape()->size() != 0) {
+      indices.push_back(i);
+    }
+  }
+  return indices;
+}
+
+constexpr HandlerInfo broadcast_node_handler = {&NonScalarInputs, &HandleSimpleNodeBroadcast};
+
+std::vector<size_t> FirstInput(OptimizerCtx& ctx, api::Node& node) {
+  (void)ctx;
+  (void)node;
+  return {0};
 }
 
 // Transposes 1st input and all outputs
@@ -674,6 +716,8 @@ static bool HandleSimpleNode1Inp(HandlerArgs& args) {
   std::vector<size_t> input_indices {0};
   return HandleSimpleNodeBase(args, /*broadcast_inputs*/ false, &input_indices);
 }
+
+constexpr HandlerInfo node_1_inp_handler = {&FirstInput, &HandleSimpleNode1Inp};
 
 // Transposes all inputs and all outputs. Updates axis attribute.
 static bool HandleSimpleNodeWithAxis(HandlerArgs& args, bool has_default, int64_t default_axis=0) {
@@ -701,9 +745,13 @@ static bool HandleSplit(HandlerArgs& args) {
   return HandleSimpleNodeWithAxis(args, /*has_default*/ true, /*default_axis*/ 0);
 }
 
+constexpr HandlerInfo split_handler = {&FirstInput, &HandleSplit};
+
 static bool HandleConcat(HandlerArgs& args) {
   return HandleSimpleNodeWithAxis(args, /*has_default*/ false);
 }
+
+constexpr HandlerInfo concat_handler = {&AllInputs, &HandleConcat};
 
 // Handles Softmax, Hardmax, and LogSoftmax
 static bool HandleSoftHardMax(HandlerArgs& args) {
@@ -732,8 +780,10 @@ static bool HandleSoftHardMax(HandlerArgs& args) {
   }
 
   // No need to update axis.
-  return HandleSimpleNode(args);
+  return HandleSimpleNode1Inp(args);
 }
+
+constexpr HandlerInfo soft_hard_max_handler = {&FirstInput, &HandleSoftHardMax};
 
 static bool HandleShape(HandlerArgs& args) {
   // Shape(Transpose(x, perm)) => Gather(Shape(x), perm)
@@ -788,6 +838,8 @@ static bool HandleShape(HandlerArgs& args) {
   }
   return true;
 }
+
+constexpr HandlerInfo shape_handler = {&FirstInput, &HandleShape, /*transpose_outputs*/ false};
 
 // Reorder pads according to perm. Pads length is twice perm length (all starts then all ends).
 static std::vector<int64_t> PermutePads(const std::vector<int64_t>& pads, const std::vector<int64_t>& perm) {
@@ -859,6 +911,8 @@ static bool HandlePad(HandlerArgs& args) {
   return true;
 }
 
+constexpr HandlerInfo pad_handler = {&FirstInput, &HandlePad};
+
 static bool HandleReduceOp(HandlerArgs& args) {
   if (args.transpose_input_index != 0) return false;
 
@@ -900,19 +954,21 @@ static bool HandleReduceOp(HandlerArgs& args) {
   return true;
 }
 
+constexpr HandlerInfo reduce_op_handler = {&FirstInput, &HandleReduceOp};
+
 static bool HandleReduceSum(HandlerArgs& args) {
   if (args.transpose_input_index != 0) return false;
-  // TODO: compress this impl
 
   if (args.ctx.opset < 13) {
     return HandleReduceOp(args);
   }
 
-  int64_t keepdims = args.node.GetAttributeIntDefault("keepdims", 1);
+  bool keepdims = args.node.GetAttributeIntDefault("keepdims", 1) != 0;
 
   const std::vector<std::string_view>& inputs = args.node.Inputs();
   std::unique_ptr<api::Tensor> axes_const = nullptr;
   bool empty_axes = false;
+
   if (inputs.size() < 2 || inputs[1] == "") {
     empty_axes = true;
   } else {
@@ -921,78 +977,99 @@ static bool HandleReduceSum(HandlerArgs& args) {
       empty_axes = true;
     }
   }
+
+  // Case 1: Empty axes (either a no-op or reduce all axes)
   if (empty_axes) {
-    int64_t noop_with_empty_axes = args.node.GetAttributeIntDefault("noop_with_empty_axes", 0);
-    if (noop_with_empty_axes != 0 || keepdims != 0) {
-      TransposeFirstInput(args.ctx, args.node, args.perm_inv);
+    bool noop_with_empty_axes = args.node.GetAttributeIntDefault("noop_with_empty_axes", 0) != 0;
+    TransposeFirstInput(args.ctx, args.node, args.perm_inv);
+
+    if (noop_with_empty_axes || keepdims) {
+      // Original rank is maintained
       TransposeOutputs(args.ctx, args.node, args.perm);
-    } else {
-      TransposeFirstInput(args.ctx, args.node, args.perm_inv);
     }
+
     return true;
   }
+
+  // Case 2: Non-const axes (can't optimize)
   if (axes_const == nullptr) {
-    // TODO: technically we can handle this with Gather if keepdims is true
+    // Technically we can handle this with Gather if keepdims is true, but this case is extremely rare.
     return false;
   }
 
+  // Case 3: Const axes
   auto axes = axes_const->DataInt64();
   if (!NormalizeAndValidateAxes(axes, args.perm.size())) {
     return false;
   }
+
   std::vector<int64_t> new_axes = SortedAxesForTransposedInput(axes, args.perm);
   std::vector<int64_t> axes_shape { (int64_t)new_axes.size() };
   std::string_view new_axes_const = args.ctx.graph.AddInitializerInt64(axes_shape, new_axes);
   std::string_view axes_inp = inputs[1];
   args.node.SetInput(1, new_axes_const);
+
   if (!args.ctx.graph.HasValueConsumers(axes_inp)) {
     args.ctx.graph.RemoveInitializer(axes_inp);
   }
 
-  if (keepdims != 0) {
-    TransposeFirstInput(args.ctx, args.node, args.perm_inv);
+  TransposeFirstInput(args.ctx, args.node, args.perm_inv);
+
+  if (keepdims) {
     TransposeOutputs(args.ctx, args.node, args.perm);
-    return true;
-  }
-  else {
-    TransposeFirstInput(args.ctx, args.node, args.perm_inv);
+  } else {
     std::vector<int64_t> new_perm = SqueezePerm(new_axes, args.perm);
     TransposeOutputs(args.ctx, args.node, new_perm);
-    return true;
   }
 
   return true;
 }
 
+constexpr HandlerInfo reduce_sum_handler = {&FirstInput, &HandleReduceSum};
+
 static bool HandleSqueeze(HandlerArgs& args) {
   if (args.transpose_input_index != 0) return false;
-  const std::vector<size_t> indices { 0 };
+
   std::vector<int64_t> new_axes;
+
   if (args.ctx.opset < 13) {
+
+    // Axes are attribute
+
     std::optional<std::vector<int64_t>> axes = args.node.GetAttributeInts("axes");
-    // TODO: (compress impl) empty axes
     if (axes == std::nullopt || !NormalizeAndValidateAxes(*axes, args.perm.size())) {
       return false;
     }
+
     new_axes = SortedAxesForTransposedInput(*axes, args.perm);
     args.node.SetAttributeInts("axes", new_axes);
+
   } else {
+
+    // Axes are an input
+
+    // Ensure axes input is present, constant, and valid
     const std::vector<std::string_view>& inputs = args.node.Inputs();
     if (inputs.size() < 2) {
       return false;
     }
+
     std::string_view axes_inp = inputs[1];
     if (axes_inp == "") {
       return false;
     }
+
     std::unique_ptr<api::Tensor> axes_const = args.ctx.graph.GetConstant(axes_inp);
     if (axes_const == nullptr) {
       return false;
     }
+
     auto axes = axes_const->DataInt64();
     if (!NormalizeAndValidateAxes(axes, args.perm.size())) {
       return false;
     }
+
+    // Update axes
     new_axes = SortedAxesForTransposedInput(axes, args.perm);
     std::vector<int64_t> axes_shape { (int64_t)new_axes.size() };
     std::string_view new_axes_const = args.ctx.graph.AddInitializerInt64(axes_shape, new_axes);
@@ -1000,14 +1077,21 @@ static bool HandleSqueeze(HandlerArgs& args) {
     if (!args.ctx.graph.HasValueConsumers(axes_inp)) {
       args.ctx.graph.RemoveInitializer(axes_inp);
     }
+
   }
+
+  // Transpose inputs/outputs
   TransposeFirstInput(args.ctx, args.node, args.perm_inv);
   std::vector<int64_t> new_perm = SqueezePerm(new_axes, args.perm);
   TransposeOutputs(args.ctx, args.node, new_perm);
+
   return true;
 }
 
+constexpr HandlerInfo squeeze_handler = {&FirstInput, &HandleSqueeze};
 
+// Pushes transpose through unsqueeze and returns final output. Helps UnsqueezeInput to push transposes.
+// axes is the axes of the Unsqueeze node.
 static const std::string_view HelpHandleUnsqueeze(HandlerArgs& args, const std::vector<int64_t>& axes) {
   TransposeFirstInput(args.ctx, args.node, args.perm_inv);
   std::vector<int64_t> new_perm = UnsqueezePerm(axes, args.perm);
@@ -1017,9 +1101,10 @@ static const std::string_view HelpHandleUnsqueeze(HandlerArgs& args, const std::
 static bool HandleUnsqueeze(HandlerArgs& args) {
   if (args.transpose_input_index != 0) return false;
   std::vector<int64_t> axes;
+
+  // Read axes from input or attribute, depending on opset
   if (args.ctx.opset < 13) {
     std::optional<std::vector<int64_t>> axes_attr = args.node.GetAttributeInts("axes");
-    // TODO: (compress impl) empty axes
     if (axes_attr == std::nullopt) {
       return false;
     }
@@ -1032,28 +1117,30 @@ static bool HandleUnsqueeze(HandlerArgs& args) {
     }
     axes = axes_const->DataInt64();
   }
+
   if (!NormalizeAndValidateAxes(axes, args.perm.size() + axes.size())) {
     return false;
   }
+
+  // We will leave the axes unchanged and use them to determine how to transpose the output.
   HelpHandleUnsqueeze(args, axes);
   return true;
 }
 
+constexpr HandlerInfo unsqueeze_handler = {&FirstInput, &HandleUnsqueeze};
 
 static bool HandleQuantizeDequantizeLinear(HandlerArgs& args) {
   if (args.transpose_input_index != 0) return false;
   size_t rank = args.perm.size();
 
   if (args.ctx.opset >= 13) {
+    // Update axis in Opset >= 13 if scale/zero_point are non-scalar
     auto inputs = args.node.Inputs();
-    bool all_scalars = true;
-    for (size_t i = 1; i < 3; ++i) {
-      std::optional<std::vector<int64_t>> inp_shape = args.ctx.graph.GetValueInfo(inputs[i])->Shape();
-      if (inp_shape == std::nullopt || inp_shape->size() > 0) {
-        all_scalars = false;
-      }
-    }
-    if (!all_scalars) {
+
+    std::optional<std::vector<int64_t>> inp_shape = args.ctx.graph.GetValueInfo(inputs[1])->Shape();
+    bool scalar_params = inp_shape != std::nullopt && inp_shape->size() == 0;
+
+    if (!scalar_params) {
       int64_t axis = args.node.GetAttributeIntDefault("axis", 1);
       if (axis < 0) {
         axis += rank;
@@ -1070,6 +1157,8 @@ static bool HandleQuantizeDequantizeLinear(HandlerArgs& args) {
 
   return true;
 }
+
+constexpr HandlerInfo quantize_dequantize_linear_handler = {&FirstInput, &HandleQuantizeDequantizeLinear};
 
 static bool HandleArgMinMax(HandlerArgs& args) {
   size_t rank = args.perm.size();
@@ -1092,27 +1181,39 @@ static bool HandleArgMinMax(HandlerArgs& args) {
   return true;
 }
 
-static std::string_view AddIntInitializerMatchingDtype(api::Graph& graph, std::vector<int64_t> values, api::DataType dtype) {
+constexpr HandlerInfo arg_min_max_handler = {&FirstInput, &HandleArgMinMax};
+
+// Creates an int32 or int64 initializer and returns the name (Slice supports int64 or int32 axes)
+static std::string_view AddIntInitializerMatchingDtype(api::Graph& graph, std::vector<int64_t> values,
+                                                       api::DataType dtype) {
   std::vector<int64_t> shape{(int64_t)values.size()};
+
   if (dtype == api::DataType::INT32) {
     std::vector<int32_t> values_int32;
+
     for (int64_t v : values) {
       values_int32.push_back((int32_t)v);
     }
+
     return graph.AddInitializerInt32(shape, values_int32);
   }
+
   return graph.AddInitializerInt64(shape, values);
 }
 
+// Gets int data from an int32 or int64 tensor
 static std::vector<int64_t> TensorIntData(api::Tensor& tensor, api::DataType dtype) {
   if (dtype == api::DataType::INT32) {
     std::vector<int32_t> values_int32 = tensor.DataInt32();
     std::vector<int64_t> values;
+
     for (int32_t v : values_int32) {
       values.push_back((int64_t)v);
     }
+
     return values;
   }
+
   return tensor.DataInt64();
 }
 
@@ -1125,7 +1226,6 @@ static bool HandleSlice(HandlerArgs& args) {
     if (axes == std::nullopt) {
       std::optional<std::vector<int64_t>> starts = args.node.GetAttributeInts("starts");
       if (starts == std::nullopt) {
-        // Invalid model. TODO: raise exception
         return false;
       }
       size_t num_starts = starts->size();
@@ -1191,6 +1291,8 @@ static bool HandleSlice(HandlerArgs& args) {
   return true;
 }
 
+constexpr HandlerInfo slice_handler = {&FirstInput, &HandleSlice};
+
 static bool HandleTile(HandlerArgs& args) {
   if (args.transpose_input_index != 0) return false;
   size_t rank = args.perm.size();
@@ -1222,6 +1324,8 @@ static bool HandleTile(HandlerArgs& args) {
   TransposeOutputs(args.ctx, args.node, args.perm);
   return true;
 }
+
+constexpr HandlerInfo tile_handler = {&FirstInput, &HandleTile};
 
 static bool HandleTranspose(HandlerArgs& args) {
   // Two cases: 1 perm match, 2 they don't
@@ -1271,6 +1375,8 @@ static bool HandleTranspose(HandlerArgs& args) {
   return true;
 }
 
+constexpr HandlerInfo transpose_handler = {&FirstInput, &HandleTranspose, /*transpose_outputs*/ false};
+
 static bool HandleQLinearConcat(HandlerArgs& args) {
   size_t rank = args.perm.size();
 
@@ -1299,10 +1405,30 @@ static bool HandleQLinearConcat(HandlerArgs& args) {
   return true;
 }
 
+std::vector<size_t> QLinearConcatInputInputs(OptimizerCtx& ctx, api::Node& node) {
+  (void)ctx;
+  std::vector<size_t> indices;
+  size_t num_inputs = node.Inputs().size();
+  for (size_t i = 2; i < num_inputs; i += 3) {
+    indices.push_back(i);
+  }
+  return indices;
+}
+
+constexpr HandlerInfo q_linear_concat_handler = {&QLinearConcatInputInputs, &HandleQLinearConcat};
+
 static bool HandleQLinearBinaryOp(HandlerArgs& args) {
   std::vector<size_t> indices { 0, 3 };
   return HandleSimpleNodeBase(args, /*broadcast_inputs*/ true, &indices);
 }
+
+std::vector<size_t> QLinearBinaryOpInputs(OptimizerCtx& ctx, api::Node& node) {
+  (void)ctx;
+  (void)node;
+  return {0, 3};
+}
+
+constexpr HandlerInfo q_linear_binary_op_handler = {&QLinearBinaryOpInputs, &HandleQLinearBinaryOp};
 
 static bool HandleQLinearPoolOp(HandlerArgs& args) {
   if (args.transpose_input_index != 0) return false;
@@ -1319,6 +1445,8 @@ static bool HandleQLinearPoolOp(HandlerArgs& args) {
   }
   return false;
 }
+
+constexpr HandlerInfo q_linear_pool_op_handler = {&FirstInput, &HandleQLinearPoolOp};
 
 static bool HandleMaxPool(HandlerArgs& args) {
   auto outputs = args.node.Outputs();
@@ -1340,70 +1468,72 @@ static bool HandleMaxPool(HandlerArgs& args) {
   return true;
 }
 
-static const std::unordered_map<std::string_view, HandlerFunction*> handler_map {
+constexpr HandlerInfo max_pool_op_handler = {&FirstInput, &HandleMaxPool};
 
-  {"Cast", &HandleSimpleNode}, {"Exp", &HandleSimpleNode}, {"Identity", &HandleSimpleNode},
-  {"LeakyRelu", &HandleSimpleNode}, {"Log", &HandleSimpleNode}, {"Reciprocal", &HandleSimpleNode},
-  {"Relu", &HandleSimpleNode}, {"Sigmoid", &HandleSimpleNode}, {"Sqrt", &HandleSimpleNode},
-  {"Tanh", &HandleSimpleNode}, {"Abs", &HandleSimpleNode}, {"Ceil", &HandleSimpleNode}, {"Floor", &HandleSimpleNode},
-  {"Erf", &HandleSimpleNode}, {"HardSigmoid", &HandleSimpleNode}, {"Round", &HandleSimpleNode},
-  {"IsInf", &HandleSimpleNode}, {"IsNaN", &HandleSimpleNode}, {"Neg", &HandleSimpleNode}, {"Not", &HandleSimpleNode},
-  {"Selu", &HandleSimpleNode}, {"Shrink", &HandleSimpleNode}, {"Sign", &HandleSimpleNode},
-  {"Softplus", &HandleSimpleNode}, {"Softsign", &HandleSimpleNode}, {"ThresholdedRelu", &HandleSimpleNode},
-  {"Celu", &HandleSimpleNode}, {"HardSwish", &HandleSimpleNode},
+static const std::unordered_map<std::string_view, const HandlerInfo&> handler_map {
 
-  {"Sin", &HandleSimpleNode}, {"Cos", &HandleSimpleNode}, {"Tan", &HandleSimpleNode},
-  {"Sinh", &HandleSimpleNode}, {"Cosh", &HandleSimpleNode}, {"Tanh", &HandleSimpleNode},
-  {"Asin", &HandleSimpleNode}, {"Acos", &HandleSimpleNode}, {"Atan", &HandleSimpleNode},
-  {"Asinh", &HandleSimpleNode}, {"Acosh", &HandleSimpleNode}, {"Atanh", &HandleSimpleNode},
+  {"Cast", simple_node_handler}, {"Exp", simple_node_handler}, {"Identity", simple_node_handler},
+  {"LeakyRelu", simple_node_handler}, {"Log", simple_node_handler}, {"Reciprocal", simple_node_handler},
+  {"Relu", simple_node_handler}, {"Sigmoid", simple_node_handler}, {"Sqrt", simple_node_handler},
+  {"Tanh", simple_node_handler}, {"Abs", simple_node_handler}, {"Ceil", simple_node_handler}, {"Floor", simple_node_handler},
+  {"Erf", simple_node_handler}, {"HardSigmoid", simple_node_handler}, {"Round", simple_node_handler},
+  {"IsInf", simple_node_handler}, {"IsNaN", simple_node_handler}, {"Neg", simple_node_handler}, {"Not", simple_node_handler},
+  {"Selu", simple_node_handler}, {"Shrink", simple_node_handler}, {"Sign", simple_node_handler},
+  {"Softplus", simple_node_handler}, {"Softsign", simple_node_handler}, {"ThresholdedRelu", simple_node_handler},
+  {"Celu", simple_node_handler}, {"HardSwish", simple_node_handler},
 
-  {"Add", &HandleSimpleNodeBroadcast}, {"Max", &HandleSimpleNodeBroadcast}, {"Min", &HandleSimpleNodeBroadcast},
-  {"Mul", &HandleSimpleNodeBroadcast}, {"Sub", &HandleSimpleNodeBroadcast}, {"Div", &HandleSimpleNodeBroadcast},
-  {"And", &HandleSimpleNodeBroadcast}, {"Or", &HandleSimpleNodeBroadcast}, {"Xor", &HandleSimpleNodeBroadcast},
-  {"Mod", &HandleSimpleNodeBroadcast}, {"PRelu", &HandleSimpleNodeBroadcast}, {"BitShift", &HandleSimpleNodeBroadcast},
-  {"Equal", &HandleSimpleNodeBroadcast}, {"Greater", &HandleSimpleNodeBroadcast}, {"Less", &HandleSimpleNodeBroadcast},
-  {"GreaterOrEqual", &HandleSimpleNodeBroadcast}, {"LessOrEqual", &HandleSimpleNodeBroadcast},
-  {"Mean", &HandleSimpleNodeBroadcast}, {"Sum", &HandleSimpleNodeBroadcast},  {"Pow", &HandleSimpleNodeBroadcast},
-  {"Where", &HandleSimpleNodeBroadcast},
+  {"Sin", simple_node_handler}, {"Cos", simple_node_handler}, {"Tan", simple_node_handler},
+  {"Sinh", simple_node_handler}, {"Cosh", simple_node_handler}, {"Tanh", simple_node_handler},
+  {"Asin", simple_node_handler}, {"Acos", simple_node_handler}, {"Atan", simple_node_handler},
+  {"Asinh", simple_node_handler}, {"Acosh", simple_node_handler}, {"Atanh", simple_node_handler},
 
-  {"Clip", &HandleSimpleNode1Inp}, {"CastLike", &HandleSimpleNode1Inp},
+  {"Add", broadcast_node_handler}, {"Max", broadcast_node_handler}, {"Min", broadcast_node_handler},
+  {"Mul", broadcast_node_handler}, {"Sub", broadcast_node_handler}, {"Div", broadcast_node_handler},
+  {"And", broadcast_node_handler}, {"Or", broadcast_node_handler}, {"Xor", broadcast_node_handler},
+  {"Mod", broadcast_node_handler}, {"PRelu", broadcast_node_handler}, {"BitShift", broadcast_node_handler},
+  {"Equal", broadcast_node_handler}, {"Greater", broadcast_node_handler}, {"Less", broadcast_node_handler},
+  {"GreaterOrEqual", broadcast_node_handler}, {"LessOrEqual", broadcast_node_handler},
+  {"Mean", broadcast_node_handler}, {"Sum", broadcast_node_handler},  {"Pow", broadcast_node_handler},
+  {"Where", broadcast_node_handler},
 
-  {"Transpose", &HandleTranspose},
-  {"Concat", &HandleConcat},
-  {"Split", &HandleSplit},
-  {"Shape", &HandleShape},
-  {"Pad", &HandlePad},
-  {"ReduceSum", &HandleReduceSum},
+  {"Clip", node_1_inp_handler}, {"CastLike", node_1_inp_handler},
 
-  {"ReduceLogSum", &HandleReduceOp}, {"ReduceLogSumExp", &HandleReduceOp}, {"ReduceMax", &HandleReduceOp},
-  {"ReduceMean", &HandleReduceOp}, {"ReduceMin", &HandleReduceOp}, {"ReduceProd", &HandleReduceOp},
-  {"ReduceSumSquare", &HandleReduceOp}, {"ReduceL1", &HandleReduceOp}, {"ReduceL2", &HandleReduceOp},
+  {"Transpose", transpose_handler},
+  {"Concat", concat_handler},
+  {"Split", split_handler},
+  {"Shape", shape_handler},
+  {"Pad", pad_handler},
+  {"ReduceSum", reduce_sum_handler},
 
-  {"ArgMin", &HandleArgMinMax}, {"ArgMax", &HandleArgMinMax},
+  {"ReduceLogSum", reduce_op_handler}, {"ReduceLogSumExp", reduce_op_handler}, {"ReduceMax", reduce_op_handler},
+  {"ReduceMean", reduce_op_handler}, {"ReduceMin", reduce_op_handler}, {"ReduceProd", reduce_op_handler},
+  {"ReduceSumSquare", reduce_op_handler}, {"ReduceL1", reduce_op_handler}, {"ReduceL2", reduce_op_handler},
 
-  {"Squeeze", &HandleSqueeze},
-  {"Unsqueeze", &HandleUnsqueeze},
-  {"Slice", &HandleSlice},
-  {"Tile", &HandleTile},
+  {"ArgMin", arg_min_max_handler}, {"ArgMax", arg_min_max_handler},
 
-  {"Softmax", &HandleSoftHardMax}, {"Hardmax", &HandleSoftHardMax}, {"LogSoftmax", &HandleSoftHardMax},
+  {"Squeeze", squeeze_handler},
+  {"Unsqueeze", unsqueeze_handler},
+  {"Slice", slice_handler},
+  {"Tile", tile_handler},
 
-  {"QuantizeLinear", &HandleQuantizeDequantizeLinear}, {"DequantizeLinear", &HandleQuantizeDequantizeLinear},
+  {"Softmax", soft_hard_max_handler}, {"Hardmax", soft_hard_max_handler}, {"LogSoftmax", soft_hard_max_handler},
+
+  {"QuantizeLinear", quantize_dequantize_linear_handler}, {"DequantizeLinear", quantize_dequantize_linear_handler},
 };
 
-static const std::unordered_map<std::string_view, HandlerFunction*> extended_handler_map {
-  {"com.microsoft.QLinearReduceMean", &HandleReduceOp},
-  {"com.microsoft.QLinearSigmoid", &HandleSimpleNode1Inp},
-  {"com.microsoft.QLinearLeakyRelu", &HandleSimpleNode1Inp},
-  {"com.microsoft.QLinearConcat", &HandleQLinearConcat},
-  {"com.microsoft.QLinearAdd", &HandleQLinearBinaryOp},
-  {"com.microsoft.QLinearMul", &HandleQLinearBinaryOp},
-  {"com.microsoft.QLinearAveragePool", &HandleQLinearPoolOp},
-  {"com.microsoft.QLinearGlobalAveragePool", &HandleQLinearPoolOp},
-  {"MaxPool", &HandleMaxPool},
+static const std::unordered_map<std::string_view, const HandlerInfo&> extended_handler_map{
+  {"com.microsoft.QLinearReduceMean", reduce_op_handler},
+  {"com.microsoft.QLinearSigmoid", node_1_inp_handler},
+  {"com.microsoft.QLinearLeakyRelu", node_1_inp_handler},
+  {"com.microsoft.QLinearConcat", concat_handler},
+  {"com.microsoft.QLinearAdd", q_linear_binary_op_handler},
+  {"com.microsoft.QLinearMul", q_linear_binary_op_handler},
+  {"com.microsoft.QLinearAveragePool", q_linear_pool_op_handler},
+  {"com.microsoft.QLinearGlobalAveragePool", q_linear_pool_op_handler},
+  {"MaxPool", max_pool_op_handler},
 };
 
-static HandlerFunction* GetHandler(api::Node& node, bool allow_extended_ops) {
+static const HandlerInfo* GetHandler(api::Node& node, bool allow_extended_ops) {
   std::string key;
   auto domain = node.Domain();
   auto op_type = node.OpType();
@@ -1417,29 +1547,44 @@ static HandlerFunction* GetHandler(api::Node& node, bool allow_extended_ops) {
 
   auto match = handler_map.find(key);
   if (match != handler_map.end()) {
-    HandlerFunction* fn = match->second;
-    return fn;
+    return &match->second;
   } else if (allow_extended_ops) {
     match = extended_handler_map.find(key);
     if (match != extended_handler_map.end()) {
-      HandlerFunction* fn = match->second;
-      return fn;
+      return &match->second;
     }
   }
   return nullptr;
 }
 
-bool ProcessTranspose(HandlerArgs& args) {
-  if (!args.ctx.skip_cost_check &&
-      !CanLikelyRemoveTranspose(args.ctx.graph, args.transpose) &&
-      !args.node.IsOp("Transpose")) {
+bool ProcessTranspose(HandlerArgs& args, std::unordered_set<std::string>& outputs_leading_to_transpose) {
+  const HandlerInfo* info = GetHandler(args.node, args.ctx.allow_extended_ops);
+  if (info == nullptr) {
     return false;
   }
-  HandlerFunction* fn = GetHandler(args.node, args.ctx.allow_extended_ops);
-  if (fn == nullptr) {
-    return false;
+  auto input_indices = info->transposible_inputs_fn(args.ctx, args.node);
+  if (!args.ctx.skip_cost_check && !args.node.IsOp("Transpose")) {
+    if (info->transpose_outputs) {
+      bool has_output_leading_to_transpose = false;
+      auto outputs = args.node.Outputs();
+      for (auto out : outputs) {
+        if (outputs_leading_to_transpose.find(std::string(out)) != outputs_leading_to_transpose.end()) {
+          has_output_leading_to_transpose = true;
+          break;
+        }
+      }
+      if (!has_output_leading_to_transpose) {
+        int in_rank = EstimateValueRank(args.ctx.graph, args.node.Inputs()[args.transpose_input_index]);
+        int out_rank = EstimateValueRank(args.ctx.graph, outputs[0]);
+        if (out_rank >= in_rank || !CanLikelyRemoveTranspose(args.ctx.graph, args.transpose)) {
+          return false;
+        }
+      }
+    } else if (!CanLikelyRemoveTranspose(args.ctx.graph, args.transpose)) {
+      return false;
+    }
   }
-  return fn(args);
+  return info->handler_fn(args);
 }
 
 std::optional<OptimizerCtx> MakeOptimizerContext(api::Graph& graph, bool allow_extended_ops) {
@@ -1460,6 +1605,31 @@ std::optional<OptimizerCtx> MakeOptimizerContext(api::Graph& graph, bool allow_e
 bool OptimizeImpl(OptimizerCtx& ctx) {
   
   const std::vector<std::unique_ptr<api::Node>> nodes = ctx.graph.Nodes();
+
+  std::unordered_set<std::string> outputs_leading_to_transpose;
+
+  for (size_t k = 0; k < nodes.size(); ++k) {
+    size_t i = nodes.size() - k - 1;
+    api::Node& node = *nodes[i];
+    if (node.IsOp("Transpose")) {
+      outputs_leading_to_transpose.insert(std::string(node.Inputs()[0]));
+      continue;
+    }
+    auto outputs = node.Outputs();
+    for (auto out : outputs) {
+      if (outputs_leading_to_transpose.find(std::string(out)) != outputs_leading_to_transpose.end()) {
+        const HandlerInfo* info = GetHandler(node, ctx.allow_extended_ops);
+        if (info != nullptr && info->transpose_outputs) {
+          auto input_indices = info->transposible_inputs_fn(ctx, node);
+          auto inputs = node.Inputs();
+          for (size_t j : input_indices) {
+            outputs_leading_to_transpose.insert(std::string(inputs[j]));
+          }
+        }
+      }
+    }
+  }
+
   bool changed = false;
   for (size_t i = 0; i < nodes.size(); ++i) {
     api::Node& node = *nodes[i];
@@ -1475,7 +1645,7 @@ bool OptimizeImpl(OptimizerCtx& ctx) {
         if (perm != std::nullopt) {
           std::vector<int64_t> perm_inv = InvertPerm(*perm);
           HandlerArgs args = {ctx, *transpose, node, *perm, perm_inv, j};
-          if (ProcessTranspose(args)) {
+          if (ProcessTranspose(args, outputs_leading_to_transpose)) {
             changed = true;
             break;
           }
