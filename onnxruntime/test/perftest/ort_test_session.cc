@@ -354,11 +354,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kRocmExecutionProvider) {
 #ifdef USE_ROCM
-    OrtROCMProviderOptions rocm_options{
-        0,
-        0,
-        std::numeric_limits<size_t>::max(),
-        0};
+    OrtROCMProviderOptions rocm_options;
+    rocm_options.miopen_conv_exhaustive_search = performance_test_config.run_config.cudnn_conv_algo;
+    rocm_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
+    // TODO: Support arena configuration for users of perf test
     session_options.AppendExecutionProvider_ROCM(rocm_options);
 #else
     ORT_THROW("ROCM is not supported in this build\n");

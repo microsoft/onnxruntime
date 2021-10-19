@@ -29,7 +29,7 @@ from onnxruntime.training.ortmodule import (ORTModule,
                                             _fallback,
                                             _graph_execution_manager)
 
-from onnxruntime.training.optim.fused_adam import FusedAdam
+from onnxruntime.training.optim import FusedAdam
 from transformers import AdamW
 
 import _test_helpers
@@ -915,6 +915,40 @@ def test_gradient_correctness_pool2d(pool_type):
 
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=5e-3, atol=4e-3)
+
+@pytest.mark.parametrize("pool_type", ['MaxPool', 'AvgPool'])
+@pytest.mark.parametrize("stride", [None, 2])
+def test_export_correctness_pool2d(pool_type, stride):
+    class NeuralNetPool2d(torch.nn.Module):
+        def __init__(self):
+            super(NeuralNetPool2d, self).__init__()
+            self.conv = torch.nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
+            self.pool_type = pool_type
+            
+
+        def forward(self, input):
+            x = self.conv(input)
+            if pool_type == 'MaxPool':
+                output = torch.nn.functional.max_pool2d(x, kernel_size=3, stride=stride)
+            elif pool_type == 'AvgPool':
+                output = torch.nn.functional.avg_pool2d(x, kernel_size=3, stride=stride)
+            return output
+
+    N, C, H, W = 8, 3, 224, 224
+    device = 'cuda'
+    pt_model = NeuralNetPool2d().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input):
+        prediction = model(input)
+        return prediction
+
+    for _ in range(10):
+        input = torch.randn(N, C, H, W, device=device)
+        pt_prediction = run_step(pt_model, input)
+        ort_prediction = run_step(ort_model, input)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
 
 def test_gradient_correctness_argmax_unfold():
     class NeuralNetUnfold(torch.nn.Module):
@@ -4069,20 +4103,23 @@ def test_override_pytorch_exporter_kwargs_using_ortmodule_extension():
 
 def test_ortmodule_fused_adam_optimizer_correctness():
 
+    torch.manual_seed(8888)
+
     device = 'cuda'
     N, D_in, H, D_out = 32, 128, 500, 10
 
     pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
-    transformers_adamw_optimizer = AdamW(pt_model.parameters())
+    transformers_adamw_optimizer = AdamW(pt_model.parameters(), lr=1)
 
     ort_model = ORTModule(copy.deepcopy(pt_model))
-    ort_fused_adam_optimizer = FusedAdam(ort_model.parameters())
+    ort_fused_adam_optimizer = FusedAdam(ort_model.parameters(), lr=1)
 
     def run_step(model, x):
         prediction = model(x)
         loss = prediction.sum()
         loss.backward()
-        return prediction, loss
+
+        return loss
 
     def run_optim_step(optimizer):
         optimizer.step()
@@ -4092,22 +4129,25 @@ def test_ortmodule_fused_adam_optimizer_correctness():
     pt_model.zero_grad()
     ort_model.zero_grad()
 
-    for step in range(10):
-        x = torch.randn(N, D_in, device=device)
+    for step in range(1000):
+        x1 = torch.randn(N, D_in, device=device, dtype=torch.float32)
+        x2 = copy.deepcopy(x1)
 
-        _, pt_loss = run_step(pt_model, x)
-        _, ort_loss = run_step(ort_model, x)
+        pt_loss = run_step(pt_model, x1)
+        ort_loss = run_step(ort_model, x2)
 
-        _test_helpers.assert_values_are_close(pt_loss, ort_loss, rtol=1e-4)
-        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+        for pt_param, ort_param in zip(pt_model.parameters(), ort_model.parameters()):
+            ort_param.grad = copy.deepcopy(pt_param.grad)
+
+        _test_helpers.assert_values_are_close(pt_loss, ort_loss)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, reset_gradient=False)
 
         if (step+1) % ga_steps == 0:
             run_optim_step(transformers_adamw_optimizer)
             run_optim_step(ort_fused_adam_optimizer)
 
-            for pt_param, ort_param in zip(pt_model.parameters(), ort_model.parameters()):
-                _test_helpers.assert_values_are_close(pt_param, ort_param)
-
+        for pt_param, ort_param in zip(pt_model.parameters(), ort_model.parameters()):
+            _test_helpers.assert_values_are_close(pt_param, ort_param, atol=1e-4, rtol=1e-5)
 
 def test_sigmoid_grad():
     class NeuralNetSigmoid(torch.nn.Module):
