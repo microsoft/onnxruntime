@@ -1525,7 +1525,7 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> extended_h
   {"com.microsoft.QLinearReduceMean", reduce_op_handler},
   {"com.microsoft.QLinearSigmoid", node_1_inp_handler},
   {"com.microsoft.QLinearLeakyRelu", node_1_inp_handler},
-  {"com.microsoft.QLinearConcat", concat_handler},
+  {"com.microsoft.QLinearConcat", q_linear_concat_handler},
   {"com.microsoft.QLinearAdd", q_linear_binary_op_handler},
   {"com.microsoft.QLinearMul", q_linear_binary_op_handler},
   {"com.microsoft.QLinearAveragePool", q_linear_pool_op_handler},
@@ -1564,23 +1564,22 @@ bool ProcessTranspose(HandlerArgs& args, std::unordered_set<std::string>& output
   }
   auto input_indices = info->transposible_inputs_fn(args.ctx, args.node);
   if (!args.ctx.skip_cost_check && !args.node.IsOp("Transpose")) {
-    if (info->transpose_outputs) {
+    int cost = EstimateTransposeInputsCost(args.ctx.graph, args.node, args.perm, &input_indices);
+    if (cost < 0 && info->transpose_outputs) {
       bool has_output_leading_to_transpose = false;
       auto outputs = args.node.Outputs();
+      int out_cost = 0;
       for (auto out : outputs) {
+        out_cost = std::max(out_cost, EstimateValueRank(args.ctx.graph, out));
         if (outputs_leading_to_transpose.find(std::string(out)) != outputs_leading_to_transpose.end()) {
           has_output_leading_to_transpose = true;
-          break;
         }
       }
       if (!has_output_leading_to_transpose) {
-        int in_rank = EstimateValueRank(args.ctx.graph, args.node.Inputs()[args.transpose_input_index]);
-        int out_rank = EstimateValueRank(args.ctx.graph, outputs[0]);
-        if (out_rank >= in_rank || !CanLikelyRemoveTranspose(args.ctx.graph, args.transpose)) {
-          return false;
-        }
+        cost += out_cost;
       }
-    } else if (!CanLikelyRemoveTranspose(args.ctx.graph, args.transpose)) {
+    }
+    if (cost >= 0) {
       return false;
     }
   }
@@ -1608,9 +1607,8 @@ bool OptimizeImpl(OptimizerCtx& ctx) {
 
   std::unordered_set<std::string> outputs_leading_to_transpose;
 
-  for (size_t k = 0; k < nodes.size(); ++k) {
-    size_t i = nodes.size() - k - 1;
-    api::Node& node = *nodes[i];
+  for (size_t i = 0; i < nodes.size(); ++i) {
+    api::Node& node = *nodes[nodes.size() - i - 1];
     if (node.IsOp("Transpose")) {
       outputs_leading_to_transpose.insert(std::string(node.Inputs()[0]));
       continue;
