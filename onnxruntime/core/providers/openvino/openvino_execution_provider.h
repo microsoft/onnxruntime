@@ -7,6 +7,7 @@
 #include <map>
 #include <algorithm>
 #include <iostream>
+#include "core/framework/ortdevice.h"
 
 namespace onnxruntime {
 
@@ -156,9 +157,6 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
   const void* GetExecutionHandle() const noexcept override {
     return nullptr;
   }
-
-  std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
-  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 };
 
 }  // namespace onnxruntime

@@ -851,6 +851,7 @@ struct ProviderHostImpl : ProviderHost {
   ptrdiff_t Tensor__ByteOffset(const Tensor* p) override { return p->ByteOffset(); }
   size_t Tensor__SizeInBytes(const Tensor* p) override { return p->SizeInBytes(); }
   const OrtMemoryInfo& Tensor__Location(const Tensor* p) override { return p->Location(); }
+  int8_t Tensor__DeviceType(const Tensor *p) override { return p->Location().device.Type(); }
   int32_t Tensor__GetElementType(const Tensor* p) override { return p->GetElementType(); }
   MLDataType Tensor__DataType(const Tensor* p) override { return p->DataType(); }
 

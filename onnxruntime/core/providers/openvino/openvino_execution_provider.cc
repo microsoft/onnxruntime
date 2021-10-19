@@ -6,8 +6,6 @@
 #include "contexts.h"
 #include "backend_manager.h"
 #include "ov_versions/capabilities.h"
-#include "openvino_gpu_allocator.h"
-#include "openvino_gpu_data_transfer.h"
 
 #define MEMCPY_S(dest, src, destsz, srcsz) memcpy(dest, src, std::min(destsz, srcsz))
 
@@ -52,12 +50,6 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
       });
 
   InsertAllocator(CreateAllocator(device_info));
-
-  AllocatorCreationInfo gpu_memory_info(
-      [](OrtDevice::DeviceId) { return onnxruntime::CreateOVGPUAllocator(); 
-      });
-
-  InsertAllocator(CreateAllocator(gpu_memory_info));
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
@@ -133,14 +125,6 @@ common::Status OpenVINOExecutionProvider::Compile(
   }
 
   return Status::OK();
-}
-
-AllocatorPtr OpenVINOExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
-  return IExecutionProvider::GetAllocator(id, mem_type);
-}
-
-std::unique_ptr<onnxruntime::IDataTransfer> OpenVINOExecutionProvider::GetDataTransfer() const {
-  return std::make_unique<onnxruntime::OVGPUDataTransfer>();
 }
 
 }  // namespace onnxruntime
