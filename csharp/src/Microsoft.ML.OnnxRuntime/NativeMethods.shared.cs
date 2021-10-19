@@ -543,7 +543,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                 IntPtr[] outputValues /* An array of output value pointers. Array must be allocated by the caller */
                                                 );
         
-      public static DOrtRun OrtRun;
+        public static DOrtRun OrtRun;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(ONNStatus*)*/ DOrtRunWithBinding(

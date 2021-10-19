@@ -224,11 +224,11 @@
     <Copy SourceFiles="@(TargetsFile)" DestinationFiles="@(TargetsFile->'$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime\targets\netstandard\$(PackageId).targets')" />
   </Target>
 
-    <Target Name="CopyPackage" AfterTargets="Pack">
-      <Copy
-        SourceFiles="$(OutputPath)\$(PackageId).$(PackageVersion).nupkg"
-        DestinationFolder="$(NativeBuildOutputDir)"
-      />
-    </Target>
+  <Target Name="CopyPackage" AfterTargets="Pack">
+    <Copy
+      SourceFiles="$(OutputPath)\$(PackageId).$(PackageVersion).nupkg"
+      DestinationFolder="$(NativeBuildOutputDir)"
+    />
+  </Target>
   
 </Project>

@@ -14,7 +14,7 @@ namespace EndToEndTests.Mobile.Automation
                     .Android
 #if DEBUG
                     .EnableLocalScreenshots()
-                    .ApkFile("../../../../../Microsoft.ML.OnnxRuntime.Tests.Droid/bin/Release/com.xamcat.microsoft_ml_onnxruntime_tests_droid.apk")
+                    .ApkFile("../../../../../Microsoft.ML.OnnxRuntime.Tests.Droid/bin/Release/com.microsoft.onnxruntime_tests_droid.apk")
 #endif
                     .StartApp();
             }

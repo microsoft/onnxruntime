@@ -713,19 +713,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         var resnov = session.Run(container);
                         var res = resnov.ToArray()[0].AsTensor<float>().ToArray();
 
-/* Unmerged change from project 'Microsoft.ML.OnnxRuntime.Tests.iOS'
-Before:
-                        Assert.Equal(res, expectedOut, new floatComparer());
-After:
-                        Assert.Equal(res, expectedOut, new InferenceTest.floatComparer());
-*/
-
-/* Unmerged change from project 'Microsoft.ML.OnnxRuntime.Tests.Droid'
-Before:
-                        Assert.Equal(res, expectedOut, new floatComparer());
-After:
-                        Assert.Equal(res, expectedOut, new InferenceTest.floatComparer());
-*/
                         Assert.Equal(res, expectedOut, (IEqualityComparer<float>)new FloatComparer());
                     }
                 }));

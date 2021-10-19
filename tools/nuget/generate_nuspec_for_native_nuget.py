@@ -635,7 +635,7 @@ def main():
     # Create the nuspec needed to generate the Nuget
     with open(os.path.join(args.native_build_path, 'NativeNuget.nuspec'), 'w') as f:
         for line in lines:
-		    # Uncomment the printing of the line if you need to debug what's produced on a CI machine
+            # Uncomment the printing of the line if you need to debug what's produced on a CI machine
             # print(line)
             f.write(line)
             f.write('\n')
