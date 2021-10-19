@@ -412,19 +412,6 @@ def generate_files(list, args):
             if os.path.exists(os.path.join(args.native_build_path, 'onnxruntime.pdb')):
                 files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.pdb') +
                                   runtimes + ' />')
-    # elif is_macos_build:
-    # TODO: Not sure we need this unless we want to locally test a build on a mac machine (vs. getting artifact from
-    # packaging pipeline). would need to check path that the ORT macos build produces the xcframework on.
-    #     files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'libs/armeabi-v7a',
-    #                 'libonnxruntime.so') + '" target="runtimes\\android\\native\\armeabi-v7a" />')
-    #     files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'libs/arm64-v8a',
-    #                 'libonnxruntime.so') + '" target="runtimes\\android\\native\\arm64-v8a" />')
-    #     files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'libs/x86',
-    #                 'libonnxruntime.so') + '" target="runtimes\\android\\native\\x86" />')
-    #     files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'libs/x86_64',
-    #                 'libonnxruntime.so') + '" target="runtimes\\android\\native\\x86_64" />')
-    #     files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'libs',
-    #                 'onnxruntime.framework') + '" target="runtimes\\ios\\native\\onnxruntime.framework" />')
     else:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'nuget-staging/usr/local/lib',
                           'libonnxruntime.so') + '" target="runtimes\\linux-' + args.target_architecture +
@@ -648,7 +635,8 @@ def main():
     # Create the nuspec needed to generate the Nuget
     with open(os.path.join(args.native_build_path, 'NativeNuget.nuspec'), 'w') as f:
         for line in lines:
-            print(line)
+		    # Uncomment the printing of the line if you need to debug what's produced on a CI machine
+            # print(line)
             f.write(line)
             f.write('\n')
 

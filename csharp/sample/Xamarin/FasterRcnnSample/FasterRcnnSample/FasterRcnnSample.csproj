@@ -16,13 +16,6 @@
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
-    <None Remove="SixLabors.ImageSharp" />
-    <None Remove="Microsoft.ML.OnnxRuntime.Managed" />
-    <None Remove="SixLabors.ImageSharp.Drawing" />
-    <None Remove="SkiaSharp" />
-    <None Remove="Xamarin.Essentials" />
-  </ItemGroup>
-  <ItemGroup>
     <!-- TODO: Update to use official package once Xamarin support is added to it -->
     <PackageReference Include="Microsoft.ML.OnnxRuntime.Managed" Version="1.10.0-dev" />
     <PackageReference Include="SkiaSharp" Version="2.80.3" />

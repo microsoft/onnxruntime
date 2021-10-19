@@ -8,6 +8,10 @@ namespace Microsoft.ML.OnnxRuntime.InferenceSample.Forms
         public MainPage()
         {
             InitializeComponent();
+
+            // in general create the inference session (which loads and optimizes the model) once and not per inference
+            // as it can be expensive and time consuming. 
+            inferenceSampleApi = new InferenceSampleApi();
         }
 
         protected override void OnAppearing()
@@ -15,26 +19,33 @@ namespace Microsoft.ML.OnnxRuntime.InferenceSample.Forms
             base.OnAppearing();
 
             Console.WriteLine("Using API");
-            InferenceSampleApi.Execute();
+            inferenceSampleApi.Execute();
             Console.WriteLine("Done");
 
+            // demonstrate a range of usages by recreating the inference session with different session options. 
             Console.WriteLine("Using API (using default platform-specific session options)");
-            InferenceSampleApi.Execute(SessionOptionsContainer.Create());
+            inferenceSampleApi.CreateInferenceSession(SessionOptionsContainer.Create());
+            inferenceSampleApi.Execute();
             Console.WriteLine("Done");
 
             Console.WriteLine("Using API (using named platform-specific session options)");
-            InferenceSampleApi.Execute(SessionOptionsContainer.Create("ort_with_npu"));
+            inferenceSampleApi.CreateInferenceSession(SessionOptionsContainer.Create("ort_with_npu"));
+            inferenceSampleApi.Execute();
             Console.WriteLine("Done");
 
             Console.WriteLine(
                 "Using API (using default platform-specific session options via ApplyConfiguration extension)");
-            InferenceSampleApi.Execute(new SessionOptions().ApplyConfiguration());
+            inferenceSampleApi.CreateInferenceSession(new SessionOptions().ApplyConfiguration());
+            inferenceSampleApi.Execute();
             Console.WriteLine("Done");
 
             Console.WriteLine(
                 "Using API (using named platform-specific session options via ApplyConfiguration extension)");
-            InferenceSampleApi.Execute(new SessionOptions().ApplyConfiguration("ort_with_npu"));
+            inferenceSampleApi.CreateInferenceSession(new SessionOptions().ApplyConfiguration("ort_with_npu"));
+            inferenceSampleApi.Execute();
             Console.WriteLine("Done");
         }
+
+        private readonly InferenceSampleApi inferenceSampleApi;
     }
 }

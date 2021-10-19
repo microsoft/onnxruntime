@@ -18,10 +18,10 @@ namespace Microsoft.ML.OnnxRuntime.InferenceSample.Forms.Droid
             Xamarin.Essentials.Platform.Init(this, savedInstanceState);
             global::Xamarin.Forms.Forms.Init(this, savedInstanceState);
 
-            // Register default session options configuration
-            SessionOptionsContainer.Register((options) => options.AppendExecutionProvider_Nnapi());
+            // Register default session options configuration. This is optional.
+            SessionOptionsContainer.Register((options) => { options.LogId = "Ort"; });
 
-            // Register a named session options configuration
+            // Register a named session options configuration that enables NNAPI
             SessionOptionsContainer.Register("ort_with_npu", (options) => {
                 options.AppendExecutionProvider_Nnapi();
                 options.LogId = "Ort+Nnapi";

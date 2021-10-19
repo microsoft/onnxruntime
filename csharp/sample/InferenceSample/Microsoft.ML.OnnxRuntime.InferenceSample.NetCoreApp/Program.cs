@@ -11,7 +11,10 @@ namespace CSharpUsage
         public static void Main(string[] args)
         {
             Console.WriteLine("Using API");
-            InferenceSampleApi.Execute();
+            using (var inferenceSampleApi = new InferenceSampleApi())
+            {
+                inferenceSampleApi.Execute();
+            }
             Console.WriteLine("Done");
         }
     }

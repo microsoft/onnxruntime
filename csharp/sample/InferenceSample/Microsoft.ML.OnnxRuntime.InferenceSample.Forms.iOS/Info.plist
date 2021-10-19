@@ -25,7 +25,7 @@
 	<key>CFBundleDisplayName</key>
 	<string>Microsoft.ML.OnnxRuntime.InferenceSample.Forms</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.xamcat.Microsoft-ML-OnnxRuntime-InferenceSample-Forms</string>
+	<string>com.Microsoft.OnnxRuntime-InferenceSample-Forms</string>
 	<key>CFBundleVersion</key>
 	<string>1.0</string>
 	<key>UILaunchStoryboardName</key>

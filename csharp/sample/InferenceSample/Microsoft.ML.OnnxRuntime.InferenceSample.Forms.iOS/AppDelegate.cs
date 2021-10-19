@@ -22,13 +22,13 @@ namespace Microsoft.ML.OnnxRuntime.InferenceSample.Forms.iOS
 
 #if !__NATIVE_DEPENDENCIES_EXIST__
             throw new System.Exception(
-                "The requisite onnxruntime.framework file(s) were not found. You must build the native iOS components before running this sample");
+                "The requisite onnxruntime.framework file(s) were not found. " +
+                "You must build the native iOS components before running this sample");
 #else
-            // Register default session options configuration
-            SessionOptionsContainer.Register((sessionOptions) => sessionOptions.AppendExecutionProvider_CoreML(
-                                                 CoreMLFlags.COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE));
+            // Register default session options configuration.
+            SessionOptionsContainer.Register((sessionOptions) => { sessionOptions.LogId = "Ort"; });
 
-            // Register a named session options configuration
+            // Register a named session options configuration that enables the CoreML EP 
             SessionOptionsContainer.Register("ort_with_npu", (sessionOptions) => {
                 sessionOptions.AppendExecutionProvider_CoreML(CoreMLFlags.COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE);
                 options.LogId = "Ort+CoreML";

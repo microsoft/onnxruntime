@@ -23,10 +23,6 @@
     <ProjectReference Include="..\FasterRcnnSample\FasterRcnnSample.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <None Remove="demo.jpg" />
-    <None Remove="Xam.Plugin.Media" />
-  </ItemGroup>
-  <ItemGroup>
     <EmbeddedResource Include="demo.jpg" />
   </ItemGroup>
 </Project>

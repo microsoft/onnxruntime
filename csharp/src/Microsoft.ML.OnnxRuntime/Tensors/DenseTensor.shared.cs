@@ -17,9 +17,12 @@ using System;
 namespace Microsoft.ML.OnnxRuntime.Tensors
 {
     /// <summary>
-    /// Represents a multi-dimensional collection of objects of type T that can be accessed by indices.  DenseTensor stores values in a contiguous sequential block of memory where all values are represented.
+    /// Represents a multi-dimensional collection of objects of type T that can be accessed by indices.  
+    /// DenseTensor stores values in a contiguous sequential block of memory where all values are represented.
     /// </summary>
-    /// <typeparam name="T">type contained within the Tensor.  Typically a value type such as int, double, float, etc.</typeparam>
+    /// <typeparam name="T">
+    /// Type contained within the Tensor. Typically a value type such as int, double, float, etc.
+    /// </typeparam>
     public class DenseTensor<T> : Tensor<T>
     {
         private readonly Memory<T> memory;
