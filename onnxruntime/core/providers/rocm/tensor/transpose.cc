@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cpu/tensor/utils.h"
-#include "core/providers/rocm/shared_inc/fpgeneric.h"
 #include "core/providers/rocm/tensor/transpose.h"
 #include "core/providers/rocm/tensor/transpose_impl.h"
+#include "core/providers/cpu/tensor/utils.h"
+#include "core/providers/rocm/shared_inc/fpgeneric.h"
 
 namespace onnxruntime {
 namespace rocm {
@@ -14,7 +14,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kOnnxDomain,
     1, 12,
     kRocmExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Transpose);
 
@@ -23,7 +23,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     13,
     kRocmExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Transpose);
 

@@ -614,20 +614,20 @@ def run_subprocess(args, cwd=None, capture_stdout=False, dll_path=None,
     my_env = os.environ.copy()
     if dll_path:
         if is_windows():
-            my_env["PATH"] = dll_path + os.pathsep + my_env["PATH"]
+            if "PATH" in my_env:
+                my_env["PATH"] = dll_path + os.pathsep + my_env["PATH"]
+            else:
+                my_env["PATH"] = dll_path
         else:
             if "LD_LIBRARY_PATH" in my_env:
                 my_env["LD_LIBRARY_PATH"] += os.pathsep + dll_path
             else:
                 my_env["LD_LIBRARY_PATH"] = dll_path
     if python_path:
-        if is_windows():
-            my_env["PYTHONPATH"] = python_path + os.pathsep + my_env["PYTHONPATH"]
+        if "PYTHONPATH" in my_env:
+            my_env["PYTHONPATH"] += os.pathsep + python_path
         else:
-            if "PYTHONPATH" in my_env:
-                my_env["PYTHONPATH"] += os.pathsep + python_path
-            else:
-                my_env["PYTHONPATH"] = python_path
+            my_env["PYTHONPATH"] = python_path
 
     my_env.update(env)
 
@@ -1706,7 +1706,7 @@ def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, cuda_version, use_rocm, rocm_version, use_dnnl,
         use_tensorrt, use_openvino, use_nuphar, use_vitisai, use_acl, use_armnn, use_dml,
         wheel_name_suffix, enable_training, nightly_build=False, default_training_package_device=False,
-        featurizers_build=False, use_ninja=False):
+        featurizers_build=False, use_ninja=False, build_eager_mode=False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows() and not use_ninja:
@@ -1726,6 +1726,8 @@ def build_python_wheel(
             args.append('--wheel_name_suffix={}'.format(wheel_name_suffix))
         if enable_training:
             args.append("--enable_training")
+        if build_eager_mode:
+            args.append("--disable_auditwheel_repair")
 
         # The following arguments are mutually exclusive
         if use_tensorrt:
@@ -2307,7 +2309,8 @@ def main():
                 nightly_build=nightly_build,
                 default_training_package_device=default_training_package_device,
                 featurizers_build=args.use_featurizers,
-                use_ninja=(args.cmake_generator == 'Ninja')
+                use_ninja=(args.cmake_generator == 'Ninja'),
+                build_eager_mode=args.build_eager_mode
             )
         if args.build_nuget:
             build_nuget_package(
