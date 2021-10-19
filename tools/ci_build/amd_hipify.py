@@ -179,28 +179,20 @@ provider_excluded_files = [
 ]
 
 training_ops_excluded_files = [
-                    'activation/gelu_grad_impl_common.cuh',
+                    'activation/gelu_grad_impl_common.cuh',  # uses custom tanh
                     'collective/adasum_kernels.cc',
                     'collective/adasum_kernels.h',
-                    'collective/nccl_common.cc',
-                    'collective/ready_event.cc',
-                    'collective/ready_event.h',
-                    'controlflow/record.cc',
-                    'controlflow/record.h',
-                    'controlflow/wait.cc',
-                    'controlflow/wait.h',
-                    'math/div_grad.cc',
-                    'math/softmax_grad_impl.cu',
-                    'math/softmax_grad.cc',
-                    'nn/batch_norm_grad.cc',
-                    'nn/batch_norm_grad.h',
-                    'nn/batch_norm_internal.cc',
-                    'nn/batch_norm_internal.h',
+                    'math/div_grad.cc',  # miopen API differs from cudnn, no double type support
+                    'math/softmax_grad_impl.cu',  # warp size differences
+                    'math/softmax_grad.cc',  # miopen API differs from cudnn, no double type support
+                    'nn/batch_norm_grad.cc',  # no double type support
+                    'nn/batch_norm_grad.h',  # miopen API differs from cudnn
+                    'nn/batch_norm_internal.cc',  # miopen API differs from cudnn, no double type support
+                    'nn/batch_norm_internal.h',  # miopen API differs from cudnn, no double type support
                     'nn/conv_grad.cc',
                     'nn/conv_grad.h',
-                    'reduction/reduction_all.cc',
-                    'reduction/reduction_ops.cc',
-                    'tensor/gather_nd_grad_impl.cu',
+                    'reduction/reduction_all.cc',  # deterministic = true, ignore ctx setting
+                    'reduction/reduction_ops.cc',  # no double type support
                     'cuda_training_kernels.cc',
                     'cuda_training_kernels.h',
 ]
@@ -315,6 +307,8 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace('RegisterHipTrainingKernels', 'RegisterRocmTrainingKernels')
     s = s.replace('ROCM_VERSION', 'CUDA_VERSION')  # semantically different meanings, cannot hipify
     s = s.replace('__ROCM_ARCH__', '__CUDA_ARCH__')  # semantically different meanings, cannot hipify
+    # "std::log" above incorrectly changed "std::logic_error" to "logfic_error"
+    s = s.replace('logfic_error', 'std::logic_error')
 
     do_write = True
     if os.path.exists(dst_file_path):
@@ -367,3 +361,7 @@ def amd_hipify(config_build_dir):
             log.debug(result.result())
         for result in training_results:
             log.debug(result.result())
+
+if __name__ == '__main__':
+    import sys
+    amd_hipify(sys.argv[1])
