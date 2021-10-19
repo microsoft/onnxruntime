@@ -81,6 +81,8 @@ extern "C" {
     MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseKernelAvx512Core;
     MLAS_CONV_SYM_KERNEL MlasConvSymKernelAvx512Vnni;
     MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseKernelAvx512Vnni;
+#elif defined(MLAS_TARGET_ARM64)
+    MLAS_CONV_SYM_KERNEL MlasConvSymKernelNeon;
 #endif
 
 }
@@ -164,6 +166,22 @@ const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Vnni = {
 };
 
 #endif // ORT_MINIMAL_BUILD
+
+#elif defined(MLAS_TARGET_ARM64)
+
+const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchArm64 = {
+    MlasConvSymKernelNeon,
+    nullptr,
+    8,                                      // FilterInputChannelPackCount
+    8,                                      // FilterOutputChannelPackCount
+    64,                                     // KernelChannelCount
+    2,                                      // KernelOutputCount
+    1,                                      // KernelInputChannelAlignment
+    8,                                      // KernelOutputChannelAlignment
+    64,                                     // KernelDepthwiseChannelCount
+    6,                                      // KernelDepthwiseOutputCount
+    true,                                   // FixupInputZeroPoint
+};
 
 #endif // MLAS_TARGET_AMD64
 

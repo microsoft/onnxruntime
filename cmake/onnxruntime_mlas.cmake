@@ -50,6 +50,7 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/arm64/QgemmU8X8KernelUdot.asm
         ${MLAS_SRC_DIR}/arm64/SgemmKernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/SgemvKernelNeon.asm
+        ${MLAS_SRC_DIR}/arm64/ConvSymKernelNeon.asm
       )
     else()
       target_sources(onnxruntime_mlas PRIVATE
@@ -263,6 +264,7 @@ else()
     if(ARM64 AND MLAS_SOURCE_IS_NOT_SET )
         enable_language(ASM)
         set(mlas_platform_srcs
+          ${MLAS_SRC_DIR}/aarch64/ConvSymKernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelUdot.S

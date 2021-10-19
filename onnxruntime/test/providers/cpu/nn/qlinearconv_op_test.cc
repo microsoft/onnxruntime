@@ -269,6 +269,36 @@ class QLinearConvOpTester {
     std::vector<int64_t> shape_;
     std::vector<float> scale_;
     T zero_point_{0};
+    void Print(const std::string& name){
+      std::cout<<name<<":"<<std::endl;
+
+      int64_t b_size = data_.size() / shape_[0];
+      for(int64_t b = 0; b < shape_[0]; b++){
+        for(int64_t b_i = 0; b_i < b_size; b_i++){
+          std::cout<<(int32_t)(data_[b * b_size + b_i])<<",";
+        }
+        std::cout<<std::endl;
+      }
+      // for(auto item : data_){
+      //   std::cout<<(int32_t)(item)<<",";
+      // }
+      std::cout<<std::endl;
+      std::cout<<"Scale:";
+      for(auto scale : scale_) std::cout<<scale<<",";
+      std::cout<<std::endl;
+      std::cout<<"ZeroPoint:"<<(int32_t)zero_point_<<std::endl;
+    }
+
+    void ReSet(){
+      int64_t count = 1;
+      for(auto s: shape_) count *= s;
+      int64_t batch_size = count/shape_[0];
+      for(auto i = 1; i < shape_[0]; i++){
+        for(auto b = 0; b < batch_size; b++){
+          data_[i*batch_size + b] = data_[b];
+        }
+      }
+    }
   };
 
   std::default_random_engine generator_{1234};
@@ -352,22 +382,17 @@ class QLinearConvOpTester {
   void ComputeExpectedOutput(std::vector<T1>& Y_data, std::vector<int64_t>& Y_shape) {
     ORT_ENFORCE(W_.shape_.size() > 2);
     ORT_ENFORCE(X_.shape_.size() == W_.shape_.size());
-
     const size_t kernel_rank = W_.shape_.size() - 2;
-
     const int64_t batch_count = X_.shape_[0];
     const int64_t input_channels = X_.shape_[1];
     const int64_t output_channels = W_.shape_[0];
     const int64_t group_count = std::max<int64_t>(groups_, 1LL);
     const int64_t group_input_channels = W_.shape_[1];
     const int64_t group_output_channels = output_channels / group_count;
-
     ORT_ENFORCE(input_channels == group_input_channels * group_count);
     ORT_ENFORCE(output_channels == group_output_channels * group_count);
-
     const int64_t* input_shape = X_.shape_.data() + 2;
     const int64_t* kernel_shape = W_.shape_.data() + 2;
-
     std::vector<int64_t> pads(pads_);
     if (pads.empty()) {
       pads.resize(kernel_rank * 2, 0);
@@ -380,7 +405,6 @@ class QLinearConvOpTester {
     if (strides.empty()) {
       strides.resize(kernel_rank, 1);
     }
-
     // Compute the expected shape of the output.
     Y_shape.reserve(kernel_rank + 2);
     Y_shape.push_back(batch_count);
@@ -393,30 +417,27 @@ class QLinearConvOpTester {
     }
     const int64_t* output_shape = Y_shape.data() + 2;
     Y_data.resize(ShapeSize(Y_shape));
-
     const int64_t input_image_size = std::accumulate(
         input_shape, input_shape + kernel_rank, 1LL, std::multiplies<int64_t>());
     const int64_t kernel_size = std::accumulate(
         kernel_shape, kernel_shape + kernel_rank, 1LL, std::multiplies<int64_t>());
     const int32_t X_zero_point = X_.zero_point_;
     const int32_t W_zero_point = W_.zero_point_;
-
     const T1* Xdata = X_.data_.data();
     T1* Ydata = Y_data.data();
 
     RequantizeValues<T1> requantize_values(output_zero_point_);
 
+    std::cout<<"Sum:";
     for (int64_t batch = 0; batch < batch_count; batch++) {
       const T2* weight_group = W_.data_.data();
       for (int64_t group = 0; group < group_count; group++) {
         const T2* weight_row = weight_group;
-
         for (int64_t oc = 0; oc < group_output_channels; oc++) {
           int64_t channel_index = group * group_output_channels + oc;
           int32_t bias = B_.empty() ? 0 : B_[channel_index];
           float weight_scale = W_.scale_[(W_.scale_.size() == 1) ? 0 : channel_index];
           float requantize_scale = (X_.scale_[0] * weight_scale) / output_scale_;
-
           std::vector<int64_t> d_output(kernel_rank, 0);
           std::vector<int64_t> d_kernel(kernel_rank, 0);
           do {
@@ -437,22 +458,23 @@ class QLinearConvOpTester {
                 if (!is_padding) {
                   int32_t x_value = static_cast<int32_t>(input_image[input_offset]) - X_zero_point;
                   sum += x_value * w_value;
+                  std::cout<<x_value<<"*"<<w_value<<" + ";
                 }
               } while (NextPosition(kernel_rank, kernel_shape, d_kernel.data()));
 
               input_image += input_image_size;
             }
+            std::cout<<" = "<<sum<<std::endl;
             *Ydata++ = RequantizeOutput<T1>(sum, requantize_scale, requantize_values);
 
           } while (NextPosition(kernel_rank, output_shape, d_output.data()));
-
           weight_row += group_input_channels * kernel_size;
         }
-
         Xdata += group_input_channels * input_image_size;
         weight_group += group_output_channels * group_input_channels * kernel_size;
       }
     }
+    std::cout<<std::endl;
   }
 
   void Run(bool all_input_initializer_except_x) {
@@ -460,17 +482,23 @@ class QLinearConvOpTester {
 
     std::vector<T1> Y_data;
     std::vector<int64_t> Y_shape;
+    W_.ReSet();
     ComputeExpectedOutput(Y_data, Y_shape);
 
+    X_.Print("X");
     test.AddInput<T1>("x", X_.shape_, X_.data_);
     test.AddInput<float>("x_scale", {}, X_.scale_, all_input_initializer_except_x);
     test.AddInput<T1>("x_zero_point", {}, {X_.zero_point_}, all_input_initializer_except_x);
 
+    // W_.ReSet();
+    W_.Print("W");
     const std::vector<int64_t> W_scale_shape{static_cast<int64_t>(W_.scale_.size())};
     test.AddInput<T2>("w", W_.shape_, W_.data_, all_input_initializer_except_x);
     test.AddInput<float>("w_scale", W_scale_shape, W_.scale_, all_input_initializer_except_x);
     test.AddInput<T2>("w_zero_point", {}, {W_.zero_point_}, all_input_initializer_except_x);
 
+    std::cout<<"y_scale:"<<output_scale_<<std::endl;
+    std::cout<<"y_zero_point:"<<output_zero_point_<<std::endl;
     test.AddInput<float>("y_scale", {}, {output_scale_}, all_input_initializer_except_x);
     test.AddInput<T1>("y_zero_point", {}, {output_zero_point_}, all_input_initializer_except_x);
 
@@ -478,9 +506,7 @@ class QLinearConvOpTester {
       const std::vector<int64_t> B_shape{static_cast<int64_t>(B_.size())};
       test.AddInput<int32_t>("b", B_shape, B_, all_input_initializer_except_x);
     }
-
     float abs_error = 0.0f;
-
     // For quantized models, NNAPI's rounding is different than CPU provider
     // Sometimes the result is within +/-1 of result of CPU provider
     // For ONNX, we use rounding to nearest ties to even.
@@ -494,9 +520,7 @@ class QLinearConvOpTester {
 #ifdef USE_NNAPI
     abs_error = 1.0f;
 #endif
-
     test.AddOutput<uint8_t>("y", Y_shape, Y_data, false /* sort_output */, 0.0f /* rel_error */, abs_error);
-
     if (!pads_.empty()) {
       test.AddAttribute("pads", pads_);
     }
@@ -509,7 +533,6 @@ class QLinearConvOpTester {
     if (groups_ > 0) {
       test.AddAttribute("group", groups_);
     }
-
     test.Run(OpTester::ExpectResult::kExpectSuccess, "");
   }
 
@@ -927,6 +950,42 @@ TEST(QLinearConvTest, Conv2D_U8S8_Requantize_NoBias) {
     test.SetOutputScaleAndZeroPoint(.55f, 56);
     test.Run();
   }
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_Requantize_NoBias_Debug) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({1, 8, 5, 5}, .05f, 4);
+  test.GenerateRandomWeights({8, 8, 3, 3}, .125f, 0);
+  test.SetPads({1, 1, 1, 1});
+  test.SetOutputScaleAndZeroPoint(.55f, 56);
+  test.Run();
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_Requantize_NoBias_Debug_C1_Simple) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({1, 1, 3, 3}, .05f, 4);
+  test.GenerateRandomWeights({8, 1, 3, 3}, .125f, 0);
+  // test.SetPads({1, 1, 1, 1});
+  test.SetOutputScaleAndZeroPoint(.55f, 56);
+  test.Run();
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_Requantize_NoBias_Debug_C1) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({1, 1, 5, 5}, .05f, 4);
+  test.GenerateRandomWeights({8, 1, 3, 3}, .125f, 0);
+  test.SetPads({1, 1, 1, 1});
+  test.SetOutputScaleAndZeroPoint(.55f, 56);
+  test.Run();
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_Requantize_NoBias_Debug_C2) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({1, 2, 5, 5}, .05f, 4);
+  test.GenerateRandomWeights({8, 2, 3, 3}, .125f, 0);
+  test.SetPads({1, 1, 1, 1});
+  test.SetOutputScaleAndZeroPoint(.55f, 56);
+  test.Run();
 }
 
 TEST(QLinearConvTest, Conv2D_U8S8_Requantize_Bias) {
