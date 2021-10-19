@@ -843,6 +843,8 @@ No matching if found if src tokens contain multiple or zero matching n-grams. Re
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(BifurcationDetector_ver1_doc)
+      .Attr("min_ngram_size", "The minimum NGram size for suffix matching.", AttributeProto::INT, static_cast<int64_t>(1))
+      .Attr("max_ngram_size", "The maximum NGram size for suffix matching.", AttributeProto::INT, static_cast<int64_t>(3))
       .Input(0, "src_tokens", "Encoder input ids.", "T")
       .Input(1, "cur_tokens", "Decoder input ids.", "T")
       .Input(2, "prev_suffix_match_idx", "Previous suffix match index", "T")

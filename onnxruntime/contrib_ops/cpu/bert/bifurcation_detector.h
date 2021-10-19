@@ -11,6 +11,11 @@ namespace contrib {
 class BifurcationDetector : public OpKernel {
  public:
   explicit BifurcationDetector(const OpKernelInfo& info) : OpKernel(info) {
+    ORT_ENFORCE(info.GetAttr<int64_t>("min_ngram_size", &min_ngram_size_).IsOK());
+    ORT_ENFORCE(min_ngram_size_ > 0);
+    ORT_ENFORCE(info.GetAttr<int64_t>("max_ngram_size", &max_ngram_size_).IsOK());
+    ORT_ENFORCE(max_ngram_size_ > 0);
+    ORT_ENFORCE(max_ngram_size_ >= min_ngram_size_);
   }
 
   Status Compute(OpKernelContext* context) const override {
@@ -64,12 +69,11 @@ class BifurcationDetector : public OpKernel {
     // No matching if found if src tokens contain multiple or zero matching n-grams.
     // Return -1.
     int64_t tokens_len = out_tokens->Shape().GetDims().at(0);
-    int64_t min_gram = 1;
-    int64_t max_gram = 3;
+    int64_t min_gram = min_ngram_size_;
+    int64_t max_gram = max_ngram_size_;
     int64_t suffix_idx = -1;
     const auto* tokens_data = static_cast<const int64_t*>(out_tokens->DataRaw());
     for (int64_t i = min_gram; i < max_gram + 1; ++i) {
-      //
       if (i > tokens_len) {
         break;
       }
@@ -103,6 +107,10 @@ class BifurcationDetector : public OpKernel {
 
     return Status::OK();
   }
+
+ private:
+  int64_t min_ngram_size_;
+  int64_t max_ngram_size_;
 };
 }  // namespace contrib
 }  // namespace onnxruntime
