@@ -66,7 +66,7 @@ def is_dynamic(model):
             return True
     return False 
 
-def run_trt_standalone(trtexec, model_name, model_path, ort_inputs, all_inputs_shape, fp16):
+def run_trt_standalone(trtexec, model_name, model_path, ort_inputs, all_inputs_shape, fp16, track_memory):
     logger.info("running standalone trt")
     onnx_model_path = "--onnx=" + model_path
     input_shape = []
@@ -100,9 +100,25 @@ def run_trt_standalone(trtexec, model_name, model_path, ort_inputs, all_inputs_s
     
     engine_name = model_name + ".engine"
     command1 = command + ["--saveEngine=" + engine_name]
+    logger.info(command1)
     out = get_output(command1)
+
     command2 = command + ["--loadEngine=" + engine_name]
-    out = get_output(command2)
+    logger.info(command2)
+
+    trtexec = True 
+    mem_usage = None
+    p = None
+    if track_memory: 
+        p = start_memory_tracking()            
+        try: 
+            out = get_output(command2)
+            mem_usage = end_memory_tracking(p, trtexec, True)
+        except Exception as e: 
+            end_memory_tracking(p, trtexec, False)
+            raise(e)
+    else: 
+        out = get_output(command2)
     
     tmp = out.split("\n")
     target_list = []
@@ -120,6 +136,8 @@ def run_trt_standalone(trtexec, model_name, model_path, ort_inputs, all_inputs_s
     percentile_match = re.search('percentile\(90%\) = (.*?) ms', target)
     if percentile_match:
         result["latency_90_percentile"] = percentile_match.group(1) # extract number
+    if mem_usage: 
+        result["memory"] = mem_usage
     logger.info(result)
     return result
 
@@ -232,7 +250,7 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
             logger.info("ORT session outputs:")
             logger.info(sess_outputs)
 
-        try:
+        #try:
             #perf_ep = ''
             #if ep == cuda or ep == cuda_fp16: 
             #    perf_ep = 'cuda'
@@ -247,12 +265,13 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
             #if trt in ep or trt_fp16 in ep: 
             #    out = get_output(command)
             #os.environ["ORT_TENSORRT_CACHE_PATH"] = "/perf/onnx-zoo-models/renset152-v2-7/TensorrtExecutionProvider_TRTKernel_graph_main_5145462769846823227_1_0_fp16.engine"
-            runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
-            runtimes += runtime[1:] # remove warmup
-        
-        except Exception as e:
-            logger.error(e)
-            return None
+        runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
+        runtimes += runtime[1:] # remove warmup
+    
+        #except Exception as e:
+            #logger.error(e)
+            #update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
+            #return None
 
     result = {}
     result.update(result_template)
@@ -1034,16 +1053,9 @@ def run_onnxruntime(args, models):
                 if standalone_trt in ep and args.trtexec: 
                     trtexec = True 
                     try: 
-                        if args.track_memory: 
-                            p = start_memory_tracking()            
-                            result = run_trt_standalone(args.trtexec, name, model_path, sess.get_inputs(), all_inputs_shape, fp16)
-                            mem_usage = end_memory_tracking(p, trtexec, True)
-                        else: 
-                            result = run_trt_standalone(args.trtexec, name, model_path, sess.get_inputs(), all_inputs_shape, fp16)
+                        result = run_trt_standalone(args.trtexec, name, model_path, sess.get_inputs(), all_inputs_shape, fp16, args.track_memory)
                     except Exception as e: 
                         logger.error(e)
-                        if args.track_memory:
-                            end_memory_tracking(p, trtexec, False)
                         update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
                         continue
 
@@ -1076,18 +1088,28 @@ def run_onnxruntime(args, models):
                     repeat_times = args.test_times
                     if trt in ep or cuda in ep: 
                         repeat_times = 10000
-                    if args.track_memory and track_ep_memory(ep): 
-                        trtexec = False
-                        p = start_memory_tracking()            
-                        result = inference_ort(args, name, sess, ep, inputs, result_template, repeat_times, batch_size)
-                        success = True if result else False
-                        mem_usage = end_memory_tracking(p, trtexec, success)
-                    else: 
-                        result = inference_ort(args, name, sess, ep, inputs, result_template, repeat_times, batch_size)
+                    try: 
+                        if args.track_memory and track_ep_memory(ep): 
+                            trtexec = False
+                            p = start_memory_tracking()            
+                            logger.info("inferencing")
+                            result = inference_ort(args, name, sess, ep, inputs, result_template, repeat_times, batch_size)
+                            logger.info("done inferencing")
+                            success = True if result else False
+                            mem_usage = end_memory_tracking(p, trtexec, success)
+                        else: 
+                            result = inference_ort(args, name, sess, ep, inputs, result_template, repeat_times, batch_size)
+                    except Exception as e:
+                        logger.info("in benchmark")
+                        logger.error(e)
+                        update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
+                        continue
                 if result:
                     latency_result[ep] = {}
                     latency_result[ep]["average_latency_ms"] = result["average_latency_ms"]
                     latency_result[ep]["latency_90_percentile"] = result["latency_90_percentile"]
+                    if "memory" in result: 
+                        mem_usage = result["memory"]
                     if mem_usage: 
                         latency_result[ep]["memory"] = mem_usage
 
@@ -1096,6 +1118,7 @@ def run_onnxruntime(args, models):
 
                     model_to_latency[name] = copy.deepcopy(latency_result)
                     remove_files(model_info["working_directory"])
+                    logger.info("in result")
                 logger.info("---------------------------- benchmark [end] ----------------------------------\n")
 
 
