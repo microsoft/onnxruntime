@@ -569,7 +569,7 @@ class MatrixTransposeToVectorCallback : public MatrixToVectorCallback<T> {
   void operator()(size_t a_offset, size_t b_offset) {
     ORT_ENFORCE(a_offset < row_ind_size_, "a_offset is out of bounds");
     const auto m_offset = transposed_value_offsets_[row_offset_ + a_offset];
-    accum_ += Mul(matrix_values_[m_offset], alpha_, vector_values_[b_offset]);
+    accum_ += Mul(this->matrix_values_[m_offset], alpha_, this->vector_values_[b_offset]);
   }
 };
 
@@ -633,52 +633,6 @@ struct MatrixToVector {
       }
     }
     return Status::OK();
-  }
-};
-
-struct MatrixToMatrixCtx {
-  const Tensor& a_values_;
-  const sparse_utils::CsrIndicesSpan& a_csr_;
-  const Tensor& b_values_;
-  const sparse_utils::CsrIndicesSpan& b_csr_;
-  SparseTensor& output_tensor_;
-};
-
-template <typename T>
-struct MatrixToMatrix {
-  Status operator()(const MatrixToMatrixCtx& ctx, float alphat) const {
-    std::function<void(size_t, size_t)> cb_func;
-    const auto& a_inner = ctx.a_csr_.Inner();
-    const auto& a_outer = ctx.a_csr.Outer();
-    const auto& b_inner = ctx.b_csr_.Inner();
-    const auto& b_outer = ctx.b_csr_.Outer();
-
-    // Need to figure out the intersection to compute the correct size
-    //const size_t a_non_empty = CountNonEmptyRows(a_outer);
-    //const size_t b_non_empty = CountNonEmptyRows(b_outer);
-
-    const size_t a_outer_limit = a_outer.size() - 1;
-    const size_t b_outer_limit = b_outer.size() - 1;
-    for (size_t row_a = 0; row_a < a_outer_limit; ++row_a) {
-      const auto a_row_start = gsl::narrow<gsl::index>(a_outer[row_a]);
-      const auto a_row_nnz_len = gsl::narrow<gsl::index>(a_outer[row_a + 1]) - a_row_start;
-
-      if (a_row_nnz_len > 0) {
-        auto a_idx_span = a_inner.subspan(a_row_start, a_row_nnz_len);
-        for (size_t col_b = 0; col_b < b_outer_limit; ++col_b) {
-          const auto b_col_start = gsl::narrow<gsl::index>(b_outer[col_b]);
-          const auto b_col_nnz_len = gsl::narrow<gsl::index>(b_outer[col_b + 1]) - b_col_start;
-          // We skip rows with no nnz, assuming that application defined zeros still show up in the nnz
-          if (b_col_nnz_len > 0) {
-            // cb_in_use->SetRow(row_indices_start, row_nnz_len);
-            auto b_idx_span = b_inner.subspan(b_col_start, b_col_nnz_len);
-            sparse_utils::ScanForSparseMatches(a_idx_span, b_idx_span, cb_func);
-            // *output_data++ = cb_in_use->GetRowSum();
-            *output_indices++ = gsl::narrow<int64_t>(row_a);
-          }
-        }
-      }
-    }
   }
 };
 
