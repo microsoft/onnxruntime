@@ -21,7 +21,7 @@ class ApiValueInfo : public api::ValueInfo {
   std::string name_;
 
  public:
-  explicit ApiValueInfo(onnxruntime::Graph& graph, std::string name) : graph_(graph), name_(name){};
+  explicit ApiValueInfo(onnxruntime::Graph& graph, std::string name) : graph_(graph), name_(std::move(name)){};
   const std::string_view Name() const override;
   std::optional<std::vector<int64_t>> Shape() const override;
   api::DataType DType() const override;
@@ -43,9 +43,11 @@ class ApiTensor : public api::Tensor {
  public:
   explicit ApiTensor(const onnx::TensorProto& tensor_proto, const Graph& graph, AllocatorPtr cpu_allocator) 
       : tensor_proto_(tensor_proto), graph_(graph), cpu_allocator_(std::move(cpu_allocator)){};
+
   const onnx::TensorProto& TensorProto() {
     return tensor_proto_;
   }
+
   std::unique_ptr<onnxruntime::Tensor> MakeTensor() const;
   std::vector<int64_t> Shape() const override;
   api::DataType DType() const override;
@@ -65,9 +67,11 @@ class ApiNode : public api::Node {
 
  public:
   explicit ApiNode(onnxruntime::Node& node, Graph& graph) : node_(node), graph_(graph){};
+
   onnxruntime::Node& Node() {
     return node_;
   }
+
   const std::string_view OpType() const override;
   const std::string_view Domain() const override;
   std::vector<std::string_view> Inputs() const override;
@@ -96,9 +100,11 @@ class ApiGraph : public api::Graph {
   explicit ApiGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator, const logging::Logger& logger,
                     const char* new_node_ep) : graph_(graph), cpu_allocator_(std::move(cpu_allocator)),
                     logger_(logger), new_node_ep_(new_node_ep){};
+
   onnxruntime::Graph& Graph() {
     return graph_;
   }
+
   std::optional<int64_t> Opset(const std::string_view domain = "") const override;
   std::vector<std::unique_ptr<api::Node>> Nodes() const override;
   std::unique_ptr<api::Tensor> GetConstant(const std::string_view name) const override;
@@ -123,19 +129,22 @@ class ApiGraph : public api::Graph {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiGraph);
 };
 
+// <ApiValueInfo>
+const std::string_view ApiValueInfo::Name() const {
+  return name_;
+}
+
 const onnx::TensorShapeProto* GetNodeArgShape(const NodeArg* node_arg) {
   if (node_arg == nullptr) {
     return nullptr;
   }
+
   const auto* type = node_arg->TypeAsProto();
   if (type == nullptr || !utils::HasShape(*type)) {
     return nullptr;
   }
-  return &utils::GetShape(*type);
-}
 
-const std::string_view ApiValueInfo::Name() const {
-  return name_;
+  return &utils::GetShape(*type);
 }
 
 std::optional<std::vector<int64_t>> ApiValueInfo::Shape() const {
@@ -144,6 +153,7 @@ std::optional<std::vector<int64_t>> ApiValueInfo::Shape() const {
   if (shape_proto == nullptr) {
     return std::nullopt;
   }
+
   TensorShape shape = utils::GetTensorShapeFromTensorShapeProto(*shape_proto);
   return shape.GetDims();
 }
@@ -154,13 +164,16 @@ api::DataType ApiValueInfo::DType() const {
   if (node_arg == nullptr) {
     return api::DataType::UNDEFINED;
   }
+
   const auto* type = node_arg->TypeAsProto();
   if (!utils::HasTensorType(*type)) {
     return api::DataType::UNDEFINED;
   }
+
   if (!utils::HasElementType(*type)) {
     return api::DataType::UNDEFINED;
   }
+
   return gsl::narrow_cast<api::DataType>(type->tensor_type().elem_type());
 }
 
@@ -170,20 +183,23 @@ void ApiValueInfo::SetShape(const std::vector<int64_t>* shape) {
     node_arg.ClearShape();
     return;
   }
+
   TensorShapeProto new_shape;
   for (int64_t d : *shape) {
-    const auto dim = new_shape.add_dim();
+    auto* dim = new_shape.add_dim();
     if (d > 0) {
       dim->set_dim_value(d);
     }
   }
+
   node_arg.SetShape(new_shape);
 }
 
-void CopyDim(const onnx::TensorShapeProto_Dimension& src, onnx::TensorShapeProto_Dimension& dst) {
+void CopyTensorShapeDim(const onnx::TensorShapeProto_Dimension& src, onnx::TensorShapeProto_Dimension& dst) {
   if (utils::HasDimValue(src)) {
     dst.set_dim_value(src.dim_value());
   }
+
   if (utils::HasDimValue(src)) {
     dst.set_dim_param(src.dim_param());
   }
@@ -195,16 +211,19 @@ void ApiValueInfo::PermuteDims(const std::vector<int64_t>& perm) {
   if (shape_proto == nullptr) {
     return;
   }
-  //ORT_ENFORCE(perm.size() == (size_t)shape_proto->dim_size(), "Permutation ", perm, " length does not match shape ",
-  //            shape_proto->dim_size());
+
+  ORT_ENFORCE(perm.size() == gsl::narrow_cast<size_t>(shape_proto->dim_size()),
+              "Permutation ", perm, " length does not match shape ", shape_proto->dim_size());
   TensorShapeProto new_shape;
   for (int64_t p : perm) {
-    //ORT_ENFORCE(0 <= p && (int)p < shape_proto->dim_size(), "Permutation ", perm, " out of bounds for shape ",
-    //            shape_proto->dim_size());
+    int p_int = gsl::narrow_cast<int>(p);
+    ORT_ENFORCE(0 <= p && p_int < shape_proto->dim_size(),
+                "Permutation ", perm, " out of bounds for shape ", shape_proto->dim_size());
     auto& dim = *new_shape.add_dim();
-    const auto& src_dim = shape_proto->dim((int)p);
-    CopyDim(src_dim, dim);
+    const auto& src_dim = shape_proto->dim(p_int);
+    CopyTensorShapeDim(src_dim, dim);
   }
+
   node_arg->SetShape(new_shape);
 }
 
@@ -214,6 +233,7 @@ void ApiValueInfo::UnsqueezeDims(const std::vector<int64_t>& axes) {
   if (shape_proto == nullptr) {
     return;
   }
+
   size_t rank = shape_proto->dim_size();
   TensorShapeProto new_shape;
   int j = 0;
@@ -224,21 +244,25 @@ void ApiValueInfo::UnsqueezeDims(const std::vector<int64_t>& axes) {
     } else if (gsl::narrow_cast<size_t>(j) < rank) {
       auto& dim = *new_shape.add_dim();
       const auto& src_dim = shape_proto->dim(j);
-      CopyDim(src_dim, dim);
+      CopyTensorShapeDim(src_dim, dim);
       ++j;
     } else {
       break;
     }
     ++i;
   }
+
   node_arg->SetShape(new_shape);
 }
+// </ApiValueInfo>
 
+// <ApiTensor>
 std::vector<int64_t> ApiTensor::Shape() const {
   std::vector<int64_t> shape;
   for (int64_t d : tensor_proto_.dims()) {
     shape.push_back(d);
   }
+
   return shape;
 }
 
@@ -257,24 +281,35 @@ std::unique_ptr<onnxruntime::Tensor> ApiTensor::MakeTensor() const {
 }
 
 template<typename T>
-std::vector<T> IntsFromTensor(const onnxruntime::Tensor& tensor) {
+std::vector<T> TensorDataToVector(const onnxruntime::Tensor& tensor) {
   const T* data = tensor.Data<T>();
   size_t num_elements = gsl::narrow_cast<size_t>(tensor.Shape().Size());
   std::vector<T> int_data(num_elements);
   for (size_t i = 0; i < num_elements; ++i) {
     int_data[i] = *data++;
   }
+
   return int_data;
 }
 
 std::vector<int64_t> ApiTensor::DataInt64() const {
   const auto tensor = MakeTensor();
-  return IntsFromTensor<int64_t>(*tensor);
+  return TensorDataToVector<int64_t>(*tensor);
 }
 
 std::vector<int32_t> ApiTensor::DataInt32() const {
   const auto tensor = MakeTensor();
-  return IntsFromTensor<int32_t>(*tensor);
+  return TensorDataToVector<int32_t>(*tensor);
+}
+// </ApiTensor>
+
+// <ApiNode>
+const std::string_view ApiNode::OpType() const {
+  return node_.OpType();
+}
+
+const std::string_view ApiNode::Domain() const {
+  return node_.Domain();
 }
 
 std::vector<std::string_view> NodeArgsToStrings(ConstPointerContainer<std::vector<NodeArg*>> node_args) {
@@ -282,15 +317,8 @@ std::vector<std::string_view> NodeArgsToStrings(ConstPointerContainer<std::vecto
   for (const auto* arg : node_args) {
     result.push_back(arg->Name());
   }
+
   return result;
-}
-
-const std::string_view ApiNode::OpType() const {
-  return node_.OpType();
-}
-
-const std::string_view ApiNode::Domain() const {
-  return node_.Domain();
 }
 
 std::vector<std::string_view> ApiNode::Inputs() const {
@@ -306,6 +334,7 @@ std::optional<int64_t> ApiNode::GetAttributeInt(const std::string_view name) con
   if (attr == nullptr || attr->type() != onnx::AttributeProto_AttributeType_INT) {
     return std::nullopt;
   }
+
   return attr->i();
 }
 
@@ -314,10 +343,12 @@ std::optional<std::vector<int64_t>> ApiNode::GetAttributeInts(const std::string_
   if (attr == nullptr || attr->type() != onnx::AttributeProto_AttributeType_INTS) {
     return std::nullopt;
   }
+
   std::vector<int64_t> value;
   for (int64_t x : attr->ints()) {
     value.push_back(x);
   }
+
   return value;
 }
 
@@ -350,6 +381,7 @@ void ApiNode::AddInput(const std::string_view name) {
   while (i < args_count.size() && args_count[i] > 0) {
     ++i;
   }
+
   args_count.push_back(1);
   auto& mutable_input_defs = node_.MutableInputDefs();
   int inp_index = gsl::narrow_cast<int>(mutable_input_defs.size());
@@ -365,6 +397,7 @@ void ApiNode::AddInput(const std::string_view name) {
 }
 
 void ApiNode::SetInput(size_t i, const std::string_view name) {
+  // name could be empty to represent a missing optional.
   const std::string name_str(name);
   NodeArg* new_node_arg = &graph_.GetOrCreateNodeArg(name_str, nullptr);
   auto& mutable_input_defs = node_.MutableInputDefs();
@@ -377,26 +410,29 @@ void ApiNode::SetInput(size_t i, const std::string_view name) {
         ++usages;
       }
     }
+
     if (usages == 1) {
       graph_.RemoveConsumerNode(old_node_arg->Name(), &node_);
     }
+
     const auto* old_node = graph_.GetProducerNode(old_node_arg->Name());
     if (old_node != nullptr) {
       int inp_node_out_index = graph_utils::GetNodeOutputIndexFromOutputName(*old_node, old_node_arg->Name());
-      graph_.RemoveEdge(old_node->Index(), node_.Index(), inp_node_out_index, (int)i);
+      graph_.RemoveEdge(old_node->Index(), node_.Index(), inp_node_out_index, gsl::narrow_cast<int>(i));
     }
   }
+
   mutable_input_defs[i] = new_node_arg;
   if (new_node_arg->Exists()) {
     graph_.AddConsumerNode(name_str, &node_);
     const auto* inp_node = graph_.GetProducerNode(name_str);
     if (inp_node != nullptr) {
       int inp_node_out_index = graph_utils::GetNodeOutputIndexFromOutputName(*inp_node, name_str);
-      graph_.AddEdge(inp_node->Index(), node_.Index(), inp_node_out_index, (int)i);
+      graph_.AddEdge(inp_node->Index(), node_.Index(), inp_node_out_index, gsl::narrow_cast<int>(i));
     }
   }
 }
-
+// </ApiNode>
 
 std::optional<int64_t> ApiGraph::Opset(const std::string_view domain) const {
   const auto& version_map = graph_.DomainToVersionMap();
@@ -404,6 +440,7 @@ std::optional<int64_t> ApiGraph::Opset(const std::string_view domain) const {
   if (match == version_map.end()) {
     return std::nullopt;
   }
+
   return match->second;
 }
 
@@ -412,10 +449,11 @@ std::vector<std::unique_ptr<api::Node>> ApiGraph::Nodes() const {
   std::vector<std::unique_ptr<api::Node>> nodes;
   const auto& sorted_nodes = graph_viewer.GetNodesInTopologicalOrder();
   nodes.reserve(sorted_nodes.size());
-  for (const auto index : sorted_nodes) {
+  for (NodeIndex index : sorted_nodes) {
     auto& node = *graph_.GetNode(index);
     nodes.push_back(std::unique_ptr<api::Node>(new ApiNode(node, graph_)));
   }
+
   return nodes;
 }
 
@@ -424,6 +462,7 @@ std::unique_ptr<api::Tensor> ApiGraph::GetConstant(const std::string_view name) 
   if (tensor == nullptr) {
     return nullptr;
   }
+
   return std::unique_ptr<api::Tensor>(new ApiTensor(*tensor, graph_, cpu_allocator_));
 }
 
@@ -435,13 +474,14 @@ std::unique_ptr<api::ValueConsumers> ApiGraph::GetValueConsumers(const std::stri
   auto consumers = std::make_unique<api::ValueConsumers>();
   consumers->comprehensive = true;
   const auto nodes = graph_.GetConsumerNodes(std::string(name));
-  for (const auto node : nodes) {
+  for (const auto* node : nodes) {
     for (const auto* input : node->ImplicitInputDefs()) {
       if (input->Exists() && input->Name() == name) {
         consumers->comprehensive = false;
         break;
       }
     }
+
     for (const auto* input : node->InputDefs()) {
       if (input->Exists() && input->Name() == name) {
         consumers->nodes.push_back(std::unique_ptr<api::Node>(new ApiNode(*graph_.GetNode(node->Index()), graph_)));
@@ -465,12 +505,14 @@ bool ApiGraph::HasValueConsumers(const std::string_view name) const {
   if (nodes.size() > 0) {
     return true;
   }
+
   const auto& graph_outputs = graph_.GetOutputs();
   for (const auto* output : graph_outputs) {
     if (output->Name() == name) {
       return true;
     }
   }
+
   return false;
 }
 
@@ -479,6 +521,7 @@ std::unique_ptr<api::Node> ApiGraph::GetNodeProducingOutput(const std::string_vi
   if (node == nullptr) {
     return std::unique_ptr<api::Node>(nullptr);
   }
+
   return std::unique_ptr<api::Node>(new ApiNode(*node, graph_));
 }
 
@@ -495,9 +538,11 @@ void ApiGraph::TransposeInitializer(const std::string_view name, const std::vect
   std::vector<int64_t> new_tensor_shape_dims;
   std::vector<size_t> permutations;
   for (int64_t p : perm) {
-    permutations.push_back((size_t)p);
-    new_tensor_shape_dims.push_back(tensor_shape_dims[(size_t)p]);
+    size_t p_size_t = gsl::narrow_cast<size_t>(p);
+    permutations.push_back(p_size_t);
+    new_tensor_shape_dims.push_back(tensor_shape_dims[p_size_t]);
   }
+
   TensorShape new_tensor_shape(new_tensor_shape_dims);
 
   std::unique_ptr<Tensor> out_tensor = Tensor::Create(tensor_dtype, new_tensor_shape, cpu_allocator_);
@@ -514,6 +559,7 @@ void ApiGraph::TransposeInitializer(const std::string_view name, const std::vect
   for (int64_t d : new_tensor_shape_dims) {
     new_shape.add_dim()->set_dim_value(d);
   }
+
   node_arg->SetShape(new_shape);
 
   ONNX_NAMESPACE::TensorProto new_tensor_proto = utils::TensorToTensorProto(*out_tensor, name_str);
@@ -530,10 +576,12 @@ void ApiGraph::ReshapeInitializer(const std::string_view name, const std::vector
   for (int64_t d : shape) {
     new_num_elts *= d;
   }
+
   int64_t old_num_elts = 1;
   for (int64_t d : tensor_proto->dims()) {
     old_num_elts *= d;
   }
+
   ORT_ENFORCE(new_num_elts == old_num_elts, "Cannot reshape initializer ", name,
               " to have different number of elements");
 
@@ -542,6 +590,7 @@ void ApiGraph::ReshapeInitializer(const std::string_view name, const std::vector
   for (int64_t d : shape) {
     new_tensor_proto.add_dims(d);
   }
+
   graph_.RemoveInitializedTensor(name_str);
   graph_.AddInitializedTensor(new_tensor_proto);
 
@@ -550,6 +599,7 @@ void ApiGraph::ReshapeInitializer(const std::string_view name, const std::vector
   for (int64_t d : shape) {
     new_shape.add_dim()->set_dim_value(d);
   }
+
   node_arg->SetShape(new_shape);
 }
 
@@ -565,11 +615,13 @@ std::unique_ptr<api::Node> ApiGraph::AddNode(const std::string_view op_type,
     NodeArg* arg = &graph_.GetOrCreateNodeArg(std::string(input), nullptr);
     input_args.push_back(arg);
   }
+
   for (size_t i = 0; i < num_outputs; ++i) {
     std::string output = graph_.GenerateNodeArgName(name + "_out" + std::to_string(i));
     NodeArg* arg = &graph_.GetOrCreateNodeArg(output, nullptr);
     output_args.push_back(arg);
   }
+
   std::vector<NodeArg*> outputs;
   Node& node = graph_.AddNode(name, op_type_str, "Added in transpose optimizer", input_args, output_args, nullptr,
                               std::string(domain));
@@ -586,13 +638,15 @@ std::unique_ptr<api::Node> ApiGraph::AddNode(const std::string_view op_type,
       const auto* inp_node = graph_.GetProducerNode(name_str);
       if (inp_node != nullptr) {
         int inp_node_out_index = graph_utils::GetNodeOutputIndexFromOutputName(*inp_node, name_str);
-        graph_.AddEdge(inp_node->Index(), node.Index(), inp_node_out_index, (int)i);
+        graph_.AddEdge(inp_node->Index(), node.Index(), inp_node_out_index, gsl::narrow_cast<int>(i));
       }
     }
   }
+
   for (NodeArg* arg : output_args) {
     graph_.UpdateProducerNode(arg->Name(), node.Index());
   }
+
   return std::unique_ptr<api::Node>(new ApiNode(node, graph_));
 }
 
@@ -603,6 +657,7 @@ void ApiGraph::RemoveNode(api::Node& node) {
       graph_.RemoveConsumerNode(node_arg->Name(), &ort_node);
     }
   }
+
   graph_.RemoveNode(ort_node.Index());
 }
 
@@ -620,6 +675,7 @@ inline ONNX_NAMESPACE::TensorProto TensorProtoFromInts(std::string& name, const 
   for (int64_t dim : shape) {
     tensor_proto.add_dims(dim);
   }
+
   return tensor_proto;
 }
 
@@ -650,14 +706,16 @@ void ApiGraph::MoveOutput(api::Node& src_node, size_t src_idx, api::Node& dst_no
   const NodeArg* node_arg = src_output_defs[src_idx];
   const std::string& node_arg_name = node_arg->Name();
   dst_output_defs[dst_idx] = src_output_defs[src_idx];
-  const auto dst_node_idx = dst_ort_node.Index();
-  const auto src_node_idx = src_ort_node.Index();
+  NodeIndex dst_node_idx = dst_ort_node.Index();
+  NodeIndex src_node_idx = src_ort_node.Index();
   graph_.UpdateProducerNode(node_arg_name, dst_node_idx);
 
   const auto output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(src_ort_node, src_idx);
+  int dst_idx_int = gsl::narrow_cast<int>(dst_idx);
   for (auto cur = output_edges.cbegin(), end = output_edges.cend(); cur != end; ++cur) {
-    graph_.AddEdge(dst_node_idx, cur->dst_node, (int)dst_idx, (int)cur->dst_arg_index);
+    graph_.AddEdge(dst_node_idx, cur->dst_node, dst_idx_int, gsl::narrow_cast<int>(cur->dst_arg_index));
   }
+
   graph_utils::GraphEdge::RemoveGraphEdges(graph_, output_edges);
 
   std::string new_name = graph_.GenerateNodeArgName(src_ort_node.Name());
@@ -675,6 +733,7 @@ void ApiGraph::CopyValueInfo(const std::string_view src_name, const std::string_
     } else {
       dst_arg.SetShape(*shape);
     }
+
     const auto status = dst_arg.UpdateTypeAndShape(*src_arg, /*strict*/ false, /*override_types*/ true, logger_);
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   }
