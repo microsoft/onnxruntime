@@ -1892,7 +1892,7 @@ TEST(SparseTensorConversionTests, BlockSparse) {
   }
 }
 
-TEST(SparseTensorTests, TestTrimCooSpace) {
+TEST_F(SparseTensorTests, TestTrimCooSpace) {
   // Lets test flat indices first on primitive data
   TensorShape dense_shape{9, 9};
   auto* cpu_provider = TestCPUExecutionProvider();
@@ -1923,7 +1923,34 @@ TEST(SparseTensorTests, TestTrimCooSpace) {
     ASSERT_EQ(indices_span.size(), 3U);
     ASSERT_TRUE(std::equal(indices_span.cbegin(), indices_span.cend(), initial_flat_indices_indices.cbegin()));
   }
+  {
+    // Strings test
+    const std::vector<std::string> initial_values_str{"1.f", "2.f", "3.f", "4.f", "5.f"};
+    const size_t values_count = 5, indices_count = 5;
+    SparseTensor tensor(DataTypeImpl::GetType<std::string>(), dense_shape, cpu_allocator);
+    auto mutator = tensor.MakeCooData(values_count, indices_count);
+    auto mutable_val_span = mutator.Values().MutableDataAsSpan<std::string>();
+    auto mutable_ind_span = mutator.Indices().MutableDataAsSpan<int64_t>();
+    std::copy(initial_values_str.cbegin(), initial_values_str.cend(), mutable_val_span.begin());
+    std::copy(initial_flat_indices_indices.cbegin(), initial_flat_indices_indices.cend(), mutable_ind_span.begin());
 
+    ASSERT_EQ(tensor.NumValues(), values_count);
+    auto values_span = tensor.Values().DataAsSpan<std::string>();
+    ASSERT_TRUE(std::equal(initial_values_str.cbegin(), initial_values_str.cend(), values_span.cbegin()));
+    auto indices_span = tensor.AsCoo().Indices().DataAsSpan<int64_t>();
+    ASSERT_EQ(indices_span.size(), indices_count);
+    ASSERT_TRUE(std::equal(initial_flat_indices_indices.cbegin(), initial_flat_indices_indices.cend(), indices_span.cbegin()));
+
+    ASSERT_STATUS_OK(tensor.TrimCooSpace(3, 3));
+    ASSERT_EQ(tensor.NumValues(), 3U);
+    values_span = tensor.Values().DataAsSpan<std::string>();
+    ASSERT_TRUE(std::equal(values_span.cbegin(), values_span.cend(), initial_values_str.cbegin()));
+
+    indices_span = tensor.AsCoo().Indices().DataAsSpan<int64_t>();
+    ASSERT_EQ(indices_span.size(), 3U);
+    ASSERT_TRUE(std::equal(indices_span.cbegin(), indices_span.cend(), initial_flat_indices_indices.cbegin()));
+
+  }
 }
 
 

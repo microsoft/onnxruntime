@@ -335,7 +335,7 @@ Status SparseTensor::TrimCooSpace(size_t values_count, size_t index_count) {
   const auto new_values_count = indices_shape.Size();
   const auto current_values_count = current_indices.Shape().Size();
   ORT_RETURN_IF_NOT(new_values_count <= current_values_count, "New values count must LE than current");
-  ORT_RETURN_IF_NOT(indices_shape.NumDimensions() != current_indices.Shape().NumDimensions(), 
+  ORT_RETURN_IF_NOT(indices_shape.NumDimensions() == current_indices.Shape().NumDimensions(), 
     "New indices number of dimensions does not match the old one");
 
   if (IsDataTypeString()) {
