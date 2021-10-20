@@ -1,4 +1,5 @@
 import onnx
+import logging
 from .base_operator import QuantOperatorBase
 from ..quant_utils import attribute_to_kwarg, ms_domain
 from onnx import onnx_pb as onnx_proto
@@ -17,7 +18,9 @@ class EmbedLayerNormalizationQuant(QuantOperatorBase):
         node = self.node
         assert (node.op_type == "EmbedLayerNormalization")
 
+        # TODO work on this after embed layer vs layer norm parity is resolved
         if len(node.output) > 2:
+            logging.info(f"Quantization is not applied to {node.name} since it has 3 inputs")
             return super().quantize()
 
         '''

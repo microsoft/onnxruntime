@@ -434,16 +434,7 @@ class FusionEmbedLayerNoMask(Fusion):
 
         nodes = self.model.get_children(add_before_layer_norm)
 
-        add_child_node = None
-        for node in nodes:
-            if 'Add' in node.name:
-                add_child_node = node
-                break
-
-        if add_child_node == None:
-            return False
-
-        return True
+        return len(nodes) > 1
 
     def fuse_gpt2(self, layernorm, add_before_layernorm, input_name_to_nodes, output_name_to_node):
         #graph checks
@@ -492,8 +483,8 @@ class FusionEmbedLayerNoMask(Fusion):
         if optional_add_output:
             self.model.replace_input_of_all_nodes(add_output, embed_node.output[2])
 
-        # remove input position_ids input from graph
-        self.model.remove_node(position_ids)
+        # remove input 'position_ids' from graph
+        self.model.remove_input_by_name(position_ids)
 
         return True
 
