@@ -1781,32 +1781,28 @@ typedef __vector double MLAS_FLOAT64X2;
 
 #ifndef MLAS_FLOAT64X2_UNSUPPORTED
 
+#if defined(MLAS_VSX_INTRINSICS)
 template<unsigned Lane>
 MLAS_FORCEINLINE
 double
 MlasExtractLaneFloat64x2(MLAS_FLOAT64X2 Vector)
 {
-#if defined(MLAS_VSX_INTRINSICS)
     return Vector[Lane];
-#endif
 }
 MLAS_FORCEINLINE
 MLAS_FLOAT64X2
 MlasMultiplyAddFloat64x2(MLAS_FLOAT64X2 Vector1, MLAS_FLOAT64X2 Vector2, MLAS_FLOAT64X2 Vector3)
 {
-#if defined(MLAS_VSX_INTRINSICS)
     return vec_madd(Vector1, Vector2, Vector3);
-#endif
 }
 
 MLAS_FORCEINLINE
 MLAS_FLOAT64X2
 MlasBroadcastFloat64x2(const double *Value)
 {
-#if defined(MLAS_VSX_INTRINSICS)
     return MLAS_FLOAT64X2{*Value, *Value};
-#endif
 }
+#endif
 MLAS_FORCEINLINE
 MLAS_FLOAT64X2
 MlasBroadcastFloat64x2(double Value)
