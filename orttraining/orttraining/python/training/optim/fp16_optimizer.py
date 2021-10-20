@@ -54,6 +54,7 @@ def FP16_Optimizer(optimizer, **kwargs):
         >>>                                    get_tensor_model_parallel_group=mpu.get_model_parallel_group)
 
         3. APEX AMP Override:
+
         >>> from onnxruntime.training.optim.fp16_optimizer import FP16_Optimizer as ORT_FP16_Optimizer
         >>> optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
 

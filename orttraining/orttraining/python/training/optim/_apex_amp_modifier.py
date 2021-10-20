@@ -6,30 +6,12 @@
 # Some functions/classes in this file are adapted from following sources:
 # - post_backward_with_master_weights : https://github.com/NVIDIA/apex/blob/082f999a6e18a3d02306e27482cc7486dab71a50/apex/amp/_process_optimizer.py#L392
 # - step : https://github.com/NVIDIA/apex/blob/082f999a6e18a3d02306e27482cc7486dab71a50/apex/amp/_process_optimizer.py#L364
-# MemoryBuffer - https://github.com/NVIDIA/Megatron-LM/blob/aed2f75e209e525c842aec7c044af7acae2a4614/megatron/model/distributed.py#L28
 # --------------------------------------------------------------------------
 
 import types
 import warnings
 from ._modifier import FP16OptimizerModifier
 import torch
-
-class MemoryBuffer:
-    def __init__(self, numel, dtype):
-        self.numel = numel
-        self.dtype = dtype
-        self.data = torch.empty(self.numel,
-                                dtype=self.dtype,
-                                device=torch.cuda.current_device(),
-                                requires_grad=False)
-
-    def get(self, shape, start_index):
-        """Return a tensor with the input `shape` as a view into the 1-D data starting at `start_index`."""
-        end_index = start_index + shape.numel()
-        assert end_index <= self.numel, 'requested tensor is out of the buffer range.'
-        buffer_tensor = self.data[start_index:end_index]
-        buffer_tensor = buffer_tensor.view(shape)
-        return buffer_tensor
 
 class ApexAMPModifier(FP16OptimizerModifier):
     def __init__(self, optimizer, **kwargs) -> None:
@@ -54,41 +36,42 @@ class ApexAMPModifier(FP16OptimizerModifier):
             preexisting_fp32_grads = []
 
             #### THIS IS THE FASTER IMPLEMENTATION ####
-            fp32_from_fp16_param_next_offset = 0
-            fp32_from_fp16_params = []
+
+            # Lanch the unscale kernels after 1, 2, 4, 8, ... iterations.
+            # This help reduce the idle time for CUDA streams, which waiting for CPU handling the long loops.
+            emit_iteration_num = 1
+            fp32_from_fp16_param_count = 0
             #### END OF THE FASTER IMPLEMENTATION ####
 
             for fp16_param, fp32_param in zip(stash.all_fp16_params,
-                                                stash.all_fp32_from_fp16_params):
+                                              stash.all_fp32_from_fp16_params):
                 if fp16_param.grad is None and fp32_param.grad is not None:
                     continue
                 elif fp16_param.grad is not None and fp32_param.grad is None:
                     #### THIS IS THE ORIGINAL IMPLEMENTATION ####
-                    # fp32_param.grad = torch.empty_like(fp32_param)
+                    fp32_param.grad = torch.empty_like(fp32_param)
                     fp16_grads_needing_unscale.append(fp16_param.grad)
-                    # new_fp32_grads.append(fp32_param.grad)
+                    new_fp32_grads.append(fp32_param.grad)
                     #### END OF THE ORIGINAL IMPLEMENTATION ####
 
                     #### THIS IS THE FASTER IMPLEMENTATION ####
-                    fp32_from_fp16_params.append(fp32_param)
-                    fp32_from_fp16_param_next_offset += fp32_param.data.nelement()
+                    fp32_from_fp16_param_count += 1
+                    if fp32_from_fp16_param_count >= emit_iteration_num:
+                        scaler.unscale(
+                            fp16_grads_needing_unscale,
+                            new_fp32_grads,
+                            scaler.loss_scale(),
+                            models_are_masters=False)
+                        fp16_grads_needing_unscale = []
+                        new_fp32_grads = []
+                        fp32_from_fp16_param_count = 0
+                        emit_iteration_num = emit_iteration_num * 2
                     #### END OF THE FASTER IMPLEMENTATION ####
                 elif fp16_param.grad is not None and fp32_param.grad is not None:
                     fp16_grads_needing_unscale_with_stash.append(fp16_param.grad)
                     preexisting_fp32_grads.append(fp32_param.grad)
                 else: # fp16_param.grad is None and fp32_param.grad is None:
                     continue
-
-            #### THIS IS THE FASTER IMPLEMENTATION ####
-            # allocate the buffer at once.
-            stash._fp32_from_fp16_param_grad_buffers = MemoryBuffer(fp32_from_fp16_param_next_offset, torch.float)
-
-            fp32_from_fp16_param_next_offset = 0
-            for fp32_param in fp32_from_fp16_params:
-                fp32_param.grad = stash._fp32_from_fp16_param_grad_buffers.get(fp32_param.data.shape, fp32_from_fp16_param_next_offset)
-                new_fp32_grads.append(fp32_param.grad)
-                fp32_from_fp16_param_next_offset += fp32_param.data.nelement()
-            #### END OF THE FASTER IMPLEMENTATION ####
 
             if len(fp16_grads_needing_unscale) > 0:
                 scaler.unscale(
@@ -113,12 +96,3 @@ class ApexAMPModifier(FP16OptimizerModifier):
         from apex.optimizers import FusedSGD as FusedSGD
         if not isinstance(self._optimizer, FusedSGD):
             self._optimizer._post_amp_backward = types.MethodType(post_backward_with_master_weights, self._optimizer)
-
-        old_step = self._optimizer.step
-        def updated_step(self, closure=None):
-            retval = old_step()
-            # remove the allocation for fp32_from_fp16_param_grad buffer
-            self._amp_stash._fp32_from_fp16_param_grad_buffers = None
-            return retval
-
-        self._optimizer.step = types.MethodType(updated_step, self._optimizer)
