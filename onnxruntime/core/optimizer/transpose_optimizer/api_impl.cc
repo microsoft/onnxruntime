@@ -21,7 +21,7 @@ class OrtValueInfo : public api::ValueInfo {
   std::string name_;
 
  public:
-  OrtValueInfo(onnxruntime::Graph& graph, std::string name) : graph_(graph), name_(name){};
+  explicit OrtValueInfo(onnxruntime::Graph& graph, std::string name) : graph_(graph), name_(name){};
   const std::string_view Name() const override;
   std::optional<std::vector<int64_t>> Shape() const override;
   api::DataType DType() const override;
@@ -29,6 +29,9 @@ class OrtValueInfo : public api::ValueInfo {
   void SetShape(const std::vector<int64_t>* shape) override;
   void PermuteDims(const std::vector<int64_t>& perm) override;
   void UnsqueezeDims(const std::vector<int64_t>& axes) override;
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtValueInfo);
 };
 
 class OrtTensor : public api::Tensor {
@@ -38,7 +41,7 @@ class OrtTensor : public api::Tensor {
   AllocatorPtr cpu_allocator_;
 
  public:
-  OrtTensor(const onnx::TensorProto& tensor_proto, const Graph& graph, AllocatorPtr cpu_allocator) : tensor_proto_(tensor_proto), graph_(graph), cpu_allocator_(cpu_allocator){};
+  explicit OrtTensor(const onnx::TensorProto& tensor_proto, const Graph& graph, AllocatorPtr cpu_allocator) : tensor_proto_(tensor_proto), graph_(graph), cpu_allocator_(std::move(cpu_allocator)){};
   const onnx::TensorProto& TensorProto() {
     return tensor_proto_;
   }
@@ -47,6 +50,9 @@ class OrtTensor : public api::Tensor {
   api::DataType DType() const override;
   std::vector<int64_t> DataInt64() const override;
   std::vector<int32_t> DataInt32() const override;
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtTensor);
 };
 
 class OrtGraph;
@@ -57,7 +63,7 @@ class OrtNode : public api::Node {
   Graph& graph_;
 
  public:
-  OrtNode(onnxruntime::Node& node, Graph& graph) : node_(node), graph_(graph){};
+  explicit OrtNode(onnxruntime::Node& node, Graph& graph) : node_(node), graph_(graph){};
   onnxruntime::Node& Node() {
     return node_;
   }
@@ -74,6 +80,9 @@ class OrtNode : public api::Node {
   void ClearAttribute(const std::string_view name);
   void SetInput(size_t i, const std::string_view name);
   void AddInput(const std::string_view name);
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtNode);
 };
 
 class OrtGraph : public api::Graph {
@@ -84,7 +93,9 @@ class OrtGraph : public api::Graph {
   const char* new_node_ep_;
 
  public:
-  OrtGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator, const logging::Logger& logger, const char* new_node_ep);
+  explicit OrtGraph::OrtGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator, const logging::Logger& logger,
+                              const char* new_node_ep) : graph_(graph), cpu_allocator_(std::move(cpu_allocator)),
+                              logger_(logger), new_node_ep_(new_node_ep){};
   onnxruntime::Graph& Graph() {
     return graph_;
   }
@@ -106,6 +117,9 @@ class OrtGraph : public api::Graph {
   const std::string_view AddInitializerInt32(const std::vector<int64_t>& shape, const std::vector<int32_t>& values);
   void MoveOutput(api::Node& src_node, size_t src_idx, api::Node& dst_node, size_t dst_idx);
   void CopyValueInfo(const std::string_view src_name, const std::string_view dst_name);
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtGraph);
 };
 
 const onnx::TensorShapeProto* GetNodeArgShape(const NodeArg* node_arg) {
@@ -389,9 +403,6 @@ void OrtNode::SetInput(size_t i, const std::string_view name) {
 }
 
 
-OrtGraph::OrtGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator, const logging::Logger& logger,
-                   const char* new_node_ep) : graph_(graph), cpu_allocator_(cpu_allocator), logger_(logger),
-                   new_node_ep_(new_node_ep) { };
 std::optional<int64_t> OrtGraph::Opset(const std::string_view domain) const {
   const auto& version_map = graph_.DomainToVersionMap();
   const auto match = version_map.find(std::string(domain));

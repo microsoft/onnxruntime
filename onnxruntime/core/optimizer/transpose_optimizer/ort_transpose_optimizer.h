@@ -17,13 +17,14 @@ class TransposeOptimizer : public GraphTransformer {
   AllocatorPtr cpu_allocator_;
 
  public:
-  TransposeOptimizer(AllocatorPtr cpu_allocator) noexcept
-      : GraphTransformer("TransposeOptimizer"), cpu_allocator_(cpu_allocator) {
+  explicit TransposeOptimizer(AllocatorPtr cpu_allocator) noexcept
+      : GraphTransformer("TransposeOptimizer"), cpu_allocator_(std::move(cpu_allocator)) {
   }
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
-  // One run should be sufficient. Multiple runs should be ok but are prohibited to prevent any possiblity of an infinite loop.
+  // One run should be sufficient. Multiple runs should be ok but are prohibited to prevent any possibility of an
+  // infinite loop.
   bool ShouldOnlyApplyOnce() const override { return true; }
 };
 
