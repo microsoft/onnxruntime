@@ -647,6 +647,11 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     {
       return true;
     }
+  } else if (optype == "TopK") {
+    if (!can_eval_node_argument(graph_viewer, node, {1}, logger, input_nodes))
+    {
+      return true;
+    }
   } else if (optype == "Unsqueeze" or optype == "Squeeze") {
     const auto& args = node->InputDefs();
     if (args.size() == 2) {
@@ -1098,7 +1103,14 @@ bool get_input_output_names(const GraphViewer& graph,
   });
 
   bool no_input_shape = std::any_of(input_args.begin(), input_args.end(), [&](auto arg) {
-    auto dim_size = arg->Shape()->dim_size();
+    if (arg == nullptr)
+      return true;
+
+    auto sptr = arg->Shape();
+    if (sptr == nullptr)
+      return true;
+
+    auto dim_size = sptr->dim_size();
     return (dim_size == 0);
   });
 
@@ -1136,6 +1148,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     if (!func_body) {
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
     }
+
     const Graph& graph_body = func_body->Body();
     auto graph_body_viewer = graph_body.CreateGraphViewer();
     auto model = graph_body_viewer->CreateModel(*GetLogger());

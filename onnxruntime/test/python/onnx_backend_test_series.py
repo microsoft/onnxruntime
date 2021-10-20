@@ -90,7 +90,15 @@ def create_backend_test(testname=None):
                 '^test_if_seq_cpu',
                 '^test_loop13_seq_cpu',
                 '^test_sequence_insert_at_back_cpu',
-                '^test_sequence_insert_at_front_cpu'
+                '^test_sequence_insert_at_front_cpu',
+                '^test_nonmaxsuppression_two_classes_cpu',
+                '^test_nonmaxsuppression_two_batches_cpu',
+                '^test_nonmaxsuppression_suppress_by_IOU_cpu',
+                '^test_nonmaxsuppression_suppress_by_IOU_and_scores_cpu',
+                '^test_nonmaxsuppression_limit_output_size_cpu',
+                '^test_nonmaxsuppression_identical_boxes_cpu',
+                '^test_nonmaxsuppression_flipped_coordinates_cpu',
+                '^test_nonmaxsuppression_center_point_box_format_cpu'
             ]
 
         # Skip these tests for a "pure" DML onnxruntime python wheel. We keep these tests enabled for instances where both DML and CUDA
@@ -110,7 +118,7 @@ def create_backend_test(testname=None):
                 '^test_resize_downsample_sizes_linear_pytorch_half_pixel_cpu',
                 '^test_resize_downsample_sizes_nearest_cpu',
                 '^test_resize_upsample_sizes_nearest_cpu',
-                '^test_roialign_cpu'
+                '^test_nonmaxsuppression'
             ]
 
         filters = current_failing_tests + \
