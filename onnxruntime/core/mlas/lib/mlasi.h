@@ -1868,3 +1868,10 @@ MlasReadTimeStampCounter(void)
 #endif
 #endif
 }
+
+
+template<typename T>
+MLAS_FORCEINLINE
+T AlignAToB(T a, T b) {
+    return (a + b - 1) / b * b;
+}

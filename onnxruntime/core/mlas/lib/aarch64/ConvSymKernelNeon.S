@@ -350,7 +350,7 @@ Return Value:
         scvtf    v3.4s,v3.4s
         FMUL v0.4s,v0.4s,v4.4s          // multiply by scale
         FMUL v1.4s,v1.4s,v5.4s
-        FMUL v2.4s,v0.4s,v4.4s
+        FMUL v2.4s,v2.4s,v4.4s
         FMUL v3.4s,v3.4s,v5.4s
         FMIN v0.4s,v0.4s,v6.4s         // clamp max value
         FMIN v1.4s,v1.4s,v6.4s
@@ -369,12 +369,12 @@ Return Value:
         add     v1.4s,v1.4s,v9.4s
         add     v2.4s,v2.4s,v9.4s
         add     v3.4s,v3.4s,v9.4s
-        SQXTN   v0.4h,v0.4s                 // shorten to int16
-        SQXTN   v2.4h,v2.4s
-        SQXTN2  v0.8h,v1.4s
-        SQXTN2  v2.8h,v3.4s
-        SQXTN   v0.8b,v0.8h                 // shorten to int8
-        SQXTN2  v0.16b,v2.8h
+        UQXTN   v0.4h,v0.4s                 // shorten to int16
+        UQXTN   v2.4h,v2.4s
+        UQXTN2  v0.8h,v1.4s
+        UQXTN2  v2.8h,v3.4s
+        UQXTN   v0.8b,v0.8h                 // shorten to int8
+        UQXTN2  v0.16b,v2.8h
         B.LO    .LConvSym.PartialStore
 
         ST1     {v0.d}[1],[x5]              // full 2x8 store to c 

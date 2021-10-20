@@ -270,6 +270,7 @@ class QLinearConvOpTester {
     std::vector<float> scale_;
     T zero_point_{0};
     void Print(const std::string& name){
+      #if defined(PrintLog)
       std::cout<<name<<":"<<std::endl;
 
       int64_t b_size = data_.size() / shape_[0];
@@ -287,6 +288,7 @@ class QLinearConvOpTester {
       for(auto scale : scale_) std::cout<<scale<<",";
       std::cout<<std::endl;
       std::cout<<"ZeroPoint:"<<(int32_t)zero_point_<<std::endl;
+      #endif
     }
 
     void ReSet(){
@@ -428,7 +430,9 @@ class QLinearConvOpTester {
 
     RequantizeValues<T1> requantize_values(output_zero_point_);
 
+    #if defined(PrintLog)
     std::cout<<"Sum:";
+    #endif
     for (int64_t batch = 0; batch < batch_count; batch++) {
       const T2* weight_group = W_.data_.data();
       for (int64_t group = 0; group < group_count; group++) {
@@ -458,13 +462,17 @@ class QLinearConvOpTester {
                 if (!is_padding) {
                   int32_t x_value = static_cast<int32_t>(input_image[input_offset]) - X_zero_point;
                   sum += x_value * w_value;
+                  #if defined(PrintLog)
                   std::cout<<x_value<<"*"<<w_value<<" + ";
+                  #endif
                 }
               } while (NextPosition(kernel_rank, kernel_shape, d_kernel.data()));
 
               input_image += input_image_size;
             }
+            #if defined(PrintLog)
             std::cout<<" = "<<sum<<std::endl;
+            #endif
             *Ydata++ = RequantizeOutput<T1>(sum, requantize_scale, requantize_values);
 
           } while (NextPosition(kernel_rank, output_shape, d_output.data()));
@@ -474,7 +482,9 @@ class QLinearConvOpTester {
         weight_group += group_output_channels * group_input_channels * kernel_size;
       }
     }
+    #if defined(PrintLog)
     std::cout<<std::endl;
+    #endif
   }
 
   void Run(bool all_input_initializer_except_x) {
@@ -497,8 +507,10 @@ class QLinearConvOpTester {
     test.AddInput<float>("w_scale", W_scale_shape, W_.scale_, all_input_initializer_except_x);
     test.AddInput<T2>("w_zero_point", {}, {W_.zero_point_}, all_input_initializer_except_x);
 
+    #if defined(PrintLog)
     std::cout<<"y_scale:"<<output_scale_<<std::endl;
     std::cout<<"y_zero_point:"<<output_zero_point_<<std::endl;
+    #endif
     test.AddInput<float>("y_scale", {}, {output_scale_}, all_input_initializer_except_x);
     test.AddInput<T1>("y_zero_point", {}, {output_zero_point_}, all_input_initializer_except_x);
 
@@ -588,9 +600,11 @@ class QLinearConvOpTester {
   }
 
   void Run() {
-    for (bool all_input_initializer_except_x : std::initializer_list<bool>{false, true}) {
-      Run(all_input_initializer_except_x);
-    }
+    // for (bool all_input_initializer_except_x : std::initializer_list<bool>{false, true}) {
+    //   Run(all_input_initializer_except_x);
+    // }
+
+    Run(true);
   }
 };
 
@@ -629,6 +643,16 @@ TEST(QLinearConvTest, Conv2D_U8S8_Sym_M16_C4_Bias) {
   test.GenerateRandomInput({1, 4, 3, 3}, .05f, 4);
   test.GenerateRandomWeights({16, 4, 3, 3}, .125f, 0);
   test.GenerateRandomBias();
+  test.SetPads({0, 0, 0, 0});
+  test.SetOutputScaleAndZeroPoint(.55f, 54);
+  test.Run();
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_Sym_M16_C4_No_Bias) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({1, 4, 3, 3}, .05f, 4);
+  test.GenerateRandomWeights({16, 4, 3, 3}, .125f, 0);
+  // test.GenerateRandomBias();
   test.SetPads({0, 0, 0, 0});
   test.SetOutputScaleAndZeroPoint(.55f, 54);
   test.Run();
@@ -961,12 +985,95 @@ TEST(QLinearConvTest, Conv2D_U8S8_Requantize_NoBias_Debug) {
   test.Run();
 }
 
+TEST(QLinearConvTest, Conv2D_U8S8_Requantize_NoBias_Debug_C8) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({1, 8, 4, 4}, .05f, 4);
+  test.GenerateRandomWeights({8, 8, 3, 3}, .125f, 0);
+  // test.SetPads({1, 1, 1, 1});
+  test.SetOutputScaleAndZeroPoint(.55f, 56);
+  test.Run();
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_Requantize_NoBias_Debug_C8_23) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({1, 8, 3, 3}, .05f, 4);
+  test.GenerateRandomWeights({8, 8, 2, 2}, .125f, 0);
+  // test.SetPads({1, 1, 1, 1});
+  test.SetOutputScaleAndZeroPoint(.55f, 56);
+  test.Run();
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_Requantize_NoBias_Debug_C1_4x4) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({1, 1, 4, 4}, .05f, 4);
+  test.GenerateRandomWeights({8, 1, 3, 3}, .125f, 0);
+  // test.SetPads({1, 1, 1, 1});
+  test.SetOutputScaleAndZeroPoint(.55f, 56);
+  test.Run();
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_Requantize_NoBias_Debug_C8_3x3) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({1, 8, 3, 3}, .05f, 4);
+  test.GenerateRandomWeights({8, 8, 3, 3}, .125f, 0);
+  // test.SetPads({1, 1, 1, 1});
+  test.SetOutputScaleAndZeroPoint(.55f, 56);
+  test.Run();
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_Requantize_NoBias_Debug_C8_1x1) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({1, 8, 1, 1}, .05f, 4);
+  test.GenerateRandomWeights({8, 8, 1, 1}, .125f, 0);
+  // test.SetPads({1, 1, 1, 1});
+  test.SetOutputScaleAndZeroPoint(.55f, 56);
+  test.Run();
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_Requantize_NoBias_Debug_C8_2x2) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({1, 8, 2, 2}, .05f, 4);
+  test.GenerateRandomWeights({8, 8, 1, 1}, .125f, 0);
+  // test.SetPads({1, 1, 1, 1});
+  test.SetOutputScaleAndZeroPoint(.55f, 56);
+  test.Run();
+}
+
 TEST(QLinearConvTest, Conv2D_U8S8_Requantize_NoBias_Debug_C1_Simple) {
   QLinearConvOpTester<uint8_t, int8_t> test;
   test.GenerateRandomInput({1, 1, 3, 3}, .05f, 4);
   test.GenerateRandomWeights({8, 1, 3, 3}, .125f, 0);
   // test.SetPads({1, 1, 1, 1});
   test.SetOutputScaleAndZeroPoint(.55f, 56);
+  test.Run();
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_Requantize_NoBias_Debug_C1_Pad_Simple) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({1, 1, 3, 3}, .05f, 4);
+  test.GenerateRandomWeights({8, 1, 3, 3}, .125f, 0);
+  test.SetPads({1, 1, 1, 1});
+  test.SetOutputScaleAndZeroPoint(.55f, 56);
+  test.Run();
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_Sym_M4_C4_Bias_Debug) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({1, 4, 3, 3}, .05f, 4);
+  test.GenerateRandomWeights({4, 4, 3, 3}, .125f, 0);
+  test.GenerateRandomBias();
+  test.SetPads({0, 0, 0, 0});
+  test.SetOutputScaleAndZeroPoint(.55f, 54);
+  test.Run();
+}
+
+TEST(QLinearConvTest, Conv2D_U8S8_Sym_M8_C4_Bias_Debug) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({1, 4, 3, 3}, .05f, 4);
+  test.GenerateRandomWeights({8, 4, 3, 3}, .125f, 0);
+  test.GenerateRandomBias();
+  test.SetPads({0, 0, 0, 0});
+  test.SetOutputScaleAndZeroPoint(.55f, 54);
   test.Run();
 }
 
