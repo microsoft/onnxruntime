@@ -15,12 +15,18 @@ from onnx import TensorProto, load_model
 from model_loader import get_test_data_path, get_fusion_test_model
 
 from parity_utilities import find_transformers_source
-
-from onnxruntime.transformers.optimizer import optimize_model
-from onnxruntime.transformers.onnx_model import OnnxModel
-# from onnxruntime.transformers.onnx_exporter import export_onnx_model_from_tf, export_onnx_model_from_pt
-from onnxruntime.transformers.huggingface_models import MODELS
-from onnxruntime.transformers.benchmark_helper import Precision
+if find_transformers_source():
+    from optimizer import optimize_model
+    from onnx_model import OnnxModel
+    from onnx_exporter import export_onnx_model_from_tf, export_onnx_model_from_pt
+    from huggingface_models import MODELS
+    from benchmark_helper import Precision
+else:
+    from onnxruntime.transformers.optimizer import optimize_model
+    from onnxruntime.transformers.onnx_model import OnnxModel
+    from onnxruntime.transformers.onnx_exporter import export_onnx_model_from_tf, export_onnx_model_from_pt
+    from onnxruntime.transformers.huggingface_models import MODELS
+    from onnxruntime.transformers.benchmark_helper import Precision
 
 BERT_TEST_MODELS = {
     "bert_keras_0": ('models', 'TFBertForSequenceClassification_1.onnx'),  # bert_mrpc_tensorflow2.1_opset10
@@ -44,12 +50,11 @@ class TestBertOptimization(unittest.TestCase):
     def verify_node_count(self, bert_model, expected_node_count, test_name):
         for op_type, count in expected_node_count.items():
             if len(bert_model.get_nodes_by_op_type(op_type)) != count:
+                print(f"Counters is not expected in test: {test_name}")
                 for op, counter in expected_node_count.items():
                     print("{}: {} expected={}".format(op, len(bert_model.get_nodes_by_op_type(op)), counter))
 
                 self.assertEqual(len(bert_model.get_nodes_by_op_type(op_type)), count)
-            print(f"Counters is not expected in test: {test_name}")
-            print("count for", op_type, "matches", count)
 
     # add test function for huggingface pytorch model
     def _test_optimizer_on_huggingface_model(self,
@@ -163,9 +168,7 @@ class TestBertOptimization(unittest.TestCase):
 
     def test_gpt2_past_mask(self):
         input = _get_test_model_path('gpt2_past_mask')
-        print("hi", input)
         model = optimize_model(input, 'gpt2', num_heads=2, hidden_size=4)
-        print("hi2")
         expected_node_count = {
             'EmbedLayerNormalization': 0,
             'Attention': 1,
@@ -175,9 +178,7 @@ class TestBertOptimization(unittest.TestCase):
             'LayerNormalization': 2,
             'SkipLayerNormalization': 0
         }
-        print("hi3")
         self.verify_node_count(model, expected_node_count, 'test_gpt2_past_mask')
-        print("hi4")
 
     def test_multiple_embed(self):
         input_model_path = _get_test_model_path('multiple_embed')
@@ -325,4 +326,4 @@ class TestBertOptimization(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    TestBertOptimization().test_gpt2_past_mask()
+    unittest.main()
