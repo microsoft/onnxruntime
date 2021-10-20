@@ -36,7 +36,7 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
   }
 
-  std::unordered_map<std::string_view, LayoutHandler*> handler_map = {
+  std::unordered_map<std::string_view, LayoutHandler> handler_map = {
       {"QLinearConv", &QLinearConvHandler}
   };
   auto ort_graph = OrtGraph(graph, cpu_allocator_, logger, kCpuExecutionProvider);

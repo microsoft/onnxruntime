@@ -1662,7 +1662,7 @@ bool Optimize(api::Graph& graph, bool allow_extended_ops) {
   return OptimizeImpl(*ctx);
 }
 
-static bool ChangeLayout(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler*>& layout_handler_map,
+static bool ChangeLayout(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler>& layout_handler_map,
                          bool last_to_first, bool allow_extended_ops) {
   auto ctx = MakeOptimizerContext(graph, allow_extended_ops);
   if (ctx == std::nullopt) {
@@ -1675,7 +1675,7 @@ static bool ChangeLayout(api::Graph& graph, std::unordered_map<std::string_view,
     auto match = layout_handler_map.find(node->OpType());
     if (match != layout_handler_map.end()) {
       std::unique_ptr<api::Node> new_node;
-      LayoutHandler* handler = match->second;
+      LayoutHandler handler = match->second;
       LayoutHandlerResult result = handler(graph, *node);
       if (!result.should_change_layout) {
         continue;
@@ -1722,11 +1722,11 @@ static bool ChangeLayout(api::Graph& graph, std::unordered_map<std::string_view,
   return changed;
 }
 
-bool ChannelLastToChannelFirst(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler*>& layout_handler_map, bool allow_extended_ops) {
+bool ChannelLastToChannelFirst(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler>& layout_handler_map, bool allow_extended_ops) {
   return ChangeLayout(graph, layout_handler_map, /*last_to_first*/ true, allow_extended_ops);
 }
 
-bool ChannelFirstToChannelLast(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler*>& layout_handler_map, bool allow_extended_ops) {
+bool ChannelFirstToChannelLast(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler>& layout_handler_map, bool allow_extended_ops) {
   return ChangeLayout(graph, layout_handler_map, /*last_to_first*/ false, allow_extended_ops);
 }
 

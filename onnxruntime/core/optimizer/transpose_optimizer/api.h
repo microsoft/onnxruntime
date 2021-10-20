@@ -456,7 +456,7 @@ struct LayoutHandlerResult {
   std::optional<std::string_view> new_domain;
 };
 
-typedef LayoutHandlerResult LayoutHandler(api::Graph& graph, api::Node& node);
+using LayoutHandler = LayoutHandlerResult (*)(api::Graph& graph, api::Node& node);
 
 /// <summary>
 /// Calls LayoutHandler functions on each node matching an op in the handler_map. Transposes inputs/outputs of affected
@@ -468,7 +468,7 @@ typedef LayoutHandlerResult LayoutHandler(api::Graph& graph, api::Node& node);
 /// <param name="handler_map">Mapping from op types to LayoutHandler functions</param>
 /// <param name="allow_extended_ops">Whether com.microsoft ops can be used for optimization</param>
 /// <returns>true if the graph was modified</returns>
-bool ChannelFirstToChannelLast(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler*>& handler_map,
+bool ChannelFirstToChannelLast(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler>& handler_map,
                                bool allow_extended_ops);
 
 /// <summary>
@@ -481,7 +481,7 @@ bool ChannelFirstToChannelLast(api::Graph& graph, std::unordered_map<std::string
 /// <param name="handler_map">Mapping from op types to LayoutHandler functions</param>
 /// <param name="allow_extended_ops">Whether com.microsoft ops can be used for optimization</param>
 /// <returns>true if the graph was modified</returns>
-bool ChannelLastToChannelFirst(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler*>& handler_map,
+bool ChannelLastToChannelFirst(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler>& handler_map,
                                bool allow_extended_ops);
 
 }  // namespace onnx_layout_transformation
