@@ -88,6 +88,7 @@ def create_backend_test(testname=None):
                 '^test_softmax_cross_entropy',
                 '^test_greater_equal', 
                 '^test_if_seq_cpu',
+                '^test_loop11_cpu',
                 '^test_loop13_seq_cpu',
                 '^test_sequence_insert_at_back_cpu',
                 '^test_sequence_insert_at_front_cpu',

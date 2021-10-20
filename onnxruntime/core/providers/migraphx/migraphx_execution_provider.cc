@@ -966,18 +966,22 @@ static std::vector<NodeIndex>
 GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                           /*out*/ std::unordered_set<std::string>& mgx_required_initializers,
                           const logging::Logger& logger) {
-  static std::set<std::string> mgx_supported_ops = {"Abs", "Acos", "Acosh", "Add", "And", "ArgMax", "ArgMin",
-      "Asin", "Asinh", "Atan", "Atanh", "AveragePool", "BatchNormalization", "Cast", "Ceil", "Clip",
-      "Concat", "Constant", "ConstantFill", "ConstantOfShape", "Conv", "Cos", "Cosh", "DepthToSpace", "DequantizeLinear",
-      "Div", "Dropout", "Elu", "Equal", "Erf", "Exp", "Expand", "Flatten", "Floor", "GRU", "Gather",
-      "GatherElements", "Gemm", "GlobalAveragePool", "GlobalMaxPool", "Greater", "Identity", "If", "ImageScaler",
-      "InstanceNormalization", "LRN", "LSTM", "LeakyRelu", "Less", "LessOrEqual", "Log", "LogSoftmax", 
-      "MatMul", "Max", "MaxPool", "Min", "Mul", "Multinomial", "Neg", "NonZero", "Not", "NonMaxSuppression", "OneHot", "Or", "Pad", "Pow", "PRelu", 
-      "QuantizeLinear", "RNN", "RandomNormal", "RandomNormalLike", "RandomUniform", "RandomUniformLike", "Range", 
-      "Reciprocal", "ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", 
-      "ReduceMax", "ReduceMean", "ReduceMin", "ReduceProd", "ReduceSum", "ReduceSumSquare", "Relu", "Reshape", "Resize", "Roialign",
-      "Round", "Scatter", "Selu", "Shape", "Sigmoid", "Sign", "Sin", "Sinh", "Slice", "Softmax", "SpaceToDepth", "Split", "Sqrt", "Squeeze",
-      "Sub", "Sum", "Tan", "Tanh", "Tile", "TopK", "Transpose", "Unsqueeze", "Where", "Xor"};
+  static std::set<std::string> mgx_supported_ops = {"Abs", "Acos", "Acosh", "Add", "And", 
+      "ArgMax", "ArgMin", "Asin", "Asinh", "Atan", "Atanh", "AveragePool", 
+      "BatchNormalization", "Cast", "Ceil", "Clip", "Concat", "Constant", "ConstantFill", 
+      "ConstantOfShape", "Conv", "Cos", "Cosh", "DepthToSpace", "DequantizeLinear", "Div", 
+      "Dropout", "Elu", "Equal", "Erf", "Exp", "Expand", "Flatten", "Floor", "GRU", "Gather",
+      "GatherElements", "Gemm", "GlobalAveragePool", "GlobalMaxPool", "Greater", "Identity", 
+      "If", "ImageScaler", "InstanceNormalization", "LRN", "LSTM", "LeakyRelu", "Less", 
+      "LessOrEqual", "Log", "LogSoftmax", "Loop", "MatMul", "Max", "MaxPool", "Min", "Mul", 
+      "Multinomial", "Neg", "NonZero", "Not", "NonMaxSuppression", "OneHot", "Or", "Pad", "Pow", 
+      "PRelu", "QuantizeLinear", "RNN", "RandomNormal", "RandomNormalLike", "RandomUniform", 
+      "RandomUniformLike", "Range", "Reciprocal", "ReduceL1", "ReduceL2", "ReduceLogSum", 
+      "ReduceLogSumExp", "ReduceMax", "ReduceMean", "ReduceMin", "ReduceProd", "ReduceSum", 
+      "ReduceSumSquare", "Relu", "Reshape", "Resize", "Roialign", "Round", "Scatter", "Selu", 
+      "Shape", "Sigmoid", "Sign", "Sin", "Sinh", "Slice", "Softmax", "SpaceToDepth", "Split", 
+      "Sqrt", "Squeeze", "Sub", "Sum", "Tan", "Tanh", "Tile", "TopK", "Transpose", "Unsqueeze", 
+      "Where", "Xor"};
   std::vector<NodeIndex> unsupported_nodes_idx;
   for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
     if (IsNodeSupported(mgx_supported_ops, graph_viewer, node_idx, logger)) {
@@ -1036,28 +1040,11 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   std::string onnx_string_buffer;
   model_proto->SerializeToString(onnx_string_buffer);
 
-  // // debugging, write onnx to a buffer for debugging
-  // std::ofstream ofs("ort_getcapability.onnx", std::ios::out);
-  // ofs.write(onnx_string_buffer.data(), onnx_string_buffer.size());
-  // ofs.close();
-
   // This is a list of initializers that migraphx considers as constants.
   // Example weights, reshape shape etc.
   std::unordered_set<std::string> mgx_required_initializers;
   const auto unsupported_nodes = GetUnsupportedNodeIndices(graph_viewer, mgx_required_initializers, *GetLogger());
   
-  // //Debug code ===========================
-  // if(unsupported_nodes.size() > 0)
-  // {
-  //   std::cout << "Unsupported_node_num = " << unsupported_nodes.size() << std::endl;
-  //   for(auto idx : unsupported_nodes)
-  //   {
-  //     const auto& node = graph_viewer.GetNode(idx);
-  //     std::cout << "node_name = " << node->OpType() << std::endl;
-  //   }
-  // }
-  // //======================================
-
   //If all ops are supported, no partitioning is required. Short-circuit and avoid splitting.
   if (unsupported_nodes.empty()) {
     auto node_indices = graph_viewer.GetNodesInTopologicalOrder();
@@ -1071,7 +1058,7 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
 
     // migraphx cannot handle Loop, If, and SoftmaxCrossEntropyLoss for now,
     // so if a model contain any of these operators, fall back to CPU
-    std::unordered_set<std::string> vec_ops = {"If", "Loop", "SoftmaxCrossEntropyLoss"};
+    std::unordered_set<std::string> vec_ops = {"SoftmaxCrossEntropyLoss"};
     if (std::any_of(unsupported_nodes.begin(), unsupported_nodes.end(), [&](auto i) {
       return (vec_ops.count(graph_viewer.GetNode(i)->OpType()) > 0);
     })) {
@@ -1157,10 +1144,6 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     std::string onnx_string_buffer;
     model_proto->SerializeToString(onnx_string_buffer);
-
-    // // Temp code changes for debugging, dump MIGraphX subgraphs
-    // std::fstream dump(fused_node->Name() + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
-    // model_proto->SerializeToOstream(dump);
 
     std::vector<std::string> input_names, output_names;
     no_input_shape = no_input_shape or get_input_output_names(*graph_body_viewer, input_names, output_names);
