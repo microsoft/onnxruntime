@@ -4,8 +4,8 @@
 #pragma once
 
 #include "core/common/common.h"
-#include "core/optimizer/graph_transformer.h"
 #include "core/framework/execution_provider.h"
+#include "core/optimizer/graph_transformer.h"
 
 namespace onnxruntime {
 

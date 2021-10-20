@@ -3,9 +3,9 @@
 
 #pragma once
 
-#include "core/optimizer/transpose_optimizer/api.h"
-#include "core/graph/graph.h"
 #include "core/framework/execution_provider.h"
+#include "core/graph/graph.h"
+#include "core/optimizer/transpose_optimizer/api.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;

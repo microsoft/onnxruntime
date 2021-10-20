@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <iostream>
 #include <algorithm>
+#include <gsl/gsl>
+#include <iostream>
 #include <unordered_map>
 #include <unordered_set>
-#include <gsl/gsl>
 
 #include "api.h"
 

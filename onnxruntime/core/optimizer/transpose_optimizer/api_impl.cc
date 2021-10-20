@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/optimizer/initializer.h"
-#include "core/optimizer/transpose_optimizer/ort_transpose_optimizer.h"
-#include "core/optimizer/transpose_optimizer/api_impl.h"
-#include "core/graph/graph_utils.h"
-#include "core/optimizer/utils.h"
-#include "core/providers/cpu/tensor/transpose.h"
 #include <deque>
+#include "core/graph/graph_utils.h"
+#include "core/optimizer/initializer.h"
+#include "core/optimizer/utils.h"
+#include "core/optimizer/transpose_optimizer/api_impl.h"
+#include "core/optimizer/transpose_optimizer/ort_transpose_optimizer.h"
+#include "core/providers/cpu/tensor/transpose.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;

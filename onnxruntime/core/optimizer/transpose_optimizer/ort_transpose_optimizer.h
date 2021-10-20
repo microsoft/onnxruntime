@@ -3,14 +3,14 @@
 
 #pragma once
 
-#include "core/optimizer/graph_transformer.h"
 #include "core/framework/execution_provider.h"
+#include "core/optimizer/graph_transformer.h"
 
 namespace onnxruntime {
 
 /**
-@Class BiasGeluFusion
-Fuse Add + Gelu to BiasGelu or FastGelu
+@Class TransposeOptimizer
+Push transposes through ops and eliminate them
 */
 class TransposeOptimizer : public GraphTransformer {
  private:
