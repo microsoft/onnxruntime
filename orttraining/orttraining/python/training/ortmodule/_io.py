@@ -295,9 +295,9 @@ def unflatten_user_output(output_schema, outputs):
                     _replace_stub_with_tensor_value(uo, outputs, output_idx)
                     for uo in user_output)
         elif isinstance(user_output, abc.Mapping):
-            new_user_output = type(user_output)()
+            new_user_output = copy.copy(user_output)
             for key in sorted(user_output):
-                new_user_output[key] = _replace_stub_with_tensor_value(user_output[key], outputs, output_idx)
+                new_user_output[key] = _replace_stub_with_tensor_value(new_user_output[key], outputs, output_idx)
             user_output = new_user_output
         else:
             raise wrap_exception(ORTModuleIOError,
