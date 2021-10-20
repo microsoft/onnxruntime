@@ -564,12 +564,12 @@ class MatrixTransposeToVectorCallback : public MatrixToVectorCallback<T> {
  public:
   MatrixTransposeToVectorCallback() = default;
   MatrixTransposeToVectorCallback(const MatrixToVectorCtx& ctx, float alpha)
-      : MatrixToVectorCallback(ctx, alpha),
+      : MatrixToVectorCallback<T>(ctx, alpha),
         transposed_value_offsets_(ctx.mat_csr_.TransposedOffsets()) {}
   void operator()(size_t a_offset, size_t b_offset) {
-    ORT_ENFORCE(a_offset < row_ind_size_, "a_offset is out of bounds");
-    const auto m_offset = transposed_value_offsets_[row_offset_ + a_offset];
-    accum_ += Mul(this->matrix_values_[m_offset], alpha_, this->vector_values_[b_offset]);
+    ORT_ENFORCE(a_offset < this->row_ind_size_, "a_offset is out of bounds");
+    const auto m_offset = this->transposed_value_offsets_[this->row_offset_ + a_offset];
+    this->accum_ += Mul(this->matrix_values_[m_offset], this->alpha_, this->vector_values_[b_offset]);
   }
 };
 
