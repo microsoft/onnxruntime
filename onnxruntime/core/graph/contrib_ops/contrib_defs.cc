@@ -531,6 +531,18 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
   }
 }
 
+void DecoderAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+  // Type inference
+  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+  if (ctx.getNumOutputs() > 1 && ctx.getNuminputs() > 5) {
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 5, 1);
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 5, 2);
+  }
+
+  // Shape inference
+  // TODO
+}
+
 void RegisterBertSchemas() {
   static const char* Attention_ver1_doc = R"DOC(
 Multi-Head Self Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
@@ -683,6 +695,34 @@ Global attention flags have value 1 for the tokens attend globally and 0 otherwi
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
       .TypeConstraint("G", {"tensor(int32)"}, "Constrain to integer types")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  static const char* Decoder_Attention_doc = R"DOC(
+huggingface(3.5.1) bart decoder attention
+notice:
+  when static_kv = 1 -> cache is cross_(key, value)_cache in layer_state[2] and layer_state[3]
+  when static_kv = 0 -> cache is self_(key, value)_cache in layer_state[0] and layer_state[1]
+TODO:
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DecoderAttention)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(Decoder_Attention_doc)
+      .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+      .Attr("static_kv", "If static_kv = 1, cross-attention; else self-attention", AttributeProto::INT)
+      .Attr("use_past", "If use_past = 1, use cache; else no cache", AttributeProto::INT)
+      .Input(0, "query", "3D input tensor with shape (sequence_length, batch_size, hidden_size), hidden_size = num_heads * head_size", "T")
+      .Input(1, "key", "3D input tensor with shape (total_sequence_length, batch_size, hidden_size)", "T")
+      .Input(2, "weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "T") // or (3 * hidden_size, hidden_size) ?
+      .Input(3, "bias", "1D input tensor with shape (3 * hidden_size)", "T")
+      .Input(4, "key_padding_mask", "2D input tensor with shape (batch_size, total_sequence_length)", "T", OpSchema::Optional)
+      .Input(5, "key_cache", "input tensor with shape (batch_size, num_heads, sequence_length or total_sequence_length, head_size)", "T", OpSchema::Optional)   // self & cross
+      .Input(6, "value_cache", "input tensor with shape (batch_size, num_heads, sequence_length or total_sequence_length, head_size)", "T", OpSchema::Optional)   // self & cross
+      .Output(0, "output", "3D output tensor with shape (sequence_length, batch_size, hidden_size)", "T")
+      .Output(1, "new_key_cache", "output tensor with shape (batch_size, num_heads, new sequence_length, head_size)", "T", OpSchema::Optional) // self & cross
+      .Output(2, "new_value_cache", "output tensor with shape (batch_size, num_heads, new sequence_length, head_size)", "T", OpSchema::Optional) // self & cross
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::DecoderAttentionTypeAndShapeInference);
 
   static const char* EmbedLayerNormalization_ver1_doc = R"DOC(
 EmbedLayerNormalization is the fusion of embedding layer in BERT model, with optional mask processing.
