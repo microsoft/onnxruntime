@@ -19,7 +19,7 @@ class ApexAMPModifier(FP16OptimizerModifier):
         pass
 
     def can_be_modified(self):
-        return self.check_requirements(["_post_amp_backward", "step"],
+        return self.check_requirements(["_post_amp_backward", "zero_grad"],
                                        require_apex=True, require_torch_non_finite_check=False)
 
     def override_function(self):
