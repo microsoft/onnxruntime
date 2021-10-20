@@ -15,13 +15,13 @@ using namespace onnx_layout_transformation;
 
 namespace onnxruntime {
 
-class OrtValueInfo : public api::ValueInfo {
+class ApiValueInfo : public api::ValueInfo {
  private:
   onnxruntime::Graph& graph_;
   std::string name_;
 
  public:
-  explicit OrtValueInfo(onnxruntime::Graph& graph, std::string name) : graph_(graph), name_(name){};
+  explicit ApiValueInfo(onnxruntime::Graph& graph, std::string name) : graph_(graph), name_(name){};
   const std::string_view Name() const override;
   std::optional<std::vector<int64_t>> Shape() const override;
   api::DataType DType() const override;
@@ -31,17 +31,17 @@ class OrtValueInfo : public api::ValueInfo {
   void UnsqueezeDims(const std::vector<int64_t>& axes) override;
 
  private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtValueInfo);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiValueInfo);
 };
 
-class OrtTensor : public api::Tensor {
+class ApiTensor : public api::Tensor {
  private:
   const onnx::TensorProto& tensor_proto_;
   const Graph& graph_;
   AllocatorPtr cpu_allocator_;
 
  public:
-  explicit OrtTensor(const onnx::TensorProto& tensor_proto, const Graph& graph, AllocatorPtr cpu_allocator) 
+  explicit ApiTensor(const onnx::TensorProto& tensor_proto, const Graph& graph, AllocatorPtr cpu_allocator) 
       : tensor_proto_(tensor_proto), graph_(graph), cpu_allocator_(std::move(cpu_allocator)){};
   const onnx::TensorProto& TensorProto() {
     return tensor_proto_;
@@ -53,18 +53,18 @@ class OrtTensor : public api::Tensor {
   std::vector<int32_t> DataInt32() const override;
 
  private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtTensor);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiTensor);
 };
 
-class OrtGraph;
+class ApiGraph;
 
-class OrtNode : public api::Node {
+class ApiNode : public api::Node {
  private:
   onnxruntime::Node& node_;
   Graph& graph_;
 
  public:
-  explicit OrtNode(onnxruntime::Node& node, Graph& graph) : node_(node), graph_(graph){};
+  explicit ApiNode(onnxruntime::Node& node, Graph& graph) : node_(node), graph_(graph){};
   onnxruntime::Node& Node() {
     return node_;
   }
@@ -82,10 +82,10 @@ class OrtNode : public api::Node {
   void AddInput(const std::string_view name) override;
 
  private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtNode);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiNode);
 };
 
-class OrtGraph : public api::Graph {
+class ApiGraph : public api::Graph {
  private:
   onnxruntime::Graph& graph_;
   AllocatorPtr cpu_allocator_;
@@ -93,7 +93,7 @@ class OrtGraph : public api::Graph {
   const char* new_node_ep_;
 
  public:
-  explicit OrtGraph::OrtGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator, const logging::Logger& logger,
+  explicit ApiGraph::ApiGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator, const logging::Logger& logger,
                               const char* new_node_ep) : graph_(graph), cpu_allocator_(std::move(cpu_allocator)),
                               logger_(logger), new_node_ep_(new_node_ep){};
   onnxruntime::Graph& Graph() {
@@ -120,7 +120,7 @@ class OrtGraph : public api::Graph {
   bool HasValueConsumers(const std::string_view name) const override;
 
  private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtGraph);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiGraph);
 };
 
 const onnx::TensorShapeProto* GetNodeArgShape(const NodeArg* node_arg) {
@@ -134,11 +134,11 @@ const onnx::TensorShapeProto* GetNodeArgShape(const NodeArg* node_arg) {
   return &utils::GetShape(*type);
 }
 
-const std::string_view OrtValueInfo::Name() const {
+const std::string_view ApiValueInfo::Name() const {
   return name_;
 }
 
-std::optional<std::vector<int64_t>> OrtValueInfo::Shape() const {
+std::optional<std::vector<int64_t>> ApiValueInfo::Shape() const {
   const auto* node_arg = graph_.GetNodeArg(name_);
   const auto* shape_proto = GetNodeArgShape(node_arg);
   if (shape_proto == nullptr) {
@@ -148,7 +148,7 @@ std::optional<std::vector<int64_t>> OrtValueInfo::Shape() const {
   return shape.GetDims();
 }
 
-api::DataType OrtValueInfo::DType() const {
+api::DataType ApiValueInfo::DType() const {
   const auto* node_arg = graph_.GetNodeArg(name_);
 
   if (node_arg == nullptr) {
@@ -164,7 +164,7 @@ api::DataType OrtValueInfo::DType() const {
   return gsl::narrow_cast<api::DataType>(type->tensor_type().elem_type());
 }
 
-void OrtValueInfo::SetShape(const std::vector<int64_t>* shape) {
+void ApiValueInfo::SetShape(const std::vector<int64_t>* shape) {
   auto& node_arg = graph_.GetOrCreateNodeArg(name_, nullptr);
   if (shape == nullptr) {
     node_arg.ClearShape();
@@ -189,7 +189,7 @@ void CopyDim(const onnx::TensorShapeProto_Dimension& src, onnx::TensorShapeProto
   }
 }
 
-void OrtValueInfo::PermuteDims(const std::vector<int64_t>& perm) {
+void ApiValueInfo::PermuteDims(const std::vector<int64_t>& perm) {
   auto* node_arg = graph_.GetNodeArg(name_);
   const auto* shape_proto = GetNodeArgShape(node_arg);
   if (shape_proto == nullptr) {
@@ -208,7 +208,7 @@ void OrtValueInfo::PermuteDims(const std::vector<int64_t>& perm) {
   node_arg->SetShape(new_shape);
 }
 
-void OrtValueInfo::UnsqueezeDims(const std::vector<int64_t>& axes) {
+void ApiValueInfo::UnsqueezeDims(const std::vector<int64_t>& axes) {
   auto* node_arg = graph_.GetNodeArg(name_);
   const auto* shape_proto = GetNodeArgShape(node_arg);
   if (shape_proto == nullptr) {
@@ -234,7 +234,7 @@ void OrtValueInfo::UnsqueezeDims(const std::vector<int64_t>& axes) {
   node_arg->SetShape(new_shape);
 }
 
-std::vector<int64_t> OrtTensor::Shape() const {
+std::vector<int64_t> ApiTensor::Shape() const {
   std::vector<int64_t> shape;
   for (int64_t d : tensor_proto_.dims()) {
     shape.push_back(d);
@@ -242,11 +242,11 @@ std::vector<int64_t> OrtTensor::Shape() const {
   return shape;
 }
 
-api::DataType OrtTensor::DType() const {
+api::DataType ApiTensor::DType() const {
   return gsl::narrow_cast<api::DataType>(tensor_proto_.data_type());
 }
 
-std::unique_ptr<onnxruntime::Tensor> OrtTensor::MakeTensor() const {
+std::unique_ptr<onnxruntime::Tensor> ApiTensor::MakeTensor() const {
   const DataTypeImpl* tensor_dtype = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto_.data_type())->GetElementType();
   auto tensor_shape_dims = utils::GetTensorShapeFromTensorProto(tensor_proto_);
   TensorShape tensor_shape{std::move(tensor_shape_dims)};
@@ -267,12 +267,12 @@ std::vector<T> IntsFromTensor(const onnxruntime::Tensor& tensor) {
   return int_data;
 }
 
-std::vector<int64_t> OrtTensor::DataInt64() const {
+std::vector<int64_t> ApiTensor::DataInt64() const {
   const auto tensor = MakeTensor();
   return IntsFromTensor<int64_t>(*tensor);
 }
 
-std::vector<int32_t> OrtTensor::DataInt32() const {
+std::vector<int32_t> ApiTensor::DataInt32() const {
   const auto tensor = MakeTensor();
   return IntsFromTensor<int32_t>(*tensor);
 }
@@ -285,23 +285,23 @@ std::vector<std::string_view> NodeArgsToStrings(ConstPointerContainer<std::vecto
   return result;
 }
 
-const std::string_view OrtNode::OpType() const {
+const std::string_view ApiNode::OpType() const {
   return node_.OpType();
 }
 
-const std::string_view OrtNode::Domain() const {
+const std::string_view ApiNode::Domain() const {
   return node_.Domain();
 }
 
-std::vector<std::string_view> OrtNode::Inputs() const {
+std::vector<std::string_view> ApiNode::Inputs() const {
   return NodeArgsToStrings(node_.InputDefs());
 }
 
-std::vector<std::string_view> OrtNode::Outputs() const {
+std::vector<std::string_view> ApiNode::Outputs() const {
   return NodeArgsToStrings(node_.OutputDefs());
 }
 
-std::optional<int64_t> OrtNode::GetAttributeInt(const std::string_view name) const {
+std::optional<int64_t> ApiNode::GetAttributeInt(const std::string_view name) const {
   const onnx::AttributeProto* attr = graph_utils::GetNodeAttribute(node_, std::string(name));
   if (attr == nullptr || attr->type() != onnx::AttributeProto_AttributeType_INT) {
     return std::nullopt;
@@ -309,7 +309,7 @@ std::optional<int64_t> OrtNode::GetAttributeInt(const std::string_view name) con
   return attr->i();
 }
 
-std::optional<std::vector<int64_t>> OrtNode::GetAttributeInts(const std::string_view name) const {
+std::optional<std::vector<int64_t>> ApiNode::GetAttributeInts(const std::string_view name) const {
   const onnx::AttributeProto* attr = graph_utils::GetNodeAttribute(node_, std::string(name));
   if (attr == nullptr || attr->type() != onnx::AttributeProto_AttributeType_INTS) {
     return std::nullopt;
@@ -321,27 +321,27 @@ std::optional<std::vector<int64_t>> OrtNode::GetAttributeInts(const std::string_
   return value;
 }
 
-void OrtNode::SetAttributeInt(const std::string_view name, int64_t value) {
+void ApiNode::SetAttributeInt(const std::string_view name, int64_t value) {
   node_.AddAttribute(std::string(name), value);
 }
 
-void OrtNode::SetAttributeInts(const std::string_view name, const std::vector<int64_t>& value) {
+void ApiNode::SetAttributeInts(const std::string_view name, const std::vector<int64_t>& value) {
   node_.AddAttribute(std::string(name), value);
 }
 
-void OrtNode::CopyAttributes(const api::Node& node) {
-  const OrtNode& ort_node = static_cast<const OrtNode&>(node);
+void ApiNode::CopyAttributes(const api::Node& node) {
+  const ApiNode& ort_node = static_cast<const ApiNode&>(node);
   const NodeAttributes& attributes = ort_node.node_.GetAttributes();
   for (const auto& pair : attributes) {
     node_.AddAttribute(pair.first, pair.second);
   }
 }
 
-void OrtNode::ClearAttribute(const std::string_view name) {
+void ApiNode::ClearAttribute(const std::string_view name) {
   node_.ClearAttribute(std::string(name));
 }
 
-void OrtNode::AddInput(const std::string_view name) {
+void ApiNode::AddInput(const std::string_view name) {
   const std::string name_str(name);
   NodeArg& node_arg = graph_.GetOrCreateNodeArg(name_str, nullptr);
   // Append a 1 to ArgsCount or increment the first entry with value 0.
@@ -364,7 +364,7 @@ void OrtNode::AddInput(const std::string_view name) {
   }
 }
 
-void OrtNode::SetInput(size_t i, const std::string_view name) {
+void ApiNode::SetInput(size_t i, const std::string_view name) {
   const std::string name_str(name);
   NodeArg* new_node_arg = &graph_.GetOrCreateNodeArg(name_str, nullptr);
   auto& mutable_input_defs = node_.MutableInputDefs();
@@ -398,7 +398,7 @@ void OrtNode::SetInput(size_t i, const std::string_view name) {
 }
 
 
-std::optional<int64_t> OrtGraph::Opset(const std::string_view domain) const {
+std::optional<int64_t> ApiGraph::Opset(const std::string_view domain) const {
   const auto& version_map = graph_.DomainToVersionMap();
   const auto match = version_map.find(std::string(domain));
   if (match == version_map.end()) {
@@ -407,31 +407,31 @@ std::optional<int64_t> OrtGraph::Opset(const std::string_view domain) const {
   return match->second;
 }
 
-std::vector<std::unique_ptr<api::Node>> OrtGraph::Nodes() const {
+std::vector<std::unique_ptr<api::Node>> ApiGraph::Nodes() const {
   GraphViewer graph_viewer(graph_);
   std::vector<std::unique_ptr<api::Node>> nodes;
   const auto& sorted_nodes = graph_viewer.GetNodesInTopologicalOrder();
   nodes.reserve(sorted_nodes.size());
   for (const auto index : sorted_nodes) {
     auto& node = *graph_.GetNode(index);
-    nodes.push_back(std::unique_ptr<api::Node>(new OrtNode(node, graph_)));
+    nodes.push_back(std::unique_ptr<api::Node>(new ApiNode(node, graph_)));
   }
   return nodes;
 }
 
-std::unique_ptr<api::Tensor> OrtGraph::GetConstant(const std::string_view name) const {
+std::unique_ptr<api::Tensor> ApiGraph::GetConstant(const std::string_view name) const {
   const auto* tensor = graph_.GetConstantInitializer(std::string(name), false);
   if (tensor == nullptr) {
     return nullptr;
   }
-  return std::unique_ptr<api::Tensor>(new OrtTensor(*tensor, graph_, cpu_allocator_));
+  return std::unique_ptr<api::Tensor>(new ApiTensor(*tensor, graph_, cpu_allocator_));
 }
 
-std::unique_ptr<api::ValueInfo> OrtGraph::GetValueInfo(const std::string_view name) const {
-  return std::unique_ptr<api::ValueInfo>(new OrtValueInfo(graph_, std::string(name)));
+std::unique_ptr<api::ValueInfo> ApiGraph::GetValueInfo(const std::string_view name) const {
+  return std::unique_ptr<api::ValueInfo>(new ApiValueInfo(graph_, std::string(name)));
 }
 
-std::unique_ptr<api::ValueConsumers> OrtGraph::GetValueConsumers(const std::string_view name) const {
+std::unique_ptr<api::ValueConsumers> ApiGraph::GetValueConsumers(const std::string_view name) const {
   auto consumers = std::make_unique<api::ValueConsumers>();
   consumers->comprehensive = true;
   const auto nodes = graph_.GetConsumerNodes(std::string(name));
@@ -444,7 +444,7 @@ std::unique_ptr<api::ValueConsumers> OrtGraph::GetValueConsumers(const std::stri
     }
     for (const auto* input : node->InputDefs()) {
       if (input->Exists() && input->Name() == name) {
-        consumers->nodes.push_back(std::unique_ptr<api::Node>(new OrtNode(*graph_.GetNode(node->Index()), graph_)));
+        consumers->nodes.push_back(std::unique_ptr<api::Node>(new ApiNode(*graph_.GetNode(node->Index()), graph_)));
         break;
       }
     }
@@ -460,7 +460,7 @@ std::unique_ptr<api::ValueConsumers> OrtGraph::GetValueConsumers(const std::stri
   return consumers;
 }
 
-bool OrtGraph::HasValueConsumers(const std::string_view name) const {
+bool ApiGraph::HasValueConsumers(const std::string_view name) const {
   const auto nodes = graph_.GetConsumerNodes(std::string(name));
   if (nodes.size() > 0) {
     return true;
@@ -474,15 +474,15 @@ bool OrtGraph::HasValueConsumers(const std::string_view name) const {
   return false;
 }
 
-std::unique_ptr<api::Node> OrtGraph::GetNodeProducingOutput(const std::string_view name) const {
+std::unique_ptr<api::Node> ApiGraph::GetNodeProducingOutput(const std::string_view name) const {
   auto* node = graph_.GetMutableProducerNode(std::string(name));
   if (node == nullptr) {
     return std::unique_ptr<api::Node>(nullptr);
   }
-  return std::unique_ptr<api::Node>(new OrtNode(*node, graph_));
+  return std::unique_ptr<api::Node>(new ApiNode(*node, graph_));
 }
 
-void OrtGraph::TransposeInitializer(const std::string_view name, const std::vector<int64_t>& perm) {
+void ApiGraph::TransposeInitializer(const std::string_view name, const std::vector<int64_t>& perm) {
   const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
   const std::string name_str(name);
   bool success = graph_.GetInitializedTensor(name_str, tensor_proto);
@@ -521,7 +521,7 @@ void OrtGraph::TransposeInitializer(const std::string_view name, const std::vect
   graph_.AddInitializedTensor(new_tensor_proto);
 }
 
-void OrtGraph::ReshapeInitializer(const std::string_view name, const std::vector<int64_t>& shape) {
+void ApiGraph::ReshapeInitializer(const std::string_view name, const std::vector<int64_t>& shape) {
   const std::string name_str(name);
   const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
   bool success = graph_.GetInitializedTensor(name_str, tensor_proto);
@@ -553,7 +553,7 @@ void OrtGraph::ReshapeInitializer(const std::string_view name, const std::vector
   node_arg->SetShape(new_shape);
 }
 
-std::unique_ptr<api::Node> OrtGraph::AddNode(const std::string_view op_type,
+std::unique_ptr<api::Node> ApiGraph::AddNode(const std::string_view op_type,
                                              const std::vector<std::string_view>& inputs, size_t num_outputs, 
                                              const std::string_view domain) {
   const std::string op_type_str(op_type);
@@ -593,11 +593,11 @@ std::unique_ptr<api::Node> OrtGraph::AddNode(const std::string_view op_type,
   for (NodeArg* arg : output_args) {
     graph_.UpdateProducerNode(arg->Name(), node.Index());
   }
-  return std::unique_ptr<api::Node>(new OrtNode(node, graph_));
+  return std::unique_ptr<api::Node>(new ApiNode(node, graph_));
 }
 
-void OrtGraph::RemoveNode(api::Node& node) {
-  Node& ort_node = static_cast<OrtNode&>(node).Node();
+void ApiGraph::RemoveNode(api::Node& node) {
+  Node& ort_node = static_cast<ApiNode&>(node).Node();
   for (const auto* node_arg : ort_node.InputDefs()) {
     if (node_arg->Exists()) {
       graph_.RemoveConsumerNode(node_arg->Name(), &ort_node);
@@ -606,7 +606,7 @@ void OrtGraph::RemoveNode(api::Node& node) {
   graph_.RemoveNode(ort_node.Index());
 }
 
-void OrtGraph::RemoveInitializer(const std::string_view name) {
+void ApiGraph::RemoveInitializer(const std::string_view name) {
   graph_.RemoveInitializedTensor(std::string(name));
 }
 
@@ -623,7 +623,7 @@ inline ONNX_NAMESPACE::TensorProto TensorProtoFromInts(std::string& name, const 
   return tensor_proto;
 }
 
-const std::string_view OrtGraph::AddInitializerInt64(const std::vector<int64_t>& shape,
+const std::string_view ApiGraph::AddInitializerInt64(const std::vector<int64_t>& shape,
                                                      const std::vector<int64_t>& values) {
   std::string name = graph_.GenerateNodeArgName("const_transpose_optimizer");
   ONNX_NAMESPACE::TensorProto tensor_proto =
@@ -632,7 +632,7 @@ const std::string_view OrtGraph::AddInitializerInt64(const std::vector<int64_t>&
   return node_arg.Name();
 }
 
-const std::string_view OrtGraph::AddInitializerInt32(const std::vector<int64_t>& shape,
+const std::string_view ApiGraph::AddInitializerInt32(const std::vector<int64_t>& shape,
                                                      const std::vector<int32_t>& values) {
   std::string name = graph_.GenerateNodeArgName("const_transpose_optimizer");
   ONNX_NAMESPACE::TensorProto tensor_proto =
@@ -641,9 +641,9 @@ const std::string_view OrtGraph::AddInitializerInt32(const std::vector<int64_t>&
   return node_arg.Name();
 }
 
-void OrtGraph::MoveOutput(api::Node& src_node, size_t src_idx, api::Node& dst_node, size_t dst_idx) {
-  Node& src_ort_node = static_cast<OrtNode&>(src_node).Node();
-  Node& dst_ort_node = static_cast<OrtNode&>(dst_node).Node();
+void ApiGraph::MoveOutput(api::Node& src_node, size_t src_idx, api::Node& dst_node, size_t dst_idx) {
+  Node& src_ort_node = static_cast<ApiNode&>(src_node).Node();
+  Node& dst_ort_node = static_cast<ApiNode&>(dst_node).Node();
 
   std::vector<NodeArg*>& src_output_defs = src_ort_node.MutableOutputDefs();
   std::vector<NodeArg*>& dst_output_defs = dst_ort_node.MutableOutputDefs();
@@ -665,7 +665,7 @@ void OrtGraph::MoveOutput(api::Node& src_node, size_t src_idx, api::Node& dst_no
   graph_.UpdateProducerNode(new_name, src_node_idx);
 }
 
-void OrtGraph::CopyValueInfo(const std::string_view src_name, const std::string_view dst_name) {
+void ApiGraph::CopyValueInfo(const std::string_view src_name, const std::string_view dst_name) {
   NodeArg* src_arg = graph_.GetNodeArg(std::string(src_name));
   if (src_arg != nullptr) {
     NodeArg& dst_arg = graph_.GetOrCreateNodeArg(std::string(dst_name), src_arg->TypeAsProto());
@@ -682,15 +682,15 @@ void OrtGraph::CopyValueInfo(const std::string_view src_name, const std::string_
 
 std::unique_ptr<api::Graph> MakeApiGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator,
                                          const logging::Logger& logger, const char* new_node_ep) {
-  return std::unique_ptr<api::Graph>(new OrtGraph(graph, std::move(cpu_allocator), logger, new_node_ep));
+  return std::unique_ptr<api::Graph>(new ApiGraph(graph, std::move(cpu_allocator), logger, new_node_ep));
 }
 
 onnxruntime::Graph& GraphFromApiGraph(onnx_layout_transformation::api::Graph& graph) {
-  return static_cast<OrtGraph&>(graph).Graph();
+  return static_cast<ApiGraph&>(graph).Graph();
 }
 
 onnxruntime::Node& NodeFromApiNode(onnx_layout_transformation::api::Node& node) {
-  return static_cast<OrtNode&>(node).Node();
+  return static_cast<ApiNode&>(node).Node();
 }
 
 }  // namespace onnxruntime
