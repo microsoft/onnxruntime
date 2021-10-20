@@ -362,6 +362,7 @@ def amd_hipify(config_build_dir):
         for result in training_results:
             log.debug(result.result())
 
+
 if __name__ == '__main__':
     import sys
     amd_hipify(sys.argv[1])
