@@ -534,7 +534,7 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
 void DecoderAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   // Type inference
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-  if (ctx.getNumOutputs() > 1 && ctx.getNuminputs() > 5) {
+  if (ctx.getNumOutputs() > 1 && ctx.getNumInputs() > 5) {
     ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 5, 1);
     ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 5, 2);
   }
@@ -722,7 +722,10 @@ TODO:
       .Output(1, "new_key_cache", "output tensor with shape (batch_size, num_heads, new sequence_length, head_size)", "T", OpSchema::Optional) // self & cross
       .Output(2, "new_value_cache", "output tensor with shape (batch_size, num_heads, new sequence_length, head_size)", "T", OpSchema::Optional) // self & cross
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::DecoderAttentionTypeAndShapeInference);
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        DecoderAttentionTypeAndShapeInference(ctx);
+      });
+
 
   static const char* EmbedLayerNormalization_ver1_doc = R"DOC(
 EmbedLayerNormalization is the fusion of embedding layer in BERT model, with optional mask processing.
