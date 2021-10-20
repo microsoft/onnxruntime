@@ -55,6 +55,10 @@ struct ProviderHostCPU {
   virtual Status ValidateInputs(const Tensor* depth, const Tensor* values) = 0;
   virtual Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis, int64_t& prefix_dim_size, int64_t& suffix_dim_size, std::vector<int64_t>& output_shape) = 0;
 
+  // From aten_op.h
+  virtual bool contrib__IsATenOperatorExecutorInitialized() = 0;
+  virtual Status contrib__ExecuteReduceSumATenOp(OpKernelContext* p_ctx, const std::vector<int64_t>& axes, bool keepdims) = 0;
+
   // From cpu/tensor/slice.h
   virtual Status SliceBase__PrepareForCompute(const std::vector<int64_t>& raw_starts,
                                               const std::vector<int64_t>& raw_ends,
@@ -164,6 +168,12 @@ inline Status ValidateInputs(const Tensor* depth, const Tensor* values) { return
 inline Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis,
                                  int64_t& prefix_dim_size, int64_t& suffix_dim_size,
                                  std::vector<int64_t>& output_shape) { return g_host_cpu.PrepareOutputShape(indices, depth_val, axis, prefix_dim_size, suffix_dim_size, output_shape); }
+
+// From aten_op.h
+namespace contrib {
+inline bool IsATenOperatorExecutorInitialized() { return g_host_cpu.contrib__IsATenOperatorExecutorInitialized(); }
+inline Status ExecuteReduceSumATenOp(OpKernelContext* p_ctx, const std::vector<int64_t>& axes, bool keepdims) { return g_host_cpu.contrib__ExecuteReduceSumATenOp(p_ctx, axes, keepdims); }
+} // namespace contrib
 
 struct EinsumComputePreprocessor {
   static void operator delete(void* p) { g_host_cpu.EinsumComputePreprocessor__operator_delete(reinterpret_cast<EinsumComputePreprocessor*>(p)); }

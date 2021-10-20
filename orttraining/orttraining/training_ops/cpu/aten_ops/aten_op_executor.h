@@ -26,6 +26,11 @@ class ATenOperatorExecutor {
     ORT_ENFORCE(p_is_tensor_argument_func_, "ATenOperatorExecutor is not initialized.");
     return p_is_tensor_argument_func_(op_name.c_str(), overload_name.c_str(), index);
   }
+
+  bool IsInitialized() {
+    return p_execute_aten_op_func_ != nullptr;
+  }
+
   std::vector<DLManagedTensor*> operator()(const std::string& op_name, const std::string& overload_name,
                                            const std::vector<DLManagedTensor*>& dlpacks) {
     ORT_ENFORCE(p_execute_aten_op_func_, "ATenOperatorExecutor is not initialized.");
