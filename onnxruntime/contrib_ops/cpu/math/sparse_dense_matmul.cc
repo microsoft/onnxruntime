@@ -606,7 +606,10 @@ struct MatrixToVector {
       cb_in_use = &cb;
     }
 
-    // Scan all the rows and count those that contain any nnz
+    // XXX: we need to figure out the true output size
+    // which would be the sum of intersections of each matrix row
+    // with the vector. Currently, the below code may not fill the complete
+    // buffer or, in fact any of it.
     const size_t output_size = CountNonEmptyRows(mat_outer);
 
     auto coo_mutator = ctx.output_tensor_.MakeCooData(output_size, output_size);
@@ -649,6 +652,10 @@ struct MatrixToMatrix {
     const auto& a_outer = ctx.a_csr.Outer();
     const auto& b_inner = ctx.b_csr_.Inner();
     const auto& b_outer = ctx.b_csr_.Outer();
+
+    // Need to figure out the intersection to compute the correct size
+    //const size_t a_non_empty = CountNonEmptyRows(a_outer);
+    //const size_t b_non_empty = CountNonEmptyRows(b_outer);
 
     const size_t a_outer_limit = a_outer.size() - 1;
     const size_t b_outer_limit = b_outer.size() - 1;

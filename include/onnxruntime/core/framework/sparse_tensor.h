@@ -307,6 +307,19 @@ class SparseTensor final {
   CooMutator MakeCooData(size_t values_count, size_t index_count);
 
   /// <summary>
+  /// This function is useful when it is difficult or performance
+  /// prohibitive to know the exact size of the buffer. We do our best
+  /// estimate and over-allocate. After we are done, we can set the data and
+  /// indices sizes accordingly. This updates the shape of the value and of the
+  /// indices providing their resulting length is less than before. If the current
+  /// data is strings it destroys strings instances beyond the new values size.
+  /// </summary>
+  /// <param name="values_count"></param>
+  /// <param name="index_count"></param>
+  /// <returns></returns>
+  Status TrimCooSpace(size_t values_count, size_t index_count);
+
+  /// <summary>
   /// Read only access to Csr indices
   /// </summary>
   class CsrView {

@@ -325,6 +325,32 @@ SparseTensor::CooMutator SparseTensor::MakeCooData(size_t values_count, size_t i
   return CooMutator(values_, format_data_[0]);
 }
 
+Status SparseTensor::TrimCooSpace(size_t values_count, size_t index_count) {
+  ORT_RETURN_IF_NOT(values_count <= NumValues(), "New values size must be LE than current");
+
+  TensorShape values_shape{gsl::narrow<int64_t>(values_count)};
+  TensorShape indices_shape(GetCooIndexDims(values_count, index_count));
+  Tensor& current_indices = format_data_[0];
+
+  const auto new_values_count = indices_shape.Size();
+  const auto current_values_count = current_indices.Shape().Size();
+  ORT_RETURN_IF_NOT(new_values_count <= current_values_count, "New values count must LE than current");
+  ORT_RETURN_IF_NOT(indices_shape.NumDimensions() != current_indices.Shape().NumDimensions(), 
+    "New indices number of dimensions does not match the old one");
+
+  if (IsDataTypeString()) {
+    const auto trimmed_count = current_values_count - new_values_count;
+    if (trimmed_count > 0) {
+      utils::DestroyStrings(values_.MutableData<std::string>() + new_values_count, trimmed_count);
+    }
+  }
+
+  values_ = Tensor(DataType(), values_shape, p_data_, Location());
+  current_indices = Tensor(current_indices.DataType(), indices_shape,
+                           current_indices.MutableData<int64_t>(), Location());
+  return Status::OK();
+}
+
 SparseTensor::CsrView SparseTensor::AsCsr() const {
   ORT_ENFORCE(Format() == SparseFormat::kCsrc, "Must contain Csr format. Contains: ", Format());
   ORT_ENFORCE(format_data_.size() == 2U, "Expecting two indices. Got: ", format_data_.size());

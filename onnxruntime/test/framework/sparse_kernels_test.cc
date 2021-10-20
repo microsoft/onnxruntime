@@ -1891,6 +1891,42 @@ TEST(SparseTensorConversionTests, BlockSparse) {
                            indices_span.cbegin(), indices_span.cend()));
   }
 }
+
+TEST(SparseTensorTests, TestTrimCooSpace) {
+  // Lets test flat indices first on primitive data
+  TensorShape dense_shape{9, 9};
+  auto* cpu_provider = TestCPUExecutionProvider();
+  auto cpu_allocator = cpu_provider->GetAllocator(0, OrtMemTypeDefault);
+  const std::vector<float> initial_values{1.f, 2.f, 3.f, 4.f, 5.f};
+  const std::vector<int64_t> initial_flat_indices_indices{1, 2, 3, 4, 5};
+  {
+    const size_t values_count = 5, indices_count = 5;
+    SparseTensor tensor(DataTypeImpl::GetType<float>(), dense_shape, cpu_allocator);
+    auto mutator = tensor.MakeCooData(values_count, indices_count);
+    auto mutable_val_span = mutator.Values().MutableDataAsSpan<float>();
+    auto mutable_ind_span = mutator.Indices().MutableDataAsSpan<int64_t>();
+    std::copy(initial_values.cbegin(), initial_values.cend(), mutable_val_span.begin());
+    std::copy(initial_flat_indices_indices.cbegin(), initial_flat_indices_indices.cend(), mutable_ind_span.begin());
+
+    ASSERT_EQ(tensor.NumValues(), values_count);
+    auto values_span = tensor.Values().DataAsSpan<float>();
+    std::equal(initial_values.cbegin(), initial_values.cend(), values_span.cbegin());
+    auto indices_span = tensor.AsCoo().Indices().DataAsSpan<int64_t>();
+    ASSERT_EQ(indices_span.size(), indices_count);
+    std::equal(initial_flat_indices_indices.cbegin(), initial_flat_indices_indices.cend(), indices_span.cbegin());
+
+    ASSERT_STATUS_OK(tensor.TrimCooSpace(3, 3));
+    ASSERT_EQ(tensor.NumValues(), 3U);
+    values_span = tensor.Values().DataAsSpan<float>();
+    std::equal(values_span.cbegin(), values_span.cend(), initial_values.cbegin());
+    indices_span = tensor.AsCoo().Indices().DataAsSpan<int64_t>();
+    ASSERT_EQ(indices_span.size(), 3U);
+    std::equal(indices_span.cbegin(), indices_span.cend(), initial_flat_indices_indices.cbegin());
+  }
+
+}
+
+
 #endif  //  !defined(DISABLE_SPARSE_TENSORS)
 
 }  // namespace test
