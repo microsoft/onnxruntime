@@ -53,7 +53,6 @@ option(onnxruntime_USE_COREML "Build with CoreML support" OFF)
 option(onnxruntime_USE_NNAPI_BUILTIN "Build with builtin NNAPI lib for Android NNAPI support" OFF)
 option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
-option(onnxruntime_USE_FEATURIZERS "Build ML Featurizers support" OFF)
 option(onnxruntime_DEV_MODE "Enable developer warnings and treat most of them as error." OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
@@ -803,12 +802,6 @@ endif()
 
 include(protobuf_function.cmake)
 #protobuf end
-
-if(onnxruntime_USE_FEATURIZERS)
-  add_definitions(-DML_FEATURIZERS)
-  # Fetch and build featurizers
-  include(external/featurizers.cmake)
-endif()
 
 if (onnxruntime_DISABLE_CONTRIB_OPS)
   add_definitions(-DDISABLE_CONTRIB_OPS)
