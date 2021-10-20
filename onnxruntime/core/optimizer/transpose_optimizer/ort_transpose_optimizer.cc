@@ -16,15 +16,18 @@ using namespace onnx_layout_transformation;
 namespace onnxruntime {
 
 Status TransposeOptimizer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
-  auto api_graph = MakeApiGraph(graph, std::move(cpu_allocator_), logger, /*new_node_ep*/ nullptr);
+  auto api_graph = MakeApiGraph(graph, cpu_allocator_, logger, /*new_node_ep*/ nullptr);
   if (onnx_layout_transformation::Optimize(*api_graph, /*allow_extended_ops*/ false)) {
     modified = true;
   }
+
   GraphViewer graph_viewer(graph);
   auto nodes = std::vector<std::unique_ptr<api::Node>>();
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
     ORT_RETURN_IF_ERROR(Recurse(*graph.GetNode(index), modified, graph_level, logger));
   }
+
   return Status::OK();
 }
+
 }  // namespace onnxruntime

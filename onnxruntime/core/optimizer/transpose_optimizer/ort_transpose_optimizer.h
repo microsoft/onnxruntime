@@ -10,7 +10,7 @@ namespace onnxruntime {
 
 /**
 @Class TransposeOptimizer
-Push transposes through ops and eliminate them
+Push transposes through ops and eliminate them.
 */
 class TransposeOptimizer : public GraphTransformer {
  private:
