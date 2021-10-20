@@ -524,10 +524,8 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
   }
 
   VLOGS(*session_logger_, 1) << "Adding execution provider of type: " << provider_type;
-  std::cout << "Adding execution provider of type: " << "\n";
   auto p_data_xfr = p_exec_provider->GetDataTransfer();
   if (p_data_xfr) {
-    std::cout << "Adding data transfer type: " << "\n";
     auto st = data_transfer_mgr_.RegisterDataTransfer(std::move(p_data_xfr));
     if (!st.IsOK()) {
       return st;
