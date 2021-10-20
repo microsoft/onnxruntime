@@ -213,12 +213,12 @@ void ApiValueInfo::PermuteDims(const std::vector<int64_t>& perm) {
   }
 
   ORT_ENFORCE(perm.size() == gsl::narrow_cast<size_t>(shape_proto->dim_size()),
-              "Permutation ", perm, " length does not match shape ", shape_proto->dim_size());
+              "Permutation length ", perm.size(), " does not match rank ", shape_proto->dim_size());
   TensorShapeProto new_shape;
   for (int64_t p : perm) {
     int p_int = gsl::narrow_cast<int>(p);
     ORT_ENFORCE(0 <= p && p_int < shape_proto->dim_size(),
-                "Permutation ", perm, " out of bounds for shape ", shape_proto->dim_size());
+                "Permutation entry ", p, " out of bounds for shape ", shape_proto->dim_size());
     auto& dim = *new_shape.add_dim();
     const auto& src_dim = shape_proto->dim(p_int);
     CopyTensorShapeDim(src_dim, dim);

@@ -94,7 +94,7 @@ static std::unique_ptr<api::Node> MakeSqueezeOrUnsqueeze(int64_t opset, api::Gra
 }
 
 // Returns whether perm is a valid permutation (contains each value from 0 to perm.size() - 1 exactly once)
-bool IsValidPerm(const std::vector<int64_t>& perm) {
+static bool IsValidPerm(const std::vector<int64_t>& perm) {
   size_t rank = perm.size();
   int64_t rank_int = gsl::narrow_cast<int64_t>(rank);
   std::vector<bool> used_dims(rank);
@@ -107,6 +107,14 @@ bool IsValidPerm(const std::vector<int64_t>& perm) {
     used_dims[x_size_t] = true;
   }
   return true;
+}
+
+static std::optional<std::vector<int64_t>> GetPermAttrIfValid(const api::Node& node) {
+  std::optional<std::vector<int64_t>> perm = node.GetAttributeInts("perm");
+  if (perm != std::nullopt && !IsValidPerm(*perm)) {
+    return std::nullopt;
+  }
+  return perm;
 }
 
 // Adds rank to negative axes and checks that axes are unique and within [0, rank). Returns false if invalid.
@@ -124,6 +132,15 @@ static bool NormalizeAndValidateAxes(std::vector<int64_t>& axes, size_t rank) {
     }
   }
   return true;
+}
+
+static inline bool NormalizeAndValidateAxis(int64_t& axis, size_t rank) {
+  int64_t rank_int = gsl::narrow_cast<int64_t>(rank);
+  if (axis < 0) {
+    axis += rank_int;
+  }
+
+  return axis >= 0 && axis < rank_int;
 }
 
 // Computes inverse permutation. Unsafe if perm is not a valid permutation.
@@ -374,7 +391,7 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::Node& node, size_t i, const s
   // is one of the few operations that violates the normal traversal order. If the input to the new Unsqueeze is
   // a Transpose, optimize it here.
   if (inp_node != nullptr && inp_node->IsOp("Transpose")) {
-    auto perm = inp_node->GetAttributeInts("perm");
+    auto perm = GetPermAttrIfValid(*inp_node);
     if (perm != std::nullopt) {
       auto perm_inv = InvertPerm(*perm);
       HandlerArgs args{ctx, *inp_node, squeeze, *perm, perm_inv, 0};
@@ -417,7 +434,7 @@ static void TransposeInput(OptimizerCtx& ctx, api::Node& node, size_t i,
   // Case 2: input is a Transpose node
   std::unique_ptr<api::Node> inp_node = ctx.graph.GetNodeProducingOutput(input);
   if (inp_node != nullptr && inp_node->IsOp("Transpose")) {
-    std::optional<std::vector<int64_t>> perm2 = inp_node->GetAttributeInts("perm");
+    std::optional<std::vector<int64_t>> perm2 = GetPermAttrIfValid(*inp_node);
     if (perm2 != std::nullopt) {
       // If they cancel, use pre_transpose_value and remove Transpose if possible.
       if (*perm2 == perm_inv) {
@@ -448,7 +465,7 @@ static void TransposeInput(OptimizerCtx& ctx, api::Node& node, size_t i,
   // Case 3: A Transpose op might already exist
   for (size_t j = 0; j < consumers->nodes.size(); ++j) {
     api::Node& consumer = *consumers->nodes[j];
-    if (consumer.IsOp("Transpose") && consumer.GetAttributeInts("perm") == perm) {
+    if (consumer.IsOp("Transpose") && GetPermAttrIfValid(consumer) == perm) {
       node.SetInput(i, consumer.Outputs()[0]);
       return;
     }
@@ -608,7 +625,7 @@ static int EstimateTransposeValueCost(api::Graph& graph, const std::string_view 
   // Case 2: Transposing a transpose either cancels it or composes the permutations.
   std::unique_ptr<api::Node> node = graph.GetNodeProducingOutput(input);
   if (node != nullptr && node->IsOp("Transpose")) {
-    std::optional<std::vector<int64_t>> perm2 = node->GetAttributeInts("perm");
+    std::optional<std::vector<int64_t>> perm2 = GetPermAttrIfValid(*node);
     if (perm2 != std::nullopt) {
       if (*perm2 == perm_inv && CanLikelyRemoveTranspose(graph, *node)) {
         return -EstimateValueRank(graph, input);
@@ -730,13 +747,15 @@ static bool HandleSimpleNodeWithAxis(HandlerArgs& args, bool has_default, int64_
       return false;
     }
   }
-  if (*axis < 0) {
-    *axis += rank;
+
+  if (!NormalizeAndValidateAxis(*axis, rank)) {
+    return false;
   }
-  if (*axis < 0 || (uint64_t)*axis >= args.perm.size()) return false;
+
   if (!HandleSimpleNodeBase(args, /*broadcast_inputs*/ false)) {
     return false;
   }
+
   args.node.SetAttributeInt("axis", args.perm[(size_t)*axis]);
   return true;
 }
@@ -763,11 +782,9 @@ static bool HandleSoftHardMax(HandlerArgs& args) {
   // The 'axis' attribute is the division point of the coercion.
   size_t rank = args.perm.size();
   int64_t axis = args.node.GetAttributeIntDefault("axis", 1);
-  // TODO: consolidate this?
-  if (axis < 0) {
-    axis += rank;
+  if (!NormalizeAndValidateAxis(axis, rank)) {
+    return false;
   }
-  if (axis < 0 || (uint64_t)axis >= rank) return false;
 
   // We can optimize only if the transpose does not move axes across the boundary. (normally this is the case)
   for (size_t i = 0; i < rank; ++i) {
@@ -1142,12 +1159,10 @@ static bool HandleQuantizeDequantizeLinear(HandlerArgs& args) {
 
     if (!scalar_params) {
       int64_t axis = args.node.GetAttributeIntDefault("axis", 1);
-      if (axis < 0) {
-        axis += rank;
-      }
-      if (axis < 0 || (size_t)axis >= args.perm.size()) {
+      if (!NormalizeAndValidateAxis(axis, rank)) {
         return false;
       }
+
       args.node.SetAttributeInt("axis", args.perm[(size_t)axis]);
     }
   }
@@ -1165,8 +1180,8 @@ static bool HandleArgMinMax(HandlerArgs& args) {
 
   int64_t keepdims = args.node.GetAttributeIntDefault("keepdims", 1);
   int64_t axis = args.node.GetAttributeIntDefault("axis", 0);
-  if (axis < 0) {
-    axis += (int64_t)rank;
+  if (!NormalizeAndValidateAxis(axis, rank)) {
+    return false;
   }
   int64_t new_axis = args.perm[(size_t)axis];
   std::vector<int64_t> new_axes {new_axis};
@@ -1330,8 +1345,7 @@ constexpr HandlerInfo tile_handler = {&FirstInput, &HandleTile};
 static bool HandleTranspose(HandlerArgs& args) {
   // Two cases: 1 perm match, 2 they don't
 
-  // TODO: assert perm is valid
-  std::optional<std::vector<int64_t>> node_perm = args.node.GetAttributeInts("perm");
+  std::optional<std::vector<int64_t>> node_perm = GetPermAttrIfValid(args.node);
   if (node_perm == std::nullopt) {
     return false;
   }
@@ -1393,10 +1407,7 @@ static bool HandleQLinearConcat(HandlerArgs& args) {
   if (axis == std::nullopt) {
     return false;
   }
-  if (*axis < 0) {
-    *axis += rank;
-  }
-  if (*axis < 0 || (size_t)*axis >= rank) {
+  if (!NormalizeAndValidateAxis(*axis, rank)) {
     return false;
   }
   args.node.SetAttributeInt("axis", args.perm[(size_t)*axis]);
@@ -1639,7 +1650,7 @@ bool OptimizeImpl(OptimizerCtx& ctx) {
       }
       std::unique_ptr<api::Node> transpose = ctx.graph.GetNodeProducingOutput(inp);
       if (transpose != nullptr && transpose->IsOp("Transpose")) {
-        std::optional<std::vector<int64_t>> perm = transpose->GetAttributeInts("perm");
+        std::optional<std::vector<int64_t>> perm = GetPermAttrIfValid(*transpose);
         if (perm != std::nullopt) {
           std::vector<int64_t> perm_inv = InvertPerm(*perm);
           HandlerArgs args = {ctx, *transpose, node, *perm, perm_inv, j};
