@@ -90,10 +90,6 @@ provider_excluded_files = [
                 'math/matmul_integer.h',
                 'math/softmax_impl.cu',
                 'math/softmax.cc',
-                'math/topk.cc',
-                'math/topk.h',
-                'math/topk_impl.cu',
-                'math/topk_impl.h',
                 'nn/batch_norm.cc',
                 'nn/batch_norm.h',
                 'nn/conv.cc',
@@ -244,6 +240,8 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace('std::log', 'logf')
     s = s.replace('#include <cub/device/device_radix_sort.cuh>',
                   '#include <hipcub/hipcub.hpp>\n#include <hipcub/backend/rocprim/device/device_radix_sort.hpp>')
+    s = s.replace('#include "cub/device/device_radix_sort.cuh"',
+                  '#include <hipcub/hipcub.hpp>\n#include <hipcub/backend/rocprim/device/device_radix_sort.hpp>')
     s = s.replace('#include <cub/device/device_reduce.cuh>',
                   '#include <hipcub/backend/rocprim/device/device_reduce.hpp>')
     s = s.replace('#include <cub/device/device_run_length_encode.cuh>',
@@ -254,6 +252,14 @@ def hipify(src_file_path, dst_file_path):
                   '#include <hipcub/backend/rocprim/iterator/counting_input_iterator.hpp>')
     s = s.replace('#include <cub/iterator/discard_output_iterator.cuh>',
                   '#include <hipcub/backend/rocprim/iterator/discard_output_iterator.hpp>')
+    s = s.replace('#include <cub/util_allocator.cuh>',
+                  '#include <hipcub/util_allocator.hpp>')
+    s = s.replace('#include "cub/util_allocator.cuh"',
+                  '#include <hipcub/util_allocator.hpp>')
+    s = s.replace('#include <cub/util_type.cuh>',
+                  '#include <hipcub/backend/rocprim/util_type.hpp>')
+    s = s.replace('#include "cub/util_type.cuh"',
+                  '#include <hipcub/backend/rocprim/util_type.hpp>')
     s = s.replace('typedef half MappedType', 'typedef __half MappedType')
 
     # CUBLAS -> HIPBLAS
@@ -300,6 +306,9 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace('RegisterHipTrainingKernels', 'RegisterRocmTrainingKernels')
     s = s.replace('ROCM_VERSION', 'CUDA_VERSION')  # semantically different meanings, cannot hipify
     s = s.replace('__ROCM_ARCH__', '__CUDA_ARCH__')  # semantically different meanings, cannot hipify
+
+    # Deletions
+    s = s.replace('#include "device_atomic_functions.h"', '')  # HIP atomics in main hip header already
 
     do_write = True
     if os.path.exists(dst_file_path):
