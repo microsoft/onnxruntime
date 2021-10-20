@@ -189,7 +189,7 @@ ORT_STATUS_PTR CreateTensorImpl(MLDataType ml_type, const int64_t* shape, size_t
   }
   if (size_to_allocate > p_data_len) {
     std::ostringstream oss;
-    oss << ": expected " << size_to_allocate << ", got " << p_data_len;
+    oss << "not enough space: expected " << size_to_allocate << ", got " << p_data_len;
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, oss.str().c_str());
   }
   Tensor::InitOrtValue(ml_type, tensor_shape, p_data, *info, ort_value);
