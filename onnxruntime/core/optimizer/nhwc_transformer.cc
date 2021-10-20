@@ -10,6 +10,8 @@
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
+using namespace onnx_layout_transformation;
+
 namespace onnxruntime {
 
 LayoutHandlerResult QLinearConvHandler(api::Graph& graph, api::Node& node) {
@@ -20,7 +22,7 @@ LayoutHandlerResult QLinearConvHandler(api::Graph& graph, api::Node& node) {
   if (node.GetAttributeIntDefault("channels_last", 0) == 1) {
     return {false, 0, std::nullopt, std::nullopt};
   }
-  auto shape = static_cast<OrtNode&>(node).Node().InputDefs()[0]->Shape();
+  auto shape = NodeFromApiNode(node).InputDefs()[0]->Shape();
   if (shape == nullptr) {
     return {false, 0, std::nullopt, std::nullopt};
   }
@@ -39,8 +41,8 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   std::unordered_map<std::string_view, LayoutHandler> handler_map = {
       {"QLinearConv", &QLinearConvHandler}
   };
-  auto ort_graph = OrtGraph(graph, cpu_allocator_, logger, kCpuExecutionProvider);
-  if (ChannelFirstToChannelLast(ort_graph, handler_map, /*allow_extended_ops*/ true)) {
+  auto api_graph = MakeApiGraph(graph, std::move(cpu_allocator_), logger, kCpuExecutionProvider);
+  if (ChannelFirstToChannelLast(*api_graph, handler_map, /*allow_extended_ops*/ true)) {
     modified = true;
   }
   return Status::OK();

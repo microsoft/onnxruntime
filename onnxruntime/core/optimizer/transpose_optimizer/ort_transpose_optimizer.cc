@@ -16,8 +16,8 @@ using namespace onnx_layout_transformation;
 namespace onnxruntime {
 
 Status TransposeOptimizer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
-  auto ort_graph = OrtGraph(graph, cpu_allocator_, logger, /*new_node_ep*/ nullptr);
-  if (onnx_layout_transformation::Optimize(ort_graph, /*allow_extended_ops*/ false)) {
+  auto api_graph = MakeApiGraph(graph, std::move(cpu_allocator_), logger, /*new_node_ep*/ nullptr);
+  if (onnx_layout_transformation::Optimize(*api_graph, /*allow_extended_ops*/ false)) {
     modified = true;
   }
   GraphViewer graph_viewer(graph);
