@@ -45,6 +45,14 @@ ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 }
 #endif
 
+#ifdef USE_OPENVINO
+
+#include "core/providers/openvino/openvino_provider_factory.h"
+namespace onnxruntime {
+ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO();
+}
+#endif
+
 #ifdef ENABLE_EXTENSION_CUSTOM_OPS
 #include "onnxruntime_extensions.h"
 #endif
@@ -2076,6 +2084,14 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::GetTensorDeviceType, _In_ const OrtValue* value, _Out_ int8_t* out) {
+  TENSOR_READ_API_BEGIN
+  int8_t device_type = tensor.DeviceType();
+  *out = device_type;
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString,
@@ -2183,8 +2199,8 @@ static constexpr OrtApi ort_api_1_to_10 = {
     &OrtApis::CreateTensorWithDataAsOrtValue,
     &OrtApis::IsTensor,
     &OrtApis::GetTensorMutableData,
-    &OrtApis::FillStringTensor,
 
+    &OrtApis::FillStringTensor,
     &OrtApis::GetStringTensorDataLength,
     &OrtApis::GetStringTensorContent,
 
@@ -2350,6 +2366,7 @@ static constexpr OrtApi ort_api_1_to_10 = {
     // End of Version 9 - DO NOT MODIFY ABOVE (see above text for more information)
 
     // Version 10 - In development, feel free to add/remove/rearrange here
+    &OrtApis::GetTensorDeviceType
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
