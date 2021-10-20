@@ -1036,27 +1036,27 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   std::string onnx_string_buffer;
   model_proto->SerializeToString(onnx_string_buffer);
 
-  // debugging, write onnx to a buffer for debugging
-  std::ofstream ofs("ort_getcapability.onnx", std::ios::out);
-  ofs.write(onnx_string_buffer.data(), onnx_string_buffer.size());
-  ofs.close();
+  // // debugging, write onnx to a buffer for debugging
+  // std::ofstream ofs("ort_getcapability.onnx", std::ios::out);
+  // ofs.write(onnx_string_buffer.data(), onnx_string_buffer.size());
+  // ofs.close();
 
   // This is a list of initializers that migraphx considers as constants.
   // Example weights, reshape shape etc.
   std::unordered_set<std::string> mgx_required_initializers;
   const auto unsupported_nodes = GetUnsupportedNodeIndices(graph_viewer, mgx_required_initializers, *GetLogger());
   
-  //Debug code ===========================
-  if(unsupported_nodes.size() > 0)
-  {
-    std::cout << "Unsupported_node_num = " << unsupported_nodes.size() << std::endl;
-    for(auto idx : unsupported_nodes)
-    {
-      const auto& node = graph_viewer.GetNode(idx);
-      std::cout << "node_name = " << node->OpType() << std::endl;
-    }
-  }
-  //======================================
+  // //Debug code ===========================
+  // if(unsupported_nodes.size() > 0)
+  // {
+  //   std::cout << "Unsupported_node_num = " << unsupported_nodes.size() << std::endl;
+  //   for(auto idx : unsupported_nodes)
+  //   {
+  //     const auto& node = graph_viewer.GetNode(idx);
+  //     std::cout << "node_name = " << node->OpType() << std::endl;
+  //   }
+  // }
+  // //======================================
 
   //If all ops are supported, no partitioning is required. Short-circuit and avoid splitting.
   if (unsupported_nodes.empty()) {
@@ -1158,9 +1158,9 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     std::string onnx_string_buffer;
     model_proto->SerializeToString(onnx_string_buffer);
 
-    // Temp code changes for debugging, dump MIGraphX subgraphs
-    std::fstream dump(fused_node->Name() + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
-    model_proto->SerializeToOstream(dump);
+    // // Temp code changes for debugging, dump MIGraphX subgraphs
+    // std::fstream dump(fused_node->Name() + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
+    // model_proto->SerializeToOstream(dump);
 
     std::vector<std::string> input_names, output_names;
     no_input_shape = no_input_shape or get_input_output_names(*graph_body_viewer, input_names, output_names);
