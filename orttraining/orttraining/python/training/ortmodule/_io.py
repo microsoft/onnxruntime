@@ -279,8 +279,9 @@ def unflatten_user_output(output_schema, outputs):
         if user_output is None:
             return None
         elif isinstance(user_output, _TensorStub):
+            out = outputs[output_idx[0]]
             output_idx[0] += 1
-            return outputs[output_idx[0]-1]
+            return out
 
         if isinstance(user_output, abc.Sequence):
             sequence_type = type(user_output)
@@ -288,11 +289,11 @@ def unflatten_user_output(output_schema, outputs):
                 sequence_type = type(user_output)
                 user_output = sequence_type._make(
                     _replace_stub_with_tensor_value(uo, outputs, output_idx)
-                    for idx, uo in enumerate(user_output))
+                    for uo in user_output)
             else:
                 user_output = sequence_type(
                     _replace_stub_with_tensor_value(uo, outputs, output_idx)
-                    for idx, uo in enumerate(user_output))
+                    for uo in user_output)
         elif isinstance(user_output, abc.Mapping):
             new_user_output = type(user_output)()
             for key in sorted(user_output):
