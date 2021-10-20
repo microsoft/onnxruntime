@@ -11,6 +11,7 @@
 #include "dnnl_fwd.h"
 #include "dnnl_node_capability.h"
 
+#include <iomanip>
 #include <fstream>
 #include "gsl/gsl"
 #define ORT_API_MANUAL_INIT
@@ -217,10 +218,12 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
   }
 
   if (debug_log_) {
+    float percent_dnnl = 100.0f * (static_cast<float>(num_of_supported_nodes) / static_cast<float>(graph_viewer.NumberOfNodes()));
     LOGS_DEFAULT(ERROR) << "DNNLExecutionProvider::GetCapability,"
                         << " number of partitions supported by DNNL: " << result.size()
                         << " number of nodes in the graph: " << graph_viewer.NumberOfNodes()
-                        << " number of nodes supported by DNNL: " << num_of_supported_nodes;
+                        << " number of nodes supported by DNNL: " << num_of_supported_nodes
+                        << std::fixed << std::setprecision(2) << " (" << percent_dnnl << "%)";
   }
 
   if (dump_subgraphs_) {
