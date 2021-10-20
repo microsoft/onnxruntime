@@ -212,8 +212,8 @@ def end_memory_tracking(p, trtexec, success):
     mem_usage = None
     if success:
         mem_usage = get_max_memory(trtexec) 
-    if os.path.exists(MEMORY_FILE):
-        os.remove(MEMORY_FILE)
+#     if os.path.exists(MEMORY_FILE):
+#         os.remove(MEMORY_FILE)
     return mem_usage
 
 def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_times, batch_size):
