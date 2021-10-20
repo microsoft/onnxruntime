@@ -96,3 +96,37 @@ class ApexAMPModifier(FP16OptimizerModifier):
         from apex.optimizers import FusedSGD as FusedSGD
         if not isinstance(self._optimizer, FusedSGD):
             self._optimizer._post_amp_backward = types.MethodType(post_backward_with_master_weights, self._optimizer)
+
+        # Implementation adapted from https://github.com/NVIDIA/apex/blob/082f999a6e18a3d02306e27482cc7486dab71a50/apex/amp/_process_optimizer.py#L367
+        def _zero_grad(self, set_to_none=True):
+            # Apex amp's zero_grad does not have a way to set grads to none
+            # This zero_grad adds a way for grads to be set to None for a faster implementation
+            stash = self._amp_stash
+            self._amp_lazy_init()
+
+            # Zero the model grads.
+            for param in stash.all_fp16_params:
+                if set_to_none:
+                    # Faster implementation
+                    param.grad = None
+                else:
+                    # Apex amp's implementation
+                    if param.grad is not None:
+                        param.grad.detach_()
+                        param.grad.zero_()
+
+            for param in stash.all_fp32_from_fp32_params:
+                if set_to_none:
+                    # Faster implementation
+                    param.grad = None
+                else:
+                    # Apex amp's implementation
+                    if param.grad is not None:
+                        param.grad.detach_()
+                        param.grad.zero_()
+
+            # Clear the master grads that are independent of model grads
+            for param in stash.all_fp32_from_fp16_params:
+                param.grad = None
+
+        self._optimizer.zero_grad = types.MethodType(_zero_grad, self._optimizer)
