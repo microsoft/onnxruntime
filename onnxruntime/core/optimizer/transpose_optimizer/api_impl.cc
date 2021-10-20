@@ -93,9 +93,9 @@ class ApiGraph : public api::Graph {
   const char* new_node_ep_;
 
  public:
-  explicit ApiGraph::ApiGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator, const logging::Logger& logger,
-                              const char* new_node_ep) : graph_(graph), cpu_allocator_(std::move(cpu_allocator)),
-                              logger_(logger), new_node_ep_(new_node_ep){};
+  explicit ApiGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator, const logging::Logger& logger,
+                    const char* new_node_ep) : graph_(graph), cpu_allocator_(std::move(cpu_allocator)),
+                    logger_(logger), new_node_ep_(new_node_ep){};
   onnxruntime::Graph& Graph() {
     return graph_;
   }
