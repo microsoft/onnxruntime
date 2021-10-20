@@ -41,7 +41,8 @@ class OrtTensor : public api::Tensor {
   AllocatorPtr cpu_allocator_;
 
  public:
-  explicit OrtTensor(const onnx::TensorProto& tensor_proto, const Graph& graph, AllocatorPtr cpu_allocator) : tensor_proto_(tensor_proto), graph_(graph), cpu_allocator_(std::move(cpu_allocator)){};
+  explicit OrtTensor(const onnx::TensorProto& tensor_proto, const Graph& graph, AllocatorPtr cpu_allocator) 
+      : tensor_proto_(tensor_proto), graph_(graph), cpu_allocator_(std::move(cpu_allocator)){};
   const onnx::TensorProto& TensorProto() {
     return tensor_proto_;
   }
@@ -67,19 +68,18 @@ class OrtNode : public api::Node {
   onnxruntime::Node& Node() {
     return node_;
   }
-  const std::string_view Name() const;
-  const std::string_view OpType() const;
-  const std::string_view Domain() const;
-  std::vector<std::string_view> Inputs() const;
-  std::vector<std::string_view> Outputs() const;
-  std::optional<int64_t> GetAttributeInt(const std::string_view name) const;
-  std::optional<std::vector<int64_t>> GetAttributeInts(const std::string_view name) const;
-  void SetAttributeInt(const std::string_view name, int64_t value);
-  void SetAttributeInts(const std::string_view name, const std::vector<int64_t>& value);
-  void CopyAttributes(const api::Node& node);
-  void ClearAttribute(const std::string_view name);
-  void SetInput(size_t i, const std::string_view name);
-  void AddInput(const std::string_view name);
+  const std::string_view OpType() const override;
+  const std::string_view Domain() const override;
+  std::vector<std::string_view> Inputs() const override;
+  std::vector<std::string_view> Outputs() const override;
+  std::optional<int64_t> GetAttributeInt(const std::string_view name) const override;
+  std::optional<std::vector<int64_t>> GetAttributeInts(const std::string_view name) const override;
+  void SetAttributeInt(const std::string_view name, int64_t value) override;
+  void SetAttributeInts(const std::string_view name, const std::vector<int64_t>& value) override;
+  void CopyAttributes(const api::Node& node) override;
+  void ClearAttribute(const std::string_view name) override;
+  void SetInput(size_t i, const std::string_view name) override;
+  void AddInput(const std::string_view name) override;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtNode);
@@ -99,24 +99,25 @@ class OrtGraph : public api::Graph {
   onnxruntime::Graph& Graph() {
     return graph_;
   }
-  std::optional<int64_t> Opset(const std::string_view domain = "") const;
-  std::vector<std::unique_ptr<api::Node>> Nodes() const;
-  std::vector<std::string_view> Inputs() const;
-  std::vector<std::string_view> Outputs() const;
-  std::unique_ptr<api::Tensor> GetConstant(const std::string_view name) const;
-  std::unique_ptr<api::ValueInfo> GetValueInfo(const std::string_view name) const;
-  std::unique_ptr<api::ValueConsumers> GetValueConsumers(const std::string_view name) const;
-  std::unique_ptr<api::Node> GetNodeProducingOutput(const std::string_view name) const;
-  void TransposeInitializer(const std::string_view name, const std::vector<int64_t>& perm);
-  void ReshapeInitializer(const std::string_view name, const std::vector<int64_t>& shape);
+  std::optional<int64_t> Opset(const std::string_view domain = "") const override;
+  std::vector<std::unique_ptr<api::Node>> Nodes() const override;
+  std::unique_ptr<api::Tensor> GetConstant(const std::string_view name) const override;
+  std::unique_ptr<api::ValueInfo> GetValueInfo(const std::string_view name) const override;
+  std::unique_ptr<api::ValueConsumers> GetValueConsumers(const std::string_view name) const override;
+  std::unique_ptr<api::Node> GetNodeProducingOutput(const std::string_view name) const override;
+  void TransposeInitializer(const std::string_view name, const std::vector<int64_t>& perm) override;
+  void ReshapeInitializer(const std::string_view name, const std::vector<int64_t>& shape) override;
   std::unique_ptr<api::Node> AddNode(const std::string_view op_type, const std::vector<std::string_view>& inputs,
-                                     size_t num_outputs = 1, const std::string_view domain = "");
-  void RemoveNode(api::Node& node);
-  void RemoveInitializer(const std::string_view name);
-  const std::string_view AddInitializerInt64(const std::vector<int64_t>& shape, const std::vector<int64_t>& values);
-  const std::string_view AddInitializerInt32(const std::vector<int64_t>& shape, const std::vector<int32_t>& values);
-  void MoveOutput(api::Node& src_node, size_t src_idx, api::Node& dst_node, size_t dst_idx);
-  void CopyValueInfo(const std::string_view src_name, const std::string_view dst_name);
+                                     size_t num_outputs = 1, const std::string_view domain = "") override;
+  void RemoveNode(api::Node& node) override;
+  void RemoveInitializer(const std::string_view name) override;
+  const std::string_view AddInitializerInt64(const std::vector<int64_t>& shape,
+                                             const std::vector<int64_t>& values) override;
+  const std::string_view AddInitializerInt32(const std::vector<int64_t>& shape,
+                                             const std::vector<int32_t>& values) override;
+  void MoveOutput(api::Node& src_node, size_t src_idx, api::Node& dst_node, size_t dst_idx) override;
+  void CopyValueInfo(const std::string_view src_name, const std::string_view dst_name) override;
+  bool HasValueConsumers(const std::string_view name) const override;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtGraph);
@@ -276,18 +277,12 @@ std::vector<int32_t> OrtTensor::DataInt32() const {
   return IntsFromTensor<int32_t>(*tensor);
 }
 
-
-template<class T>
-std::vector<std::string_view> NodeArgsToStrings(T node_args) {
+std::vector<std::string_view> NodeArgsToStrings(ConstPointerContainer<std::vector<NodeArg*>> node_args) {
   std::vector<std::string_view> result;
   for (const auto* arg : node_args) {
     result.push_back(arg->Name());
   }
   return result;
-}
-
-const std::string_view OrtNode::Name() const {
-  return node_.Name();
 }
 
 const std::string_view OrtNode::OpType() const {
@@ -424,14 +419,6 @@ std::vector<std::unique_ptr<api::Node>> OrtGraph::Nodes() const {
   return nodes;
 }
 
-std::vector<std::string_view> OrtGraph::Inputs() const {
-  return NodeArgsToStrings(graph_.GetInputsIncludingInitializers());
-}
-
-std::vector<std::string_view> OrtGraph::Outputs() const {
-  return NodeArgsToStrings(graph_.GetOutputs());
-}
-
 std::unique_ptr<api::Tensor> OrtGraph::GetConstant(const std::string_view name) const {
   const auto* tensor = graph_.GetConstantInitializer(std::string(name), false);
   if (tensor == nullptr) {
@@ -471,6 +458,20 @@ std::unique_ptr<api::ValueConsumers> OrtGraph::GetValueConsumers(const std::stri
   }
 
   return consumers;
+}
+
+bool OrtGraph::HasValueConsumers(const std::string_view name) const {
+  const auto nodes = graph_.GetConsumerNodes(std::string(name));
+  if (nodes.size() > 0) {
+    return true;
+  }
+  const auto& graph_outputs = graph_.GetOutputs();
+  for (const auto* output : graph_outputs) {
+    if (output->Name() == name) {
+      return true;
+    }
+  }
+  return false;
 }
 
 std::unique_ptr<api::Node> OrtGraph::GetNodeProducingOutput(const std::string_view name) const {

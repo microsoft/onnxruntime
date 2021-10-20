@@ -398,7 +398,8 @@ class Graph {
   virtual void CopyValueInfo(const std::string_view src_name, const std::string_view dst_name) = 0;
 
   /// <summary>
-  /// Returns whether there are any consumers of the value with the given name
+  /// Returns whether there are any consumers of the value with the given name. Override default implementation to
+  /// avoid call to GetValueConsumers.
   /// </summary>
   /// <param name="name">The name of the value. Must be nonempty.</param>
   /// <returns>true if the value is not currently referenced anywhere in the model</returns>

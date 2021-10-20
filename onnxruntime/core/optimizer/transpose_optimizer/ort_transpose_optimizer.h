@@ -18,8 +18,7 @@ class TransposeOptimizer : public GraphTransformer {
 
  public:
   explicit TransposeOptimizer(AllocatorPtr cpu_allocator) noexcept
-      : GraphTransformer("TransposeOptimizer"), cpu_allocator_(std::move(cpu_allocator)) {
-  }
+      : GraphTransformer("TransposeOptimizer"), cpu_allocator_(std::move(cpu_allocator)) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
