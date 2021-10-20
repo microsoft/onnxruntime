@@ -1677,7 +1677,7 @@ static bool ChangeLayout(api::Graph& graph, std::unordered_map<std::string_view,
       std::unique_ptr<api::Node> new_node;
       LayoutHandler* handler = match->second;
       LayoutHandlerResult result = handler(graph, *node);
-      if (!result.should_transpose) {
+      if (!result.should_change_layout) {
         continue;
       }
       size_t rank = result.rank;
