@@ -1910,18 +1910,18 @@ TEST(SparseTensorTests, TestTrimCooSpace) {
 
     ASSERT_EQ(tensor.NumValues(), values_count);
     auto values_span = tensor.Values().DataAsSpan<float>();
-    std::equal(initial_values.cbegin(), initial_values.cend(), values_span.cbegin());
+    ASSERT_TRUE(std::equal(initial_values.cbegin(), initial_values.cend(), values_span.cbegin()));
     auto indices_span = tensor.AsCoo().Indices().DataAsSpan<int64_t>();
     ASSERT_EQ(indices_span.size(), indices_count);
-    std::equal(initial_flat_indices_indices.cbegin(), initial_flat_indices_indices.cend(), indices_span.cbegin());
+    ASSERT_TRUE(std::equal(initial_flat_indices_indices.cbegin(), initial_flat_indices_indices.cend(), indices_span.cbegin()));
 
     ASSERT_STATUS_OK(tensor.TrimCooSpace(3, 3));
     ASSERT_EQ(tensor.NumValues(), 3U);
     values_span = tensor.Values().DataAsSpan<float>();
-    std::equal(values_span.cbegin(), values_span.cend(), initial_values.cbegin());
+    ASSERT_TRUE(std::equal(values_span.cbegin(), values_span.cend(), initial_values.cbegin()));
     indices_span = tensor.AsCoo().Indices().DataAsSpan<int64_t>();
     ASSERT_EQ(indices_span.size(), 3U);
-    std::equal(indices_span.cbegin(), indices_span.cend(), initial_flat_indices_indices.cbegin());
+    ASSERT_TRUE(std::equal(indices_span.cbegin(), indices_span.cend(), initial_flat_indices_indices.cbegin()));
   }
 
 }

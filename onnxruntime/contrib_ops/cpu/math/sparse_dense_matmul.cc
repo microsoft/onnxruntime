@@ -812,8 +812,8 @@ Status SparseToSparseMatMul::Compute(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  // return EigenCompute(input_A, input_B, a_dims, b_dims, output_tensor);
-  return ComputeImpl(input_A, input_B, a_dims, b_dims, output_tensor);
+  return EigenCompute(input_A, input_B, a_dims, b_dims, output_tensor);
+  // return ComputeImpl(input_A, input_B, a_dims, b_dims, output_tensor);
 }
 
 }  // namespace contrib
