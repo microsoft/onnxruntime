@@ -133,7 +133,7 @@ jobs:
       condition: always() 
 
     - ${{ if not(eq(length(parameters.ModelGroups), 0)) }}:
-      - script: 'cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact'
+      - script: 'cp /data/ep-perf-models/onnx-zoo-models/resnet101-v1-7/temp_memory.csv  $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ && cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact'
         displayName: 'Copy Artifacts'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
