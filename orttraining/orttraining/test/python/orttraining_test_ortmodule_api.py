@@ -318,7 +318,7 @@ class NeuralNetCustomClassOutput(torch.nn.Module):
 class MyStrNet(torch.nn.Module):
     def forward(self, x, my_str):
         if my_str.lower() == 'hello':
-            print('hi')
+            return x+1
         return x
 
 @pytest.fixture(scope='session', autouse=True)
@@ -3321,23 +3321,18 @@ def test_hf_save_pretrained():
         for p1, p2 in zip(model1.parameters(), model2.parameters()):
             assert p1.data.ne(p2.data).sum() == 0
 
-def test_input_with_string_exception():
+def test_ortmodule_string_inputs_are_ignored():
 
     pt_model = MyStrNet()
     ort_model = ORTModule(copy.deepcopy(pt_model))
     x = torch.randn(1, 2)
 
-    from onnxruntime.training.ortmodule._fallback import _FallbackPolicy
-    if _test_helpers.is_all_or_nothing_fallback_enabled(None, _FallbackPolicy.FALLBACK_UNSUPPORTED_DATA):
-        # Fallback
-        pt_out = pt_model(x, 'hello')
-        ort_out = pt_model(x, 'hello')
-        _test_helpers.assert_values_are_close(pt_out, ort_out)
-    else:
-        # ORT backend
-        with pytest.raises(_fallback.ORTModuleIOError) as ex_info:
-            _ = ort_model(x, 'hello')
-        assert "ORTModule does not support the following model data type <class 'str'>" in str(ex_info.value)
+    with pytest.warns(UserWarning) as warning_record:
+        out = ort_model(x, 'hello')
+
+    assert len(warning_record) == 2
+    assert "Received input of type <class 'str'> which may be treated as a constant by ORT by default." in warning_record[1].message.args[0]
+    _test_helpers.assert_values_are_close(out, x+1)
 
 def test_ortmodule_list_input():
     class ListNet(torch.nn.Module):

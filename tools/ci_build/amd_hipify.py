@@ -131,10 +131,8 @@ provider_excluded_files = [
                 'rnn/rnn_impl.cu',
                 'rnn/rnn_impl.h',
                 'shared_inc/cuda_call.h',
-                'shared_inc/fast_divmod.h',
                 'shared_inc/fpgeneric.h',
                 'shared_inc/integer_gemm.h',
-                'tensor/gather_nd_impl.cu',
                 'tensor/quantize_linear.cc',
                 'tensor/quantize_linear.cu',
                 'tensor/quantize_linear.cuh',
@@ -143,8 +141,6 @@ provider_excluded_files = [
                 'tensor/resize.h',
                 'tensor/resize_impl.cu',
                 'tensor/resize_impl.h',
-                'tensor/transpose.cc',
-                'tensor/transpose.h',
                 'tensor/upsample.cc',
                 'tensor/upsample.h',
                 'tensor/upsample_impl.cu',
@@ -235,6 +231,7 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace('hipblasCreate', 'rocblas_create_handle')
     s = s.replace('hipblasDestroy', 'rocblas_destroy_handle')
     s = s.replace('hipblasSetStream', 'rocblas_set_stream')
+    s = s.replace('HIPBLAS_OP_T', 'rocblas_operation_transpose')
 
     s = s.replace('RegisterCudaContribKernels', 'RegisterRocmContribKernels')
     s = s.replace('cudaEvent', 'hipEvent')

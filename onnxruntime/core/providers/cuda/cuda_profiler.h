@@ -6,6 +6,7 @@
 
 #include "core/platform/ort_mutex.h"
 #include <cupti.h>
+#include <atomic>
 #include <mutex>
 #include <vector>
 
