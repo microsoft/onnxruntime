@@ -123,12 +123,12 @@ jobs:
       del /Q $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64\CodeSignSummary-*.*
       xcopy /E /I $(Build.SourcesDirectory)\js\node\bin $(Build.ArtifactStagingDirectory)\bin
     workingDirectory: '$(Build.SourcesDirectory)\js\node'
-    displayName: 'Create NPM Package'
+    displayName: 'Create Node.js Binding Artifact'
 
   - task: PublishPipelineArtifact@0
-    displayName: 'Publish Pipeline Artifact: drop-win32_x64'
+    displayName: 'Publish Pipeline Artifact: bin-win32_x64'
     inputs:
-      artifactName: 'drop-win32_x64'
+      artifactName: 'bin-win32_x64'
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
   - task: DeleteFiles@1
@@ -166,7 +166,7 @@ jobs:
 - template: ../templates/mac-ci.yml
   parameters:
     AgentPool : $(AgentPoolMacOS)
-    ArtifactName: 'drop-darwin_x64'
+    ArtifactName: 'bin-darwin_x64'
     JobName: 'Mac_CI_x64'
     BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_nodejs --config Release'
     DoNodejsPack : 'true'
@@ -194,14 +194,15 @@ jobs:
           /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --build_nodejs \
           --skip_submodule_sync --parallel --build_shared_lib"
         workingDirectory: $(Build.SourcesDirectory)
+      displayName: 'Build and test'
     - script: |
        set -e -x
        cp -R $(Build.SourcesDirectory)/js/node/bin $(Build.ArtifactStagingDirectory)/bin
-      displayName: 'Create Artifacts'
+      displayName: 'Create Node.js Binding Artifact'
     - task: PublishPipelineArtifact@0
       displayName: 'Publish Pipeline Artifact'
       inputs:
-        artifactName: 'drop-linux_x64'
+        artifactName: 'bin-linux_x64'
         targetPath: '$(Build.ArtifactStagingDirectory)'
     - template: ../templates/component-governance-component-detection-steps.yml
       parameters :
@@ -227,24 +228,24 @@ jobs:
         Repository: onnxruntimecpubuild
     - task: DownloadPipelineArtifact@2
       inputs:
-        patterns: 'drop-*/**/*'
-        path: $(Pipeline.Workspace)/drops
+        patterns: 'bin-*/**/*'
+        path: $(Pipeline.Workspace)/nodejs_binding_bin
       displayName: 'Download WebAssembly artifacts'
     - task: CmdLine@2
       inputs:
-        script: |
-          ls -l -R
-        workingDirectory: $(Pipeline.Workspace)/drops
-      displayName: 'validate'
+        script: find . -type f -follow -print | xargs ls -l
+        workingDirectory: $(Pipeline.Workspace)/nodejs_binding_bin
+      displayName: 'Validate file list of all binding binaries'
     - task: CmdLine@2
       inputs:
         script: |
           mkdir -p $HOME/.onnx && docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
-          --volume $(Pipeline.Workspace)/drops/bin:/nodejs_drops_bin:ro -e NIGHTLY_BUILD onnxruntimecpubuild /bin/bash -c "cd /onnxruntime_src/js && \
-          npm ci && cd /onnxruntime_src/js/common && npm ci && cd /onnxruntime_src/js/node && npm ci && cp -r /nodejs_drops_bin . && npm pack"
+          --volume $(Pipeline.Workspace)/nodejs_binding_bin:/nodejs_binding_bin:ro -e NIGHTLY_BUILD onnxruntimecpubuild /bin/bash -c "cd /onnxruntime_src/js && \
+          npm ci && cd /onnxruntime_src/js/common && npm ci && npm pack && cd /onnxruntime_src/js/node && npm ci && cp -r /nodejs_binding_bin/*/bin/ . && npm pack"
         workingDirectory: $(Build.SourcesDirectory)
     - script: |
        set -e -x
+       cp $(Build.SourcesDirectory)/js/common/onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
        cp $(Build.SourcesDirectory)/js/node/onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
       displayName: 'Create Artifacts'
     - task: PublishPipelineArtifact@0
