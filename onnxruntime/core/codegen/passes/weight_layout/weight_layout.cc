@@ -31,12 +31,11 @@ const std::string WeightLayout::GetKey(
     ONNX_NAMESPACE::TensorProto_DataType proto_type,
     int input_dim,
     float pad_zero) {
-  std::string key = name;
-  key += "_type_" + std::to_string(static_cast<int>(proto_type));
-  key += "_dim_" + input_dim;
-  key += "_pad_zero_" + std::to_string(pad_zero);
-  key = NormalizeCppName(key);
-  return key;
+  std::ostringstream key;
+  key << name << "_type_" << static_cast<int>(proto_type);
+  key << "_dim_" << input_dim;
+  key << "_pad_zero_" << pad_zero;
+  return NormalizeCppName(key.str());
 }
 
 WeightLayout::WeightLayout(
@@ -78,7 +77,7 @@ void WeightLayout::CreateLayoutMarshallingTVMOp(tvm::Array<tvm::Tensor>& inputs,
           for (size_t dim = 1; dim < input_coord.size(); ++dim)
             in_range = in_range && (input_coord[dim] >= 0) && (input_coord[dim] < placeholder->shape[dim]);
 
-          return tvm::ir::Select::make(in_range, placeholder(input_coord), pad_zero_expr);
+          return tvm::if_then_else(in_range, placeholder(input_coord), pad_zero_expr);
         } else {
           // scalar
           return placeholder(input_coord);

@@ -12,6 +12,7 @@
 #include <string>
 
 #include "core/common/common.h"
+#include "core/common/profiler_common.h"
 #include "core/common/logging/capture.h"
 #include "core/common/logging/severity.h"
 
@@ -50,47 +51,6 @@
 */
 
 namespace onnxruntime {
-namespace profiling {
-
-enum EventCategory {
-  SESSION_EVENT = 0,
-  NODE_EVENT,
-  EVENT_CATEGORY_MAX
-};
-
-/*
-Event descriptions for the above session events.
-*/
-static constexpr const char* event_categor_names_[EVENT_CATEGORY_MAX] = {
-    "Session",
-    "Node"};
-
-/*
-Timing record for all events.
-*/
-struct EventRecord {
-  EventRecord(EventCategory category,
-              int process_id,
-              int thread_id,
-              std::string event_name,
-              long long time_stamp,
-              long long duration,
-              std::unordered_map<std::string, std::string>&& event_args) : cat(category),
-                                                                           pid(process_id),
-                                                                           tid(thread_id),
-                                                                           name(std::move(event_name)),
-                                                                           ts(time_stamp),
-                                                                           dur(duration),
-                                                                           args(event_args) {}
-  EventCategory cat;
-  int pid;
-  int tid;
-  std::string name;
-  long long ts;
-  long long dur;
-  std::unordered_map<std::string, std::string> args;
-};
-}  // namespace profiling
 
 namespace logging {
 
@@ -219,6 +179,7 @@ class LoggingManager final {
   const bool default_filter_user_data_;
   const int default_max_vlog_level_;
   bool owns_default_logger_;
+
   static Logger* s_default_logger_;
 
   struct Epochs {
@@ -309,7 +270,7 @@ class Logger {
 inline const Logger& LoggingManager::DefaultLogger() {
   if (s_default_logger_ == nullptr) {
     // fail early for attempted misuse. don't use logging macros as we have no logger.
-    throw std::logic_error("Attempt to use DefaultLogger but none has been registered.");
+    ORT_THROW("Attempt to use DefaultLogger but none has been registered.");
   }
 
   return *s_default_logger_;
@@ -318,7 +279,7 @@ inline const Logger& LoggingManager::DefaultLogger() {
 inline void LoggingManager::SetDefaultLoggerSeverity(Severity severity) {
   if (s_default_logger_ == nullptr) {
     // fail early for attempted misuse. don't use logging macros as we have no logger.
-    throw std::logic_error("Attempt to use DefaultLogger but none has been registered.");
+    ORT_THROW("Attempt to use DefaultLogger but none has been registered.");
   }
 
   s_default_logger_->SetSeverity(severity);

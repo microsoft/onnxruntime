@@ -2,10 +2,67 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
+
+// scalar zero & scale with uint8
+void TestDequantizeLinearPerTensorFloatUint8(bool use_initializer_except_x) {
+  OpTester test("DequantizeLinear", 1, onnxruntime::kMSDomain);
+  std::vector<int64_t> dims{4};
+  test.AddInput<uint8_t>("x", dims, {0, 3, 128, 255});
+  test.AddInput<float>("x_scale", {}, {2.0f}, use_initializer_except_x);
+  test.AddInput<uint8_t>("x_zero_point", {}, {128}, use_initializer_except_x);
+  test.AddOutput<float>("y", dims, {-256.0f, -250.0f, 0.0f, 254.0f});
+  test.Run();
+}
+
+TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_float_uint8) {
+  TestDequantizeLinearPerTensorFloatUint8(false);
+}
+
+// NNAPI EP requires weight to be an initializer
+TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_float_uint8_use_initializer_except_x) {
+  TestDequantizeLinearPerTensorFloatUint8(true);
+}
+
+// scalar zero & scale with int8
+TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_float_int8) {
+  OpTester test("DequantizeLinear", 1, onnxruntime::kMSDomain);
+  std::vector<int64_t> dims{4};
+  test.AddInput<int8_t>("x", dims, {-30, -3, 100, 127});
+  test.AddInput<float>("x_scale", {}, {2.0f});
+  test.AddInput<int8_t>("x_zero_point", {}, {-10});
+  test.AddOutput<float>("y", dims, {-40.0f, 14.0f, 220.0f, 274.0f});
+  //Disable Tensorrt EP due to error: node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+#ifdef USE_CUDA
+TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_half_uint8) {
+  OpTester test("DequantizeLinear", 1, onnxruntime::kMSDomain);
+  std::vector<int64_t> dims{4};
+  test.AddInput<uint8_t>("x", dims, {0, 3, 128, 255});
+  test.AddInput<MLFloat16>("x_scale", {}, ToFloat16({2.0f}));
+  test.AddInput<uint8_t>("x_zero_point", {}, {128});
+  test.AddOutput<MLFloat16>("y", dims, ToFloat16({-256.0f, -250.0f, 0.0f, 254.0f}));
+  test.Run();
+}
+
+// scalar zero & scale with int8
+TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_half_int8) {
+  OpTester test("DequantizeLinear", 1, onnxruntime::kMSDomain);
+  std::vector<int64_t> dims{4};
+  test.AddInput<int8_t>("x", dims, {-30, -3, 100, 127});
+  test.AddInput<MLFloat16>("x_scale", {}, ToFloat16({2.0f}));
+  test.AddInput<int8_t>("x_zero_point", {}, {-10});
+  test.AddOutput<MLFloat16>("y", dims, ToFloat16({-40.0f, 14.0f, 220.0f, 274.0f}));
+  //Disable Tensorrt EP due to error: node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+#endif
 
 // 1d zero & scale with uint8 broadcast axis 0
 TEST(DequantizeLinearContribOpTest, DequantizeLinear_0) {
@@ -46,7 +103,8 @@ TEST(DequantizeLinearContribOpTest, DequantizeLinear_1) {
                         {0, 22, 88, 264,
                          0, 24, 96, 288,
                          0, 40, 160, 480});
-  test.Run();
+  //Disable Tensorrt EP because only zero zero_point is supported.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // 1d zero & scale with int8 broadcast axis 0 with 4d tensor input/output
@@ -92,7 +150,8 @@ TEST(DequantizeLinearContribOpTest, DequantizeLinear_2) {
 
                          42, 42, -7, 7,
                          21, 21, -7, 28});
-  test.Run();
+  //Disable Tensorrt EP because only zero zero_point is supported.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // 1d zero & scale with uint8 broadcast axis -2 (-2 resolves to axis 0)
@@ -120,18 +179,131 @@ TEST(DequantizeLinearContribOpTest, DequantizeLinear_3) {
 }
 
 // quantize with scalar zero point and scale
-TEST(QuantizeLinearContribOpTest, QuantizeLinear_0) {
+void TestQuantizeLinearPerTensorFloatUint8(bool use_initializer_except_x) {
   OpTester test("QuantizeLinear", 1, onnxruntime::kMSDomain);
-  std::vector<int64_t> dims{6};
-  test.AddInput<float>("x", dims, {0, 2, 3, 1000, -254, -1000});
-  test.AddInput<float>("y_scale", {}, {2.0f});
-  test.AddInput<uint8_t>("y_zero_point", {}, {128});
-  test.AddOutput<uint8_t>("y", dims, {128, 129, 130, 255, 1, 0});
+  std::vector<int64_t> dims{16};
+  test.AddInput<float>("x", dims, {
+                                      0.f, 2.f,        //
+                                      3.f, -3.f,       // rounding half to even
+                                      2.9f, -2.9f,     // low case
+                                      3.1f, -3.1f,     // up case
+                                      254.f, -256.f,   // critical point
+                                      255.f, -257.f,   // critical point
+                                      256.f, -258.f,   // critical point
+                                      1000.f, -1000.f  // saturate case
+                                  });
+  test.AddInput<float>("y_scale", {}, {2.0f}, use_initializer_except_x);
+  test.AddInput<uint8_t>("y_zero_point", {}, {128}, use_initializer_except_x);
+  test.AddOutput<uint8_t>("y", dims,
+                          {128, 129,
+                           130, 126,
+                           129, 127,
+                           130, 126,
+                           255, 0,
+                           255, 0,
+                           255, 0,
+                           255, 0});
   test.Run();
 }
 
+TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_uint8) {
+  TestQuantizeLinearPerTensorFloatUint8(false);
+}
+
+// Only NNAPI EP requires weight to be an initializer
+#ifdef USE_NNAPI
+TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_uint8_use_initializer_except_x) {
+  TestQuantizeLinearPerTensorFloatUint8(true);
+}
+#endif
+
+TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_int8) {
+  OpTester test("QuantizeLinear", 1, onnxruntime::kMSDomain);
+  std::vector<int64_t> dims{16};
+  test.AddInput<float>("x", dims, {
+                                      0.f, 2.f,        //
+                                      3.f, -3.f,       // rounding half to even
+                                      2.9f, -2.9f,     // low case
+                                      3.1f, -3.1f,     // up case
+                                      254.f, -256.f,   // critical point
+                                      255.f, -257.f,   // critical point
+                                      256.f, -258.f,   // critical point
+                                      1000.f, -1000.f  // saturate case
+                                  });
+  test.AddInput<float>("y_scale", {}, {2.0f});
+  test.AddInput<int8_t>("y_zero_point", {}, {1});
+  test.AddOutput<int8_t>("y", dims,
+                         {1, 2,
+                          3, -1,
+                          2, 0,
+                          3, -1,
+                          127, -127,
+                          127, -127,
+                          127, -128,
+                          127, -128});
+  //Disable Tensorrt EP due to error: node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+#ifdef USE_CUDA
+TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_half_uint8) {
+  OpTester test("QuantizeLinear", 1, onnxruntime::kMSDomain);
+  std::vector<int64_t> dims{16};
+  test.AddInput<MLFloat16>("x", dims, ToFloat16({
+                                          0.f, 2.f,        //
+                                          3.f, -3.f,       // rounding half to even
+                                          2.9f, -2.9f,     // low case
+                                          3.1f, -3.1f,     // up case
+                                          254.f, -256.f,   // critical point
+                                          255.f, -257.f,   // critical point
+                                          256.f, -258.f,   // critical point
+                                          1000.f, -1000.f  // saturate case
+                                      }));
+  test.AddInput<MLFloat16>("y_scale", {}, ToFloat16({2.0f}));
+  test.AddInput<uint8_t>("y_zero_point", {}, {128});
+  test.AddOutput<uint8_t>("y", dims,
+                          {128, 129,
+                           130, 126,
+                           129, 127,
+                           130, 126,
+                           255, 0,
+                           255, 0,
+                           255, 0,
+                           255, 0});
+  test.Run();
+}
+
+TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_half_int8) {
+  OpTester test("QuantizeLinear", 1, onnxruntime::kMSDomain);
+  std::vector<int64_t> dims{16};
+  test.AddInput<MLFloat16>("x", dims, ToFloat16({
+                                          0.f, 2.f,        //
+                                          3.f, -3.f,       // rounding half to even
+                                          2.9f, -2.9f,     // low case
+                                          3.1f, -3.1f,     // up case
+                                          254.f, -256.f,   // critical point
+                                          255.f, -257.f,   // critical point
+                                          256.f, -258.f,   // critical point
+                                          1000.f, -1000.f  // saturate case
+                                      }));
+  test.AddInput<MLFloat16>("y_scale", {}, ToFloat16({2.0f}));
+  test.AddInput<int8_t>("y_zero_point", {}, {1});
+  test.AddOutput<int8_t>("y", dims,
+                         {1, 2,
+                          3, -1,
+                          2, 0,
+                          3, -1,
+                          127, -127,
+                          127, -127,
+                          127, -128,
+                          127, -128});
+  //Disable Tensorrt EP due to error: node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+#endif
+
 // quantize with broadcasting
-TEST(QuantizeLinearContribOpTest, QuantizeLinear_1) {
+TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_channel) {
   OpTester test("QuantizeLinear", 1, onnxruntime::kMSDomain);
   std::vector<int64_t> dims{3, 4};
   test.AddInput<float>("X", dims,
@@ -144,12 +316,12 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_1) {
   test.AddOutput<uint8_t>("Y", dims,
                           {0, 2, 3, 255,
                            0, 1, 2, 255,
-                           0, 1, 1, 250});
+                           0, 0, 1, 250});
   test.Run();
 }
 
 // quantize with broadcasting and negative axis (-2 resolves to axis 0)
-TEST(QuantizeLinearContribOpTest, QuantizeLinear_2) {
+TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_channel_negative_axis) {
   OpTester test("QuantizeLinear", 1, onnxruntime::kMSDomain);
   std::vector<int64_t> dims{3, 4};
   test.AddInput<float>("X", dims,
@@ -162,7 +334,7 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_2) {
   test.AddOutput<uint8_t>("Y", dims,
                           {0, 2, 3, 255,
                            0, 1, 2, 255,
-                           0, 1, 1, 250});
+                           0, 0, 1, 250});
   test.Run();
 }
 }  // namespace test

@@ -11,12 +11,13 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Text;
-using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Text;
 
 // Making this assembly's internals visible to the internal Test assembly
 [assembly: InternalsVisibleTo("Microsoft.ML.OnnxRuntime.Tests," +
@@ -29,6 +30,349 @@ using System.Runtime.CompilerServices;
 
 namespace Microsoft.ML.OnnxRuntime.Tensors
 {
+    /// <summary>
+    /// Supported Tensor DataType
+    /// </summary>
+    public enum TensorElementType
+    {
+        Float = 1,
+        UInt8 = 2,
+        Int8 = 3,
+        UInt16 = 4,
+        Int16 = 5,
+        Int32 = 6,
+        Int64 = 7,
+        String = 8,
+        Bool = 9,
+        Float16 = 10,
+        Double = 11,
+        UInt32 = 12,
+        UInt64 = 13,
+        Complex64 = 14,
+        Complex128 = 15,
+        BFloat16 = 16,
+        DataTypeMax = 17
+    }
+
+    /// <summary>
+    /// This value type represents A Float16 value
+    /// it is blittable as defined in https://docs.microsoft.com/en-us/dotnet/framework/interop/blittable-and-non-blittable-types
+    /// and as such, represented the same way in managed and native memories. This means that arrays of this type
+    /// do not have to be copied to be passed to native memory but simply pinnned and read by native code. Thus,
+    /// one can create a Tensor on top of an array of these structures and feed it directly to Onnxruntime library.
+    /// Binary wise, it is the same as ushort[] (uint16_t in C++). However, we would like a separate type for type dispatching.
+    /// </summary>
+    public struct Float16
+    {
+        /// <summary>
+        /// float16 representation bits
+        /// </summary>
+        public ushort value;
+        /// <summary>
+        /// Ctor
+        /// </summary>
+        /// <param name="v"></param>
+        public Float16(ushort v)
+        {
+            value = v;
+        }
+        /// <summary>
+        /// Converts to ushort
+        /// </summary>
+        /// <param name="f">instance of Float16</param>
+        /// <returns>value member</returns>
+        public static implicit operator ushort (Float16 f) { return f.value; }
+        /// <summary>
+        /// Converts a 16-bit unsigned integer to a Float16.
+        /// </summary>
+        /// <param name="value">A 16-bit unsigned integer.</param>
+        /// <returns>A Float16 that represents the converted 16-bit unsigned integer.</returns>
+        public static implicit operator Float16(ushort value) { return new Float16(value); }
+        /// <summary>
+        /// Compares values of two Float16 for binary equality
+        /// </summary>
+        /// <param name="lhs"></param>
+        /// <param name="rhs"></param>
+        /// <returns>result of value comparisons</returns>
+        public static bool operator ==(Float16 lhs, Float16 rhs) { return lhs.value == rhs.value; }
+        /// <summary>
+        /// Compares values of two Float16 for binary inequality
+        /// </summary>
+        /// <param name="lhs"></param>
+        /// <param name="rhs"></param>
+        /// <returns>result of value comparisons</returns>
+        public static bool operator !=(Float16 lhs, Float16 rhs) { return lhs.value != rhs.value; }
+        /// <summary>
+        /// Returns a value indicating whether this instance and other Float16 represent the same value.
+        /// </summary>
+        /// <param name="other">A Float16 object to compare to this instance.</param>
+        /// <returns>true if other.value is equal to this instance; otherwise, false.</returns>
+        public bool Equals(Float16 other)
+        {
+            return (other == this);
+        }
+        /// <summary>
+        /// Returns a value indicating whether this instance and a specified System.Object
+        /// represent the same type and value.
+        /// </summary>
+        /// <param name="obj">An System.Object.</param>
+        /// <returns>true if obj is Float16 and its value is equal to this instance; otherwise, false.</returns>
+        public override bool Equals(object obj)
+        {
+            bool result = false;
+            if (obj is Float16)
+            {
+                Float16 fl16 = (Float16)obj;
+                result = (fl16 == this);
+            }
+            return result;
+        }
+        /// <summary>
+        /// Returns the hash code for this instance.
+        /// </summary>
+        /// <returns>A 32-bit signed integer hash code.</returns>
+        public override int GetHashCode()
+        {
+            return value.GetHashCode();
+        }
+    }
+
+    /// <summary>
+    /// This value type represents A BFloat16 value
+    /// it is blittable as defined in https://docs.microsoft.com/en-us/dotnet/framework/interop/blittable-and-non-blittable-types
+    /// and as such, represented the same way in managed and native memories. This means that arrays of this type
+    /// do not have to be copied to be passed to native memory but simply pinnned and read by native code. Thus,
+    /// one can create a Tensor on top of an array of these structures and feed it directly to Onnxruntime library.
+    /// Binary wise, it is the same as ushort[] (uint16_t in C++). However, we would like a separate type for type dispatching.
+    /// </summary>
+    public struct BFloat16
+    {
+        /// <summary>
+        /// bfloat16 representation bits
+        /// </summary>
+        public ushort value;
+        /// <summary>
+        /// Ctor
+        /// </summary>
+        /// <param name="v"></param>
+        public BFloat16(ushort v)
+        {
+            value = v;
+        }
+        /// <summary>
+        /// Converts to ushort
+        /// </summary>
+        /// <param name="bf">instance of BFloat16</param>
+        /// <returns>value member</returns>
+        public static implicit operator ushort(BFloat16 bf) { return bf.value; }
+        /// <summary>
+        /// Converts a 16-bit unsigned integer to a BFloat16.
+        /// </summary>
+        /// <param name="value">A 16-bit unsigned integer.</param>
+        /// <returns>A BFloat16 that represents the converted 16-bit unsigned integer.</returns>
+        public static implicit operator BFloat16(ushort value) { return new BFloat16(value); }
+        /// <summary>
+        /// Compares values of two BFloat16 for binary equality
+        /// </summary>
+        /// <param name="lhs"></param>
+        /// <param name="rhs"></param>
+        /// <returns>result of value comparisons</returns>
+        public static bool operator ==(BFloat16 lhs, BFloat16 rhs) { return lhs.value == rhs.value; }
+        /// <summary>
+        /// Compares values of two BFloat16 for binary inequality
+        /// </summary>
+        /// <param name="lhs"></param>
+        /// <param name="rhs"></param>
+        /// <returns>result of value comparisons</returns>
+        public static bool operator !=(BFloat16 lhs, BFloat16 rhs) { return lhs.value != rhs.value; }
+
+        /// <summary>
+        /// Returns a value indicating whether this instance and other BFloat16 represent the same value.
+        /// </summary>
+        /// <param name="other">A BFloat16 object to compare to this instance.</param>
+        /// <returns>true if other.value is equal to this instance; otherwise, false.</returns>
+        public bool Equals(BFloat16 other)
+        {
+            return (other == this);
+        }
+
+        /// <summary>
+        /// Returns a value indicating whether this instance and a specified System.Object
+        /// represent the same type and value.
+        /// </summary>
+        /// <param name="obj">An System.Object.</param>
+       /// <returns>true if obj is BFloat16 its value is equal to this instance; otherwise, false.</returns>
+        public override bool Equals(object obj)
+        {
+            bool result = false;
+            if (obj is BFloat16)
+            {
+                BFloat16 bfl16 = (BFloat16)obj;
+                result = (bfl16 == this);
+            }
+            return result;
+        }
+        /// <summary>
+        /// Returns the hash code for this instance.
+        /// </summary>
+        /// <returns>A 32-bit signed integer hash code.</returns>
+        public override int GetHashCode()
+        {
+            return value.GetHashCode();
+        }
+    }
+
+    /// <summary>
+    /// Helps typecasting. Holds Tensor element type traits.
+    /// </summary>
+    public class TensorTypeInfo
+    {
+        /// <summary>
+        /// TensorElementType enum
+        /// </summary>
+        /// <value>type enum value</value>
+        public TensorElementType ElementType { get; private set; }
+        /// <summary>
+        /// Size of the stored primitive type in bytes
+        /// </summary>
+        /// <value>size in bytes</value>
+        public int TypeSize { get; private set; }
+        /// <summary>
+        /// Is the type is a string
+        /// </summary>
+        /// <value>true if Tensor element type is a string</value>
+        public bool IsString { get { return ElementType == TensorElementType.String; } }
+        /// <summary>
+        /// Ctor
+        /// </summary>
+        /// <param name="elementType">TensorElementType value</param>
+        /// <param name="typeSize">size fo the type in bytes</param>
+        public TensorTypeInfo(TensorElementType elementType, int typeSize)
+        {
+            ElementType = elementType;
+            TypeSize = typeSize;
+        }
+    }
+
+    /// <summary>
+    /// Holds TensorElement traits
+    /// </summary>
+    public class TensorElementTypeInfo
+    {
+        /// <summary>
+        /// Tensor element type
+        /// </summary>
+        /// <value>System.Type</value>
+        public Type TensorType { get; private set; }
+        /// <summary>
+        /// Size of the stored primitive type in bytes
+        /// </summary>
+        /// <value>size in bytes</value>
+        public int TypeSize { get; private set; }
+        /// <summary>
+        /// Is the type is a string
+        /// </summary>
+        /// <value>true if Tensor element type is a string</value>
+        public bool IsString { get; private set; }
+        /// <summary>
+        /// Ctor
+        /// </summary>
+        /// <param name="type">Tensor element type</param>
+        /// <param name="typeSize">typesize</param>
+        public TensorElementTypeInfo(Type type, int typeSize)
+        {
+            TensorType = type;
+            TypeSize = typeSize;
+            IsString = type == typeof(string);
+        }
+    }
+
+    /// <summary>
+    /// This class is a base for all Tensors. It hosts maps with type traits.
+    /// </summary>
+    public class TensorBase
+    {
+        private static readonly Dictionary<Type, TensorTypeInfo> typeInfoMap;
+
+        private static readonly Dictionary<TensorElementType, TensorElementTypeInfo> tensorElementTypeInfoMap;
+
+        static TensorBase () {
+            typeInfoMap = new Dictionary<Type, TensorTypeInfo>()
+            {
+                { typeof(float), new TensorTypeInfo( TensorElementType.Float, sizeof(float)) },
+                { typeof(byte), new TensorTypeInfo( TensorElementType.UInt8, sizeof(byte)) },
+                { typeof(sbyte), new TensorTypeInfo( TensorElementType.Int8, sizeof(sbyte)) },
+                { typeof(ushort), new TensorTypeInfo( TensorElementType.UInt16, sizeof(ushort)) },
+                { typeof(short), new TensorTypeInfo( TensorElementType.Int16, sizeof(short)) },
+                { typeof(int), new TensorTypeInfo( TensorElementType.Int32, sizeof(int)) },
+                { typeof(long), new TensorTypeInfo( TensorElementType.Int64, sizeof(long)) },
+                { typeof(string), new TensorTypeInfo( TensorElementType.String, -1) },
+                { typeof(bool), new TensorTypeInfo( TensorElementType.Bool, sizeof(bool)) },
+                { typeof(Float16), new TensorTypeInfo( TensorElementType.Float16, sizeof(ushort)) },
+                { typeof(double), new TensorTypeInfo( TensorElementType.Double, sizeof(double)) },
+                { typeof(uint), new TensorTypeInfo( TensorElementType.UInt32, sizeof(uint)) },
+                { typeof(ulong), new TensorTypeInfo( TensorElementType.UInt64, sizeof(ulong)) },
+                { typeof(BFloat16), new TensorTypeInfo( TensorElementType.BFloat16, sizeof(ushort)) }
+            };
+
+            tensorElementTypeInfoMap = new Dictionary<TensorElementType, TensorElementTypeInfo>();
+            foreach(var info in typeInfoMap)
+            {
+                tensorElementTypeInfoMap.Add(info.Value.ElementType, new TensorElementTypeInfo(info.Key, info.Value.TypeSize));
+            }
+         }
+
+        private readonly Type _primitiveType;
+        /// <summary>
+        /// Constructs TensorBae
+        /// </summary>
+        /// <param name="primitiveType">primitive type the deriving class is using</param>
+        protected TensorBase(Type primitiveType)
+        {
+            // Should hold as we rely on this to pass arrays of these
+            // types to native code
+            unsafe
+            {
+                Debug.Assert(sizeof(ushort) == sizeof(Float16));
+                Debug.Assert(sizeof(ushort) == sizeof(BFloat16));
+            }
+            _primitiveType = primitiveType;
+        }
+
+        /// <summary>
+        /// Query TensorTypeInfo by one of the supported types
+        /// </summary>
+        /// <param name="type"></param>
+        /// <returns>TensorTypeInfo or null if not supported</returns>
+        public static TensorTypeInfo GetTypeInfo(Type type)
+        {
+            TensorTypeInfo result = null;
+            typeInfoMap.TryGetValue(type, out result);
+            return result;
+        }
+
+        /// <summary>
+        /// Query TensorElementTypeInfo by enum
+        /// </summary>
+        /// <param name="elementType">type enum</param>
+        /// <returns>instance of TensorElementTypeInfo or null if not found</returns>
+        public static TensorElementTypeInfo GetElementTypeInfo(TensorElementType elementType)
+        {
+            TensorElementTypeInfo result = null;
+            tensorElementTypeInfoMap.TryGetValue(elementType, out result);
+            return result;
+        }
+
+        /// <summary>
+        /// Query TensorTypeInfo using this Tensor type
+        /// </summary>
+        /// <returns></returns>
+        public TensorTypeInfo GetTypeInfo()
+        {
+            return GetTypeInfo(_primitiveType);
+        }
+    }
+
     /// <summary>
     /// Various methods for creating and manipulating Tensor&lt;T&gt;
     /// </summary>
@@ -155,7 +499,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
     /// <typeparam name="T">type contained within the Tensor.  Typically a value type such as int, double, float, etc.</typeparam>
     [DebuggerDisplay("{GetArrayString(false)}")]
     // When we cross-compile for frameworks that expose ICloneable this must implement ICloneable as well.
-    public abstract class Tensor<T> : IList, IList<T>, IReadOnlyList<T>, IStructuralComparable, IStructuralEquatable
+    public abstract class Tensor<T> : TensorBase, IList, IList<T>, IReadOnlyList<T>, IStructuralComparable, IStructuralEquatable
     {
         internal static T Zero
         {
@@ -210,6 +554,14 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
                     return (T)(object)(ulong)(0);
                 }
                 else if (typeof(T) == typeof(ushort))
+                {
+                    return (T)(object)(ushort)(0);
+                }
+                else if (typeof(T) == typeof(Float16))
+                {
+                    return (T)(object)(ushort)(0);
+                }
+                else if (typeof(T) == typeof(BFloat16))
                 {
                     return (T)(object)(ushort)(0);
                 }
@@ -273,6 +625,14 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
                 else if (typeof(T) == typeof(ushort))
                 {
                     return (T)(object)(ushort)(1);
+                } 
+                else if(typeof(T) == typeof(Float16))
+                {
+                    return (T)(object)(ushort)(15360);
+                }
+                else if (typeof(T) == typeof(BFloat16))
+                {
+                    return (T)(object)(ushort)(16256);
                 }
 
                 throw new NotSupportedException();
@@ -289,7 +649,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         /// Initialize a 1-dimensional tensor of the specified length
         /// </summary>
         /// <param name="length">Size of the 1-dimensional tensor</param>
-        protected Tensor(int length)
+        protected Tensor(int length) : base(typeof(T))
         {
             dimensions = new[] { length };
             strides = new[] { 1 };
@@ -298,24 +658,24 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         }
 
         /// <summary>
-        /// Initialize an n-dimensional tensor with the specified dimensions and layout.  ReverseStride=true gives a stride of 1-element witdth to the first dimension (0).  ReverseStride=false gives a stride of 1-element width to the last dimension (n-1).
+        /// Initialize an n-dimensional tensor with the specified dimensions and layout.  ReverseStride=true gives a stride of 1-element width to the first dimension (0).  ReverseStride=false gives a stride of 1-element width to the last dimension (n-1).
         /// </summary>
         /// <param name="dimensions">An span of integers that represent the size of each dimension of the Tensor to create.</param>
         /// <param name="reverseStride">False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension is most minor (closest together): akin to row-major in a rank-2 tensor.  True to indicate that the last dimension is most major (farthest apart) and the first dimension is most minor (closest together): akin to column-major in a rank-2 tensor.</param>
-        protected Tensor(ReadOnlySpan<int> dimensions, bool reverseStride)
+        protected Tensor(ReadOnlySpan<int> dimensions, bool reverseStride) : base(typeof(T))
         {
-            if (dimensions.Length == 0)
+            if (dimensions == null)
             {
-                throw new ArgumentException("Dimensions must contain elements.", nameof(dimensions));
+                throw new ArgumentNullException(nameof(dimensions));
             }
 
             this.dimensions = new int[dimensions.Length];
             long size = 1;
             for (int i = 0; i < dimensions.Length; i++)
             {
-                if (dimensions[i] < 1)
+                if (dimensions[i] < 0)
                 {
-                    throw new ArgumentOutOfRangeException(nameof(dimensions), "Dimensions must be positive and non-zero");
+                    throw new ArgumentOutOfRangeException(nameof(dimensions), "Dimensions must be non-negative");
                 }
                 this.dimensions[i] = dimensions[i];
                 size *= dimensions[i];
@@ -328,20 +688,15 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         }
 
         /// <summary>
-        /// Initializes tensor with same dimensions as array, content of array is ignored.  ReverseStride=true gives a stride of 1-element witdth to the first dimension (0).  ReverseStride=false gives a stride of 1-element width to the last dimension (n-1).
+        /// Initializes tensor with same dimensions as array, content of array is ignored.  ReverseStride=true gives a stride of 1-element width to the first dimension (0).  ReverseStride=false gives a stride of 1-element width to the last dimension (n-1).
         /// </summary>
         /// <param name="fromArray">Array from which to derive dimensions.</param>
         /// <param name="reverseStride">False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension is most minor (closest together): akin to row-major in a rank-2 tensor.  True to indicate that the last dimension is most major (farthest apart) and the first dimension is most minor (closest together): akin to column-major in a rank-2 tensor.</param>
-        protected Tensor(Array fromArray, bool reverseStride)
+        protected Tensor(Array fromArray, bool reverseStride) : base(typeof(T))
         {
             if (fromArray == null)
             {
                 throw new ArgumentNullException(nameof(fromArray));
-            }
-
-            if (fromArray.Rank == 0)
-            {
-                throw new ArgumentException("Array must contain elements.", nameof(fromArray));
             }
 
             dimensions = new int[fromArray.Rank];
@@ -567,6 +922,12 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
             return GetTriangle(offset, upper: true);
         }
 
+        /// <summary>
+        /// Implementation method for GetTriangle, GetLowerTriangle, GetUpperTriangle
+        /// </summary>
+        /// <param name="offset">Offset of diagonal to set in returned tensor.</param>
+        /// <param name="upper">true for upper triangular and false otherwise</param>
+        /// <returns></returns>
         public Tensor<T> GetTriangle(int offset, bool upper)
         {
             if (Rank < 2)
@@ -803,8 +1164,16 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
             }
         }
 
+        /// <summary>
+        /// Always fixed size Tensor
+        /// </summary>
+        /// <value>always true</value>
         public bool IsFixedSize => true;
 
+        /// <summary>
+        /// Tensor is not readonly
+        /// </summary>
+        /// <value>always false</value>
         public bool IsReadOnly => false;
 
         int IList.Add(object value)
@@ -1211,6 +1580,11 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
 
         #endregion
 
+        /// <summary>
+        /// Get a string representation of Tensor
+        /// </summary>
+        /// <param name="includeWhitespace"></param>
+        /// <returns></returns>
         public string GetArrayString(bool includeWhitespace = true)
         {
             var builder = new StringBuilder();

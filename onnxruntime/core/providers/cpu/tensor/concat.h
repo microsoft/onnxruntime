@@ -7,37 +7,11 @@
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
 #include "core/framework/tensor.h"
+#include "concatbase.h"
 
 namespace onnxruntime {
 
-class ConcatBase {
- protected:
-  ConcatBase(const OpKernelInfo& info) {
-    if (!info.GetAttr("axis", &axis_).IsOK()) {
-      ORT_ENFORCE(false, "Must have valid 'axis' attribute");
-    }
-  }
-
-  struct Prepare {
-    struct InputInfo {
-      const Tensor* tensor;
-      size_t num_elements;
-      int64_t axis_pitch;
-    };
-    std::vector<InputInfo> inputs;
-    int64_t output_num_elements;
-    int64_t output_axis_pitch;
-    Tensor* output_tensor;
-    uint64_t axis;
-  };
-
-  Status PrepareForCompute(OpKernelContext* ctx, int input_count, Prepare& p) const;
-
- private:
-  int64_t axis_;
-};
-
-class Concat final : public OpKernel, public ConcatBase {
+class Concat : public OpKernel, public ConcatBase {
  public:
   Concat(const OpKernelInfo& info) : OpKernel(info), ConcatBase(info) {}
 

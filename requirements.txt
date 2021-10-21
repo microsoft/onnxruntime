@@ -1,3 +1,0 @@
-six
-numpy
-protobuf

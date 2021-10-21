@@ -18,6 +18,6 @@ fi
 for version in '23'; do
   docker_image=fedora$version
   cd $SCRIPT_DIR/docker
-  docker build -t $docker_image --build-arg OS_VERSION=$version -f Dockerfile.fedora .
+  docker build --pull -t $docker_image --build-arg OS_VERSION=$version -f Dockerfile.fedora .
   docker run --rm -e AZURESASKEY --volume "$HOME/.cache/onnxruntime:/root/.cache/onnxruntime" -v $BUILD_BINARIESDIRECTORY:/root/rpmbuild -v $BUILD_ARTIFACTSTAGINGDIRECTORY:/data/a -v $HOME/.ccache:/root/.ccache -v $TOP_SRC_DIR:/data/onnxruntime -w /data/b $docker_image /data/onnxruntime/tools/ci_build/github/linux/create_package_inside_docker.sh
 done

@@ -1,9 +1,11 @@
 ## Global Variables
-Global variables may get constructed or destructed inside "DllMain". There are significant limits on what you can safely do in a DLL entry point. See ['DLL General Best Practices'](https://docs.microsoft.com/en-us/windows/desktop/dlls/dynamic-link-library-best-practices). For example, you can't put a ONNX Runtime InferenceSession into a global variable.
+Global variables may get constructed or destructed inside "DllMain". There are significant limits on what you can safely do in a DLL entry point. See ['DLL General Best Practices'](https://docs.microsoft.com/en-us/windows/desktop/dlls/dynamic-link-library-best-practices). For example, you can't put a ONNX Runtime InferenceSession into a global variable because it has a thread pool inside.
 
 ## Thread Local variables
-Thread Local variables must be function local, that on Windows they will be initialized as the first time of use. Otherwise, it may not work.
-Also, you must destroy these thread Local variables before onnxruntime.dll is unloaded, if the variable has a non-trivial destructor. That means, only onnxruntime internal threads can access these variables. It is, the thread must be created by onnxruntime and destroyed by onnxruntime. 
+Onnxruntime must support explicit linking, where the operating system loads the DLL on demand at runtime, instead of process startup time. This is required by our language bindings like C#/Java.
+
+However, there are some special restrictions on this, If a thread local variable need non-trivial construction, for the threads already exist before onnxruntime.dll is loaded, the variable won't get initialized correctly. So it's better to only access such variables from onnxruntime internal threads, or make these variables function local (Like the magic statics).
+ 
 
 ## No undefined symbols
 On Windows, you can't build a DLL with undefined symbols. Every symbol must be get resolved at link time. On Linux, you can.
@@ -13,7 +15,7 @@ In order to simplify things, we require every symbol must get resolved at link t
 ## Default visibility and how to export a symbol
 On Linux, by default, at linker's view, every symbol is global. It's easy to use but it's also much easier to cause conflicts and core dumps. We have encountered too many such problems in ONNX python binding. Indeed, if you have a well design, for each shared lib, you only need to export **one** function. ONNX Runtime python binding is a good example. See [pybind11 FAQ](https://github.com/pybind/pybind11/blob/master/docs/faq.rst#someclass-declared-with-greater-visibility-than-the-type-of-its-field-someclassmember--wattributes) for more info.
 
-For controling the visibility, we use linkder version scripts on Linux and def files on Windows. They work similar. That:
+For controlling the visibility, we use linker version scripts on Linux and def files on Windows. They work similar. That:
 1. Only C functions can be exported. 
 2. All the function names must be explicitly listed in a text file.
 3. Don't export any C++ class/struct, or global variable.
@@ -35,13 +37,8 @@ Therefore, our DLLEXPORT macro is like:
 #endif
 ```
 
-## RTLD_LOCAL vs RTLD_GLOBAL
-RTLD_LOCAL and RTLD_GLOBAL are two flags of [dlopen(3)](http://pubs.opengroup.org/onlinepubs/9699919799/functions/dlopen.html) function on POSIX systems. By default, it's RTLD_LOCAL. And basically you can say, there no corresponding things like RTLD_GLOBAL on Windows.
+## static initialization order problem
+It's well known C++ has [static initialization order problem](https://isocpp.org/wiki/faq/ctors#static-init-order). Dynamic linking can ensure that onnxruntime's static variables are already initialized before any onnxruntime's C API get called. The same thing applies to their destructors. It's good. But on the other side, static linking may have more usage restrictions on some of the APIs. 
 
-There is one case you need to use RTLD_GLOBAL on POSIX systems:
-1. There is a shared lib which is dynamically loaded by some application(like python or dotnet)
-2. The shared lib is statically linked to ONNX Runtime
-3. The shared lib needs to dynamically load a custom op
 
-Then the shared lib should be loaded with RTLD_GLOBAL, not RTLD_LOCAL. Otherwise in the custom op library, it can not find ONNX Runtime symbols.
 

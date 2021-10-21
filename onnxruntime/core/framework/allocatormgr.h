@@ -4,39 +4,60 @@
 #pragma once
 
 #include "core/common/common.h"
-#include "core/framework/arena.h"
+#include "core/framework/allocator.h"
+#include "core/session/onnxruntime_c_api.h"
+#include <unordered_map>
 
 namespace onnxruntime {
 
-using DeviceAllocatorFactory = std::function<std::unique_ptr<IDeviceAllocator>(int)>;
+using AllocatorFactory = std::function<std::unique_ptr<IAllocator>(OrtDevice::DeviceId)>;
 
-struct DeviceAllocatorRegistrationInfo {
-  OrtMemType mem_type;
-  DeviceAllocatorFactory factory;
-  size_t max_mem;
+using AllocatorMap = std::unordered_map<int, AllocatorPtr>;
+// TODO: update OrtMemoryInfo, use unordered_set instead
+using MemoryInfoSet = std::set<OrtMemoryInfo>;
+
+const int DEFAULT_CPU_ALLOCATOR_DEVICE_ID = 0;
+
+struct AllocatorCreationInfo {
+  AllocatorCreationInfo(AllocatorFactory device_alloc_factory,
+                        OrtDevice::DeviceId device_id = 0,
+                        bool use_arena = true,
+                        OrtArenaCfg arena_cfg = {0, -1, -1, -1, -1})
+      : device_alloc_factory(device_alloc_factory),
+        device_id(device_id),
+        use_arena(use_arena),
+        arena_cfg(arena_cfg) {
+  }
+
+  AllocatorFactory device_alloc_factory;
+  OrtDevice::DeviceId device_id;
+  bool use_arena;
+  OrtArenaCfg arena_cfg;
 };
 
-AllocatorPtr CreateAllocator(DeviceAllocatorRegistrationInfo info, int device_id = 0);
+// Returns an allocator (an instance of IAllocator) based on the creation info provided.
+// Returns nullptr if an invalid value of info.arena_cfg.arena_extend_strategy is supplied.
+// Valid values can be found in onnxruntime_c_api.h.
+AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info);
 
-class DeviceAllocatorRegistry {
+// TODO: Only used for TRT and CUDA EP currently, need to add more identifiers to use it across all EPs
+class AllocatorManager {
+  //
  public:
-  void RegisterDeviceAllocator(std::string&& name, DeviceAllocatorFactory factory, size_t max_mem,
-                               OrtMemType mem_type = OrtMemTypeDefault) {
-    DeviceAllocatorRegistrationInfo info({mem_type, factory, max_mem});
-    device_allocator_registrations_.emplace(std::move(name), std::move(info));
-  }
-
-  const std::map<std::string, DeviceAllocatorRegistrationInfo>& AllRegistrations() const {
-    return device_allocator_registrations_;
-  }
-
-  static DeviceAllocatorRegistry& Instance();
+  AllocatorManager() = default;
+  void InsertAllocator(AllocatorPtr allocator);
+  void ReplaceAllocator(AllocatorPtr allocator);
+  //Get an allocator with specified device id and MemType. Return nullptr if it doesn't exist
+  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const;
 
  private:
-  DeviceAllocatorRegistry() = default;
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(DeviceAllocatorRegistry);
+  AllocatorMap allocators_;
+  // to ensure only allocators with unique OrtMemoryInfo are registered in the provider.
+  MemoryInfoSet mem_info_set_;
 
-  std::map<std::string, DeviceAllocatorRegistrationInfo> device_allocator_registrations_;
+  // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time
+  // contains the same instances as allocators_
+  std::vector<AllocatorPtr> allocator_list_;
 };
 
 }  // namespace onnxruntime

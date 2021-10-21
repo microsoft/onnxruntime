@@ -113,6 +113,7 @@ bool IsAliasNode(const onnxruntime::Node& node);
 
 // Helper function that creates ComputeCapability for subgraphs
 std::unique_ptr<ComputeCapability> ToCapacity(const onnxruntime::GraphViewer& graph,
+                                              int fused_count,
                                               std::unique_ptr<IndexedSubGraph>& subgraph);
 
 bool IsFusedNode(const Node& node);
@@ -140,9 +141,9 @@ const std::string& ShapeSymbol(const NodeArg* def, int i);
 
 ONNX_NAMESPACE::TensorProto_DataType TensorProtoDataType(const NodeArg* def);
 
-// Convert GraphNodes to internal NodePtrs without check lifetime.
+// Convert ConstGraphNodes to internal NodePtrs without check lifetime.
 // Please use it only locally when GraphNodes still exist
-std::vector<const Node*> ConvertGraphNodesToNodePtrs(const GraphNodes& graph_nodes);
+std::vector<const Node*> ConvertGraphNodesToNodePtrs(const ConstGraphNodes& graph_nodes);
 
 enum : int {
   Dimension_Unknown = -1,

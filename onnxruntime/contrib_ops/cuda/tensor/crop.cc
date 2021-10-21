@@ -15,7 +15,7 @@ namespace cuda {
       1,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Crop<T>);
 
@@ -28,7 +28,7 @@ Status Crop<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   ORT_RETURN_IF_ERROR(ValidateInput(X));
 
-  const auto dims = X->Shape().GetDims();
+  const auto& dims = X->Shape().GetDims();
   const int64_t N = dims[0];
   const int64_t C = dims[1];
   const int64_t H = dims[2];
@@ -56,6 +56,7 @@ Status Crop<T>::ComputeInternal(OpKernelContext* context) const {
   fast_divmod fdm_YHW(gsl::narrow_cast<int>((bottomLimit - topBorder) * (rightLimit - leftBorder)));
 
   CropImpl<CudaT>(
+      Stream(),
       reinterpret_cast<const CudaT*>(X->template Data<T>()),
       gsl::narrow_cast<int>(leftBorder),
       gsl::narrow_cast<int>(topBorder),

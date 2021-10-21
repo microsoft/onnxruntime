@@ -9,7 +9,10 @@
 #include "core/framework/framework_common.h"
 #include "core/framework/iexecutor.h"
 #include "core/framework/session_state.h"
-
+#include "core/framework/session_options.h"
+#ifdef ENABLE_TRAINING
+#include "core/framework/partial_graph_execution_state.h"
+#endif
 namespace ONNX_NAMESPACE {
 class TensorShapeProto;
 class TensorProto;
@@ -28,6 +31,7 @@ class KernelRegistryManager;
 class IExecutionProvider;
 class Node;
 class Tensor;
+struct KernelCreateInfo;
 
 namespace logging {
 class Logger;
@@ -37,12 +41,30 @@ namespace utils {
 void* DefaultAlloc(size_t size);
 void DefaultFree(void* p);
 
-AllocatorPtr GetAllocator(const SessionState& session_state, const OrtMemoryInfo& memory_info);
+/// <summary>
+// Do the placement new for strings on pre-allocated buffer
+// `elements` times.
+/// </summary>
+/// <param name="p_data"></param>
+/// <param name="elements"></param>
+void ConstructStrings(void* p_data, int64_t elements);
 
-common::Status AllocateHelper(const IExecutionProvider& execution_provider, int device_id, const Tensor& fetched_tensor,
-                              OrtValue& output_mlvalue);
+/// <summary>
+/// Destroy std::string objects in the contiquous chunk of memory
+/// by explicitely invoking ~string();
+/// </summary>
+/// <param name="p_data"></param>
+/// <param name="elements"></param>
+void DestroyStrings(void* p_data, int64_t elements);
 
 const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info);
+
+// EP used for internal testing. We define it here as it's used in ProviderIsCpuBased, but we don't want
+// it to be in the public header include/onnxruntime/core/graph/constants.h as it's purely internal.
+constexpr const char* kInternalTestingExecutionProvider = "InternalTestingExecutionProvider";
+
+// return true if the execution provider is CPU based (meaning no copies to device are required)
+bool ProviderIsCpuBased(const std::string& provider_type);
 
 common::Status CopyOneInputAcrossDevices(const SessionState& session_state, const std::string& input_name,
                                          const OrtValue& orig_mlvalue, OrtValue& new_mlvalue);
@@ -59,93 +81,112 @@ common::Status InitializeFeedFetchCopyInfo(const SessionState& session_state,
 
 // Finalize the feed and fetch copy info using session_state and the device and location information from the feeds
 // and fetches that will be used in graph execution.
-void FinalizeFeedFetchCopyInfo(const SessionState& session_state,
-                               FeedsFetchesManager& feeds_fetches_manager,
+void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager,
                                const std::vector<OrtDevice>& feed_locations,
                                const std::vector<const OrtMemoryInfo*>& fetch_alloc_info);
 
 // Execute the main graph. The feed_fetches_manager will be finalized based on the provided feeds and fetches.
 common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                             const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-                            bool sequential_execution, const bool& terminate_flag, const logging::Logger& logger);
+                            ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
+                            bool only_execute_path_to_fetches = false);
+
+#ifdef ENABLE_TRAINING
+common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
+                                   const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                                   const logging::Logger& logger, PartialGraphExecutionState& state,
+                                   const OrtValueCachePtr& cache);
+#endif
 
 // Execute a subgraph. The feeds_fetches_manager should have been finalized prior to calling this function.
 // See IControlFlowNode::SetupSubgraphExecutionInfo usage in the control flow kernels.
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
                                const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                               bool sequential_execution, const bool& terminate_flag, const logging::Logger& logger);
+                               ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger);
 
-#if defined(DEBUG_NODE_INPUTS_OUTPUTS)
-// to create a build with these enabled run the build script with
-//   --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=ON
-void DumpNodeInputs(const OpKernelContext& context, const Node& node);
-void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionState& session_state);
+bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index);
+
+template <typename T>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<bool>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<std::string>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<float>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<double>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<MLFloat16>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<BFloat16>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<int8_t>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint8_t>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<int16_t>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint16_t>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<int32_t>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint32_t>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<int64_t>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64;
+}
+
+int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType);
+
+#ifdef ENABLE_TRAINING
+common::Status VerifyInputTensorsAllocatedContiguously(OpKernelContext* context);
 #endif
-
-#define DispatchOnTensorType(tensor_type, function, ...)        \
-  if (tensor_type == DataTypeImpl::GetType<float>())            \
-    function<float>(__VA_ARGS__);                               \
-  else if (tensor_type == DataTypeImpl::GetType<double>())      \
-    function<double>(__VA_ARGS__);                              \
-  else if (tensor_type == DataTypeImpl::GetType<int8_t>())      \
-    function<int8_t>(__VA_ARGS__);                              \
-  else if (tensor_type == DataTypeImpl::GetType<int16_t>())     \
-    function<int16_t>(__VA_ARGS__);                             \
-  else if (tensor_type == DataTypeImpl::GetType<int32_t>())     \
-    function<int32_t>(__VA_ARGS__);                             \
-  else if (tensor_type == DataTypeImpl::GetType<int64_t>())     \
-    function<int64_t>(__VA_ARGS__);                             \
-  else if (tensor_type == DataTypeImpl::GetType<uint8_t>())     \
-    function<uint8_t>(__VA_ARGS__);                             \
-  else if (tensor_type == DataTypeImpl::GetType<uint16_t>())    \
-    function<uint16_t>(__VA_ARGS__);                            \
-  else if (tensor_type == DataTypeImpl::GetType<uint32_t>())    \
-    function<uint32_t>(__VA_ARGS__);                            \
-  else if (tensor_type == DataTypeImpl::GetType<uint64_t>())    \
-    function<uint64_t>(__VA_ARGS__);                            \
-  else if (tensor_type == DataTypeImpl::GetType<bool>())        \
-    function<bool>(__VA_ARGS__);                                \
-  else if (tensor_type == DataTypeImpl::GetType<MLFloat16>())   \
-    function<MLFloat16>(__VA_ARGS__);                           \
-  else if (tensor_type == DataTypeImpl::GetType<BFloat16>())    \
-    function<BFloat16>(__VA_ARGS__);                            \
-  else if (tensor_type == DataTypeImpl::GetType<std::string>()) \
-    function<std::string>(__VA_ARGS__);                         \
-  else                                                          \
-    ORT_ENFORCE(false, "Unknown tensor type of ", tensor_type)
-
-#define DispatchOnTensorTypeWithReturn(tensor_type, retval, function, ...) \
-  if (tensor_type == DataTypeImpl::GetType<float>())                       \
-    retval = function<float>(__VA_ARGS__);                                 \
-  else if (tensor_type == DataTypeImpl::GetType<double>())                 \
-    retval = function<double>(__VA_ARGS__);                                \
-  else if (tensor_type == DataTypeImpl::GetType<int8_t>())                 \
-    retval = function<int8_t>(__VA_ARGS__);                                \
-  else if (tensor_type == DataTypeImpl::GetType<int16_t>())                \
-    retval = function<int16_t>(__VA_ARGS__);                               \
-  else if (tensor_type == DataTypeImpl::GetType<int32_t>())                \
-    retval = function<int32_t>(__VA_ARGS__);                               \
-  else if (tensor_type == DataTypeImpl::GetType<int64_t>())                \
-    retval = function<int64_t>(__VA_ARGS__);                               \
-  else if (tensor_type == DataTypeImpl::GetType<uint8_t>())                \
-    retval = function<uint8_t>(__VA_ARGS__);                               \
-  else if (tensor_type == DataTypeImpl::GetType<uint16_t>())               \
-    retval = function<uint16_t>(__VA_ARGS__);                              \
-  else if (tensor_type == DataTypeImpl::GetType<uint32_t>())               \
-    retval = function<uint32_t>(__VA_ARGS__);                              \
-  else if (tensor_type == DataTypeImpl::GetType<uint64_t>())               \
-    retval = function<uint64_t>(__VA_ARGS__);                              \
-  else if (tensor_type == DataTypeImpl::GetType<bool>())                   \
-    retval = function<bool>(__VA_ARGS__);                                  \
-  else if (tensor_type == DataTypeImpl::GetType<MLFloat16>())              \
-    retval = function<MLFloat16>(__VA_ARGS__);                             \
-  else if (tensor_type == DataTypeImpl::GetType<BFloat16>())               \
-    retval = function<BFloat16>(__VA_ARGS__);                              \
-  else if (tensor_type == DataTypeImpl::GetType<std::string>())            \
-    retval = function<std::string>(__VA_ARGS__);                           \
-  else                                                                     \
-    ORT_ENFORCE(false, "Unknown tensor type of ", tensor_type)
 
 }  // namespace utils
 }  // namespace onnxruntime

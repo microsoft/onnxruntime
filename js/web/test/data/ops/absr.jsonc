@@ -1,0 +1,26 @@
+[
+  {
+    "name": "abs with no attributes",
+    "operator": "Abs",
+    "attributes": [],
+    "cases": [
+      {
+        "name": "Scalar",
+        "inputs": [
+          {
+            "data": [1],
+            "dims": [],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1],
+            "dims": [],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  }
+]

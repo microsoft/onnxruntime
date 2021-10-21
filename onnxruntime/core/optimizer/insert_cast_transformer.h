@@ -22,8 +22,7 @@ class InsertCastTransformer : public onnxruntime::GraphTransformer {
   }
 
  private:
-  Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level) const override;
-
+  Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
   bool NeedInsertCast(const onnxruntime::Node* node, const onnxruntime::NodeArg* input) const;
 
   // Currently because we only have very few cpu kernels support float16, place those nodes on float16

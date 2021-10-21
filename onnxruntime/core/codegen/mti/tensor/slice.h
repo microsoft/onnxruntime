@@ -9,8 +9,10 @@ namespace onnxruntime {
 namespace tvm_codegen {
 
 tvm::Tensor Slice(const tvm::Tensor& X,
-                  const tvm::Array<tvm::Integer>& starts,
-                  const tvm::Array<tvm::Integer>& ends,
+                  const std::vector<int64_t>& starts,
+                  const std::vector<int64_t>& ends,
+                  const std::vector<int64_t>& axes,
+                  const std::vector<int64_t>& steps,
                   const std::string& name = "slice");
 
 }  // namespace tvm_codegen

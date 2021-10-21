@@ -20,13 +20,22 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
     {
         public const int StackallocMax = 16;
 
+        public static long GetSizeForShape(long[] shape)
+        {
+            long product = 1;
+            foreach( var dim in shape)
+            {
+                if (dim < 0)
+                {
+                    throw new ArgumentOutOfRangeException("Shape must not have negative elements:" + dim);
+                }
+                product *= dim;
+            }
+            return product;
+        }
+
         public static long GetProduct(ReadOnlySpan<int> dimensions, int startIndex = 0)
         {
-            if (dimensions.Length == 0)
-            {
-                return 0;
-            }
-
             long product = 1;
             for (int i = startIndex; i < dimensions.Length; i++)
             {
@@ -81,6 +90,11 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         public static int[] GetStrides(ReadOnlySpan<int> dimensions, bool reverseStride = false)
         {
             int[] strides = new int[dimensions.Length];
+
+            if (dimensions.Length == 0)
+            {
+                return strides;
+            }
 
             int stride = 1;
             if (reverseStride)
@@ -160,6 +174,12 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
             Debug.Assert(reverseStride ? IsAscending(strides) : IsDescending(strides), "Index decomposition requires ordered strides");
             Debug.Assert(strides.Length == indices.Length);
 
+            // scalar tensor - nothing to process
+            if (indices.Length == 0)
+            {
+                return;
+            }
+
             int remainder = index;
             for (int i = startFromDimension; i < strides.Length; i++)
             {
@@ -185,6 +205,12 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
             Debug.Assert(reverseStride ? IsAscending(strides) : IsDescending(strides), "Index decomposition requires ordered strides");
             Debug.Assert(strides.Length == indices.Length);
 
+            // scalar tensor - nothing to process
+            if (indices.Length == 0)
+            {
+                return;
+            }
+
             int remainder = index;
             for (int i = startFromDimension; i < strides.Length; i++)
             {
@@ -205,6 +231,13 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
             Debug.Assert(index >= 0);
             Debug.Assert(sourceReverseStride ? IsAscending(sourceStrides) : IsDescending(sourceStrides), "Index decomposition requires ordered strides");
             Debug.Assert(sourceStrides.Length == transformStrides.Length);
+
+            // scalar tensor
+            if (sourceStrides.Length == 0)
+            {
+                Debug.Assert(index == 0, "Index has to be zero for a scalar tensor");
+                return 0;
+            }
 
             int transformIndex = 0;
             int remainder = index;

@@ -6,19 +6,34 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                                \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      LRN,                                                                      \
-      kOnnxDomain,                                                              \
-      1,                                                                        \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define REGISTER_KERNEL_VERSIONED_TYPED(START_VER, END_VER, T)                             \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      LRN,                                                                                 \
+      kOnnxDomain,                                                                         \
+      START_VER,                                                                           \
+      END_VER,                                                                             \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       LRN<T>);
 
-REGISTER_KERNEL_TYPED(float)
-REGISTER_KERNEL_TYPED(double)
-REGISTER_KERNEL_TYPED(MLFloat16)
+#define REGISTER_KERNEL_TYPED(VER, T)                                                      \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      LRN,                                                                                 \
+      kOnnxDomain,                                                                         \
+      VER,                                                                                 \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      LRN<T>);
+
+REGISTER_KERNEL_VERSIONED_TYPED(1, 12, float)
+REGISTER_KERNEL_VERSIONED_TYPED(1, 12, double)
+REGISTER_KERNEL_VERSIONED_TYPED(1, 12, MLFloat16)
+
+REGISTER_KERNEL_TYPED(13, float)
+REGISTER_KERNEL_TYPED(13, double)
+REGISTER_KERNEL_TYPED(13, MLFloat16)
 
 template <typename T>
 LRN<T>::LRN(const OpKernelInfo& info) : CudaKernel(info) {

@@ -20,12 +20,13 @@ jobs:
         arguments: --build_dir $(Build.BinariesDirectory) --edge_device
         pythonInterpreter: '/usr/bin/python3'
         workingDirectory: $(Build.BinariesDirectory)
-        
-    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d openvino -r $(Build.BinariesDirectory) -x "--use_openvino GPU_FP32 --build_wheel"'
-      displayName: 'Command Line Script'
 
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
-      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
+    - template: templates/run-docker-build-steps.yml
+      parameters:
+        RunDockerBuildArgs: '-o ubuntu20.04 -d openvino -v 2020.2 -x "--use_openvino GPU_FP32 --build_wheel"'
+
+    - template: templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'ci_only'
 
     - template: templates/clean-agent-build-directory-step.yml

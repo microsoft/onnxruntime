@@ -10,7 +10,7 @@ namespace onnxruntime {
 namespace contrib {
 
 using ::ONNX_NAMESPACE::AttributeProto;
-using ::ONNX_NAMESPACE::OPTIONAL;
+using ::ONNX_NAMESPACE::OPTIONAL_VALUE;
 using ::ONNX_NAMESPACE::OpSchema;
 
 // This Doc based on LSTM_ver7, and modification
@@ -157,7 +157,7 @@ OpSchema& RegisterAttnLSTMContribOpSchema(OpSchema&& op_schema){
         "be one of the activation functions specified above. Optional: See the equations "
         "for default if not specified.",
         AttributeProto::STRINGS,
-        OPTIONAL)
+        OPTIONAL_VALUE)
     .Attr(
         "activation_alpha",
         "Optional scaling values used by some activation functions. The values are consumed "
@@ -165,21 +165,21 @@ OpSchema& RegisterAttnLSTMContribOpSchema(OpSchema&& op_schema){
         "are the same as of corresponding ONNX operators.For example with LeakyRelu, the "
         "default alpha is 0.01.",
         AttributeProto::FLOATS,
-        OPTIONAL)
+        OPTIONAL_VALUE)
     .Attr(
         "activation_beta",
         "Optional scaling values used by some activation functions. The values are consumed in "
         "the order of activation functions, for example (f, g, h) in LSTM. Default values are "
         "the same as of corresponding ONNX operators.",
         AttributeProto::FLOATS,
-        OPTIONAL)
+        OPTIONAL_VALUE)
     .Attr(
         "clip",
         "Cell clip threshold. Clipping bounds the elements of a tensor in the range of "
         "[-threshold, +threshold] and is applied to the input of activations. No clip if not "
         "specified.",
         AttributeProto::FLOAT,
-        OPTIONAL)
+        OPTIONAL_VALUE)
     .Attr(
         "input_forget",
         "Couple the input and forget gates if 1, default 0.",
@@ -189,7 +189,7 @@ OpSchema& RegisterAttnLSTMContribOpSchema(OpSchema&& op_schema){
         "hidden_size",
         "Number of neurons in the hidden layer.",
         AttributeProto::INT,
-        OPTIONAL)
+        OPTIONAL_VALUE)
     .Attr(
         "direction",
         "Specify if the RNN is forward, reverse, or bidirectional. Must be one of "

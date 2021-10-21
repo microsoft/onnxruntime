@@ -1,13 +1,24 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cpu/nn/conv_integer.h"
+#include "core/framework/op_kernel.h"
+#include "core/providers/cpu/nn/conv_attributes.h"
+#include "core/common/safeint.h"
+#include "core/providers/common.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
-#include "core/providers/common.h"
 
 namespace onnxruntime {
+
+class ConvInteger : public OpKernel {
+ public:
+  explicit ConvInteger(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {}
+
+  Status Compute(OpKernelContext* context) const override;
+
+  ConvAttributes conv_attrs_;
+};
 
 ONNX_OPERATOR_KERNEL_EX(
     ConvInteger,
@@ -21,7 +32,6 @@ ONNX_OPERATOR_KERNEL_EX(
     ConvInteger);
 
 Status ConvInteger::Compute(OpKernelContext* context) const {
-
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   const auto* X = context->Input<Tensor>(0);
   const auto* W = context->Input<Tensor>(1);
@@ -59,18 +69,16 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
     strides.resize(kernel_shape.size(), 1);
   }
 
-  std::vector<int64_t> Y_dims;
-  Y_dims.insert(Y_dims.begin(), {N, M});
+  std::vector<int64_t> Y_dims({N, M});
   TensorShape input_shape = X->Shape().Slice(2);
-  ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
+  ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
   TensorShape output_shape = Y->Shape().Slice(2);
 
-  AllocatorPtr alloc;
-  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
-
-  const auto* Xdata = X->template Data<uint8_t>();
-  auto* Ydata = Y->template MutableData<int32_t>();
+  // Bail out early if one of the dimensions is zero.
+  if (Y->Shape().Size() == 0) {
+    return Status::OK();
+  }
 
   const int64_t input_image_size = input_shape.Size();
   const int64_t output_image_size = output_shape.Size();
@@ -81,51 +89,89 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   const int64_t kernel_dim = C / conv_attrs_.group * kernel_size;
   const int64_t col_buffer_size = kernel_dim * output_image_size;
 
-  auto col_data = alloc->Alloc(sizeof(uint8_t) * col_buffer_size);
-  BufferUniquePtr col_buffer(col_data, BufferDeleter(alloc));
+  const size_t kernel_rank = kernel_shape.size();
+
+  BufferUniquePtr col_buffer;
+
+  // Pointwise convolutions can use the original input tensor in place,
+  // otherwise a temporary buffer is required for the im2col transform.
+  if (kernel_size != 1 || !conv_attrs_.HasStridesOneAndNoPadding()) {
+    AllocatorPtr alloc;
+    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+
+    auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * col_buffer_size);
+    col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
+  }
+
   auto* col_buffer_data = static_cast<uint8_t*>(col_buffer.get());
 
-  TensorShape image_shape = X->Shape().Slice(1);
-  std::vector<int64_t> col_buffer_shape{kernel_dim};
-  col_buffer_shape.insert(col_buffer_shape.end(), output_shape.GetDims().begin(),
-                          output_shape.GetDims().end());
+  concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
+
+  const auto* Xdata = X->template Data<uint8_t>();
+  const auto* Wdata = W->template Data<uint8_t>();
+  auto* Ydata = Y->template MutableData<int32_t>();
 
   for (int image_id = 0; image_id < N; ++image_id) {
     for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
-      math::Im2colNd<uint8_t, CPUMathUtil, StorageOrder::NCHW>()(
-          Xdata + group_id * X_offset,
-          image_shape.GetDims().data(),
-          col_buffer_shape.data(),
-          C * input_image_size,
-          col_buffer_size,
-          kernel_shape.data(),
-          strides.data(),
-          dilations.data(),
-          pads.data(),
-          static_cast<int>(kernel_shape.size()),
-          col_buffer_data,
-          &CPUMathUtil::Instance(),
-          false,
-          input_offset);
+      if (col_buffer_data != nullptr) {
+        if (kernel_rank == 2) {
+          math::Im2col<uint8_t, StorageOrder::NCHW>()(
+              Xdata,
+              C / conv_attrs_.group,
+              input_shape[0],
+              input_shape[1],
+              kernel_shape[0],
+              kernel_shape[1],
+              dilations[0],
+              dilations[1],
+              pads[0],
+              pads[1],
+              pads[2],
+              pads[3],
+              strides[0],
+              strides[1],
+              col_buffer_data,
+              input_offset);
+        } else {
+          math::Im2col<uint8_t, StorageOrder::NCHW>()(
+              Xdata,
+              input_shape.GetDims().data(),
+              output_shape.GetDims().data(),
+              kernel_dim,
+              kernel_shape.data(),
+              strides.data(),
+              dilations.data(),
+              pads.data(),
+              static_cast<int>(kernel_rank),
+              col_buffer_data,
+              false,
+              input_offset);
+        }
+      }
 
-      QGemmu8u8_s32(static_cast<int>(M / conv_attrs_.group),
-                    static_cast<int>(output_image_size),
-                    static_cast<int>(kernel_dim),
-                    W->template Data<uint8_t>() + group_id * W_offset,
-                    static_cast<int>(kernel_dim),
-                    filter_offset,
-                    col_buffer_data,
-                    static_cast<int>(output_image_size),
-                    input_offset,
-                    Ydata + group_id * Y_offset,
-                    static_cast<int>(output_image_size),
-                    nullptr);
+      MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
+      gemm_shape.M = static_cast<size_t>(M / conv_attrs_.group);
+      gemm_shape.N = static_cast<size_t>(output_image_size);
+      gemm_shape.K = static_cast<size_t>(kernel_dim);
+      
+      MLAS_GEMM_U8X8_DATA_PARAMS gemm_params;
+      gemm_params.A = Wdata + group_id * W_offset;
+      gemm_params.lda = static_cast<size_t>(kernel_dim);
+      gemm_params.ZeroPointA = filter_offset;
+      gemm_params.B = (col_buffer_data == nullptr) ? Xdata : col_buffer_data,
+      gemm_params.ldb = static_cast<size_t>(output_image_size);
+      gemm_params.ZeroPointB = &input_offset;
+      gemm_params.C = Ydata;
+      gemm_params.ldc = static_cast<size_t>(output_image_size);
+
+      MlasGemm(gemm_shape, gemm_params, thread_pool);
+
+      Xdata += X_offset;
+      Ydata += Y_offset;
     }
-
-    Xdata += X_offset * conv_attrs_.group;
-    Ydata += Y_offset * conv_attrs_.group;
   }
 
   return Status::OK();
 }
+
 }  // namespace onnxruntime

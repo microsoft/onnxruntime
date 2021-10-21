@@ -7,9 +7,8 @@
 #include <list>
 #include <unordered_map>
 #include "core/common/status.h"
-#include "core/platform/ort_mutex.h"
 #include "core/graph/graph_viewer.h"
-#include "core/framework/customregistry.h"
+#include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {
 struct KernelCreateInfo;
@@ -31,8 +30,9 @@ class KernelRegistryManager {
   KernelRegistryManager() = default;
 
   // Register kernels from providers
-  Status RegisterKernels(const ExecutionProviders& execution_providers);
+  Status RegisterKernels(const ExecutionProviders& execution_providers) ORT_MUST_USE_RESULT;
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   // The registry passed in this function has highest priority than anything already in this KernelRegistryManager,
   // and anything registered from RegisterKernels
   // For example, if you do:
@@ -41,23 +41,6 @@ class KernelRegistryManager {
   // RegisterKernelRegistry(B);
   // Then B > A > providers
   void RegisterKernelRegistry(std::shared_ptr<KernelRegistry> kernel_registry);
-
-  // This function assumes the node is already assigned to an execution provider
-  // Don't call this function before graph partition is done
-  Status CreateKernel(const onnxruntime::Node& node,
-                      const IExecutionProvider& execution_provider,
-                      const SessionState& session_state,
-                      /*out*/ std::unique_ptr<OpKernel>& op_kernel) const;
-
-  // This function assumes the node is already assigned to an execution provider
-  // Don't call this function before graph partition is done
-  Status SearchKernelRegistry(const onnxruntime::Node& node,
-                              /*out*/ const KernelCreateInfo** kernel_create_info) const;
-
-  /**
-   * Whether this node can be run on this provider
-   */
-  bool HasImplementationOf(const Node& node, const std::string& provider_type) const;
 
   /**
    * Search kernel registry by provider type.
@@ -74,6 +57,30 @@ class KernelRegistryManager {
     if (iter != provider_type_to_registry_.end()) result.push_back(iter->second.get());
     return result;
   }
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // This function assumes the node is already assigned to an execution provider
+  // Don't call this function before graph partition is done
+  Status SearchKernelRegistry(const onnxruntime::Node& node,
+                              /*out*/ const KernelCreateInfo** kernel_create_info) const;
+
+  /**
+   * Whether this node can be run on this provider
+   */
+  static bool HasImplementationOf(const KernelRegistryManager& r, const Node& node, const std::string& provider_type);
+#endif
+
+  /**
+   * Search the kernel registries given a kernel def hash.
+   */
+  bool SearchKernelRegistriesByHash(uint64_t kernel_def_hash,
+                                    const KernelCreateInfo** kernel_create_info) const;
+
+  std::unique_ptr<OpKernel> CreateKernel(const onnxruntime::Node& node,
+                                         const IExecutionProvider& execution_provider,
+                                         const SessionState& session_state,
+                                         const KernelCreateInfo& kernel_create_info) const ORT_MUST_USE_RESULT;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelRegistryManager);
 

@@ -4,6 +4,8 @@
 #pragma once
 #include "core/common/common.h"
 
+struct OrtMemoryInfo;
+
 namespace onnxruntime {
 namespace test {
 /**

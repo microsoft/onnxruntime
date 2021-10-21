@@ -12,6 +12,7 @@
 #include "core/providers/nuphar/compiler/initializer_info.h"
 #include "core/providers/nuphar/compiler/nuphar_handle.h"
 
+#include <set>
 #include <tvm/tvm.h>
 
 namespace onnxruntime {
@@ -121,7 +122,17 @@ class NupharCodeGenCtx : public tvm_codegen::CodeGenContext {
     return tvm_tensor_ctx_;
   }
 
+  void InsertLiteral(const std::string& str) {
+    literalized_scalars_.insert(str);
+  }
+
+  bool CheckLiteral(const std::string& str) {
+    return literalized_scalars_.count(str) > 0;
+  }
+
  private:
+  std::set<std::string> literalized_scalars_;
+
   std::unique_ptr<NupharSubgraphUnitStats> graph_stats_;
 
   const NupharCodeGenHandle* nuphar_handle_;

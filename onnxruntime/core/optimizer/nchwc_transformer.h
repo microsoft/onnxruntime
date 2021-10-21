@@ -19,7 +19,7 @@ class NchwcTransformer : public GraphTransformer {
   NchwcTransformer() noexcept : GraphTransformer("NchwcTransformer") {}
 
  private:
-  Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override;
+  Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 };
 
 }  // namespace onnxruntime

@@ -9,7 +9,6 @@ import numpy as np
 import onnx
 from onnx import helper, numpy_helper
 from .node_factory import NodeFactory, ensure_opset
-from .symbolic_shape_infer import SymbolicShapeInference
 
 class QuantizeConfig:
     def __init__(self, signed, reserved_bits, type_bits):
@@ -53,7 +52,54 @@ class QuantizeConfig:
                      ('QuantizationType', 'Signed' if self.sign_bit_ else 'Unsigned'),
                      ('ReservedBit', self.reserved_bits_)])
 
-def quantize_matmul_2d_with_weight(in_node, in_graph, nf, converted_weights, quantized_inputs, qcfg_dict, update_qcfg_dict, default_qcfg):
+def parse_custom_attributes(in_node):
+    if in_node.doc_string:
+        # some models have node description as qcfg, e.g.
+        # {"custom_attributes":{
+        #     "FutureContextLength":10,
+        #     "IntermediateBit":32,
+        #     "PerRowQuantization":true,
+        #     "QuantizeBitOfVector":8,
+        #     "VectorQuantizationType":"AsymmetricUnsigned",
+        #     "QuantizeBitOfMatrix":8,
+        #     "ReservedBitOfVector":1,
+        #     "MatrixQuantizationType":"AsymmetricSigned",
+        #     "ReservedBitOfMatrix":0}}
+        qcfg_str = in_node.doc_string
+        # make sure it's the string we can parse
+        if 'custom_attributes' in qcfg_str:
+            # some fixes to make it a valid JSON string, when model keys are not string
+            if qcfg_str[1] == 'c':
+                qcfg_str = qcfg_str.replace('{', '{"')
+                qcfg_str = qcfg_str.replace(',', ',"')
+                qcfg_str = qcfg_str.replace(':', '":')
+                qcfg_str = qcfg_str.replace('{"}', '{}')
+            qcfg = json.loads(qcfg_str)['custom_attributes']
+            if qcfg:
+                return qcfg
+    return None
+
+def parse_node_description(in_node):
+    if not in_node.doc_string:
+        return None
+    custom_qcfg = parse_custom_attributes(in_node)
+    if custom_qcfg:
+        assert custom_qcfg['IntermediateBit'] == 32
+        assert custom_qcfg['PerRowQuantization']
+        assert custom_qcfg['QuantizeBitOfVector'] == custom_qcfg['QuantizeBitOfMatrix']
+        qbits = custom_qcfg['QuantizeBitOfVector']
+        assert ("Asymmetric" in custom_qcfg['VectorQuantizationType']) == ("Asymmetric" in custom_qcfg['MatrixQuantizationType'])
+        symmetric = 0 if "Asymmetric" in custom_qcfg['VectorQuantizationType'] else 1
+        x_signed = 0 if "Unsigned" in custom_qcfg['VectorQuantizationType'] else 1
+        w_signed = 0 if "Unsigned" in custom_qcfg['MatrixQuantizationType'] else 1
+        x_reserved_bits = custom_qcfg['ReservedBitOfVector']
+        w_reserved_bits = custom_qcfg['ReservedBitOfMatrix']
+        return {'W' : dict(QuantizeConfig(signed=w_signed, reserved_bits=w_reserved_bits, type_bits=qbits)),
+                'X' : dict(QuantizeConfig(signed=x_signed, reserved_bits=x_reserved_bits, type_bits=qbits)),
+                'Symmetric' : symmetric}
+    return None
+
+def quantize_matmul_2d_with_weight(in_node, in_graph, nf, converted_weights, quantized_inputs, qcfg_dict, update_qcfg_dict, default_qcfg, onnx_opset_ver):
     assert in_node.op_type == 'MatMul'
 
     # quantize weight
@@ -69,7 +115,7 @@ def quantize_matmul_2d_with_weight(in_node, in_graph, nf, converted_weights, qua
     if in_node.output[0] in qcfg_dict:
         node_qcfg = qcfg_dict[in_node.output[0]]
     else:
-        node_qcfg = None
+        node_qcfg = parse_node_description(in_node)
         if not node_qcfg:
             if not update_qcfg_dict and qcfg_dict:
                 # when qcfg_dict is readonly, raise warning if qcfg is not found for this node
@@ -158,7 +204,11 @@ def quantize_matmul_2d_with_weight(in_node, in_graph, nf, converted_weights, qua
             Q_Xf = nf.make_node('Mul', [norm_X, np.asarray(x_qcfg.q_range()).astype(np.float32)])
             Q_Xf = nf.make_node('Add', [Q_Xf, np.asarray(0.5).astype(np.float32)])
             Q_Xf = nf.make_node('Floor', Q_Xf)
-            Q_Xf = nf.make_node('Clip', Q_Xf, {'max':x_qcfg.q_max(), 'min':x_qcfg.q_min()})
+            if onnx_opset_ver < 11:
+                Q_Xf = nf.make_node('Clip', Q_Xf, {'max':x_qcfg.q_max(), 'min':x_qcfg.q_min()})
+            else:
+                # Clip changed min max to inputs in opset 11
+                Q_Xf = nf.make_node('Clip', [Q_Xf, np.asarray(x_qcfg.q_min()).astype(np.float32), np.asarray(x_qcfg.q_max()).astype(np.float32)])
             Q_X = nf.make_node('Cast', Q_Xf, {'to':int({np.uint8  : onnx.TensorProto.UINT8,
                                                         np.int8   : onnx.TensorProto.INT8,
                                                         np.uint16 : onnx.TensorProto.UINT16,
@@ -167,7 +217,7 @@ def quantize_matmul_2d_with_weight(in_node, in_graph, nf, converted_weights, qua
             if symmetric:
                 Q_X_sum_int32 = None
             else:
-                Q_X_sum_int32 = nf.make_node('ReduceSum', nf.make_node('Cast', Q_X, {'to':int(onnx.TensorProto.INT32)}), {'axes':[-1]})
+                Q_X_sum_int32 = nf.make_node_with_axes('ReduceSum', nf.make_node('Cast', Q_X, {'to':int(onnx.TensorProto.INT32)}), [-1], onnx_opset_ver)
 
             if quantized_inputs is not None:
                 quantized_inputs[quantized_inputs_key] = (scale_X, bias_X, Q_X, Q_X_sum_int32)
@@ -238,7 +288,7 @@ def convert_matmul_model(input_model, output_model, only_for_scan=False, share_i
     out_mp = onnx.ModelProto()
     out_mp.CopyFrom(in_mp)
     out_mp.ir_version = 5 # update ir version to avoid requirement of initializer in graph input
-    ensure_opset(out_mp, 10) # bump up to ONNX opset 10, which is required for MatMulInteger
+    onnx_opset_ver = ensure_opset(out_mp, 10) # bump up to ONNX opset 10, which is required for MatMulInteger
     ensure_opset(out_mp, 1, 'com.microsoft') # add MS domain for MatMulInteger16
     out_mp.graph.ClearField('node')
     nf = NodeFactory(out_mp.graph)
@@ -249,12 +299,12 @@ def convert_matmul_model(input_model, output_model, only_for_scan=False, share_i
             continue
 
         if in_n.op_type == 'MatMul' and not only_for_scan:
-            if quantize_matmul_2d_with_weight(in_n, in_mp.graph, nf, converted_weights, quantized_inputs, qcfg_dict, export_qcfg_json, default_qcfg):
+            if quantize_matmul_2d_with_weight(in_n, in_mp.graph, nf, converted_weights, quantized_inputs, qcfg_dict, export_qcfg_json, default_qcfg, onnx_opset_ver):
                 continue
 
         out_n = out_mp.graph.node.add()
         out_n.CopyFrom(in_n)
-        if in_n.op_type == 'Scan':
+        if in_n.op_type == 'Scan' or in_n.op_type == 'Loop':
             in_subgraph = NodeFactory.get_attribute(in_n, 'body')
             out_subgraph = NodeFactory.get_attribute(out_n, 'body')
             out_subgraph.ClearField('node')
@@ -262,7 +312,7 @@ def convert_matmul_model(input_model, output_model, only_for_scan=False, share_i
             subgraph_quantized_inputs = {} if share_input_quantization else None # remember quantized inputs that might be able to share between MatMuls
             for in_sn in in_subgraph.node:
                 if in_sn.op_type == 'MatMul':
-                    if quantize_matmul_2d_with_weight(in_sn, in_subgraph, scan_nf, converted_weights, subgraph_quantized_inputs, qcfg_dict, export_qcfg_json, default_qcfg):
+                    if quantize_matmul_2d_with_weight(in_sn, in_subgraph, scan_nf, converted_weights, subgraph_quantized_inputs, qcfg_dict, export_qcfg_json, default_qcfg, onnx_opset_ver):
                         continue
 
                 if upgrade_op(scan_nf, in_sn):

@@ -6,7 +6,9 @@
 #include <string>
 #include <vector>
 
-#include "core/framework/ml_value.h"
+#ifndef SHARED_PROVIDER
+#include "core/framework/ort_value.h"
+#endif
 
 namespace onnxruntime {
 class ExecutionProviders;
@@ -51,8 +53,7 @@ struct FeedsFetchesInfo {
 
 struct MLValueCopyInfo {
   OrtDevice source_device{};
-  OrtDevice target_device{};
-  const IExecutionProvider* allocation_provider{nullptr};
+  OrtDevice target_device{};  // default is CPU
 };
 
 class FeedsFetchesManager {

@@ -2,76 +2,134 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "slice_impl.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/tensor/slice_impl.h"
 
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T >
-__global__ void _SliceKernel(const int32_t dimension_count,
-                             const int64_t* starts,
-                             const int64_t* steps,
-                             const int64_t* input_strides,
-                             const fast_divmod* div_strides,
+template <bool is_grad, int DIMS, int NumThreadsPerBlock, int NumElementsPerThread, typename T>
+__global__ void _SliceKernel(const TArray<int64_t> starts,
+                             const TArray<int64_t> steps,
+                             const TArray<int64_t> input_strides,
+                             const TArray<fast_divmod> output_strides,
                              const T* input_data,
                              T* output_data,
                              const CUDA_LONG N) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  CUDA_LONG input_index = 0;
-  int div;
-  int mod = id;
-  int value = id;
-  int dim_idx = 0;
-  for (; dim_idx < dimension_count - 1; ++dim_idx) {
-    div_strides[dim_idx].divmod(value, div, mod);
-    input_index += (starts[dim_idx] + div * steps[dim_idx]) * input_strides[dim_idx];
-    value = mod;
+  CUDA_LONG start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+  CUDA_LONG input_indices[NumElementsPerThread];
+
+  CUDA_LONG id = start;
+#pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      CUDA_LONG input_index = 0;
+      int div;
+      int mod = id;
+      int value = id;
+      int dim = 0;
+#pragma unroll
+      for (; dim < DIMS - 1; ++dim) {
+        output_strides[dim].divmod(value, div, mod);
+        input_index += (starts[dim] + div * steps[dim]) * input_strides[dim];
+        value = mod;
+      }
+      input_index += starts[dim] + mod * steps[dim];
+      input_indices[i] = input_index;
+      id += NumThreadsPerBlock;
+    }
   }
-  input_index += starts[dim_idx] + mod * steps[dim_idx];
-  output_data[id] = input_data[input_index];
+
+  if (is_grad) {
+    id = start;
+#pragma unroll
+    for (int i = 0; i < NumElementsPerThread; i++) {
+      if (id < N) {
+        output_data[input_indices[i]] = input_data[id];
+        id += NumThreadsPerBlock;
+      }
+    }
+  } else {
+    id = start;
+#pragma unroll
+    for (int i = 0; i < NumElementsPerThread; i++) {
+      if (id < N) {
+        output_data[id] = input_data[input_indices[i]];
+        id += NumThreadsPerBlock;
+      }
+    }
+  }
 }
 
-Status SliceImpl(const size_t element_size,
-               const int32_t dimension_count,
-               const int64_t* starts,
-               const int64_t* steps,
-               const int64_t* input_strides,
-               const fast_divmod* output_div_strides,
-               const void* input_data,
-               void* output_data,
-               const size_t N) {
-  int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
+Status SliceImpl(cudaStream_t stream,
+                 const size_t element_size,
+                 const int32_t dimension_count,
+                 const TArray<int64_t>& starts,
+                 const TArray<int64_t>& steps,
+                 const TArray<int64_t>& input_strides,
+                 const TArray<fast_divmod>& output_strides,
+                 const void* input_data,
+                 void* output_data,
+                 const size_t N) {
+  return SliceImplEx<false>(stream, element_size, dimension_count, starts, steps, input_strides, output_strides, input_data,
+                            output_data, N);
+}
 
+Status SliceImplGrad(cudaStream_t stream,
+                     const size_t element_size,
+                     const int32_t dimension_count,
+                     const TArray<int64_t>& starts,
+                     const TArray<int64_t>& steps,
+                     const TArray<int64_t>& input_strides,
+                     const TArray<fast_divmod>& output_strides,
+                     const void* input_data,
+                     void* output_data,
+                     const size_t N) {
+  return SliceImplEx<true>(stream, element_size, dimension_count, starts, steps, input_strides, output_strides, input_data,
+                           output_data, N);
+}
+
+#define HANDLE_DIMS(ELEMENT_TYPE, DIMS)                                                     \
+  case DIMS: {                                                                              \
+    _SliceKernel<is_grad, DIMS, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread> \
+        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(                                \
+            starts, steps, input_strides, output_strides,                                   \
+            reinterpret_cast<const ToCudaType<ELEMENT_TYPE>::MappedType*>(input_data),      \
+            reinterpret_cast<ToCudaType<ELEMENT_TYPE>::MappedType*>(output_data),           \
+            (CUDA_LONG)N);                                                                  \
+  } break
+
+#define HANDLE_ELEMENT_TYPE(ELEMENT_TYPE) \
+  case sizeof(ELEMENT_TYPE): {            \
+    switch (dimension_count) {            \
+      HANDLE_DIMS(ELEMENT_TYPE, 1);       \
+      HANDLE_DIMS(ELEMENT_TYPE, 2);       \
+      HANDLE_DIMS(ELEMENT_TYPE, 3);       \
+      HANDLE_DIMS(ELEMENT_TYPE, 4);       \
+      HANDLE_DIMS(ELEMENT_TYPE, 5);       \
+      HANDLE_DIMS(ELEMENT_TYPE, 6);       \
+      HANDLE_DIMS(ELEMENT_TYPE, 7);       \
+      HANDLE_DIMS(ELEMENT_TYPE, 8);       \
+    }                                     \
+  } break
+
+template <bool is_grad>
+Status SliceImplEx(cudaStream_t stream,
+                   const size_t element_size,
+                   const int32_t dimension_count,
+                   const TArray<int64_t>& starts,
+                   const TArray<int64_t>& steps,
+                   const TArray<int64_t>& input_strides,
+                   const TArray<fast_divmod>& output_strides,
+                   const void* input_data,
+                   void* output_data,
+                   const size_t N) {
+  int blocksPerGrid = static_cast<int>(CeilDiv(N, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
   switch (element_size) {
-    case sizeof(int8_t):
-      _SliceKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-          dimension_count, starts, steps, input_strides, output_div_strides,
-          reinterpret_cast<const ToCudaType<int8_t>::MappedType*>(input_data),
-          reinterpret_cast<ToCudaType<int8_t>::MappedType*>(output_data),
-          (CUDA_LONG)N);
-      break;
-    case sizeof(int16_t):
-      _SliceKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-          dimension_count, starts, steps, input_strides, output_div_strides,
-          reinterpret_cast<const ToCudaType<int16_t>::MappedType*>(input_data),
-          reinterpret_cast<ToCudaType<int16_t>::MappedType*>(output_data),
-          (CUDA_LONG)N);
-      break;
-    case sizeof(int32_t):
-      _SliceKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-          dimension_count, starts, steps, input_strides, output_div_strides,
-          reinterpret_cast<const ToCudaType<int32_t>::MappedType*>(input_data),
-          reinterpret_cast<ToCudaType<int32_t>::MappedType*>(output_data),
-          (CUDA_LONG)N);
-      break;
-    case sizeof(int64_t):
-      _SliceKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-          dimension_count, starts, steps, input_strides, output_div_strides,
-          reinterpret_cast<const ToCudaType<int64_t>::MappedType*>(input_data),
-          reinterpret_cast<ToCudaType<int64_t>::MappedType*>(output_data),
-          (CUDA_LONG)N);
-      break;
+    HANDLE_ELEMENT_TYPE(int8_t);
+    HANDLE_ELEMENT_TYPE(int16_t);
+    HANDLE_ELEMENT_TYPE(int32_t);
+    HANDLE_ELEMENT_TYPE(int64_t);
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for Slice operator");
   }

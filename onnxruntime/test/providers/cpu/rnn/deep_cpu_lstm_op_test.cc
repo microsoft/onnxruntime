@@ -8,6 +8,8 @@
 
 #include "core/providers/cpu/rnn/deep_cpu_lstm.h"
 #include "test/providers/provider_test_utils.h"
+#include "default_providers.h"
+
 using namespace std;
 namespace onnxruntime {
 namespace test {
@@ -25,12 +27,14 @@ T DuplicateContainer(const T& container) {
 
 static void RunLstmTest(const std::vector<float>& X_data,
                         const std::vector<float>& W_data,
+                        bool is_initializer_W,
                         const std::vector<float>& R_data,
+                        bool is_initializer_R,
                         const std::vector<float>& Y_data,
                         const std::vector<float>& Y_h_data,
                         const std::vector<float>& Y_c_data,
                         int64_t input_size,
-                        int batch_size,
+                        int64_t batch_size,
                         int64_t hidden_size,
                         int64_t seq_length,
                         const std::vector<float>* B_data = nullptr,
@@ -78,42 +82,42 @@ static void RunLstmTest(const std::vector<float>& X_data,
   std::vector<int64_t> R_dims = {num_directions, 4 * hidden_size, hidden_size};
 
   test.AddInput<float>("X", X_dims, X_data);
-  test.AddInput<float>("W", W_dims, W_data);
-  test.AddInput<float>("R", R_dims, R_data);
+  test.AddInput<float>("W", W_dims, W_data, is_initializer_W);
+  test.AddInput<float>("R", R_dims, R_data, is_initializer_R);
 
   if (B_data) {
     std::vector<int64_t> B_dims = {num_directions, 8 * hidden_size};
     test.AddInput<float>("B", B_dims, *B_data);
   } else {
-    test.AddMissingOptionalInput<float>();
+    test.AddOptionalInputEdge<float>();
   }
 
   if (sequence_lengths) {
     std::vector<int64_t> sequence_lens_dims{batch_size};
     test.AddInput<int>("sequence_lens", sequence_lens_dims, *sequence_lengths);
   } else {
-    test.AddMissingOptionalInput<int>();
+    test.AddOptionalInputEdge<int>();
   }
 
   if (initial_h_data && !initial_h_data->empty()) {
     std::vector<int64_t> initial_h_dims = {num_directions, batch_size, hidden_size};
     test.AddInput<float>("initial_h", initial_h_dims, *initial_h_data);
   } else {
-    test.AddMissingOptionalInput<float>();
+    test.AddOptionalInputEdge<float>();
   }
 
   if (initial_c_data && !initial_c_data->empty()) {
     std::vector<int64_t> initial_c_dims = {num_directions, batch_size, hidden_size};
     test.AddInput<float>("initial_c", initial_c_dims, *initial_c_data);
   } else {
-    test.AddMissingOptionalInput<float>();
+    test.AddOptionalInputEdge<float>();
   }
 
   if (P_data && !P_data->empty()) {
     std::vector<int64_t> P_dims = {num_directions, 3 * hidden_size};
     test.AddInput<float>("P", P_dims, *P_data);
   } else {
-    test.AddMissingOptionalInput<float>();
+    test.AddOptionalInputEdge<float>();
   }
 
   if (output_sequence != 0 && !Y_data.empty()) {
@@ -122,24 +126,25 @@ static void RunLstmTest(const std::vector<float>& X_data,
   } else {
     // add placeholder so node counts match as Y_h will always be the second Y_data,
     // so Y must exist as the first Y_data
-    test.AddMissingOptionalOutput<float>();
+    test.AddOptionalOutputEdge<float>();
   }
 
   if (!Y_h_data.empty()) {
     std::vector<int64_t> Y_h_dims{num_directions, batch_size, hidden_size};
     test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
   } else {
-    test.AddMissingOptionalOutput<float>();
+    test.AddOptionalOutputEdge<float>();
   }
 
   if (!Y_c_data.empty()) {
     std::vector<int64_t> Y_c_dims{num_directions, batch_size, hidden_size};
     test.AddOutput<float>("Y_c", Y_c_dims, Y_c_data);
   } else {
-    test.AddMissingOptionalOutput<float>();
+    test.AddOptionalOutputEdge<float>();
   }
 
-  test.Run();
+  // TensorRT failed on LSTM tests
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 void SimpleWeightsNoBiasTwoRows(std::string direction,
@@ -168,14 +173,14 @@ void SimpleWeightsNoBiasTwoRows(std::string direction,
     W_data = DuplicateContainer(W_data);
   }
 
-  RunLstmTest(X_data, W_data, R_data, Y_data, Y_h_data, Y_c_data,
+  RunLstmTest(X_data, W_data, false, R_data, false, Y_data, Y_h_data, Y_c_data,
               input_size, batch_size, hidden_size, seq_length,
               nullptr, nullptr, nullptr, nullptr, seq_lengths, direction);
 
   // need at least one output, so we need Y_h or Y_c to be requested (non-empty output to compare against) in order
   // to test Y not being returned (output_sequence == false)
   if (!Y_h_data.empty() || !Y_c_data.empty())
-    RunLstmTest(X_data, W_data, R_data, Y_data, Y_h_data, Y_c_data,
+    RunLstmTest(X_data, W_data, false, R_data, false, Y_data, Y_h_data, Y_c_data,
                 input_size, batch_size, hidden_size, seq_length,
                 nullptr, nullptr, nullptr, nullptr, seq_lengths, direction, 999.f, /* output_sequence*/ false);
 }
@@ -366,8 +371,12 @@ TEST(LSTMTest, BatchParallelFalseSeqLengthGreaterThanOne) {
   std::vector<float> Y_c_data{
       1.02721067f, 1.15254318f};
 
-  RunLstmTest(X_data, W_data, R_data, Y_data, {}, Y_c_data,
-              input_size, batch_size, hidden_size, seq_length);
+  for (bool is_initializer_W : std::initializer_list<bool>{false, true}) {
+    for (bool is_initializer_R : std::initializer_list<bool>{false, true}) {
+      RunLstmTest(X_data, W_data, is_initializer_W, R_data, is_initializer_R,
+                  Y_data, {}, Y_c_data, input_size, batch_size, hidden_size, seq_length);
+    }
+  }
 }
 
 // make sure GateComputations works correctly if batch_parallel_ is true due to large batch size
@@ -392,9 +401,13 @@ static void LargeBatchWithClip(const std::vector<float>& Y_h_data, float clip = 
 
   std::vector<float> R_data(num_directions * 4 * hidden_size * hidden_size, 0.1f);
 
-  RunLstmTest(X_data, W_data, R_data, {}, Y_h_data, {},
-              input_size, batch_size, hidden_size, seq_length,
-              nullptr, nullptr, nullptr, nullptr, nullptr, direction, clip);
+  for (bool is_initializer_W : std::initializer_list<bool>{false, true}) {
+    for (bool is_initializer_R : std::initializer_list<bool>{false, true}) {
+      RunLstmTest(X_data, W_data, is_initializer_W, R_data, is_initializer_R, {},
+                  Y_h_data, {}, input_size, batch_size, hidden_size, seq_length,
+                  nullptr, nullptr, nullptr, nullptr, nullptr, direction, clip);
+    }
+  }
 }
 
 TEST(LSTMTest, LargeBatchNoClipping) {
@@ -612,37 +625,25 @@ class LstmOpContext2x1x2x2 {
                bool input_forget = false,
                bool hasClip = true) {
     // run with and without output_sequence to test UniDirectionalLstm handling when Y isn't returned
-    ::onnxruntime::test::RunLstmTest(X, input_weights_, recurrent_weights_,
-                                     expected_Y, expected_Y_h, expected_Y_c,
-                                     input_size_, batch_size, hidden_size_, seq_length,
-                                     use_bias ? &bias_ : nullptr,
-                                     use_peepholes ? &peephole_weights_ : nullptr,
-                                     initial_h, initial_c,
-                                     sequence_lens,
-                                     direction_,
-                                     clip,
-                                     /*output_sequence*/ true,
-                                     input_forget,
-                                     activation_func_names_,
-                                     activation_alphas_,
-                                     activation_betas_,
-                                     hasClip);
-
-    ::onnxruntime::test::RunLstmTest(X, input_weights_, recurrent_weights_,
-                                     expected_Y, expected_Y_h, expected_Y_c,
-                                     input_size_, batch_size, hidden_size_, seq_length,
-                                     use_bias ? &bias_ : nullptr,
-                                     use_peepholes ? &peephole_weights_ : nullptr,
-                                     initial_h, initial_c,
-                                     sequence_lens,
-                                     direction_,
-                                     clip,
-                                     /*output_sequence*/ false,
-                                     input_forget,
-                                     activation_func_names_,
-                                     activation_alphas_,
-                                     activation_betas_,
-                                     hasClip);
+    for (bool output_sequence : std::initializer_list<bool>{false, true}) {
+      ::onnxruntime::test::RunLstmTest(X,
+                                       input_weights_, false,
+                                       recurrent_weights_, false,
+                                       expected_Y, expected_Y_h, expected_Y_c,
+                                       input_size_, batch_size, hidden_size_, seq_length,
+                                       use_bias ? &bias_ : nullptr,
+                                       use_peepholes ? &peephole_weights_ : nullptr,
+                                       initial_h, initial_c,
+                                       sequence_lens,
+                                       direction_,
+                                       clip,
+                                       output_sequence,
+                                       input_forget,
+                                       activation_func_names_,
+                                       activation_alphas_,
+                                       activation_betas_,
+                                       hasClip);
+    }
   }
 
  private:
@@ -668,10 +669,8 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForwardPeepHole) {
   std::vector<float> Y_h_data = {-0.03277518f, 0.05935364f};
   std::vector<float> Y_c_data = {-0.0780206f, 0.098829f};
 
-  std::string direction = "forward";
-
   //Run Test
-  LstmOpContext2x1x2x2 context(direction);
+  LstmOpContext2x1x2x2 context("forward");
   context.RunTest(input, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data);
 }
 
@@ -1065,8 +1064,6 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthPartialZeros) {
                   &sequence_length, use_bias, use_peepholes);
 }
 
-// TODO this test fails for nGraph - need to investigate why
-#ifndef USE_NGRAPH
 TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthShorterThanInputSequenceLength) {
   const int seq_len = 2;
   const int batch_size = 1;
@@ -1207,7 +1204,142 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMZeroSeqInMiddle) {
   context.RunTest(X_data, batch_size, seq_len, nullptr, nullptr, Y_data, Y_h_data, Y_c_data,
                   &sequence_length, use_bias, use_peepholes, 0.0f, false, false);
 }
-#endif // USE_NGRAPH
+
+#ifndef ENABLE_TRAINING  // Prepacking is enabled only on non-training builds
+TEST(LSTMTest, SharedPrepackedWeights) {
+  int64_t seq_length = 2;
+  int batch_size = 2;
+  int64_t input_size = 1;
+  int64_t hidden_size = 3;
+  int num_directions = 1;
+
+  std::vector<float> X_data{1.f, 2.f, 10.f, 11.f};
+
+  std::vector<float> W_data{
+      0.1f, 0.2f, 0.3f, 0.4f,
+      1.f, 2.f, 3.f, 4.f,
+      10.f, 11.f, 12.f, 13.f};
+
+  std::vector<float> R_data(num_directions * 4 * hidden_size * hidden_size, 0.1f);
+
+  std::vector<float> Y_data{
+      0.28828835f, 0.36581863f, 0.45679406f,
+      0.34526032f, 0.47220859f, 0.55850911f,
+
+      0.84196719f, 0.89402526f, 0.91073048f,
+      0.85882828f, 0.90703777f, 0.92382453f};
+
+  OpTester test("LSTM");
+
+  std::vector<std::string> activations = {"sigmoid", "tanh", "tanh"};
+
+  test.AddAttribute<std::vector<string>>("activations", activations);
+
+  test.AddAttribute("direction", "forward");
+  test.AddAttribute("hidden_size", hidden_size);
+  test.AddAttribute<int64_t>("input_forget", false);
+  test.AddAttribute<float>("clip", 9999.f);
+
+  std::vector<int64_t> X_dims = {seq_length, batch_size, input_size};
+  std::vector<int64_t> W_dims = {num_directions, 4 * hidden_size, input_size};
+  std::vector<int64_t> R_dims = {num_directions, 4 * hidden_size, hidden_size};
+
+  test.AddInput<float>("X", X_dims, X_data);
+  test.AddInput<float>("W", W_dims, W_data, true);  //Trigger pre-packing
+  test.AddInput<float>("R", R_dims, R_data, true);  // Trigger pre-packing
+
+  // B data
+  test.AddOptionalInputEdge<float>();
+
+  // sequence
+  test.AddOptionalInputEdge<int>();
+
+  // initial_h
+  test.AddOptionalInputEdge<float>();
+
+  // initial_c
+  test.AddOptionalInputEdge<float>();
+
+  // P_data
+  test.AddOptionalInputEdge<float>();
+
+  std::vector<int64_t> Y_dims = {seq_length, num_directions, batch_size, hidden_size};
+  test.AddOutput<float>("Y", Y_dims, Y_data);
+
+  // Y_h
+  test.AddOptionalOutputEdge<float>();
+
+  // Y_c
+  test.AddOptionalOutputEdge<float>();
+
+  // W
+  OrtValue W;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape(W_dims),
+                       W_data.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), W);
+
+  // R
+  OrtValue R;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape(R_dims),
+                       R_data.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), R);
+
+  SessionOptions so;
+
+  // Set up weight(s) as a shared initializer to be shared between sessions
+  ASSERT_EQ(so.AddInitializer("W", &W), Status::OK());
+  ASSERT_EQ(so.AddInitializer("R", &R), Status::OK());
+
+  // We want all sessions running using this OpTester to be able to share pre-packed weights if applicable
+  test.EnableSharingOfPrePackedWeightsAcrossSessions();
+
+  // Pre-packing is limited just to the CPU EP for now and we will only test the CPU EP
+  // and we want to ensure that it is available in this build
+  auto cpu_ep = []() -> std::vector<std::unique_ptr<IExecutionProvider>> {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    return execution_providers;
+  };
+
+  size_t number_of_pre_packed_weights_counter_session_1 = 0;
+  size_t number_of_shared_pre_packed_weights_counter = 0;
+
+  // Session 1
+  {
+    auto ep_vec = cpu_ep();
+    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
+             &ep_vec, {}, &number_of_pre_packed_weights_counter_session_1, &number_of_shared_pre_packed_weights_counter);
+    // Assert that no pre-packed weights have been shared thus far
+    ASSERT_EQ(number_of_shared_pre_packed_weights_counter, static_cast<size_t>(0));
+  }
+
+  auto number_of_elements_in_shared_prepacked_buffers_container =
+      test.GetNumPrePackedWeightsShared();
+  // Assert that the number of elements in the shared container
+  // is the same as the number of weights that have been pre-packed
+  ASSERT_EQ(number_of_pre_packed_weights_counter_session_1, number_of_elements_in_shared_prepacked_buffers_container);
+
+  // On some platforms/architectures MLAS may choose to not do any pre-packing and the number of elements
+  // that have been pre-packed will be zero in which case we do not continue with the testing
+  // of "sharing" of pre-packed weights as there are no pre-packed weights to be shared at all.
+  if (number_of_pre_packed_weights_counter_session_1 == 0)
+    return;
+
+  // Session 2
+  {
+    size_t number_of_pre_packed_weights_counter_session_2 = 0;
+    auto ep_vec = cpu_ep();
+    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
+             &ep_vec, {}, &number_of_pre_packed_weights_counter_session_2, &number_of_shared_pre_packed_weights_counter);
+
+    // Assert that the same number of weights were pre-packed in both sessions
+    ASSERT_EQ(number_of_pre_packed_weights_counter_session_1, number_of_pre_packed_weights_counter_session_2);
+
+    // Assert that the number of pre-packed weights that were shared equals
+    // the number of pre-packed weights in the second session
+    ASSERT_EQ(number_of_pre_packed_weights_counter_session_2,
+              static_cast<size_t>(number_of_shared_pre_packed_weights_counter));
+  }
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

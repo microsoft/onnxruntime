@@ -2,12 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/common/common.h"
+#include "core/common/utf8_util.h"
 #include "core/framework/tensor.h"
 #include "core/framework/op_kernel.h"
-#include "core/graph/onnx_protobuf.h"
-#include "onnx/defs/schema.h"
-
-#include "core/common/utf8_util.h"
 #include "re2/re2.h"
 
 namespace onnxruntime {
@@ -131,8 +128,10 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
     size_t tokens = 0;  // length in utf8 chars
     if (!utf8_validate(reinterpret_cast<const unsigned char*>(s.data()), s.size(),
                        tokens)) {
+      // Please do not include the input text in the error message as it could
+      // be deemed as a compliance violation by teams using this operator
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Input string contains invalid utf8 chars: " + s);
+                    "Input string contains invalid utf8 chars");
     }
     max_tokens = std::max(max_tokens, tokens);
     ++curr_input;
@@ -463,7 +462,7 @@ Status Tokenizer::Compute(OpKernelContext* ctx) const {
   // Get input buffer ptr
   auto X = ctx->Input<Tensor>(0);
   if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
-  if (X->DataType() != DataTypeImpl::GetType<std::string>()) {
+  if (!X->IsDataTypeString()) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "tensor(string) expected as input");
   }
@@ -474,10 +473,10 @@ Status Tokenizer::Compute(OpKernelContext* ctx) const {
   size_t C = 0;
   if (input_dims.size() == 1) {
     N = 1;
-    C = input_dims[0];
+    C = gsl::narrow<size_t>(input_dims[0]);
   } else if (input_dims.size() == 2) {
-    N = input_dims[0];
-    C = input_dims[1];
+    N = gsl::narrow<size_t>(input_dims[0]);
+    C = gsl::narrow<size_t>(input_dims[1]);
   } else {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "Input dimensions are either [C] or [N][C] allowed");

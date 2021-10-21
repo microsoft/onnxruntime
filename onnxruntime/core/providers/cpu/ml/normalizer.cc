@@ -42,150 +42,138 @@ ONNX_CPU_OPERATOR_ML_KERNEL(
                                                      DataTypeImpl::GetTensorType<int64_t>()}),
     Normalizer);
 
-Status Normalizer::Compute(OpKernelContext* context) const {
-  const auto* input_tensor_ptr = context->Input<Tensor>(0);
-  ORT_ENFORCE(input_tensor_ptr != nullptr);
-  MLDataType input_type = input_tensor_ptr->DataType();
+template <typename T>
+void NormalizeMax(const T* in, float* out, int64_t num_batches, int64_t batch_size) {
+  for (int b = 0; b < num_batches; ++b) {
+    float max = std::numeric_limits<float>::lowest();
 
-  if (input_type == DataTypeImpl::GetType<float>()) {
-    Normalize<float>(context);
-  } else if (input_type == DataTypeImpl::GetType<double>()) {
-    Normalize<double>(context);
-  } else if (input_type == DataTypeImpl::GetType<int64_t>()) {
-    Normalize<int64_t>(context);
-  } else if (input_type == DataTypeImpl::GetType<int32_t>()) {
-    Normalize<int32_t>(context);
-  } else {
-    ORT_THROW("Invalid input type of ", input_type);
+    for (int i = 0; i < batch_size; ++i) {
+      max = std::max(max, static_cast<float>(*in++));
+    }
+
+    in -= batch_size;
+
+    if (max != 0.f) {
+      for (int i = 0; i < batch_size; ++i) {
+        *out++ = static_cast<float>(*in++) / max;
+      }
+    } else {
+      for (int i = 0; i < batch_size; ++i) {
+        *out++ = static_cast<float>(*in++);
+      }
+    }
+  }
+}
+
+template <typename T>
+static void NormalizeL1(const T* in, float* out, int64_t num_batches, int64_t batch_size) {
+  for (int b = 0; b < num_batches; ++b) {
+    float sum = 0.f;
+
+    for (int i = 0; i < batch_size; ++i) {
+      sum += static_cast<float>(std::abs(*in++));
+    }
+
+    in -= batch_size;
+
+    if (sum != 0.f) {
+      for (int i = 0; i < batch_size; ++i) {
+        *out++ = static_cast<float>(*in++) / sum;
+      }
+    } else {
+      for (int i = 0; i < batch_size; ++i) {
+        *out++ = static_cast<float>(*in++);
+      }
+    }
+  }
+}
+
+template <typename T>
+void NormalizeL2(const T* in, float* out, int64_t num_batches, int64_t batch_size) {
+  for (int b = 0; b < num_batches; ++b) {
+    float sum = 0.f;
+
+    for (int i = 0; i < batch_size; ++i) {
+      auto x = *in++;
+      auto x_sq = static_cast<float>(x * x);
+      *out++ = x_sq;
+      sum += x_sq;
+    }
+
+    in -= batch_size;
+    out -= batch_size;
+
+    if (sum != 0.f) {
+      for (int i = 0; i < batch_size; ++i) {
+        auto x = *in++;
+        auto x_sq = *out;
+
+        *out++ = (x < 0) ? std::sqrt(x_sq / sum) * -1 : std::sqrt(x_sq / sum);
+      }
+    } else {
+      for (int i = 0; i < batch_size; ++i) {
+        *out++ = static_cast<float>(*in++);
+      }
+    }
+  }
+}
+
+template <typename T>
+Status Normalizer::Normalize(OpKernelContext* context) const {
+  const Tensor& X = *context->Input<Tensor>(0);
+  const TensorShape& x_shape = X.Shape();
+
+  if (x_shape.NumDimensions() > 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Rank of input to Normalized must be less than 2. Got ",
+                           x_shape.NumDimensions());
+  }
+
+  const auto& x_dims = x_shape.GetDims();
+  int64_t num_batches = x_dims.size() == 1 ? 1 : x_dims[0];
+  int64_t batch_size = x_dims.size() == 1 ? x_dims[0] : x_dims[1];
+
+  Tensor* Y = context->Output(0, x_shape);
+
+  const T* input = X.template Data<T>();
+  float* output = Y->MutableData<float>();
+
+  switch (normalization_) {
+    case NORMALIZE::NMAX: {
+      NormalizeMax(input, output, num_batches, batch_size);
+      break;
+    }
+    case NORMALIZE::L1: {
+      NormalizeL1(input, output, num_batches, batch_size);
+      break;
+    }
+    case NORMALIZE::L2: {
+      NormalizeL2(input, output, num_batches, batch_size);
+      break;
+    }
+    default: {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected NORMALIZE value of ", normalization_);
+    }
   }
 
   return Status::OK();
 }
 
-template <typename T>
-void NormalizeMax(const gsl::span<const T>& in, gsl::span<float>& out,
-                  int64_t offset, int64_t stride, int64_t increment_by) {
-  float max = std::numeric_limits<float>::lowest();
-
-  for (int64_t i = offset, s = 0; s < stride; ++s, i += increment_by) {
-    max = std::max(max, static_cast<float>(in[i]));
+// MLTypeCallDispather implementation wrapper
+template <class T>
+struct Normalizer::CallNormalizerImpl {
+  Status operator()(const Normalizer* norm, OpKernelContext* ctx) const {
+    return norm->Normalize<T>(ctx);
   }
+};
 
-  if (max != 0.f) {
-    for (int64_t i = offset, s = 0; s < stride; ++s, i += increment_by) {
-      out[i] = static_cast<float>(in[i]) / max;
-    }
-  } else {
-    for (int64_t i = offset, s = 0; s < stride; ++s, i += increment_by) {
-      out[i] = static_cast<float>(in[i]);
-    }
-  }
-}
+Status Normalizer::Compute(OpKernelContext* context) const {
+  const auto& input_tensor_ptr = *context->Input<Tensor>(0);
 
-template <typename T>
-void NormalizeL1(const gsl::span<const T>& in, gsl::span<float>& out,
-                 int64_t offset, int64_t stride, int64_t increment_by) {
-  float sum = 0.f;
+  utils::MLTypeCallDispatcher<float, double, int64_t, int32_t>
+      t_disp(input_tensor_ptr.GetElementType());
 
-  for (int64_t i = offset, s = 0; s < stride; ++s, i += increment_by) {
-    sum += static_cast<float>(std::abs(in[i]));
-  }
-
-  if (sum != 0.f) {
-    for (int64_t i = offset, s = 0; s < stride; ++s, i += increment_by) {
-      out[i] = static_cast<float>(in[i]) / sum;
-    }
-  } else {
-    for (int64_t i = offset, s = 0; s < stride; ++s, i += increment_by) {
-      out[i] = static_cast<float>(in[i]);
-    }
-  }
-}
-
-template <typename T>
-void NormalizeL2(const gsl::span<const T>& in, gsl::span<float>& out,
-                 int64_t offset, int64_t stride, int64_t increment_by) {
-  float sum = 0.f;
-  for (int64_t i = offset, s = 0; s < stride; ++s, i += increment_by) {
-    auto x = in[i];
-    auto x_sq = static_cast<float>(x * x);
-    out[i] = x_sq;
-    sum += x_sq;
-  }
-
-  if (sum != 0.f) {
-    for (int64_t i = offset, s = 0; s < stride; ++s, i += increment_by) {
-      auto x = in[i];
-      auto x_sq = out[i];
-
-      if (x < 0)
-        out[i] = std::sqrt(x_sq / sum) * -1;
-      else
-        out[i] = std::sqrt(x_sq / sum);
-    }
-  } else {
-    for (int64_t i = offset, s = 0; s < stride; ++s, i += increment_by) {
-      out[i] = static_cast<float>(in[i]);
-    }
-  }
-}
-
-template <typename T>
-void Normalizer::Normalize(OpKernelContext* context) const {
-  const Tensor& X = *context->Input<Tensor>(0);
-  const TensorShape& x_shape = X.Shape();
-  const auto data_size = x_shape.Size();
-  const auto& x_dims = x_shape.GetDims();
-
-  Tensor* Y = context->Output(0, x_shape);
-
-  auto input = gsl::make_span(X.template Data<T>(), data_size);
-  auto output = gsl::make_span(Y->template MutableData<float>(), data_size);
-
-  int64_t stride = x_dims.size() == 1 ? x_dims[0] : x_dims[1];
-  int64_t loops = data_size / stride;
-
-  // we normalize on axis 1 so if there are more than 2 dimensions we need to increment the index
-  // by more than 1 as we process the stride
-  // for 1 and 2 dimension tensors we're normalizing across the row/s, so increment_by is 1
-  //
-  // e.g. if you have a tensor of shape {2, 2, 3}
-  // [[[ 1,  2,  3],
-  //   [ 4,  5,  6]],
-  //  [[ 7,  8,  9],
-  //   [10, 11, 12]]]
-  //
-  // we want to normalize (1,  4), (2,  5), (3,  6),
-  //                      (7, 10), (8, 11), (9, 12)
-  // so the stride would be 2, and the increment_by would be 3.
-  //
-  // we process a block of stride * increment_by entries before we need to skip to the next row of the 2nd dimension.
-  // the offset starts at 0 and increases by 1 each loop, for increment_by loops.
-  // the offset then jumps by stride * increment
-
-  int64_t increment_by = x_dims.size() > 1 ? x_shape.SizeFromDimension(2) : 1;
-
-  for (int64_t n = 0; n < loops; ++n) {
-    int64_t offset = (n % increment_by) + ((n / increment_by) * (stride * increment_by));
-
-    switch (normalization_) {
-      case NORMALIZE::NMAX: {
-        NormalizeMax(input, output, offset, stride, increment_by);
-        break;
-      }
-      case NORMALIZE::L1: {
-        NormalizeL1(input, output, offset, stride, increment_by);
-        break;
-      }
-      case NORMALIZE::L2: {
-        NormalizeL2(input, output, offset, stride, increment_by);
-        break;
-      }
-      default: {
-        ORT_THROW("Unexpected NORMALIZE value of ", normalization_);
-      }
-    }
-  }
+  auto status = t_disp.InvokeRet<Status, CallNormalizerImpl>(this, context);
+  return status;
 }
 
 }  // namespace ml

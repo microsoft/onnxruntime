@@ -24,6 +24,32 @@ Abstract:
 
 Macro Description:
 
+    This macro emits the assembler directives to annotate a new function.
+
+Arguments:
+
+    FunctionName - Supplies the name of the function.
+
+--*/
+
+        .macro FUNCTION_ENTRY FunctionName
+
+        .p2align 4
+#if defined(__APPLE__)
+        .globl  _\FunctionName\()
+_\FunctionName\():
+#else
+        .globl  \FunctionName\()
+        .type   \FunctionName\(),@function
+\FunctionName\():
+#endif
+
+        .endm
+
+/*++
+
+Macro Description:
+
     This macro generates an optimization for "add reg,128" which can instead
     be encoded as "sub reg,-128" to reduce code size by using a signed 8-bit
     value.
@@ -97,5 +123,28 @@ Arguments:
 .if (\Count1\() >= \Value1\()) && (\Count2\() >= \Value2\())
         \Statement\()
 .endif
+
+        .endm
+
+/*++
+
+Macro Description:
+
+    This macro emits the statement for each register listed in the register
+    list. The statement can use RegItem to access the current register.
+
+Arguments:
+
+    RegList - Supplies the list of registers.
+
+    Statement - Supplies the statement to emit.
+
+--*/
+
+        .macro EmitForEachRegister RegList, Statement
+
+        .irp    RegItem, \RegList\()
+        \Statement\()
+        .endr
 
         .endm

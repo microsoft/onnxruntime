@@ -1,56 +1,48 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gather.h"
-#include "gather_impl.h"
+#include "core/providers/cuda/tensor/gather_impl.h"
+#include "core/providers/cuda/tensor/gather.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace cuda {
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Gather,
     kOnnxDomain,
-    1,
+    1, 10,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("Tind", std::vector<MLDataType>{
                                     DataTypeImpl::GetTensorType<int32_t>(),
                                     DataTypeImpl::GetTensorType<int64_t>()}),
     Gather);
 
-#define TYPED_FUNCTION_CALL(T)                                                  \
-  if (T_type == DataTypeImpl::GetType<T>()) {                                   \
-    T* output_data = p.output_tensor->template MutableData<T>();                \
-    const T* input_data = p.input_tensor->template Data<T>();                   \
-    if (Tin_type == DataTypeImpl::GetType<int32_t>()) {                         \
-      if (p.output_tensor->Shape().Size() > 0) {                                \
-        GatherImpl(                                                             \
-            input_block_size,                                                   \
-            indices_max,                                                        \
-            p.indices_tensor->template Data<int32_t>(),                         \
-            div_strides.GpuPtr(),                                               \
-            reinterpret_cast<const ToCudaType<T>::MappedType*>(input_data),     \
-            reinterpret_cast<typename ToCudaType<T>::MappedType*>(output_data), \
-            p.output_tensor->Shape().Size());                                   \
-      }                                                                         \
-      return Status::OK();                                                      \
-    }                                                                           \
-    if (Tin_type == DataTypeImpl::GetType<int64_t>()) {                         \
-      if (p.output_tensor->Shape().Size() > 0) {                                \
-        GatherImpl(                                                             \
-            input_block_size,                                                   \
-            indices_max,                                                        \
-            p.indices_tensor->template Data<int64_t>(),                         \
-            div_strides.GpuPtr(),                                               \
-            reinterpret_cast<const ToCudaType<T>::MappedType*>(input_data),     \
-            reinterpret_cast<typename ToCudaType<T>::MappedType*>(output_data), \
-            p.output_tensor->Shape().Size());                                   \
-      }                                                                         \
-      return Status::OK();                                                      \
-    }                                                                           \
-  }
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Gather,
+    kOnnxDomain,
+    11, 12,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("Tind", std::vector<MLDataType>{
+                                    DataTypeImpl::GetTensorType<int32_t>(),
+                                    DataTypeImpl::GetTensorType<int64_t>()}),
+    Gather);
+
+// explicit negative axis support
+ONNX_OPERATOR_KERNEL_EX(
+    Gather,
+    kOnnxDomain,
+    13,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("Tind", std::vector<MLDataType>{
+                                    DataTypeImpl::GetTensorType<int32_t>(),
+                                    DataTypeImpl::GetTensorType<int64_t>()}),
+    Gather);
 
 Status Gather::ComputeInternal(OpKernelContext* context) const {
   Prepare p;
@@ -64,29 +56,39 @@ Status Gather::ComputeInternal(OpKernelContext* context) const {
   const int64_t output_block_size = N * block_size;
   const int64_t indices_max = input_shape[p.axis];
 
-  // Put the output_block_size and block_size into div_strides
-  // for divmod calling in _GatherKernel to calculate the input index
-  CudaAsyncBuffer<fast_divmod> div_strides(this, 2);
-  gsl::span<fast_divmod> div_strides_span = div_strides.CpuSpan();
-  div_strides_span[0] = fast_divmod(gsl::narrow_cast<int>(output_block_size));
-  div_strides_span[1] = fast_divmod(gsl::narrow_cast<int>(block_size));
-  ORT_RETURN_IF_ERROR(div_strides.CopyToGpu());
+  const void* input_data = p.input_tensor->DataRaw();
+  const void* indices_data = p.indices_tensor->DataRaw();
+  void* output_data = p.output_tensor->MutableDataRaw();
 
-  MLDataType T_type = p.input_tensor->DataType();
-  MLDataType Tin_type = p.indices_tensor->DataType();
+  if (p.output_tensor->Shape().Size() == 0) {
+    return Status::OK();
+  }
 
-  TYPED_FUNCTION_CALL(int8_t)
-  TYPED_FUNCTION_CALL(int16_t)
-  TYPED_FUNCTION_CALL(int32_t)
-  TYPED_FUNCTION_CALL(int64_t)
-  TYPED_FUNCTION_CALL(uint8_t)
-  TYPED_FUNCTION_CALL(uint16_t)
-  TYPED_FUNCTION_CALL(uint32_t)
-  TYPED_FUNCTION_CALL(uint64_t)
-  TYPED_FUNCTION_CALL(MLFloat16)
-  TYPED_FUNCTION_CALL(float)
-  TYPED_FUNCTION_CALL(double)
-  TYPED_FUNCTION_CALL(bool)
+  const fast_divmod divmod_output_block_size(gsl::narrow_cast<int>(output_block_size));
+  const fast_divmod divmod_block_size(gsl::narrow_cast<int>(block_size));
+
+  const size_t element_size = p.input_tensor->DataType()->Size();
+  const size_t index_element_size = p.indices_tensor->DataType()->Size();
+
+  // CUDA Kernel implementation supports element sizes of:
+  // int8_t, int16_t, int32_t and int64_t which covers all supported
+  // types since there is no computations necessary just data movement
+  if (p.indices_tensor->IsDataType<int32_t>() ||
+      p.indices_tensor->IsDataType<int64_t>()) {
+    GatherImpl(
+        Stream(),
+        input_block_size,
+        indices_max,
+        divmod_output_block_size,
+        divmod_block_size,
+        indices_data,
+        index_element_size,
+        input_data,
+        element_size,
+        output_data,
+        p.output_tensor->Shape().Size());
+    return Status::OK();
+  }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type for Tind not supported yet in Gather.");
 }

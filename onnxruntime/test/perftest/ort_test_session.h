@@ -12,9 +12,9 @@ namespace perftest {
 class OnnxRuntimeTestSession : public TestSession {
  public:
   OnnxRuntimeTestSession(Ort::Env& env, std::random_device& rd, const PerformanceTestConfig& performance_test_config,
-                         const TestModelInfo* m);
+                         const TestModelInfo& m);
 
-  void PreLoadTestData(size_t test_data_id, size_t input_id, OrtValue* value) override {
+  void PreLoadTestData(size_t test_data_id, size_t input_id, Ort::Value&& value) override {
     if (test_inputs_.size() < test_data_id + 1) {
       test_inputs_.resize(test_data_id + 1);
     }
@@ -22,8 +22,10 @@ class OnnxRuntimeTestSession : public TestSession {
       for (int i = 0; i < input_length_; i++)
         test_inputs_[test_data_id].emplace_back(nullptr);
     }
-    test_inputs_[test_data_id][input_id] = Ort::Value{value};
+    test_inputs_[test_data_id][input_id] = std::move(value);
   }
+
+  bool PopulateGeneratedInputTestData();
 
   ~OnnxRuntimeTestSession() override {
     for (char* p : input_names_) {

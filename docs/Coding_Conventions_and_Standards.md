@@ -1,7 +1,7 @@
 # ONNX Runtime coding conventions and standards
 
 
-## Code Style
+## C++ Code Style
 
 Google style from https://google.github.io/styleguide/cppguide.html with a few minor alterations:
 
@@ -26,10 +26,13 @@ Other
 * Don't use else after return. see: [https://llvm.org/docs/CodingStandards.html#don-t-use-else-after-a-return](https://llvm.org/docs/CodingStandards.html#don-t-use-else-after-a-return)
 * Don't overuse std::shared\_ptr. Use std::shared\_ptr only if it's not clear when and where the object will be deallocated. See also: [https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-shared_ptr](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-shared_ptr)
 * Avoid using the 'long' type, which could be either 32 bits or 64 bits.
-* If there is a legitimate need to allocate objects on the heap, prefer using onnxruntime::make_unique(). References for the reasoning:
-   * https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md#Rh-make_unique
-   * https://herbsutter.com/2013/05/29/gotw-89-solution-smart-pointers/
-   * https://abseil.io/tips/126
+* If there is a legitimate need to allocate objects on the heap, prefer using std::make_unique(). References for the reasoning:
+  * https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md#Rh-make_unique
+  * https://herbsutter.com/2013/05/29/gotw-89-solution-smart-pointers/
+  * https://abseil.io/tips/126
+* Use [SafeInt](https://github.com/dcleblanc/SafeInt) when calculating the size of memory to allocate to protect against overflow errors
+  * `#include "core/common/safeint.h"`
+  * search for `SafeInt<size_t>` in the code for examples
 
 #### Clang-format
 
@@ -55,3 +58,20 @@ In order to check that all the code you expect to be covered by testing is cover
 There is a configuration file in onnxruntime\VSCodeCoverage.runsettings that can be used to configure code coverage so that it reports numbers for just the onnxruntime code. Select that file in Visual Studio via the Test menu: 'Test' -> 'Test Settings' -> 'Select Test Settings File'. 
 
 Using 'Show Code Coverage Coloring' will allow you to visually inspect which lines were hit by the tests. See <https://docs.microsoft.com/en-us/visualstudio/test/using-code-coverage-to-determine-how-much-code-is-being-tested?view=vs-2017>.
+
+## Python Code Style
+
+Please adhere to the [PEP8 Style Guide](https://www.python.org/dev/peps/pep-0008/). 
+A maximum line length of 120 characters is allowed for consistency with the C++ code.
+
+Code can be validated with [flake8](https://pypi.org/project/flake8/) using the configuration file in the root directory called [.flake8](https://github.com/microsoft/onnxruntime/tree/master/.flake8).
+
+The [autopep8](https://pypi.org/project/autopep8/) tool can be used to automatically fix a range of PEP8 issues, as can [yapf](https://github.com/google/yapf). There's a yapf configuration file [here](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/.style.yapf).
+
+Editors such as PyCharm [(see here)](https://www.jetbrains.com/help/pycharm/code-inspection.html) and Visual Studio Code [(see here)](https://code.visualstudio.com/docs/python/linting#_flake8) can be configured to check for PEP8 issues. 
+
+## Objective-C/C++ Code Style
+
+Please follow the [Google Objective-C/C++ Style Guide](https://google.github.io/styleguide/objcguide.html).
+
+Clang-format can be used to format Objective-C/C++ code. The .clang-format file is in the repository root directory.

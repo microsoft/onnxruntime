@@ -1,14 +1,19 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 """
 Implements ONNX's backend API.
 """
+from onnx import ModelProto
+from onnx import helper
+from onnx import version
 from onnx.checker import check_model
 from onnx.backend.base import Backend
 from onnxruntime import InferenceSession, SessionOptions, get_device
 from onnxruntime.backend.backend_rep import OnnxRuntimeBackendRep
+import unittest
+import os
 
 
 class OnnxRuntimeBackend(Backend):
@@ -20,7 +25,10 @@ class OnnxRuntimeBackend(Backend):
     multiple runtimes with the same API.
     `Importing models from ONNX to Caffe2 <https://github.com/onnx/tutorials/blob/master/tutorials/OnnxCaffe2Import.ipynb>`_
     shows how to use *caffe2* as a backend for a converted model.
-    """
+    Note: This is not the official Python API.
+    """  # noqa: E501
+
+    allowReleasedOpsetsOnly = bool(os.getenv('ALLOW_RELEASED_ONNX_OPSET_ONLY', '1') == '1')
 
     @classmethod
     def is_compatible(cls, model, device=None, **kwargs):
@@ -36,11 +44,44 @@ class OnnxRuntimeBackend(Backend):
         return cls.supports_device(device)
 
     @classmethod
+    def is_opset_supported(cls, model):
+        """
+        Return whether the opset for the model is supported by the backend.
+        When By default only released onnx opsets are allowed by the backend
+        To test new opsets env variable ALLOW_RELEASED_ONNX_OPSET_ONLY should be set to 0
+
+        :param model: Model whose opsets needed to be verified.
+        :return: boolean and error message if opset is not supported.
+        """
+        if cls.allowReleasedOpsetsOnly:
+            for opset in model.opset_import:
+                domain = opset.domain if opset.domain else 'ai.onnx'
+                try:
+                    key = (domain, opset.version)
+                    if not (key in helper.OP_SET_ID_VERSION_MAP):
+                        error_message = ("Skipping this test as only released onnx opsets are supported."
+                                         "To run this test set env variable ALLOW_RELEASED_ONNX_OPSET_ONLY to 0."
+                                         " Got Domain '{0}' version '{1}'.".format(domain, opset.version))
+                        return False, error_message
+                except AttributeError:
+                    # for some CI pipelines accessing helper.OP_SET_ID_VERSION_MAP
+                    # is generating attribute error. TODO investigate the pipelines to
+                    # fix this error. Falling back to a simple version check when this error is encountered
+                    if (domain == 'ai.onnx' and opset.version > 12) or (domain == 'ai.ommx.ml' and opset.version > 2):
+                        error_message = ("Skipping this test as only released onnx opsets are supported."
+                                         "To run this test set env variable ALLOW_RELEASED_ONNX_OPSET_ONLY to 0."
+                                         " Got Domain '{0}' version '{1}'.".format(domain, opset.version))
+                        return False, error_message
+        return True, ""
+
+    @classmethod
     def supports_device(cls, device):
         """
         Check whether the backend is compiled with particular device support.
         In particular it's used in the testing suite.
         """
+        if device == 'CUDA':
+            device = 'GPU'
         return device in get_device()
 
     @classmethod
@@ -75,8 +116,21 @@ class OnnxRuntimeBackend(Backend):
             return cls.prepare(inf, device, **kwargs)
         else:
             # type: ModelProto
-            check_model(model)
-            bin = model.SerializeToString()
+            # check_model serializes the model anyways, so serialize the model once here
+            # and reuse it below in the cls.prepare call to avoid an additional serialization
+            # only works with onnx >= 1.10.0 hence the version check
+            onnx_version = tuple(map(int, (version.version.split(".")[:3])))
+            onnx_supports_serialized_model_check = onnx_version >= (1, 10, 0)
+            bin_or_model = model.SerializeToString() if onnx_supports_serialized_model_check else model
+            check_model(bin_or_model)
+            opset_supported, error_message = cls.is_opset_supported(model)
+            if not opset_supported:
+                raise unittest.SkipTest(error_message)
+            # Now bin might be serialized, if it's not we need to serialize it otherwise we'll have
+            # an infinite recursive call
+            bin = bin_or_model
+            if not isinstance(bin, (str, bytes)):
+                bin = bin.SerializeToString()
             return cls.prepare(bin, device, **kwargs)
 
     @classmethod

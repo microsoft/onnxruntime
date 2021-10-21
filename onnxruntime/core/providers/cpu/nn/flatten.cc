@@ -23,11 +23,20 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Flatten);
 
 // Opset 11 starts to support Neg Axis.
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Flatten,
     11,
+    12,
     KernelDefBuilder()
         .Alias(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     Flatten);
-}
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Flatten,
+    13,
+    KernelDefBuilder()
+        .Alias(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    Flatten);
+}  // namespace onnxruntime

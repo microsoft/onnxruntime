@@ -4,10 +4,12 @@
 #pragma once
 
 #include <cmath>
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/providers/cpu/nn/pool_attributes.h"
 #include "core/util/math.h"
+#endif
+#include "core/providers/cpu/nn/pool_attributes.h"
 #include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
@@ -101,15 +103,13 @@ class LpPool {
 class PoolBase {
  private:
   static int GetStartVersion(const OpKernelInfo& info) {
-    int start, end;
-    info.GetKernelDef().SinceVersion(&start, &end);
-    return start;
+    return info.node().SinceVersion();
   }
 
  protected:
   PoolBase(const OpKernelInfo& info)
-   : op_name_(info.GetKernelDef().OpName()),
-     pool_attrs_(info, op_name_, GetStartVersion(info)) {
+      : op_name_(info.GetKernelDef().OpName().rfind("QLinear", 0) != 0 ? info.GetKernelDef().OpName() : info.GetKernelDef().OpName().substr(7)),
+        pool_attrs_(info, op_name_, GetStartVersion(info)) {
   }
 
   ~PoolBase() = default;

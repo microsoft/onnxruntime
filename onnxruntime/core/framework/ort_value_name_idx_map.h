@@ -22,9 +22,9 @@ class OrtValueNameIdxMap {
   int Add(const std::string& name) {
     auto it = map_.find(name);
     if (it == map_.end()) {
-      int idx;
-      idx = ort_value_max_idx_++;
+      int idx = next_idx_++;
       map_.insert(it, {name, idx});
+      idx_name_map_[idx] = name;
       return idx;
     }
     return it->second;
@@ -42,8 +42,18 @@ class OrtValueNameIdxMap {
     return common::Status::OK();
   }
 
+  common::Status GetName(int idx, std::string& name) const {
+    auto it = idx_name_map_.find(idx);
+    if (it == idx_name_map_.end()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Could not find OrtValue with idx '", idx, "'");
+    }
+
+    name = it->second;
+    return common::Status::OK();
+  }
+
   size_t Size() const { return map_.size(); };
-  int MaxIdx() const { return ort_value_max_idx_; }
+  int MaxIdx() const { return next_idx_ - 1; }
 
   const_iterator begin() const noexcept { return map_.cbegin(); }
   const_iterator end() const noexcept { return map_.cend(); }
@@ -51,8 +61,8 @@ class OrtValueNameIdxMap {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtValueNameIdxMap);
 
-  int ort_value_max_idx_ = 0;
+  int next_idx_ = 0;
   std::unordered_map<std::string, int> map_;
+  std::unordered_map<int, std::string> idx_name_map_;
 };
-using OrtValueNameIdxMap = OrtValueNameIdxMap;
 }  // namespace onnxruntime

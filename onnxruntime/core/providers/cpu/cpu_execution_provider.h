@@ -27,23 +27,23 @@ class CPUExecutionProvider : public IExecutionProvider {
  public:
   explicit CPUExecutionProvider(const CPUExecutionProviderInfo& info)
       : IExecutionProvider{onnxruntime::kCpuExecutionProvider} {
-    DeviceAllocatorRegistrationInfo device_info{OrtMemTypeDefault,
-                                                [](int) { return onnxruntime::make_unique<CPUAllocator>(); },
-                                                std::numeric_limits<size_t>::max()};
+    bool create_arena = info.create_arena;
+
 #ifdef USE_JEMALLOC
-    ORT_UNUSED_PARAMETER(info);
-    //JEMalloc already has memory pool, so just use device allocator.
-    InsertAllocator(
-        std::shared_ptr<IArenaAllocator>(
-            onnxruntime::make_unique<DummyArena>(device_info.factory(0))));
-#else
-    if (info.create_arena)
-      InsertAllocator(CreateAllocator(device_info));
-    else
-      InsertAllocator(
-          std::shared_ptr<IArenaAllocator>(
-              onnxruntime::make_unique<DummyArena>(device_info.factory(0))));
+#if defined(USE_MIMALLOC_ARENA_ALLOCATOR) || defined(USE_MIMALLOC_STL_ALLOCATOR)
+#error jemalloc and mimalloc should not both be enabled
 #endif
+    //JEMalloc already has memory pool, so just use device allocator.
+    create_arena = false;
+#elif !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
+    //Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
+    create_arena = false;
+#endif
+
+    AllocatorCreationInfo device_info{[](int) { return std::make_unique<TAllocator>(); },
+                                      0, create_arena};
+
+    InsertAllocator(CreateAllocator(device_info));
   }
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
@@ -52,4 +52,8 @@ class CPUExecutionProvider : public IExecutionProvider {
  private:
   std::vector<FuseRuleFn> fuse_rules_;
 };
+
+// Registers all available CPU kernels
+Status RegisterCPUKernels(KernelRegistry& kernel_registry);
+
 }  // namespace onnxruntime

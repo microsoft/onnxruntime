@@ -51,9 +51,9 @@ GenerateSequence(OutputIter out) {
 
 template <class T>
 struct ToTestableType {
- static T to_type(T v) {
-  return v;
- }
+  static T to_type(T v) {
+    return v;
+  }
 };
 
 template <>
@@ -65,7 +65,7 @@ struct ToTestableType<MLFloat16> {
 
 template <>
 struct ToTestableType<BFloat16> {
-  inline float to_type(BFloat16 v) {
+  static float to_type(BFloat16 v) {
     return v.ToFloat();
   }
 };
@@ -120,7 +120,7 @@ TEST(MathOpTest, Sign_uint64) {
   test.AddOutput<uint64_t>("output", input_dims, output);
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
-
+//we disable this test for openvino as openvino ep supports only FP32 Precision
 TEST(MathOpTest, Sign_int64) {
   using namespace test_sign_internal;
   OpTester test("Sign", 9);
@@ -134,7 +134,7 @@ TEST(MathOpTest, Sign_int64) {
   std::vector<int64_t> output;
   TestImpl<int64_t>(input.cbegin(), input.cend(), std::back_inserter(output));
   test.AddOutput<int64_t>("output", input_dims, output);
-  test.Run(OpTester::ExpectResult::kExpectSuccess);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
 
 TEST(MathOpTest, Sign_float) {
@@ -181,6 +181,22 @@ TEST(MathOpTest, Sign_MLFloat16) {
   std::vector<MLFloat16> output;
   TestImpl<MLFloat16>(input.cbegin(), input.cend(), std::back_inserter(output));
   test.AddOutput<MLFloat16>("output", input_dims, output);
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(MathOpTest, Sign_BFloat16) {
+  using namespace test_sign_internal;
+  OpTester test("Sign", 13);
+
+  std::vector<int64_t> input_dims{7};
+  std::vector<BFloat16> input;
+  GenerateSequence<BFloat16>(std::back_inserter(input));
+  ASSERT_EQ(input.size(), 7U);
+  test.AddInput<BFloat16>("input", input_dims, input);
+
+  std::vector<BFloat16> output;
+  TestImpl<BFloat16>(input.cbegin(), input.cend(), std::back_inserter(output));
+  test.AddOutput<BFloat16>("output", input_dims, output);
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 

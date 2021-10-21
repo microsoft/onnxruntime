@@ -3,6 +3,7 @@
 
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/gelu_fusion.h"
+#include "core/optimizer/utils.h"
 #include "core/graph/graph_utils.h"
 #include "float.h"
 #include <deque>
@@ -10,49 +11,6 @@
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
-
-static bool CheckConstantInput(const Graph& graph, const NodeArg& input_arg, float expected_value) {
-  auto shape = input_arg.Shape();
-  if (shape == nullptr) {
-    // shape inferencing wasn't able to populate shape information for this NodeArg
-    return false;
-  }
-
-  auto dim_size = shape->dim_size();
-  if (dim_size != 0) {
-    // only check scalar.
-    return false;
-  }
-
-  const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, input_arg.Name());
-  if (tensor_proto == nullptr) {
-    return false;
-  }
-
-  auto init_const = onnxruntime::make_unique<Initializer>(*tensor_proto);
-  const auto data_type = tensor_proto->data_type();
-  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    float* val = init_const->data<float>();
-    float diff = std::abs(val[0] - static_cast<float>(expected_value));
-    if (diff > FLT_EPSILON) {
-      return false;
-    }
-  } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE) {
-    double* val = init_const->data<double>();
-    double diff = std::abs(val[0] - static_cast<double>(expected_value));
-    if (diff > DBL_EPSILON) {
-      return false;
-    }
-  } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-    MLFloat16* val = init_const->data<MLFloat16>();
-    float diff = std::abs(math::halfToFloat(val[0].val) - static_cast<float>(expected_value));
-    if (diff > FLT_EPSILON) {
-      return false;
-    }
-  }
-
-  return true;
-}
 
 // Gelu supports limited data types.
 static std::vector<std::string> supported_data_types{"tensor(float16)", "tensor(float)", "tensor(double)"};
@@ -66,116 +24,159 @@ static bool IsSupportedDataType(const Node& node) {
   }
   return true;
 }
+/*
+     This function fuses subgraph like the following into one Gelu node.
+     Subgraph pattern 1:
+                   +-------Mul(0.5)---------------------+
+                   |                                    |
+                   |                                    v
+                [root] --> Div -----> Erf  --> Add --> Mul ==>
+                          (B=1.4142...)        (1)
 
-Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
+      Subgraph pattern 2:
+                   +------------------------------------+
+                   |                                    |
+                   |                                    v
+                [root] --> Div -----> Erf  --> Add --> Mul -->Mul ==>
+                          (B=1.4142...)        (1)            (0.5)
+
+       After Fusion:
+                [root]--> Gelu ==>
+*/
+Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-  std::deque<onnxruntime::NodeIndex> removed_nodes;
 
   for (auto node_index : node_topology_list) {
-    auto& div = *graph.GetNode(node_index);
-    ORT_RETURN_IF_ERROR(Recurse(div, modified, graph_level));
+    auto* p_div = graph.GetNode(node_index);
+    if (p_div == nullptr)
+      continue;  // we removed the node as part of an earlier fusion
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(div, "Div", {7}) ||
+    Node& div = *p_div;
+    ORT_RETURN_IF_ERROR(Recurse(div, modified, graph_level, logger));
+
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(div, "Div", {7, 13, 14}) ||
         !graph_utils::IsSupportedProvider(div, GetCompatibleExecutionProviders()) ||
-        div.GetOutputEdgesCount() != 1 ||
+        !optimizer_utils::CheckOutputEdges(graph, div, 1) ||
         !IsSupportedDataType(div)) {
       continue;
     }
 
     // Check second input is sqrt(2)
-    if (!CheckConstantInput(graph, *(div.MutableInputDefs()[1]), static_cast<float>(M_SQRT2))) {
+    // Some Bert model uses this approximation of SQRT2 in the Gelu function
+    float approximated_sqrt_two = 1.4142099618911743f;
+    if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(div.InputDefs()[1]), approximated_sqrt_two, true) &&
+        !optimizer_utils::IsInitializerWithExpectedValue(graph, *(div.InputDefs()[1]), static_cast<float>(M_SQRT2), true)) {
       continue;
     }
 
-    const Node& erf_node = *(div.OutputNodesBegin());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(erf_node, "Erf", {9}) ||
+    Node& erf_node = *graph.GetNode(div.OutputNodesBegin()->Index());
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(erf_node, "Erf", {9, 13}) ||
         erf_node.GetExecutionProviderType() != div.GetExecutionProviderType() ||
-        erf_node.GetOutputEdgesCount() != 1 ||
+        !optimizer_utils::CheckOutputEdges(graph, erf_node, 1) ||
         !IsSupportedDataType(erf_node)) {
       continue;
     }
 
-    const Node& add_node = *(erf_node.OutputNodesBegin());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(add_node, "Add", {7}) ||
+    Node& add_node = *graph.GetNode(erf_node.OutputNodesBegin()->Index());
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(add_node, "Add", {7, 13, 14}) ||
         add_node.GetExecutionProviderType() != div.GetExecutionProviderType() ||
-        add_node.GetOutputEdgesCount() != 1 ||
+        !optimizer_utils::CheckOutputEdges(graph, add_node, 1) ||
         !IsSupportedDataType(add_node)) {
       continue;
     }
 
-    // Check the other input node(e.g. not of type Erf) is 1.0f.
-    const Node& add_first_input_node = *(add_node.InputNodesBegin());
-    int add_const_input_index = 0;
-    if (add_first_input_node.OpType().compare("Erf") == 0) {
-      add_const_input_index = 1;
-    }
-    const auto& add_const_input_arg = add_node.InputDefs()[add_const_input_index];
-    if (!CheckConstantInput(graph, *add_const_input_arg, 1.0f)) {
+    // Check the other input node (e.g. not the Erf) is 1.0f.
+    bool is_erf_first_input = (add_node.InputDefs()[0]->Name() == erf_node.MutableOutputDefs()[0]->Name());
+    const auto& add_const_input_arg = add_node.InputDefs()[is_erf_first_input ? 1 : 0];
+    if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *add_const_input_arg, 1.0f, true)) {
       continue;
     }
 
-    const Node& mul_node = *(add_node.OutputNodesBegin());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul_node, "Mul", {7}) ||
+    Node& mul_node = *graph.GetNode(add_node.OutputNodesBegin()->Index());
+    // note: output edges count doesn't matter as the new Gelu node will produce outputs with the same names
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul_node, "Mul", {7, 13, 14}) ||
         mul_node.GetExecutionProviderType() != div.GetExecutionProviderType() ||
         !IsSupportedDataType(mul_node)) {
       continue;
     }
 
-    const Node* mul2_node = nullptr;
-    for (auto iter = mul_node.InputNodesBegin(); iter != mul_node.InputNodesEnd(); ++iter) {
-      if ((*iter).OpType().compare("Mul") == 0) {
-        // find the other input node of Mul
-        mul2_node = &(*iter);
-        break;
+    bool is_pattern_1 = true;
+    const Node* p_mul2_node = graph_utils::FirstParentByType(mul_node, "Mul");
+    if (p_mul2_node != nullptr) {
+      // Match subgraph pattern 1
+      Node& mul2_node = *graph.GetNode(p_mul2_node->Index());
+      if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul2_node, "Mul", {7, 13, 14}) ||
+          mul2_node.GetExecutionProviderType() != div.GetExecutionProviderType() ||
+          !optimizer_utils::CheckOutputEdges(graph, mul2_node, 1) ||
+          !IsSupportedDataType(mul2_node)) {
+        continue;
       }
-    }
-    if (mul2_node == nullptr) {
-      continue;
-    }
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(*mul2_node, "Mul", {7}) ||
-        mul2_node->GetExecutionProviderType() != div.GetExecutionProviderType() ||
-        mul2_node->GetOutputEdgesCount() != 1 ||
-        !IsSupportedDataType(*mul2_node)) {
-      continue;
-    }
+      // One input of mul2_node shall be the subgraph input
+      auto root_index = optimizer_utils::IndexOfNodeInput(*p_mul2_node, *div.InputDefs()[0]);
+      if (root_index < 0)
+        continue;
 
-    // Check the other input node(e.g. not of type Add) is 0.5f.
-    int mul_const_input_index = 0;
-    if (mul2_node->InputDefs()[0]->Name() == div.MutableInputDefs()[0]->Name()) {
-      mul_const_input_index = 1;
-    }
+      // Check the other input node is 0.5f.
+      int mul_const_input_index = (root_index == 0 ? 1 : 0);
 
-    const auto& mul_const_input_arg = mul2_node->InputDefs()[mul_const_input_index];
-    if (!CheckConstantInput(graph, *mul_const_input_arg, 0.5f)) {
-      continue;
+      const auto& mul_const_input_arg = mul2_node.InputDefs()[mul_const_input_index];
+      if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *mul_const_input_arg, 0.5f, true)) {
+        continue;
+      }
+    } else {
+      is_pattern_1 = false;
+
+      // Match subgraph pattern 2
+      if (!optimizer_utils::CheckOutputEdges(graph, mul_node, 1)) {
+        continue;
+      }
+
+      // Another input of Mul node shall be the subgraph input.
+      auto root_index = optimizer_utils::IndexOfNodeInput(mul_node, *div.InputDefs()[0]);
+      if (root_index < 0)
+        continue;
+
+      Node& mul2_node = *graph.GetNode(mul_node.OutputNodesBegin()->Index());
+      if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul2_node, "Mul", {7, 13, 14}) ||
+          mul_node.GetExecutionProviderType() != div.GetExecutionProviderType() ||
+          !IsSupportedDataType(mul_node)) {
+        continue;
+      }
+
+      int mul_const_input_index = 0;
+      if (mul2_node.InputDefs()[0]->Name() == mul_node.MutableOutputDefs()[0]->Name()) {
+        mul_const_input_index = 1;
+      }
+      const auto& mul_const_input_arg = mul2_node.InputDefs()[mul_const_input_index];
+      if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *mul_const_input_arg, 0.5f, true)) {
+        continue;
+      }
+
+      p_mul2_node = &mul2_node;
     }
 
     const std::vector<NodeArg*> gelu_input_defs{div.MutableInputDefs()[0]};
-    const std::vector<NodeArg*> gelu_output_defs{const_cast<NodeArg*>(mul_node.OutputDefs()[0])};
     Node& gelu_node = graph.AddNode(graph.GenerateNodeName("Gelu"),
                                     "Gelu",
                                     "fused Gelu subgraphs ",
                                     gelu_input_defs,
-                                    gelu_output_defs, {}, kMSDomain);
+                                    {}, {}, kMSDomain);
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
     gelu_node.SetExecutionProviderType(div.GetExecutionProviderType());
 
-    removed_nodes.push_front(div.Index());
-    removed_nodes.push_front(erf_node.Index());
-    removed_nodes.push_front(add_node.Index());
-    removed_nodes.push_front(mul2_node->Index());
-    removed_nodes.push_front(mul_node.Index());
-  }
+    // move input edges to div (first in list) across to the gelu_node.
+    // move output definitions and output edges from mul_node (last in list) to gelu_node.
+    // remove all the other nodes.
+    Node& mul2 = *graph.GetNode(p_mul2_node->Index());
+    if (is_pattern_1) {
+      graph_utils::FinalizeNodeFusion(graph, {div, erf_node, add_node, mul2, mul_node}, gelu_node);
+    } else {
+      graph_utils::FinalizeNodeFusion(graph, {div, erf_node, add_node, mul_node, mul2}, gelu_node);
+    }
 
-  // Have to remove node in reversed order for now to walk around the issue in RemoveNode
-  for (onnxruntime::NodeIndex removed_node : removed_nodes) {
-    graph.RemoveNode(removed_node);
-  }
-
-  if (!removed_nodes.empty()) {
     modified = true;
   }
 

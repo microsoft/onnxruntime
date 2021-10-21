@@ -4,7 +4,6 @@
 #include "scatter_elements.h"
 #include "scatter_elements_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -15,7 +14,20 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     9,
     10,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("Tind", std::vector<MLDataType>{
+                                    DataTypeImpl::GetTensorType<int32_t>(),
+                                    DataTypeImpl::GetTensorType<int64_t>()}),
+    ScatterElements);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    ScatterElements,
+    kOnnxDomain,
+    11,
+    12,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("Tind", std::vector<MLDataType>{
                                     DataTypeImpl::GetTensorType<int32_t>(),
@@ -25,55 +37,72 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
 ONNX_OPERATOR_KERNEL_EX(
     ScatterElements,
     kOnnxDomain,
-    11,
+    13,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("Tind", std::vector<MLDataType>{
                                     DataTypeImpl::GetTensorType<int32_t>(),
                                     DataTypeImpl::GetTensorType<int64_t>()}),
     ScatterElements);
 
-#define TYPED_FUNCTION_CALL(T)                                                \
-  if (T_type == DataTypeImpl::GetType<T>()) {                                 \
-    T* output_data = output_tensor->template MutableData<T>();                \
-    const T* input_data = data_tensor->template Data<T>();                    \
-    const T* update_data = updates_tensor->template Data<T>();                \
-    if (Tin_type == DataTypeImpl::GetType<int32_t>()) {                       \
-      const int32_t* indices_data = indices_tensor->template Data<int32_t>(); \
-      ScatterElementsImpl(                                                    \
-          rank,                                                               \
-          reinterpret_cast<const ToCudaType<T>::MappedType*>(input_data),     \
-          input_data_size,                                                    \
-          gpu_input_dims.GpuPtr(),                                            \
-          gpu_input_strides.GpuPtr(),                                         \
-          indices_data,                                                       \
-          indices_size,                                                       \
-          gpu_indices_dims.GpuPtr(),                                          \
-          fdm_indices_strides.GpuPtr(),                                       \
-          reinterpret_cast<const ToCudaType<T>::MappedType*>(update_data),    \
-          axis,                                                               \
-          reinterpret_cast<ToCudaType<T>::MappedType*>(output_data));         \
-      return Status::OK();                                                    \
-    }                                                                         \
-    if (Tin_type == DataTypeImpl::GetType<int64_t>()) {                       \
-      const int64_t* indices_data = indices_tensor->template Data<int64_t>(); \
-      ScatterElementsImpl(                                                    \
-          rank,                                                               \
-          reinterpret_cast<const ToCudaType<T>::MappedType*>(input_data),     \
-          input_data_size,                                                    \
-          gpu_input_dims.GpuPtr(),                                            \
-          gpu_input_strides.GpuPtr(),                                         \
-          indices_data,                                                       \
-          indices_size,                                                       \
-          gpu_indices_dims.GpuPtr(),                                          \
-          fdm_indices_strides.GpuPtr(),                                       \
-          reinterpret_cast<const ToCudaType<T>::MappedType*>(update_data),    \
-          axis,                                                               \
-          reinterpret_cast<ToCudaType<T>::MappedType*>(output_data));         \
-      return Status::OK();                                                    \
-    }                                                                         \
+template <typename T>
+struct ScatterElements::ComputeImpl {
+  Status operator()(cudaStream_t stream,
+                    const Tensor* data_tensor,
+                    const Tensor* updates_tensor,
+                    const Tensor* indices_tensor,
+                    Tensor* output_tensor,
+                    const int rank,
+                    const int64_t input_data_size,
+                    TArray<int64_t>& buffer_input_dims,
+                    TArray<int64_t>& buffer_input_strides,
+                    const int64_t indices_size,
+                    TArray<int64_t>& buffer_indices_dims,
+                    TArray<fast_divmod>& fdm_indices_strides,
+                    const int axis) const {
+    T* output_data = output_tensor->template MutableData<T>();
+    const T* input_data = data_tensor->template Data<T>();
+    const T* update_data = updates_tensor->template Data<T>();
+    typedef typename ToCudaType<T>::MappedType CudaT;
+    MLDataType Tin_type = indices_tensor->DataType();
+    if (utils::IsPrimitiveDataType<int32_t>(Tin_type)) {
+      const int32_t* indices_data = indices_tensor->template Data<int32_t>();
+      return ScatterElementsImpl(
+          stream,
+          rank,
+          reinterpret_cast<const CudaT*>(input_data),
+          input_data_size,
+          buffer_input_dims,
+          buffer_input_strides,
+          indices_data,
+          indices_size,
+          buffer_indices_dims,
+          fdm_indices_strides,
+          reinterpret_cast<const CudaT*>(update_data),
+          axis,
+          reinterpret_cast<CudaT*>(output_data));
+    } else if (utils::IsPrimitiveDataType<int64_t>(Tin_type)) {
+      const int64_t* indices_data = indices_tensor->template Data<int64_t>();
+      return ScatterElementsImpl(
+          stream,
+          rank,
+          reinterpret_cast<const CudaT*>(input_data),
+          input_data_size,
+          buffer_input_dims,
+          buffer_input_strides,
+          indices_data,
+          indices_size,
+          buffer_indices_dims,
+          fdm_indices_strides,
+          reinterpret_cast<const CudaT*>(update_data),
+          axis,
+          reinterpret_cast<CudaT*>(output_data));
+    }
+
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type for Tin is not supported yet in ScatterElements.");
   }
+};
 
 Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
   const auto* data_tensor = context->Input<Tensor>(0);
@@ -113,7 +142,9 @@ Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
   }
 
   for (size_t i = 0; i < input_dims.size(); ++i) {
-    if (input_dims[i] < indices_dims[i]) {
+    // For all axes except the axis of interest, make sure that the corresponding 'indices' shape
+    // value is within bounds of the corresponding 'data' shape.
+    if (static_cast<int64_t>(i) != axis_ && input_dims[i] < indices_dims[i]) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices dim=", indices_dims[i], " at pos=", i,
                              " is greater than input dim=", input_dims[i]);
     }
@@ -122,36 +153,24 @@ Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
   int rank = (int)input_dims.size();
   auto* output_tensor = context->Output(0, input_data_shape);
 
-  CudaAsyncBuffer<int64_t> gpu_input_dims(this, input_dims);
+  TArray<int64_t> buffer_input_dims(input_dims);
   TensorPitches input_strides(input_dims);
-  CudaAsyncBuffer<int64_t> gpu_input_strides(this, input_strides);
+  TArray<int64_t> buffer_input_strides(input_strides);
 
-  CudaAsyncBuffer<int64_t> gpu_indices_dims(this, indices_dims);
-  CudaAsyncBuffer<fast_divmod> fdm_indices_strides(this, rank);
-  ORT_ENFORCE(CalculateFdmStrides(fdm_indices_strides.CpuSpan(), indices_dims));
+  TArray<int64_t> buffer_indices_dims(indices_dims);
+  TArray<fast_divmod> fdm_indices_strides(rank);
+  TensorPitches indices_strides(indices_dims);
+  for (auto i = 0; i < rank; i++) {
+    fdm_indices_strides[i] = fast_divmod(static_cast<int>(indices_strides[i]));
+  }
 
-  ORT_RETURN_IF_ERROR(gpu_input_dims.CopyToGpu());
-  ORT_RETURN_IF_ERROR(gpu_input_strides.CopyToGpu());
-  ORT_RETURN_IF_ERROR(gpu_indices_dims.CopyToGpu());
-  ORT_RETURN_IF_ERROR(fdm_indices_strides.CopyToGpu());
-
-  MLDataType Tin_type = indices_tensor->DataType();
-  MLDataType T_type = data_tensor->DataType();
-
-  TYPED_FUNCTION_CALL(float)
-  else TYPED_FUNCTION_CALL(MLFloat16)
-  else TYPED_FUNCTION_CALL(int16_t)
-  else TYPED_FUNCTION_CALL(int8_t)
-  else TYPED_FUNCTION_CALL(int32_t)
-  else TYPED_FUNCTION_CALL(int64_t)
-  else TYPED_FUNCTION_CALL(uint8_t)
-  else TYPED_FUNCTION_CALL(uint16_t)
-  else TYPED_FUNCTION_CALL(uint32_t)
-  else TYPED_FUNCTION_CALL(uint64_t)
-  else TYPED_FUNCTION_CALL(double)
-  else TYPED_FUNCTION_CALL(bool)
-
-  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type for T is not supported yet in ScatterElements.");
+  utils::MLTypeCallDispatcher<float, MLFloat16, int16_t, int8_t, int32_t,
+                              int64_t, uint8_t, uint16_t, uint32_t, uint64_t, double, bool>
+      t_disp(data_tensor->GetElementType());
+  return t_disp.InvokeRet<Status, ComputeImpl>(
+      Stream(), data_tensor, updates_tensor, indices_tensor, output_tensor, rank,
+      input_data_size, buffer_input_dims, buffer_input_strides, indices_size,
+      buffer_indices_dims, fdm_indices_strides, axis);
 }
 
 }  // namespace cuda

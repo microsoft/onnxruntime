@@ -10,16 +10,27 @@
 
 namespace onnxruntime {
 // kernel builder functions
-#define NONZERO_TYPED_KERNEL_WITH_TYPE_NAME(type, type_name)                       \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
+#define NONZERO_9_TYPED_KERNEL(type)                                               \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                        \
       NonZero,                                                                     \
-      9,                                                                           \
-      type_name,                                                                   \
+      9, 12,                                                                       \
+      type,                                                                        \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), \
       NonZero<type>)
 
-#define NONZERO_TYPED_KERNEL(type) \
-  NONZERO_TYPED_KERNEL_WITH_TYPE_NAME(type, type)
+#define NONZERO_TYPED_KERNEL(type)                                                 \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
+      NonZero,                                                                     \
+      13,                                                                          \
+      type,                                                                        \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), \
+      NonZero<type>)
+
+NONZERO_9_TYPED_KERNEL(bool)
+NONZERO_9_TYPED_KERNEL(uint8_t)
+NONZERO_9_TYPED_KERNEL(int32_t)
+NONZERO_9_TYPED_KERNEL(int64_t)
+NONZERO_9_TYPED_KERNEL(float)
 
 // start with a subset of types, enable more as needed...
 NONZERO_TYPED_KERNEL(bool)
@@ -37,7 +48,7 @@ NONZERO_TYPED_KERNEL(float)
 //NONZERO_TYPED_KERNEL(double)
 //NONZERO_TYPED_KERNEL_WITH_TYPE_NAME(std::string, string)
 
-#undef NONZERO_TYPED_KERNEL_WITH_TYPE_NAME
+#undef NONZERO_9_TYPED_KERNEL
 #undef NONZERO_TYPED_KERNEL
 
 template <typename T>
@@ -45,7 +56,7 @@ Status NonZero<T>::Compute(OpKernelContext* context) const {
   const auto X = context->Input<Tensor>(0);
   ORT_ENFORCE(X, "X input is required!");
 
-  const auto X_shape = X->Shape();
+  const auto& X_shape = X->Shape();
   assert(X_shape.Size() >= 0);
 
   const Eigen::Index coordinate_size = X_shape.IsScalar() ? 1 : X_shape.NumDimensions();
@@ -94,7 +105,7 @@ Status NonZero<T>::Compute(OpKernelContext* context) const {
       non_zero_indices_buffer.data(),
       num_non_zero_values, coordinate_size};
 
-  Tensor* const Y = context->Output(0, TensorShape{coordinate_size, num_non_zero_values});
+  Tensor* const Y = context->Output(0, {coordinate_size, num_non_zero_values});
   ORT_ENFORCE(Y, "failed to get first output!");
 
   EigenMatrixMapRowMajor<int64_t> y_matrix{
@@ -103,5 +114,6 @@ Status NonZero<T>::Compute(OpKernelContext* context) const {
   y_matrix = non_zero_indices_matrix.transpose();
 
   return Status::OK();
-}  // namespace onnxruntime
+}
+
 }  // namespace onnxruntime

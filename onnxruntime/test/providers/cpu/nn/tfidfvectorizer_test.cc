@@ -5,12 +5,12 @@
 #include "test/providers/provider_test_utils.h"
 
 #include <stdint.h>
+#include <random>
 
 namespace onnxruntime {
 namespace test {
 namespace tfidfvectorizer_test {
 
-constexpr const char* domain = kOnnxDomain;
 const int opset_ver = 9;
 
 void InitTestAttr(OpTester& test, const std::string& mode,
@@ -49,7 +49,7 @@ using namespace tfidfvectorizer_test;
 // into consideration or not.With all = false, we only consider N - grams.
 
 TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip0) {
-  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  OpTester test("TfIdfVectorizer", opset_ver);
   // s=0, Min=Max=2, weights empty, int32
   InitTestAttr(test, "TF", 2, 2, 0,
                {0, 4},
@@ -71,7 +71,7 @@ TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip0) {
 }
 
 TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip0_Empty_Dim1Fail) {
-  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  OpTester test("TfIdfVectorizer", -1);  // latest opset so we get shape inferencing errors
   // s=0, Min=Max=2, weights empty, int32
   InitTestAttr(test, "TF", 2, 2, 0,
                {0, 4},
@@ -89,11 +89,13 @@ TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip0_Empty_Dim1Fail) {
   std::vector<float> output = {};
   test.AddOutput<float>("Y", out_dims, output);
 
-  test.Run(OpTester::ExpectResult::kExpectFailure);
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Can't merge shape info. "
+           "Both source and target dimension have values but they differ. Source=7 Target=0 Dimension=0");
 }
 
 TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip0_Empty_Dim1Success) {
-  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  OpTester test("TfIdfVectorizer", opset_ver);
   // s=0, Min=Max=2, weights empty, int32
   InitTestAttr(test, "TF", 2, 2, 0,
                {0, 4},
@@ -115,7 +117,7 @@ TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip0_Empty_Dim1Success) {
 }
 
 TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip0_Empty_Dim2) {
-  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  OpTester test("TfIdfVectorizer", -1);  // latest opset so we get shape inferencing errors
   // s=0, Min=Max=2, weights empty, int32
   InitTestAttr(test, "TF", 2, 2, 0,
                {0, 4},
@@ -133,11 +135,12 @@ TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip0_Empty_Dim2) {
   std::vector<float> output = {0, 0, 0, 0, 0, 0, 0};
   test.AddOutput<float>("Y", out_dims, output);
 
-  test.Run(OpTester::ExpectResult::kExpectFailure);
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Mismatch between number of source and target dimensions. Source=2 Target=1");
 }
 
 TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip01_Empty_Dim2) {
-  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  OpTester test("TfIdfVectorizer", -1);  // latest opset so we get shape inferencing errors
   // s=0, Min=Max=2, weights empty, int32
   InitTestAttr(test, "TF", 2, 2, 0,
                {0, 4},
@@ -155,11 +158,12 @@ TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip01_Empty_Dim2) {
   std::vector<float> output = {0, 0, 0, 0, 0, 0, 0};
   test.AddOutput<float>("Y", out_dims, output);
 
-  test.Run(OpTester::ExpectResult::kExpectFailure);
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Mismatch between number of source and target dimensions. Source=2 Target=1");
 }
 
 TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip0_Empty_Dim2N) {
-  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  OpTester test("TfIdfVectorizer", opset_ver);
   // s=0, Min=Max=2, weights empty, int32
   InitTestAttr(test, "TF", 2, 2, 0,
                {0, 4},
@@ -174,7 +178,7 @@ TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip0_Empty_Dim2N) {
   test.AddInput<int32_t>("T", dims, input);
 
   std::vector<int64_t> out_dims{2, 7};
-  std::vector<float> output = {0, 0, 0, 0, 0, 0, 0, 
+  std::vector<float> output = {0, 0, 0, 0, 0, 0, 0,
                                0, 0, 0, 0, 0, 0, 0};
   test.AddOutput<float>("Y", out_dims, output);
 
@@ -182,7 +186,7 @@ TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip0_Empty_Dim2N) {
 }
 
 TEST(TfIdfVectorizerTest, Int32_TF_BatchOnlyBigrams_Skip0) {
-  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  OpTester test("TfIdfVectorizer", opset_ver);
   // s=0, Min=Max=2, weights empty, int32
   InitTestAttr(test, "TF", 2, 2, 0,
                {0, 4},
@@ -207,7 +211,7 @@ TEST(TfIdfVectorizerTest, Int32_TF_BatchOnlyBigrams_Skip0) {
 }
 
 TEST(TfIdfVectorizerTest, String_TF_OnlyBigrams_Skip0) {
-  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  OpTester test("TfIdfVectorizer", opset_ver);
   // s=0, Min=Max=2, weights empty, string
   InitTestAttr(test, "TF", 2, 2, 0,
                {0, 4},
@@ -230,7 +234,7 @@ TEST(TfIdfVectorizerTest, String_TF_OnlyBigrams_Skip0) {
 }
 
 TEST(TfIdfVectorizerTest, String_TF_BatchOnlyBigrams_Skip0) {
-  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  OpTester test("TfIdfVectorizer", opset_ver);
   // s=0, Min=Max=2, weights empty, string
   InitTestAttr(test, "TF", 2, 2, 0,
                {0, 4},
@@ -257,7 +261,7 @@ TEST(TfIdfVectorizerTest, String_TF_BatchOnlyBigrams_Skip0) {
 }
 
 TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_LevelEmpty) {
-  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  OpTester test("TfIdfVectorizer", opset_ver);
   // s=0, Min=Max=2, weights empty, int32
   InitTestAttr(test, "TF", 2, 2, 0,
                {0, 0},  // no unigrams, bi-grams start immediately
@@ -283,7 +287,7 @@ TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_LevelEmpty) {
 }
 
 TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip5) {
-  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  OpTester test("TfIdfVectorizer", opset_ver);
   // s=5, Min=Max=2, weights empty, int32
   InitTestAttr(test, "TF", 2, 2, 5,
                {0, 4},
@@ -307,7 +311,7 @@ TEST(TfIdfVectorizerTest, Int32_TF_onlyBigrams_Skip5) {
 }
 
 TEST(TfIdfVectorizerTest, Int32_TF_BatchOnlyBigrams_Skip5) {
-  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  OpTester test("TfIdfVectorizer", opset_ver);
   // s=5, , Min=Max=2, weights empty, int32
   InitTestAttr(test, "TF", 2, 2, 5,
                {0, 4},
@@ -333,7 +337,7 @@ TEST(TfIdfVectorizerTest, Int32_TF_BatchOnlyBigrams_Skip5) {
 }
 
 TEST(TfIdfVectorizerTest, String_TF_onlyBigrams_Skip5) {
-  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  OpTester test("TfIdfVectorizer", opset_ver);
   // s=5, , Min=Max=2, weights empty, string
   InitTestAttr(test, "TF", 2, 2, 5,
                {0, 4},
@@ -358,7 +362,7 @@ TEST(TfIdfVectorizerTest, String_TF_onlyBigrams_Skip5) {
 }
 
 TEST(TfIdfVectorizerTest, String_TF_BatchOnlyBigrams_Skip5) {
-  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  OpTester test("TfIdfVectorizer", opset_ver);
   // s=5, , Min=Max=2, weights empty, string
   InitTestAttr(test, "TF", 2, 2, 5,
                {0, 4},
@@ -382,7 +386,7 @@ TEST(TfIdfVectorizerTest, String_TF_BatchOnlyBigrams_Skip5) {
 }
 
 TEST(TfIdfVectorizerTest, Int32_TF_UniAndBigrams_Skip5) {
-  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  OpTester test("TfIdfVectorizer", opset_ver);
   // s=5, , Min=1, Max=2, weights empty, int32
   InitTestAttr(test, "TF", 1, 2, 5,
                {0, 4},
@@ -405,7 +409,7 @@ TEST(TfIdfVectorizerTest, Int32_TF_UniAndBigrams_Skip5) {
 }
 
 TEST(TfIdfVectorizerTest, Int32_TF_BatchUniAndBigrams_Skip5) {
-  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  OpTester test("TfIdfVectorizer", opset_ver);
   // s=5, Min=1, Max=2, weights empty, int32
   InitTestAttr(test, "TF", 1, 2, 5,
                {0, 4},
@@ -430,7 +434,7 @@ TEST(TfIdfVectorizerTest, Int32_TF_BatchUniAndBigrams_Skip5) {
 }
 
 TEST(TfIdfVectorizerTest, String_TF_UniAndBigrams_Skip5) {
-  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  OpTester test("TfIdfVectorizer", opset_ver);
   // s=5, Min=1, Max=2, weights empty, string
   InitTestAttr(test, "TF", 1, 2, 5,
                {0, 4},
@@ -453,7 +457,7 @@ TEST(TfIdfVectorizerTest, String_TF_UniAndBigrams_Skip5) {
 }
 
 TEST(TfIdfVectorizerTest, String_TF_BatchUniAndBigrams_Skip5) {
-  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  OpTester test("TfIdfVectorizer", opset_ver);
   // s=5, Min=1, Max=2, weights empty, string
   InitTestAttr(test, "TF", 1, 2, 5,
                {0, 4},
@@ -478,7 +482,7 @@ TEST(TfIdfVectorizerTest, String_TF_BatchUniAndBigrams_Skip5) {
 }
 
 TEST(TfIdfVectorizerTest, Int32_IDF_onlyBigrams_Skip5) {
-  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  OpTester test("TfIdfVectorizer", opset_ver);
   // s=5, Min=Max=2, weights empty, int32
   // We change to IDF but do not supply weights so
   // we should get all 1.0f where count is not zero
@@ -502,7 +506,7 @@ TEST(TfIdfVectorizerTest, Int32_IDF_onlyBigrams_Skip5) {
 }
 
 TEST(TfIdfVectorizerTest, String_IDF_onlyBigrams_Skip5) {
-  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  OpTester test("TfIdfVectorizer", opset_ver);
   // s=5, Min=Max=2, weights empty, string
   InitTestAttr(test, "IDF", 2, 2, 5,
                {0, 4},
@@ -525,7 +529,7 @@ TEST(TfIdfVectorizerTest, String_IDF_onlyBigrams_Skip5) {
 }
 
 TEST(TfIdfVectorizerTest, Int32_TFIDF_onlyBigrams_Skip5) {
-  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  OpTester test("TfIdfVectorizer", opset_ver);
   // s=5, Min=Max=2, weights empty, int32
   // We change to TFIDF but do not supply weights so
   // we should all get the original values as weights are 1.0f by
@@ -550,7 +554,7 @@ TEST(TfIdfVectorizerTest, Int32_TFIDF_onlyBigrams_Skip5) {
 }
 
 TEST(TfIdfVectorizerTest, String_TFIDF_onlyBigrams_Skip5) {
-  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  OpTester test("TfIdfVectorizer", opset_ver);
   // s=5, Min=Max=2, weights empty, string
   InitTestAttr(test, "TFIDF", 2, 2, 5,
                {0, 4},
@@ -573,7 +577,7 @@ TEST(TfIdfVectorizerTest, String_TFIDF_onlyBigrams_Skip5) {
 }
 
 TEST(TfIdfVectorizerTest, Int32_IDFWeights_onlyBigrams_Skip5) {
-  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  OpTester test("TfIdfVectorizer", opset_ver);
   // s=5, Min=Max=2, weights specified, int32
   // We change to IDF with supplied weights. All
   // with non-zero counts must be replaced with the supplied weights
@@ -597,7 +601,7 @@ TEST(TfIdfVectorizerTest, Int32_IDFWeights_onlyBigrams_Skip5) {
 }
 
 TEST(TfIdfVectorizerTest, String_IDFWeights_onlyBigrams_Skip5) {
-  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  OpTester test("TfIdfVectorizer", opset_ver);
   // s=5, Min=Max=2, weights specified, string
   InitTestAttr(test, "IDF", 2, 2, 5,
                {0, 4},
@@ -620,7 +624,7 @@ TEST(TfIdfVectorizerTest, String_IDFWeights_onlyBigrams_Skip5) {
 }
 
 TEST(TfIdfVectorizerTest, Int32_TFIDFWeights_onlyBigrams_Skip5) {
-  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  OpTester test("TfIdfVectorizer", opset_ver);
   // s=5, Min=Max=2, weights specified, int32
   // We change to TFIDF with supplied weights.
   // We should have all counts scaled by weights
@@ -644,7 +648,7 @@ TEST(TfIdfVectorizerTest, Int32_TFIDFWeights_onlyBigrams_Skip5) {
 }
 
 TEST(TfIdfVectorizerTest, String_TFIDFWeights_onlyBigrams_Skip5) {
-  OpTester test("TfIdfVectorizer", opset_ver, domain);
+  OpTester test("TfIdfVectorizer", opset_ver);
   // s=5, Min=Max=2, weights specified, string
   InitTestAttr(test, "TFIDF", 2, 2, 5,
                {0, 4},
@@ -665,6 +669,78 @@ TEST(TfIdfVectorizerTest, String_TFIDFWeights_onlyBigrams_Skip5) {
 
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
+
+TEST(TfIdfVectorizerTest, String_TFIDFWeights_onlyBigrams_Skip5_2rows) {
+  OpTester test("TfIdfVectorizer", opset_ver);
+  // s=5, Min=Max=2, weights specified, string
+  InitTestAttr(test, "TFIDF", 2, 2, 5,
+               {0, 4},
+               {0, 1, 2, 3, 4, 5, 6},                //7 output indexes
+               {2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f},  // weights
+               {},
+               {"two", "three", "five", "four",                     //1-grams
+                "five", "six", "seven", "eight", "six", "seven"});  //bi-grams
+
+  test.AddInput<std::string>("T", {2, 6}, {"one", "one",  "three", "three", "three", "seven",
+                                           "eight", "six", "seven", "five", "six", "eight"});
+
+  test.AddOutput<float>("Y", {2, 7}, {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, // No bi-grams in the first row
+                                      0.f, 0.f, 0.f, 0.f, 2.f, 3.f, 2.f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+// This test runs the inference 100 times to test the improvement
+// It enables profiling while running inference multiple times.
+// So we can manually inspect the profiling output
+//TEST(TfIdfVectorizerTest, String_IDF_PerformanceTest) {
+//  OpTester test("TfIdfVectorizer", opset_ver);
+//
+//  std::vector<std::string> ngrams_pool = 
+//              {"two long string donot inline", "three long string donot inline", "five long string donot inline", "four long string donot inline",                     //1-grams
+//               "five long string donot inline", "six long string donot inline", "seven long string donot inline", "eight long string donot inline", "six long string donot inline", "seven long string donot inline"};  //bi-grams
+//
+//  // s=1, Min=Max=2, weights empty, string
+//  InitTestAttr(test, "IDF", 2, 2, 1,
+//               {0, 4},
+//               {0, 1, 2, 3, 4, 5, 6},  // 7 output indexes
+//               {}, // no weights
+//               {}, // int pool
+//               ngrams_pool);
+//
+//  // Pick random strings out of ngrams pool and generate an input of 100 batches(rows) by 100 strings each.
+//  // i.e. 10^4 strings
+//  std::vector<int64_t> dims{100, 100};
+//  const size_t inp_num = 100u * 100u;
+//  std::vector<std::string> input;
+//  input.reserve(inp_num);
+//
+//  std::random_device rd;
+//  std::mt19937 gen(rd());
+//  std::uniform_int_distribution<size_t> dis(0, ngrams_pool.size() - 1);
+//  for (size_t i = 0; i < inp_num; ++i) {
+//    auto idx = dis(gen);
+//    assert(idx < ngrams_pool.size());
+//    input.push_back(ngrams_pool[idx]);
+//  }
+//
+//  test.AddInput<std::string>("T", dims, input);
+//
+//  // We do not care about the output in this case so we do not verify it, we use
+//  // custom verification function not to verify anything.
+//  std::vector<int64_t> out_dims{100, 7};
+//  std::vector<float> output;
+//  output.resize(100u * 7, 0);
+//  test.AddOutput<float>("Y", out_dims, output);
+//
+//  test.SetNumRunCalls(100);
+//
+//  // Will collect and manually aggreate numbers
+//  SessionOptions so;
+//  so.enable_profiling = true;
+//  test.Run(so, OpTester::ExpectResult::kExpectSuccess, std::string(), {}, nullptr, nullptr, 
+//    [](const std::vector<OrtValue>&, const std::string&) {});
+//}
 
 }  // namespace test
 }  // namespace onnxruntime

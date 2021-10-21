@@ -3,17 +3,33 @@
 
 #include "core/providers/cpu/nn/shrink.h"
 
-#include "core/util/math.h"
-#include "core/util/math_cpuonly.h"
+#include "core/framework/element_type_lists.h"
 #include "core/framework/utils.h"
+#include "core/providers/op_kernel_type_control.h"
+#include "core/util/math_cpuonly.h"
+#include "core/util/math.h"
 
 namespace onnxruntime {
+
+namespace op_kernel_type_control {
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Shrink, Input, 0,
+    element_type_lists::AllNumeric);
+}
+
+using ShrinkDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Shrink, Input, 0);
+using EnabledShrinkDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Shrink, Input, 0);
+
 ONNX_CPU_OPERATOR_KERNEL(
     Shrink,
     9,
     KernelDefBuilder()
-    .MayInplace(0, 0)
-    .TypeConstraint("T", DataTypeImpl::AllNumericTensorTypes()),
+        .MayInplace(0, 0)
+        .TypeConstraint("T",
+                        BuildKernelDefConstraintsFromTypeList<ShrinkDataTypes>(),
+                        BuildKernelDefConstraintsFromTypeList<EnabledShrinkDataTypes>()),
     Shrink);
 
 namespace shrink_internal {
@@ -59,32 +75,19 @@ Status ShrinkImpl<BFloat16>(const Tensor* input, Tensor* output, float bias, flo
   return Status::OK();
 }
 
-template <>
-Status ShrinkImpl<bool>(const Tensor* /*input*/, Tensor* /*output*/, float /*bias*/, float /*lambd*/) {
-  return ORT_MAKE_STATUS(
-      ONNXRUNTIME, INVALID_ARGUMENT,
-      "Input types for the Shrink operator are constrained "
-      "to all numeric types only. Got bool type here.");
-}
-
-template <>
-Status ShrinkImpl<std::string>(const Tensor* /*input*/, Tensor* /*output*/, float /*bias*/, float /*lambd*/) {
-  return ORT_MAKE_STATUS(
-      ONNXRUNTIME, INVALID_ARGUMENT,
-      "Input types for the Shrink operator are constrained "
-      "to all numeric types only. Got std::string type here.");
-}
+template <class T>
+struct CallShrinkImpl {
+  Status operator()(const Tensor* input, Tensor* output, float bias, float lambd) const {
+    return ShrinkImpl<T>(input, output, bias, lambd);
+  }
+};
 
 }  // namespace shrink_internal
 
 Status Shrink::Compute(OpKernelContext* p_op_kernel_context) const {
-  using namespace shrink_internal;
-
   const auto* input = p_op_kernel_context->Input<Tensor>(0);
   auto* output = p_op_kernel_context->Output(0, input->Shape());
-  const auto& dtype = input->DataType();
-  Status status;
-  DispatchOnTensorTypeWithReturn(dtype, status, ShrinkImpl, input, output, bias_, lambd_);
-  return status;
+  utils::MLTypeCallDispatcherFromTypeList<EnabledShrinkDataTypes> t_disp(input->GetElementType());
+  return t_disp.InvokeRet<Status, shrink_internal::CallShrinkImpl>(input, output, bias_, lambd_);
 }
 }  // namespace onnxruntime

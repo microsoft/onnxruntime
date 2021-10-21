@@ -8,11 +8,36 @@ CMake creates a target to this project
 <Project DefaultTargets="Build">
   
   <PropertyGroup>
+    <OrtPackageId Condition=" '$(OrtPackageId)' == '' ">Microsoft.ML.OnnxRuntime</OrtPackageId>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <OutputPath>bin\$(Platform)\$(Configuration)\</OutputPath>
     <DotNetExe Condition= " '$(DotNetExe)' == '' ">dotnet</DotNetExe>
+    <NugetExe Condition= " '$(NugetExe)' == '' ">nuget</NugetExe>
+    <TargetArchitecture Condition=" '$(TargetArchitecture)' == '' ">x64</TargetArchitecture>
+    <IsReleaseBuild Condition=" '$(IsReleaseBuild)' == '' ">false</IsReleaseBuild>
+    <IsLinuxBuild Condition=" '$(IsLinuxBuild)' == '' ">false</IsLinuxBuild>
+    <ExecutionProvider Condition=" '$(ExecutionProvider)' == '' ">None</ExecutionProvider>
+
+    <!--internal build related properties-->
+    <OnnxRuntimeSourceDirectory Condition="'$(OnnxRuntimeSourceDirectory)'==''">..</OnnxRuntimeSourceDirectory>
+    <GenerateNuspecScript>..\tools\nuget\generate_nuspec_for_native_nuget.py</GenerateNuspecScript>
   </PropertyGroup>
+
+  <PropertyGroup Condition="'$(IsLinuxBuild)'=='true'">
+    <!--internal build related properties for Linux -->
+    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">..\build\Linux</OnnxRuntimeBuildDirectory>
+    <OnnxRuntimePackagesDirectory Condition="'$(OnnxRuntimePackagesDirectory)'==''">$(OnnxRuntimeBuildDirectory)\packages</OnnxRuntimePackagesDirectory>
+    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)</NativeBuildOutputDir>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(IsLinuxBuild)'=='false'">
+    <!--internal build related properties for Windows -->
+    <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">..\build\Windows</OnnxRuntimeBuildDirectory>
+    <OnnxRuntimePackagesDirectory Condition="'$(OnnxRuntimePackagesDirectory)'==''">$(OnnxRuntimeBuildDirectory)\packages</OnnxRuntimePackagesDirectory>
+    <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
+  </PropertyGroup>
+
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 
   <Target Name="RestoreProjects" BeforeTargets="Build">
@@ -27,7 +52,7 @@ CMake creates a target to this project
              />
     <MSBuild Projects="test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj"
              Targets="Restore" 
-             Properties="" 
+             Properties="ProtocDirectory=$(ProtocDirectory)"
              />
     <MSBuild Projects="tools\Microsoft.ML.OnnxRuntime.PerfTool\Microsoft.ML.OnnxRuntime.PerfTool.csproj"
              Targets="Restore" 
@@ -61,13 +86,80 @@ CMake creates a target to this project
     </Exec>
   </Target>
 
+   <Target Name="ObtainPackageVersion" BeforeTargets="CreatePackage;CreateWindowsAIPackage">
+    <ReadLinesFromFile File="..\VERSION_NUMBER">
+      <Output TaskParameter="Lines" ItemName="MajorVersionNumber"/>
+    </ReadLinesFromFile>   
+    <Exec Command="git rev-parse --short HEAD" ConsoleToMSBuild="true">
+        <Output TaskParameter="ConsoleOutput" PropertyName="GitCommitHashShort" />
+    </Exec>
+    <Exec Command="git rev-parse HEAD" ConsoleToMSBuild="true">
+        <Output TaskParameter="ConsoleOutput" PropertyName="GitCommitHash" />
+    </Exec>
+    <ConvertToAbsolutePath Paths="$(OnnxRuntimeBuildDirectory)">
+      <Output TaskParameter="AbsolutePaths" PropertyName="OnnxRuntimeBuildDirectoryAbs"/>
+    </ConvertToAbsolutePath>
+    <ConvertToAbsolutePath Paths="$(NativeBuildOutputDir)">
+      <Output TaskParameter="AbsolutePaths" PropertyName="NativeBuildOutputDirAbs"/>
+    </ConvertToAbsolutePath>
+    <ConvertToAbsolutePath Paths="$(OnnxRuntimePackagesDirectory)">
+      <Output TaskParameter="AbsolutePaths" PropertyName="OnnxRuntimePackagesDirectoryAbs"/>
+    </ConvertToAbsolutePath>
+    <ConvertToAbsolutePath Paths="$(OnnxRuntimeSourceDirectory)">
+      <Output TaskParameter="AbsolutePaths" PropertyName="OnnxRuntimeSourceDirectoryAbs"/>
+    </ConvertToAbsolutePath>    
+    <PropertyGroup>
+      <CurrentDate>$([System.DateTime]::UtcNow.ToString(yyyyMMdd))</CurrentDate>
+      <CurrentTime>$([System.DateTime]::UtcNow.ToString(hhmm))</CurrentTime>
+      <PackageVersion>@(MajorVersionNumber)</PackageVersion>
+      <Version>$(PackageVersion)</Version>
+      <PackageVersion Condition="'$(IsReleaseBuild)'!='True'">$(PackageVersion)-dev-$(CurrentDate)-$(CurrentTime)-$(GitCommitHashShort)</PackageVersion>
+    </PropertyGroup>
+    <Message Importance="High" Text="PackageVersion=$(PackageVersion)" />
+  </Target>
+  
   <Target Name="CreatePackage">
-    <Message Importance="High" Text="Bundling NuGet package ..." />
+    <Message Importance="High" Text="Bundling managed assemblies into a NuGet package ..." />
     <MSBuild Projects="src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
-             Targets="ObtainPackageVersion;Pack"
-             Properties="NoBuild=true;Platform=AnyCPU"
+             Targets="CopyMiscFiles;Pack"
+             Properties="NoBuild=true;Platform=AnyCPU;PackageVersion=$(PackageVersion);OrtPackageId=$(OrtPackageId)"/>
+
+    <Message Importance="High" Text="Generating nuspec for the native Nuget package ..." />
+    <Exec ContinueOnError="False" Command="python $(GenerateNuspecScript) --package_version $(PackageVersion) --package_name $(OrtPackageId) --target_architecture $(TargetArchitecture) --build_config $(Configuration) --native_build_path $(NativeBuildOutputDirAbs) --packages_path $(OnnxRuntimePackagesDirectoryAbs) --ort_build_path $(OnnxRuntimeBuildDirectoryAbs) --sources_path $(OnnxRuntimeSourceDirectoryAbs) --commit_id $(GitCommitHash) --is_release_build $(IsReleaseBuild) --execution_provider $(ExecutionProvider)" ConsoleToMSBuild="true">
+        <Output TaskParameter="ConsoleOutput" PropertyName="GenerateNuspecOutput" />
+    </Exec>
+
+    <Message Importance="High" Text="Bundling native shared library artifacts into a NuGet package ..." />
+    <Exec ContinueOnError="False" Command="$(NugetExe) pack -Symbols -SymbolPackageFormat snupkg NativeNuget.nuspec" ConsoleToMSBuild="true" WorkingDirectory="$(NativeBuildOutputDirAbs)" Condition=" '$(OS)' == 'Windows_NT'">
+      <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
+    </Exec>
+
+    <Exec ContinueOnError="False" Command="$(NugetExe) pack NativeNuget.nuspec" ConsoleToMSBuild="true" WorkingDirectory="$(NativeBuildOutputDirAbs)" Condition=" '$(OS)' != 'Windows_NT'">
+      <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
+    </Exec>
+
+    <Copy
+    SourceFiles="$(NativeBuildOutputDirAbs)\$(OrtPackageId).$(PackageVersion).nupkg"
+    DestinationFolder="$(NativeBuildOutputDirAbs)\nuget-artifacts"
     />
   </Target>
 
-  
+  <ItemGroup>
+    <LicenseFile Include="$(OnnxRuntimeSourceDirectory)\LICENSE"/>
+  </ItemGroup>
+
+  <Target Name="CreateWindowsAIPackage">  
+    <Copy SourceFiles="@(LicenseFile)" DestinationFiles="@(LicenseFile->'$(OnnxRuntimeSourceDirectory)\%(Filename).txt')"/>
+
+    <Message Importance="High" Text="Generating nuspec for the Microsoft.AI.MachineLearning Nuget package ..." />
+    <Exec ContinueOnError="False" Command="python ..\tools\nuget\generate_nuspec_for_native_nuget.py --package_version $(PackageVersion) --package_name Microsoft.AI.MachineLearning --target_architecture $(TargetArchitecture) --build_config $(Configuration) --native_build_path $(NativeBuildOutputDirAbs) --packages_path $(OnnxRuntimePackagesDirectoryAbs) --ort_build_path $(OnnxRuntimeBuildDirectoryAbs) --sources_path $(OnnxRuntimeSourceDirectoryAbs) --commit_id $(GitCommitHash) --is_release_build $(IsReleaseBuild)" ConsoleToMSBuild="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="GenerateNuspecOutput" />
+    </Exec>
+
+    <Message Importance="High" Text="Bundling native shared library artifacts into a NuGet package ..." />
+    <Exec ContinueOnError="False" Command="$(NugetExe) pack NativeNuget.nuspec -Symbols -SymbolPackageFormat snupkg" ConsoleToMSBuild="true" WorkingDirectory="$(NativeBuildOutputDirAbs)">
+      <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
+    </Exec>
+  </Target>
+
 </Project>

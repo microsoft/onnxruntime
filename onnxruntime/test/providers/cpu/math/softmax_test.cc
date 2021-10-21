@@ -11,22 +11,24 @@ namespace test {
 static void RunTest(const std::vector<float>& x_vals,
                     const std::vector<float>& expected_vals,
                     const std::vector<int64_t>& dimensions,
+                    int opset = 7,
                     int64_t axis = 1,
-                    bool is_tensorrt_supported = true,
+                    const std::unordered_set<std::string>& excluded_providers = {},
                     OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                     const std::string& error_msg = "") {
-  OpTester test("Softmax");
+  OpTester test("Softmax", opset);
 
-  if (axis != 1) {
-    test.AddAttribute("axis", axis);
+  if (opset < 13) {
+    if (axis != 1) {  // opset-12 and below : default axis value is 1
+      test.AddAttribute("axis", axis);
+    }
+  } else {
+    if (axis != -1) {  // opset-13 : default axis value is -1
+      test.AddAttribute("axis", axis);
+    }
   }
-
   test.AddInput<float>("X", dimensions, x_vals);
   test.AddOutput<float>("Y", dimensions, expected_vals);
-  std::unordered_set<std::string> excluded_providers;
-  if (!is_tensorrt_supported) {
-    excluded_providers.insert(kTensorrtExecutionProvider);
-  }
   test.Run(expect_result, error_msg, excluded_providers);
 }
 
@@ -96,7 +98,7 @@ TEST(SoftmaxOperator, ThreeDimsAxis0) {
       0.017545262f, 0.0135920765f, 0.027506188f, 0.010684152f, 0.0049549243f,
       0.01401341f, 0.011721271f, 0.027815264f, 0.021463264f, 0.014014485f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ 0, false);// Axis=0 is not supported by TensorRT
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 0, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});  // Axis=0 is not supported by TensorRT
 }
 
 TEST(SoftmaxOperator, ThreeDimsAxis1) {
@@ -122,7 +124,31 @@ TEST(SoftmaxOperator, ThreeDimsAxis1) {
       0.050680935f, 0.03926183f, 0.079453886f, 0.030862054f, 0.014312706f,
       0.040478885f, 0.033857856f, 0.080346674f, 0.06199841f, 0.040481992f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ 1, false);
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 1, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
+}
+
+TEST(SoftmaxOperator, ThreeDimsAxis1_opset13) {
+  // For the same input, opset-13's behavior is different from an earlier opset
+  // and we see different expected results for the same test input
+
+  std::vector<float> expected_vals = {
+      0.253289f, 0.11198013f, 0.08185529f, 0.35567388f, 0.24795689f,
+      0.44600812f, 0.46761957f, 0.09471639f, 0.2796827f, 0.3307607f,
+      0.16864346f, 0.04540785f, 0.27406466f, 0.14939913f, 0.2167266f,
+      0.1320594f, 0.3749925f, 0.5493636f, 0.21524426f, 0.20455585f,
+
+      0.32341874f, 0.18241648f, 0.1747012f, 0.36767146f, 0.36021632f,
+      0.29275346f, 0.10176494f, 0.28598055f, 0.13050734f, 0.24336906f,
+      0.19977638f, 0.67461985f, 0.40293545f, 0.22843185f, 0.25989732f,
+      0.18405138f, 0.04119869f, 0.13638285f, 0.27338937f, 0.13651732f,
+
+      0.22807457f, 0.2577944f, 0.10201685f, 0.15962972f, 0.09529332f,
+      0.10314508f, 0.5011263f, 0.10428739f, 0.23931651f, 0.63683724f,
+      0.37181312f, 0.12944824f, 0.3946307f, 0.19975942f, 0.0699691f,
+      0.29696727f, 0.11163106f, 0.39906505f, 0.4012943f, 0.1979003f};
+
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 13, /*axis*/ 1,
+          {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO doesn't support opset-13 yet
 }
 
 TEST(SoftmaxOperator, ThreeDimsAxis2) {
@@ -148,9 +174,50 @@ TEST(SoftmaxOperator, ThreeDimsAxis2) {
       0.23619612f, 0.1829779f, 0.37029108f, 0.14383113f, 0.0667037f,
       0.15740506f, 0.13165872f, 0.31243387f, 0.24108529f, 0.15741715f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ 2);
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 2);
 }
 
+TEST(SoftmaxOperator, ThreeDimsAxis2_opset13) {
+  std::vector<float> expected_vals = {
+      0.22277209f, 0.20394778f, 0.09983283f, 0.33927578f, 0.13417149f,
+      0.21729809f, 0.47177994f, 0.06399124f, 0.14778666f, 0.099144064f,
+      0.1797734f, 0.10023525f, 0.40512702f, 0.17272712f, 0.14213723f,
+      0.06506401f, 0.3825848f, 0.37533033f, 0.11501635f, 0.062004484f,
+
+      0.13209775f, 0.28059313f, 0.16109712f, 0.2047936f, 0.22141843f,
+      0.1568978f, 0.20539774f, 0.3460294f, 0.0953841f, 0.19629094f,
+      0.045896534f, 0.5836837f, 0.20899355f, 0.07156797f, 0.08985819f,
+      0.15019783f, 0.1266166f, 0.2512731f, 0.30425128f, 0.16766116f,
+
+      0.17869644f, 0.44943509f, 0.11806339f, 0.1417589f, 0.112046175f,
+      0.03968324f, 0.42900288f, 0.059264507f, 0.10435873f, 0.36769062f,
+      0.23619612f, 0.1829779f, 0.37029108f, 0.14383113f, 0.0667037f,
+      0.15740506f, 0.13165872f, 0.31243387f, 0.24108529f, 0.15741715f};
+
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 13, /*axis*/ 2,
+          {kOpenVINOExecutionProvider});  // OpenVINO doesn't support opset-13 yet
+}
+
+TEST(SoftmaxOperator, ThreeDimsDefaultAxis_opset13) {
+  std::vector<float> expected_vals = {
+      0.22277209f, 0.20394778f, 0.09983283f, 0.33927578f, 0.13417149f,
+      0.21729809f, 0.47177994f, 0.06399124f, 0.14778666f, 0.099144064f,
+      0.1797734f, 0.10023525f, 0.40512702f, 0.17272712f, 0.14213723f,
+      0.06506401f, 0.3825848f, 0.37533033f, 0.11501635f, 0.062004484f,
+
+      0.13209775f, 0.28059313f, 0.16109712f, 0.2047936f, 0.22141843f,
+      0.1568978f, 0.20539774f, 0.3460294f, 0.0953841f, 0.19629094f,
+      0.045896534f, 0.5836837f, 0.20899355f, 0.07156797f, 0.08985819f,
+      0.15019783f, 0.1266166f, 0.2512731f, 0.30425128f, 0.16766116f,
+
+      0.17869644f, 0.44943509f, 0.11806339f, 0.1417589f, 0.112046175f,
+      0.03968324f, 0.42900288f, 0.059264507f, 0.10435873f, 0.36769062f,
+      0.23619612f, 0.1829779f, 0.37029108f, 0.14383113f, 0.0667037f,
+      0.15740506f, 0.13165872f, 0.31243387f, 0.24108529f, 0.15741715f};
+
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 13, /*default axis*/ -1,
+          {kOpenVINOExecutionProvider});  // OpenVINO doesn't support opset-13 yet
+}
 TEST(SoftmaxOperator, ThreeDimsNegativeAxis) {
   // x = <see x_vals_3dims>
   // node = onnx.helper.make_node('Softmax', inputs = ['x'], outputs = ['y'], axis = 2)
@@ -175,7 +242,7 @@ TEST(SoftmaxOperator, ThreeDimsNegativeAxis) {
       0.15740506f, 0.13165872f, 0.31243387f, 0.24108529f, 0.15741715f};
 
   // -1 is last axis so same as axis == 2
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ -1);
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 12, /*axis*/ -1);
 }
 
 TEST(SoftmaxOperator, InvalidAxis) {
@@ -186,9 +253,39 @@ TEST(SoftmaxOperator, InvalidAxis) {
   RunTest(x_vals,
           expected_vals,
           dimensions,
-          /* invalid axis */ -10, false,
+          /*opset*/ 12,
+          /* invalid axis */ -10, {kTensorrtExecutionProvider},
           OpTester::ExpectResult::kExpectFailure,
-          "-10 is not in valid range [-2,1]");
+          // bug in ONNX error message currently. Message should be
+          // "[ShapeInferenceError] 'axis' must be in [-2 , 1]. Its actual value is: -10"
+          ", 1]. Its actual value is: -10");
+}
+
+TEST(SoftmaxOperator, InvalidAxis_opset13) {
+  std::vector<float> x_vals = {-1.0f, 0.0f, 1.0f};
+  std::vector<float> expected_vals = {0.0f, 0.0f, 0.0f};
+  std::vector<int64_t> dimensions = {1, 3};
+
+  RunTest(x_vals,
+          expected_vals,
+          dimensions,
+          /*opset*/ -1,  // latest opset so we get shape inferencing errors
+          /* invalid axis */ -10, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider},
+          OpTester::ExpectResult::kExpectFailure,
+          // In opset-13, Softmax is composed as afunction of several other ops,
+          // and hence it breaks differently to the test above but the most important thing
+          // is that it breaks and this is the right behavior
+          "[ShapeInferenceError]");
+}
+TEST(SoftmaxOperator, DimWithZero) {
+  std::vector<float> x_vals = {};
+  std::vector<float> expected_vals = {};
+  std::vector<int64_t> dimensions = {1, 0};  // dim with value of 0 should be handled
+
+  RunTest(x_vals, expected_vals, dimensions, /*opset*/ -1, /*axis*/ 0,
+          {kTensorrtExecutionProvider,
+           kNnapiExecutionProvider}  // NNAPI softmax does not support empty input
+  );
 }
 
 }  // namespace test

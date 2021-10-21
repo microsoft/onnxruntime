@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "cuda_common.h"
-#include "core/framework/tensor.h"
+
 #include <cfloat>
+
+#include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -13,6 +14,7 @@ class CudnnTensor final {
  public:
   CudnnTensor();
   ~CudnnTensor();
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudnnTensor);
 
   Status Set(const std::vector<int64_t>& input_dims, cudnnDataType_t dataType);
   Status Set(const CudnnTensor& x_desc, cudnnBatchNormMode_t mode);
@@ -32,6 +34,7 @@ class CudnnDataTensor final {
  public:
   CudnnDataTensor();
   ~CudnnDataTensor();
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudnnDataTensor);
 
   Status Set(cudnnDataType_t dataType,
              int64_t max_seq_length,
@@ -51,6 +54,7 @@ class CudnnFilterDescriptor final {
  public:
   CudnnFilterDescriptor();
   ~CudnnFilterDescriptor();
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudnnFilterDescriptor);
 
   Status Set(const std::vector<int64_t>& filter_dims, cudnnDataType_t data_typ);
 
@@ -64,6 +68,7 @@ class CudnnDropout final {
  public:
   CudnnDropout() : dropout_desc_(nullptr) {
   }
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudnnDropout);
 
   Status GetCudnnDropoutStatesSize(const cudnnHandle_t& cudnnHandle, size_t& stateSize) {
     CUDNN_RETURN_IF_ERROR(cudnnDropoutGetStatesSize(cudnnHandle, &stateSize));
@@ -118,6 +123,14 @@ struct Consts<half> {
   static const float Zero;
   static const float One;
 };
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+template <>
+struct Consts<nv_bfloat16> {
+  static const float Zero;
+  static const float One;
+};
+#endif
 
 inline double ClampCudnnBatchNormEpsilon(double epsilon) {
   if (epsilon < CUDNN_BN_MIN_EPSILON) {

@@ -3,7 +3,11 @@
 
 #pragma once
 
-#include "core/graph/onnx_protobuf.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "onnx/defs/schema.h"
+#else
+#include "onnx/defs/data_type_utils.h"
+#endif
 
 namespace onnxruntime {
 namespace contrib {
@@ -26,5 +30,11 @@ namespace contrib {
       schema_func(ONNX_NAMESPACE::OpSchema(#name, __FILE__, __LINE__))
 
 void RegisterContribSchemas();
+void RegisterNchwcSchemas();
+void RegisterNhwcSchemas();
+void RegisterQuantizationSchemas();
+
+constexpr const float kDefaultSkipLayerNormEpsilon = 1e-12f;
+constexpr const float kDefaultEmbedLayerNormEpsilon = 1e-12f;
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -16,7 +16,7 @@ tvm::Expr LLVMIntrinsic(tvm::Type type,
                         const tvm::Array<tvm::Expr>& args) {
   tvm::Array<tvm::Expr> llvm_intrinsic_args;
   auto llvm_intrinsic_id = tvm::codegen::LookupLLVMIntrinsic(name);
-  ORT_ENFORCE(llvm_intrinsic_id != 0);
+  ORT_ENFORCE(llvm_intrinsic_id != 0, "Failed to find intrinsic for ", name);
 
   llvm_intrinsic_args.push_back(tvm::make_const(HalideIR::UInt(32), llvm_intrinsic_id));
   llvm_intrinsic_args.push_back(tvm::make_const(HalideIR::UInt(32), 0));

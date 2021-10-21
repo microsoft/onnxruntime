@@ -20,12 +20,16 @@ limitations under the License.
 #include <mutex>
 #include <sstream>
 
+#include "onnxruntime_config.h"
+
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
+#include "core/common/safeint.h"
+
 #include "core/platform/ort_mutex.h"
-#include "core/framework/arena.h"
-#include "onnxruntime_config.h"
+#include "core/framework/arena_extend_strategy.h"
+#include "core/framework/allocator.h"
 
 #if defined(PLATFORM_WINDOWS)
 #include <intrin.h>
@@ -38,41 +42,6 @@ namespace onnxruntime {
 #endif
 #endif
 
-// Runtime statistics collected by an allocator.
-struct AllocatorStats {
-  int64_t num_allocs;             // Number of allocations.
-  int64_t bytes_in_use;           // Number of bytes in use.
-  int64_t total_allocated_bytes;  // The total number of allocated bytes by the allocator.
-  int64_t max_bytes_in_use;       // The maximum bytes in use.
-  int64_t max_alloc_size;         // The max single allocation seen.
-                                  // The upper limit what the allocator can allocate, if such a limit
-                                  // is known. Certain allocator may return 0 to indicate the limit is
-                                  // unknown.
-  int64_t bytes_limit;
-
-  AllocatorStats() { Clear(); }
-
-  void Clear() {
-    this->num_allocs = 0;
-    this->bytes_in_use = 0;
-    this->max_bytes_in_use = 0;
-    this->max_alloc_size = 0;
-    this->bytes_limit = 0;
-    this->total_allocated_bytes = 0;
-  }
-
-  std::string DebugString() const {
-    std::ostringstream ss;
-    ss << "Limit:           " << this->bytes_limit << "\n"
-       << "InUse:          " << this->bytes_in_use << "\n"
-       << "TotalAllocated: " << this->total_allocated_bytes << "\n"
-       << "MaxInUse:       " << this->max_bytes_in_use << "\n"
-       << "NumAllocs:      " << this->num_allocs << "\n"
-       << "MaxAllocSize:   " << this->max_alloc_size << "\n";
-    return ss.str();
-  }
-};
-
 // A memory allocator that implements a 'best-fit with coalescing'
 // algorithm.  This is essentially a very simple version of Doug Lea's
 // malloc (dlmalloc).
@@ -81,9 +50,20 @@ struct AllocatorStats {
 // coalescing.  One assumption we make is that the process using this
 // allocator owns pretty much all of the memory, and that nearly
 // all requests to allocate memory go through this interface.
-class BFCArena : public IArenaAllocator {
+class BFCArena : public IAllocator {
  public:
-  BFCArena(std::unique_ptr<IDeviceAllocator> resource_allocator, size_t total_memory);
+  static const ArenaExtendStrategy DEFAULT_ARENA_EXTEND_STRATEGY = ArenaExtendStrategy::kNextPowerOfTwo;
+  static const int DEFAULT_INITIAL_CHUNK_SIZE_BYTES = 1 * 1024 * 1024;
+  static const int DEFAULT_MAX_DEAD_BYTES_PER_CHUNK = 128 * 1024 * 1024;
+  static const int DEFAULT_INITIAL_GROWTH_CHUNK_SIZE_BYTES = 2 * 1024 * 1024;
+  static const size_t DEFAULT_MAX_MEM = std::numeric_limits<size_t>::max();
+
+  BFCArena(std::unique_ptr<IAllocator> resource_allocator,
+           size_t total_memory,
+           ArenaExtendStrategy arena_extend_strategy = DEFAULT_ARENA_EXTEND_STRATEGY,
+           int initial_chunk_size_bytes = DEFAULT_INITIAL_CHUNK_SIZE_BYTES,
+           int max_dead_bytes_per_chunk = DEFAULT_MAX_DEAD_BYTES_PER_CHUNK,
+           int initial_growth_chunk_size_bytes = DEFAULT_INITIAL_GROWTH_CHUNK_SIZE_BYTES);
 
   ~BFCArena() override;
 
@@ -95,26 +75,22 @@ class BFCArena : public IArenaAllocator {
   //If p is NULL, no operation is performed.
   void Free(void* p) override;
 
+  // Frees all allocation regions in which no chunk is in use.
+  // Does not free any reserved chunks.
+  // Resets the size that the arena will grow by in the next allocation to
+  // `initial_growth_chunk_size_bytes_` but ultimately all
+  // future allocation sizes are determined by the arena growth strategy
+  // and the allocation request.
+  Status Shrink();
+
   void* Reserve(size_t size) override;
-
-  size_t Used() const override {
-    return stats_.bytes_in_use;
-  }
-
-  size_t Max() const override {
-    return memory_limit_;
-  }
-
-  const OrtMemoryInfo& Info() const override {
-    return info_;
-  }
 
   FencePtr CreateFence(const SessionState* session_state) override {
     // arena always rely on its device allocator to create fence
     return device_allocator_->CreateFence(session_state);
   }
 
-  void GetStats(AllocatorStats* stats);
+  void GetStats(AllocatorStats* stats) override;
 
   size_t RequestedSize(const void* ptr);
 
@@ -226,11 +202,12 @@ class BFCArena : public IArenaAllocator {
   // This class is thread-compatible.
   class AllocationRegion {
    public:
-    AllocationRegion(void* ptr, size_t memory_size)
+    AllocationRegion(void* ptr, size_t memory_size, int64_t id)
         : ptr_(ptr),
           memory_size_(memory_size),
           end_ptr_(
-              static_cast<void*>(static_cast<char*>(ptr_) + memory_size_)) {
+              static_cast<void*>(static_cast<char*>(ptr_) + memory_size_)),
+          id_(id) {
       ORT_ENFORCE(0 == memory_size % kMinAllocationSize);
       const size_t n_handles =
           (memory_size + kMinAllocationSize - 1) / kMinAllocationSize;
@@ -254,6 +231,7 @@ class BFCArena : public IArenaAllocator {
     void* ptr() const { return ptr_; }
     void* end_ptr() const { return end_ptr_; }
     size_t memory_size() const { return memory_size_; }
+    int64_t id() const { return id_; }
     ChunkHandle get_handle(const void* p) const {
       return handles_[IndexFor(p)];
     }
@@ -265,6 +243,7 @@ class BFCArena : public IArenaAllocator {
       std::swap(ptr_, other.ptr_);
       std::swap(memory_size_, other.memory_size_);
       std::swap(end_ptr_, other.end_ptr_);
+      std::swap(id_, other.id_);
       std::swap(handles_, other.handles_);
     }
 
@@ -280,6 +259,9 @@ class BFCArena : public IArenaAllocator {
     void* ptr_ = nullptr;
     size_t memory_size_ = 0;
     void* end_ptr_ = nullptr;
+    // A unique identifier for this allocation region
+    // (May be used by the client to track which allocation region was allocated first, second, and so on)
+    int64_t id_ = -1;
 
     // Array of size "memory_size / kMinAllocationSize".  It is
     // indexed by (p-base) / kMinAllocationSize, contains ChunkHandle
@@ -299,11 +281,20 @@ class BFCArena : public IArenaAllocator {
     RegionManager() = default;
     ~RegionManager() = default;
 
-    void AddAllocationRegion(void* ptr, size_t memory_size) {
+    void AddAllocationRegion(void* ptr, size_t memory_size, int64_t id) {
       // Insert sorted by end_ptr
       auto entry =
           std::upper_bound(regions_.begin(), regions_.end(), ptr, &Comparator);
-      regions_.insert(entry, AllocationRegion(ptr, memory_size));
+      regions_.insert(entry, AllocationRegion(ptr, memory_size, id));
+    }
+
+    void RemoveAllocationRegion(void* ptr) {
+      auto entry =
+          std::upper_bound(regions_.begin(), regions_.end(), ptr, &Comparator);
+
+      ORT_ENFORCE(entry != regions_.end(), "Could not find Region for: ", ptr);
+
+      regions_.erase(entry);
     }
 
     ChunkHandle get_handle(const void* p) const {
@@ -348,9 +339,8 @@ class BFCArena : public IArenaAllocator {
   size_t RoundedBytes(size_t bytes);
 
   // Try to add a new memory region that can satisfy an allocation of
-  // 'rounded_bytes' bytes.  Returns true on success and false on
-  // failure.
-  bool Extend(size_t rounded_bytes);
+  // 'rounded_bytes' bytes.
+  Status Extend(size_t rounded_bytes);
 
   // Returns a pointer to an underlying allocated chunk of size
   // 'rounded_bytes'.
@@ -402,6 +392,7 @@ class BFCArena : public IArenaAllocator {
 
   // Structures immutable after construction
   size_t memory_limit_ = 0;
+  ArenaExtendStrategy arena_extend_strategy_ = ArenaExtendStrategy::kNextPowerOfTwo;
 
   int Log2FloorNonZeroSlow(uint64_t n) {
     int r = 0;
@@ -455,9 +446,9 @@ class BFCArena : public IArenaAllocator {
   char bins_space_[sizeof(Bin) * kNumBins];
 
   // The size of the current region allocation.
-  size_t curr_region_allocation_bytes_;
+  SafeInt<size_t> curr_region_allocation_bytes_;
 
-  std::unique_ptr<IDeviceAllocator> device_allocator_;
+  std::unique_ptr<IAllocator> device_allocator_;
 
   mutable OrtMutex lock_;
 
@@ -472,9 +463,16 @@ class BFCArena : public IArenaAllocator {
 
   AllocatorStats stats_;
 
-  OrtMemoryInfo info_;
-
   std::unordered_map<void*, size_t> reserved_chunks_;
+
+  const int initial_chunk_size_bytes_;
+  const int max_dead_bytes_per_chunk_;
+  const int initial_growth_chunk_size_bytes_;
+
+  // This flag is only relevant if Shrink() is invoked.
+  // This is a boolean flag that controls whether the first allocation region
+  // is to be considered for shrinkage or not.
+  bool consider_first_allocation_region_for_shrinkage_;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(BFCArena);
 };

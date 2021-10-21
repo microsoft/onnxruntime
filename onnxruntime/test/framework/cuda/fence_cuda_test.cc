@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "core/graph/onnx_protobuf.h"
 
 #include "core/session/inference_session.h"
 
@@ -13,17 +14,19 @@
 #include "core/framework/execution_provider.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
-#include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
-#include "core/framework/tensorprotoutils.h"
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
 #include "test/framework/test_utils.h"
 #include "gtest/gtest.h"
 #include "core/util/protobuf_parsing_utils.h"
+#include "test/providers/provider_test_utils.h"
+#include "default_providers.h"
+#include "asserts.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -36,7 +39,7 @@ typedef std::vector<onnxruntime::NodeArg*> ArgMap;
 
 class FenceCudaTestInferenceSession : public InferenceSession {
  public:
-  FenceCudaTestInferenceSession(const SessionOptions& so) : InferenceSession(so) {}
+  FenceCudaTestInferenceSession(const SessionOptions& so, const Environment& env) : InferenceSession(so, env) {}
   Status LoadModel(onnxruntime::Model& model) {
     auto model_proto = model.ToProto();
     auto st = Load(model_proto);
@@ -73,7 +76,9 @@ CREATE_INITIALIZER_FUNC(float, TensorProto_DataType_FLOAT, add_float_data)
 CREATE_INITIALIZER_FUNC(int64_t, TensorProto_DataType_INT64, add_int64_data)
 // TO DO: Figure out a way to enable it again
 TEST(CUDAFenceTests, DISABLED_PartOnCPU) {
-  std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test");
+  std::unique_ptr<onnxruntime::Model> model = std::make_unique<onnxruntime::Model>("test",
+                                                                                   false,
+                                                                                   DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -103,29 +108,24 @@ TEST(CUDAFenceTests, DISABLED_PartOnCPU) {
   float data[4] = {-1, 2, 3, -4};
 
   //create fake ml value with owned buffer.
-  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(
-      element_type,
-      shape,
-      cpu_allocator);
-  memcpy(p_tensor->MutableData<float>(), data, sizeof(data));
   OrtValue value;
-  value.Init(p_tensor.release(),
-             DataTypeImpl::GetType<Tensor>(),
-             DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  Tensor::InitOrtValue(element_type, shape, cpu_allocator, value);
+  memcpy(value.GetMutable<Tensor>()->MutableData<float>(), data, sizeof(data));
 
   SessionOptions so;
-  FenceCudaTestInferenceSession session(so);
-  LoadInferenceSessionFromModel(session, *model);
-  CUDAExecutionProviderInfo xp_info;
-  session.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info));
+  FenceCudaTestInferenceSession session(so, GetEnvironment());
+  ASSERT_STATUS_OK(LoadInferenceSessionFromModel(session, *model));
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
   ASSERT_TRUE(session.Initialize().IsOK());
   ASSERT_TRUE(1 == CountCopyNodes(graph));
 
   vector<OrtValue> outputs;
-  session.Run(std::unordered_map<std::string, OrtValue>{{"X1", value}}, std::vector<std::string>{"Out"}, &outputs);
+  ASSERT_STATUS_OK(
+      session.Run(std::unordered_map<std::string, OrtValue>{{"X1", value}}, std::vector<std::string>{"Out"}, &outputs));
   ASSERT_TRUE(1 == outputs.size());
   const Tensor& output = outputs[0].Get<Tensor>();
-  EXPECT_EQ(output.Shape(), shape);
+  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
+  EXPECT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&output.Shape()), *reinterpret_cast<const std::vector<int64_t>*>(&shape));
   EXPECT_EQ(output.DataType(), DataTypeImpl::GetType<float>());
 
   float expected_output[4] = {13.0f, -18.0f, -27.0f, 40.0f};
@@ -135,7 +135,7 @@ TEST(CUDAFenceTests, DISABLED_PartOnCPU) {
 }
 
 TEST(CUDAFenceTests, TileWithInitializer) {
-  std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test");
+  std::unique_ptr<onnxruntime::Model> model = std::make_unique<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -155,29 +155,27 @@ TEST(CUDAFenceTests, TileWithInitializer) {
   float data[4] = {-1, 2, 3, -4};
 
   //create fake ml value with owned buffer.
-  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(
-      element_type,
-      shape,
-      cpu_allocator);
-  memcpy(p_tensor->MutableData<float>(), data, sizeof(data));
-
   OrtValue value;
-  value.Init(p_tensor.release(),
-             DataTypeImpl::GetType<Tensor>(),
-             DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  Tensor::InitOrtValue(element_type,
+                       shape,
+                       cpu_allocator,
+                       value);
+  memcpy(value.GetMutable<Tensor>()->MutableData<float>(), data, sizeof(data));
+
 
   SessionOptions so;
-  FenceCudaTestInferenceSession session(so);
-  LoadInferenceSessionFromModel(session, *model);
-  CUDAExecutionProviderInfo xp_info;
-  session.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info));
-  ASSERT_TRUE(session.Initialize().IsOK());
+  FenceCudaTestInferenceSession session(so, GetEnvironment());
+  ASSERT_STATUS_OK(LoadInferenceSessionFromModel(session, *model));
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+  ASSERT_STATUS_OK(session.Initialize());
 
   vector<OrtValue> outputs;
-  session.Run(std::unordered_map<std::string, OrtValue>{{"X1", value}}, std::vector<std::string>{"Y"}, &outputs);
+  ASSERT_STATUS_OK(
+      session.Run(std::unordered_map<std::string, OrtValue>{{"X1", value}}, std::vector<std::string>{"Y"}, &outputs));
   ASSERT_TRUE(1 == outputs.size());
   const Tensor& output = outputs[0].Get<Tensor>();
-  EXPECT_EQ(output.Shape(), TensorShape({2, 4}));
+  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
+  EXPECT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&output.Shape()), (std::vector<int64_t>{2, 4}));
   EXPECT_EQ(output.DataType(), DataTypeImpl::GetType<float>());
 
   float expected_output[8] = {-1, 2, -1, 2, 3, -4, 3, -4};
@@ -189,7 +187,9 @@ TEST(CUDAFenceTests, TileWithInitializer) {
 TEST(CUDAFenceTests, TileWithComputedInput) {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[onnxruntime::kOnnxDomain] = 7;
-  std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version);
+  std::unique_ptr<onnxruntime::Model> model = std::make_unique<onnxruntime::Model>(
+      "test", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+      std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -217,29 +217,26 @@ TEST(CUDAFenceTests, TileWithComputedInput) {
   float data[4] = {-1, 2, 3, -4};
 
   //create fake ml value with owned buffer.
-  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(
-      element_type,
-      shape,
-      cpu_allocator);
-  memcpy(p_tensor->MutableData<float>(), data, sizeof(data));
-
   OrtValue value;
-  value.Init(p_tensor.release(),
-             DataTypeImpl::GetType<Tensor>(),
-             DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  Tensor::InitOrtValue(element_type,
+                       shape,
+                       cpu_allocator,
+                       value);
+  memcpy(value.GetMutable<Tensor>()->MutableData<float>(), data, sizeof(data));
 
   SessionOptions so;
-  FenceCudaTestInferenceSession session(so);
-  LoadInferenceSessionFromModel(session, *model);
-  CUDAExecutionProviderInfo xp_info;
-  session.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info));
+  FenceCudaTestInferenceSession session(so, GetEnvironment());
+  ASSERT_STATUS_OK(LoadInferenceSessionFromModel(session, *model));
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
   ASSERT_TRUE(session.Initialize().IsOK());
 
   vector<OrtValue> outputs;
-  session.Run(std::unordered_map<std::string, OrtValue>{{"X1", value}}, std::vector<std::string>{"Out"}, &outputs);
+  ASSERT_STATUS_OK(
+      session.Run(std::unordered_map<std::string, OrtValue>{{"X1", value}}, std::vector<std::string>{"Out"}, &outputs));
   ASSERT_TRUE(1 == outputs.size());
   const Tensor& output = outputs[0].Get<Tensor>();
-  EXPECT_EQ(output.Shape(), TensorShape({4, 4}));
+  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
+  EXPECT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&output.Shape()), (std::vector<int64_t>{4, 4}));
   EXPECT_EQ(output.DataType(), DataTypeImpl::GetType<float>());
 
   float expected_output[16] = {7, -10, 7, -10, -15, 22, -15, 22, 7, -10, 7, -10, -15, 22, -15, 22};

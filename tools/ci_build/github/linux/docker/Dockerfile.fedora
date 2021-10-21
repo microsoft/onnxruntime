@@ -1,7 +1,0 @@
-FROM mcr.microsoft.com/dotnet-buildtools/prereqs:fedora-30-39ec319-20190806171718
-
-ARG PYTHON_VERSION=3.7
-
-ADD scripts /tmp/scripts
-RUN cd /tmp/scripts && /tmp/scripts/install_fedora.sh && /tmp/scripts/install_deps.sh -p $PYTHON_VERSION && rm -rf /tmp/scripts
-

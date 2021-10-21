@@ -33,7 +33,8 @@ Status GENERIC_OP_IR_CREATOR_CLASS(Split)::Evaluate(
 
     // check split sizes
     for (size_t i = 0; i < node.OutputDefs().size(); ++i) {
-      ORT_RETURN_IF_NOT(split_sizes[i] == ShapeValue(node.OutputDefs()[i], gsl::narrow<int>(axis)));
+      ORT_RETURN_IF_NOT(split_sizes[i] == ShapeValue(node.OutputDefs()[i], gsl::narrow<int>(axis)),
+                        "split_sizes[i] != ShapeValue(node.OutputDefs()[i], axis)");
     }
 
   } else {

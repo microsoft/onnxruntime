@@ -35,7 +35,7 @@ class LoggingTestsFixture : public ::testing::Test {
     // and filters user data so that can also be tested
 #if !defined(SKIP_DEFAULT_LOGGER_TESTS)
     const bool filter_user_data = false;
-    default_logging_manager_ = onnxruntime::make_unique<LoggingManager>(
+    default_logging_manager_ = std::make_unique<LoggingManager>(
         std::unique_ptr<ISink>{new CLogSink {}}, Severity::kWARNING, filter_user_data,
         InstanceType::Default, &default_logger_id, /*default_max_vlog_level*/ -1);
 #endif
@@ -123,9 +123,9 @@ TEST_F(LoggingTestsFixture, TestLoggerFiltering) {
   MockSink* sink_ptr = new MockSink();
 
   int num_expected_calls = 2;
-#ifndef NDEBUG
-  ++num_expected_calls;  // VLOG output enabled in DEBUG
-#endif
+  if (logging::vlog_enabled) {
+    ++num_expected_calls;
+  }
   EXPECT_CALL(*sink_ptr, SendImpl(testing::_, HasSubstr(logid), testing::_))  // Property(&Capture::Severity, Ge(min_log_level))))
       .Times(num_expected_calls)
       .WillRepeatedly(PrintArgs());
@@ -145,18 +145,20 @@ TEST_F(LoggingTestsFixture, TestLoggerFiltering) {
 /// <summary>
 /// Tests that the logging manager constructor validates its usage correctly.
 /// </summary>
+#if !defined(ORT_NO_EXCEPTIONS)
 TEST_F(LoggingTestsFixture, TestLoggingManagerCtor) {
   // throw if sink is null
   EXPECT_THROW((LoggingManager{std::unique_ptr<ISink>{nullptr}, Severity::kINFO, false,
                                InstanceType::Temporal}),
-               std::logic_error);
+               ::onnxruntime::OnnxRuntimeException);
 
   // can't have two logging managers with InstanceType of Default.
   // this should clash with LoggingTestsFixture::default_logging_manager_
   EXPECT_THROW((LoggingManager{std::unique_ptr<ISink>{new MockSink{}}, Severity::kINFO, false,
                                InstanceType::Default}),
-               std::logic_error);
+               ::onnxruntime::OnnxRuntimeException);
 }
+#endif
 
 /// <summary>
 /// Tests that the conditional logging macros work correctly.
@@ -258,6 +260,41 @@ TEST_F(LoggingTestsFixture, TestTruncation) {
   LOGF(*logger, ERROR, "%s", std::string(4096, 'a').c_str());
 
   EXPECT_THAT(out.str(), HasSubstr("[...truncated...]"));
+}
+
+TEST_F(LoggingTestsFixture, TestStreamMacroFromConditionalWithoutCompoundStatement) {
+  constexpr const char* logger_id = "TestStreamMacroFromConditionalWithoutCompoundStatement";
+  constexpr Severity min_log_level = Severity::kVERBOSE;
+  constexpr bool filter_user_data = false;
+  constexpr const char* true_message = "true";
+  constexpr const char* false_message = "false";
+
+  auto sink = std::make_unique<MockSink>();
+  {
+    testing::InSequence s{};
+    EXPECT_CALL(*sink, SendImpl(testing::_,
+                                HasSubstr(logger_id),
+                                testing::Property(&Capture::Message, Eq(true_message))))
+        .WillOnce(PrintArgs());
+    EXPECT_CALL(*sink, SendImpl(testing::_,
+                                HasSubstr(logger_id),
+                                testing::Property(&Capture::Message, Eq(false_message))))
+        .WillOnce(PrintArgs());
+  }
+
+  LoggingManager manager{std::move(sink), min_log_level, filter_user_data, InstanceType::Temporal};
+
+  auto logger = manager.CreateLogger(logger_id, min_log_level, filter_user_data);
+
+  auto log_from_conditional_without_compound_statement = [&](bool condition) {
+    if (condition)
+      LOGS(*logger, VERBOSE) << true_message;
+    else
+      LOGS(*logger, VERBOSE) << false_message;
+  };
+
+  log_from_conditional_without_compound_statement(true);
+  log_from_conditional_without_compound_statement(false);
 }
 
 }  // namespace test

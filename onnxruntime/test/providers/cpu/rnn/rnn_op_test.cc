@@ -118,7 +118,8 @@ TEST(RNNTest, RNN_bidirectional_bias_initial_zigged_batch) {
                                -0.71697658F, 0.99646497F, 0.9980582F, 0.1513377F, 0.90150106F, 0.74947751F});
   test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
+  // TensorRT failed on RNN tests
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(RNNTest, RNN_bidirectional_zigged_batch) {
@@ -195,7 +196,7 @@ TEST(RNNTest, RNN_bidirectional_zigged_batch) {
                                0.39222997F, -0.99489242F, 0.86467457F, 0.0274523F, -0.9431532F, -0.60166585F});
   test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
 
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(RNNTest, RNN_reverse_direction_zigged_batch) {
@@ -268,7 +269,7 @@ TEST(RNNTest, RNN_reverse_direction_zigged_batch) {
   std::vector<float> Y_h_data({0.87014002F, 0.09402763F, -0.54269236F, 0.64809889F, -0.19472955F, -0.24271242F});
   test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(RNNTest, RNN_forward_direction_zigged_batch) {
@@ -342,7 +343,7 @@ TEST(RNNTest, RNN_forward_direction_zigged_batch) {
   std::vector<float> Y_h_data({-0.746264696F, -0.0781838298F, -0.751394153F, -0.343922496F, -0.181868196F, -0.130254388F});
   test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
 
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(RNNTest, RNN_bidirectional_0) {
@@ -404,7 +405,7 @@ TEST(RNNTest, RNN_bidirectional_0) {
   std::vector<float> Y_h_data({-0.74539614F, 0.93210655F, -0.63887376F, 0.89708149F, -0.50691134F, 0.10560472F});
   test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
 
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(RNNTest, RNN_bidirectional_1) {
@@ -429,7 +430,7 @@ TEST(RNNTest, RNN_bidirectional_1) {
   std::vector<int64_t> R_dims = {num_directions, hidden_size, hidden_size};
   std::vector<float> R_data({// forward
                              1.0F, 1.0F,
-                             1.0F, 1.0F, 
+                             1.0F, 1.0F,
                              // reverse
                              1.0F, 1.0F,
                              1.0F, 1.0F});
@@ -456,7 +457,7 @@ TEST(RNNTest, RNN_bidirectional_1) {
   std::vector<float> Y_h_data({0.98009639F, 0.98009639F, 0.99100745F, 0.99100745F});
   test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
 
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 typedef enum {
@@ -504,9 +505,9 @@ TEST(RNNTest, DISABLED_RNN_default_attributes_and_forward_direction) {
       std::vector<float> initial_h_data({0.0F, 0.0F, 0.0F});
       test.AddInput<float>("initial_h", initial_h_dims, initial_h_data);
     } else {
-      test.AddMissingOptionalInput<float>();
-      test.AddMissingOptionalInput<int>();
-      test.AddMissingOptionalInput<float>();
+      test.AddOptionalInputEdge<float>();
+      test.AddOptionalInputEdge<int>();
+      test.AddOptionalInputEdge<float>();
     }
 
     if (outputOption == RNNOutputY || outputOption == RNNOutputBoth) {
@@ -518,7 +519,7 @@ TEST(RNNTest, DISABLED_RNN_default_attributes_and_forward_direction) {
                                  -0.74626476F, -0.07818383F, -0.75139415F});
       test.AddOutput<float>("Y", Y_dims, Y_data);
     } else {
-      test.AddMissingOptionalOutput<float>();
+      test.AddOptionalOutputEdge<float>();
     }
 
     if (outputOption == RNNOutputY_h || outputOption == RNNOutputBoth) {
@@ -526,10 +527,10 @@ TEST(RNNTest, DISABLED_RNN_default_attributes_and_forward_direction) {
       std::vector<float> Y_h_data({-0.74626476F, -0.07818383F, -0.75139415F});
       test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
     } else {
-      test.AddMissingOptionalOutput<float>();
+      test.AddOptionalOutputEdge<float>();
     }
 
-    test.Run();
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
   };
 
   {
@@ -613,9 +614,9 @@ TEST(RNNTest, DISABLED_RNN_reverse_direction) {
       std::vector<float> initial_h_data({0.0F, 0.0F, 0.0F});
       test.AddInput<float>("initial_h", initial_h_dims, initial_h_data);
     } else {
-      test.AddMissingOptionalInput<float>();
-      test.AddMissingOptionalInput<int>();
-      test.AddMissingOptionalInput<float>();
+      test.AddOptionalInputEdge<float>();
+      test.AddOptionalInputEdge<int>();
+      test.AddOptionalInputEdge<float>();
     }
 
     std::vector<int64_t> Y_dims = {seq_length, num_directions, batch_size, hidden_size};
@@ -627,7 +628,7 @@ TEST(RNNTest, DISABLED_RNN_reverse_direction) {
     if (outputOption == RNNOutputY || outputOption == RNNOutputBoth) {
       test.AddOutput<float>("Y", Y_dims, Y_data);
     } else {
-      test.AddMissingOptionalOutput<float>();
+      test.AddOptionalOutputEdge<float>();
     }
 
     std::vector<int64_t> Y_h_dims{num_directions, batch_size, hidden_size};
@@ -635,10 +636,10 @@ TEST(RNNTest, DISABLED_RNN_reverse_direction) {
     if (outputOption == RNNOutputY_h || outputOption == RNNOutputBoth) {
       test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
     } else {
-      test.AddMissingOptionalOutput<float>();
+      test.AddOptionalOutputEdge<float>();
     }
 
-    test.Run();
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
   };
 
   // TODO: bring in these tests
@@ -728,14 +729,14 @@ TEST(RNNTest, RNN_invalid_sequence_lens) {
     test.AddInput<float>("initial_h", initial_h_dims, initial_h_data);
 
     // Y
-    test.AddMissingOptionalOutput<float>();
+    test.AddOptionalOutputEdge<float>();
 
     std::vector<int64_t> Y_h_dims{num_directions, batch_size, hidden_size};
     std::vector<float> Y_h_data{0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
     test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
 
-    // the CUDA RNN version allows the invalid sequence lengths, so disable testing on CUDA
-    test.Run(OpTester::ExpectResult::kExpectFailure, error_msg, {kCudaExecutionProvider});
+    // the CUDA RNN version allows the invalid sequence lengths, so disable testing on CUDA and TensorRT
+    test.Run(OpTester::ExpectResult::kExpectFailure, error_msg, {kCudaExecutionProvider, kTensorrtExecutionProvider});
   };
 
   // should batch batch_size to be valid
@@ -833,7 +834,37 @@ TEST(RNNTest, RNN_bidirectional_with_sequence_lens) {
 
   test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});
+}
+
+TEST(RNNTest, RNN_with_invalid_activation_load_failure) {
+  OpTester test("RNN");
+  int64_t num_directions = 1, input_size = 1, hidden_size = 1, seq_length = 1;
+
+  test.AddAttribute("activations", vector<string>(num_directions, "Invalid_activation"));
+  test.AddAttribute("direction", "reverse");
+  test.AddAttribute("hidden_size", hidden_size);
+
+  int batch_size = 1;
+
+  std::vector<int64_t> X_dims = {seq_length, batch_size, input_size};
+  std::vector<float> X_data{0.F};
+  test.AddInput<float>("X", X_dims, X_data);
+
+  std::vector<int64_t> W_dims = {num_directions, hidden_size, input_size};
+  std::vector<float> W_data({0.F});
+  test.AddInput<float>("W", W_dims, W_data);
+
+  std::vector<int64_t> R_dims = {num_directions, hidden_size, hidden_size};
+  std::vector<float> R_data({0.F});
+  test.AddInput<float>("R", R_dims, R_data);
+
+  std::vector<int64_t> Y_dims = {seq_length, num_directions, batch_size, hidden_size};
+  std::vector<float> Y_data({0.F});
+  test.AddOutput<float>("Y", Y_dims, Y_data);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "RNN op: Invalid activation attribute - Invalid_activation",
+           {kCudaExecutionProvider, kTensorrtExecutionProvider});
 }
 
 }  // namespace test

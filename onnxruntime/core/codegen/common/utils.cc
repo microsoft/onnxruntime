@@ -2,7 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/codegen/common/utils.h"
-#include "core/common/make_unique.h"
+#include "core/common/cpuid_info.h"
+#include "core/common/safeint.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -30,8 +31,8 @@ std::unique_ptr<char[]> GetEnv(const char* var) {
   // to its caller and make distinguish between windows and linux, we return
   // a unique_ptr, and it will be destroyed automatically after the caller
   // completes.
-  size_t len_val = strlen(val) + 1;
-  auto p = onnxruntime::make_unique<char[]>(len_val);
+  size_t len_val = strnlen(val, onnxruntime::kMaxStrLen) + 1;
+  auto p = std::make_unique<char[]>(len_val);
   // use explicit loop to get ride of VC's warning on unsafe copy
   for (size_t i = 0; i < len_val; ++i) {
     p[i] = val[i];
@@ -45,7 +46,7 @@ bool IsEnvVarDefined(const char* var) {
 }
 
 int64_t TotalSize(const std::vector<int64_t>& shape) {
-  int64_t total = 1;
+  SafeInt<int64_t> total = 1;
   for (auto s : shape) {
     total *= s;
   }
@@ -60,8 +61,42 @@ void GetStrides(const int64_t* shape, int ndim, std::vector<int64_t>& strides) {
   strides.resize(ndim);
   strides[ndim - 1] = 1;
   for (int64_t i = ndim - 2; i >= 0; i--) {
-    strides[i] = strides[i+1] * shape[i+1];
+    strides[i] = strides[i + 1] * shape[i + 1];
   }
+}
+
+// Common utils to get target option
+TargetFeature GetTargetInfo(const codegen::CodeGenSettings& settings) {
+  TargetFeature feature;
+
+  std::string target_str = "";
+  if (settings.HasOption(nuphar::kNupharCodeGenTarget)) {
+    target_str = settings.GetOptionValue(nuphar::kNupharCodeGenTarget);
+  }
+
+  bool isAVX = false;
+  bool isAVX2 = false;
+  bool isAVX512 = false;
+  if (target_str == "avx") {
+    isAVX = true;
+  } else if (target_str == "avx2") {
+    isAVX = true;
+    isAVX2 = true;
+  } else if (target_str == "avx512") {
+    isAVX = true;
+    isAVX2 = true;
+    isAVX512 = true;
+  } else {
+    isAVX = CPUIDInfo::GetCPUIDInfo().HasAVX();
+    isAVX2 = CPUIDInfo::GetCPUIDInfo().HasAVX2();
+    isAVX512 = CPUIDInfo::GetCPUIDInfo().HasAVX512Skylake();
+  }
+
+  feature.hasAVX = isAVX;
+  feature.hasAVX2 = isAVX2;
+  feature.hasAVX512 = isAVX512;
+
+  return feature;
 }
 
 }  // namespace onnxruntime

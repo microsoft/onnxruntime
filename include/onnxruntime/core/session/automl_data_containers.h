@@ -11,7 +11,7 @@
 extern "C" {
 #endif
 // This structure is used to initialize and read
-// OrtValue of opaque(com.microsoft.automl,DateTimeFeaturizer_TimePoint)
+// OrtValue of opaque(com.microsoft.featurizers,DateTimeFeaturizer_TimePoint)
 struct DateTimeFeaturizerTimePointData {
   int32_t year;
   uint8_t month;

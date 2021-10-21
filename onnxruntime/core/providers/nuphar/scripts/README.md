@@ -15,7 +15,3 @@ Quantize MatMul in model dynamically wrt. input
 * rnn_benchmark.py
 
 Benchmark for LSTM/GRU/RNN with model_editor and model_quantizer to show Nuphar's speed up for those models
-
-* symbolic_shape_infer.py
-
-Run symbolic shape inference with sympy. Nuphar relies on shape inference to run efficiently.

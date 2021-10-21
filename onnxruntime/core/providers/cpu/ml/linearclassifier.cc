@@ -2,49 +2,34 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/ml/linearclassifier.h"
+#include "core/providers/cpu/math/gemm.h"
 
 namespace onnxruntime {
 namespace ml {
 
-const std::vector<MLDataType> linearClassifierOutputConstraints{
-    DataTypeImpl::GetTensorType<std::string>(),
-    DataTypeImpl::GetTensorType<int64_t>()};
-
-ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
+ONNX_CPU_OPERATOR_ML_KERNEL(
     LinearClassifier,
     1,
-    float,
-    KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()).TypeConstraint("T2", linearClassifierOutputConstraints),
-    LinearClassifier<float>);
+    KernelDefBuilder()
+        .TypeConstraint("T1", std::vector<MLDataType>{
+                                  DataTypeImpl::GetTensorType<float>(),
+                                  DataTypeImpl::GetTensorType<double>(),
+                                  DataTypeImpl::GetTensorType<int32_t>(),
+                                  DataTypeImpl::GetTensorType<int64_t>(),
+                              })
+        .TypeConstraint("T2", std::vector<MLDataType>{
+                                  DataTypeImpl::GetTensorType<std::string>(),
+                                  DataTypeImpl::GetTensorType<int64_t>(),
+                              }),
+    LinearClassifier);
 
-ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
-    LinearClassifier,
-    1,
-    double,
-    KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<double>()).TypeConstraint("T2", linearClassifierOutputConstraints),
-    LinearClassifier<double>);
-
-ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
-    LinearClassifier,
-    1,
-    int64_t,
-    KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()).TypeConstraint("T2", linearClassifierOutputConstraints),
-    LinearClassifier<int64_t>);
-
-ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
-    LinearClassifier,
-    1,
-    int32_t,
-    KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>()).TypeConstraint("T2", linearClassifierOutputConstraints),
-    LinearClassifier<int32_t>);
-
-template <typename T>
-LinearClassifier<T>::LinearClassifier(const OpKernelInfo& info) : OpKernel(info),
-                                                                  multi_class_(info.GetAttrOrDefault<int64_t>("multi_class", 0)),
-                                                                  post_transform_(MakeTransform(info.GetAttrOrDefault<std::string>("post_transform", "NONE"))),
-                                                                  intercepts_(info.GetAttrsOrDefault<float>("intercepts")),
-                                                                  classlabels_strings_(info.GetAttrsOrDefault<std::string>("classlabels_strings")),
-                                                                  classlabels_ints_(info.GetAttrsOrDefault<int64_t>("classlabels_ints")) {
+LinearClassifier::LinearClassifier(const OpKernelInfo& info)
+    : OpKernel(info),
+      multi_class_(info.GetAttrOrDefault<int64_t>("multi_class", 0)),
+      post_transform_(MakeTransform(info.GetAttrOrDefault<std::string>("post_transform", "NONE"))),
+      intercepts_(info.GetAttrsOrDefault<float>("intercepts")),
+      classlabels_strings_(info.GetAttrsOrDefault<std::string>("classlabels_strings")),
+      classlabels_ints_(info.GetAttrsOrDefault<int64_t>("classlabels_ints")) {
   if (!info.GetAttrs<float>("coefficients", coefficients_).IsOK())
     ORT_ENFORCE(!coefficients_.empty());
 
@@ -52,99 +37,169 @@ LinearClassifier<T>::LinearClassifier(const OpKernelInfo& info) : OpKernel(info)
   class_count_ = static_cast<int64_t>(intercepts_.size());
 }
 
-template <typename T>
-Status LinearClassifier<T>::Compute(OpKernelContext* ctx) const {
-  const auto* X = ctx->Input<Tensor>(0);
-  const TensorShape& shape = X->Shape();
-  if (shape.NumDimensions() == 0) {
+// Use GEMM for the calculations, with broadcasting of intercepts
+// https://github.com/onnx/onnx/blob/master/docs/Operators.md#Gemm
+//
+// X: [num_batches, num_features]
+// coefficients_: [num_targets, num_features]
+// intercepts_: [num_targets]
+// scores: X * coefficients_^T + intercepts_: [num_batches, num_targets]
+void LinearClassifier::ComputeImpl(const gsl::span<const float> input,
+                                   int64_t num_batches, int64_t num_features, int64_t num_targets,
+                                   const std::vector<float>& coefficients,
+                                   const std::vector<float>& intercepts,
+                                   Tensor& labels_output, Tensor& scores_output,
+                                   POST_EVAL_TRANSFORM post_transform,
+                                   bool add_second_class,
+                                   concurrency::ThreadPool* threadpool) const {
+  const float* input_data = input.data();
+  auto scores_output_data = scores_output.MutableDataAsSpan<float>();
+  size_t scores_output_size = num_batches * num_targets * (add_second_class ? 2 : 1);
+  ORT_ENFORCE(scores_output_data.length() >= scores_output_size,
+              "Scores output is incorrect size. Expected:", scores_output_size,
+              " Found:", scores_output_data.length());
+
+  TensorShape intercepts_shape({num_targets});
+  onnxruntime::Gemm<float>::ComputeGemm(CBLAS_TRANSPOSE::CblasNoTrans, CBLAS_TRANSPOSE::CblasTrans,
+                                        num_batches, num_targets, num_features,
+                                        1.f, input_data, coefficients.data(), 1.f,
+                                        intercepts.data(), &intercepts_shape,
+                                        scores_output_data.data(),
+                                        threadpool);
+
+  float* score = scores_output_data.data();
+  float* end_scores = score + (num_batches * num_targets);  // we haven't added extra targets yet so iterate the original scores
+
+  if (num_targets == 1) {
+    if (using_strings_) {
+      std::string* y_out = labels_output.MutableData<std::string>();
+      bool use_class_labels = classlabels_strings_.size() == 2;
+      std::string positive_label = use_class_labels ? classlabels_strings_[1] : "1";
+      std::string negative_label = use_class_labels ? classlabels_strings_[0] : "0";
+
+      while (score < end_scores) {
+        *y_out++ = (*score++ > 0) ? positive_label
+                                  : negative_label;
+      }
+    } else {
+      int64_t* y_out = labels_output.MutableData<int64_t>();
+      bool use_class_labels = classlabels_ints_.size() == 2;
+      int64_t positive_label = use_class_labels ? classlabels_ints_[1] : 1;
+      int64_t negative_label = use_class_labels ? classlabels_ints_[0] : 0;
+
+      while (score < end_scores) {
+        *y_out++ = (*score++ > 0) ? positive_label
+                                  : negative_label;
+      }
+    }
+  } else {
+    for (int64_t i = 0; i < num_batches; ++i) {
+      int maxclass = 0;
+      float maxweight = *score++;
+
+      for (int j = 1; j < num_targets; ++j, ++score) {
+        if (*score > maxweight) {
+          maxweight = *score;
+          maxclass = j;
+        }
+      }
+
+      if (using_strings_) {
+        labels_output.MutableData<std::string>()[i] = classlabels_strings_[maxclass];
+      } else {
+        labels_output.MutableData<int64_t>()[i] = classlabels_ints_[maxclass];
+      }
+    }
+  }
+
+  if (post_transform != POST_EVAL_TRANSFORM::NONE || add_second_class) {
+    ml::batched_update_scores_inplace(scores_output_data, num_batches, num_targets, post_transform,
+                                      add_second_class ? 1 : -1, false,
+                                      threadpool);
+  }
+}
+
+template <typename SrcType>
+static void CastInputToFloat(const Tensor& in, gsl::span<float>& out) {
+  size_t shape_size = static_cast<size_t>(in.Shape().Size());
+  ORT_ENFORCE(shape_size == out.length());
+
+  const SrcType* in_data = in.Data<SrcType>();
+  float* out_data = out.data();
+  for (size_t i = 0; i < shape_size; ++i) {
+    *out_data++ = static_cast<float>(*in_data++);
+  }
+}
+
+Status LinearClassifier::Compute(OpKernelContext* ctx) const {
+  const auto& X = *ctx->Input<Tensor>(0);
+  const TensorShape& input_shape = X.Shape();
+  if (input_shape.NumDimensions() == 0) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "Input shape needs to be at least a single dimension.");
   }
 
-  int64_t stride = shape.NumDimensions() == 1 ? shape[0] : shape[1];
-  int64_t N = shape.NumDimensions() == 1 ? 1 : shape[0];
-  Tensor* Y = ctx->Output(0, TensorShape({N}));
+  int64_t num_batches = input_shape.NumDimensions() == 1 ? 1 : input_shape[0];
+  int64_t num_features = input_shape.NumDimensions() == 1 ? input_shape[0] : input_shape[1];
+
+  Tensor* Y = ctx->Output(0, {num_batches});
 
   int64_t output_classes = class_count_;
   bool add_second_class = false;
-  if (intercepts_.size() == 1 && ((using_strings_ && classlabels_strings_.size() == 2) || (!using_strings_ && classlabels_ints_.size() == 2))) {
+  if (class_count_ == 1 &&
+      ((using_strings_ && classlabels_strings_.size() == 2) ||
+       (!using_strings_ && classlabels_ints_.size() == 2))) {
     output_classes = 2;
     add_second_class = true;
   }
-  Tensor* Z = ctx->Output(1, TensorShape({N, output_classes}));
 
-  int64_t zindex = 0;
-  const auto* x_data = X->template Data<T>();
+  Tensor* Z = ctx->Output(1, {num_batches, output_classes});
 
-  auto class_count = static_cast<size_t>(class_count_);
-  std::vector<float> scores;
-  scores.reserve(class_count);
-  for (int64_t i = 0; i < N; i++)  //for each point
-  {
-    scores.clear();
-    size_t current_weight_0 = i * stride;
-    int maxclass = -1;
-    float maxweight = 0.f;
-    for (int j = 0; j < class_count_; j++)  // for each class
-    {
-      size_t current_coeff_0 = j * stride;
-      float weight = 0.f;
-      for (int64_t k = 0; k < stride; k++)  //for each weight
-      {
-        weight += static_cast<float>(x_data[current_weight_0 + k] * coefficients_[current_coeff_0 + k]);
+  concurrency::ThreadPool* tp = ctx->GetOperatorThreadPool();
+
+  gsl::span<const float> input;
+  float* cast_buffer = nullptr;
+
+  auto element_type = X.GetElementType();
+  AllocatorPtr alloc;
+
+  if (element_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    input = X.DataAsSpan<float>();
+  } else {
+    // at some point we need to convert to float as output Z has type 'tensor(float)'.
+    // we have a fast GEMM implementation for float, so convert the input to float so we can use that.
+    auto status = ctx->GetTempSpaceAllocator(&alloc);
+    auto num_elements = input_shape.Size();
+    cast_buffer = reinterpret_cast<float*>(alloc->AllocArray(num_elements, sizeof(float)));
+    auto cast_span = gsl::make_span<float>(cast_buffer, num_elements);
+
+    switch (element_type) {
+      case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
+        CastInputToFloat<int32_t>(X, cast_span);
+        break;
       }
-      if (intercepts_.size() == class_count) {
-        weight += intercepts_[j];
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+        CastInputToFloat<int64_t>(X, cast_span);
+        break;
       }
-      scores.push_back(weight);
-      if (weight > maxweight || maxclass == -1) {
-        maxweight = weight;
-        maxclass = j;
+      case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE: {
+        CastInputToFloat<double>(X, cast_span);
+        break;
       }
+      default:
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported input element type of ", element_type);
     }
-    //write top class
-    if (intercepts_.size() == 1)  //binary
-    {
-      if (using_strings_) {
-        if (classlabels_strings_.size() == 2 && maxweight > 0) {
-          Y->template MutableData<std::string>()[i] = classlabels_strings_[1];  //positive label
-        } else if (classlabels_strings_.size() == 2) {
-          Y->template MutableData<std::string>()[i] = classlabels_strings_[0];  //negative label
-        } else if (maxweight > 0) {
-          Y->template MutableData<std::string>()[i] = "1";  //positive label
-        } else {
-          Y->template MutableData<std::string>()[i] = "0";  //negative label
-        }
-      } else  //no strings
-      {
-        if (classlabels_ints_.size() == 2 && maxweight > 0) {
-          Y->template MutableData<int64_t>()[i] = classlabels_ints_[1];  //positive label
-        } else if (classlabels_ints_.size() == 2) {
-          Y->template MutableData<int64_t>()[i] = classlabels_ints_[0];  //negative label
-        } else if (maxweight > 0) {
-          Y->template MutableData<int64_t>()[i] = 1;  //positive label
-        } else {
-          Y->template MutableData<int64_t>()[i] = 0;  //negative label
-        }
-      }
-    } else  //multiclass
-    {
-      if (using_strings_) {
-        Y->template MutableData<std::string>()[i] = classlabels_strings_[maxclass];
-      } else {
-        Y->template MutableData<int64_t>()[i] = classlabels_ints_[maxclass];
-      }
-    }
-    //write float values
-    if (add_second_class && maxweight > 0) {
-      ::onnxruntime::ml::write_scores(scores, post_transform_, zindex, Z, 0);
-    } else if (add_second_class) {
-      ::onnxruntime::ml::write_scores(scores, post_transform_, zindex, Z, 1);
-    } else {
-      ::onnxruntime::ml::write_scores(scores, post_transform_, zindex, Z, -1);
-    }
-    zindex += scores.size();
-  }  //for each point
+
+    input = cast_span;
+  }
+
+  ComputeImpl(input, num_batches, num_features, class_count_, coefficients_, intercepts_,
+              *Y, *Z, post_transform_, add_second_class, tp);
+
+  if (cast_buffer != nullptr) {
+    alloc->Free(cast_buffer);
+  }
+
   return Status::OK();
 }
 

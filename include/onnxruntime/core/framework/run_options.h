@@ -6,6 +6,7 @@
 #include <string>
 #include <atomic>
 #include "core/session/onnxruntime_c_api.h"
+#include "core/framework/config_options.h"
 
 /**
  * Configuration information for a Run call.
@@ -22,18 +23,25 @@ struct OrtRunOptions {
   // be forced to terminate with an error status.
   bool terminate = false;
 
+  // Set to 'true' to run only the nodes from feeds to required fetches.
+  // So it is possible that only some of the nodes are executed.
+  bool only_execute_path_to_fetches = false;
+
+#ifdef ENABLE_TRAINING
+  // Set to 'true' to run in training mode.
+  bool training_mode = true;
+#endif
+
+  // Stores the configurations for this run
+  // To add an configuration to this specific run, call OrtApis::AddRunConfigEntry
+  // The configuration keys and value formats are defined in
+  // /include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h
+  onnxruntime::ConfigOptions config_options;
+
   OrtRunOptions() = default;
   ~OrtRunOptions() = default;
-
-  // Disable copy, move and assignment. we don't want accidental copies, to
-  // ensure that the instance provided to the Run() call never changes and the
-  // terminate mechanism will work.
-  OrtRunOptions(const OrtRunOptions&) = delete;
-  OrtRunOptions(OrtRunOptions&&) = delete;
-  OrtRunOptions& operator=(const OrtRunOptions&) = delete;
-  OrtRunOptions& operator=(OrtRunOptions&&) = delete;
 };
 
 namespace onnxruntime {
 using RunOptions = OrtRunOptions;
-}
+}  // namespace onnxruntime

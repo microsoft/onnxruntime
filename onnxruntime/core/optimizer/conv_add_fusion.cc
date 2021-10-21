@@ -10,9 +10,9 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
-Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modified) const {
+Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modified, const logging::Logger&) const {
   auto& conv_node = node;
-  const auto& add_node = *conv_node.OutputNodesBegin();
+  auto& add_node = *graph.GetNode(conv_node.OutputNodesBegin()->Index());  // get mutable next node
   const auto& conv_inputs = conv_node.InputDefs();
   const auto& add_inputs = add_node.InputDefs();
 
@@ -23,7 +23,9 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
   ORT_ENFORCE(add_B_tensor_proto);
 
   // Conv only supports floating point data types, so can only fuse with an initializer containing those types
-  if (!optimizer_utils::IsFloatingPointDataType(*add_B_tensor_proto) || conv_W_tensor_proto->dims_size() < 4) {
+  if (!optimizer_utils::IsFloatingPointDataType(*conv_W_tensor_proto) ||
+      conv_W_tensor_proto->data_type() != add_B_tensor_proto->data_type() ||
+      conv_W_tensor_proto->dims_size() <= 2) {
     return Status::OK();
   }
 
@@ -37,9 +39,11 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
   } else {
     return Status::OK();
   }
+
   if (add_B_tensor_proto->dims(axis) != conv_W_tensor_proto->dims(0)) {
     return Status::OK();
   }
+
   // The dimensions of add_B should be equal to 1 except axis dimension.
   for (int i = 0; i < add_B_tensor_proto->dims_size(); i++) {
     if (i != axis && add_B_tensor_proto->dims(i) != 1) {
@@ -48,72 +52,67 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
   }
 
   if (conv_inputs.size() == 3) {
-    const auto* conv_B_tensor_proto = graph_utils::GetConstantInitializer(graph, conv_inputs[2]->Name());
+    const auto& B_input_name = conv_inputs[2]->Name();
+    const auto* conv_B_tensor_proto = graph_utils::GetConstantInitializer(graph, B_input_name);
     ORT_ENFORCE(conv_B_tensor_proto);
 
-    if (!optimizer_utils::IsFloatingPointDataType(*conv_B_tensor_proto) ||
-        conv_B_tensor_proto->data_type() != add_B_tensor_proto->data_type() ||
+    if (conv_B_tensor_proto->data_type() != add_B_tensor_proto->data_type() ||
         conv_B_tensor_proto->dims_size() != 1 ||
         conv_B_tensor_proto->dims(0) != conv_W_tensor_proto->dims(0)) {
       return Status::OK();
     }
 
-    auto conv_B = onnxruntime::make_unique<Initializer>(*conv_B_tensor_proto);
-    auto add_B = onnxruntime::make_unique<Initializer>(*add_B_tensor_proto);
+    Initializer conv_B{*conv_B_tensor_proto, graph.ModelPath()};
+    Initializer add_B{*add_B_tensor_proto, graph.ModelPath()};
 
-    if (conv_B->size() != add_B->size()) {
+    if (conv_B.size() != add_B.size()) {
       return Status::OK();
     }
+
     // Calculate new value of initializers of conv node
-    conv_B->add(*add_B);
+    conv_B.add(add_B);
 
     // Create new initializers of conv
     ONNX_NAMESPACE::TensorProto new_conv_B_tensor_proto;
-    conv_B->ToProto(new_conv_B_tensor_proto);
+    conv_B.ToProto(new_conv_B_tensor_proto);
 
-    // Replace initializers of conv node
-    graph_utils::ReplaceInitializer(graph, conv_inputs[2]->Name(), new_conv_B_tensor_proto);
+    auto new_name = graph.GenerateNodeArgName("ConvAddFusion_B_" + B_input_name);
+    new_conv_B_tensor_proto.set_name(new_name);
+
+    NodeArg& new_conv_B_node_arg = graph_utils::AddInitializer(graph, new_conv_B_tensor_proto);
+    graph_utils::ReplaceNodeInput(node, 2, new_conv_B_node_arg);
+
   } else {
-    NodeArg* add_B_node_arg = graph.GetNodeArg(add_B_tensor_proto->name());
-    if (add_B_node_arg == nullptr) {
-      return Status::OK();
-    }
-
-    // Update shape of tensor proto
+    // Create new tensor proto and update shape
     ONNX_NAMESPACE::TensorProto new_conv_B_tensor_proto(*add_B_tensor_proto);
     int64_t dim = conv_W_tensor_proto->dims(0);
     new_conv_B_tensor_proto.clear_dims();
     new_conv_B_tensor_proto.add_dims(dim);
 
-    graph_utils::ReplaceInitializer(graph, add_B_tensor_proto->name(), new_conv_B_tensor_proto);
+    auto new_name = graph.GenerateNodeArgName("ConvAddFusion_Add_B_" + add_B_tensor_proto->name());
+    new_conv_B_tensor_proto.set_name(new_name);
 
-    // Update shape of NodeArg
-    TensorShapeProto shape;
-    shape.add_dim()->set_dim_value(dim);
-    add_B_node_arg->SetShape(shape);
-
-    conv_node.MutableInputDefs().push_back(add_B_node_arg);
-    conv_node.MutableInputArgsCount()[2] = 1;
+    NodeArg& new_add_B_node_arg = graph_utils::AddInitializer(graph, new_conv_B_tensor_proto);
+    graph_utils::AddNodeInput(node, 2, new_add_B_node_arg);
   }
 
-  // Remove Add node.
-  auto* add_node_to_remove = graph.GetNode(add_node.Index());
-  if (graph_utils::RemoveNode(graph, *add_node_to_remove)) {
-    modified = RewriteRuleEffect::kModifiedRestOfGraph;
-  }
+  // move the output definition and edges from the add_node to the conv_node and delete the add_node
+  graph_utils::FinalizeNodeFusion(graph, conv_node, add_node);
+
+  modified = RewriteRuleEffect::kModifiedRestOfGraph;
 
   return Status::OK();
 }
 
-bool ConvAddFusion::SatisfyCondition(const Graph& graph, const Node& node) const {
+bool ConvAddFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger&) const {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1, 11}) ||
       node.GetOutputEdgesCount() != 1) {
     return false;
   }
 
   const auto& next_node = *node.OutputNodesBegin();
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", {7}) ||
-      next_node.GetInputEdgesCount() != 1 || graph.IsNodeOutputsInGraphOutputs(next_node) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", {7, 13, 14}) ||
+      next_node.GetInputEdgesCount() != 1 ||
       // Make sure the two nodes do not span execution providers.
       next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
     return false;
@@ -123,6 +122,10 @@ bool ConvAddFusion::SatisfyCondition(const Graph& graph, const Node& node) const
   if (!graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[1]) ||
       (node.InputDefs().size() == 3 && !graph_utils::NodeArgIsConstant(graph, *node.InputDefs()[2])) ||
       !graph_utils::NodeArgIsConstant(graph, *next_node.InputDefs()[1])) {
+    return false;
+  }
+
+  if (graph.NodeProducesGraphOutput(node)) {
     return false;
   }
 

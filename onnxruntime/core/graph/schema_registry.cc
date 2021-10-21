@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/graph/schema_registry.h"
+#include "core/common/logging/logging.h"
 
 namespace onnxruntime {
 // Add customized domain to min/max version.
@@ -50,11 +51,16 @@ common::Status OnnxRuntimeOpSchemaRegistry::RegisterOpSchema(ONNX_NAMESPACE::OpS
 }
 
 common::Status OnnxRuntimeOpSchemaRegistry::RegisterOpSchemaInternal(ONNX_NAMESPACE::OpSchema&& op_schema) {
-  try {
+  auto status = Status::OK();
+  ORT_TRY {
     op_schema.Finalize();
-  } catch (const std::exception& e) {
-    return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Schema error: " + std::string(e.what()));
   }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Schema error: " + std::string(e.what()));
+    });
+  }
+  ORT_RETURN_IF_ERROR(status);
 
   auto& op_name = op_schema.Name();
   auto& op_domain = op_schema.domain();
@@ -69,7 +75,8 @@ common::Status OnnxRuntimeOpSchemaRegistry::RegisterOpSchemaInternal(ONNX_NAMESP
             << op_schema.line()
             << ", but it is already registered from file "
             << schema.file() << " line " << schema.line() << std::endl;
-    return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, ostream.str());
+    LOGS_DEFAULT(WARNING) << ostream.str();
+    return common::Status::OK();  // an op with the same name can be registered for multiple execution providers
   }
 
   auto ver_range_it = domain_version_range_map_.find(op_domain);
@@ -154,9 +161,7 @@ void SchemaRegistryManager::RegisterRegistry(std::shared_ptr<IOnnxRuntimeOpSchem
   registries.push_front(registry);
 }
 
-DomainToVersionMap SchemaRegistryManager::GetLatestOpsetVersions(bool is_onnx_only) const {
-  DomainToVersionMap domain_version_map;
-
+void SchemaRegistryManager::GetDomainToVersionMapForRegistries(DomainToVersionMap& domain_version_map, bool is_onnx_only) const {
   // Build the map using each of the registries
   for (auto& registry : registries) {
     DomainToVersionMap latest_opset_versions_in_reg = registry->GetLatestOpsetVersions(is_onnx_only);
@@ -174,6 +179,34 @@ DomainToVersionMap SchemaRegistryManager::GetLatestOpsetVersions(bool is_onnx_on
       }
     }
   }
+}
+
+DomainToVersionMap SchemaRegistryManager::GetLastReleasedOpsetVersions(bool is_onnx_only) const {
+  DomainToVersionMap domain_version_map;
+  GetDomainToVersionMapForRegistries(domain_version_map, is_onnx_only);
+
+  // check the ONNX schema registry
+  auto& onnx_domain_version_map =
+      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().LastReleaseVersionMap();
+
+  for (const auto& domain : onnx_domain_version_map) {
+    if (is_onnx_only && domain.first.compare(kOnnxDomain) != 0)
+      continue;
+    auto it = domain_version_map.find(domain.first);
+    if (it == domain_version_map.end()) {
+      GSL_SUPPRESS(es .84)
+      domain_version_map.insert(std::make_pair(domain.first, domain.second));
+    } else {
+      it->second = std::max(it->second, domain.second);
+    }
+  }
+
+  return domain_version_map;
+}
+
+DomainToVersionMap SchemaRegistryManager::GetLatestOpsetVersions(bool is_onnx_only) const {
+  DomainToVersionMap domain_version_map;
+  GetDomainToVersionMapForRegistries(domain_version_map, is_onnx_only);
 
   // check the ONNX schema registry
   auto& onnx_domain_version_map =
@@ -192,6 +225,17 @@ DomainToVersionMap SchemaRegistryManager::GetLatestOpsetVersions(bool is_onnx_on
   }
 
   return domain_version_map;
+}
+
+static bool IsDomainVersionBeyondSupportedRange(
+    const std::string& domain,
+    const int op_set_version) {
+  // check the ONNX schema registry
+  auto& onnx_domain_version_map =
+      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().Map();
+
+  auto it = onnx_domain_version_map.find(domain);
+  return it != onnx_domain_version_map.end() && op_set_version > it->second.second;
 }
 
 // Return the schema with biggest version, which is not greater than specified
@@ -238,10 +282,14 @@ void SchemaRegistryManager::GetSchemaAndHistory(
     checked_registry_indices.push_back(index);
   }
 
-  // if not found in registered custom schema registry, search in ONNX schema registry
-  *latest_schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema(key, version, domain);
-  if (*latest_schema != nullptr) {
-    *earliest_opset_where_unchanged = (*latest_schema)->SinceVersion();
+  // Reject versions greater than what is actually supported.
+  *latest_schema = nullptr;
+  if (!IsDomainVersionBeyondSupportedRange(domain, version)) {
+    // if not found in registered custom schema registry, search in ONNX schema registry
+    *latest_schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema(key, version, domain);
+    if (*latest_schema != nullptr) {
+      *earliest_opset_where_unchanged = (*latest_schema)->SinceVersion();
+    }
   }
 }
 

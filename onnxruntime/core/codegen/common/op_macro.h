@@ -77,6 +77,7 @@ namespace onnxruntime {
   ADD_OP_ITEM(Conv)            \
   ADD_OP_ITEM(Crop)            \
   ADD_OP_ITEM(Dropout)         \
+  ADD_OP_ITEM(Expand)          \
   ADD_OP_ITEM(Flatten)         \
   ADD_OP_ITEM(Gather)          \
   ADD_OP_ITEM(GatherElements)  \
@@ -88,6 +89,7 @@ namespace onnxruntime {
   ADD_OP_ITEM(MatMulInteger)   \
   ADD_OP_ITEM(Pad)             \
   ADD_OP_ITEM(Reshape)         \
+  ADD_OP_ITEM(Shape)           \
   ADD_OP_ITEM(Slice)           \
   ADD_OP_ITEM(Softmax)         \
   ADD_OP_ITEM(Split)           \

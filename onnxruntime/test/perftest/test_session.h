@@ -15,7 +15,7 @@ class TestSession {
   // This function won't return duration, because it may vary largely.
   // Please measure the perf at a higher level.
   void ThreadSafeRun() { abort(); }
-  virtual void PreLoadTestData(size_t test_data_id, size_t input_id, OrtValue* value) = 0;
+  virtual void PreLoadTestData(size_t test_data_id, size_t input_id, Ort::Value&& value) = 0;
 
   virtual ~TestSession() = default;
 };

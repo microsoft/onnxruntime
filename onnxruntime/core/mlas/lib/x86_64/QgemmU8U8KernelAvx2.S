@@ -18,7 +18,6 @@ Abstract:
 --*/
 
 #include "asmmacro.h"
-#include "QgemmU8X8KernelAvx2Common.h"
 
         .intel_syntax noprefix
 
@@ -27,13 +26,12 @@ Abstract:
 //
 
         .equ    .LGemmU8U8CopyPackAFrame_PaddedMatrixAData, -72
-        .equ    .LGemmU8U8CopyPackAFrame_mask, -8
+        .equ    .LGemmU8U8CopyPackAFrame_Padding, -8
         .equ    .LGemmU8U8CopyPackAFrame_SavedR13, 0
         .equ    .LGemmU8U8CopyPackAFrame_SavedR12, 8
         .equ    .LGemmU8U8CopyPackAFrame_SavedRbx, 16
         .equ    .LGemmU8U8CopyPackAFrame_SavedRbp, 24
         .equ    .LGemmU8U8CopyPackAFrame_ReturnAddress, 32
-        .equ    .LGemmU8U8CopyPackAFrame_offb, 40
 
 //
 // Stack frame layout for the U8U8 CopyPackB routine.
@@ -44,7 +42,6 @@ Abstract:
         .equ    .LGemmU8U8CopyPackBFrame_SavedRbx, 0
         .equ    .LGemmU8U8CopyPackBFrame_SavedRbp, 8
         .equ    .LGemmU8U8CopyPackBFrame_ReturnAddress, 16
-        .equ    .LGemmU8U8CopyPackBFrame_offa, 24
 
         .text
 
@@ -72,12 +69,8 @@ Arguments:
 
     CountK (r8) - Supplies the number of columns of the source matrix to copy.
 
-    RowSumVector (r9) - Supplies the address of the buffer to receive the sums
-        of the elements from each of the rows. Each sum has also been multiplied
-        by the zero point offset.
-
-    offb - Supplies the zero point offset for the other source matrix of the
-        matrix multiplication.
+    RowSumBuffer (r9) - Supplies the address of the buffer to receive the sums
+        of the elements along each of the rows.
 
 Return Value:
 
@@ -85,8 +78,7 @@ Return Value:
 
 --*/
 
-        .globl  C_UNDERSCORE(MlasGemmU8U8CopyPackAAvx2)
-C_UNDERSCORE(MlasGemmU8U8CopyPackAAvx2):
+        FUNCTION_ENTRY MlasGemmU8U8CopyPackAAvx2
 
         push    rbp
         push    rbx
@@ -97,7 +89,8 @@ C_UNDERSCORE(MlasGemmU8U8CopyPackAAvx2):
         mov     r11,rcx
         lea     r12,[r8+1]
         and     r12,NOT 1                   # align CountK up to pair count
-        vpbroadcastw xmm8,WORD PTR .LGemmU8U8CopyPackAFrame_offb[rsp]
+        vpcmpeqw ymm8,ymm8,ymm8             # generate word vector [0xFFFF]
+        vpsrlw  ymm8,ymm8,15                # generate word vector [0x0001]
 
 //
 // Compute the conditional load/store mask for an unaligned CountK.
@@ -107,9 +100,9 @@ C_UNDERSCORE(MlasGemmU8U8CopyPackAAvx2):
         and     eax,15                      # isolate unaligned count
         inc     eax
         shr     eax,1                       # align unaligned count to pair count
-        mov     DWORD PTR .LGemmU8U8CopyPackAFrame_mask[rsp],eax
-        vpbroadcastd ymm9,DWORD PTR .LGemmU8U8CopyPackAFrame_mask[rsp]
-        vpcmpgtd ymm9,ymm9,YMMWORD PTR C_UNDERSCORE(MlasMaskMoveAvx)[rip]
+        neg     rax
+        lea     rbx,C_UNDERSCORE(MlasMaskMoveTableAvx)[rip+8*4]
+        vmovdqu ymm9,YMMWORD PTR [rbx+rax*4]
 
 //
 // Zero initialize the padded stack buffers.
@@ -127,10 +120,6 @@ C_UNDERSCORE(MlasGemmU8U8CopyPackAAvx2):
 // The packed buffer has the same data ordering as the source bytes, but CountK
 // is aligned up to a multiple of 2 to maintain 32-bit alignment. All padding
 // bytes are zero filled.
-//
-// These 16-bit values are also accumulated into an intermediate per-row
-// accumulator. CountK cannot be greater than 128 to avoid overflowing these
-// signed 16-bit accumulators.
 //
 
         sub     r11,4
@@ -171,7 +160,7 @@ C_UNDERSCORE(MlasGemmU8U8CopyPackAAvx2):
 
 .LCopyPackA.ProcessRemainingColumnsM4:
         add     rbx,16                      # correct for over-subtract above
-        jz      .LCopyPackA.ReduceRowSumVectorM4
+        jz      .LCopyPackA.ReduceRowSumBufferM4
 
 //
 // Copy the unaligned CountK columns to a zero padded stack buffer.
@@ -255,21 +244,21 @@ C_UNDERSCORE(MlasGemmU8U8CopyPackAAvx2):
         vpaddw  ymm3,ymm3,ymm7
 
 //
-// Reduce the sums for the four rows of output. Transpose the intermediate
-// accumulators by treating the registers as 32-bit elements containing a pair
-// of 16-bit sums. Continue reducing the transposed accumulators to produce the
-// final 32-bit vector output.
+// Reduce the sums for the four rows of output.
 //
 
-.LCopyPackA.ReduceRowSumVectorM4:
-        vphaddw ymm0,ymm0,ymm1              # reduce and interleave Sum1/Sum0
-        vphaddw ymm1,ymm2,ymm3              # reduce and interleave Sum3/Sum2
-        vphaddw ymm0,ymm0,ymm1              # reduce and interleave Sum3/Sum2/Sum1/Sum0
-        vextracti128 xmm1,ymm0,1            # extract high pairs
-        vpaddw  xmm0,xmm0,xmm1              # reduce low/high pairs
-        vpmaddwd xmm0,xmm0,xmm8             # multiply by offset and reduce 32-bit sum
+.LCopyPackA.ReduceRowSumBufferM4:
+        vpmaddwd ymm0,ymm0,ymm8             # horizontal word+word=dword per row
+        vpmaddwd ymm1,ymm1,ymm8
+        vphaddd ymm0,ymm0,ymm1              # reduce and interleave Sum1/Sum0
+        vpmaddwd ymm2,ymm2,ymm8
+        vpmaddwd ymm3,ymm3,ymm8
+        vphaddd ymm1,ymm2,ymm3              # reduce and interleave Sum3/Sum2
+        vphaddd ymm0,ymm0,ymm1              # reduce and interleave Sum3/Sum2/Sum1/Sum0
+        vextracti128 xmm1,ymm0,1            # extract high dwords
+        vpaddd  xmm0,xmm0,xmm1              # reduce low/high dwords
         vmovdqu XMMWORD PTR [r9],xmm0
-        add     r9,4*4                      # advance row sum vector by 4 dwords
+        add     r9,4*4                      # advance row sum buffer by 4 dwords
         sub     r11,4                       # subtract rows remaining
         jae     .LCopyPackA.ProcessNextRowM4
 
@@ -302,7 +291,7 @@ C_UNDERSCORE(MlasGemmU8U8CopyPackAAvx2):
 
 .LCopyPackA.ProcessRemainingColumnsM1:
         add     rbx,16                      # correct for over-subtract above
-        jz      .LCopyPackA.ReduceRowSumVectorM1
+        jz      .LCopyPackA.ReduceRowSumBufferM1
 
 //
 // Copy the unaligned CountK columns to a zero padded stack buffer.
@@ -351,14 +340,14 @@ C_UNDERSCORE(MlasGemmU8U8CopyPackAAvx2):
 // Reduce the sum for the single row of output.
 //
 
-.LCopyPackA.ReduceRowSumVectorM1:
-        vextracti128 xmm1,ymm0,1            # extract high pairs
-        vpaddw  xmm0,xmm0,xmm1              # reduction
-        vphaddw xmm0,xmm0,xmm0
-        vphaddw xmm0,xmm0,xmm0
-        vpmaddwd xmm0,xmm0,xmm8             # multiply by offset and reduce
+.LCopyPackA.ReduceRowSumBufferM1:
+        vpmaddwd ymm0,ymm0,ymm8             # horizontal word+word=dword per row
+        vextracti128 xmm1,ymm0,1            # extract high dwords
+        vpaddd  xmm0,xmm0,xmm1              # reduction
+        vphaddd xmm0,xmm0,xmm0
+        vphaddd xmm0,xmm0,xmm0
         vmovd   DWORD PTR [r9],xmm0
-        add     r9,4                        # advance row sum vector by 1 DWORD
+        add     r9,4                        # advance row sum buffer by 1 dword
         dec     r11                         # decrement rows remaining
         jnz     .LCopyPackA.ProcessNextRowM1
 
@@ -394,12 +383,8 @@ Arguments:
 
     CountK (r8) - Supplies the number of rows of the source matrix to copy.
 
-    ColumnSumVector (r9) - Supplies the address of the buffer to receive the sums
-        of the elements from each of the columns. Each sum has also been
-        multiplied by the zero point offset.
-
-    offa - Supplies the zero point offset for the other source matrix of the
-        matrix multiplication.
+    ColumnSumBuffer (r9) - Supplies the address of the buffer to receive the sums
+        of the elements along each of the columns.
 
 Return Value:
 
@@ -407,14 +392,14 @@ Return Value:
 
 --*/
 
-        .globl  C_UNDERSCORE(MlasGemmU8U8CopyPackBAvx2)
-C_UNDERSCORE(MlasGemmU8U8CopyPackBAvx2):
+        FUNCTION_ENTRY MlasGemmU8U8CopyPackBAvx2
 
         push    rbp
         push    rbx
 
         mov     r10,rdx
-        vpbroadcastw ymm5,WORD PTR .LGemmU8U8CopyPackBFrame_offa[rsp]
+        vpcmpeqw ymm5,ymm5,ymm5             # generate word vector [0xFFFF]
+        vpsrlw  ymm5,ymm5,15                # generate word vector [0x0001]
 
 //
 // Zero initialize the padded stack buffers.
@@ -450,29 +435,31 @@ C_UNDERSCORE(MlasGemmU8U8CopyPackBAvx2):
         vpmovzxbw ymm4,xmm4
         vpmovzxbw ymm3,xmm3
         add     rdi,32                      # advance matrix D by 32 bytes
-        vpaddw  ymm0,ymm0,ymm4              # accumulate per column
-        vpaddw  ymm1,ymm1,ymm3
+        vpmaddwd ymm4,ymm4,ymm5             # horizontal word+word=dword per row
+        vpaddd  ymm0,ymm0,ymm4              # accumulate per column
+        vpmaddwd ymm3,ymm3,ymm5
+        vpaddd  ymm1,ymm1,ymm3
         sub     rbx,2                       # subtract rows remaining
         jae     .LCopyPackB.ProcessNextRowLoopN16
 
 .LCopyPackB.ProcessRemainingRowsN16:
         add     rbx,2                       # correct for over-subtract above
-        jz      .LCopyPackB.ReduceColumnSumVectorN16
+        jz      .LCopyPackB.StoreColumnSumBufferN16
         vpmovzxbw ymm4,XMMWORD PTR [rdx]
         vmovdqu YMMWORD PTR [rdi],ymm4      # store interleaved rows
         vextracti128 xmm3,ymm4,1
         vpmovzxbw ymm4,xmm4
         vpmovzxbw ymm3,xmm3
-        vpaddw  ymm0,ymm0,ymm4              # accumulate per column
-        vpaddw  ymm1,ymm1,ymm3
+        vpmaddwd ymm4,ymm4,ymm5             # horizontal word+word=dword per row
+        vpaddd  ymm0,ymm0,ymm4              # accumulate per column
+        vpmaddwd ymm3,ymm3,ymm5
+        vpaddd  ymm1,ymm1,ymm3
         add     rdi,32                      # advance matrix D by 32 bytes
 
-.LCopyPackB.ReduceColumnSumVectorN16:
-        vpmaddwd ymm0,ymm0,ymm5             # multiply by offset and reduce
-        vpmaddwd ymm1,ymm1,ymm5             # multiply by offset and reduce
+.LCopyPackB.StoreColumnSumBufferN16:
         vmovdqu YMMWORD PTR [r9],ymm0
         vmovdqu YMMWORD PTR [r9+32],ymm1
-        add     r9,64                       # advance column sum vector by 16 DWORDs
+        add     r9,64                       # advance column sum buffer by 16 dwords
         sub     rcx,16                      # subtract columns remaining
         jae     .LCopyPackB.ProcessNextColumnN16
 
@@ -550,8 +537,10 @@ C_UNDERSCORE(MlasGemmU8U8CopyPackBAvx2):
         vmovdqu XMMWORD PTR [rdi+16],xmm3
         vpmovzxbw ymm4,xmm4
         vpmovzxbw ymm3,xmm3
-        vpaddw  ymm0,ymm0,ymm4              # accumulate per column
-        vpaddw  ymm1,ymm1,ymm3
+        vpmaddwd ymm4,ymm4,ymm5             # horizontal word+word=dword per row
+        vpaddd  ymm0,ymm0,ymm4              # accumulate per column
+        vpmaddwd ymm3,ymm3,ymm5
+        vpaddd  ymm1,ymm1,ymm3
         lea     rsi,[rsi+r10*2]             # advance next matrix B by 2 rows
         add     rdi,32                      # advance matrix D by 32 bytes
         sub     r8,2                        # subtract rows remaining
@@ -559,7 +548,7 @@ C_UNDERSCORE(MlasGemmU8U8CopyPackBAvx2):
 
 .LCopyPackB.ProcessRemainingRowsNUnaligned:
         add     r8,2
-        jz      .LCopyPackB.ReduceColumnSumVectorNUnaligned
+        jz      .LCopyPackB.StoreColumnSumBufferNUnaligned
         mov     rdx,rsi
         lea     rbp,.LGemmU8U8CopyPackBFrame_PaddedMatrixBData[rsp]
         test    cl,8                        # (CountN & 8) != 0?
@@ -597,283 +586,14 @@ C_UNDERSCORE(MlasGemmU8U8CopyPackBAvx2):
         vextracti128 xmm3,ymm4,1
         vpmovzxbw ymm4,xmm4
         vpmovzxbw ymm3,xmm3
-        vpaddw  ymm0,ymm0,ymm4              # accumulate per column
-        vpaddw  ymm1,ymm1,ymm3
+        vpmaddwd ymm4,ymm4,ymm5             # horizontal word+word=dword per row
+        vpaddd  ymm0,ymm0,ymm4              # accumulate per column
+        vpmaddwd ymm3,ymm3,ymm5
+        vpaddd  ymm1,ymm1,ymm3
 
-.LCopyPackB.ReduceColumnSumVectorNUnaligned:
-        vpmaddwd ymm0,ymm0,ymm5             # multiply by offset and reduce
-        vpmaddwd ymm1,ymm1,ymm5             # multiply by offset and reduce
+.LCopyPackB.StoreColumnSumBufferNUnaligned:
         vmovdqu YMMWORD PTR [r9],ymm0
         vmovdqu YMMWORD PTR [r9+32],ymm1
         jmp     .LCopyPackB.ExitRoutine
-
-/*++
-
-Macro Description:
-
-    This macro generates code to multiply and accumulator a single row of the
-    output block.
-
-Arguments:
-
-    ColumnCount - Supplies the number of columns to produce.
-
-    Vec1Reg - Supplies the high block accumulator register (when ColumnCount
-        is 16).
-
-    Vec2Reg - Supplies the low block accumulator register.
-
-Implicit Arguments:
-
-    ymm0 - Supplies the first vector loaded from matrix B.
-
-    ymm1 - Supplies the second vector loaded from matrix B (when ColumnCount
-        is 16).
-
-    ymm2 - Supplies the broadcast value loaded from matrix A.
-
---*/
-
-        .macro MultiplyAccumulateRow ColumnCount, Vec1Reg, Vec2Reg
-
-        vpmaddwd ymm3,ymm2,ymm0
-.if \ColumnCount\() == 16
-        vpaddd  \Vec1Reg\(),\Vec1Reg\(),ymm3
-        vpmaddwd ymm2,ymm2,ymm1
-        vpaddd  \Vec2Reg\(),\Vec2Reg\(),ymm2
-.else
-        vpaddd  \Vec2Reg\(),\Vec2Reg\(),ymm3
-.endif
-
-        .endm
-
-/*++
-
-Macro Description:
-
-    This macro generates code to multiply and accumulate each row of the output
-    block.
-
-Arguments:
-
-    ColumnCount - Supplies the number of columns to produce.
-
-    RowCount - Supplies the number of rows to produce.
-
-    VectorOffset - Supplies the byte offset from matrix B to fetch elements.
-
-    BroadcastOffset - Supplies the byte offset from matrix A to fetch elements.
-
-Implicit Arguments:
-
-    rdi - Supplies the address into the matrix A data.
-
-    rbx - Supplies the address into the matrix A data plus 3 rows.
-
-    rsi - Supplies the address into the matrix B data.
-
-    rcx - Supplies the length in bytes of a row from matrix A.
-
-    ymm4-ymm15 - Supplies the block accumulators.
-
---*/
-
-        .macro ComputeBlock ColumnCount, RowCount, VectorOffset, BroadcastOffset
-
-        vpmovzxbw ymm0,XMMWORD PTR [rsi+\VectorOffset\()]
-        EmitIfCountGE \ColumnCount\(), 16, "vpmovzxbw ymm1,XMMWORD PTR [rsi+\VectorOffset\()+16]"
-        EmitIfCountGE \RowCount\(), 1, "vpbroadcastd ymm2,DWORD PTR [rdi+\BroadcastOffset\()]"
-        EmitIfCountGE \RowCount\(), 1, "MultiplyAccumulateRow \ColumnCount\(), ymm4, ymm5"
-        EmitIfCountGE \RowCount\(), 2, "vpbroadcastd ymm2,DWORD PTR [rdi+rcx+\BroadcastOffset\()]"
-        EmitIfCountGE \RowCount\(), 2, "MultiplyAccumulateRow \ColumnCount\(), ymm6, ymm7"
-        EmitIfCountGE \RowCount\(), 3, "vpbroadcastd ymm2,DWORD PTR [rdi+rcx*2+\BroadcastOffset\()]"
-        EmitIfCountGE \RowCount\(), 3, "MultiplyAccumulateRow \ColumnCount\(), ymm8, ymm9"
-        EmitIfCountGE \RowCount\(), 4, "vpbroadcastd ymm2,DWORD PTR [rbx+\BroadcastOffset\()]"
-        EmitIfCountGE \RowCount\(), 4, "MultiplyAccumulateRow \ColumnCount\(), ymm10, ymm11"
-        EmitIfCountGE \RowCount\(), 5, "vpbroadcastd ymm2,DWORD PTR [rbx+rcx+\BroadcastOffset\()]"
-        EmitIfCountGE \RowCount\(), 5, "MultiplyAccumulateRow \ColumnCount\(), ymm12, ymm13"
-        EmitIfCountGE \RowCount\(), 6, "vpbroadcastd ymm2,DWORD PTR [rbx+rcx*2+\BroadcastOffset\()]"
-        EmitIfCountGE \RowCount\(), 6, "MultiplyAccumulateRow \ColumnCount\(), ymm14, ymm15"
-
-        .endm
-
-/*++
-
-Macro Description:
-
-    This macro generates code to execute the block compute macro multiple
-    times and advancing the matrix A and matrix B data pointers.
-
-Arguments:
-
-    ColumnCount - Supplies the number of columns to produce.
-
-    RowCount - Supplies the number of rows to produce.
-
-Implicit Arguments:
-
-    rbx - Supplies the address into the matrix A data plus 3 rows.
-
-    rdi - Supplies the address into the matrix A data.
-
-    rsi - Supplies the address into the matrix B data.
-
-    rcx - Supplies the length in bytes of a row from matrix A.
-
-    ymm4-ymm15 - Supplies the block accumulators.
-
---*/
-
-        .macro ComputeBlockLoop ColumnCount, RowCount
-
-        mov     rbp,rcx                     # reload row length remaining
-
-.if (\ColumnCount\() == 16) && ((\RowCount\() & 1) == 0)
-        sub     rbp,2*4
-        jb      .LProcessRemainingBlocks\@
-
-.LComputeBlockBy2Loop\@:
-        ComputeBlock \ColumnCount\(), \RowCount\(), 0, 0
-        ComputeBlock \ColumnCount\(), \RowCount\(), 32, 4
-        add     rdi,2*4                     # advance matrix A by 2 pairs
-.if \RowCount\() > 3
-        add     rbx,2*4                     # advance matrix A plus 3 rows by 2 pairs
-.endif
-        add     rsi,2*32                    # advance matrix B
-        sub     rbp,2*4
-        jae     .LComputeBlockBy2Loop\@
-
-.LProcessRemainingBlocks\@:
-        add     rbp,2*4                     # correct for over-subtract above
-        jz      .LComputeBlockLoopExit\@
-        ComputeBlock \ColumnCount\(), \RowCount\(), 0, 0
-        add     rsi,32                      # advance matrix B
-.else
-.LComputeBlockBy1Loop\@:
-        ComputeBlock \ColumnCount\(), \RowCount\(), 0, 0
-        add     rdi,4                       # advance matrix A by 1 pair
-.if \RowCount\() > 3
-        add     rbx,4                       # advance matrix A plus 3 rows by 1 pair
-.endif
-        add     rsi,32                      # advance matrix B
-        sub     rbp,4
-        jnz     .LComputeBlockBy1Loop\@
-.endif
-
-.LComputeBlockLoopExit\@:
-
-        .endm
-
-/*++
-
-Routine Description:
-
-    This routine is an inner kernel to compute matrix multiplication for a
-    set of rows.
-
-Arguments:
-
-    A (rdi) - Supplies the address of matrix A. The matrix data has been packed
-        using MlasGemmU8U8CopyPackAAvx2.
-
-    B (rsi) - Supplies the address of matrix B. The matrix data has been packed
-        using MlasGemmU8U8CopyPackBAvx2.
-
-    C (rdx) - Supplies the address of matrix C.
-
-    PairCountK (rcx) - Supplies the number of pair columns from matrix A and
-        the number of pair rows from matrix B to iterate over.
-
-    CountM (r8) - Supplies the maximum number of rows that can be processed for
-        matrix A and matrix C. The actual number of rows handled for this
-        invocation depends on the kernel implementation.
-
-    CountN (r9) - Supplies the number of columns from matrix B and matrix C to
-        iterate over.
-
-    ldc - Supplies the first dimension of matrix C.
-
-    RowSumVector - Supplies the sum of each row from matrix A multiplied by the
-        zero point offset of matrix B. These values are accumulated into every
-        row of matrix C.
-
-    ColumnSumVector - Supplies the sum of each column from matrix B multiplied
-        by the zero point offset of matrix A. These values are accumulated into
-        every column of matrix C.
-
-    DepthValue - Supplies the value CountK multiplied by the zero point offset
-        of matrix A multplied by the zero point offset of matrix B. This value
-        is accumulated into every element of matrix C.
-
-    ZeroMode - Supplies true if the output matrix must be zero initialized,
-        else false if the output matrix is accumulated into.
-
-Return Value:
-
-    Returns the number of rows handled.
-
---*/
-
-        .globl  C_UNDERSCORE(MlasGemmU8U8KernelAvx2)
-C_UNDERSCORE(MlasGemmU8U8KernelAvx2):
-
-        push    rbp
-        push    rbx
-        push    r12
-        push    r13
-
-        mov     rax,.LGemmU8X8KernelFrame_ldc[rsp]
-        shl     rax,2                       # convert ldc to bytes
-        shl     rcx,2                       # convert to row length
-        movzx   r10,BYTE PTR .LGemmU8X8KernelFrame_ZeroMode[rsp]
-        mov     r11,rdi
-        mov     r12,.LGemmU8X8KernelFrame_RowSumVector[rsp]
-        mov     r13,.LGemmU8X8KernelFrame_ColumnSumVector[rsp]
-
-//
-// Process CountM rows of the matrices.
-//
-
-        cmp     r8,5
-        ja      .LProcessCountM6
-        je      .LProcessCountM5
-        cmp     r8,3
-        ja      .LProcessCountM4
-        je      .LProcessCountM3
-        cmp     r8,1
-        je      .LProcessCountM1
-
-.LProcessCountM2:
-        ProcessCountM 2
-
-.LProcessCountM4:
-        ProcessCountM 4
-
-.LProcessCountM6:
-        mov     r8d,6                       # return 6 rows handled
-        ProcessCountM 6, Fallthrough
-
-//
-// Restore non-volatile registers and return.
-//
-
-.LExitKernel:
-        mov     eax,r8d
-        vzeroupper
-
-        pop     r13
-        pop     r12
-        pop     rbx
-        pop     rbp
-        ret
-
-.LProcessCountM1:
-        ProcessCountM 1
-
-.LProcessCountM3:
-        ProcessCountM 3
-
-.LProcessCountM5:
-        ProcessCountM 5
 
         .end

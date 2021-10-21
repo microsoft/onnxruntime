@@ -8,6 +8,7 @@
 #include "core/codegen/passes/op_ir_creator/tvm_ir_builder.h"
 #include "core/codegen/passes/utils/ort_tvm_utils.h"
 #include "core/common/common.h"
+#include "core/providers/nuphar/common/nuphar_tvm_utils.h"
 #include "core/providers/nuphar/compiler/initializer_info.h"
 #include "core/providers/nuphar/compiler/x86/op_ir_creator/all_ops.h"
 
@@ -27,6 +28,10 @@ static const tvm::Tensor& GetOrCreateInitializer(const NodeArg* def,
                                                  const Tensor* tensor,
                                                  bool is_sliced,
                                                  NupharCodeGenCtx& ctx_codegen);
+
+static bool CreateScalarTensorFromInitializer(const Tensor* tensor,
+                                              const std::string& name,
+                                              NupharCodeGenCtx& ctx_codegen);
 
 // CreateInputPlaceholder create tvm input placeholder (tvm::Tensor)
 // NOTE: here we assume axis 0 is sequence
@@ -51,6 +56,12 @@ static bool CreateInput(
     return false;
 
   ORT_ENFORCE(def->Shape());
+
+  if (nullptr != initialized_tensor &&
+      CreateScalarTensorFromInitializer(initialized_tensor, def->Name(), ctx_codegen)) {
+    return false;  // constant scalar tensor do not need to be in input
+  }
+
   if (nullptr != initialized_tensor) {
     input = GetOrCreateInitializer(def, initialized_tensor, is_sliced, ctx_codegen);
   } else {
@@ -65,6 +76,29 @@ static bool CreateInput(
     // Slice InputPlaceholder if it is asked for.
     input = CreateInputPlaceholder(shape, halide_type, name, is_sliced);
   }
+  return true;
+}
+
+bool CreateScalarTensorFromInitializer(const Tensor* tensor,
+                                       const std::string& name,
+                                       NupharCodeGenCtx& ctx_codegen) {
+  TVMTensorCtx& ctx_tensor = ctx_codegen.GetTVMTensorCtx();
+  ORT_ENFORCE(tensor != nullptr);
+
+  tvm::Expr constant_scalar;
+  if (!TryCreateConstantScalar(constant_scalar, tensor))
+    return false;
+
+  std::string normalized_name = NormalizeCppName(name);
+  auto tvm_tensor = tvm::compute(
+      tvm_codegen::ToTvmArray(tensor->Shape().GetDims()),
+      [&](const tvm::Array<tvm::Var>&) {
+        return constant_scalar;
+      },
+      normalized_name);
+
+  ctx_codegen.InsertLiteral(normalized_name);
+  ctx_tensor.inputs.emplace(name, std::move(tvm_tensor));
   return true;
 }
 
@@ -141,7 +175,7 @@ Status CreateTVMIR(
 
   for (const auto& node : graph.Nodes()) {
     // initializers
-    node.ForEachWithIndex(
+    ORT_RETURN_IF_ERROR(node.ForEachWithIndex(
         node.InputDefs(),
         [&ctx_codegen, &ctx_tensor](const NodeArg& def, size_t) {
           tvm::Tensor value;
@@ -150,7 +184,7 @@ Status CreateTVMIR(
             ctx_tensor.inputs.emplace(def.Name(), std::move(value));
           }
           return Status::OK();
-        });
+        }));
   }
 
   // iterate through the graph and create op (outputs)
@@ -185,13 +219,13 @@ Status CreateTVMIR(
       ctx_tensor.ops.emplace(&node, std::move(op_outputs));
 
       // input_from_
-      node.ForEachWithIndex(
+      ORT_RETURN_IF_ERROR(node.ForEachWithIndex(
           node.OutputDefs(),
           [&node, &ctx_tensor](const NodeArg& def, size_t index) {
             ORT_ENFORCE(ctx_tensor.input_from.count(def.Name()) == 0);
             ctx_tensor.input_from.emplace(def.Name(), std::make_pair(&node, index));
             return Status::OK();
-          });
+          }));
     }
   }
 
@@ -208,7 +242,7 @@ Status CreateTVMIR(
   bool has_loop = HasLoop(node);
 
   // create real Inputs
-  node.ForEachWithIndex(
+  ORT_RETURN_IF_ERROR(node.ForEachWithIndex(
       node.InputDefs(),
       [&has_loop, &ctx_codegen, &ctx_tensor](const NodeArg& def, size_t) {
         tvm::Tensor value;
@@ -217,15 +251,15 @@ Status CreateTVMIR(
           ctx_tensor.inputs.emplace(def.Name(), std::move(value));
         }
         return Status::OK();
-      });
+      }));
 
   // input_from_
-  node.ForEachWithIndex(
+  ORT_RETURN_IF_ERROR(node.ForEachWithIndex(
       node.OutputDefs(),
       [&node, &ctx_tensor](const NodeArg& def, size_t index) {
         ctx_tensor.input_from.emplace(def.Name(), std::make_pair(&node, index));
         return Status::OK();
-      });
+      }));
 
   tvm::Array<tvm::Tensor> inputs;
   for (const NodeArg* def : node.InputDefs()) {
@@ -294,13 +328,13 @@ Status CreateTVMIR(
     ctx_tensor.ops.emplace(node, std::move(op_outputs));
 
     // input_from_
-    node->ForEachWithIndex(
+    ORT_RETURN_IF_ERROR(node->ForEachWithIndex(
         node->OutputDefs(),
         [&node, &ctx_tensor](const NodeArg& def, size_t index) {
           ORT_ENFORCE(ctx_tensor.input_from.count(def.Name()) == 0);
           ctx_tensor.input_from.emplace(def.Name(), std::make_pair(node, index));
           return Status::OK();
-        });
+        }));
   }
 
   return Status::OK();

@@ -13,6 +13,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/providers/cpu/rnn/rnn_activation_functors.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
@@ -24,8 +25,8 @@ namespace detail {
 using namespace ::onnxruntime::common;
 
 Status ValidateCommonRnnInputs(const Tensor& X,
-                               const Tensor& W,
-                               const Tensor& R,
+                               const TensorShape& W_shape,
+                               const TensorShape& R_shape,
                                const Tensor* B,
                                int WRB_dim_1_multipler,
                                const Tensor* sequence_lens,
@@ -33,8 +34,6 @@ Status ValidateCommonRnnInputs(const Tensor& X,
                                int64_t num_directions,
                                int64_t hidden_size) {
   auto& X_shape = X.Shape();
-  auto& W_shape = W.Shape();
-  auto& R_shape = R.Shape();
 
   int64_t seq_length = X_shape[0];
   int64_t batch_size = X_shape[1];
@@ -188,6 +187,7 @@ ActivationFuncs::ActivationFuncs(const std::vector<std::string>& funcs,
   }
 }
 
+#if defined(DUMP_MATRIXES)
 void DumpMatrixImpl(const std::string& name, const float* src, int row, int col, int offset, int col_width) {
   std::cout << "Dump matrix: " << name << std::endl;
 
@@ -201,6 +201,112 @@ void DumpMatrixImpl(const std::string& name, const float* src, int row, int col,
     std::cout << std::endl;
   }
   std::cout << std::endl;
+}
+#endif
+
+void ComputeGemm(const int M,
+                 const int N,
+                 const int K,
+                 const float alpha,
+                 const float* A,
+                 const float* A_end,
+                 const GemmWeights<float>& weights,
+                 const float beta,
+                 float* C,
+                 float* C_end,
+                 const int ldc,
+                 uint8_t* /* quantized_A_buffer */,
+                 int32_t* /* quantize_agg_C_buffer */,
+                 concurrency::ThreadPool* thread_pool) {
+  // validate all the inputs
+  // need to use the lda/ldb/ldc strides which should be >= the columns for the span
+  ORT_ENFORCE(A + (M * K) <= A_end);
+  ORT_ENFORCE(C + (M * ldc - (ldc - N)) <= C_end);
+
+  if (weights.is_prepacked_) {
+    MlasGemm(
+        CblasNoTrans,
+        M, N, K, alpha,
+        A, K,
+        weights.buffer_, beta,
+        C, ldc, thread_pool);
+  } else {
+    ::onnxruntime::math::GemmEx<float>(
+        CblasNoTrans, CblasTrans,
+        M, N, K, alpha,
+        A, K,
+        static_cast<const float*>(weights.buffer_), K, beta,
+        C, ldc, thread_pool);
+  }
+}
+
+void ComputeGemm(const int M,
+                 const int N,
+                 const int K,
+                 const float alpha,
+                 const float* A,
+                 const float* A_end,
+                 const GemmWeights<uint8_t>& weights,
+                 const float beta,
+                 float* C,
+                 float* C_end,
+                 const int ldc,
+                 uint8_t* quantized_A_buffer,
+                 int32_t* quantize_agg_C_buffer,
+                 concurrency::ThreadPool* thread_pool) {
+  // validate all the inputs
+  // need to use the lda/ldb/ldc strides which should be >= the columns for the span
+  ORT_ENFORCE(A + (M * K) <= A_end);
+  ORT_ENFORCE(C + (M * ldc - (ldc - N)) <= C_end);
+  ORT_ENFORCE(weights.quant_para_);
+  ORT_ENFORCE(alpha == 1.0f && (beta == 0.0f || beta == 1.0f), "Quantized GEMM only support alpha equal to 1.0f and beta equal to 0.0f or 1.0f");
+
+  float a_scale;
+  uint8_t a_zero_point;
+  GetQuantizationParameter(A, M * K, a_scale, a_zero_point, thread_pool);
+
+  // quantize the data
+  ParQuantizeLinear(A, quantized_A_buffer, M * K, a_scale, a_zero_point, thread_pool);
+
+  bool b_is_signed = weights.quant_para_->is_signed;
+  uint8_t b_zero_point = weights.quant_para_->zero_point ? *static_cast<const uint8_t*>(weights.quant_para_->zero_point) : 0;
+
+  std::vector<float> scale_multiplier(weights.quant_para_->scale_size);
+  for (size_t s = 0; s < weights.quant_para_->scale_size; s++) {
+    scale_multiplier[s] = a_scale * (weights.quant_para_->scale[s]);
+  }
+
+  size_t ld_C_buffer = ldc;
+  int32_t* C_buffer = reinterpret_cast<int32_t*>(C);
+  if (beta == 1.0f) {
+    C_buffer = quantize_agg_C_buffer;
+    ld_C_buffer = static_cast<size_t>(N);
+  }
+
+  MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR output_processor(
+      C, ldc, scale_multiplier.data(), nullptr,
+      beta == 1.0f ? MLAS_QGEMM_OUTPUT_MODE::AccumulateMode : MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
+      scale_multiplier.size() == 1 ? MLAS_QUANTIZATION_GRANULARITY::PerMatrix : MLAS_QUANTIZATION_GRANULARITY::PerColumn);
+
+  MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
+  gemm_shape.M = static_cast<size_t>(M);
+  gemm_shape.N = static_cast<size_t>(N);
+  gemm_shape.K = static_cast<size_t>(K);
+  gemm_shape.BIsSigned = b_is_signed;
+
+  MLAS_GEMM_U8X8_DATA_PARAMS gemm_params;
+  gemm_params.A = quantized_A_buffer;
+  gemm_params.lda = static_cast<size_t>(K);
+  gemm_params.ZeroPointA = a_zero_point;
+  gemm_params.B = weights.buffer_;
+  gemm_params.ldb = static_cast<size_t>(N);
+  gemm_params.ZeroPointB = &b_zero_point;
+  gemm_params.BIsPacked = weights.is_prepacked_;
+  gemm_params.C = C_buffer;
+  gemm_params.ldc = ld_C_buffer;
+  gemm_params.OutputProcessor = &output_processor;
+
+  MlasGemm(gemm_shape, gemm_params, thread_pool);
 }
 
 namespace deepcpu {
@@ -220,6 +326,14 @@ const float beta_6 = 1.19825839466702e-06f;
 
 const float sigmoid_bound = 20.0f;
 const float tanh_bound = 10.0f;
+
+#if defined(__GNUC__) && !defined(__wasm__)
+#define restrict __restrict__
+#elif defined(_MSC_VER)
+#define restrict __restrict
+#else
+#define restrict
+#endif
 
 inline void clip_for_sigmoid_in_place(float* ps, int c) {
   for (int i = 0; i < c; i++) {
@@ -297,67 +411,41 @@ void clip_ignore_bias(const float b, const float* pb, float* pd, int c) {
   }
 }
 
-void clip_add_bias(const float b, const float* pb, float* pd, int c) {
+void clip_add_bias(const float b, const float* restrict pb, float* restrict pd, int c) {
   for (int i = 0; i < c; i++) {
     float x = pd[i] + pb[i];
-    if (x > b)
-      pd[i] = b;
-    else if (x < -b)
-      pd[i] = -b;
-    else
-      pd[i] = x;
+    x = std::min(b, x);
+    x = std::max(-b, x);
+    pd[i] = x;
   }
 }
 
-void sigmoid_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c,
+void sigmoid_m(const float* restrict ps1, float* restrict ps1_c, const float* restrict ps2, float* restrict pd, int c,
                const float alpha, const float beta) {
   ORT_UNUSED_PARAMETER(alpha);
   ORT_UNUSED_PARAMETER(beta);
+  ORT_UNUSED_PARAMETER(ps1_c);
 
-  clip_for_sigmoid(ps1, ps1_c, c);
-
+  MlasComputeLogistic(ps1, pd, c);
   for (int i = 0; i < c; i++) {
-    float x = 0.5f * ps1_c[i];
-    float x2 = x * x;
-    float p = x2 * alpha_13 + alpha_11;
-    p = x2 * p + alpha_9;
-    p = x2 * p + alpha_7;
-    p = x2 * p + alpha_5;
-    p = x2 * p + alpha_3;
-    p = x2 * p + alpha_1;
-    p = x * p;
-    float q = x2 * beta_6 + beta_4;
-    q = x2 * q + beta_2;
-    q = x2 * q + beta_0;
-    pd[i] = ps2[i] * 0.5f * (1 + (p / q));
+    pd[i] *= ps2[i];
   }
 }
 
-void tanh_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c,
+void tanh_m(const float* restrict ps1, float* restrict ps1_c, const float* restrict ps2, float* restrict pd, int c,
             const float alpha, const float beta) {
   ORT_UNUSED_PARAMETER(alpha);
   ORT_UNUSED_PARAMETER(beta);
+  ORT_UNUSED_PARAMETER(ps1_c);
 
-  clip_for_tanh(ps1, ps1_c, c);
-
+  MlasComputeTanh(ps1, pd, c);
   for (int i = 0; i < c; i++) {
-    float x = ps1_c[i];
-    float x2 = x * x;
-    float p = x2 * alpha_13 + alpha_11;
-    p = x2 * p + alpha_9;
-    p = x2 * p + alpha_7;
-    p = x2 * p + alpha_5;
-    p = x2 * p + alpha_3;
-    p = x2 * p + alpha_1;
-    p = x * p;
-    float q = x2 * beta_6 + beta_4;
-    q = x2 * q + beta_2;
-    q = x2 * q + beta_0;
-    pd[i] = ps2[i] * p / q;
+    pd[i] *= ps2[i];
   }
 }
 
-void relu_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c, float alpha, float beta) {
+void relu_m(const float* restrict ps1, float* restrict ps1_c, const float* restrict ps2, float* restrict pd, int c,
+            const float alpha, const float beta) {
   ORT_UNUSED_PARAMETER(ps1_c);
   ORT_UNUSED_PARAMETER(alpha);
   ORT_UNUSED_PARAMETER(beta);
@@ -402,56 +490,23 @@ void sigmoid(float* pd, int c, float alpha, float beta) {
   ORT_UNUSED_PARAMETER(alpha);
   ORT_UNUSED_PARAMETER(beta);
 
-  clip_for_sigmoid_in_place(pd, c);
-
-  for (int i = 0; i < c; i++) {
-    float x = 0.5f * pd[i];
-    float x2 = x * x;
-    float p = x2 * alpha_13 + alpha_11;
-    p = x2 * p + alpha_9;
-    p = x2 * p + alpha_7;
-    p = x2 * p + alpha_5;
-    p = x2 * p + alpha_3;
-    p = x2 * p + alpha_1;
-    p = x * p;
-    float q = x2 * beta_6 + beta_4;
-    q = x2 * q + beta_2;
-    q = x2 * q + beta_0;
-    pd[i] = 0.5f * (1 + (p / q));
-  }
+  MlasComputeLogistic(pd, pd, c);
 }
 
 void tanh(float* pd, int c, float alpha, float beta) {
   ORT_UNUSED_PARAMETER(alpha);
   ORT_UNUSED_PARAMETER(beta);
 
-  clip_for_tanh_in_place(pd, c);
-
-  for (int i = 0; i < c; i++) {
-    float x = pd[i];
-    float x2 = x * x;
-    float p = x2 * alpha_13 + alpha_11;
-    p = x2 * p + alpha_9;
-    p = x2 * p + alpha_7;
-    p = x2 * p + alpha_5;
-    p = x2 * p + alpha_3;
-    p = x2 * p + alpha_1;
-    p = x * p;
-    float q = x2 * beta_6 + beta_4;
-    q = x2 * q + beta_2;
-    q = x2 * q + beta_0;
-    pd[i] = p / q;
-  }
+  MlasComputeTanh(pd, pd, c);
 }
 
 void relu(float* pd, int c, float alpha, float beta) {
   ORT_UNUSED_PARAMETER(alpha);
   ORT_UNUSED_PARAMETER(beta);
 
-  for (int i = 0; i < c; i++) {
-    if (pd[i] < 0)
-      pd[i] = 0.0f;
-  }
+  MLAS_ACTIVATION activation;
+  activation.ActivationKind = MlasReluActivation;
+  MlasActivation(&activation, pd, nullptr, 1, c, c);
 }
 
 void sigmoid_exact(float* pd, int c, float alpha, float beta) {
@@ -474,8 +529,23 @@ void tanh_exact(float* pd, int c, float alpha, float beta) {
   }
 }
 
-void merge_lstm_gates_to_memory(const float* pprev, const float* pi, const float* pf, const float* pg, float* pcurr,
-                                int c) {
+// Help compiler simply and correctly optimize for pcurr == pprev case.
+// Although without this in_place(), if restrict pprev and pcur, compiler could also work.
+// Yet this in_place() follow the restrict semantic better.
+static void merge_lstm_gates_to_memory_in_place(const float* restrict pi, const float* restrict pf,
+                                                const float* restrict pg, float* restrict pcurr, int c) {
+  for (int i = 0; i < c; i++) {
+    pcurr[i] = pcurr[i] * pf[i] + pi[i] * pg[i];
+  }
+}
+
+void merge_lstm_gates_to_memory(const float* pprev, const float* restrict pi, const float* restrict pf,
+                                const float* restrict pg, float* pcurr, int c) {
+  if (pprev == pcurr) {
+    merge_lstm_gates_to_memory_in_place(pi, pf, pg, pcurr, c);
+    return;
+  }
+
   for (int i = 0; i < c; i++) {
     pcurr[i] = pprev[i] * pf[i] + pi[i] * pg[i];
   }
@@ -848,3 +918,4 @@ GruOutputGateFuncPtr GruOutputGateFuncByName(const std::string& func) {
 }  // namespace detail
 }  // namespace rnn
 }  // namespace onnxruntime
+

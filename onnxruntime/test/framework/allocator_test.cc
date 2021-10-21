@@ -3,6 +3,7 @@
 
 #include "core/framework/allocatormgr.h"
 #include "core/framework/allocator.h"
+
 #include "test_utils.h"
 #include "gtest/gtest.h"
 
@@ -13,7 +14,13 @@ TEST(AllocatorTest, CPUAllocatorTest) {
 
   ASSERT_STREQ(cpu_arena->Info().name, CPU);
   EXPECT_EQ(cpu_arena->Info().id, 0);
-  EXPECT_EQ(cpu_arena->Info().type, OrtAllocatorType::OrtArenaAllocator);
+
+  // arena is disabled for CPUExecutionProvider on x86 and JEMalloc
+#if (defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)) && !defined(USE_JEMALLOC)
+  EXPECT_EQ(cpu_arena->Info().alloc_type, OrtAllocatorType::OrtArenaAllocator);
+#else
+  EXPECT_EQ(cpu_arena->Info().alloc_type, OrtAllocatorType::OrtDeviceAllocator);
+#endif
 
   size_t size = 1024;
   auto bytes = cpu_arena->Alloc(size);
@@ -29,7 +36,10 @@ TEST(AllocatorTest, CPUAllocatorTest) {
 // helper class to validate values in Alloc and Free calls made via IAllocator::MakeUniquePtr
 class TestAllocator : public IAllocator {
  public:
-  TestAllocator(size_t expected_size) : expected_size_{expected_size} {}
+  TestAllocator(size_t expected_size)
+      : IAllocator(OrtMemoryInfo("test", OrtDeviceAllocator)),
+        expected_size_{expected_size} {
+  }
 
   void* Alloc(size_t size) override {
     EXPECT_EQ(size, expected_size_);
@@ -46,11 +56,6 @@ class TestAllocator : public IAllocator {
     size_t* p_sizet = (size_t*)p;
     EXPECT_EQ(*p_sizet, expected_size_);
     delete p_sizet;
-  }
-
-  virtual const OrtMemoryInfo& Info() const override {
-    static OrtMemoryInfo info("test", OrtDeviceAllocator);
-    return info;
   }
 
  private:
@@ -72,6 +77,29 @@ TEST(AllocatorTest, MakeUniquePtrTest) {
   allocator = std::make_shared<TestAllocator>(16);
   auto void_ptr = IAllocator::MakeUniquePtr<void>(allocator, 16);
   void_ptr = nullptr;
+}
+
+TEST(AllocatorTest, TestOverflowChecks) {
+  size_t size;
+  size_t element_size = sizeof(float);
+  size_t num_elements = std::numeric_limits<size_t>::max() / element_size;
+
+  EXPECT_TRUE(IAllocator::CalcMemSizeForArrayWithAlignment<0>(num_elements, element_size, &size));
+  EXPECT_FALSE(IAllocator::CalcMemSizeForArrayWithAlignment<0>(num_elements + 1, element_size, &size));
+
+  // we need to add kAllocAlignment-1 bytes to apply the alignment mask, so num_elements * element_size must be kAllocAlignment-bytes short of the max
+  EXPECT_TRUE(IAllocator::CalcMemSizeForArrayWithAlignment<kAllocAlignment>(num_elements - (kAllocAlignment / element_size), element_size, &size));
+  EXPECT_FALSE(IAllocator::CalcMemSizeForArrayWithAlignment<kAllocAlignment>(num_elements, element_size, &size));
+
+  element_size = std::numeric_limits<size_t>::max() / 8;
+  num_elements = 8;
+
+  EXPECT_TRUE(IAllocator::CalcMemSizeForArrayWithAlignment<0>(num_elements, element_size, &size));
+  EXPECT_FALSE(IAllocator::CalcMemSizeForArrayWithAlignment<0>(num_elements + 1, element_size, &size));
+
+  // we need to add kAllocAlignment-1 bytes to apply the alignment mask, so num_elements * element_size must be kAllocAlignment-bytes short of the max
+  EXPECT_TRUE(IAllocator::CalcMemSizeForArrayWithAlignment<kAllocAlignment>(num_elements, element_size - (kAllocAlignment / num_elements), &size));
+  EXPECT_FALSE(IAllocator::CalcMemSizeForArrayWithAlignment<kAllocAlignment>(num_elements, element_size, &size));
 }
 }  // namespace test
 }  // namespace onnxruntime

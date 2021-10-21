@@ -8,6 +8,8 @@
 #include "core/codegen/passes/scheduler/tvm_schedule_builder.h"
 
 #include "core/providers/nuphar/common/analysis/subgraph_codegen_stats.h"
+#include "core/providers/nuphar/compiler/x86/x86_target_info.h"
+#include "core/providers/nuphar/compiler/x86/scheduler/nuphar_scheduler.h"
 
 // TODO change name space
 namespace onnxruntime {
@@ -27,17 +29,17 @@ static void Traverse(const tvm::Tensor& tensor,
     }
   }
 
-  ctx_codegen.GetCodeGenHandle()->schedule_builder->Evaluate(tensor, node, ctx_codegen, ctx_schedule);
+  ORT_THROW_IF_ERROR(ctx_codegen.GetCodeGenHandle()->schedule_builder->Evaluate(tensor, node, ctx_codegen, ctx_schedule));
 
   // for real ouput
   bool is_real_output = nullptr != node &&
                         Promote<CodeGenUnitStats>(ctx_codegen.GetGraphStats())->IsOutputNode(node);
 
   if (is_real_output) {
-    // TODO change it to the value from Target
-    int64_t natural_vector_size = 16;
+    CodeGenTargetX86* target = dynamic_cast<CodeGenTargetX86*>(ctx_codegen.GetCodeGenHandle()->codegen_target);
+    ORT_ENFORCE(target != nullptr);
 
-    TryVectorization(tensor, natural_vector_size, ctx_schedule);  // to x86
+    TryVectorizationX86(tensor, ctx_codegen, ctx_schedule);
     InsertRootScheduleAndClosure(tensor, ctx_schedule);
   }
 
@@ -47,6 +49,12 @@ static void Traverse(const tvm::Tensor& tensor,
     if (t->op->InputTensors().size() > 0) {
       auto current_node = ctx_codegen.FindNode(t);
       Traverse(t, current_node, ctx_codegen, ctx_schedule);
+    } else if (ctx_codegen.CheckLiteral(t->op->name)) {
+      if (tensor->op.as<tvm::ExternOpNode>() != nullptr) {
+        InsertRootSchedule(t, ctx_schedule);
+      } else {
+        TryInlineSchedule(t, ctx_schedule);
+      }
     }
   }
 }

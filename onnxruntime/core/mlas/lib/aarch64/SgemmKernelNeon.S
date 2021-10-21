@@ -1,6 +1,6 @@
 /*++
 
-Copyright (c) Microsoft Corporation. All rights reserved.\
+Copyright (c) Microsoft Corporation. All rights reserved.
 
 Licensed under the MIT License.
 
@@ -14,6 +14,8 @@ Abstract:
     multiply operation (SGEMM).
 
 --*/
+
+#include "asmmacro.h"
 
         .text
 
@@ -416,7 +418,7 @@ Arguments:
 
     ldc (x7) - Supplies the first dimension of matrix C.
 
-    Alpha (s0) - Supplies the scaler multiplier (see SGEMM definition).
+    Alpha (s0) - Supplies the scalar multiplier (see SGEMM definition).
 
 Return Value:
 
@@ -426,9 +428,7 @@ Return Value:
 
         .macro  SgemmKernelNeonFunction Mode
 
-        .globl  MlasSgemmKernel\Mode\()
-        .type   MlasSgemmKernel\Mode\(),%function
-MlasSgemmKernel\Mode\():
+        FUNCTION_ENTRY MlasSgemmKernel\Mode\()
 
         stp     d8,d9,[sp,#-32]!
         stp     d10,d11,[sp,#16]

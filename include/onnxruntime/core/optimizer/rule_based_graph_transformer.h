@@ -63,7 +63,7 @@ class RuleBasedGraphTransformer : public GraphTransformer {
       @returns Status indicating success or providing error information. */
   common::Status ApplyRulesOnNode(Graph& graph, Node& node,
                                   const std::vector<std::reference_wrapper<const RewriteRule>>& rules,
-                                  RewriteRule::RewriteRuleEffect& rule_effect) const;
+                                  RewriteRule::RewriteRuleEffect& rule_effect, const logging::Logger& logger) const;
 
  private:
   using RuleEffect = RewriteRule::RewriteRuleEffect;
@@ -76,7 +76,7 @@ class RuleBasedGraphTransformer : public GraphTransformer {
   std::vector<std::reference_wrapper<const RewriteRule>> any_op_type_rules_;
 
   // Performs a single top-down traversal of the graph and applies all registered rules.
-  common::Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override;
+  common::Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 };
 
 }  // namespace onnxruntime

@@ -97,12 +97,6 @@ ONNX_OPERATOR_SET_SCHEMA(
 }
 */
 
-template <>
-struct Scan<9>::Info : public scan::detail::Info {
-  Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in, int num_scan_inputs_in)
-      : scan::detail::Info(node, subgraph_in, num_scan_inputs_in, /* is_v8 */ false) {}
-};
-
 class ScanImpl {
  public:
   ScanImpl(OpKernelContextInternal& context,
@@ -111,7 +105,8 @@ class ScanImpl {
            const std::vector<int64_t>& input_directions,
            const std::vector<int64_t>& output_directions,
            const std::vector<int64_t>& input_axes,
-           const std::vector<int64_t>& output_axes);
+           const std::vector<int64_t>& output_axes,
+           const scan::detail::DeviceHelpers& device_helpers);
 
   // Initialize by validating all the inputs, and allocating the output tensors
   Status Initialize();
@@ -153,10 +148,12 @@ class ScanImpl {
   std::vector<OrtValue> inputs_;
   std::vector<std::unique_ptr<OutputIterator>> output_iterators_;
   const std::vector<const OrtValue*>& implicit_inputs_;
+
+  const scan::detail::DeviceHelpers& device_helpers_;
 };
 
 template <>
-Scan<9>::Scan(const OpKernelInfo& info) : OpKernel(info) {
+void Scan<9>::Init(const OpKernelInfo& info) {
   // make sure the attribute was present even though we don't need it here.
   // The GraphProto is loaded as a Graph instance by main Graph::Resolve,
   // and a SessionState instance for executing the subgraph is created by InferenceSession.
@@ -187,11 +184,17 @@ Scan<9>::Scan(const OpKernelInfo& info) : OpKernel(info) {
   } else {
     output_axes_ = std::vector<int64_t>(num_scan_outputs, 0);
   }
-}
 
-// we need this to be in the .cc so 'unique_ptr<Info> info_' can be handled
-template <>
-Scan<9>::~Scan() = default;
+  device_helpers_.transpose_func = [](const std::vector<size_t>& permutations, const Tensor& input,
+                                      Tensor& output) -> Status {
+    return TransposeBase::DoTranspose(permutations, input, output);
+  };
+
+  device_helpers_.set_data_to_zero_func = [](void* data, size_t size_in_bytes) -> Status {
+    memset(data, 0, size_in_bytes);
+    return Status::OK();
+  };
+}
 
 template <>
 Status Scan<9>::SetupSubgraphExecutionInfo(const SessionState& session_state,
@@ -201,8 +204,8 @@ Status Scan<9>::SetupSubgraphExecutionInfo(const SessionState& session_state,
   ORT_UNUSED_PARAMETER(attribute_name);
 
   const auto& node = Node();
-  info_ = onnxruntime::make_unique<Scan<9>::Info>(node, *subgraph_session_state.GetGraphViewer(),
-                                          static_cast<int>(num_scan_inputs_));
+  info_ = std::make_unique<Scan<9>::Info>(node, subgraph_session_state.GetGraphViewer(),
+                                                  static_cast<int>(num_scan_inputs_));
 
   auto status = scan::detail::CreateFeedsFetchesManager(node, *info_, session_state, subgraph_session_state,
                                                         /* is_v8 */ false, feeds_fetches_manager_);
@@ -220,7 +223,7 @@ Status Scan<9>::Compute(OpKernelContext* ctx) const {
   ORT_ENFORCE(session_state, "Subgraph SessionState was not found for 'body' attribute.");
 
   ScanImpl scan_impl{*ctx_internal, *session_state, *info_, input_directions_, output_directions_,
-                     input_axes_, output_axes_};
+                     input_axes_, output_axes_, device_helpers_};
 
   auto status = scan_impl.Initialize();
   ORT_RETURN_IF_ERROR(status);
@@ -236,7 +239,8 @@ ScanImpl::ScanImpl(OpKernelContextInternal& context,
                    const std::vector<int64_t>& input_directions,
                    const std::vector<int64_t>& output_directions,
                    const std::vector<int64_t>& input_axes,
-                   const std::vector<int64_t>& output_axes)
+                   const std::vector<int64_t>& output_axes,
+                   const scan::detail::DeviceHelpers& device_helpers)
     : context_(context),
       session_state_(session_state),
       info_(info),
@@ -244,7 +248,8 @@ ScanImpl::ScanImpl(OpKernelContextInternal& context,
       output_directions_(output_directions),
       input_axes_from_attribute_(input_axes),
       output_axes_from_attribute_(output_axes),
-      implicit_inputs_(context_.GetImplicitInputs()) {
+      implicit_inputs_(context_.GetImplicitInputs()),
+      device_helpers_(device_helpers) {
   inputs_.reserve(info_.num_scan_inputs);
   input_axes_.reserve(info_.num_scan_inputs);
 }
@@ -351,7 +356,7 @@ Status ScanImpl::SetupInputs() {
 
       OrtValue transpose_output = scan::detail::AllocateTensorInMLValue(input_tensor.DataType(), new_shape, alloc);
 
-      status = TransposeBase::DoTranspose(permutations, input_tensor, *transpose_output.GetMutable<Tensor>());
+      status = device_helpers_.transpose_func(permutations, input_tensor, *transpose_output.GetMutable<Tensor>());
       ORT_RETURN_IF_ERROR(status);
 
       inputs_.push_back(transpose_output);
@@ -373,7 +378,8 @@ Status ScanImpl::AllocateOutputTensors() {
   std::unique_ptr<OutputIterator> output_iter;
 
   for (int i = 0; i < info_.num_loop_state_variables; ++i) {
-    status = AllocateOutput(context_, info_.subgraph, i, true, -1, sequence_len_, output_iter);
+    status = AllocateOutput(context_, info_.subgraph, i, true, -1, sequence_len_, output_iter,
+                            device_helpers_.create_mutable_slicer_func, device_helpers_.set_data_to_zero_func);
     ORT_RETURN_IF_ERROR(status);
     output_iterators_.push_back(std::move(output_iter));
   }
@@ -388,7 +394,9 @@ Status ScanImpl::AllocateOutputTensors() {
     // if we need to transpose later, we need to use a temporary output buffer when executing the subgraph
     bool temporary = output_axes_from_attribute_[scan_output_index] != 0;
 
-    status = AllocateOutput(context_, info_.subgraph, i, false, -1, sequence_len_, output_iter, direction, temporary);
+    status = AllocateOutput(context_, info_.subgraph, i, false, -1, sequence_len_, output_iter,
+                            device_helpers_.create_mutable_slicer_func, device_helpers_.set_data_to_zero_func,
+                            direction, temporary);
     ORT_RETURN_IF_ERROR(status);
 
     output_iterators_.push_back(std::move(output_iter));
@@ -432,9 +440,9 @@ Status ScanImpl::Execute(const FeedsFetchesManager& ffm) {
     // forward
     if (input_directions_[i] == static_cast<int64_t>(ScanDirection::kForward)) {
       // the iterator is self contained, so we don't need to keep the OrtValueTensorSlicer instance around
-      scan_input_stream_iterators.push_back(OrtValueTensorSlicer<const OrtValue>::Create(ort_value).begin());
+      scan_input_stream_iterators.push_back(device_helpers_.create_const_slicer_func(ort_value, 0, 0).begin());
     } else {  // reverse
-      scan_input_stream_iterators.push_back(OrtValueTensorSlicer<const OrtValue>::Create(ort_value).rbegin());
+      scan_input_stream_iterators.push_back(device_helpers_.create_const_slicer_func(ort_value, 0, 0).rbegin());
     }
   }
 
@@ -477,7 +485,7 @@ Status ScanImpl::TransposeOutput() {
       Tensor* output = context_.Output(output_index, new_shape);
       ORT_ENFORCE(output, "Outputs from Scan are not optional and should never be null.");
 
-      status = TransposeBase::DoTranspose(permutations, temporary_output_tensor, *output);
+      status = device_helpers_.transpose_func(permutations, temporary_output_tensor, *output);
       ORT_RETURN_IF_ERROR(status);
     }
   }

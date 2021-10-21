@@ -19,6 +19,8 @@
 #include <gtest/gtest.h>
 #include "core/platform/threadpool.h"
 #include "core/util/math_cpuonly.h"
+#include "core/util/thread_utils.h"
+
 namespace onnxruntime {
 
 #define VECTOR_HEAD(x) x.size() > 0 ? &x[0] : NULL
@@ -26,12 +28,12 @@ namespace onnxruntime {
 //parameter is thread pool size
 class MathGemmTest : public testing::TestWithParam<int> {
  protected:
-  static concurrency::ThreadPool* CreateThreadPool(int size) {
-    if (size == 1)
-      return nullptr;
-    return new concurrency::ThreadPool("test", size);
+  static OrtThreadPoolParams CreateThreadPoolOptions(int size) {
+    OrtThreadPoolParams option;
+    option.thread_pool_size = size;
+    return option;
   }
-  std::unique_ptr<concurrency::ThreadPool> tp{CreateThreadPool(GetParam())};
+  std::unique_ptr<concurrency::ThreadPool> tp{concurrency::CreateThreadPool(&Env::Default(), CreateThreadPoolOptions(GetParam()), concurrency::ThreadPoolType::INTRA_OP)};
 };
 
 TEST_P(MathGemmTest, GemmNoTransNoTrans) {
@@ -41,7 +43,7 @@ TEST_P(MathGemmTest, GemmNoTransNoTrans) {
   std::vector<float> Y(30);  // 5 * 6
   math::Set<float, CPUMathUtil>(X.size(), 1, VECTOR_HEAD(X), &provider);
   math::Set<float, CPUMathUtil>(W.size(), 1, VECTOR_HEAD(W), &provider);
-  EXPECT_EQ(Y.size(), 30);
+  EXPECT_EQ(Y.size(), 30u);
   for (size_t i = 0; i < X.size(); ++i) {
     EXPECT_EQ(X[i], 1);
   }
@@ -55,7 +57,7 @@ TEST_P(MathGemmTest, GemmNoTransNoTrans) {
   math::Gemm<float>(CblasNoTrans, CblasNoTrans, 5, 6, 10, kOne,
                     VECTOR_HEAD(X), VECTOR_HEAD(W), kZero, VECTOR_HEAD(Y),
                     tp.get());
-  EXPECT_EQ(Y.size(), 30);
+  EXPECT_EQ(Y.size(), 30u);
   for (size_t i = 0; i < Y.size(); ++i) {
     EXPECT_EQ(Y[i], 10) << i;
   }
@@ -63,7 +65,7 @@ TEST_P(MathGemmTest, GemmNoTransNoTrans) {
   math::Gemm<float>(CblasNoTrans, CblasNoTrans, 5, 6, 10, kOne,
                     VECTOR_HEAD(X), VECTOR_HEAD(W), kPointFive,
                     VECTOR_HEAD(Y), tp.get());
-  EXPECT_EQ(Y.size(), 30);
+  EXPECT_EQ(Y.size(), 30u);
   for (size_t i = 0; i < Y.size(); ++i) {
     EXPECT_EQ(Y[i], 15) << i;
   }
@@ -72,7 +74,7 @@ TEST_P(MathGemmTest, GemmNoTransNoTrans) {
                     kPointFive,
                     VECTOR_HEAD(X), VECTOR_HEAD(W), kOne, VECTOR_HEAD(Y),
                     tp.get());
-  EXPECT_EQ(Y.size(), 30);
+  EXPECT_EQ(Y.size(), 30u);
   for (size_t i = 0; i < Y.size(); ++i) {
     EXPECT_EQ(Y[i], 20) << i;
   }
@@ -86,7 +88,7 @@ TEST_P(MathGemmTest, GemmNoTransTrans) {
   std::vector<float> Y(30);  // 5 * 6
   math::Set<float, CPUMathUtil>(X.size(), 1, VECTOR_HEAD(X), &provider);
   math::Set<float, CPUMathUtil>(W.size(), 1, VECTOR_HEAD(W), &provider);
-  EXPECT_EQ(Y.size(), 30);
+  EXPECT_EQ(Y.size(), 30u);
   for (size_t i = 0; i < X.size(); ++i) {
     EXPECT_EQ(X[i], 1);
   }
@@ -100,7 +102,7 @@ TEST_P(MathGemmTest, GemmNoTransTrans) {
   math::Gemm<float>(CblasNoTrans, CblasTrans, 5, 6, 10, kOne,
                     VECTOR_HEAD(X), VECTOR_HEAD(W), kZero, VECTOR_HEAD(Y),
                     tp.get());
-  EXPECT_EQ(Y.size(), 30);
+  EXPECT_EQ(Y.size(), 30u);
   for (size_t i = 0; i < Y.size(); ++i) {
     EXPECT_EQ(Y[i], 10) << i;
   }
@@ -108,21 +110,21 @@ TEST_P(MathGemmTest, GemmNoTransTrans) {
   math::Gemm<float>(CblasNoTrans, CblasTrans, 5, 6, 10, kOne,
                     VECTOR_HEAD(X), VECTOR_HEAD(W), kPointFive,
                     VECTOR_HEAD(Y), tp.get());
-  EXPECT_EQ(Y.size(), 30);
+  EXPECT_EQ(Y.size(), 30u);
   for (size_t i = 0; i < Y.size(); ++i) {
     EXPECT_EQ(Y[i], 15) << i;
   }
   math::Gemm<float>(CblasNoTrans, CblasTrans, 5, 6, 10, kPointFive,
                     VECTOR_HEAD(X), VECTOR_HEAD(W), kOne, VECTOR_HEAD(Y),
                     tp.get());
-  EXPECT_EQ(Y.size(), 30);
+  EXPECT_EQ(Y.size(), 30u);
   for (size_t i = 0; i < Y.size(); ++i) {
     EXPECT_EQ(Y[i], 20) << i;
   }
 }
 
-INSTANTIATE_TEST_CASE_P(MathGemmTests, MathGemmTest,
-                        testing::Values(1, 4));
+INSTANTIATE_TEST_SUITE_P(MathGemmTests, MathGemmTest,
+                         testing::Values(1, 0));
 
 TEST(MathTest, GemvNoTrans) {
   auto& provider = CPUMathUtil::Instance();
@@ -131,7 +133,7 @@ TEST(MathTest, GemvNoTrans) {
   std::vector<float> Y(5);
   math::Set<float, CPUMathUtil>(A.size(), 1, VECTOR_HEAD(A), &provider);
   math::Set<float, CPUMathUtil>(X.size(), 1, VECTOR_HEAD(X), &provider);
-  EXPECT_EQ(Y.size(), 5);
+  EXPECT_EQ(Y.size(), 5u);
   for (size_t i = 0; i < A.size(); ++i) {
     EXPECT_EQ(A[i], 1);
   }
@@ -169,7 +171,7 @@ TEST(MathTest, GemvTrans) {
   std::vector<float> Y(10);
   math::Set<float, CPUMathUtil>(A.size(), 1, VECTOR_HEAD(A), &provider);
   math::Set<float, CPUMathUtil>(X.size(), 1, VECTOR_HEAD(X), &provider);
-  EXPECT_EQ(Y.size(), 10);
+  EXPECT_EQ(Y.size(), 10u);
   for (size_t i = 0; i < A.size(); ++i) {
     EXPECT_EQ(A[i], 1);
   }

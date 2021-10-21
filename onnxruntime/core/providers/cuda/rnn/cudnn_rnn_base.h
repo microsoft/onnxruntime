@@ -4,9 +4,11 @@
 #pragma once
 
 #include "gsl/gsl"
-#include "core/providers/cuda/cudnn_common.h"
-#include "core/providers/cuda/cuda_common.h"
+
 #include <cudnn.h>
+
+#include "core/providers/cuda/cuda_kernel.h"
+#include "core/providers/cuda/cudnn_common.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -38,11 +40,11 @@ class CudnnRNN {
 
   Status Set(const cudnnHandle_t& cudnnHandle, int64_t hidden_size, int num_layers,
              cudnnDropoutDescriptor_t cudnn_dropout_desc, cudnnDirectionMode_t cudnn_direction_model,
-             cudnnRNNMode_t rnn_mode, cudnnDataType_t dataType) {
+             cudnnRNNMode_t rnn_mode, cudnnDataType_t dataType, const cudaDeviceProp& prop) {
     if (!cudnn_rnn_desc_)
       CUDNN_RETURN_IF_ERROR(cudnnCreateRNNDescriptor(&cudnn_rnn_desc_));
 
-    CUDNN_RETURN_IF_ERROR(cudnnSetRNNDescriptor(cudnnHandle,
+    CUDNN_RETURN_IF_ERROR(cudnnSetRNNDescriptor_v6(cudnnHandle,
                                                 cudnn_rnn_desc_,
                                                 gsl::narrow_cast<int>(hidden_size),
                                                 num_layers,
@@ -52,6 +54,10 @@ class CudnnRNN {
                                                 rnn_mode,
                                                 CUDNN_RNN_ALGO_STANDARD,  //CUDNN_RNN_ALGO_PERSIST_STATIC, CUDNN_RNN_ALGO_PERSIST_DYNAMIC
                                                 dataType));
+
+    if (prop.major >= 7 && dataType == CUDNN_DATA_HALF) {
+      cudnnSetRNNMatrixMathType(cudnn_rnn_desc_, CUDNN_TENSOR_OP_MATH);
+    }
 
     return Status::OK();
   }
@@ -91,12 +97,16 @@ class CudnnRnnBase : public CudaKernel {
     rnn_mode_ = CUDNN_LSTM;
     weight_cached_ = false;
     w_data_cache_ = nullptr;
-    
+
     size_t state_size;
-    cudnn_dropout_desc_.CreateDescriptorIfNeeded();
-    cudnn_dropout_desc_.GetCudnnDropoutStatesSize(CudnnHandle(), state_size);
+    ORT_THROW_IF_ERROR(cudnn_dropout_desc_.CreateDescriptorIfNeeded());
+    ORT_THROW_IF_ERROR(cudnn_dropout_desc_.GetCudnnDropoutStatesSize(CudnnHandle(), state_size));
     state_buffer_ = GetScratchBuffer<void>(state_size);
-    cudnn_dropout_desc_.Set(CudnnHandle(), state_buffer_.get(), state_size);
+    ORT_THROW_IF_ERROR(cudnn_dropout_desc_.Set(CudnnHandle(), state_buffer_.get(), state_size));
+
+    layout_ = info.GetAttrOrDefault("layout", static_cast<int64_t>(0));
+    ORT_ENFORCE(layout_ == 0, 
+                "Batchwise recurrent operations (layout == 1) are not supported. If you need support create a github issue with justification.");
   }
 
   Status CacheCudnnRnnWeights(const OpKernelInfo& info);
@@ -154,6 +164,7 @@ class CudnnRnnBase : public CudaKernel {
   CudnnFilterDescriptor w_desc_cache_;
   IAllocatorUniquePtr<void> w_data_cache_;
   bool weight_cached_;
+  int64_t layout_;
 
   // cudnn_dropout_desc_ is a cache, never to be changed
   IAllocatorUniquePtr<void> state_buffer_;

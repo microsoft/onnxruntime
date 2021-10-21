@@ -1,65 +1,61 @@
 #-------------------------------------------------------------------------
-# Copyright(C) 2019 Intel Corporation.
-# Licensed under the MIT License.
+# Copyright(C) 2021 Intel Corporation.
+# SPDX-License-Identifier: MIT
 #--------------------------------------------------------------------------
 
-FROM ubuntu:16.04
+ARG OPENVINO_VERSION=2021.4.1
 
-RUN apt update && \
-    apt -y install git sudo wget \
-    zip x11-apps lsb-core cpio libboost-python-dev libpng-dev zlib1g-dev libnuma1 ocl-icd-libopencl1 clinfo libboost-filesystem1.58.0 libboost-thread1.58.0 protobuf-compiler libprotoc-dev libusb-1.0-0-dev
 
-ARG DEVICE=CPU_FP32
-ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime
+# Build stage
+FROM openvino/ubuntu18_runtime:${OPENVINO_VERSION} AS builder
+
+ENV WORKDIR_PATH=/home/openvino
+WORKDIR $WORKDIR_PATH
+ENV DEBIAN_FRONTEND noninteractive
+
+ARG DEVICE=CPU_FP32 
+ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime.git
 ARG ONNXRUNTIME_BRANCH=master
 
-ENV pattern="COMPONENTS=DEFAULTS"
-ENV replacement="COMPONENTS=intel-openvino-ie-sdk-ubuntu-xenial__x86_64;intel-openvino-ie-rt-cpu-ubuntu-xenial__x86_64;intel-openvino-ie-rt-gpu-ubuntu-xenial__x86_64;intel-openvino-ie-rt-vpu-ubuntu-xenial__x86_64;intel-openvino-ie-rt-hddl-ubuntu-xenial__x86_64;intel-openvino-model-optimizer__x86_64;intel-openvino-opencv-lib-ubuntu-xenial__x86_64"
-COPY l_openvino_*.tgz .
-RUN tar -xzf l_openvino_toolkit*.tgz && \
-    rm -rf l_openvino_toolkit*.tgz && \
-    cd l_openvino_toolkit* && \
-    sed -i "s/$pattern/$replacement/" silent.cfg && \
-    sed -i 's/decline/accept/g' silent.cfg && \
-    ./install.sh -s silent.cfg && \
-    ./install_openvino_dependencies.sh && \
-    cd - && \
-    rm -rf l_openvino_toolkit* && \
-    cd /opt/intel/openvino/deployment_tools/model_optimizer/install_prerequisites && ./install_prerequisites_onnx.sh
+ENV InferenceEngine_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/share
+ENV ngraph_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/ngraph/cmake
 
-ENV LD_LIBRARY_PATH=/usr/lib:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
-ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2019.1.144
-ENV INTEL_CVSDK_DIR=/opt/intel/openvino_2019.1.144
-ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/model_optimizer/model_optimizer_caffe/bin:${LD_LIBRARY_PATH}
-ENV ModelOptimizer_ROOT_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/model_optimizer/model_optimizer_caffe
-ENV InferenceEngine_DIR=${INTEL_CVSDK_DIR}/deployment_tools/inference_engine/share
-ENV IE_PLUGINS_PATH=${INTEL_CVSDK_DIR}/deployment_tools/inference_engine/lib/intel64
-ENV LD_LIBRARY_PATH=/opt/intel/opencl:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/cldnn/lib:${INTEL_OPENVINO_DIR}/inference_engine/external/gna/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/omp/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/lib:${IE_PLUGINS_PATH}:${LD_LIBRARY_PATH}
-ENV OpenCV_DIR=${INTEL_OPENVINO_DIR}/opencv/share/OpenCV
-ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/opencv/lib:${INTEL_OPENVINO_DIR}/opencv/share/OpenCV/3rdparty/lib:${LD_LIBRARY_PATH}
-ENV PATH=${INTEL_CVSDK_DIR}/deployment_tools/model_optimizer:$PATH
-ENV PYTHONPATH=${INTEL_CVSDK_DIR}/deployment_tools/model_optimizer:$PYTHONPATH
-# ENV PYTHONPATH=$INTEL_CVSDK_DIR/python/python3.5:${INTEL_CVSDK_DIR}/python/python3.5/ubuntu16:${PYTHONPATH}
-ENV HDDL_INSTALL_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/hddl
-ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/hddl/lib:$LD_LIBRARY_PATH
+USER root
+RUN apt update; apt install -y git protobuf-compiler libprotobuf-dev
+RUN git clone --recursive -b ${ONNXRUNTIME_BRANCH} ${ONNXRUNTIME_REPO} 
+RUN /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh
+RUN ln -s cmake-* cmake-dir
+RUN python3 -m pip install wheel
+ENV PATH=${WORKDIR_PATH}/cmake-dir/bin:$PATH
+RUN pip3 install onnx
+RUN cd onnxruntime && ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE} --build_shared_lib --build_wheel 
 
-RUN wget https://github.com/intel/compute-runtime/releases/download/19.15.12831/intel-gmmlib_19.1.1_amd64.deb
-RUN wget https://github.com/intel/compute-runtime/releases/download/19.15.12831/intel-igc-core_1.0.2-1787_amd64.deb
-RUN wget https://github.com/intel/compute-runtime/releases/download/19.15.12831/intel-igc-opencl_1.0.2-1787_amd64.deb
-RUN wget https://github.com/intel/compute-runtime/releases/download/19.15.12831/intel-opencl_19.15.12831_amd64.deb
-RUN wget https://github.com/intel/compute-runtime/releases/download/19.15.12831/intel-ocloc_19.15.12831_amd64.deb
+#Steps to download sources
+RUN cat /etc/apt/sources.list | sed 's/^# deb-src/deb-src/g' > ./temp; mv temp /etc/apt/sources.list
+RUN apt update; apt install dpkg-dev
+RUN mkdir /sources
+WORKDIR /sources
+RUN apt-get source cron iso-codes libapt-inst2.0 lsb-release powermgmt-base python-apt-common python3-apt python3-dbus python3-gi unattended-upgrades libapt-pkg5.0 libhogweed4 libnettle6
+WORKDIR /
+RUN tar cvf GPL_sources.tar.gz /sources
 
-RUN sudo dpkg -i *.deb && rm -rf *.deb
+# Deploy stage
+FROM openvino/ubuntu18_runtime:${OPENVINO_VERSION}
 
-ENV LANG en_US.UTF-8
-WORKDIR /code
-ENV PATH /opt/miniconda/bin:/code/cmake-3.14.3-Linux-x86_64/bin:$PATH
+ENV DEBIAN_FRONTEND noninteractive
+USER root
+COPY --from=builder /home/openvino/onnxruntime/build/Linux/Release/dist/*.whl ./
+COPY --from=builder /GPL_sources.tar.gz ./
+RUN python3 -m pip install ./*.whl && rm ./*.whl
+RUN apt update; apt install -y unattended-upgrades && \
+    unattended-upgrade
+ARG BUILD_UID=1001
+ARG BUILD_USER=onnxruntimedev
+RUN adduser --uid $BUILD_UID $BUILD_USER
+ENV WORKDIR_PATH /home/${BUILD_USER}
+WORKDIR ${WORKDIR_PATH}
 
-RUN git clone --recursive -b $ONNXRUNTIME_BRANCH $ONNXRUNTIME_REPO /onnxruntime && \
-    /bin/sh /onnxruntime/dockerfiles/scripts/install_common_deps.sh && \
-    cd /onnxruntime/cmake/external/onnx && python3 setup.py install && \
-    cp /onnxruntime/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt && \
-    cp /onnxruntime/ThirdPartyNotices.txt /code/ThirdPartyNotices.txt && \
-    pip install azure-iothub-device-client azure-iothub-service-client azure-iot-provisioning-device-client && \
-    cd /onnxruntime && ./build.sh --config RelWithDebInfo --update --build --parallel --use_openvino $DEVICE --build_wheel && \
-    pip install /onnxruntime/build/Linux/RelWithDebInfo/dist/*-linux_x86_64.whl && rm -rf /onnxruntime cmake-3.14.3-Linux-x86_64
+USER ${BUILD_USER}
+ENV PATH=${WORKDIR_PATH}/miniconda/bin:${WORKDIR_PATH}/cmake-dir/bin:$PATH
+ENV IE_PLUGINS_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64
+ENV LD_LIBRARY_PATH=/opt/intel/opencl:${INTEL_OPENVINO_DIR}/inference_engine/external/gna/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/lib:$INTEL_OPENVINO_DIR/deployment_tools/ngraph/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/omp/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/lib:${IE_PLUGINS_PATH}:${LD_LIBRARY_PATH}

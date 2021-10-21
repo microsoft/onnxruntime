@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 #include <atomic>
-#include "core/session/inference_session.h"
+#include "core/framework/session_options.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/providers/providers.h"
 

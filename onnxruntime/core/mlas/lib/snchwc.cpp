@@ -23,21 +23,21 @@ Abstract:
 
 struct MLAS_NCHWC_WORK_BLOCK
 {
-    int32_t tids;
+    ptrdiff_t tids;
     size_t BatchCount;
     size_t InputChannels;
-    size_t InputShape[3];
+    size_t InputShape[2];
     size_t InputSize;
     size_t OutputChannels;
-    size_t OutputShape[3];
+    size_t OutputShape[2];
     size_t OutputSize;
-    size_t KernelShape[3];
-    size_t DilationShape[3];
-    size_t Padding[6];
-    size_t StrideShape[3];
-    size_t OutputCountLeftPad[3];
-    size_t OutputCount[3];
-    size_t OutputCountRightPad[3];
+    size_t KernelShape[2];
+    size_t DilationShape[2];
+    size_t Padding[4];
+    size_t StrideShape[2];
+    size_t OutputCountLeftPad[2];
+    size_t OutputCount[2];
+    size_t OutputCountRightPad[2];
 };
 
 //
@@ -111,7 +111,6 @@ Return Value:
 void
 MlasNchwcPrepareWorkBlock(
     MLAS_NCHWC_WORK_BLOCK* WorkBlock,
-    size_t Dimensions,
     const int64_t* InputShape,
     const int64_t* KernelShape,
     const int64_t* DilationShape,
@@ -128,10 +127,8 @@ Routine Description:
 
 Arguments:
 
-    WorkBlock - Supplies the structure that contains the commong convolution
+    WorkBlock - Supplies the structure that contains the common convolution
         and pooling parameters.
-
-    Dimensions - Supplies the number of dimensions.
 
     InputShape - Supplies the shape of the input tensor.
 
@@ -169,9 +166,9 @@ Return Value:
 
     size_t InputSize = 1;
     size_t OutputSize = 1;
-    bool CanFlattenShape = (Dimensions == 2);
+    bool CanFlattenShape = true;
 
-    for (size_t dim = 0; dim < Dimensions; dim++) {
+    for (size_t dim = 0; dim < 2; dim++) {
 
         const size_t InputValue = size_t(InputShape[dim]);
         const size_t OutputValue = size_t(OutputShape[dim]);
@@ -198,13 +195,13 @@ Return Value:
 
         if (Padding != nullptr) {
             WorkBlock->Padding[dim] = size_t(Padding[dim]);
-            WorkBlock->Padding[dim + Dimensions] = size_t(Padding[dim + Dimensions]);
+            WorkBlock->Padding[dim + 2] = size_t(Padding[dim + 2]);
         } else {
             WorkBlock->Padding[dim] = 0;
-            WorkBlock->Padding[dim + Dimensions] = 0;
+            WorkBlock->Padding[dim + 2] = 0;
         }
 
-        CanFlattenShape &= (WorkBlock->Padding[dim] == 0 && WorkBlock->Padding[dim + Dimensions] == 0);
+        CanFlattenShape &= (WorkBlock->Padding[dim] == 0 && WorkBlock->Padding[dim + 2] == 0);
 
         if (StrideShape != nullptr) {
             WorkBlock->StrideShape[dim] = size_t(StrideShape[dim]);
@@ -249,7 +246,7 @@ Return Value:
     // Compute the number of output elements affected by left and right padding.
     //
 
-    for (size_t dim = 0; dim < Dimensions; dim++) {
+    for (size_t dim = 0; dim < 2; dim++) {
 
         const size_t SpanValue =
             WorkBlock->DilationShape[dim] * (WorkBlock->KernelShape[dim] - 1) + 1;
@@ -344,28 +341,6 @@ struct MLAS_NCHWC_NN_ALGORITHM
         OutputCountRightPadX(WorkBlock->OutputCountRightPad[WidthShapeIndex])
     {
     }
-
-    static
-    void
-    PartitionWork(
-        int32_t Index,
-        const MLAS_NCHWC_WORK_BLOCK* WorkBlock,
-        size_t TotalWork,
-        size_t* WorkIndex,
-        size_t* WorkRemaining
-        )
-    {
-        const size_t WorkPerThread = TotalWork / WorkBlock->tids;
-        const size_t WorkPerThreadExtra = TotalWork % WorkBlock->tids;
-
-        if (uint32_t(Index) < WorkPerThreadExtra) {
-            *WorkIndex = (WorkPerThread + 1) * Index;
-            *WorkRemaining = WorkPerThread + 1;
-        } else {
-            *WorkIndex = WorkPerThread * Index + WorkPerThreadExtra;
-            *WorkRemaining = WorkPerThread;
-        }
-    }
 };
 
 constexpr size_t MLAS_NCHWC_NN_ALGORITHM::HeightShapeIndex;
@@ -375,7 +350,7 @@ template<typename AlgorithmType>
 void
 MlasNchwcThreaded(
     void* Context,
-    int32_t Index
+    ptrdiff_t Index
     )
 {
     AlgorithmType((decltype(AlgorithmType::WorkBlock))Context).Execute(Index);
@@ -564,16 +539,16 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 
     void ComputeFilterCount(void)
     {
-        FilterCount = (std::min)(FilterSetSize, (OutputChannels / BlockSize) - FilterSet * FilterSetSize);
+        FilterCount = std::min(FilterSetSize, (OutputChannels / BlockSize) - FilterSet * FilterSetSize);
     }
 
-    void PrepareWork(int32_t Index)
+    void PrepareWork(ptrdiff_t Index)
     {
         const size_t TotalWork = BatchCount * GroupCount * FilterSetCount * OutputHeight;
 
         size_t WorkIndex;
 
-        PartitionWork(Index, WorkBlock, TotalWork, &WorkIndex, &WorkRemaining);
+        MlasPartitionWork(Index, WorkBlock->tids, TotalWork, &WorkIndex, &WorkRemaining);
 
         //
         // Extract the current batch, group, filter cluster, and output line
@@ -677,7 +652,7 @@ struct MLAS_NCHWC_CONV_NCHWC_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
     {
     }
 
-    void Execute(int32_t Index)
+    void Execute(ptrdiff_t Index)
     {
         //
         // Setup the convolution state based on the thread index.
@@ -711,7 +686,7 @@ struct MLAS_NCHWC_CONV_NCHWC_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
             // Compute the number of output lines to process in this iteration.
             //
 
-            size_t WorkThisIteration = (std::min)(WorkRemaining, OutputHeight - ph);
+            size_t WorkThisIteration = std::min(WorkRemaining, OutputHeight - ph);
 
             //
             // Walk over each input image organized as a set of NCHWc blocks.
@@ -787,7 +762,7 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
     {
     }
 
-    void Execute(int32_t Index)
+    void Execute(ptrdiff_t Index)
     {
         //
         // Setup the convolution state based on the thread index.
@@ -887,7 +862,7 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
     {
     }
 
-    void Execute(int32_t Index)
+    void Execute(ptrdiff_t Index)
     {
         //
         // Setup the convolution state based on the thread index.
@@ -923,7 +898,7 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
             size_t WorkThisIteration;
 
             if (StrideHeight == 1 && StrideWidth == 1) {
-                WorkThisIteration = (std::min)(WorkRemaining, OutputHeight - ph);
+                WorkThisIteration = std::min(WorkRemaining, OutputHeight - ph);
             } else {
                 WorkThisIteration = 1;
             }
@@ -948,7 +923,7 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 
                 constexpr size_t MaximumInputChannelBatch = 128;
 
-                InputChannelBatch = (std::min)(InputChannels - ic, MaximumInputChannelBatch);
+                InputChannelBatch = std::min(InputChannels - ic, MaximumInputChannelBatch);
 
                 unsigned KernelFlags = ComputeKernelFlags(ic, InputChannelBatch);
 
@@ -995,7 +970,7 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
     {
     }
 
-    void Execute(int32_t Index)
+    void Execute(ptrdiff_t Index)
     {
         const size_t GroupBlockCount = ((GroupCount + BlockSize - 1) / BlockSize);
 
@@ -1004,7 +979,7 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
         size_t WorkIndex;
         size_t WorkRemaining;
 
-        PartitionWork(Index, WorkBlock, TotalWork, &WorkIndex, &WorkRemaining);
+        MlasPartitionWork(Index, WorkBlock->tids, TotalWork, &WorkIndex, &WorkRemaining);
 
         //
         // Extract the current batch, group block, and output line from the
@@ -1119,7 +1094,7 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 struct MLAS_NCHWC_POOL_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
 {
 #if !defined(MLAS_TARGET_AMD64)
-    static const PMLAS_POOL_FLOAT_KERNEL PoolKernels[];
+    static MLAS_POOL_FLOAT_KERNEL* const PoolKernels[];
 #endif
 
     const MLAS_NCHWC_POOL_WORK_BLOCK* WorkBlock;
@@ -1130,7 +1105,7 @@ struct MLAS_NCHWC_POOL_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
     {
     }
 
-    void Execute(int32_t Index)
+    void Execute(ptrdiff_t Index)
     {
         const size_t TotalWork =
             ((BatchCount * InputChannels + BlockSize - 1) / BlockSize) * OutputHeight;
@@ -1138,7 +1113,7 @@ struct MLAS_NCHWC_POOL_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
         size_t WorkIndex;
         size_t WorkRemaining;
 
-        PartitionWork(Index, WorkBlock, TotalWork, &WorkIndex, &WorkRemaining);
+        MlasPartitionWork(Index, WorkBlock->tids, TotalWork, &WorkIndex, &WorkRemaining);
 
         size_t ph = WorkIndex % OutputHeight;
         const size_t BatchChannel = WorkIndex / OutputHeight;
@@ -1224,7 +1199,7 @@ struct MLAS_NCHWC_POOL_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
 
 #if !defined(MLAS_TARGET_AMD64)
 
-const PMLAS_POOL_FLOAT_KERNEL MLAS_NCHWC_POOL_ALGORITHM::PoolKernels[] =
+MLAS_POOL_FLOAT_KERNEL* const MLAS_NCHWC_POOL_ALGORITHM::PoolKernels[] =
 {
     MlasPoolMaximumFloatKernel,
     MlasPoolAverageExcludePadFloatKernel,
@@ -1236,7 +1211,6 @@ const PMLAS_POOL_FLOAT_KERNEL MLAS_NCHWC_POOL_ALGORITHM::PoolKernels[] =
 void
 MLASCALL
 MlasNchwcConv(
-    size_t Dimensions,
     const int64_t* InputShape,
     const int64_t* KernelShape,
     const int64_t* DilationShape,
@@ -1319,7 +1293,7 @@ Return Value:
     // Capture the generic shape parameters to the work block.
     //
 
-    MlasNchwcPrepareWorkBlock(&WorkBlock, Dimensions, InputShape, KernelShape,
+    MlasNchwcPrepareWorkBlock(&WorkBlock, InputShape, KernelShape,
         DilationShape, Padding, StrideShape, OutputShape);
 
     WorkBlock.InputChannels /= GroupCount;
@@ -1333,7 +1307,7 @@ Return Value:
     // reorder the filter tensor in the expected format for the given algorithm.
     //
 
-    PMLAS_THREADED_ROUTINE ThreadedRoutine;
+    MLAS_THREADED_ROUTINE* ThreadedRoutine;
 
     if (WorkBlock.InputChannels >= MlasNchwcGetBlockSize()) {
         if (WorkBlock.KernelShape[0] == 1 && WorkBlock.KernelShape[1] == 1 &&
@@ -1362,7 +1336,6 @@ void
 MLASCALL
 MlasNchwcPool(
     MLAS_POOLING_KIND PoolingKind,
-    size_t Dimensions,
     const int64_t* InputShape,
     const int64_t* KernelShape,
     const int64_t* DilationShape,
@@ -1382,8 +1355,6 @@ Routine Description:
 Arguments:
 
     PoolingKind - Supplies the kind of pooling operation to perform.
-
-    Dimensions - Supplies the number of dimensions.
 
     InputShape - Supplies the shape of the input tensor.
 
@@ -1425,7 +1396,7 @@ Return Value:
     // Capture the generic shape parameters to the work block.
     //
 
-    MlasNchwcPrepareWorkBlock(&WorkBlock, Dimensions, InputShape, KernelShape,
+    MlasNchwcPrepareWorkBlock(&WorkBlock, InputShape, KernelShape,
         DilationShape, Padding, StrideShape, OutputShape);
 
     //
@@ -1435,6 +1406,219 @@ Return Value:
     WorkBlock.tids = MlasGetMaximumThreadCount(ThreadPool);
 
     MlasExecuteThreaded(MlasNchwcThreaded<MLAS_NCHWC_POOL_ALGORITHM>, &WorkBlock, WorkBlock.tids, ThreadPool);
+}
+
+void
+MLASCALL
+MlasNchwcUpsampleNearest(
+    const int64_t* InputShape,
+    const int64_t* Scales,
+    const float* Input,
+    float* Output
+    )
+/*++
+
+Routine Description:
+
+    This routine implements the NCHWc upsample nearest operation.
+
+Arguments:
+
+    InputShape - Supplies the shape of the input tensor.
+
+    Scales - Supplies the shape of the spatial scaling.
+
+    Input - Supplies the input tensor.
+
+    Output - Supplies the output tensor.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    const size_t BlockSize = MlasNchwcGetBlockSize();
+
+    const size_t BatchCount = size_t(InputShape[0]);
+    const size_t ChannelCount = size_t(InputShape[1]);
+    const size_t InputHeight = size_t(InputShape[2]);
+    const size_t InputWidth = size_t(InputShape[3]);
+
+    const size_t TotalInputHeight = BatchCount * ChannelCount * InputHeight;
+
+    const size_t ScaleHeight = size_t(Scales[0]);
+    const size_t ScaleWidth = size_t(Scales[1]);
+
+    const size_t OutputWidth = InputWidth * ScaleWidth;
+
+    //
+    // Iterate over each line of the input tensor.
+    //
+
+    for (size_t h = 0; h < TotalInputHeight; h += BlockSize) {
+
+        float* OutputBaseRow = Output;
+
+        //
+        // Scale the input tensor across the width dimension.
+        //
+
+        for (size_t w = 0; w < InputWidth; w++) {
+
+            if (BlockSize == 16) {
+
+                MLAS_FLOAT32X4 v0 = MlasLoadFloat32x4(Input);
+                MLAS_FLOAT32X4 v1 = MlasLoadFloat32x4(Input + 4);
+                MLAS_FLOAT32X4 v2 = MlasLoadFloat32x4(Input + 8);
+                MLAS_FLOAT32X4 v3 = MlasLoadFloat32x4(Input + 12);
+
+                for (size_t sw = 0; sw < ScaleWidth; sw++) {
+
+                    MlasStoreFloat32x4(Output, v0);
+                    MlasStoreFloat32x4(Output + 4, v1);
+                    MlasStoreFloat32x4(Output + 8, v2);
+                    MlasStoreFloat32x4(Output + 12, v3);
+
+                    Output += BlockSize;
+                }
+
+            } else {
+
+                MLAS_FLOAT32X4 v0 = MlasLoadFloat32x4(Input);
+                MLAS_FLOAT32X4 v1 = MlasLoadFloat32x4(Input + 4);
+
+                for (size_t sw = 0; sw < ScaleWidth; sw++) {
+
+                    MlasStoreFloat32x4(Output, v0);
+                    MlasStoreFloat32x4(Output + 4, v1);
+
+                    Output += BlockSize;
+                }
+            }
+
+            Input += BlockSize;
+        }
+
+        //
+        // Scale the input tensor across the height dimension by duplicating
+        // the first output line.
+        //
+
+        for (size_t sh = 1; sh < ScaleHeight; sh++) {
+            Output = std::copy_n(OutputBaseRow, OutputWidth * BlockSize, Output);
+        }
+    }
+}
+
+MLAS_FORCEINLINE
+void
+MlasNchwcExtractInterpolation(
+    float InterpolationValue,
+    size_t InputLimit,
+    ptrdiff_t InputIndex[2],
+    MLAS_FLOAT32X4 Multipliers[2]
+    )
+{
+    InputIndex[0] = ptrdiff_t(InterpolationValue);
+    InputIndex[1] = std::min<ptrdiff_t>(InputIndex[0] + 1, ptrdiff_t(InputLimit - 1));
+
+    float ScalarMultiplier0 = InterpolationValue - float(InputIndex[0]);
+    float ScalarMultiplier1 = 1.0f - ScalarMultiplier0;
+
+    Multipliers[0] = MlasBroadcastFloat32x4(ScalarMultiplier0);
+    Multipliers[1] = MlasBroadcastFloat32x4(ScalarMultiplier1);
+}
+
+void
+MLASCALL
+MlasNchwcUpsampleLinear(
+    size_t InputHeight,
+    size_t InputWidth,
+    size_t OutputWidth,
+    float InterpolationHeight,
+    const float* InterpolationWidth,
+    const float* Input,
+    float* Output
+    )
+/*++
+
+Routine Description:
+
+    This routine implements the NCHWc upsample linear operation for a single row.
+
+    The integer portion of each interpolation float supplies the mapping from
+    output element to input element. The fractional portion supplies the relative
+    weights for the four points of the interpolation.
+
+Arguments:
+
+    InputHeight - Supplies the input height.
+
+    InputWidth - Supplies the input width.
+
+    OutputWidth - Supplies the output width.
+
+    InterpolationHeight - Supplies the height interpolation values for the target
+        row.
+
+    InterpolationWidth - Supplies an array of computed interpolation values of
+        length OutputWidth.
+
+    Input - Supplies the input spatial buffer.
+
+    Output - Supplies the output row buffer.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    const size_t BlockSize = MlasNchwcGetBlockSize();
+
+    ptrdiff_t InputIndexY[2];
+    MLAS_FLOAT32X4 MultipliersY[2];
+
+    MlasNchwcExtractInterpolation(InterpolationHeight, InputHeight, InputIndexY, MultipliersY);
+
+    const float* InputRowY0 = Input + InputIndexY[0] * InputWidth * BlockSize;
+    const float* InputRowY1 = Input + InputIndexY[1] * InputWidth * BlockSize;
+
+    for (size_t ow = 0; ow < OutputWidth; ow++) {
+
+        ptrdiff_t InputIndexX[2];
+        MLAS_FLOAT32X4 MultipliersX[2];
+
+        MlasNchwcExtractInterpolation(InterpolationWidth[ow], InputWidth, InputIndexX, MultipliersX);
+
+        MLAS_FLOAT32X4 MultiplierY0X0 = MlasMultiplyFloat32x4(MultipliersY[0], MultipliersX[0]);
+        MLAS_FLOAT32X4 MultiplierY0X1 = MlasMultiplyFloat32x4(MultipliersY[0], MultipliersX[1]);
+        MLAS_FLOAT32X4 MultiplierY1X0 = MlasMultiplyFloat32x4(MultipliersY[1], MultipliersX[0]);
+        MLAS_FLOAT32X4 MultiplierY1X1 = MlasMultiplyFloat32x4(MultipliersY[1], MultipliersX[1]);
+
+        for (size_t bc = 0; bc < BlockSize; bc += 4) {
+
+            MLAS_FLOAT32X4 v00 = MlasLoadFloat32x4(InputRowY0 + InputIndexX[0] * BlockSize + bc);
+            MLAS_FLOAT32X4 v01 = MlasLoadFloat32x4(InputRowY0 + InputIndexX[1] * BlockSize + bc);
+            MLAS_FLOAT32X4 v10 = MlasLoadFloat32x4(InputRowY1 + InputIndexX[0] * BlockSize + bc);
+            MLAS_FLOAT32X4 v11 = MlasLoadFloat32x4(InputRowY1 + InputIndexX[1] * BlockSize + bc);
+
+            v00 = MlasMultiplyFloat32x4(MultiplierY1X1, v00);
+            v01 = MlasMultiplyFloat32x4(MultiplierY1X0, v01);
+            v10 = MlasMultiplyFloat32x4(MultiplierY0X1, v10);
+            v11 = MlasMultiplyFloat32x4(MultiplierY0X0, v11);
+
+            MLAS_FLOAT32X4 Reduction0 = MlasAddFloat32x4(v00, v01);
+            MLAS_FLOAT32X4 Reduction1 = MlasAddFloat32x4(v10, v11);
+
+            MLAS_FLOAT32X4 Reduction = MlasAddFloat32x4(Reduction0, Reduction1);
+
+            MlasStoreFloat32x4(&Output[bc], Reduction);
+        }
+
+         Output += BlockSize;
+    }
 }
 
 #if !defined(MLAS_TARGET_AMD64)

@@ -12,9 +12,9 @@ namespace nuphar {
 bool TVM_SCHEDULER_CLASS(True, NupharX86UseCount)::Evaluate(
     const tvm::Tensor& tensor,
     const Node*,
-    tvm_codegen::CodeGenContext&,
+    tvm_codegen::CodeGenContext& ctx_codegen,
     tvm_codegen::ScheduleContext& ctx_sched) {
-  bool status_vec = TryVectorizationX86(tensor, ctx_sched);
+  bool status_vec = TryVectorizationX86(tensor, ctx_codegen, ctx_sched);
   bool status_r_and_c = tvm_codegen::InsertRootScheduleAndClosure(tensor, ctx_sched);
   return status_vec || status_r_and_c;
 }

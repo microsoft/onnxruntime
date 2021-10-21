@@ -37,6 +37,10 @@ class OpKernelContextInternal : public OpKernelContext {
     }
   }
 
+  bool GetUseDeterministicCompute() const override {
+    return session_state_.GetUseDeterministicCompute();
+  }
+
   const SessionState* SubgraphSessionState(const std::string& attribute_name) {
     return session_state_.GetSubgraphSessionState(GetNodeIndex(), attribute_name);
   }
@@ -48,6 +52,12 @@ class OpKernelContextInternal : public OpKernelContext {
   OrtValue* GetOutputMLValue(int index) {
     return OpKernelContext::GetOutputMLValue(index);
   }
+
+#ifdef ENABLE_TRAINING
+  Status SetOutputMLValue(int index, const OrtValue& ort_value) {
+    return OpKernelContext::SetOutputMLValue(index, ort_value);
+  }
+#endif
 
   OrtValue* OutputMLValue(int index, const TensorShape& shape) {
     return OpKernelContext::OutputMLValue(index, shape);

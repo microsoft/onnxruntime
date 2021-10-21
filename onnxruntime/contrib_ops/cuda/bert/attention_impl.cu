@@ -21,12 +21,13 @@ limitations under the License.
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <cub/cub.cuh>
-#include <cublas_v2.h>
 #include <cuda_fp16.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "attention_impl.h"
+#include "attention_softmax.h"
+#include "transformer_common.h"
 
 using namespace onnxruntime::cuda;
 using namespace cub;
@@ -39,8 +40,8 @@ static size_t AlignTo(size_t a, size_t b) {
   return CeilDiv(a, b) * b;
 }
 
-size_t ScratchSize(size_t element_size, int batch_size, int num_heads, int sequence_length) {
-  const size_t len = batch_size * num_heads * sequence_length * sequence_length;
+size_t GetAttentionScratchSize(size_t element_size, int batch_size, int num_heads, int sequence_length, int all_sequence_length) {
+  const size_t len = batch_size * num_heads * sequence_length * all_sequence_length;
   const size_t bytes = len * element_size;
 
   const size_t alignment = 256;
@@ -48,298 +49,34 @@ size_t ScratchSize(size_t element_size, int batch_size, int num_heads, int seque
   return bytesAligned;
 }
 
-size_t GetAttentionWorkspaceSize(size_t element_size, int batch_size, int num_heads, int head_size, int sequence_length) {
+size_t GetAttentionWorkspaceSize(
+    size_t element_size,
+    int batch_size,
+    int num_heads,
+    int head_size,
+    int sequence_length,
+    int past_sequence_length) {
   size_t qkv_size = 3 * batch_size * sequence_length * num_heads * head_size * element_size;
-  return qkv_size + 2 * ScratchSize(element_size, batch_size, num_heads, sequence_length);
+  return qkv_size + 2 * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length, past_sequence_length + sequence_length);
 }
-
-template <typename T, unsigned TPB>
-__device__ inline void Softmax(const int ld, const int last_valid, const T* input, T* output) {
-  using BlockReduce = cub::BlockReduce<float, TPB>;
-  __shared__ typename BlockReduce::TempStorage tmp_storage;
-
-  __shared__ float reverse_z;
-
-  float thread_data(0);
-  const int offset = (blockIdx.y * gridDim.x + blockIdx.x) * ld;
-  for (int i = threadIdx.x; i < last_valid; i += TPB) {
-    const int index = offset + i;
-    const float val = input[index];
-    thread_data += expf(val);
-  }
-
-  cub::Sum sum;
-  const auto z = BlockReduce(tmp_storage).Reduce(thread_data, sum);
-  if (threadIdx.x == 0) {
-    reverse_z = 1.f / z;
-  }
-  __syncthreads();
-
-  for (int i = threadIdx.x; i < ld; i += TPB) {
-    const int index = offset + i;
-    const float val = (i < last_valid) ? expf(float(input[index])) * reverse_z : 0.f;
-    output[index] = T(val);
-  }
-}
-
-template <typename T, unsigned TPB>
-__device__ inline void SoftmaxSmall(const int ld, const int last_valid, const T* input, T* output) {
-  using BlockReduce = cub::BlockReduce<float, TPB>;
-  __shared__ typename BlockReduce::TempStorage tmp_storage;
-
-  __shared__ float reverse_z;
-
-  float thread_data(0);
-  const int offset = (blockIdx.y * gridDim.x + blockIdx.x) * ld;
-  const int index = offset + threadIdx.x;
-  if (threadIdx.x < last_valid) {
-    const float val = input[index];
-    thread_data = expf(val);
-  }
-
-  cub::Sum sum;
-  const auto z = BlockReduce(tmp_storage).Reduce(thread_data, sum);
-  if (threadIdx.x == 0) {
-    reverse_z = (1.f) / z;
-  }
-  __syncthreads();
-
-  if (threadIdx.x < ld) {
-    // this will be 0 for threadIdx.x >= last_valid
-    output[index] = T(thread_data * reverse_z);
-  }
-}
-
-template <typename T, unsigned TPB>
-__global__ void MaskedSoftmaxKernelSmall(const int sequence_length, const int* mask_index, const T* input, T* output) {
-  __shared__ int last_valid;
-
-  if (threadIdx.x == 0) {
-    last_valid = min(sequence_length, mask_index[blockIdx.y]);
-  }
-  __syncthreads();
-
-  SoftmaxSmall<T, TPB>(sequence_length, last_valid, input, output);
-}
-
-template <typename T, unsigned TPB>
-__global__ void MaskedSoftmaxKernel(const int sequence_length, const int* mask_index, const T* input, T* output) {
-  __shared__ int last_valid;
-
-  if (threadIdx.x == 0) {
-    last_valid = min(sequence_length, mask_index[blockIdx.y]);
-  }
-  __syncthreads();
-
-  Softmax<T, TPB>(sequence_length, last_valid, input, output);
-}
-
-template <typename T>
-bool ComputeMaskedSoftmax(cudaStream_t stream, const int sequence_length, const int batch_size, const int num_heads, 
-                         const int* mask_index, const T* input, T* output) {
-  // Mask is of length batch_size and assumes the valid region is contiguous starting
-  // from the beginning of the sequence
-
-  const dim3 grid(sequence_length * num_heads, batch_size, 1);
-
-  if (sequence_length <= 32) {
-    const int blockSize = 32;
-    MaskedSoftmaxKernelSmall<T, blockSize>
-        <<<grid, blockSize, 0, stream>>>(sequence_length, mask_index, input, output);
-  } else if (sequence_length <= 128) {
-    const int blockSize = 128;
-    MaskedSoftmaxKernelSmall<T, blockSize>
-        <<<grid, blockSize, 0, stream>>>(sequence_length, mask_index, input, output);
-  } else if (sequence_length == 384) {
-    const int blockSize = 384;
-    MaskedSoftmaxKernelSmall<T, blockSize>
-        <<<grid, blockSize, 0, stream>>>(sequence_length, mask_index, input, output);
-  } else {
-    const int blockSize = 256;
-    MaskedSoftmaxKernel<T, blockSize>
-        <<<grid, blockSize, 0, stream>>>(sequence_length, mask_index, input, output);
-  }
-
-  return CUDA_CALL(cudaPeekAtLastError());
-}
-
-template <typename T>
-__global__ void TransposeCtx(const int H, const T* input, T* output) {
-  // Input:  BxNxSxH
-  // Output: BxSxNxH
-
-  int n = threadIdx.y;
-  int s = blockIdx.x;
-  int b = blockIdx.y;
-
-  int num_heads = blockDim.y;
-  int sequence_length = gridDim.x;
-
-  const int NH = num_heads * H;
-  const int NHS = NH * sequence_length;
-  const int in_offset = s * H + n * sequence_length * H + b * NHS;
-  const int out_offset = n * H + s * NH + b * NHS;
-
-  const int i = threadIdx.x;
-  if (i < H) {
-    output[out_offset + i] = input[in_offset + i];
-  }
-}
-
-bool LaunchTransCtx(cudaStream_t stream,
-                    const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const float* input, float* output) {
-  const dim3 grid(sequence_length, batch_size, 1);
-  if (0 == (head_size & 1)) {
-    const int H = head_size / 2;
-    const float2* input2 = reinterpret_cast<const float2*>(input);
-    float2* output2 = reinterpret_cast<float2*>(output);
-    const dim3 block(H, num_heads, 1);
-    TransposeCtx<float2><<<grid, block, 0, stream>>>(H, input2, output2);
-  } else {
-    const dim3 block(head_size, num_heads, 1);
-    TransposeCtx<float><<<grid, block, 0, stream>>>(head_size, input, output);
-  }
-  return CUDA_CALL(cudaPeekAtLastError());
-}
-
-bool LaunchTransCtx(cudaStream_t stream,
-                    const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const half* input, half* output) {
-  const dim3 grid(sequence_length, batch_size, 1);
-  if (0 == (head_size % 4)) {
-    const int H = head_size / 4;
-    const dim3 block(H, num_heads, 1);
-    const float2* input2 = reinterpret_cast<const float2*>(input);
-    float2* output2 = reinterpret_cast<float2*>(output);
-    TransposeCtx<float2><<<grid, block, 0, stream>>>(H, input2, output2);
-  } else if (0 == (head_size & 1)) {
-    const int H = head_size / 2;
-    const dim3 block(H, num_heads, 1);
-    const half2* input2 = reinterpret_cast<const half2*>(input);
-    half2* output2 = reinterpret_cast<half2*>(output);
-    TransposeCtx<half2><<<grid, block, 0, stream>>>(H, input2, output2);
-  } else {  // this should be an "odd" case. probably not worth catching it in the half2 kernel.
-    const dim3 block(head_size, num_heads, 1);
-    TransposeCtx<half><<<grid, block, 0, stream>>>(head_size, input, output);
-  }
-
-  return CUDA_CALL(cudaPeekAtLastError());
-}
-
-template <typename T>
-__global__ void TransposeQKV(const int H, const T* input, T* output) {
-  // Input:  BxSx3xNxH
-  // Output: 3xBxNxSxH
-
-  int n = threadIdx.y;
-  int s = blockIdx.x;
-  int b = blockIdx.y;
-  int m = blockIdx.z;  // matrix id
-
-  const int num_heads = blockDim.y;
-
-  const int sequence_length = gridDim.x;
-  const int batch_size = gridDim.y;
-  const int NH = num_heads * H;
-  const int NHS = NH * sequence_length;
-  const int in_offset = n * H + m * NH + s * 3 * NH + b * NHS * 3;
-  const int out_offset = s * H + n * sequence_length * H + b * NHS + m * NHS * batch_size;
-
-  const int i = threadIdx.x;
-  if (i < H) {
-    output[out_offset + i] = input[in_offset + i];
-  }
-}
-
-bool LaunchTransQkv(cudaStream_t stream,
-                    const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const float* input, float* output) {
-  const dim3 grid(sequence_length, batch_size, 3);
-  if (0 == (head_size & 1)) {
-    const int H = head_size / 2;
-    const float2* input2 = reinterpret_cast<const float2*>(input);
-    float2* output2 = reinterpret_cast<float2*>(output);
-    const dim3 block(H, num_heads, 1);
-    TransposeQKV<float2><<<grid, block, 0, stream>>>(H, input2, output2);
-  } else {
-    const dim3 block(head_size, num_heads, 1);
-    TransposeQKV<float><<<grid, block, 0, stream>>>(head_size, input, output);
-  }
-  return CUDA_CALL(cudaPeekAtLastError());
-}
-
-bool LaunchTransQkv(cudaStream_t stream,
-                    const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const half* input, half* output) {
-  const dim3 grid(sequence_length, batch_size, 3);
-  if (0 == (head_size % 4)) {
-    const int H = head_size / 4;
-    const dim3 block(H, num_heads, 1);
-    const float2* input2 = reinterpret_cast<const float2*>(input);
-    float2* output2 = reinterpret_cast<float2*>(output);
-    TransposeQKV<float2><<<grid, block, 0, stream>>>(H, input2, output2);
-  } else if (0 == (head_size & 1)) {
-    const int H = head_size / 2;
-    const dim3 block(H, num_heads, 1);
-    const half2* input2 = reinterpret_cast<const half2*>(input);
-    half2* output2 = reinterpret_cast<half2*>(output);
-    TransposeQKV<half2><<<grid, block, 0, stream>>>(H, input2, output2);
-  } else {  // this should be an "odd" case. probably not worth catching it in the half2 kernel..
-    const dim3 block(head_size, num_heads, 1);
-    TransposeQKV<half><<<grid, block, 0, stream>>>(head_size, input, output);
-  }
-  return CUDA_CALL(cudaPeekAtLastError());
-}
-
-cublasStatus_t inline CublasGemmStridedBatched(
-    cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
-    int m, int n, int k, const float alpha,
-    const float* A, int lda, long long int strideA, const float* B, int ldb, long long int strideB,
-    const float beta, float* C, int ldc, long long int strideC, int batchCount) {
-  return cublasSgemmStridedBatched(
-      handle, transa, transb, m, n, k, &alpha, A, lda, strideA, B, ldb, strideB, &beta, C, ldc, strideC, batchCount);
-}
-
-cublasStatus_t inline CublasGemmStridedBatched(
-    cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
-    int m, int n, int k, const half alpha,
-    const half* A, int lda, long long int strideA, const half* B, int ldb, long long int strideB,
-    const half beta, half* C, int ldc, long long int strideC, int batchCount) {
-  return cublasHgemmStridedBatched(
-      handle, transa, transb, m, n, k, &alpha, A, lda, strideA, B, ldb, strideB, &beta, C, ldc, strideC, batchCount);
-}
-
-struct CublasConfigHelper {
-  cublasPointerMode_t pointer_mode_;
-  cublasMath_t math_mode_;
-  cublasHandle_t cublas_;
-  CublasConfigHelper(cublasHandle_t cublas)
-      : cublas_(cublas) {
-    cublasGetPointerMode(cublas_, &pointer_mode_);
-    cublasGetMathMode(cublas_, &math_mode_);
-    cublasSetPointerMode(cublas_, CUBLAS_POINTER_MODE_HOST);
-    cublasSetMathMode(cublas_, CUBLAS_TENSOR_OP_MATH);
-  }
-  ~CublasConfigHelper() {
-    cublasSetMathMode(cublas_, math_mode_);
-    cublasSetPointerMode(cublas_, pointer_mode_);
-  }
-};
 
 template <typename T>
 bool QkvToContext(
-    cublasHandle_t& cublas, cudaStream_t stream,
+    const cudaDeviceProp& prop, cublasHandle_t& cublas, cudaStream_t stream,
     const int batch_size, const int sequence_length, const int num_heads, const int head_size, const size_t element_size,
     const T* input, T* output, T* workspace,
-    const int* mask_index) {
-  const size_t bytes = ScratchSize(element_size, batch_size, num_heads, sequence_length);
+    const int* mask_index, const std::vector<int64_t>* mask_index_dims,
+    bool is_unidirectional, int past_sequence_length, const T* past, const T* extra_add_qk, T* present, bool use_persistent_softmax) {
+  const int all_sequence_length = past_sequence_length + sequence_length;
+  const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length, all_sequence_length);
   T* scratch1 = workspace;
   T* scratch2 = scratch1 + (bytes / element_size);
   T* scratch3 = scratch2 + (bytes / element_size);
- 
+
+  const int max_threads_per_block(prop.maxThreadsPerBlock);
+
   // input should be BxSx3xNxH => scratch3: 3xBxNxSxH
-  if (!LaunchTransQkv(stream, sequence_length, batch_size, head_size, num_heads, input, scratch3)) {
+  if (!LaunchTransQkv(stream, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, input, scratch3)) {
     return false;
   }
 
@@ -347,43 +84,87 @@ bool QkvToContext(
   const int batches = batch_size * num_heads;
   const int size_per_batch = sequence_length * head_size;
   const int total_size = batches * size_per_batch;
-  const int temp_matrix_size = sequence_length * sequence_length;
 
   const T* q = scratch3;
   const T* k = q + total_size;
   const T* v = k + total_size;
 
   cublasSetStream(cublas, stream);
-  CublasConfigHelper helper(cublas);
 
-  // compute Q*K' (as K'*Q), scaled by 1/sqrt(H) and store in scratch1: BxNxSxS
+  // Concat past (2xBxNxS'xH) to present (2xBxNxS*xH):
+  // past_k (BxNxS'xH) + k (BxNxSxH) => present_k (BxNxS*xH)
+  // past_v (BxNxS'xH) + v (BxNxSxH) => present_v (BxNxS*xH)
+  const int present_size_per_batch = all_sequence_length * head_size;
+  if (nullptr != present) {
+    if (!LaunchConcatPastToPresent(stream, all_sequence_length, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, past, k, present)) {
+      return false;
+    }
+
+    // update pointers to present_k and present_v.
+    k = present;
+    v = present + batches * present_size_per_batch;
+  }
+
+  // Raw attention mask could be 2D (BxS) or 3D (BxSxS*) or 4D(Bx1xMxM), where M is the max sequence length.
+  bool use_raw_attention_mask = (nullptr != mask_index && nullptr != mask_index_dims && mask_index_dims->size() >= 2);
+
+  // compute Q*K' (as K'*Q), scaled by 1/sqrt(H) and store in scratch1: BxNxSxS*
+  // Q: BxNxSxH, K (present_k): BxNxS*xH, Q*K': BxNxSxS*
   const float rsqrt_head_size = 1.f / sqrt(static_cast<float>(head_size));
-  if (!CUBLAS_CALL(CublasGemmStridedBatched(
-        cublas, CUBLAS_OP_T, CUBLAS_OP_N, sequence_length, sequence_length, head_size, rsqrt_head_size, k, head_size, size_per_batch,
-        q, head_size, size_per_batch, 0.f, scratch1, sequence_length, temp_matrix_size, batches))) {
+  const int temp_matrix_size = sequence_length * all_sequence_length;
+  float one = 1.0f;
+  float zero = 0.f;
+
+  // For raw attention mask, the scalar if 1/sqrt(H) is moved to softmax computation.
+  float alpha = use_raw_attention_mask ? one : rsqrt_head_size;
+
+  if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
+          cublas, CUBLAS_OP_T, CUBLAS_OP_N, all_sequence_length, sequence_length, head_size, &alpha, k, head_size, present_size_per_batch,
+          q, head_size, size_per_batch, &zero, scratch1, all_sequence_length, temp_matrix_size, batches, prop))) {
     return false;
   }
 
+  // apply softmax and store result P to scratch2: BxNxSxS*
+  if (use_raw_attention_mask) {  // 2d, 3d or 4d attention mask
+    const int mask_dimension = static_cast<int>(mask_index_dims->size());
+    const int64_t max_sequence_length = mask_dimension == 4 ? mask_index_dims->at(3) : 0;
 
-  // apply softmax and store result P to scratch2: BxNxSxS
-  if (!ComputeMaskedSoftmax<T>(stream, sequence_length, batch_size, num_heads, mask_index, scratch1, scratch2)) {
-    return false;
+    T* persistent_softmax_workspace = scratch1; // replace Q*K' in place with masked score if persistent softmax is selected.
+    if (!ComputeSoftmaxWithRawMask<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, mask_index, extra_add_qk, scratch1, scratch2, 
+                                      is_unidirectional, rsqrt_head_size, mask_dimension, static_cast<int>(max_sequence_length),
+                                      use_persistent_softmax, persistent_softmax_workspace)) {
+      return false;
+    }
+  } else if (nullptr != mask_index) {  // 1d mask index
+    ORT_ENFORCE(nullptr != mask_index_dims && mask_index_dims->size() == 1);
+    // mask_index has 1D shape: either (batch_size) or (2*batch_size). Only the later one has start postions.
+    const int* mask_start = (mask_index_dims->at(0) > batch_size) ? mask_index + batch_size : nullptr;
+    if (!ComputeSoftmaxWithMask1D<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, mask_index, mask_start, extra_add_qk, scratch1, scratch2, is_unidirectional)) {
+      return false;
+    }
+  } else {  // no mask
+    if (!ComputeSoftmax<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, extra_add_qk, scratch1, scratch2, is_unidirectional)) {
+      return false;
+    }
   }
 
   // compute P*V (as V*P), and store in scratch3: BxNxSxH
-  if (!CUBLAS_CALL(CublasGemmStridedBatched(
-        cublas, CUBLAS_OP_N, CUBLAS_OP_N, head_size, sequence_length, sequence_length, 1.f, v, head_size, size_per_batch,
-        scratch2, sequence_length, temp_matrix_size, 0.f, scratch3, head_size, size_per_batch, batches))) {
+  if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
+          cublas, CUBLAS_OP_N, CUBLAS_OP_N, head_size, sequence_length, all_sequence_length, &one, v, head_size, present_size_per_batch,
+          scratch2, all_sequence_length, temp_matrix_size, &zero, scratch3, head_size, size_per_batch, batches, prop))) {
     return false;
   }
 
   // scratch3 is BxNxSxH, transpose to output BxSxNxH
-  return LaunchTransCtx(stream, sequence_length, batch_size, head_size, num_heads, scratch3, output);
+  return LaunchTransCtx(stream, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, scratch3, output);
 }
 
 bool LaunchAttentionKernel(
+    const cudaDeviceProp& prop,
+    cudaStream_t stream,
     const void* input,
     const int* mask_index,
+    const std::vector<int64_t>* mask_index_dims,
     void* output,
     const int batch_size,
     const int sequence_length,
@@ -391,20 +172,32 @@ bool LaunchAttentionKernel(
     const int head_size,
     void* workspace,
     cublasHandle_t& cublas,
-    const size_t element_size) {
-  // use default stream
-  const cudaStream_t stream = nullptr;
+    const size_t element_size,
+    bool is_unidirectional,
+    int past_sequence_length,
+    const void* past,
+    const void* extra_add_qk,
+    void* present) {
+
+  
+  // For testing, environment variable ORT_TRANSFORMER_OPTIONS=1 could enable persistent softmax
+  const TransformerOptions* options = TransformerOptions::GetInstance();
+  bool use_persistent_softmax = options->IsPrecisionMode() && !options->DisablePersistentSoftmax();
 
   if (element_size == 2) {
-    return QkvToContext(cublas, stream,
+    return QkvToContext(prop, cublas, stream,
                         batch_size, sequence_length, num_heads, head_size, element_size,
                         reinterpret_cast<const half*>(input), reinterpret_cast<half*>(output), reinterpret_cast<half*>(workspace),
-                        mask_index);
+                        mask_index, mask_index_dims, is_unidirectional,
+                        past_sequence_length, reinterpret_cast<const half*>(past), reinterpret_cast<const half*>(extra_add_qk), 
+                        reinterpret_cast<half*>(present), use_persistent_softmax);
   } else {
-    return QkvToContext(cublas, stream,
+    return QkvToContext(prop, cublas, stream,
                         batch_size, sequence_length, num_heads, head_size, element_size,
                         reinterpret_cast<const float*>(input), reinterpret_cast<float*>(output), reinterpret_cast<float*>(workspace),
-                        mask_index);
+                        mask_index, mask_index_dims, is_unidirectional,
+                        past_sequence_length, reinterpret_cast<const float*>(past), reinterpret_cast<const float*>(extra_add_qk), 
+                        reinterpret_cast<float*>(present), use_persistent_softmax);
   }
 }
 

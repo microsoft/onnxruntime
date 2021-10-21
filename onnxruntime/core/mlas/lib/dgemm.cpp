@@ -26,30 +26,7 @@ Abstract:
 
 #define MLAS_DGEMM_TRANSA_ROWS              12
 
-//
-// Define the parameters to execute segments of a DGEMM operation on worker
-// threads.
-//
-
-struct MLAS_DGEMM_WORK_BLOCK {
-    CBLAS_TRANSPOSE TransA;
-    CBLAS_TRANSPOSE TransB;
-    size_t K;
-    size_t lda;
-    size_t ldb;
-    size_t ldc;
-    double alpha;
-    double beta;
-    struct SEGMENT {
-        size_t M;
-        size_t N;
-        const double* A;
-        const double* B;
-        double* C;
-    } Segments[MLAS_MAXIMUM_THREAD_COUNT];
-};
-
-#ifdef MLAS_TARGET_AMD64
+#if defined (MLAS_TARGET_AMD64)  || defined (MLAS_TARGET_POWER)
 
 void
 MlasDgemmMultiplyBeta(
@@ -86,7 +63,7 @@ Return Value:
 {
     MLAS_FLOAT64X2 BetaBroadcast = MlasBroadcastFloat64x2(beta);
 
-    do {
+    while (CountM-- > 0) {
 
         double* c = C;
         size_t n = CountN;
@@ -106,9 +83,7 @@ Return Value:
         }
 
         C += ldc;
-        CountM--;
-
-    } while (CountM > 0);
+    }
 }
 
 void
@@ -497,6 +472,82 @@ Return Value:
     }
 }
 
+MLAS_FORCEINLINE
+double*
+MlasDgemmKernelLoop(
+    const double* A,
+    const double* B,
+    double* C,
+    size_t CountK,
+    size_t CountM,
+    size_t CountN,
+    size_t lda,
+    size_t ldc,
+    double alpha,
+    bool ZeroMode
+    )
+/*++
+
+Routine Description:
+
+    This routine steps through the rows of the input and output matrices calling
+    the kernel until all rows have been processed.
+
+Arguments:
+
+    A - Supplies the address of matrix A.
+
+    B - Supplies the address of matrix B. The matrix data has been packed using
+        MlasDgemmCopyPackB or MlasDgemmTransposePackB.
+
+    C - Supplies the address of matrix C.
+
+    CountK - Supplies the number of columns from matrix A and the number of rows
+        from matrix B to iterate over.
+
+    CountM - Supplies the number of rows from matrix A and matrix C to iterate
+        over.
+
+    CountN - Supplies the number of columns from matrix B and matrix C to
+        iterate over.
+
+    lda - Supplies the first dimension of matrix A.
+
+    ldc - Supplies the first dimension of matrix C.
+
+    alpha - Supplies the scalar alpha multiplier (see DGEMM definition).
+
+    ZeroMode - Supplies true if the output matrix must be zero initialized,
+        else false if the output matrix is accumulated into.
+
+Return Value:
+
+    Returns the next address of matrix C.
+
+--*/
+{
+    while (CountM > 0) {
+
+        size_t RowsHandled;
+
+#if defined(MLAS_TARGET_AMD64_IX86) || defined (MLAS_TARGET_POWER)
+        RowsHandled = MlasPlatform.GemmDoubleKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
+#else
+        if (ZeroMode) {
+            RowsHandled = MlasDgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+        } else {
+            RowsHandled = MlasDgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+        }
+#endif
+
+        C += ldc * RowsHandled;
+        A += lda * RowsHandled;
+        CountM -= RowsHandled;
+    }
+
+    return C;
+}
+
 void
 MlasDgemmOperation(
     CBLAS_TRANSPOSE TransA,
@@ -559,6 +610,16 @@ Return Value:
     MLAS_DECLSPEC_ALIGN(double PanelB[MLAS_DGEMM_STRIDEN * MLAS_DGEMM_STRIDEK], 8 * sizeof(double));
 
     //
+    // Handle the special case of K equals zero. Apply the beta multiplier to
+    // the output matrix and exit.
+    //
+
+    if (K == 0) {
+        MlasDgemmMultiplyBeta(C, M, N, ldc, beta);
+        return;
+    }
+
+    //
     // Compute the strides to step through slices of the input matrices.
     //
     // Expand the N stride if K is small or expand the K stride if N is small
@@ -566,8 +627,8 @@ Return Value:
     // the A panel needs to be used for transposing.
     //
 
-    uint32_t StrideN = MLAS_DGEMM_STRIDEN;
-    uint32_t StrideK = MLAS_DGEMM_STRIDEK;
+    size_t StrideN = MLAS_DGEMM_STRIDEN;
+    size_t StrideK = MLAS_DGEMM_STRIDEK;
 
     if (N >= K) {
 
@@ -589,15 +650,10 @@ Return Value:
     //
 
     size_t CountN;
-    size_t CountK;
 
     for (size_t n = 0; n < N; n += CountN) {
 
-        CountN = StrideN;
-
-        if (CountN > (N - n)) {
-            CountN = N - n;
-        }
+        CountN = std::min(N - n, StrideN);
 
         //
         // Multiply the output matrix by beta as needed.
@@ -611,15 +667,12 @@ Return Value:
         // Step through each slice of matrix B along the K dimension.
         //
 
+        size_t CountK;
+        bool ZeroMode = (beta == 0.0f);
+
         for (size_t k = 0; k < K; k += CountK) {
 
-            bool ZeroMode = (k == 0 && beta == 0.0f);
-
-            CountK = StrideK;
-
-            if (CountK > (K - k)) {
-                CountK = K - k;
-            }
+            CountK = std::min(K - k, StrideK);
 
             //
             // Copy or transpose a panel of matrix B to a local packed buffer.
@@ -637,93 +690,52 @@ Return Value:
 
             double* c = C + n;
 
-            size_t RowsRemaining = M;
-            size_t RowsHandled;
-
             if (TransA == CblasNoTrans) {
 
-                const double* a = A + k;
-
-                //
-                // Step through the rows of matrix A.
-                //
-
-                do {
-
-#if defined(MLAS_TARGET_AMD64_IX86)
-                    RowsHandled = MlasPlatform.GemmDoubleKernel(a, PanelB, c, CountK, RowsRemaining, CountN, lda, ldc, alpha, ZeroMode);
-#else
-                    if (ZeroMode) {
-                        RowsHandled = MlasDgemmKernelZero(a, PanelB, c, CountK, RowsRemaining, CountN, lda, ldc, alpha);
-                    } else {
-                        RowsHandled = MlasDgemmKernelAdd(a, PanelB, c, CountK, RowsRemaining, CountN, lda, ldc, alpha);
-                    }
-#endif
-
-                    c += ldc * RowsHandled;
-                    a += lda * RowsHandled;
-
-                    RowsRemaining -= RowsHandled;
-
-                } while (RowsRemaining > 0);
+                MlasDgemmKernelLoop(A + k, PanelB, c, CountK, M, CountN, lda, ldc, alpha, ZeroMode);
 
             } else {
 
                 const double* a = A + k * lda;
+                size_t RowsRemaining = M;
 
-                do {
+                while (RowsRemaining > 0) {
 
                     //
                     // Transpose elements from matrix A into a local buffer.
                     //
 
-                    size_t RowsTransposed = RowsRemaining;
-
-                    if (RowsTransposed > MLAS_DGEMM_TRANSA_ROWS) {
-                        RowsTransposed = MLAS_DGEMM_TRANSA_ROWS;
-                    }
-
-                    RowsRemaining -= RowsTransposed;
+                    size_t RowsTransposed = std::min(RowsRemaining, size_t(MLAS_DGEMM_TRANSA_ROWS));
 
                     MlasDgemmTransposeA(PanelA, a, lda, RowsTransposed, CountK);
 
+                    RowsRemaining -= RowsTransposed;
                     a += RowsTransposed;
 
                     //
                     // Step through the rows of the local buffer.
                     //
 
-                    const double* pa = PanelA;
-
-                    do {
-
-#if defined(MLAS_TARGET_AMD64_IX86)
-                        RowsHandled = MlasPlatform.GemmDoubleKernel(pa, PanelB, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha, ZeroMode);
-#else
-                        if (ZeroMode) {
-                            RowsHandled = MlasDgemmKernelZero(pa, PanelB, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha);
-                        } else {
-                            RowsHandled = MlasDgemmKernelAdd(pa, PanelB, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha);
-                        }
-#endif
-
-                        c += ldc * RowsHandled;
-                        pa += CountK * RowsHandled;
-
-                        RowsTransposed -= RowsHandled;
-
-                    } while (RowsTransposed > 0);
-
-                } while (RowsRemaining > 0);
+                    c = MlasDgemmKernelLoop(PanelA, PanelB, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha, ZeroMode);
+                }
             }
+
+            ZeroMode = false;
         }
     }
 }
 
 void
-MlasDgemmOperationThreaded(
-    void* Context,
-    int32_t Index
+MlasDgemmThreaded(
+    const ptrdiff_t ThreadCountM,
+    const ptrdiff_t ThreadCountN,
+    const CBLAS_TRANSPOSE TransA,
+    const CBLAS_TRANSPOSE TransB,
+    const size_t M,
+    const size_t N,
+    const size_t K,
+    const MLAS_DGEMM_DATA_PARAMS* Data,
+    const ptrdiff_t ThreadId
     )
 /*++
 
@@ -736,7 +748,7 @@ Arguments:
 
     Context - Supplies the pointer to the context for the threaded operation.
 
-    Index - Supplies the current index of the threaded operation.
+    ThreadId - Supplies the current index of the threaded operation.
 
 Return Value:
 
@@ -744,259 +756,129 @@ Return Value:
 
 --*/
 {
-    MLAS_DGEMM_WORK_BLOCK* WorkBlock = (MLAS_DGEMM_WORK_BLOCK*)Context;
 
-    MLAS_DGEMM_WORK_BLOCK::SEGMENT* Segment = &WorkBlock->Segments[Index];
+    const ptrdiff_t ThreadIdM = ThreadId / ThreadCountN;
+    const ptrdiff_t ThreadIdN = ThreadId % ThreadCountN;
 
-    MlasDgemmOperation(WorkBlock->TransA, WorkBlock->TransB, Segment->M,
-        Segment->N, WorkBlock->K, WorkBlock->alpha, Segment->A, WorkBlock->lda,
-        Segment->B, WorkBlock->ldb, WorkBlock->beta, Segment->C,
-        WorkBlock->ldc);
+    //
+    // Partition the operation along the M dimension.
+    //
+
+    size_t RangeStartM;
+    size_t RangeCountM;
+
+    MlasPartitionWork(ThreadIdM, ThreadCountM, M, &RangeStartM, &RangeCountM);
+
+    //
+    // Partition the operation along the N dimension.
+    //
+
+    size_t RangeStartN;
+    size_t RangeCountN;
+
+    const size_t BlockedN = (N + MLAS_DGEMM_STRIDEN_THREAD_ALIGN - 1) /
+        MLAS_DGEMM_STRIDEN_THREAD_ALIGN;
+
+    MlasPartitionWork(ThreadIdN, ThreadCountN, BlockedN, &RangeStartN,
+        &RangeCountN);
+
+    RangeStartN *= MLAS_DGEMM_STRIDEN_THREAD_ALIGN;
+    RangeCountN *= MLAS_DGEMM_STRIDEN_THREAD_ALIGN;
+
+    RangeCountN = std::min(N - RangeStartN, RangeCountN);
+
+    //
+    // Dispatch the partitioned operation.
+    //
+
+    const size_t lda = Data->lda;
+    const size_t ldb = Data->ldb;
+    const size_t ldc = Data->ldc;
+
+    const double* A = Data->A + RangeStartM * ((TransA == CblasNoTrans) ? lda : 1);
+    const double* B = Data->B + RangeStartN * ((TransB == CblasNoTrans) ? 1 : ldb);
+    double* C = Data->C + RangeStartM * ldc + RangeStartN;
+
+    MlasDgemmOperation(TransA, TransB, RangeCountM, RangeCountN, K,
+        Data->alpha, A, lda, B, ldb, Data->beta, C, ldc);
 }
 
-inline
-bool
-MlasDgemmTryMultithread(
+
+void
+MLASCALL
+MlasGemmBatch(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t M,
     size_t N,
     size_t K,
-    double alpha,
-    const double* A,
-    size_t lda,
-    const double* B,
-    size_t ldb,
-    double beta,
-    double* C,
-    size_t ldc,
+    const MLAS_DGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
     MLAS_THREADPOOL* ThreadPool
     )
-/*++
-
-Routine Description:
-
-    This routine attempts to launch a single precision matrix/matrix multiply
-    operation (DGEMM) across multiple threads.
-
-Arguments:
-
-    TransA - Supplies the transpose operation for matrix A.
-
-    TransB - Supplies the transpose operation for matrix B.
-
-    M - Supplies the number of rows of matrix A and matrix C.
-
-    N - Supplies the number of columns of matrix B and matrix C.
-
-    K - Supplies the number of columns of matrix A and the number of rows of
-        matrix B.
-
-    alpha - Supplies the scalar alpha multiplier (see DGEMM definition).
-
-    A - Supplies the address of matrix A.
-
-    lda - Supplies the first dimension of matrix A.
-
-    B - Supplies the address of matrix B.
-
-    ldb - Supplies the first dimension of matrix B.
-
-    beta - Supplies the scalar beta multiplier (see DGEMM definition).
-
-    C - Supplies the address of matrix C.
-
-    ldc - Supplies the first dimension of matrix C.
-
-    ThreadPool - Supplies the thread pool object to use, else nullptr if the
-        base library threading support should be used.
-
-Return Value:
-
-    Returns true if the operation was completed across multiple threads, else
-    false if the operation should fall back to a single thread.
-
---*/
 {
-    MLAS_DGEMM_WORK_BLOCK WorkBlock;
-    int32_t TargetThreadCount;
-
     //
     // Compute the number of target threads given the complexity of the DGEMM
     // operation. Small requests should run using the single threaded path.
     //
 
-    double Complexity = double(M) * double(N) * double(K);
+    const double Complexity = double(M) * double(N) * double(K);
 
-    if (Complexity < double(MLAS_DGEMM_THREAD_COMPLEXITY * MLAS_MAXIMUM_THREAD_COUNT)) {
-        TargetThreadCount = int32_t(Complexity / double(MLAS_DGEMM_THREAD_COMPLEXITY)) + 1;
+    ptrdiff_t TargetThreadCount;
+
+    if (Complexity < double(MLAS_DGEMM_THREAD_COMPLEXITY * MlasPlatform.MaximumThreadCount)) {
+        TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_DGEMM_THREAD_COMPLEXITY)) + 1;
     } else {
-        TargetThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
+        TargetThreadCount = MlasPlatform.MaximumThreadCount;
     }
 
-    int32_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
+    ptrdiff_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
 
     if (TargetThreadCount >= MaximumThreadCount) {
         TargetThreadCount = MaximumThreadCount;
     }
 
-    if (TargetThreadCount == 1) {
-        return false;
-    }
-
-    //
-    // Initialize the common fields of the work block.
-    //
-
-    WorkBlock.TransA = TransA;
-    WorkBlock.TransB = TransB;
-    WorkBlock.K = K;
-    WorkBlock.lda = lda;
-    WorkBlock.ldb = ldb;
-    WorkBlock.ldc = ldc;
-    WorkBlock.alpha = alpha;
-    WorkBlock.beta = beta;
-
     //
     // Segment the operation across multiple threads.
     //
+    // N.B. Currently, the operation is segmented as a 1D partition, which
+    // works okay for operations involving skinny matrices.
+    //
 
-    int32_t Index = 0;
+    ptrdiff_t ThreadsPerGemm = (TargetThreadCount + BatchSize - 1) / BatchSize;
+    ptrdiff_t ThreadCountM;
+    ptrdiff_t ThreadCountN;
 
     if (N > M) {
 
-        size_t StrideN = N / TargetThreadCount;
+        const size_t BlockedN = (N + MLAS_DGEMM_STRIDEN_THREAD_ALIGN - 1) /
+            MLAS_DGEMM_STRIDEN_THREAD_ALIGN;
 
-        if ((StrideN * TargetThreadCount) != N) {
-            StrideN++;
+        if (size_t(ThreadsPerGemm) > BlockedN) {
+            ThreadsPerGemm = ptrdiff_t(BlockedN);
         }
 
-        StrideN =
-            (StrideN + MLAS_DGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_DGEMM_STRIDEN_THREAD_ALIGN - 1);
-
-        size_t pldb = (TransB == CblasNoTrans) ? 1 : ldb;
-
-        for (size_t CountN, n = 0; n < N; n += CountN) {
-
-            CountN = StrideN;
-
-            if (CountN > (N - n)) {
-                CountN = N - n;
-            }
-
-            WorkBlock.Segments[Index].M = M;
-            WorkBlock.Segments[Index].N = CountN;
-            WorkBlock.Segments[Index].A = A;
-            WorkBlock.Segments[Index].B = B + n * pldb;
-            WorkBlock.Segments[Index].C = C + n;
-
-            Index++;
-        }
+        ThreadCountM = 1;
+        ThreadCountN = ThreadsPerGemm;
 
     } else {
 
-        size_t StrideM = M / TargetThreadCount;
-
-        if ((StrideM * TargetThreadCount) != M) {
-            StrideM++;
+        if (size_t(ThreadsPerGemm) > M) {
+            ThreadsPerGemm = ptrdiff_t(M);
         }
 
-        size_t plda = (TransA == CblasNoTrans) ? lda : 1;
-
-        for (size_t CountM, m = 0; m < M; m += CountM) {
-
-            CountM = StrideM;
-
-            if (CountM > (M - m)) {
-                CountM = M - m;
-            }
-
-            WorkBlock.Segments[Index].M = CountM;
-            WorkBlock.Segments[Index].N = N;
-            WorkBlock.Segments[Index].A = A + m * plda;
-            WorkBlock.Segments[Index].B = B;
-            WorkBlock.Segments[Index].C = C + m * ldc;
-
-            Index++;
-        }
+        ThreadCountM = ThreadsPerGemm;
+        ThreadCountN = 1;
     }
 
-    MlasExecuteThreaded(MlasDgemmOperationThreaded, &WorkBlock, Index, ThreadPool);
+    const ptrdiff_t TotalThreads = ThreadsPerGemm * static_cast<ptrdiff_t>(BatchSize);
+    MlasTrySimpleParallel(ThreadPool, TotalThreads, [=](ptrdiff_t tid) {
+        const ptrdiff_t GemmIdx = tid / ThreadsPerGemm;
+        const ptrdiff_t ThreadIdx = tid % ThreadsPerGemm;
+        MlasDgemmThreaded(ThreadCountM, ThreadCountN, TransA, TransB,
+            M, N, K, &(Data[GemmIdx]), ThreadIdx);
+    });
 
-    return true;
-}
-
-void
-MLASCALL
-MlasGemm(
-    CBLAS_TRANSPOSE TransA,
-    CBLAS_TRANSPOSE TransB,
-    size_t M,
-    size_t N,
-    size_t K,
-    double alpha,
-    const double* A,
-    size_t lda,
-    const double* B,
-    size_t ldb,
-    double beta,
-    double* C,
-    size_t ldc,
-    MLAS_THREADPOOL* ThreadPool
-    )
-/*++
-
-Routine Description:
-
-    This routine implements the single precision matrix/matrix multiply
-    operation (SGEMM).
-
-Arguments:
-
-    TransA - Supplies the transpose operation for matrix A.
-
-    TransB - Supplies the transpose operation for matrix B.
-
-    M - Supplies the number of rows of matrix A and matrix C.
-
-    N - Supplies the number of columns of matrix B and matrix C.
-
-    K - Supplies the number of columns of matrix A and the number of rows of
-        matrix B.
-
-    alpha - Supplies the scalar alpha multiplier (see SGEMM definition).
-
-    A - Supplies the address of matrix A.
-
-    lda - Supplies the first dimension of matrix A.
-
-    B - Supplies the address of matrix B.
-
-    ldb - Supplies the first dimension of matrix B.
-
-    beta - Supplies the scalar beta multiplier (see SGEMM definition).
-
-    C - Supplies the address of matrix C.
-
-    ldc - Supplies the first dimension of matrix C.
-
-    ThreadPool - Supplies the thread pool object to use, else nullptr if the
-        base library threading support should be used.
-
-Return Value:
-
-    None.
-
---*/
-{
-    //
-    // Try to run the operation across multiple threads or fall back to a
-    // single thread based on the GEMM parameters and system configuration.
-    //
-
-    if (!MlasDgemmTryMultithread(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, ThreadPool)) {
-        MlasDgemmOperation(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
-    }
 }
 
 #endif

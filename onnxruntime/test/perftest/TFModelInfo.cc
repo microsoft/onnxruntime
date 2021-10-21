@@ -2,23 +2,33 @@
 // Licensed under the MIT License.
 
 #include "TFModelInfo.h"
+
+#include <memory>
+
 #include <core/platform/env.h>
 
-TestModelInfo* TFModelInfo::Create(_In_ const PATH_CHAR_TYPE* model_url) {
-  TFModelInfo* ret = new TFModelInfo();
-  ret->model_url_ = model_url;
+std::unique_ptr<TestModelInfo> TFModelInfo::Create(_In_ const PATH_CHAR_TYPE* model_url) {
+  auto* model_info = new TFModelInfo{};
+  std::unique_ptr<TestModelInfo> ret(model_info);
+
+  model_info->model_url_ = model_url;
   std::basic_string<PATH_CHAR_TYPE> meta_file_path = model_url;
   meta_file_path.append(ORT_TSTR(".meta"));
-  void* p = nullptr;
-  size_t len = 0;
-  onnxruntime::OrtCallback b;
-  auto st = onnxruntime::Env::Default().ReadFileAsString(meta_file_path.c_str(), 0, p, len, b);
-  if (!st.IsOK()) {
-    ORT_THROW(st.ErrorMessage());
+  const onnxruntime::Env& env = onnxruntime::Env::Default();
+  size_t len;
+  auto status = env.GetFileLength(meta_file_path.c_str(), len);
+  if (!status.IsOK()) {
+    ORT_THROW(status.ErrorMessage());
+  }
+  std::string file_content;
+  file_content.resize(len);
+  auto buffer_span = gsl::make_span(&file_content[0], file_content.size());
+  status = onnxruntime::Env::Default().ReadFileIntoBuffer(meta_file_path.c_str(), 0, len, buffer_span);
+  if (!status.IsOK()) {
+    ORT_THROW(status.ErrorMessage());
   }
   // this string is not null terminated
-  std::string filecontent(reinterpret_cast<char*>(p), len);
-  std::istringstream is(filecontent);
+  std::istringstream is{file_content};
 
   std::string line;
   while (std::getline(is, line)) {
@@ -32,15 +42,13 @@ TestModelInfo* TFModelInfo::Create(_In_ const PATH_CHAR_TYPE* model_url) {
     }
     if (line.empty()) continue;
     if (line.compare(0, 6, "input=") == 0) {
-      ret->input_names_.push_back(line.substr(6));
+      model_info->input_names_.push_back(line.substr(6));
     } else if (line.compare(0, 7, "output=") == 0) {
-      ret->output_names_.push_back(line.substr(7));
+      model_info->output_names_.push_back(line.substr(7));
     } else {
-      ORT_THROW("unknow line:", line.size());
+      ORT_THROW("unknown line:", line.size());
     }
   }
-
-  if (b.f) b.f(b.param);
 
   return ret;
 }

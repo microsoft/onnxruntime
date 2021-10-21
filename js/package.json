@@ -1,0 +1,19 @@
+{
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^4.22.1",
+    "@typescript-eslint/parser": "^4.22.1",
+    "clang-format": "^1.5.0",
+    "eslint": "^7.25.0",
+    "eslint-plugin-header": "^3.1.1",
+    "eslint-plugin-import": "^2.22.1",
+    "eslint-plugin-jsdoc": "^33.1.0",
+    "eslint-plugin-prefer-arrow": "^1.2.3",
+    "eslint-plugin-unicorn": "^31.0.0",
+    "typescript": "^4.2.4"
+  },
+  "scripts": {
+    "lint": "eslint . --ext .ts --ext .tsx",
+    "format": "clang-format --glob=\"{common/lib/**/*.ts,node/{lib,script,test}/**/*.ts,node/src/**/*.{cc,h},web/{lib,script,test}/**/*.ts,react_native/{android,example,ios,lib}/**/*.{ts,mm,java}}\" --style=file -i"
+  },
+  "license": "MIT"
+}

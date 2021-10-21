@@ -22,12 +22,14 @@ namespace onnxruntime {
 //     Generalizing this is future work.
 
 enum class AllocKind {
+  kNotSet = -1,
   kAllocate = 0,
   kReuse = 1,
   kPreExisting = 2,
   kAllocateStatically = 3,
   kAllocateOutput = 4,
-  kShare = 5
+  kShare = 5,
+  kAllocatedExternally = 6
 };
 
 std::ostream& operator<<(std::ostream& out, AllocKind alloc_kind);

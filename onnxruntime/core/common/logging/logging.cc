@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <exception>
 #include <ctime>
+#include <exception>
+#include <type_traits>
 #include <utility>
 
 #include "core/common/exceptions.h"
@@ -13,13 +14,17 @@
 #include <Windows.h>
 #else
 #include <unistd.h>
-#if defined(__MACH__)
+#if defined(__MACH__) || defined(__wasm__)
 #include <pthread.h>
 #else
 #include <sys/syscall.h>
 #endif
 #endif
 #include "core/platform/ort_mutex.h"
+
+#if __FreeBSD__
+#include <sys/thr.h>  // Use thr_self() syscall under FreeBSD to get thread id
+#endif
 
 namespace onnxruntime {
 namespace logging {
@@ -85,12 +90,12 @@ LoggingManager::LoggingManager(std::unique_ptr<ISink> sink, Severity default_min
       default_max_vlog_level_{default_max_vlog_level},
       owns_default_logger_{false} {
   if (sink_ == nullptr) {
-    throw std::logic_error("ISink must be provided.");
+    ORT_THROW("ISink must be provided.");
   }
 
   if (instance_type == InstanceType::Default) {
     if (default_logger_id == nullptr) {
-      throw std::logic_error("default_logger_id must be provided if instance_type is InstanceType::Default");
+      ORT_THROW("default_logger_id must be provided if instance_type is InstanceType::Default");
     }
 
     // lock mutex to create instance, and enable logging
@@ -98,12 +103,12 @@ LoggingManager::LoggingManager(std::unique_ptr<ISink> sink, Severity default_min
     std::lock_guard<OrtMutex> guard(DefaultLoggerMutex());
 
     if (DefaultLoggerManagerInstance().load() != nullptr) {
-      throw std::logic_error("Only one instance of LoggingManager created with InstanceType::Default can exist at any point in time.");
+      ORT_THROW("Only one instance of LoggingManager created with InstanceType::Default can exist at any point in time.");
     }
 
-    // This assertion passes, so using the atomic to validate calls to Log should
+    // If the following assertion passes, using the atomic to validate calls to Log should
     // be reasonably economical.
-    // assert(DefaultLoggerManagerInstance().is_lock_free());
+    static_assert(std::remove_reference_t<decltype(DefaultLoggerManagerInstance())>::is_always_lock_free);
     DefaultLoggerManagerInstance().store(this);
 
     CreateDefaultLogger(*default_logger_id);
@@ -116,8 +121,11 @@ LoggingManager::~LoggingManager() {
   if (owns_default_logger_) {
     // lock mutex to reset DefaultLoggerManagerInstance() and free default logger from this instance.
     std::lock_guard<OrtMutex> guard(DefaultLoggerMutex());
-
+#if ((__cplusplus >= 201703L) || (defined(_MSVC_LANG) && (_MSVC_LANG >= 201703L)))
+    DefaultLoggerManagerInstance().store(nullptr, std::memory_order_release);
+#else
     DefaultLoggerManagerInstance().store(nullptr, std::memory_order::memory_order_release);
+#endif
 
     delete s_default_logger_;
     s_default_logger_ = nullptr;
@@ -127,7 +135,7 @@ LoggingManager::~LoggingManager() {
 void LoggingManager::CreateDefaultLogger(const std::string& logger_id) {
   // this method is only called from ctor in scope where DefaultLoggerMutex() is already locked
   if (s_default_logger_ != nullptr) {
-    throw std::logic_error("Default logger already set. ");
+    ORT_THROW("Default logger already set. ");
   }
 
   s_default_logger_ = CreateLogger(logger_id).release();
@@ -141,7 +149,7 @@ std::unique_ptr<Logger> LoggingManager::CreateLogger(const std::string& logger_i
                                                      const Severity severity,
                                                      bool filter_user_data,
                                                      int vlog_level) {
-  auto logger = onnxruntime::make_unique<Logger>(*this, logger_id, severity, filter_user_data, vlog_level);
+  auto logger = std::make_unique<Logger>(*this, logger_id, severity, filter_user_data, vlog_level);
   return logger;
 }
 
@@ -185,8 +193,8 @@ std::exception LoggingManager::LogFatalAndCreateException(const char* category,
   // create Capture in separate scope so it gets destructed (leading to log output) before we throw.
   {
     ::onnxruntime::logging::Capture c{::onnxruntime::logging::LoggingManager::DefaultLogger(),
-                                      ::onnxruntime::logging::Severity::kFATAL, category, 
-									  ::onnxruntime::logging::DataType::SYSTEM, location};
+                                      ::onnxruntime::logging::Severity::kFATAL, category,
+                                      ::onnxruntime::logging::DataType::SYSTEM, location};
     va_list args;
     va_start(args, format_str);
 
@@ -206,6 +214,12 @@ unsigned int GetThreadId() {
   uint64_t tid64;
   pthread_threadid_np(NULL, &tid64);
   return static_cast<unsigned int>(tid64);
+#elif __FreeBSD__
+  long tid;
+  thr_self(&tid);
+  return static_cast<unsigned int>(tid);
+#elif defined(__wasm__)
+  return static_cast<unsigned int>(pthread_self());
 #else
   return static_cast<unsigned int>(syscall(SYS_gettid));
 #endif
@@ -217,7 +231,7 @@ unsigned int GetThreadId() {
 unsigned int GetProcessId() {
 #ifdef _WIN32
   return static_cast<unsigned int>(GetCurrentProcessId());
-#elif defined(__MACH__)
+#elif defined(__MACH__) || defined(__wasm__)
   return static_cast<unsigned int>(getpid());
 #else
   return static_cast<unsigned int>(syscall(SYS_getpid));

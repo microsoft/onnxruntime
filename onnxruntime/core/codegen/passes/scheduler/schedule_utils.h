@@ -26,6 +26,11 @@ bool InsertRootScheduleAndClosure(
     const tvm::Tensor& tensor,
     ScheduleContext& ctx);
 
+// Check precondition for vectorize schedule
+bool ShouldTryVectorization(
+    const tvm::Tensor& tensor,
+    ScheduleContext& ctx);
+
 // Check the schedule of tensor
 // If it is not scheduled, try to vectorize it.
 // Note TryVectorization has to use with compute_root.

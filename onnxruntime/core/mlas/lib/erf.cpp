@@ -23,8 +23,6 @@ Abstract:
 
 #include "mlasi.h"
 
-#include <cmath>
-
 //
 // Bundles the constants for use by kernels written in assembly.
 //
@@ -193,7 +191,7 @@ Return Value:
 
         float r;
         if (AbsValue > MlasErfConstants.ErfSplitBoundary) {
-            AbsValue = (std::min)(MlasErfConstants.ErfUpperAbsRange, AbsValue);
+            AbsValue = std::min(MlasErfConstants.ErfUpperAbsRange, AbsValue);
             float r_big = MlasErfConstants.ErfBIG_P0;
             r_big = r_big * AbsValue + MlasErfConstants.ErfBIG_P1;
             r_big = r_big * AbsValue + MlasErfConstants.ErfBIG_P2;
@@ -203,7 +201,7 @@ Return Value:
             r_big = r_big * AbsValue + MlasErfConstants.ErfBIG_P6_Minus_One;
             r_big = r_big * AbsValue + AbsValue;
 
-            r_big = (std::max)(-r_big, MlasErfConstants.Exp_LowerRange);
+            r_big = std::max(-r_big, MlasErfConstants.Exp_LowerRange);
             r = MlasErfConstants.Exp_Log2Reciprocal * r_big + MlasErfConstants.Exp_C;
             r -= MlasErfConstants.Exp_C;
             float fx = r * MlasErfConstants.Exp_log2_hi + r_big;

@@ -3,10 +3,13 @@
 
 #pragma once
 
+#include <cmath>
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/op_node_proto_helper.h"
 #include "core/framework/tensor_shape.h"
-#include "core/providers/cpu/nn/autopad_type.h"
+#include "core/providers/common.h"
+#endif
 
 namespace onnxruntime {
 
@@ -16,9 +19,15 @@ struct PoolAttributes {
     return op_name == "GlobalAveragePool" || op_name == "GlobalMaxPool" || op_name == "GlobalLpPool";
   }
 
-  PoolAttributes(const OpNodeProtoHelper<ProtoHelperNodeContext> &info,
-                 const std::string& op_name, int start_ver_p)
-      : global_pooling(IsGlobalPooling(op_name)), start_version(start_ver_p) {
+#ifdef SHARED_PROVIDER
+  // Shared providers don't know about OpNodeProtoHelper
+  PoolAttributes(const OpKernelInfo& info,
+#else
+  // Providers like Nuphar don't know about OpKernelInfo
+  PoolAttributes(const OpNodeProtoHelper<ProtoHelperNodeContext>& info,
+#endif
+                 const std::string& op_name, int start_version)
+      : global_pooling(IsGlobalPooling(op_name)) {
     if (global_pooling) {
       return;
     }
@@ -57,8 +66,8 @@ struct PoolAttributes {
     }
 
     if (op_name == "MaxPool") {
-      if (start_version == 8) {
-        storage_order = info.GetAttrOrDefault<int64_t>("storage_order", 0 /*default_value*/);
+      if (start_version >= 8) {
+        ORT_ENFORCE(info.GetAttr("storage_order", &storage_order).IsOK());
       }
     }
 
@@ -74,7 +83,6 @@ struct PoolAttributes {
   }
 
   const bool global_pooling;
-  const int start_version;
 
   bool count_include_pad{};
   int64_t storage_order{0};  // MaxPool_8 only. 0 is row major, and 1 is column major. Default is 0.
@@ -90,7 +98,8 @@ struct PoolAttributes {
   std::vector<int64_t> SetOutputSize(const TensorShape& input_shape,
                                      int64_t output_channel,
                                      std::vector<int64_t>* actual_pads) const {
-    ORT_ENFORCE(input_shape.Size() > 0);
+    ORT_ENFORCE(input_shape.Size() > 0 || input_shape[0] == 0,
+                "Invalid input shape. Only N can be zero. Got:", input_shape);
     std::vector<int64_t> output_dims;
     int64_t N = input_shape[0];
     InferOutputSize(input_shape.GetDims(), &output_dims, actual_pads);

@@ -1,0 +1,1136 @@
+parameters:
+- name: build_py_parameters
+  displayName: >
+    Extra parameters to pass to build.py. Don't put newlines in here.
+  type: string
+  default: ''
+
+- name: enable_linux_cpu
+  displayName: 'Whether Linux CPU package is built.'
+  type: boolean
+  default: true
+
+- name: enable_linux_gpu
+  displayName: 'Whether Linux GPU package is built.'
+  type: boolean
+  default: true
+
+- name: enable_linux_gpu_training_cu102
+  displayName: 'Whether Linux GPU Cuda 10.2 package is built.'
+  type: boolean
+  default: false
+
+- name: enable_linux_gpu_training_cu111
+  displayName: 'Whether Linux GPU Cuda 11.1 package is built.'
+  type: boolean
+  default: false
+
+- name: enable_linux_rocm_training
+  displayName: 'Whether Linux ROCM package is built.'
+  type: boolean
+  default: false
+
+- name: enable_windows_cpu
+  displayName: 'Whether Windows CPU package is built.'
+  type: boolean
+  default: true
+
+- name: enable_windows_gpu
+  displayName: 'Whether Windows GPU package is built.'
+  type: boolean
+  default: true
+
+- name: enable_mac_cpu
+  displayName: 'Whether Mac CPU package is built.'
+  type: boolean
+  default: true
+
+- name: enable_linux_arm
+  displayName: 'Whether Linux ARM package is built.'
+  type: boolean
+  default: true
+
+stages:
+- stage: Python_Packaging
+
+  jobs:
+  - ${{ if eq(parameters.enable_linux_cpu, true) }}:
+    - job: Linux_CPU_py_Wheels
+      timeoutInMinutes: 90
+      workspace:
+        clean: all
+      pool: Linux-CPU
+      strategy:
+        matrix:
+          Python36:
+            PythonVersion: '3.6'
+          Python37:
+            PythonVersion: '3.7'
+          Python38:
+            PythonVersion: '3.8'
+          Python39:
+            PythonVersion: '3.9'
+      steps:
+      - checkout: self
+        clean: true
+        submodules: recursive
+
+      - template: set-python-manylinux-variables-step.yml
+
+      - template: get-docker-image-steps.yml
+        parameters:
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+          Context: tools/ci_build/github/linux/docker
+          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+          Repository: onnxruntimecpubuild
+
+      - task: CmdLine@2
+        displayName: 'Build Python Wheel'
+        inputs:
+          script: |
+            mkdir -p $HOME/.onnx
+            docker run --rm \
+              --volume /data/onnx:/data/onnx:ro \
+              --volume $(Build.SourcesDirectory):/onnxruntime_src \
+              --volume $(Build.BinariesDirectory):/build \
+              --volume /data/models:/build/models:ro \
+              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+              -e NIGHTLY_BUILD \
+              -e BUILD_BUILDNUMBER \
+              onnxruntimecpubuild \
+                $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+                  --build_dir /build --cmake_generator Ninja \
+                  --config Release --update --build \
+                  --skip_submodule_sync \
+                  --parallel \
+                  --enable_lto \
+                  --build_wheel \
+                  --enable_onnx_tests \
+                  ${{ parameters.build_py_parameters }}
+          workingDirectory: $(Build.SourcesDirectory)
+
+      - task: CmdLine@2
+        displayName: 'Running tests'
+        condition: and(succeeded(), eq(variables['PythonVersion'], '3.8'))
+        inputs:
+          script: |
+            set -e -x
+            rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
+            sudo rm -f /build /onnxruntime_src
+            sudo ln -s $(Build.SourcesDirectory) /onnxruntime_src
+            python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
+            cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
+            # Test ORT with the latest ONNX release.
+            sed -i 's/git+http:\/\/github\.com\/onnx\/onnx.*/onnx==1.9.0/' $(Build.BinariesDirectory)/requirements.txt
+            python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
+            python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
+            cd $(Build.BinariesDirectory)/Release
+            ls $(Build.BinariesDirectory)/models
+            rmdir $(Build.BinariesDirectory)/models
+            ln -sf /data/models $(Build.BinariesDirectory)
+            python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
+                  --build_dir $(Build.BinariesDirectory) --cmake_generator Ninja \
+                  --config Release --test \
+                  --skip_submodule_sync \
+                  --parallel \
+                  --enable_lto \
+                  --build_wheel \
+                  --enable_onnx_tests \
+                  ${{ parameters.build_py_parameters }} \
+                  --ctest_path ''
+
+      - task: CopyFiles@2
+        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)'
+          Contents: 'Release/dist/*.whl'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+      - task: CmdLine@2
+        displayName: 'Build Python Documentation'
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
+        inputs:
+          script: |
+            mkdir -p $HOME/.onnx
+            docker run --rm \
+              --volume /data/onnx:/data/onnx:ro \
+              --volume $(Build.SourcesDirectory):/onnxruntime_src \
+              --volume $(Build.BinariesDirectory):/build \
+              --volume /data/models:/build/models:ro \
+              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+              -e NIGHTLY_BUILD \
+              -e BUILD_BUILDNUMBER \
+              onnxruntimecpubuild \
+                bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/*.whl && $(PythonManylinuxDir)/bin/python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install ; /onnxruntime_src/tools/doc/builddoc.sh $(PythonManylinuxDir)/bin/ /onnxruntime_src /build Release " ;
+          workingDirectory: $(Build.SourcesDirectory)
+
+      - task: CopyFiles@2
+        displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)/docs/inference/html'
+          Contents: '**'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)/inference_html_doc'
+
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Artifact: ONNXRuntime python wheel and documentation'
+        inputs:
+          ArtifactName: onnxruntime
+
+      - template: component-governance-component-detection-steps.yml
+        parameters:
+          condition: 'succeeded'
+
+      - template: clean-agent-build-directory-step.yml
+
+
+  - ${{ if eq(parameters.enable_linux_gpu, true) }}:
+    - job: Linux_py_GPU_Wheels
+      timeoutInMinutes: 120
+      workspace:
+        clean: all
+      pool: Onnxruntime-Linux-GPU
+      strategy:
+        matrix:
+          Python36:
+            PythonVersion: '3.6'
+          Python37:
+            PythonVersion: '3.7'
+          Python38:
+            PythonVersion: '3.8'
+          Python39:
+            PythonVersion: '3.9'
+      steps:
+      - checkout: self
+        clean: true
+        submodules: recursive
+
+      - template: set-python-manylinux-variables-step.yml
+
+      - template: get-docker-image-steps.yml
+        parameters:
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11
+          Context: tools/ci_build/github/linux/docker
+          DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg BASEIMAGE=nvidia/cuda:11.4.0-cudnn8-devel-centos7 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-10/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-10/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
+          Repository: onnxruntimecuda11build
+
+      - task: CmdLine@2
+        displayName: 'Build Python Wheel'
+        inputs:
+          script: |
+            mkdir -p $HOME/.onnx
+            docker run --gpus all -e CC=/opt/rh/devtoolset-10/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-10/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --rm \
+              --volume /data/onnx:/data/onnx:ro \
+              --volume $(Build.SourcesDirectory):/onnxruntime_src \
+              --volume $(Build.BinariesDirectory):/build \
+              --volume /data/models:/build/models:ro \
+              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+              -e NIGHTLY_BUILD \
+              -e BUILD_BUILDNUMBER \
+              onnxruntimecuda11build \
+                $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+                  --build_dir /build --cmake_generator Ninja \
+                  --config Release --update --build \
+                  --skip_submodule_sync \
+                  --parallel \
+                  --build_wheel \
+                  --enable_onnx_tests --use_cuda --cuda_version=11.4 --cuda_home=/usr/local/cuda-11.4 --cudnn_home=/usr/local/cuda-11.4 \
+                  ${{ parameters.build_py_parameters }} \
+                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
+          workingDirectory: $(Build.SourcesDirectory)
+
+      - task: CmdLine@2
+        displayName: 'Running tests'
+        condition: and(succeeded(), eq(variables['PythonVersion'], '3.8'))
+        inputs:
+          script: |
+            set -e -x
+            rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
+            sudo rm -f /build /onnxruntime_src
+            sudo ln -s $(Build.SourcesDirectory) /onnxruntime_src
+            python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
+            cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
+            # Test ORT with the latest ONNX release.
+            sed -i 's/git+http:\/\/github\.com\/onnx\/onnx.*/onnx==1.9.0/' $(Build.BinariesDirectory)/requirements.txt
+            python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
+            python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
+            cd $(Build.BinariesDirectory)/Release
+            ls $(Build.BinariesDirectory)/models
+            rmdir $(Build.BinariesDirectory)/models
+            ln -sf /data/models $(Build.BinariesDirectory)
+            python3 /onnxruntime_src/tools/ci_build/build.py \
+                  --build_dir $(Build.BinariesDirectory) --cmake_generator Ninja \
+                  --config Release --test \
+                  --skip_submodule_sync \
+                  --parallel \
+                  --build_wheel \
+                  --enable_onnx_tests --use_cuda --cuda_version=11.4 --cuda_home=/usr/local/cuda-11.4 --cudnn_home=/usr/local/cuda-11.4 \
+                  ${{ parameters.build_py_parameters }} --ctest_path '' \
+                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
+
+      - task: CopyFiles@2
+        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)'
+          Contents: 'Release/dist/*.whl'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Artifact: ONNXRuntime python wheel'
+        inputs:
+          ArtifactName: onnxruntime_gpu
+
+      - template: component-governance-component-detection-steps.yml
+        parameters:
+          condition: 'succeeded'
+
+      - template: clean-agent-build-directory-step.yml
+
+  - ${{ if eq(parameters.enable_linux_rocm_training, true) }}:
+    - job: ROCm_build_environment
+      displayName: 'Construct ROCm wheels environment'
+      timeoutInMinutes: 180
+      workspace:
+        clean: all
+      pool: AMD-GPU
+      steps:
+      - template: get-docker-image-steps.yml
+        parameters:
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_rocm4_2
+          Context: tools/ci_build/github/linux/docker
+          DockerBuildArgs: >-
+            --build-arg TORCH_VERSION=1.9.0
+            --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
+            --build-arg BUILD_UID=$(id -u)
+            --network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64
+            --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-10/root
+            --build-arg PREPEND_PATH=/opt/rh/devtoolset-10/root/usr/bin:
+            --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
+          Repository: onnxruntimetrainingrocmbuild-torch1.9.0-rocm4.2
+      - template: get-docker-image-steps.yml
+        parameters:
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_rocm4_3_1
+          Context: tools/ci_build/github/linux/docker
+          DockerBuildArgs: >-
+            --build-arg TORCH_VERSION=1.9.0
+            --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
+            --build-arg BUILD_UID=$(id -u)
+            --network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64
+            --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-10/root
+            --build-arg PREPEND_PATH=/opt/rh/devtoolset-10/root/usr/bin:
+            --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
+          Repository: onnxruntimetrainingrocmbuild-torch1.9.0-rocm4.3.1
+
+    - job: ROCM_training_wheels
+      timeoutInMinutes: 180
+      displayName: 'Build ROCm wheels (inside container)'
+      workspace:
+        clean: all
+      pool: AMD-GPU
+      dependsOn:
+      - ROCm_build_environment
+      strategy:
+        matrix:
+          Python36 Torch190 Rocm42:
+            PythonVersion: '3.6'
+            TorchVersion: '1.9.0'
+            RocmVersion: '4.2'
+          Python37 Torch190 Rocm42:
+            PythonVersion: '3.7'
+            TorchVersion: '1.9.0'
+            RocmVersion: '4.2'
+          Python38 Torch190 Rocm42:
+            PythonVersion: '3.8'
+            TorchVersion: '1.9.0'
+            RocmVersion: '4.2'
+          Python39 Torch190 Rocm42:
+            PythonVersion: '3.9'
+            TorchVersion: '1.9.0'
+            RocmVersion: '4.2'
+          Python36 Torch190 Rocm431:
+            PythonVersion: '3.6'
+            TorchVersion: '1.9.0'
+            RocmVersion: '4.3.1'
+          Python37 Torch190 Rocm431:
+            PythonVersion: '3.7'
+            TorchVersion: '1.9.0'
+            RocmVersion: '4.3.1'
+          Python38 Torch190 Rocm431:
+            PythonVersion: '3.8'
+            TorchVersion: '1.9.0'
+            RocmVersion: '4.3.1'
+          Python39 Torch190 Rocm431:
+            PythonVersion: '3.9'
+            TorchVersion: '1.9.0'
+            RocmVersion: '4.3.1'
+      steps:
+
+      - checkout: self
+        clean: true
+        submodules: recursive
+
+      - template: set-python-manylinux-variables-step.yml
+
+      - task: CmdLine@2
+        inputs:
+          script: |
+            docker run --rm \
+              --privileged \
+              --ipc=host \
+              --network=host \
+              --cap-add=SYS_PTRACE \
+              --security-opt seccomp=unconfined \
+              -e CC=/opt/rh/devtoolset-10/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-10/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
+              --volume $(Build.SourcesDirectory):/onnxruntime_src \
+              --volume $(Build.BinariesDirectory):/build \
+              --workdir /onnxruntime_src \
+              --entrypoint $(PythonManylinuxDir)/bin/python3 \
+              -e NIGHTLY_BUILD \
+              -e BUILD_BUILDNUMBER \
+              --user onnxruntimedev \
+              onnxruntimetrainingrocmbuild-torch$(TorchVersion)-rocm$(RocmVersion) \
+                /onnxruntime_src/tools/ci_build/build.py \
+                  --config Release \
+                  --use_rocm \
+                    --rocm_version=$(RocmVersion) \
+                    --rocm_home=/opt/rocm \
+                    --nccl_home=/opt/rocm \
+                  --update \
+                  --parallel \
+                  --build_dir /build \
+                  --build \
+                  --build_wheel \
+                  --skip_tests \
+                  ${{ parameters.build_py_parameters }}
+          workingDirectory: $(Build.SourcesDirectory)
+        displayName: 'Build onnxruntime (in container)'
+
+      - script: |-
+          python3 orttraining/tools/ci_test/download_azure_blob_archive.py \
+            --azure_blob_url https://onnxruntimetestdata.blob.core.windows.net/training/onnxruntime_training_data.zip?snapshot=2020-06-15T23:17:35.8314853Z \
+            --target_dir $(Build.SourcesDirectory)/training_e2e_test_data \
+            --archive_sha256_digest B01C169B6550D1A0A6F1B4E2F34AE2A8714B52DBB70AC04DA85D371F691BDFF9
+        displayName: 'Download onnxruntime_training_data.zip data'
+
+      - script: |-
+          echo "Tests will run using HIP_VISIBLES_DEVICES=$HIP_VISIBLE_DEVICES"
+          video_gid=$(getent group | awk '/video/ {split($0,a,":"); print(a[3])}')
+          echo "Found video_gid=$video_gid; attempting to set as pipeline variable"
+          echo "##vso[task.setvariable variable=video]$video_gid"
+          render_gid=$(getent group | awk '/render/ {split($0,a,":"); print(a[3])}')
+          echo "Found render_gid=$render_gid; attempting to set as pipeline variable"
+          echo "##vso[task.setvariable variable=render]$render_gid"
+        displayName: 'Find video and render gid to be mapped into container'
+
+      - script: |-
+          echo "video=$video"
+          echo "render=$render"
+          docker run --rm \
+            --device=/dev/kfd \
+            --device=/dev/dri \
+            --group-add $(video) \
+            --group-add $(render) \
+            --privileged \
+            --ipc=host \
+            --network=host \
+            --cap-add=SYS_PTRACE \
+            --security-opt seccomp=unconfined \
+            --volume $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.BinariesDirectory):/build \
+            --workdir /build/Release \
+            --entrypoint /bin/bash \
+            -e HIP_VISIBLE_DEVICES \
+            -e NIGHTLY_BUILD \
+            -e BUILD_BUILDNUMBER \
+            --user onnxruntimedev \
+            onnxruntimetrainingrocmbuild-torch$(TorchVersion)-rocm$(RocmVersion) \
+               /onnxruntime_src/tools/ci_build/github/pai/pai_test_launcher.sh
+        displayName: 'Run onnxruntime unit tests (in container)'
+
+      - script: |-
+          docker run --rm \
+            --device=/dev/kfd \
+            --device=/dev/dri \
+            --group-add $(video) \
+            --group-add $(render) \
+            --privileged \
+            --ipc=host \
+            --network=host \
+            --cap-add=SYS_PTRACE \
+            --security-opt seccomp=unconfined \
+            --volume $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.BinariesDirectory):/build \
+            --workdir /onnxruntime_src \
+            --entrypoint $(PythonManylinuxDir)/bin/python3 \
+            -e HIP_VISIBLE_DEVICES \
+            -e NIGHTLY_BUILD \
+            -e BUILD_BUILDNUMBER \
+            --user onnxruntimedev \
+            onnxruntimetrainingrocmbuild-torch$(TorchVersion)-rocm$(RocmVersion) \
+              orttraining/tools/ci_test/run_batch_size_test.py \
+                --binary_dir /build/Release \
+                --model_root training_e2e_test_data/models \
+                --gpu_sku MI100_32G
+        displayName: 'Run C++ BERT-L batch size test (in container)'
+        condition: succeededOrFailed() # ensure all tests are run
+
+      - script: |-
+          docker run --rm \
+            --device=/dev/kfd \
+            --device=/dev/dri \
+            --group-add $(video) \
+            --group-add $(render) \
+            --privileged \
+            --ipc=host \
+            --network=host \
+            --cap-add=SYS_PTRACE \
+            --security-opt seccomp=unconfined \
+            --volume $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.BinariesDirectory):/build \
+            --workdir /onnxruntime_src \
+            --entrypoint $(PythonManylinuxDir)/bin/python3 \
+            -e HIP_VISIBLE_DEVICES \
+            -e NIGHTLY_BUILD \
+            -e BUILD_BUILDNUMBER \
+            --user onnxruntimedev \
+            onnxruntimetrainingrocmbuild-torch$(TorchVersion)-rocm$(RocmVersion) \
+              orttraining/tools/ci_test/run_bert_perf_test.py \
+                --binary_dir /build/Release \
+                --model_root training_e2e_test_data/models \
+                --training_data_root training_e2e_test_data/data \
+                --gpu_sku MI100_32G
+        displayName: 'Run C++ BERT-L performance test (in container)'
+        condition: succeededOrFailed() # ensure all tests are run
+
+      - script: |-
+          docker run --rm \
+            --device=/dev/kfd \
+            --device=/dev/dri \
+            --group-add $(video) \
+            --group-add $(render) \
+            --privileged \
+            --ipc=host \
+            --network=host \
+            --cap-add=SYS_PTRACE \
+            --security-opt seccomp=unconfined \
+            --volume $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.BinariesDirectory):/build \
+            --workdir /onnxruntime_src \
+            --entrypoint $(PythonManylinuxDir)/bin/python3 \
+            -e HIP_VISIBLE_DEVICES \
+            -e NIGHTLY_BUILD \
+            -e BUILD_BUILDNUMBER \
+            --user onnxruntimedev \
+            onnxruntimetrainingrocmbuild-torch$(TorchVersion)-rocm$(RocmVersion) \
+              orttraining/tools/ci_test/run_convergence_test.py \
+                --binary_dir /build/Release \
+                --model_root training_e2e_test_data/models \
+                --training_data_root training_e2e_test_data/data \
+                --gpu_sku MI100_32G
+        displayName: 'Run C++ BERT-L convergence test (in container)'
+        condition: succeededOrFailed() # ensure all tests are run
+
+      - task: CopyFiles@2
+        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)'
+          Contents: 'Release/dist/*.whl'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+      - task: CmdLine@2
+        displayName: 'Build Python Documentation'
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
+        inputs:
+          script: |
+            mkdir -p $HOME/.onnx
+            docker run --rm \
+              --device=/dev/kfd \
+              --device=/dev/dri \
+              --group-add $(video) \
+              --group-add $(render) \
+              --privileged \
+              --ipc=host \
+              --network=host \
+              --cap-add=SYS_PTRACE \
+              --security-opt seccomp=unconfined \
+              --volume $(Build.SourcesDirectory):/onnxruntime_src \
+              --volume $(Build.BinariesDirectory):/build \
+              --entrypoint /bin/bash \
+              -e HIP_VISIBLE_DEVICES \
+              -e NIGHTLY_BUILD \
+              -e BUILD_BUILDNUMBER \
+              -e PythonManylinuxDir=$(PythonManylinuxdir) \
+              onnxruntimetrainingrocmbuild-torch$(TorchVersion)-rocm$(RocmVersion) \
+                /onnxruntime_src/tools/ci_build/github/pai/wrap_rocm_python_doc_publisher.sh
+          workingDirectory: $(Build.SourcesDirectory)
+
+      - task: CopyFiles@2
+        displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)/docs/training/html'
+          Contents: '**'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)/training_html_doc'
+
+      - task: PublishBuildArtifacts@1
+        displayName: 'Upload Rocm wheel as build artifact'
+        inputs:
+          ArtifactName: onnxruntime_rocm
+
+      - script: |
+          python3 -m pip install azure-storage-blob==2.1.0
+          files=($(Build.ArtifactStagingDirectory)/Release/dist/*.whl) && \
+          echo ${files[0]} && \
+          python3 tools/ci_build/upload_python_package_to_azure_storage.py \
+              --python_wheel_path ${files[0]} \
+              --account_name onnxruntimepackages \
+              --account_key $(orttrainingpackagestorageaccountkey) \
+              --container_name '$web'
+        condition: and(succeeded(), eq(variables['DRY_RUN'], '0'))
+        displayName: 'Upload Rocm wheel to release repository'
+
+      - template: component-governance-component-detection-steps.yml
+        parameters:
+          condition: 'succeeded'
+
+      - template: clean-agent-build-directory-step.yml
+
+  - ${{ if eq(parameters.enable_windows_cpu, true) }}:
+    - job: Windows_py_Wheels
+      pool: 'Win-CPU-2021'
+      strategy:
+        matrix:
+          Python36_x64:
+            PythonVersion: '3.6'
+            MsbuildPlatform: x64
+            buildArch: x64
+          Python37_x64:
+            PythonVersion: '3.7'
+            MsbuildPlatform: x64
+            buildArch: x64
+          Python38_x64:
+            PythonVersion: '3.8'
+            MsbuildPlatform: x64
+            buildArch: x64
+          Python39_x64:
+            PythonVersion: '3.9'
+            MsbuildPlatform: x64
+            buildArch: x64
+          Python36_x86:
+            PythonVersion: '3.6'
+            MsbuildPlatform: Win32
+            buildArch: x86
+          Python37_x86:
+            PythonVersion: '3.7'
+            MsbuildPlatform: Win32
+            buildArch: x86
+          Python38_x86:
+            PythonVersion: '3.8'
+            MsbuildPlatform: Win32
+            buildArch: x86
+          Python39_x86:
+            PythonVersion: '3.9'
+            MsbuildPlatform: Win32
+            buildArch: x86
+      variables:
+        OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+        EnvSetupScript: setup_env.bat
+        setVcvars: true
+        BuildConfig: 'RelWithDebInfo'
+      timeoutInMinutes: 120
+      workspace:
+        clean: all
+
+      steps:
+      - checkout: self
+        clean: true
+        submodules: recursive
+
+      - template: telemetry-steps.yml
+
+      - task: UsePythonVersion@0
+        inputs:
+          versionSpec: $(PythonVersion)
+          addToPath: true
+          architecture: $(buildArch)
+
+      - template: set-nightly-build-option-variable-step.yml
+
+      - task: BatchScript@1
+        displayName: 'setup env'
+        inputs:
+          filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+          modifyEnvironment: true
+          workingFolder: '$(Build.BinariesDirectory)'
+
+      - script: |
+          python -m pip install -q setuptools wheel numpy==1.16.6
+        workingDirectory: '$(Build.BinariesDirectory)'
+        displayName: 'Install python modules'
+
+      - powershell: |
+          $Env:USE_MSVC_STATIC_RUNTIME=1
+          $Env:ONNX_ML=1
+          $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
+          python setup.py bdist_wheel
+          python -m pip uninstall -y onnx -qq
+          Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
+        workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
+        displayName: 'Install ONNX'
+
+      - task: PythonScript@0
+        displayName: 'Generate cmake config'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+          arguments: >
+            --config $(BuildConfig)
+            --enable_lto
+            --build_dir $(Build.BinariesDirectory)
+            --skip_submodule_sync
+            --cmake_generator "Visual Studio 16 2019"
+            --enable_pybind
+            --enable_onnx_tests
+            ${{ parameters.build_py_parameters }}
+            --parallel --update
+            $(TelemetryOption)
+          workingDirectory: '$(Build.BinariesDirectory)'
+
+      - task: VSBuild@1
+        displayName: 'Build'
+        inputs:
+          solution: '$(Build.BinariesDirectory)\$(BuildConfig)\onnxruntime.sln'
+          platform: $(MsbuildPlatform)
+          configuration: $(BuildConfig)
+          msbuildArchitecture: $(buildArch)
+          maximumCpuCount: true
+          logProjectEvents: true
+          workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
+          createLogFile: true
+
+      # Esrp signing
+      - template: win-esrp-dll.yml
+        parameters:
+          FolderPath: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\onnxruntime\capi'
+          DisplayName: 'ESRP - Sign Native dlls'
+          DoEsrp: true
+          Pattern: '*.pyd,*.dll'
+
+      - task: PythonScript@0
+        displayName: 'Build wheel'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\setup.py'
+          arguments: 'bdist_wheel ${{ parameters.build_py_parameters }} $(NightlyBuildOption)'
+          workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+
+      - task: CopyFiles@2
+        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\dist'
+          Contents: '*.whl'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Artifact: ONNXRuntime python wheel'
+        inputs:
+          ArtifactName: onnxruntime
+
+      - script: |
+          7z x *.whl
+        workingDirectory: '$(Build.ArtifactStagingDirectory)'
+        displayName: 'unzip the package'
+
+      - task: CredScan@3
+        displayName: 'Run CredScan'
+        inputs:
+          debugMode: false
+        continueOnError: true
+
+      - task: BinSkim@4
+        displayName: 'Run BinSkim'
+        inputs:
+          AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll;-:file|$(Build.ArtifactStagingDirectory)\**\DirectML.dll'
+        continueOnError: true
+
+      - task: DeleteFiles@1
+        displayName: 'Delete files from $(Build.BinariesDirectory)\$(BuildConfig)'
+        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
+          Contents: |
+            **/*.obj
+            **/*.pdb
+            **/*.dll
+
+      - powershell: |
+         python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
+         Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
+         Remove-Item -Recurse -Force onnxruntime
+         python onnx_backend_test_series.py
+        workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+        displayName: 'Run Python Tests'
+
+      #Skip it for 32 bits x86 build. Currently the scan tool has a bug: it doesn't allow me use 64 bits link.exe
+      #in 32 bits Win32 build. I tried all the settings but they all don't work.
+      - task: SDLNativeRules@3
+        displayName: 'Run the PREfast SDL Native Rules for MSBuild'
+        condition: and (succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['PythonVersion'], '3.7')))
+        inputs:
+          msBuildArchitecture: amd64
+          setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --enable_pybind --enable_onnx_tests --parallel $(TelemetryOption) --update --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
+          msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\Debug\onnxruntime.sln" /p:platform="$(MsbuildPlatform)" /p:configuration=Debug /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
+          excludedPaths: '$(Build.BinariesDirectory)#$(Build.SourcesDirectory)\cmake#C:\program files (x86)'
+
+
+      - task: TSAUpload@2
+        displayName: 'TSA upload'
+        condition: and(and (succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['PythonVersion'], '3.7'))), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+        inputs:
+          GdnPublishTsaOnboard: false
+          GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
+        continueOnError: true
+
+      - template: component-governance-component-detection-steps.yml
+        parameters:
+          condition: 'succeeded'
+
+      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+        displayName: 'Clean Agent Directories'
+        condition: always()
+
+  - ${{ if eq(parameters.enable_windows_gpu, true) }}:
+    - job: Windows_py_GPU_Wheels
+      workspace:
+        clean: all
+      pool: 'onnxruntime-gpu-winbuild'
+      timeoutInMinutes:  240
+      variables:
+        CUDA_VERSION: '11.4'
+        buildArch: x64
+      strategy:
+        matrix:
+          Python36_cuda:
+            PythonVersion: '3.6'
+            EpBuildFlags: --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.2.2.26\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+            EnvSetupScript: setup_env_cuda_11.bat
+            EP_NAME: gpu
+          Python37_cuda:
+            PythonVersion: '3.7'
+            EpBuildFlags: --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.2.2.26\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+            EnvSetupScript: setup_env_cuda_11.bat
+            EP_NAME: gpu
+          Python38_cuda:
+            PythonVersion: '3.8'
+            EpBuildFlags: --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.2.2.26\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+            EnvSetupScript: setup_env_cuda_11.bat
+            EP_NAME: gpu
+          Python39_cuda:
+            PythonVersion: '3.9'
+            EpBuildFlags: --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.2.2.26\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+            EnvSetupScript: setup_env_cuda_11.bat
+            EP_NAME: gpu
+          Python36_dml:
+            PythonVersion: '3.6'
+            EpBuildFlags: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
+            EP_NAME: directml
+            EnvSetupScript: setup_env.bat
+          Python37_dml:
+            PythonVersion: '3.7'
+            EpBuildFlags: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
+            EP_NAME: directml
+            EnvSetupScript: setup_env.bat
+          Python38_dml:
+            PythonVersion: '3.8'
+            EpBuildFlags: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
+            EP_NAME: directml
+            EnvSetupScript: setup_env.bat
+          Python39_dml:
+            PythonVersion: '3.9'
+            EpBuildFlags: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
+            EP_NAME: directml
+            EnvSetupScript: setup_env.bat
+      steps:
+      - checkout: self
+        clean: true
+        submodules: recursive
+
+      - template: telemetry-steps.yml
+
+      - task: UsePythonVersion@0
+        inputs:
+          versionSpec: $(PythonVersion)
+          addToPath: true
+          architecture: 'x64'
+
+      - task: BatchScript@1
+        displayName: 'setup env'
+        inputs:
+          filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+          modifyEnvironment: true
+          workingFolder: '$(Build.BinariesDirectory)'
+
+      - script: |
+          python -m pip install -q setuptools wheel numpy==1.16.6
+        workingDirectory: '$(Build.BinariesDirectory)'
+        displayName: 'Install python modules'
+
+      - powershell: |
+          $Env:USE_MSVC_STATIC_RUNTIME=1
+          $Env:ONNX_ML=1
+          $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
+          python setup.py bdist_wheel
+          python -m pip uninstall -y onnx -qq
+          Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
+        workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
+        displayName: 'Install ONNX'
+
+      - template: set-nightly-build-option-variable-step.yml
+
+
+      - task: PythonScript@0
+        displayName: 'Generate cmake config'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+          arguments: >
+            --config RelWithDebInfo
+            --build_dir $(Build.BinariesDirectory)
+            --skip_submodule_sync
+            --cmake_generator "Visual Studio 16 2019"
+            --enable_pybind
+            --enable_onnx_tests
+            ${{ parameters.build_py_parameters }}
+            --parallel --update
+            $(TelemetryOption) $(EpBuildFlags)
+          workingDirectory: '$(Build.BinariesDirectory)'
+
+      - task: VSBuild@1
+        displayName: 'Build'
+        inputs:
+          solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
+          platform: x64
+          configuration: RelWithDebInfo
+          msbuildArchitecture: $(buildArch)
+          maximumCpuCount: true
+          logProjectEvents: true
+          workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+          createLogFile: true
+
+      # Esrp signing
+      - template: win-esrp-dll.yml
+        parameters:
+          FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime\capi'
+          DisplayName: 'ESRP - Sign Native dlls'
+          DoEsrp: true
+          Pattern: '*.pyd,*.dll'
+
+      - task: PythonScript@0
+        displayName: 'Build wheel'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\setup.py'
+          arguments: 'bdist_wheel ${{ parameters.build_py_parameters }} $(NightlyBuildOption) --wheel_name_suffix=$(EP_NAME)'
+          workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+
+      - task: CopyFiles@2
+        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
+          Contents: '*.whl'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+ 
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Artifact: ONNXRuntime python wheel'
+        inputs:
+          ArtifactName: onnxruntime_gpu
+
+      - script: |
+          7z x *.whl
+        workingDirectory: '$(Build.ArtifactStagingDirectory)'
+        displayName: 'unzip the package'
+
+      - task: CredScan@3
+        displayName: 'Run CredScan'
+        inputs:
+          debugMode: false
+        continueOnError: true
+
+      - task: BinSkim@4
+        displayName: 'Run BinSkim'
+        inputs:
+          AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll;-:file|$(Build.ArtifactStagingDirectory)\**\DirectML.dll'
+
+      - task: DeleteFiles@1
+        displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
+        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+          Contents: |
+            **/*.obj
+            **/*.pdb
+            **/*.dll
+
+      - powershell: |
+         python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
+         Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
+         Remove-Item -Recurse -Force onnxruntime
+         python onnx_backend_test_series.py
+        workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+        displayName: 'Run Python Tests'
+
+      #Manually set msBuildCommandline so that we can also set CAExcludePath
+      - task: SDLNativeRules@3
+        displayName: 'Run the PREfast SDL Native Rules for MSBuild'
+        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
+        inputs:
+          msBuildArchitecture: amd64
+          setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --enable_pybind --enable_onnx_tests ${{ parameters.build_py_parameters }} --parallel $(TelemetryOption) $(EpBuildFlags) --update --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
+          msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln" /p:platform=x64 /p:configuration="RelWithDebInfo" /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
+          excludedPaths: '$(Build.BinariesDirectory)#$(Build.SourcesDirectory)\cmake#C:\program files (x86)'
+
+      - task: TSAUpload@2
+        displayName: 'TSA upload'
+        condition: and(and (succeeded(), eq(variables['PythonVersion'], '3.7')), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+        inputs:
+          GdnPublishTsaOnboard: false
+          GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
+        continueOnError: true
+
+      - template: component-governance-component-detection-steps.yml
+        parameters:
+          condition: 'succeeded'
+
+      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+        displayName: 'Clean Agent Directories'
+        condition: always()
+
+  - ${{ if eq(parameters.enable_mac_cpu, true) }}:
+    - job: MacOS_py_Wheels
+      timeoutInMinutes: 90
+      workspace:
+        clean: all
+      pool:
+        vmImage: 'macOS-10.15'
+      variables:
+        MACOSX_DEPLOYMENT_TARGET: '10.14'
+      strategy:
+        matrix:
+          Python36:
+            PythonVersion: '3.6'
+          Python37:
+            PythonVersion: '3.7'
+          Python38:
+            PythonVersion: '3.8'
+          Python39:
+            PythonVersion: '3.9'
+      steps:
+      - checkout: self
+        clean: true
+        submodules: recursive
+
+      - task: UsePythonVersion@0
+        displayName: 'Use Python'
+        inputs:
+          versionSpec: $(PythonVersion)
+
+      - script: |
+          set -e
+          pushd .
+          cd $(Build.SourcesDirectory)/cmake/external/protobuf
+          cmake ./cmake -DCMAKE_INSTALL_PREFIX=$(Build.BinariesDirectory)/protobuf -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Relwithdebinfo
+          make -j$(getconf _NPROCESSORS_ONLN)
+          make install
+          popd
+          export PATH=$(Build.BinariesDirectory)/protobuf/bin:$PATH
+          export ONNX_ML=1
+          export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
+          sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
+          sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
+          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_onnx_tests --build_wheel ${{ parameters.build_py_parameters }}
+        displayName: 'Command Line Script'
+
+      - task: CopyFiles@2
+        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)/Release/dist'
+          Contents: '*.whl'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Artifact: ONNXRuntime python wheel'
+        inputs:
+          ArtifactName: onnxruntime
+
+      - template: component-governance-component-detection-steps.yml
+        parameters:
+          condition: 'succeeded'
+
+
+  - ${{ if eq(parameters.enable_linux_arm, true) }}:
+    - job: Linux_py_Wheels
+      timeoutInMinutes: 180
+      workspace:
+        clean: all
+      pool: 'Linux-CPU'
+      strategy:
+        matrix:
+          ARM64_Py39:
+            PYTHON_EXE: '/opt/python/cp39-cp39/bin/python3'
+            Image: 'manylinux2014_aarch64'
+          ARM64_Py38:
+            PYTHON_EXE: '/opt/python/cp38-cp38/bin/python3'
+            Image: 'manylinux2014_aarch64'
+          ARM64_Py37:
+            PYTHON_EXE: '/opt/python/cp37-cp37m/bin/python3'
+            Image: 'manylinux2014_aarch64'
+          ARM64_Py36:
+            PYTHON_EXE: '/opt/python/cp36-cp36m/bin/python3'
+            Image: 'manylinux2014_aarch64'
+          # Uncomment the following lines to generate packages for PowerPC
+          # POWERPC_Py39:
+          #   PYTHON_EXE: '/opt/python/cp39-cp39/bin/python3'
+          #   Image: 'manylinux2014_ppc64le'
+          # POWERPC_Py38:
+          #   PYTHON_EXE: '/opt/python/cp38-cp38/bin/python3'
+          #   Image: 'manylinux2014_ppc64le'
+          # POWERPC_Py37:
+          #   PYTHON_EXE: '/opt/python/cp37-cp37m/bin/python3'
+          #   Image: 'manylinux2014_ppc64le'
+          # POWERPC_Py36:
+          #   PYTHON_EXE: '/opt/python/cp36-cp36m/bin/python3'
+          #   Image: 'manylinux2014_ppc64le'
+      steps:
+      - checkout: self
+        clean: true
+        submodules: recursive
+
+      - template: set-nightly-build-option-variable-step.yml
+
+      - task: CmdLine@2
+        inputs:
+          script: |
+            set -e -x
+            docker run --rm \
+              -e NIGHTLY_BUILD \
+              -e BUILD_BUILDNUMBER \
+              --volume $(Build.SourcesDirectory):/onnxruntime_src \
+              --volume $(Build.BinariesDirectory):/build \
+              -w /tmp/a \
+              quay.io/pypa/$(Image) \
+                /usr/bin/bash -c  "$(PYTHON_EXE) -m pip install numpy==1.19.5 && $(PYTHON_EXE) /onnxruntime_src/tools/ci_build/build.py \
+                  --build_dir /build \
+                  --config Release \
+                  --skip_submodule_sync \
+                  --parallel \
+                  --build_wheel --update --build ${{ parameters.build_py_parameters }}"
+          workingDirectory: $(Build.BinariesDirectory)
+
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Artifact: ONNXRuntime python wheel'
+        inputs:
+          PathtoPublish: '$(Build.BinariesDirectory)/Release/dist'
+          ArtifactName: onnxruntime
+
+      - template: component-governance-component-detection-steps.yml
+        parameters:
+          condition: 'succeeded'
+
+      - template: clean-agent-build-directory-step.yml

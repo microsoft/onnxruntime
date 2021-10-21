@@ -35,7 +35,7 @@ class MeanVarianceNormalization_0 : public OpKernel {
     const int64_t H = dims[2];
     const int64_t W = dims[3];
 
-    Tensor* Y = context->Output(0, TensorShape({N, C, H, W}));
+    Tensor* Y = context->Output(0, {N, C, H, W});
     const T* Xdata = X->template Data<T>();
     T* Ydata = Y->template MutableData<T>();
 

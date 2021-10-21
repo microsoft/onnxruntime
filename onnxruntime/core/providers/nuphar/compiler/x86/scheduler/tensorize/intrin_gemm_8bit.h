@@ -19,14 +19,14 @@ struct TensorizeDimMeta {
   tvm::Expr tail_cond;
   tvm::Expr load_offset;
 
-  TensorizeDimMeta(tvm::Expr dimIter, tvm::Expr dimSize, int tileSize, int layoutSize, bool hasTail, int tailSize, tvm::Expr tailCond)
-      : dim_iter(dimIter), dim_size(dimSize), tile_size(tileSize), layout_size(layoutSize), has_tail(hasTail), tail_size(tailSize), tail_cond(tailCond) {}
+  TensorizeDimMeta(tvm::Expr dim_iter, tvm::Expr dim_size, int tile_size, int layout_size, bool has_tail, int tail_size, tvm::Expr tail_cond)
+      : dim_iter(dim_iter), dim_size(dim_size), tile_size(tile_size), layout_size(layout_size), has_tail(has_tail), tail_size(tail_size), tail_cond(tail_cond) {}
 
-  TensorizeDimMeta(tvm::Expr dimIter, tvm::Expr dimSize, int tileSize, bool hasTail, tvm::Expr tailCond)
-      : dim_iter(dimIter), dim_size(dimSize), tile_size(tileSize), has_tail(hasTail), tail_cond(tailCond) {}
+  TensorizeDimMeta(tvm::Expr dim_iter, tvm::Expr dim_size, int tile_size, bool has_tail, tvm::Expr tail_cond)
+      : dim_iter(dim_iter), dim_size(dim_size), tile_size(tile_size), has_tail(has_tail), tail_cond(tail_cond) {}
 
-  TensorizeDimMeta(tvm::Expr dimIter, int tileSize, int layoutSize, tvm::Expr offset)
-      : dim_iter(dimIter), tile_size(tileSize), layout_size(layoutSize), load_offset(offset) {}
+  TensorizeDimMeta(tvm::Expr dim_iter, tvm::Expr dim_size, int tile_size, int layout_size, tvm::Expr load_offset)
+      : dim_iter(dim_iter), dim_size(dim_size), tile_size(tile_size), layout_size(layout_size), load_offset(load_offset) {}
 
   int64_t DimSizeValue() {
     const int64_t* p_dim_size = tvm::as_const_int(dim_size);

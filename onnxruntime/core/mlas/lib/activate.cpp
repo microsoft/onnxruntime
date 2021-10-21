@@ -109,7 +109,7 @@ struct MLAS_ACTIVATION_FUNCTION<MlasReluActivation>
 #if defined(MLAS_SSE2_INTRINSICS)
         return _mm_cvtss_f32(Activate(_mm_set_ss(Value)));
 #else
-        return (std::max)(Value, 0.0f);
+        return std::max(Value, 0.0f);
 #endif
     }
 };
@@ -140,10 +140,11 @@ struct MLAS_ACTIVATION_FUNCTION<MlasLeakyReluActivation>
 #elif defined(MLAS_AVX_INTRINSICS)
         return _mm_blendv_ps(ValueTimesAlpha, Value, _mm_cmple_ps(ZeroFloat32x4, Value));
 #elif defined(MLAS_SSE2_INTRINSICS)
-        __m128 Selection = _mm_cmple_ps(ZeroFloat32x4, Value);
-        return _mm_or_ps(_mm_and_ps(Value, Selection), _mm_andnot_ps(Selection, ValueTimesAlpha));
+        return MlasBlendFloat32x4(ValueTimesAlpha, Value, _mm_cmple_ps(ZeroFloat32x4, Value));
+#elif defined(MLAS_VSX_INTRINSICS)
+        return vec_sel(ValueTimesAlpha, Value, vec_cmple(ZeroFloat32x4, Value));
 #else
-#error Unsupported architecture.
+        return MlasBlendFloat32x4(ValueTimesAlpha, Value, ZeroFloat32x4 < Value);
 #endif
     }
 
@@ -184,8 +185,47 @@ struct MLAS_ACTIVATION_FUNCTION<MlasClipActivation>
 #if defined(MLAS_SSE2_INTRINSICS)
         return _mm_cvtss_f32(Activate(_mm_set_ss(Value)));
 #else
-        Value = (std::max)(Value, MlasExtractLaneFloat32x4<0>(MinimumBroadcast));
-        Value = (std::min)(Value, MlasExtractLaneFloat32x4<0>(MaximumBroadcast));
+        Value = std::max(Value, MlasExtractLaneFloat32x4<0>(MinimumBroadcast));
+        Value = std::min(Value, MlasExtractLaneFloat32x4<0>(MaximumBroadcast));
+
+        return Value;
+#endif
+    }
+};
+
+template<>
+struct MLAS_ACTIVATION_FUNCTION<MlasHardSigmoidActivation>
+{
+    MLAS_FLOAT32X4 AlphaBroadcast;
+    MLAS_FLOAT32X4 BetaBroadcast;
+    MLAS_FLOAT32X4 MinimumBroadcast;
+    MLAS_FLOAT32X4 MaximumBroadcast;
+
+    MLAS_ACTIVATION_FUNCTION(const MLAS_ACTIVATION* Activation)
+    {
+        AlphaBroadcast = MlasBroadcastFloat32x4(&Activation->Parameters.HardSigmoid.alpha);
+        BetaBroadcast = MlasBroadcastFloat32x4(&Activation->Parameters.HardSigmoid.beta);
+        MinimumBroadcast = MlasZeroFloat32x4();
+        MaximumBroadcast = MlasBroadcastFloat32x4(1.0f);
+    }
+
+    MLAS_FLOAT32X4 Activate(MLAS_FLOAT32X4 Value)
+    {
+        Value = MlasMultiplyAddFloat32x4(Value, AlphaBroadcast, BetaBroadcast);
+        Value = MlasMinimumFloat32x4(MaximumBroadcast, Value);
+        Value = MlasMaximumFloat32x4(MinimumBroadcast, Value);
+
+        return Value;
+    }
+
+    float Activate(float Value)
+    {
+#if defined(MLAS_SSE2_INTRINSICS)
+        return _mm_cvtss_f32(Activate(_mm_set_ss(Value)));
+#else
+        Value = MlasExtractLaneFloat32x4<0>(AlphaBroadcast) * Value + MlasExtractLaneFloat32x4<0>(BetaBroadcast);
+        Value = std::min(Value, MlasExtractLaneFloat32x4<0>(MaximumBroadcast));
+        Value = std::max(Value, MlasExtractLaneFloat32x4<0>(MinimumBroadcast));
 
         return Value;
 #endif
@@ -461,6 +501,12 @@ Return Value:
         case MlasClipActivation:
         {
             MlasActivationKernel<MlasClipActivation>(Activation, Buffer, Bias, M, N, ldc);
+            break;
+        }
+
+        case MlasHardSigmoidActivation:
+        {
+            MlasActivationKernel<MlasHardSigmoidActivation>(Activation, Buffer, Bias, M, N, ldc);
             break;
         }
     }

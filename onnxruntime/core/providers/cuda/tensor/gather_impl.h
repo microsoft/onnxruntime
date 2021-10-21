@@ -8,14 +8,17 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T, typename Tin>
 void GatherImpl(
+    cudaStream_t stream,
     const int64_t input_block_size,
     const int64_t indices_max,
-    const Tin* indices_data,
-    const fast_divmod* output_strides,
-    const T* input_data,
-    T* output_data,
+    const fast_divmod& output_block_size,
+    const fast_divmod& block_size,
+    const void* indices_data,
+    size_t index_element_size,
+    const void* input_data,
+    size_t element_size,
+    void* output_data,
     const size_t N);
 
 }  // namespace cuda

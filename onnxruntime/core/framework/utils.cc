@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
+#include "core/graph/onnx_protobuf.h"
 #include "core/framework/utils.h"
 
 #include <iomanip>
@@ -18,8 +18,11 @@
 #include "core/framework/sequential_executor.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/mlas/inc/mlas.h"
-
-#include "core/graph/onnx_protobuf.h"
+#include "core/framework/TensorSeq.h"
+#ifdef ENABLE_TRAINING
+#include "core/framework/orttraining_partial_executor.h"
+#include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
+#endif
 
 namespace ONNX_NAMESPACE {
 std::ostream& operator<<(std::ostream& out, const TensorShapeProto& shape_proto) {
@@ -73,13 +76,16 @@ void* DefaultAlloc(size_t size) {
   size_t alignment = MlasGetPreferredBufferAlignment();
 #if _MSC_VER
   p = _aligned_malloc(size, alignment);
-  if (p == nullptr) throw std::bad_alloc();
+  if (p == nullptr)
+    ORT_THROW_EX(std::bad_alloc);
 #elif defined(_LIBCPP_SGX_CONFIG)
   p = memalign(alignment, size);
-  if (p == nullptr) throw std::bad_alloc();
+  if (p == nullptr)
+    ORT_THROW_EX(std::bad_alloc);
 #else
   int ret = posix_memalign(&p, alignment, size);
-  if (ret != 0) throw std::bad_alloc();
+  if (ret != 0)
+    ORT_THROW_EX(std::bad_alloc);
 #endif
   return p;
 }
@@ -92,33 +98,64 @@ void DefaultFree(void* p) {
 #endif
 }
 
-AllocatorPtr GetAllocator(const SessionState& session_state, const OrtMemoryInfo& memory_info) {
-  return session_state.GetExecutionProviders().GetAllocator(memory_info);
+void ConstructStrings(void* p_data, int64_t elements) {
+  auto* ptr = static_cast<std::string*>(p_data);
+  for (int64_t i = 0; i < elements; ++i) {
+    new (ptr + i) std::string();
+  }
+}
+
+void DestroyStrings(void* p_data, int64_t elements) {
+  using string = std::string;
+  auto* ptr = static_cast<std::string*>(p_data);
+  for (int64_t i = 0; i < elements; i++)
+    ptr[i].~string();
 }
 
 bool ProviderIsCpuBased(const std::string& provider_type) {
   return provider_type == onnxruntime::kCpuExecutionProvider ||
-         provider_type == onnxruntime::kMklDnnExecutionProvider ||
-         provider_type == onnxruntime::kNGraphExecutionProvider ||
+         provider_type == onnxruntime::kDnnlExecutionProvider ||
          provider_type == onnxruntime::kNupharExecutionProvider ||
+         provider_type == onnxruntime::kVitisAIExecutionProvider ||
          provider_type == onnxruntime::kOpenVINOExecutionProvider ||
-         provider_type == onnxruntime::kNnapiExecutionProvider;
+         provider_type == onnxruntime::kNnapiExecutionProvider ||
+         provider_type == onnxruntime::kAclExecutionProvider ||
+         provider_type == onnxruntime::kArmNNExecutionProvider ||
+         provider_type == onnxruntime::kRknpuExecutionProvider ||
+         provider_type == onnxruntime::kCoreMLExecutionProvider ||
+         provider_type == onnxruntime::utils::kInternalTestingExecutionProvider;
 }
 
-common::Status AllocateHelper(const IExecutionProvider& execution_provider, const OrtDevice& device,
-                              const Tensor& fetched_tensor, OrtValue& output_mlvalue) {
-  auto allocator = execution_provider.GetAllocator(device.Id(), OrtMemTypeDefault);
+static common::Status AllocateHelper(const AllocatorPtr& allocator,
+                                     const OrtValue& source_mlvalue,
+                                     OrtValue& target_mlvalue) {
   if (!allocator) {
-    return Status(common::ONNXRUNTIME, common::FAIL, "invalid allocator");
+    return Status(common::ONNXRUNTIME, common::FAIL, "invalid allocator.");
   }
 
-  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(fetched_tensor.DataType(),
-                                                                      fetched_tensor.Shape(),
-                                                                      allocator);
-  output_mlvalue.Init(p_tensor.release(),
-                      DataTypeImpl::GetType<Tensor>(),
-                      DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-
+  if (source_mlvalue.IsTensor()) {
+    const Tensor& source_tensor = source_mlvalue.Get<Tensor>();
+    Tensor::InitOrtValue(source_tensor.DataType(),
+                         source_tensor.Shape(),
+                         allocator, target_mlvalue);
+  } else if (source_mlvalue.IsSparseTensor()) {
+#if !defined(DISABLE_SPARSE_TENSORS)
+    const SparseTensor& source_tensor = source_mlvalue.Get<SparseTensor>();
+    SparseTensor::InitOrtValue(source_tensor.DataType(), source_tensor.DenseShape(), allocator, target_mlvalue);
+#endif
+  } else if (source_mlvalue.IsTensorSequence()) {
+    const TensorSeq& source_tensor_seq = source_mlvalue.Get<TensorSeq>();
+    auto target_tensor_seq = std::make_unique<TensorSeq>(source_tensor_seq.DataType());
+    std::vector<Tensor> tensors;
+    for (auto iter = source_tensor_seq.begin(); iter != source_tensor_seq.end(); ++iter) {
+      tensors.emplace_back(iter->DataType(), onnxruntime::TensorShape(iter->Shape()), allocator);
+    }
+    target_tensor_seq->SetElements(std::move(tensors));
+    auto ml_tensor_seq = DataTypeImpl::GetType<TensorSeq>();
+    target_mlvalue.Init(target_tensor_seq.release(), ml_tensor_seq, ml_tensor_seq->GetDeleteFunc());
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported OrtValue type.");
+  }
   return Status::OK();
 }
 
@@ -140,36 +177,81 @@ const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info) 
   return required_provider_type;
 }
 
-static Status CopyMLValue(const DataTransferManager& data_transfer_mgr,
-                          const MLValueCopyInfo& copy_info,
-                          const OrtValue& source_mlvalue,
-                          OrtValue& target_mlvalue) {
+// Copy MLValue. Uses DataTransferManager for device copy if necessary. If copy_tensor_pairs/copy_sparse_pairs is provided,
+// src/dst pairs that need a device copy are added to copy_pairs so copying can be batches by the DataTransferManager
+// implementation for performance reasons.
+static Status BatchOrCopyMLValue(const SessionState& session_state,
+                                 const MLValueCopyInfo& copy_info,
+                                 const OrtValue& source_mlvalue,
+                                 OrtValue& target_mlvalue,
+#if !defined(DISABLE_SPARSE_TENSORS)
+                                 std::vector<IDataTransfer::SrcDstPair>* copy_tensor_pairs = nullptr,
+                                 std::vector<IDataTransfer::SparseSrcDstPair>* copy_sparse_pairs = nullptr)
+#else
+                                 std::vector<IDataTransfer::SrcDstPair>* copy_tensor_pairs = nullptr)
+#endif
+{
+  // same device so direct copy
   if (copy_info.source_device == copy_info.target_device) {
     target_mlvalue = source_mlvalue;
     return Status::OK();
   }
 
-  // This shouldn't be necessary. Edge case may be an unused input that has a mismatch between source and target
-  // but as it's unused we have no allocator info (and don't want to allocate it as it's unused). Uncomment if needed.
-  //  if (copy_info.allocation_provider == nullptr) {
-  //  target_mlvalue = source_mlvalue;
-  //  return Status::OK();
-  //}
-
-  assert(source_mlvalue.IsTensor());
-
-  auto& source_tensor = source_mlvalue.Get<Tensor>();
+  auto allocator = session_state.GetAllocator(copy_info.target_device);
   if (!target_mlvalue.IsAllocated()) {
-    ORT_RETURN_IF_ERROR(utils::AllocateHelper(*copy_info.allocation_provider, copy_info.target_device,
-                                              source_tensor, target_mlvalue));
+    ORT_ENFORCE(allocator != nullptr, "Failed to find allocator for device ", copy_info.target_device.ToString());
+    ORT_RETURN_IF_ERROR(utils::AllocateHelper(allocator, source_mlvalue, target_mlvalue));
   }
 
-  Tensor* p_output_tensor = target_mlvalue.GetMutable<Tensor>();
+  if (source_mlvalue.IsTensor()) {
+    const auto& source_tensor = source_mlvalue.Get<Tensor>();
+    Tensor* p_output_tensor = target_mlvalue.GetMutable<Tensor>();
 
-  ORT_RETURN_IF_ERROR(data_transfer_mgr.CopyTensor(source_tensor, *p_output_tensor));
+    if (copy_tensor_pairs != nullptr) {
+      copy_tensor_pairs->push_back({source_tensor, *p_output_tensor, 0});
+    } else {
+      ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(source_tensor, *p_output_tensor));
+    }
+  } else if (source_mlvalue.IsSparseTensor()) {
+#if !defined(DISABLE_SPARSE_TENSORS)
+    const auto& source_tensor = source_mlvalue.Get<SparseTensor>();
+    SparseTensor* p_output_tensor = target_mlvalue.GetMutable<SparseTensor>();
+    if (copy_sparse_pairs != nullptr) {
+      copy_sparse_pairs->push_back({source_tensor, *p_output_tensor, 0});
+    } else {
+      ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopySparseTensor(source_tensor, *p_output_tensor));
+    }
+#endif
+  } else if (source_mlvalue.IsTensorSequence()) {
+    const TensorSeq& source_tensor_seq = source_mlvalue.Get<TensorSeq>();
+    TensorSeq& target_tensor_seq = const_cast<TensorSeq&>(target_mlvalue.Get<TensorSeq>());
+    size_t size = 0;
+    while ((size = target_tensor_seq.Size()) < source_tensor_seq.Size()) {
+      if (0 == size) {
+        target_tensor_seq.SetType(source_tensor_seq.DataType());
+      }
+      const Tensor& source_tensor = source_tensor_seq.Get(size);
+      std::unique_ptr<Tensor> target_tensor = std::make_unique<Tensor>(source_tensor.DataType(), source_tensor.Shape(), allocator);
+      target_tensor_seq.Add(std::move(*target_tensor));
+    }
+    auto source_iter = source_tensor_seq.begin();
+    auto target_iter = target_tensor_seq.begin();
+    while (source_iter != source_tensor_seq.end() &&
+           target_iter != target_tensor_seq.end()) {
+      if (copy_tensor_pairs != nullptr) {
+        copy_tensor_pairs->push_back({*source_iter, const_cast<Tensor&>(*target_iter), 0});
+      } else {
+        ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(*source_iter, const_cast<Tensor&>(*target_iter)));
+      }
+      ++source_iter;
+      ++target_iter;
+    }  //while
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported OrtValue type to copy between device.");
+  }
 
   return Status::OK();
-}
+}  // namespace utils
 
 static bool HaveCpuExecutionProvidersOnly(const ExecutionProviders& execution_providers) {
   for (const auto& execution_provider : execution_providers) {
@@ -200,12 +282,35 @@ const OrtMemoryInfo& FindMemoryInfoForValue(const SessionState& session_state,
   return FindMemoryInfoForValue(session_state.GetOrtValueNameIdxMap(), *exec_plan_ptr, name);
 }
 
-// get the target device info for the node consuming each input provided in the feeds
+// get the target device info for the node consuming each input provided in the feeds.
+// source_device info is not known until runtime
 static common::Status CalculateStaticCopyInfoForFeed(const SessionState& session_state,
                                                      const std::string& input_name,
                                                      MLValueCopyInfo& copy_info) {
-  const auto& exec_providers = session_state.GetExecutionProviders();
+#ifdef ENABLE_TRAINING
+  std::vector<SessionState::NodeInfo> node_info_vec;
+  if (session_state.GetInputNodeInfo(input_name, node_info_vec) == Status::OK()) {
+    const auto& node_info = node_info_vec.front();  // all consumers of a feed have the same device so first entry is fine
 
+    if (node_info.p_node == nullptr) {
+      // ignore dummy entry for an input that we didn't find a use of in the graph.
+      return Status::OK();
+    }
+
+    copy_info.target_device = *node_info.device;
+
+  } else {
+    // This input might be for an intermediate tensor for partial graph execution.
+    const auto* exec_plan = session_state.GetExecutionPlan();
+    const auto& name_to_id = session_state.GetOrtValueNameIdxMap();
+    int index;
+    ORT_RETURN_IF_ERROR(name_to_id.GetIdx(input_name, index));
+    const auto& device = exec_plan->GetLocation(index).device;
+    copy_info.target_device = device;
+  }
+
+  return Status::OK();
+#else
   std::vector<SessionState::NodeInfo> node_info_vec;
   ORT_RETURN_IF_ERROR(session_state.GetInputNodeInfo(input_name, node_info_vec));
   const auto& node_info = node_info_vec.front();  // all consumers of a feed have the same device so first entry is fine
@@ -217,11 +322,8 @@ static common::Status CalculateStaticCopyInfoForFeed(const SessionState& session
 
   copy_info.target_device = *node_info.device;
 
-  const auto& required_provider_type = GetNodeInputProviderType(node_info);
-  const auto* required_provider = exec_providers.Get(required_provider_type);
-  copy_info.allocation_provider = required_provider;
-
   return Status::OK();
+#endif
 }
 
 static common::Status CalculateStaticCopyInfoForFeeds(const SessionState& session_state,
@@ -234,7 +336,8 @@ static common::Status CalculateStaticCopyInfoForFeeds(const SessionState& sessio
   return Status::OK();
 }
 
-// get the source device info for the node producing each output that we will return in the fetches
+// get the source device info for the node producing each output that we will return in the fetches.
+// target device info is not known until runtime.
 static common::Status CalculateStaticCopyInfoForFetches(const SessionState& session_state,
                                                         const std::vector<std::string>& fetch_names,
                                                         std::vector<MLValueCopyInfo>& copy_info) {
@@ -298,28 +401,21 @@ static bool FinalizeCopyInfoForFeeds(const std::vector<OrtDevice>& feed_location
   return copy_needed;
 }
 
-static bool FinalizeCopyInfoForFetches(const SessionState& session_state,
-                                       const std::vector<const OrtMemoryInfo*>& fetch_alloc_info,
+static bool FinalizeCopyInfoForFetches(const std::vector<const OrtMemoryInfo*>& fetch_alloc_info,
                                        std::vector<MLValueCopyInfo>& copy_info) {
   ORT_ENFORCE(fetch_alloc_info.size() == copy_info.size());
   bool copy_needed = false;
 
-  auto& execution_providers = session_state.GetExecutionProviders();
-  const auto& cpu_execution_provider = *execution_providers.Get(onnxruntime::kCpuExecutionProvider);  // never null
-
   auto num_outputs = fetch_alloc_info.size();
   for (size_t i = 0; i < num_outputs; ++i) {
-    const IExecutionProvider* provider = &cpu_execution_provider;
-    const auto* alloc_info = fetch_alloc_info[i];
+    const OrtMemoryInfo* alloc_info = fetch_alloc_info[i];
 
     if (alloc_info != nullptr) {
       copy_info[i].target_device = alloc_info->device;
-      provider = execution_providers.Get(*alloc_info);
     }
 
     if (copy_info[i].source_device != copy_info[i].target_device) {
       copy_needed = true;
-      copy_info[i].allocation_provider = provider;
     }
   }
 
@@ -328,8 +424,7 @@ static bool FinalizeCopyInfoForFetches(const SessionState& session_state,
 
 // Finalize the copy info using the OrtDevice and OrtMemoryInfo for the feeds and fetches
 // This can be used by control flow nodes prior to the execution of the overall graph.
-void FinalizeFeedFetchCopyInfo(const SessionState& session_state,
-                               FeedsFetchesManager& feeds_fetches_manager,
+void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager,
                                const std::vector<OrtDevice>& feed_locations,
                                const std::vector<const OrtMemoryInfo*>& fetch_alloc_info) {
   if (feeds_fetches_manager.GetDeviceCopyChecks().status == DeviceCopyCheck::NoCopy)
@@ -338,16 +433,14 @@ void FinalizeFeedFetchCopyInfo(const SessionState& session_state,
   bool need_copy = FinalizeCopyInfoForFeeds(feed_locations, feeds_fetches_manager.GetMutableFeedsDeviceCopyInfo());
   DeviceCopyCheck input_copy = need_copy ? DeviceCopyCheck::Copy : DeviceCopyCheck::NoCopy;
 
-  need_copy = FinalizeCopyInfoForFetches(session_state, fetch_alloc_info,
-                                         feeds_fetches_manager.GetMutableFetchesDeviceCopyInfo());
+  need_copy = FinalizeCopyInfoForFetches(fetch_alloc_info, feeds_fetches_manager.GetMutableFetchesDeviceCopyInfo());
   DeviceCopyCheck output_copy = need_copy ? DeviceCopyCheck::Copy : DeviceCopyCheck::NoCopy;
 
   feeds_fetches_manager.SetDeviceCopyChecks(input_copy, output_copy);
 }
 
 // Finalize the copy info using the OrtValue instances for the feeds and fetches
-static void FinalizeFeedFetchCopyInfo(const SessionState& session_state,
-                                      FeedsFetchesManager& feeds_fetches_manager,
+static void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager,
                                       const std::vector<OrtValue>& feeds,
                                       std::vector<OrtValue>& fetches) {
   if (feeds_fetches_manager.GetDeviceCopyChecks().status == DeviceCopyCheck::NoCopy)
@@ -363,6 +456,10 @@ static void FinalizeFeedFetchCopyInfo(const SessionState& session_state,
     const auto& feed = feeds[i];
     if (feed.IsTensor()) {
       feed_locations[i] = feed.Get<Tensor>().Location().device;
+    } else if (feed.IsSparseTensor()) {
+#if !defined(DISABLE_SPARSE_TENSORS)
+      feed_locations[i] = feed.Get<SparseTensor>().Location().device;
+#endif
     }
   }
 
@@ -371,26 +468,52 @@ static void FinalizeFeedFetchCopyInfo(const SessionState& session_state,
 
   for (size_t i = 0; i < num_outputs; ++i) {
     const auto& fetch = fetches[i];
-    if (fetch.IsAllocated() && fetch.IsTensor()) {
-      fetch_alloc_info[i] = &fetch.Get<Tensor>().Location();
+    if (fetch.IsAllocated()) {
+      if (fetch.IsTensor()) {
+        fetch_alloc_info[i] = &fetch.Get<Tensor>().Location();
+      } else if (fetch.IsSparseTensor()) {
+#if !defined(DISABLE_SPARSE_TENSORS)
+        fetch_alloc_info[i] = &fetch.Get<SparseTensor>().Location();
+#endif
+      }
     }
   }
 
-  FinalizeFeedFetchCopyInfo(session_state, feeds_fetches_manager, feed_locations, fetch_alloc_info);
+  FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feed_locations, fetch_alloc_info);
 }
 
-static common::Status CopyInputsAcrossDevices(const std::vector<OrtValue>& orig_feeds,
+static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
+                                              const std::vector<OrtValue>& orig_feeds,
                                               std::vector<OrtValue>& new_feeds,
-                                              const std::vector<MLValueCopyInfo>& copy_info,
-                                              const DataTransferManager& data_transfer_mgr) {
+                                              const std::vector<MLValueCopyInfo>& copy_info) {
   size_t num_feeds = orig_feeds.size();
   ORT_ENFORCE(copy_info.size() == num_feeds);
 
   new_feeds.resize(num_feeds);
+  std::vector<IDataTransfer::SrcDstPair> batched_data_transfers;
+#if !defined(DISABLE_SPARSE_TENSORS)
+  std::vector<IDataTransfer::SparseSrcDstPair> batched_sparse_data_transfers;
+#endif
 
   for (size_t idx = 0; idx < num_feeds; ++idx) {
-    ORT_RETURN_IF_ERROR(CopyMLValue(data_transfer_mgr, copy_info[idx], orig_feeds[idx], new_feeds[idx]));
+#if !defined(DISABLE_SPARSE_TENSORS)
+    ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], orig_feeds[idx], new_feeds[idx],
+                                           &batched_data_transfers, &batched_sparse_data_transfers));
+#else
+    ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], orig_feeds[idx], new_feeds[idx],
+                                           &batched_data_transfers));
+#endif
   }
+
+  if (!batched_data_transfers.empty()) {
+    ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensors(batched_data_transfers));
+  }
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+  if (!batched_sparse_data_transfers.empty()) {
+    ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopySparseTensors(batched_sparse_data_transfers));
+  }
+#endif
 
   return Status::OK();
 }
@@ -398,19 +521,22 @@ static common::Status CopyInputsAcrossDevices(const std::vector<OrtValue>& orig_
 // public method to do a single copy. used by external partners
 common::Status CopyOneInputAcrossDevices(const SessionState& session_state, const std::string& input_name,
                                          const OrtValue& orig_mlvalue, OrtValue& new_mlvalue) {
-  if (!orig_mlvalue.IsTensor()) {
+  if (!orig_mlvalue.IsTensor() && !orig_mlvalue.IsSparseTensor()) {
     new_mlvalue = orig_mlvalue;
     return Status::OK();
   }
 
   MLValueCopyInfo copy_info;
-  std::vector<SessionState::NodeInfo> node_info_vec;
-  ORT_RETURN_IF_ERROR(session_state.GetInputNodeInfo(input_name, node_info_vec));
-
   ORT_RETURN_IF_ERROR(CalculateStaticCopyInfoForFeed(session_state, input_name, copy_info));
+#if !defined(DISABLE_SPARSE_TENSORS)
+  copy_info.source_device = (orig_mlvalue.IsTensor())
+                                ? orig_mlvalue.Get<Tensor>().Location().device
+                                : orig_mlvalue.Get<SparseTensor>().Location().device;
+#else
   copy_info.source_device = orig_mlvalue.Get<Tensor>().Location().device;
+#endif
 
-  return CopyMLValue(session_state.GetDataTransferMgr(), copy_info, orig_mlvalue, new_mlvalue);
+  return BatchOrCopyMLValue(session_state, copy_info, orig_mlvalue, new_mlvalue);
 }
 
 static common::Status CopyOutputsAcrossDevices(const SessionState& session_state,
@@ -420,11 +546,30 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
   auto num_outputs = fetches.size();
   user_fetches.resize(num_outputs);
 
-  const auto& data_transfer_mgr = session_state.GetDataTransferMgr();
+  std::vector<IDataTransfer::SrcDstPair> batched_data_transfers;
+#if !defined(DISABLE_SPARSE_TENSORS)
+  std::vector<IDataTransfer::SparseSrcDstPair> batched_sparse_data_transfers;
+#endif
 
   for (size_t idx = 0; idx < num_outputs; ++idx) {
-    ORT_RETURN_IF_ERROR(CopyMLValue(data_transfer_mgr, copy_info[idx], fetches[idx], user_fetches[idx]));
+#if !defined(DISABLE_SPARSE_TENSORS)
+    ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], fetches[idx], user_fetches[idx],
+                                           &batched_data_transfers, &batched_sparse_data_transfers));
+#else
+    ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], fetches[idx], user_fetches[idx],
+                                           &batched_data_transfers));
+#endif
   }
+
+  if (!batched_data_transfers.empty()) {
+    ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensors(batched_data_transfers));
+  }
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+  if (!batched_sparse_data_transfers.empty()) {
+    ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopySparseTensors(batched_sparse_data_transfers));
+  }
+#endif
 
   return Status::OK();
 }
@@ -433,16 +578,16 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                        const FeedsFetchesManager& feeds_fetches_manager,
                                        const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                        const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                       bool sequential_execution, const bool& terminate_flag,
-                                       const logging::Logger& logger) {
+                                       ExecutionMode execution_mode, const bool& terminate_flag,
+                                       const logging::Logger& logger, const bool only_execute_path_to_fetches = false) {
   std::unique_ptr<IExecutor> p_exec;
-  if (sequential_execution) {
-    p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag));
-  } else {
+  if (execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
+    p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag, only_execute_path_to_fetches));
+  } else if (execution_mode == ExecutionMode::ORT_PARALLEL) {
     auto* p_inter_op_thread_pool = session_state.GetInterOpThreadPool();
     if (!p_inter_op_thread_pool) {
       LOGS(logger, WARNING) << "Only one thread was configured for parallel execution. Hence will use sequential execution.";
-      p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag));
+      p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag, only_execute_path_to_fetches));
     } else {
       p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state, terminate_flag));
     }
@@ -466,8 +611,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
 
     if (device_copy_checks.input_copy_needed == DeviceCopyCheck::Copy) {
       const auto& feed_copy_info = feeds_fetches_manager.GetFeedsDeviceCopyInfo();
-      ORT_RETURN_IF_ERROR(CopyInputsAcrossDevices(feeds, device_feeds, feed_copy_info,
-                                                  session_state.GetDataTransferMgr()));
+      ORT_RETURN_IF_ERROR(CopyInputsAcrossDevices(session_state, feeds, device_feeds, feed_copy_info));
       p_feeds = &device_feeds;
     }
 
@@ -506,154 +650,185 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
 common::Status ExecuteGraph(const SessionState& session_state,
                             FeedsFetchesManager& feeds_fetches_manager,
                             const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-                            bool sequential_execution, const bool& terminate_flag,
-                            const logging::Logger& logger) {
+                            ExecutionMode execution_mode, const bool& terminate_flag,
+                            const logging::Logger& logger, bool only_execute_path_to_fetches) {
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(session_state, feeds_fetches_manager));
 
   // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
-  FinalizeFeedFetchCopyInfo(session_state, feeds_fetches_manager, feeds, fetches);
+  FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
 
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
-                                 sequential_execution, terminate_flag, logger);
+                                 execution_mode, terminate_flag, logger, only_execute_path_to_fetches);
 
   return status;
 }
+
+#ifdef ENABLE_TRAINING
+common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
+                                   const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                                   const logging::Logger& logger, PartialGraphExecutionState& state,
+                                   const OrtValueCachePtr& cache) {
+  // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
+  FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
+  PartialExecutor executor{state, cache};
+  const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
+  const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
+
+  // see if we can skip copies due to the types of execution providers available
+  if (device_copy_checks.status == DeviceCopyCheck::NoCopy) {
+    // no device copies are needed so simple execute
+    ORT_RETURN_IF_ERROR(executor.Execute(session_state,
+                                         feeds_fetches_info.feeds_mlvalue_idxs, feeds,
+                                         feeds_fetches_info.fetches_mlvalue_idxs, fetches, {},
+                                         logger));
+  } else {
+    const std::vector<OrtValue>* p_feeds = &feeds;
+    std::vector<OrtValue>* p_fetches = &fetches;
+    std::vector<OrtValue> device_feeds;
+    std::vector<OrtValue> device_fetches;
+
+    if (device_copy_checks.input_copy_needed == DeviceCopyCheck::Copy) {
+      const auto& feed_copy_info = feeds_fetches_manager.GetFeedsDeviceCopyInfo();
+      ORT_RETURN_IF_ERROR(CopyInputsAcrossDevices(session_state, feeds, device_feeds, feed_copy_info));
+      p_feeds = &device_feeds;
+    }
+
+    auto num_outputs = fetches.size();
+    const auto& fetch_copy_info = feeds_fetches_manager.GetFetchesDeviceCopyInfo();
+
+    if (device_copy_checks.output_copy_needed == DeviceCopyCheck::Copy) {
+      // need intermediate fetches. use pre-allocated fetches where possible.
+      device_fetches.reserve(num_outputs);
+
+      for (size_t i = 0; i < num_outputs; ++i) {
+        if (fetch_copy_info[i].source_device == fetch_copy_info[i].target_device && fetches[i].IsAllocated()) {
+          device_fetches.push_back(fetches[i]);
+        } else {
+          // use temporary value
+          device_fetches.push_back({});
+        }
+      }
+
+      p_fetches = &device_fetches;
+    }
+
+    ORT_RETURN_IF_ERROR(executor.Execute(session_state,
+                                         feeds_fetches_info.feeds_mlvalue_idxs, *p_feeds,
+                                         feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, {},
+                                         logger));
+
+    if (device_copy_checks.output_copy_needed == DeviceCopyCheck::Copy) {
+      ORT_RETURN_IF_ERROR(CopyOutputsAcrossDevices(session_state, *p_fetches, fetches, fetch_copy_info));
+    }
+  }
+
+  return Status::OK();
+}
+#endif
 
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
                                const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                               bool sequential_execution, const bool& terminate_flag, const logging::Logger& logger) {
+                               ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger) {
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
-                                 sequential_execution, terminate_flag, logger);
+                                 execution_mode, terminate_flag, logger);
   return status;
 }
 
-#if defined(DEBUG_NODE_INPUTS_OUTPUTS)
-std::ostream& operator<<(std::ostream& out, const BFloat16& value) {
-  return out << value.ToFloat();
-}
-
-std::ostream& operator<<(std::ostream& out, const MLFloat16& value) {
-  return out << value.val;
-}
-
-template <typename T>
-static void DumpTensor(const Tensor& tensor, const TensorShape& shape) {
-  auto num_items = shape.Size();
-
-  if (num_items == 0) {
-    std::cout << "no data";
-    return;
-  }
-
-  size_t num_dims = shape.NumDimensions();
-  size_t num_rows = 1;
-  if (num_dims > 1) {
-    num_rows = static_cast<size_t>(shape[0]);
-  }
-
-  size_t row_size = num_items / num_rows;
-
-  auto data = tensor.DataAsSpan<T>();
-
-  auto print_val = [](const T& value) {
-    if (std::is_floating_point_v<T>)
-      std::cout << std::setprecision(8) << value;
-    else
-      std::cout << value;
-  };
-
-  for (int row = 0; row < num_rows; ++row) {
-    print_val(data[row * row_size]);
-    for (int i = 1; i < row_size; ++i) {
-      std::cout << ", ";
-      print_val(data[row * row_size + i]);
-    }
-    std::cout << "\n";
-  }
-
-  std::cout << std::endl;
-}
-
-void DumpNodeInputs(const OpKernelContext& context, const Node& node) {
-  std::cout << "-----------\n";
-  std::cout << node.OpType() << " node: " << node.Name() << "\n";
-
-  const auto& input_defs = node.InputDefs();
-
-  for (auto i = 0, end = context.InputCount(); i < end; ++i) {
-    if (input_defs[i]->Exists()) {
-      std::cout << "Input " << i << " Name: " << input_defs[i]->Name();
-
-      const auto* type = context.InputType(i);
-
-      if (type) {
-        if (type->IsTensorType()) {
-          const auto& tensor = *context.Input<Tensor>(i);
-          const auto& shape = tensor.Shape();
-
-          std::cout << " Shape: " << shape << "\n";
-        } else {
-          std::cout << " is non-tensor type.\n";
-        }
-      } else {
-        // should never happen...
-        std::cout << " was missing data type\n";
-      }
-    } else {
-      std::cout << "Input " << i << " is optional and was not provided.\n";
-    }
+int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType onnx_enum) {
+  switch (onnx_enum) {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+      return onnx::TensorProto_DataType::TensorProto_DataType_FLOAT;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
+      return onnx::TensorProto_DataType::TensorProto_DataType_DOUBLE;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
+      return onnx::TensorProto_DataType::TensorProto_DataType_INT8;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+      return onnx::TensorProto_DataType::TensorProto_DataType_UINT8;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
+      return onnx::TensorProto_DataType::TensorProto_DataType_INT16;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
+      return onnx::TensorProto_DataType::TensorProto_DataType_UINT16;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
+      return onnx::TensorProto_DataType::TensorProto_DataType_INT32;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
+      return onnx::TensorProto_DataType::TensorProto_DataType_UINT32;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
+      return onnx::TensorProto_DataType::TensorProto_DataType_INT64;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
+      return onnx::TensorProto_DataType::TensorProto_DataType_UINT64;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
+      return onnx::TensorProto_DataType::TensorProto_DataType_STRING;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
+      return onnx::TensorProto_DataType::TensorProto_DataType_BOOL;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+      return onnx::TensorProto_DataType::TensorProto_DataType_FLOAT16;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
+      return onnx::TensorProto_DataType::TensorProto_DataType_BFLOAT16;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:
+      return onnx::TensorProto_DataType::TensorProto_DataType_COMPLEX64;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:
+      return onnx::TensorProto_DataType::TensorProto_DataType_COMPLEX128;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED:
+    default:
+      assert(false);
+      return onnx::TensorProto_DataType::TensorProto_DataType_UNDEFINED;
   }
 }
 
-void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionState& session_state) {
-  std::cout << "-----------\n";
-  const auto& output_defs = node.OutputDefs();
+#ifdef ENABLE_TRAINING
+common::Status VerifyInputTensorsAllocatedContiguously(OpKernelContext* context) {
+  const Tensor* prev_input = context->Input<Tensor>(0);
+  for (int i = 1; i < context->InputCount(); i++) {
+    const Tensor* curr_input = context->Input<Tensor>(i);
 
-  const auto& execution_providers = session_state.GetExecutionProviders();
-  const auto* cpu_execution_provider = execution_providers.Get(onnxruntime::kCpuExecutionProvider);
+    ORT_ENFORCE(prev_input->Shape().Size() >= 0);
 
-  for (auto i = 0, end = context.OutputCount(); i < end; ++i) {
-    if (output_defs[i]->Exists()) {
-      std::cout << "Output " << i << " Name: " << output_defs[i]->Name();
+    const void* curr_address = curr_input->DataRaw();
+    const void* prev_address = prev_input->DataRaw();
+    const void* prev_end_address = reinterpret_cast<const char*>(prev_address) + prev_input->SizeInBytes();
 
-      const auto* type = context.OutputType(i);
+    void* aligned_address = const_cast<void*>(prev_end_address);
+    size_t dummy_space = kAllocAlignment * 2;
+    std::align(kAllocAlignment, 1, aligned_address, dummy_space);
 
-      if (type) {
-        if (type->IsTensorType()) {
-          const auto& tensor = *context.Output<Tensor>(i);
-          const auto data_type = tensor.DataType();
-          const auto& shape = tensor.Shape();
-
-          std::cout << " Shape: " << shape << "\n";
-
-          // check tensor is on CPU before dumping it
-          auto& tensor_location = tensor.Location();
-          auto* provider = execution_providers.Get(tensor_location);
-          if (!provider) {
-            provider = cpu_execution_provider;
-          }
-
-          if (provider == cpu_execution_provider || tensor_location.mem_type == OrtMemTypeCPUOutput) {
-            DispatchOnTensorType(data_type, DumpTensor, tensor, shape);
-          } else {
-            std::cout << " is not on CPU. Provider=" << provider->Type() << "\n";
-          }
-        } else {
-          std::cout << " is non-tensor type.\n";
-        }
-      } else {
-        // should never happen...
-        std::cout << "missing data type\n";
-      }
-    } else {
-      std::cout << "Output " << i << " is optional and was not produced.\n";
+    if (!(curr_address == prev_end_address || curr_address == aligned_address)) {
+      const std::string node = context->GetNodeName().empty() ? context->GetOpType() : context->GetNodeName();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "Contiguous memory checking failed on node ", node, ": ",
+                             "input #", i - 1, " address is ", prev_address, " and #bytes = ", prev_input->SizeInBytes(),
+                             ", input #", i, " address is ", curr_address);
     }
 
-    std::cout << std::endl;
+    prev_input = curr_input;
   }
+  return Status::OK();
 }
 #endif
+
+bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index) {
+  if (p_kci && p_kci->kernel_def->IsInputOnCpu(index)) {
+    return true;
+  }
+
+#ifdef ENABLE_TRAINING
+  if (node.GetExecutionProviderType() == kCudaExecutionProvider && node.OpType() == "ATenOp" && node.Domain() == kMSDomain) {
+    const auto& attrs = node.GetAttributes();
+    ORT_ENFORCE(utils::HasString(attrs.at("name")));
+    std::string op_name = attrs.at("name").s();
+    std::string overload_name = "";
+    if (attrs.find("overload_name") != attrs.end() && utils::HasString(attrs.at("overload_name"))) {
+      overload_name = attrs.at("overload_name").s();
+    }
+
+    return !contrib::aten_ops::ATenOperatorExecutor::Instance().IsTensorArgument(op_name, overload_name, index);
+  }
+#else
+  ORT_UNUSED_PARAMETER(node);
+#endif
+
+  return false;
+}
 
 }  // namespace utils
 }  // namespace onnxruntime

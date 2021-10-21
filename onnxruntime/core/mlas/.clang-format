@@ -1,0 +1,11 @@
+---
+
+BasedOnStyle: Google
+IndentWidth: 4
+ColumnLimit: 100
+AlwaysBreakAfterReturnType: TopLevel
+AlwaysBreakTemplateDeclarations: Yes
+BinPackParameters: false
+BreakBeforeBraces: Linux
+...
+

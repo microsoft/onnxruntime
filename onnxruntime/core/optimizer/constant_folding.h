@@ -4,7 +4,9 @@
 #pragma once
 
 #include "core/optimizer/graph_transformer.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
+#include <memory>
+#include "core/framework/execution_provider.h"
 
 namespace onnxruntime {
 
@@ -16,21 +18,21 @@ it statically computes parts of the graph that rely only on constant initializer
 */
 class ConstantFolding : public GraphTransformer {
  public:
-  ConstantFolding(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept :
-    GraphTransformer("ConstantFolding", compatible_execution_providers) {}
+  /*! Constant folding will not be applied to nodes that have one of initializers from excluded_initializers as input.
+      For pre-training, the trainable weights are those initializers to be excluded.
+      \param execution_provider Execution provider instance to execute constant folding.
+  */
+  ConstantFolding(const IExecutionProvider& execution_provider,
+                  bool skip_dequantize_linear,
+                  const std::unordered_set<std::string>& compatible_execution_providers = {},
+                  const std::unordered_set<std::string>& excluded_initializers = {}) noexcept;
 
  private:
-  /** Constant folding will not be applied to nodes whose op_type is included in this set.
-      All non-deterministic operators should be included in this set. */
-  const std::unordered_set<std::string> excluded_op_types_ =
-      {"RandomUniform", "RandomNormal", "RandomUniformLike", "RandomNormalLike", "Multinomial"};
+  Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
-  Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override;
-
-  /** Create a TensorProto that has the same value as the given OrtValue
-  and the same type and dimensions as the given NodeArg. */
-  void BuildTensorProtoForInitializer(const OrtValue& ort_value, const NodeArg& constant_node_arg,
-                                      ONNX_NAMESPACE::TensorProto& tensorproto) const;
+  bool skip_dequantize_linear_;
+  const std::unordered_set<std::string> excluded_initializers_;
+  const IExecutionProvider& execution_provider_;
 };
 
 }  // namespace onnxruntime

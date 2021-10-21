@@ -1,0 +1,29 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+//! \file dualapipartitionattribute.idl
+
+import "Windows.Foundation.idl";
+#include <sdkddkver.h>
+
+// This file redefines the DualApiPartition attribute found in 
+// internal\sdk\inc\windows.foundation.idl.
+//
+// The DualApiPartitionAttribure defined in windows.foundation.idl
+// is used to annotate Windows SDK APIs with a marker to indicate that
+// the API will be usable on desktop as well as the store uwp app container. 
+//
+// All WinML APIs should be usable from the desktop.
+
+namespace Windows.Foundation.Metadata
+{
+    [attributeusage(target_runtimeclass)]
+    [attributename("dualapipartition")]
+    [contract(Windows.Foundation.FoundationContract, 1)]
+    [version(NTDDI_WIN8),
+     version(NTDDI_WIN8, Platform.WindowsPhone)]
+    attribute DualApiPartitionAttribute
+    {
+        unsigned __int32    version;
+    }
+}

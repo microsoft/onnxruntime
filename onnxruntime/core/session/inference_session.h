@@ -14,17 +14,28 @@
 #include "core/framework/framework_common.h"
 #include "core/framework/iexecutor.h"
 #include "core/framework/kernel_registry_manager.h"
+#include "core/framework/prepacked_weights_container.h"
 #include "core/framework/session_state.h"
 #include "core/graph/basic_types.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
+#include "core/framework/session_options.h"
+#include "core/framework/allocatormgr.h"
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
 #endif
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+#include "core/platform/tracing.h"
+#include <TraceLoggingActivity.h>
+#endif
 
+#ifdef ENABLE_TRAINING
+#include "core/framework/partial_graph_execution_state.h"
+#endif
 namespace onnxruntime {  // forward declarations
 class GraphTransformer;
+class Environment;
 }  // namespace onnxruntime
 
 namespace ONNX_NAMESPACE {
@@ -33,86 +44,34 @@ class ModelProto;
 
 struct OrtCustomOpDomain {
   std::string domain_;
-  std::vector<OrtCustomOp*> custom_ops_;
+  std::vector<const OrtCustomOp*> custom_ops_;
 };
 
 namespace onnxruntime {
 class IExecutionProvider;  // forward decl
 class IOBinding;
 class CustomRegistry;
-class Notification;
+struct Notification;
 
 namespace logging {
 class LoggingManager;
 }
 
-struct FreeDimensionOverride {
-  std::string dimension_denotation;
-  int64_t dimension_override;
-};
-
-/**
-  * Configuration information for a session.
-  */
-struct SessionOptions {
-  //int num_threads; // not used now until we re-introduce threadpools for async execution
-  bool enable_sequential_execution = true;  // TODO: should we default to sequential execution?
-
-  // enable profiling for this session.
-  bool enable_profiling = false;
-
-  // non empty filepath enables serialization of the transformed optimized model to the specified filepath.
-  std::basic_string<ORTCHAR_T> optimized_model_filepath;
-
-  // enable the memory pattern optimization.
-  // The idea is if the input shapes are the same, we could trace the internal memory allocation
-  // and generate a memory pattern for future request. So next time we could just do one allocation
-  // with a big chunk for all the internal memory allocation.
-  // See class 'OrtValuePatternPlanner'.
-  bool enable_mem_pattern = true;
-
-  // enable the memory arena on CPU
-  // Arena may pre-allocate memory for future usage.
-  // set this option to false if you don't want it.
-  bool enable_cpu_mem_arena = true;
-
-  // the prefix of the profile file. The current time will be appended to the file name.
-  std::basic_string<ORTCHAR_T> profile_file_prefix = ORT_TSTR("onnxruntime_profile_");
-
-  std::string session_logid;  ///< logger id to use for session output
-
-  /// Log severity for the inference session. Applies to session load, initialization, etc.
-  /// See https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/logging/severity.h
-  /// Default = -1 (use default logger severity)
-  int session_log_severity_level = -1;
-  int session_log_verbosity_level = 0;  ///< VLOG level if debug build and session_log_severity_level is 0 (VERBOSE).
-
-  unsigned max_num_graph_transformation_steps = 5;  // TODO choose a good default here?
-
-  // set graph optimization level
-  TransformerLevel graph_optimization_level = TransformerLevel::Level1;
-
-  // controls the size of the thread pool used to parallelize the execution of tasks within individual nodes (ops)
-  int intra_op_num_threads = 0;
-
-  // controls the size of the thread pool used to parallelize the execution of nodes (ops)
-  // configuring this makes sense only when you're using parallel executor
-  int inter_op_num_threads = 0;
-
-  // For models with free input dimensions (most commonly batch size), specifies a set of values to override those
-  // free dimensions with, keyed by dimension denotation.
-  std::vector<FreeDimensionOverride> free_dimension_overrides;
-};
-
 /**
   * Pre-defined and custom metadata about the model.
   */
 struct ModelMetadata {
+  ModelMetadata() = default;
+  ModelMetadata(const ModelMetadata&) = default;
+  ~ModelMetadata() = default;
+  ModelMetadata& operator=(const ModelMetadata&) = delete;
+
   std::string producer_name;
   std::string graph_name;
   std::string domain;
   std::string description;
-  int64_t version;
+  std::string graph_description;
+  int64_t version = 0;
   std::unordered_map<std::string, std::string> custom_metadata_map;
 };
 
@@ -122,7 +81,15 @@ struct ModelMetadata {
  *  CPUExecutionProviderInfo epi;
  *  ProviderOption po{"CPUExecutionProvider", epi};
  *  SessionOptions so(vector<ProviderOption>{po});
- *  InferenceSession session_object{so};
+ *  string log_id = "Foo";
+ *  auto logging_manager = std::make_unique<LoggingManager>
+                (std::unique_ptr<ISink>{new CLogSink{}},
+                                  static_cast<Severity>(lm_info.default_warning_level),
+                                  false,
+                                  LoggingManager::InstanceType::Default,
+                                  &log_id)
+ *  Environment::Create(std::move(logging_manager), env)
+ *  InferenceSession session_object{so,env};
  *  common::Status status = session_object.Load(MODEL_URI);
  *  common::Status status = session_object.Initialize();
  *
@@ -142,15 +109,54 @@ class InferenceSession {
   /**
     Create a new InferenceSession
     @param session_options Session options.
-    @param logging_manager
-    Optional logging manager instance that will enable per session logger output using
-    session_options.session_logid as the logger id in messages.
-    If nullptr, the default LoggingManager MUST have been created previously as it will be used
-    for logging. This will use the default logger id in messages.
-    See core/common/logging/logging.h for details, and how LoggingManager::DefaultLogger works.
+    @param session_env This represents the context for the session and contains the logger and the global threadpools.
     */
   explicit InferenceSession(const SessionOptions& session_options,
-                            logging::LoggingManager* logging_manager = nullptr);
+                            const Environment& session_env);
+
+#if !defined(ORT_MINIMAL_BUILD)
+
+  /**
+    Create a new InferenceSession
+    @param session_options Session options.
+    @param model_uri absolute path of the model file.
+    @param session_env This represents the context for the session and contains the logger and the global threadpools.
+    This ctor will throw on encountering model parsing issues.
+    */
+  InferenceSession(const SessionOptions& session_options,
+                   const Environment& session_env,
+                   const std::string& model_uri);
+#ifdef _WIN32
+  InferenceSession(const SessionOptions& session_options,
+                   const Environment& session_env,
+                   const std::wstring& model_uri);
+#endif
+
+  /**
+    Create a new InferenceSession
+    @param session_options Session options.
+    @param istream object of the model.
+    @param session_env This represents the context for the session and contains the logger and the global threadpools.
+    This ctor will throw on encountering model parsing issues.
+    */
+  InferenceSession(const SessionOptions& session_options,
+                   const Environment& session_env,
+                   std::istream& model_istream);
+
+  /**
+    Create a new InferenceSession
+    @param session_options Session options.
+    @param model_data Model data buffer.
+    @param model_data_len Model data buffer size.
+    @param session_env This represents the context for the session and contains the logger and the global threadpools.
+    This ctor will throw on encountering model parsing issues.
+    */
+  InferenceSession(const SessionOptions& session_options,
+                   const Environment& session_env,
+                   const void* model_data,
+                   int model_data_len);
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   virtual ~InferenceSession();
 
@@ -161,8 +167,9 @@ class InferenceSession {
     * Calling this API is optional in which case onnxruntime will use its internal CPU execution provider.
     * @return OK if success.
     */
-  common::Status RegisterExecutionProvider(std::unique_ptr<IExecutionProvider> p_exec_provider);
+  common::Status RegisterExecutionProvider(const std::shared_ptr<IExecutionProvider>& p_exec_provider) ORT_MUST_USE_RESULT;
 
+#if !defined(ORT_MINIMAL_BUILD)
   /**
     * Register a graph transformer. If you've one to register, call this before invoking Initialize().
     * Calling this API is optional.
@@ -172,20 +179,28 @@ class InferenceSession {
     * @return OK if success.
     */
   common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,
-                                          TransformerLevel level = TransformerLevel::Level2);
+                                          TransformerLevel level = TransformerLevel::Level2) ORT_MUST_USE_RESULT;
 
   /**
-    * Enable a custom set of transformers. Call this before invoking Initialize().
+    * Filter the enabled optimizers (either transformer or rewrite rule) using optimizers_to_disable.
+    * For an optimizer to be enabled, it must be allowed at the current optimization level (as specified in
+    * session options), and NOT in optimizers_to_disable.
+    * This allows finer grained control of the enabled/disabled optimizations.
+    * Must be called before Initialize() to take effect.
+    *
     * Calling this API is optional.
-    * When this list is provided ORT ignores the levels set in session options.
     * @return OK if success.
     */
-  common::Status AddCustomTransformerList(const std::vector<std::string>& transformers_to_enable);
+  common::Status FilterEnabledOptimizers(const std::unordered_set<std::string>& optimizers_to_disable)
+      ORT_MUST_USE_RESULT;
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   /**
     * Add custom ops. This API is not thread safe.
     */
-  common::Status AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& ops);
+  common::Status AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& ops) ORT_MUST_USE_RESULT;
 
   /**
     * Register a custom registry for operator schema and kernels.  If you've one to register,
@@ -196,44 +211,68 @@ class InferenceSession {
     * This API is not thread safe.
     * @return OK if success.
     */
-  common::Status RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry);
+  common::Status RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry) ORT_MUST_USE_RESULT;
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
   /**
-    * Load an ONNX model.
+    * Load an ONNX or ORT format model.
+    *
+    * Set SessionOptions session config value ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT to 'ORT' or 'ONNX' to
+    * explicitly choose model format.
+    *
+    * If format is not explicitly specified and filename ends in '.ort' it will be inferred to be an ORT format model.
+	* All other files are assumed to be in ONNX format.
+    *
     * @param model_uri absolute path of the model file.
     * @return OK if success.
     */
-  common::Status Load(const std::string& model_uri);
+  common::Status Load(const std::string& model_uri) ORT_MUST_USE_RESULT;
 #ifdef _WIN32
-  common::Status Load(const std::wstring& model_uri);
+  common::Status Load(const std::wstring& model_uri) ORT_MUST_USE_RESULT;
 #endif
+  /**
+    * Load an ONNX or ORT format model.
+    *
+    * Set SessionOptions session config value ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT to 'ORT' or 'ONNX' to
+    * explicitly choose model format.
+    *
+    * If format is not explicitly specified the model format will be inferred from the bytes, defaulting to ONNX.
+    *
+    * @param model_data Model data buffer
+    * @param model_data_len Model data buffer size
+    * @return OK if success.
+    */
+  common::Status Load(const void* model_data, int model_data_len) ORT_MUST_USE_RESULT;
+
+#if !defined(ORT_MINIMAL_BUILD)
   /**
     * Load an ONNX model.
     * @param istream object of the model.
     * @return OK if success.
     */
-  common::Status Load(std::istream& model_istream);
+  common::Status Load(std::istream& model_istream) ORT_MUST_USE_RESULT;
 
   /**
-    * Load an ONNX model.
-    * @param model_data Model data buffer
-    * @param model_data_len Model data buffer size
+    * Load an ONNX model from the member model_proto_.
+    * To be called only in conjunction with a ctor that takes in a model path/ model stream/ model array
     * @return OK if success.
     */
-  common::Status Load(const void* model_data, int model_data_len);
+  common::Status Load() ORT_MUST_USE_RESULT;
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   /**
-    * Initializes a previously loaded model. Initialization includes but is not
+    * Initializes a previously loaded ONNX model. Initialization includes but is not
     * limited to graph transformations, construction of kernels, etc.
     * This method assumes that a method has been loaded previously.
     * This API is thread-safe.
     * @return OK if success
     */
-  common::Status Initialize();
+  common::Status Initialize() ORT_MUST_USE_RESULT;
 
   common::Status Run(const RunOptions& run_options, const std::vector<std::string>& feed_names,
                      const std::vector<OrtValue>& feeds, const std::vector<std::string>& output_names,
-                     std::vector<OrtValue>* p_fetches);
+                     std::vector<OrtValue>* p_fetches,
+                     const std::vector<OrtDevice>* p_fetches_device_info = nullptr) ORT_MUST_USE_RESULT;
 
   /**
     * Run a pre-loaded and pre-intialized model.
@@ -246,7 +285,7 @@ class InferenceSession {
     * @return OK if success.
     */
   common::Status Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names,
-                     std::vector<OrtValue>* p_fetches);
+                     std::vector<OrtValue>* p_fetches) ORT_MUST_USE_RESULT;
 
   /**
    * See Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches)
@@ -254,17 +293,39 @@ class InferenceSession {
    * @param run_options use this to tune the Run call to your needs.
    */
   common::Status Run(const RunOptions& run_options, const NameMLValMap& feeds,
-                     const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches);
+                     const std::vector<std::string>& output_names,
+                     std::vector<OrtValue>* p_fetches) ORT_MUST_USE_RESULT;
 
   /**
   * Creates a new binding object for binding inputs and outputs.
   * @param provider_type specifies the location where the inputs need to be potentially copied.
   * See IOBinding class for more info.
   */
-  common::Status NewIOBinding(std::unique_ptr<IOBinding>* io_binding);
+  common::Status NewIOBinding(std::unique_ptr<IOBinding>* io_binding) ORT_MUST_USE_RESULT;
 
-  common::Status Run(const RunOptions& run_options, IOBinding& io_binding);
-  common::Status Run(IOBinding& io_binding);
+  virtual common::Status Run(const RunOptions& run_options, IOBinding& io_binding) ORT_MUST_USE_RESULT;
+  common::Status Run(IOBinding& io_binding) ORT_MUST_USE_RESULT;
+
+#ifdef ENABLE_TRAINING
+  /**
+  * Partially run a pre-loaded and pre-intialized model.
+    * @param run_options run options.
+    * @param feeds inputs owned by client code and should not be changed during
+    *        execution of this function.
+    * @param fetches outputs produced after the executin of this function.
+    * @param state State of the graph needed to resume partial graph run.
+    * @param feeds_fetches_manager Contains feed/fetches name to internal indices mapping and information for device
+    *                              copy/checks.
+    * @param cache Contains node arg name to OrtValue map stashed from previous run
+    *              for frontier tensors
+  */
+  common::Status PartialRun(onnxruntime::RunOptions& run_options,
+                            const std::vector<OrtValue>& feeds,
+                            std::vector<OrtValue>& fetches,
+                            PartialGraphExecutionState& state,
+                            FeedsFetchesManager& feeds_fetches_manager,
+                            const OrtValueCachePtr& cache);
+#endif
 
   /**
     * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
@@ -312,6 +373,16 @@ class InferenceSession {
    */
   const SessionOptions& GetSessionOptions() const;
 
+  /*
+   * Get the DataTransferManager associated with this session
+   */
+  const DataTransferManager& GetDataTransferManager() const;
+
+  /*
+   * Get all the providers' options this session was initialized with.
+   */
+  const ProviderOptionsMap& GetAllProviderOptions() const;
+
   /**
     * Start profiling on this inference session. This simply turns on profiling events to be
     * recorded. A corresponding EndProfiling has to follow to write profiling data to a file.
@@ -333,23 +404,76 @@ class InferenceSession {
     @return the name of the profile file.
     */
   std::string EndProfiling();
+  /**
+    * Return the profiler to access its attributes
+    @return the profiler object
+    */
+  const profiling::Profiler& GetProfiling() const;
+
+  /**
+    * Search registered execution providers for an allocator that has characteristics
+    * specified within mem_info
+    * @param mem_info is a reference to OrtMemoryInfo that contains required specs
+    * @return a ptr to the allocator or nullptr if not available
+    */
+  AllocatorPtr GetAllocator(const OrtMemoryInfo& mem_info) const;
+
+  std::shared_ptr<onnxruntime::AllocatorManager> GetAllocatorManager() {
+    return allocator_manager_;
+  }
+
+  /**
+    *Get InferenceSession logger.
+    */
+  const logging::Logger* GetLogger() const { return session_logger_; };
+
+  const SessionState& GetSessionState() const {
+    ORT_ENFORCE(session_state_ != nullptr, "Session must be initialized to create session state.");
+    return *session_state_;
+  }
+
+  /**
+    * Add a PrepackedWeightsContainer instance to the session so as to store the pre-packed weights
+    *  of shared initializers to be shared across sessions.
+    * @param prepacked_weights_container PrepackedWeightsContainer instance
+    */
+  Status AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container);
 
  protected:
+#if !defined(ORT_MINIMAL_BUILD)
   /**
     * Load an ONNX model.
     * @param protobuf object corresponding to the model file. model_proto will be copied by the API.
     * @return OK if success.
     */
-  common::Status Load(const ONNX_NAMESPACE::ModelProto& model_proto);
+  common::Status Load(const ONNX_NAMESPACE::ModelProto& model_proto) ORT_MUST_USE_RESULT;
 
   /**
     * Load an ONNX model.
     * @param protobuf object corresponding to the model file. This is primarily to support large models.
     * @return OK if success.
     */
-  common::Status Load(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto);
+  common::Status Load(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto) ORT_MUST_USE_RESULT;
 
-  common::Status DoPostLoadProcessing(onnxruntime::Model& model);
+  common::Status Load(std::function<common::Status(std::shared_ptr<Model>&)> loader,
+                      const std::string& event_name) ORT_MUST_USE_RESULT;
+
+  common::Status DoPostLoadProcessing(onnxruntime::Model& model) ORT_MUST_USE_RESULT;
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+  bool IsInitialized() const;
+
+  // Use these 2 threadpool methods to get access to the threadpools since they rely on
+  // specific flags in session options
+  // These methods assume that session options have been finalized before the call.
+  onnxruntime::concurrency::ThreadPool* GetIntraOpThreadPoolToUse() const {
+    return session_options_.use_per_session_threads ? thread_pool_.get() : intra_op_thread_pool_from_env_;
+  }
+
+  onnxruntime::concurrency::ThreadPool* GetInterOpThreadPoolToUse() const {
+    return session_options_.use_per_session_threads ? inter_op_thread_pool_.get() : inter_op_thread_pool_from_env_;
+  }
 
   /// convenience pointer to logger. should always be the same as session_state_.Logger();
   const logging::Logger* session_logger_;
@@ -367,14 +491,53 @@ class InferenceSession {
   // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
   std::basic_string<ORTCHAR_T> model_location_;
 
+  // The list of execution providers.
+  ExecutionProviders execution_providers_;
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
+
+  void ConstructorCommon(const SessionOptions& session_options,
+                         const Environment& session_env);
+
+  common::Status SaveModelMetadata(const onnxruntime::Model& model) ORT_MUST_USE_RESULT;
+
+#if !defined(ORT_MINIMAL_BUILD)
+
+  template <typename T>
+  common::Status Load(const std::basic_string<T>& model_uri) ORT_MUST_USE_RESULT;
 
   bool HasLocalSchema() const {
     return !custom_schema_registries_.empty();
   }
 
-  common::Status SaveModelMetadata(const onnxruntime::Model& model);
+  common::Status SaveToOrtFormat(const std::basic_string<ORTCHAR_T>& filepath) const;
+#endif
+
+#if defined(ENABLE_ORT_FORMAT_LOAD)
+  /**
+    * Load an ORT format model.
+    * @param model_uri absolute path of the model file.
+    * @return OK if success.
+    */
+  common::Status LoadOrtModel(const std::string& model_uri) ORT_MUST_USE_RESULT;
+#ifdef _WIN32
+  common::Status LoadOrtModel(const std::wstring& model_uri) ORT_MUST_USE_RESULT;
+#endif
+
+  /**
+    * Load an ORT format model.
+    * @param model_data Model data buffer
+    * @param model_data_len Model data buffer size
+    * @return OK if success.
+    * @remarks TODO: Provide way to load from in-memory bytes without copying. InferenceSession would need to
+    *                take ownership of the buffer passed in.
+    */
+  common::Status LoadOrtModel(const void* model_data, int model_data_len) ORT_MUST_USE_RESULT;
+
+  common::Status LoadOrtModel(std::function<Status()> load_ort_format_model_bytes) ORT_MUST_USE_RESULT;
+
+#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
   // Create a Logger for a single execution if possible. Otherwise use the default logger.
   // If a new logger is created, it will also be stored in new_run_logger,
@@ -384,52 +547,64 @@ class InferenceSession {
   const logging::Logger& CreateLoggerForRun(const RunOptions& run_options,
                                             std::unique_ptr<logging::Logger>& new_run_logger);
 
-  common::Status Load(std::function<common::Status(std::shared_ptr<Model>&)> loader, const std::string& event_name);
-
-  common::Status TransformGraph(onnxruntime::Graph& graph,
-                                const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
-                                const ExecutionProviders& providers,
-                                KernelRegistryManager& kernel_registry_manager,
-                                const InsertCastTransformer& insert_cast_transformer,
-                                SessionState& session_state);
-
-  common::Status CreateSubgraphSessionState(Graph& graph, SessionState& session_state);
-
-  common::Status InitializeSubgraphSessions(Graph& graph, SessionState& session_state);
-
-  void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                 TransformerLevel graph_optimization_level,
-                                 const std::vector<std::string>& custom_list);
-
   void InitLogger(logging::LoggingManager* logging_manager);
 
-  common::Status CheckShapes(const std::string& input_name,
-                             const TensorShape& input_shape,
-                             const TensorShape& expected_shape) const;
+  common::Status CheckShapes(const std::string& input_name, const TensorShape& input_shape,
+                             const TensorShape& expected_shape) const ORT_MUST_USE_RESULT;
 
-  common::Status ValidateInputs(const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds) const;
+  common::Status ValidateInputs(const std::vector<std::string>& feed_names,
+                                const std::vector<OrtValue>& feeds) const ORT_MUST_USE_RESULT;
 
-  common::Status ValidateOutputs(const std::vector<std::string>& output_names, const std::vector<OrtValue>* p_fetches) const;
+  common::Status ValidateOutputs(const std::vector<std::string>& output_names,
+                                 const std::vector<OrtValue>* p_fetches) const ORT_MUST_USE_RESULT;
 
-  common::Status WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms);
-
-  template <typename T>
-  common::Status Load(const std::basic_string<T>& model_uri);
+  common::Status WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms) ORT_MUST_USE_RESULT;
 
   template <typename T>
   void StartProfiling(const std::basic_string<T>& file_prefix);
 
-  const SessionOptions session_options_;
+  // Updates all providers with the allocators from the env based on OrtMemoryInfo
+  void UpdateProvidersWithSharedAllocators();
+
+  /*
+   * Validate and parses the shrink arena request string from the user
+   * List format: "device_0:device_id_0;device_1:device_id_1"
+   * If we encounter an invalid request, we return an error
+   * back to the user.
+   */
+
+  common::Status ValidateAndParseShrinkArenaString(const std::string& ort_device_list,
+                                                   /*out*/ std::vector<AllocatorPtr>& arenas_to_shrink) const ORT_MUST_USE_RESULT;
+
+  /*
+   * Performs the shrinkage of arenas requested to be shrunk by the user
+   * The `arenas_to_shrink` parameter is got from ValidateAndParseShrinkArenaString()
+   */
+  void ShrinkMemoryArenas(const std::vector<AllocatorPtr>& arenas_to_shrink);
+
+#if !defined(ORT_MINIMAL_BUILD)
+  virtual common::Status AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
+                                                   TransformerLevel graph_optimization_level);
+
+  common::Status TransformGraph(onnxruntime::Graph& graph,
+                                const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
+                                const ExecutionProviders& providers, KernelRegistryManager& kernel_registry_manager,
+                                const InsertCastTransformer& insert_cast_transformer,
+                                SessionState& session_state,
+                                bool saving_model_in_ort_format) ORT_MUST_USE_RESULT;
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr_;
 
-  // List of transformers to run. When this list is not empty only the transformers in this list
-  // will be run regardless of the level set.
-  // .i.e This list overrides both SessionOptions.graph_optimization_level and predefined transformers.
-  std::vector<std::string> transformers_to_enable_;
+  InsertCastTransformer insert_cast_transformer_;
+
+  // Any GraphTransformer/RewriteRule name in this set will not be enabled.
+  std::unordered_set<std::string> optimizers_to_disable_;
+#endif
+
+  SessionOptions session_options_;
 
   /// Logging manager if provided.
-  logging::LoggingManager* logging_manager_ = nullptr;
+  logging::LoggingManager* const logging_manager_;
 
   /// Logger for this session. WARNING: Will contain nullptr if logging_manager_ is nullptr.
   std::unique_ptr<logging::Logger> owned_session_logger_ = nullptr;
@@ -437,25 +612,40 @@ class InferenceSession {
   // Profiler for this session.
   profiling::Profiler session_profiler_;
 
-  // The list of execution providers.
-  ExecutionProviders execution_providers_;
+  // Immutable state for each op in the model. Shared by all executors.
+  // It has a dependency on execution_providers_.
+  std::unique_ptr<SessionState> session_state_;
 
- private:
-  // Threadpool for this session
+  // Threadpools per session. These are initialized and used for the entire duration of the session
+  // when use_per_session_threads is true.
+  std::basic_string<ORTCHAR_T> thread_pool_name_;
+  std::basic_string<ORTCHAR_T> inter_thread_pool_name_;
+
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
 
- protected:
-  // Immutable state for each op in the model. Shared by all executors.
-  // It has a dependency on execution_providers_.
-  SessionState session_state_;
+  // Global threadpools. These are intialized and used when use_per_session_threads is false *and*
+  // the environment is created with create_global_thread_pools = true.
+  onnxruntime::concurrency::ThreadPool* intra_op_thread_pool_from_env_{};
+  onnxruntime::concurrency::ThreadPool* inter_op_thread_pool_from_env_{};
 
- private:
+  // initialized from session options
+  // Determines which threadpools will be intialized and used for the duration of this session.
+  // If true, use the per session ones, or else the global threadpools.
+  bool use_per_session_threads_;
+
   KernelRegistryManager kernel_registry_manager_;
-  std::list<std::shared_ptr<onnxruntime::IOnnxRuntimeOpSchemaCollection>> custom_schema_registries_;
 
-  // A set of executors that can run in parallel.
-  std::vector<std::unique_ptr<IExecutor>> executors_;  // TODO do we need this vector?
+#if !defined(ORT_MINIMAL_BUILD)
+  std::list<std::shared_ptr<onnxruntime::IOnnxRuntimeOpSchemaCollection>> custom_schema_registries_;
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+
+  //CustomRegistry objects own the corresponding KernelRegistry and OnnxRuntimeOpSchemaRegistry objects.
+  //So its lifetime should be same as its constituents. This vector is to extend the lifetime of the owner.
+  std::vector<std::shared_ptr<CustomRegistry>> custom_registries_;
+#endif
 
   ModelMetadata model_metadata_;
   std::unordered_set<std::string> required_inputs_;
@@ -468,6 +658,7 @@ class InferenceSession {
     MLDataType ml_data_type;
     TensorShape tensor_shape;  // not applicable if the input is non-tensor type
   };
+
   std::unordered_map<std::string, InputDefMetaData> input_def_map_;
   OutputDefList output_def_list_;
 
@@ -481,14 +672,82 @@ class InferenceSession {
   bool is_model_loaded_ = false;                 // GUARDED_BY(session_mutex_)
   bool is_inited_ = false;                       // GUARDED_BY(session_mutex_)
 
-  InsertCastTransformer insert_cast_transformer_;
-
-  //CustomRegistry objects own the corresponding KernelRegistry and OnnxRuntimeOpSchemaRegistry objects.
-  //So its lifetime should be same as its constituents. This vector is to extend the lifetime of the owner.
-  std::vector<std::shared_ptr<CustomRegistry>> custom_registries_;
-
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
   InterOpDomains interop_domains_;
 #endif
+  // used to support platform telemetry
+  static std::atomic<uint32_t> global_session_id_;  // a monotonically increasing session id
+  uint32_t session_id_;                             // the current session's id
+
+  struct Telemetry {
+    Telemetry() : time_sent_last_() {}
+    uint32_t total_runs_since_last_ = 0;           // the total number of Run() calls since the last report
+    long long total_run_duration_since_last_ = 0;  // the total duration (us) of Run() calls since the last report
+    std::string event_name_;                       // where the model is loaded from: ["model_loading_uri", "model_loading_proto", "model_loading_istream"]
+
+    TimePoint time_sent_last_;  // the TimePoint of the last report
+    // Event Rate per provider < 20 peak events per second
+    constexpr static long long kDurationBetweenSending = 1000 * 1000 * 60 * 10;  // duration in (us).  send a report every 10 mins
+  } telemetry_;
+
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+  bool session_activity_started_ = false;
+  TraceLoggingActivity<telemetry_provider_handle> session_activity;
+#endif
+
+  // used to hold the ModelProto parsed in an applicable ctor to be used while calling parameter-less Load()
+  ONNX_NAMESPACE::ModelProto model_proto_;
+
+  // Flag indicating if ModelProto has been parsed in an applicable ctor
+  bool is_model_proto_parsed_ = false;
+  const Environment& environment_;
+
+  // View of the bytes from an ORT format model.
+  // If the session is started with an input byte array contains model data, and the caller
+  // specifies that ORT should use the model bytes directly by setting the session config option
+  // "session.use_ort_model_bytes_directly" to "1"
+  //   We use the the byte array directly without copy to reduce peak memory usage
+  //   (Short term) This will require the user to guarantee the life time of the model data
+  //   until the session is created.
+  //   (Longer term) If we are going to use the memory offsets directly for initializers, the model data
+  //   should be alive until the InferenceSession goes away.
+  // If the session is started with an input byte array contains model data, and the caller does not
+  // specify ORT should use the model bytes directly
+  // Or the session is started with a model_uri
+  //   We store them currently in the ort_format_model_bytes_data_holder_ to make the Load + Initialize
+  //   behave the same way as for an ONNX model, as we need some of the bytes for the Load (create the Model)
+  //   and some for the Initialize (create SessionState).
+  // Short term we free them after Initialize.
+  // Longer term we may want to directly refer to offsets in this buffer for initializers so we don't need to copy
+  // those into new OrtValue instances, at which point we won't free them until the InferenceSession goes away.
+  gsl::span<const uint8_t> ort_format_model_bytes_;
+
+  // This holds the actual model data
+  // In case if the session is started with an input byte array contains model data, and the caller
+  // specifies that ORT should use the model bytes directly by setting the session config option
+  // "session.use_ort_model_bytes_directly" to "1", this will be empty
+  std::vector<uint8_t> ort_format_model_bytes_data_holder_;
+
+  std::shared_ptr<onnxruntime::AllocatorManager> allocator_manager_;
+
+  // Container to store pre-packed weights to share between sessions.
+  // The life-cycle of the cache itself is maintained by the user and the user will ensure
+  // the cache is valid until any session reliant on it is still in scope.
+  PrepackedWeightsContainer* prepacked_weights_container_ = nullptr;
 };
+
+struct SessionIOBinding {
+ public:
+  SessionIOBinding(InferenceSession* session);
+
+  const IOBinding* Get() const;
+  IOBinding* Get();
+  const InferenceSession* GetInferenceSession() const;
+  InferenceSession* GetInferenceSession();
+
+ private:
+  InferenceSession* sess_;
+  std::unique_ptr<IOBinding> binding_;
+};
+
 }  // namespace onnxruntime

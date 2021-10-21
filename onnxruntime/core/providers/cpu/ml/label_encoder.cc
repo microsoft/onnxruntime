@@ -26,12 +26,10 @@ Status LabelEncoder::Compute(OpKernelContext* context) const {
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const Tensor& X = *tensor_pointer;
   const TensorShape& shape = X.Shape();
-  Tensor& Y = *context->Output(0, TensorShape(shape));
+  Tensor& Y = *context->Output(0, shape);
 
-  auto input_type = X.DataType();
-
-  if (input_type == DataTypeImpl::GetType<std::string>()) {
-    if (Y.DataType() != DataTypeImpl::GetType<int64_t>())
+  if (X.IsDataTypeString()) {
+    if (!Y.IsDataType<int64_t>())
       return Status(ONNXRUNTIME, FAIL, "Input of tensor(string) must have output of tensor(int64)");
 
     auto input = gsl::make_span(X.template Data<std::string>(), shape.Size());
@@ -48,7 +46,7 @@ Status LabelEncoder::Compute(OpKernelContext* context) const {
                     ++out;
                   });
   } else {
-    if (Y.DataType() != DataTypeImpl::GetType<std::string>())
+    if (!Y.IsDataTypeString())
       return Status(ONNXRUNTIME, FAIL, "Input of tensor(int64) must have output of tensor(string)");
 
     auto input = gsl::make_span(X.template Data<int64_t>(), shape.Size());
@@ -166,6 +164,23 @@ ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
 template <>
 void LabelEncoder_2<std::string, std::int64_t>::InitializeSomeFields(const OpKernelInfo& info) {
   _key_field_name = "keys_strings";
+  _value_field_name = "values_int64s";
+  info.GetAttrOrDefault<std::int64_t>("default_int64", &_default_value, (std::int64_t)-1);
+};
+
+ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
+    LabelEncoder,
+    2,
+    int64_int64,
+    KernelDefBuilder().TypeConstraint("T1",
+                                      std::vector<MLDataType>{DataTypeImpl::GetTensorType<std::int64_t>()})
+        .TypeConstraint("T2",
+                        std::vector<MLDataType>{DataTypeImpl::GetTensorType<std::int64_t>()}),
+    LabelEncoder_2<std::int64_t, std::int64_t>)
+
+template <>
+void LabelEncoder_2<std::int64_t, std::int64_t>::InitializeSomeFields(const OpKernelInfo& info) {
+  _key_field_name = "keys_int64s";
   _value_field_name = "values_int64s";
   info.GetAttrOrDefault<std::int64_t>("default_int64", &_default_value, (std::int64_t)-1);
 };

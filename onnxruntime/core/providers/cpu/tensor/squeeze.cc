@@ -15,9 +15,19 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Squeeze);
 
 // Opset 11 starts to support Neg Axis.
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Squeeze,
     11,
+    12,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .Alias(0, 0),
+    Squeeze);
+
+// axes is input instead of attribute
+ONNX_CPU_OPERATOR_KERNEL(
+    Squeeze,
+    13,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
         .Alias(0, 0),

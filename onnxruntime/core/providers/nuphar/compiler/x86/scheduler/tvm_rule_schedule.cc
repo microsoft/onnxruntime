@@ -13,15 +13,16 @@ namespace nuphar {
 bool TVM_SCHEDULER_CLASS(Extern, NupharX86TVMRule)::Evaluate(
     const tvm::Tensor& tensor,
     const Node*,
-    tvm_codegen::CodeGenContext&,
+    tvm_codegen::CodeGenContext& ctx_codegen,
     tvm_codegen::ScheduleContext& ctx_sched) {
   bool status = InsertRootScheduleAndClosure(tensor, ctx_sched);
-  bool status_input = InputRootScheduleWithVectorizationX86(tensor, ctx_sched);
+  bool status_input = InputRootScheduleWithVectorizationX86(tensor, ctx_codegen, ctx_sched);
   return status || status_input;
 }
 
 static bool ReduceVScheduleNupharX86(
     const tvm::Tensor& tensor,
+    tvm_codegen::CodeGenContext& ctx_codegen,
     tvm_codegen::ScheduleContext& ctx_sched) {
   InsertRootScheduleAndClosure(tensor, ctx_sched);
 
@@ -55,6 +56,8 @@ static bool ReduceVScheduleNupharX86(
     if (shape.size() > 0)
       head_dim = as_const_int(shape[0]);
 
+    bool try_parallel = true;
+
     // unroll packed reduce by checking head dim
     if (nullptr != head_dim) {
       // if head_dim is already fused, don't unroll
@@ -81,7 +84,12 @@ static bool ReduceVScheduleNupharX86(
 
         ctx_sched.schedule[tensor->op].reorder(reorder_axis);
         ctx_sched.schedule[tensor->op].unroll(x0);
+        try_parallel = false;
       }
+    }
+
+    if (try_parallel) {
+      TryParallelX86(tensor, *fuse_dim, ctx_codegen, ctx_sched);
     }
   } else if (compute_op->axis.size() > 0 &&
              tvm::as_const_int(tensor->shape[0]) != nullptr) {
@@ -101,7 +109,7 @@ static bool ReduceVScheduleNupharX86(
 bool TVM_SCHEDULER_CLASS(Reduce, NupharX86TVMRule)::Evaluate(
     const tvm::Tensor& tensor,
     const Node*,
-    tvm_codegen::CodeGenContext&,
+    tvm_codegen::CodeGenContext& ctx_codegen,
     tvm_codegen::ScheduleContext& ctx_sched) {
   // respect topi::kCommReduce
   if (tensor->op->tag == topi::kCommReduce) {
@@ -109,7 +117,7 @@ bool TVM_SCHEDULER_CLASS(Reduce, NupharX86TVMRule)::Evaluate(
   }
 
   if (tensor->op->tag == nuphar::kNupharVReduce) {
-    return ReduceVScheduleNupharX86(tensor, ctx_sched);
+    return ReduceVScheduleNupharX86(tensor, ctx_codegen, ctx_sched);
   }
 
   // unknown goes to InsertRootScheduleAndClosure

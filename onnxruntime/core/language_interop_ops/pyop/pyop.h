@@ -1,7 +1,7 @@
 #pragma once
 #include "core/platform/env.h"
 #define LOAD_PYOP_SYM(n,v,m) ORT_ENFORCE(Env::Default().GetSymbolFromLibrary(handle_,n,reinterpret_cast<void**>(&v))==Status::OK(),m)
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include <iostream>
@@ -19,33 +19,29 @@ using OnnxTypes   = std::vector<ONNXTensorElementDataType>;
 using OnnxAttrs   = std::unordered_map<std::string, std::string>;
 using PyOpLogFunc = std::function<void(const char*)>;
 
-typedef bool Initialize();
-typedef void ReleaseInstance(void*);
-typedef bool InvokePythonFunc(void*,
-                              const char*,
-                              const std::vector<const void*>&,
-                              const std::vector<int32_t>&,
-                              const std::vector<std::vector<int64_t>>&,
-                              std::vector<std::unique_ptr<char[]>>&,
-                              std::vector<int32_t>&,
-                              std::vector<std::vector<int64_t>>&,
-                              std::function<void(const char*)>);
-typedef const char* GetLastErrorMessage(std::string&);
-typedef void* NewInstance(const char*, const char*, const OnnxAttrs&);
-
 class PyOpLibProxy {
 
 public:
-    static const PyOpLibProxy& GetInstance();
-    HMODULE              handle_                 = nullptr;
-    Initialize*          initialize_             = nullptr;
-    NewInstance*         new_instance_           = nullptr;
-    InvokePythonFunc*    invoke_python_func_     = nullptr;
-    ReleaseInstance*     release_instance_       = nullptr;
-    GetLastErrorMessage* get_last_error_message_ = nullptr;
+    static PyOpLibProxy& GetInstance();
+    void ReleaseInstance(void*);
+    bool InvokePythonFunc(void*,
+                          const char*,
+                          const std::vector<const void*>&,
+                          const std::vector<int32_t>&,
+                          const std::vector<std::vector<int64_t>>&,
+                          std::vector<std::unique_ptr<char[]>>&,
+                          std::vector<int32_t>&,
+                          std::vector<std::vector<int64_t>>&,
+                          std::function<void(const char*)>);
+    const char* GetLastErrorMessage(std::string&);
+    void* NewInstance(const char*, const char*, const OnnxAttrs&);
+    bool Initialized() const { return initialized_; }
+    int32_t GetGil() const;
+    void PutGil(int32_t) const;
 private:
     PyOpLibProxy();
     ~PyOpLibProxy();
+    bool initialized_ = false;
 };
 
 struct PyCustomKernel {
@@ -79,7 +75,7 @@ struct PyCustomOp: Ort::CustomOpBase<PyCustomOp, PyCustomKernel> {
                const std::string&  class_name,
                const std::string&  compute      = "compute",
                PyOpLogFunc         logging_func = [](const char*){});
-    void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo*);
+    void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo*) const;
     const char* GetName() const;
     size_t GetInputTypeCount() const;
     ONNXTensorElementDataType GetInputType(size_t index) const;

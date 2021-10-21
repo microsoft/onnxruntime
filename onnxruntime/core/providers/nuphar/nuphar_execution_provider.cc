@@ -5,6 +5,7 @@
 
 #include "core/codegen/passes/utils/ort_tvm_utils.h"  // TODO remove this after removing tvm::runtime
 #include "core/common/cpuid_info.h"
+#include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/nuphar/common/analysis/shape_expr.h"  // TODO: remove this shape_expr after shape_infernece refinement
 #include "core/providers/nuphar/common/analysis/subgraph_partition_stats.h"
@@ -25,6 +26,7 @@ namespace onnxruntime {
 thread_local int64_t NupharSubgraphUnit::counter = 0;
 
 thread_local std::unique_ptr<std::unordered_map<std::string, int64_t>> NupharExecutionProvider::tls_realized_dims_;
+thread_local int NupharExecutionProvider::per_model_fused_count_ = 0;
 
 static std::string GetCurrentHostTargetString() {
 #if USE_TVM_WITH_LLVM
@@ -57,9 +59,9 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
     target_str = default_nuphar_target_str;
   }
 
+  const auto& cpu_id_info = CPUIDInfo::GetCPUIDInfo();
   if (target_str == llvm_target_str) {
     // auto detect from CPU ID
-    const auto& cpu_id_info = CPUIDInfo::GetCPUIDInfo();
     if (cpu_id_info.HasAVX512f()) {
       codegen_target_ = CodeGenTarget_AVX512();
     } else if (cpu_id_info.HasAVX2()) {
@@ -67,7 +69,7 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
     } else if (cpu_id_info.HasAVX()) {
       codegen_target_ = CodeGenTarget_AVX();
     } else {
-      codegen_target_ = onnxruntime::make_unique<CodeGenTargetX86>(target_str, 128, 1);  // TODO: use real values
+      codegen_target_ = std::make_unique<CodeGenTargetX86>(target_str, 128, 1);  // TODO: use real values
     }
   } else if (target_str == "avx") {
     codegen_target_ = CodeGenTarget_AVX();
@@ -76,32 +78,46 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
   } else if (target_str == "avx512") {
     codegen_target_ = CodeGenTarget_AVX512();
   } else if (target_str != stackvm_target_str) {
-    codegen_target_ = onnxruntime::make_unique<CodeGenTarget>(target_str);
+    codegen_target_ = std::make_unique<CodeGenTarget>(target_str);
   } else {
     ORT_NOT_IMPLEMENTED("Not supported target, should be one of stackvm/llvm/avx/avx2/avx512.");
   }
 
-  CreateTVMTarget();
+  if (settings.HasOption(nuphar::kNupharCodeGenTarget)) {
+    if ((target_str == "avx512" && !cpu_id_info.HasAVX512f()) ||
+        (target_str == "avx2" && !cpu_id_info.HasAVX2()) ||
+        (target_str == "avx" && !cpu_id_info.HasAVX())) {
+      LOGS_DEFAULT(WARNING) << "NUPHAR_CODEGEN_TARGET " << target_str
+                            << " is not compatible with host machine. "
+                               "Target code will be generated, but execution will fail!";
+    }
+    // For CPU, use target as host since the tvm_host_target_ is the one used to generate code in TVM
+    tvm_target_ = tvm::Target::create(codegen_target_->GetTargetName());
+    tvm_host_target_ = tvm::Target::create(codegen_target_->GetTargetName());
+  } else {
+    CreateTVMTarget();
+    tvm_host_target_ = tvm::Target::create(GetCurrentHostTargetString());
+  }
 
-  tvm_host_target_ = tvm::Target::create(GetCurrentHostTargetString());
   tvm_ctx_.device_type = static_cast<DLDeviceType>(tvm_target_->device_type);
   tvm_ctx_.device_id = 0;  // use the default device id for CPU allocator
 
   whole_graph_shape_infer_ = std::make_shared<ShapeExprContext>();
 
-  DeviceAllocatorRegistrationInfo memory_info(
-      {OrtMemTypeDefault,
-       [](int /*id*/) { return onnxruntime::make_unique<CPUAllocator>(onnxruntime::make_unique<OrtMemoryInfo>("Nuphar", OrtAllocatorType::OrtDeviceAllocator)); },
-       std::numeric_limits<size_t>::max()});
+  AllocatorCreationInfo memory_info(
+      [](int /*id*/) {
+        return std::make_unique<CPUAllocator>(OrtMemoryInfo("Nuphar", OrtAllocatorType::OrtDeviceAllocator));
+      },
+      static_cast<OrtDevice::DeviceId>(tvm_ctx_.device_id));
 
-  InsertAllocator(CreateAllocator(memory_info, tvm_ctx_.device_id));
+  InsertAllocator(CreateAllocator(memory_info));
 
   // TODO add multi-target support
-  tvm_codegen_manager_ = onnxruntime::make_unique<TVMCodeGenManager>();
+  tvm_codegen_manager_ = std::make_unique<TVMCodeGenManager>();
 
   // Create codegen handle for one target for now
   codegen_handles_.clear();
-  auto handle = onnxruntime::make_unique<NupharCodeGenHandle>();
+  auto handle = std::make_unique<NupharCodeGenHandle>();
   tvm_codegen_manager_->Initialization();
   tvm_codegen_manager_->SetCodeGenHandle(handle.get());
   handle->allocator = GetAllocator(tvm_ctx_.device_id, OrtMemTypeDefault);
@@ -113,15 +129,15 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
 
   handle->shape_inference = whole_graph_shape_infer_;
 
-  // TODO: remove
-  handle->enable_per_node_parallelized = info.enable_per_node_parallel;
+  handle->parallel_min_workloads = std::stoi(settings.GetOptionValue(kNupharParallelMinWorkloads));
+
   // TODO: remove
   handle->allow_unaligned_buffers = info.allow_unaligned_buffers;  // TODO remove this
 
   codegen_handles_.push_back(std::move(handle));
 
   // Runtime Handle
-  runtime_handle_ = onnxruntime::make_unique<nuphar::NupharRuntimeHandle>(tvm_ctx_);
+  runtime_handle_ = std::make_unique<nuphar::NupharRuntimeHandle>(tvm_ctx_);
   runtime_handle_->allocator = GetAllocator(tvm_ctx_.device_id, OrtMemTypeDefault);
   runtime_handle_->allow_unaligned_buffers = info.allow_unaligned_buffers;
   runtime_handle_->enable_model_parallelism = false;
@@ -146,7 +162,7 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
     auto s =
         node.ForEachWithIndex(
             node.OutputDefs(),
-            [&](const NodeArg& def, size_t index) {
+            [&](const NodeArg& def, size_t) {
               if (def.Shape())
                 return Status::OK();
               else
@@ -177,7 +193,8 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
   std::vector<std::unique_ptr<ComputeCapability>> results;
 
-  auto is_supported_func = [&](const Node& node) {
+  typedef std::function<bool(const Node&)> IsSupportedFunc;
+  IsSupportedFunc is_supported_func = [&](const Node& node) {
     bool all_shape_defined = true;
     node.ForEachDef([&all_shape_defined](const NodeArg& def, bool /*is_input*/) {
       if (def.Shape() == nullptr) {
@@ -190,7 +207,7 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       }
     });
 
-    if (!all_shape_defined || GetKernelRegistryInternal()->TryFindKernel(node, Type()) == nullptr)
+    if (!all_shape_defined || !KernelRegistry::HasImplementationOf(*GetKernelRegistryInternal(), node, Type()))
       return false;
 
     const auto& inputs = node.InputDefs();
@@ -212,27 +229,43 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
           }
         }
       }
+      // reject when pooling on symbolic dims, since shape computation does not support it yet
+      it = attrs.find("kernel_shape");
+      ORT_ENFORCE(it != attrs.end());
+      int kernel_rank = it->second.ints_size();
+      const auto output_shape = node.OutputDefs()[0]->Shape();
+      int output_rank = output_shape->dim_size();
+      for (int d = output_rank - kernel_rank; d < output_rank; ++d) {
+        if (output_shape->dim(d).has_dim_param()) {
+          return false;
+        }
+      }
     }
 
     if (node.OpType() == "Slice") {
       auto num_inputs = inputs.size();
       ORT_ENFORCE(num_inputs > 0);
       std::vector<int64_t> axes;
+      std::vector<int64_t> steps;
       if (num_inputs > 1) {
         // Slice-10
         bool is_starts_dynamic = !graph_viewer.IsConstantInitializer(inputs[1]->Name(), true);
         bool is_ends_dynamic = !graph_viewer.IsConstantInitializer(inputs[2]->Name(), true);
-
         bool is_axes_dynamic = inputs.size() > 3 && !graph_viewer.IsConstantInitializer(inputs[3]->Name(), true);
-
-        bool has_steps = inputs.size() > 4;
-        if (is_starts_dynamic || is_ends_dynamic || is_axes_dynamic || has_steps)
+        bool is_steps_dynamic = inputs.size() > 4 && !graph_viewer.IsConstantInitializer(inputs[4]->Name(), true);
+        if (is_starts_dynamic || is_ends_dynamic || is_axes_dynamic || is_steps_dynamic)
           return false;
+
+        const ONNX_NAMESPACE::TensorProto* steps_tp = nullptr;
+        bool found_steps = inputs.size() > 4 && graph_viewer.GetInitializedTensor(inputs[4]->Name(), steps_tp);
+        if (found_steps) {
+          ORT_THROW_IF_ERROR(GetVectorInt64FromTensorProto(steps, *steps_tp));
+        }
 
         const ONNX_NAMESPACE::TensorProto* axes_tp = nullptr;
         bool found_axes = inputs.size() > 3 && graph_viewer.GetInitializedTensor(inputs[3]->Name(), axes_tp);
         if (found_axes) {
-          GetSliceAxesFromTensorProto(axes, *axes_tp);
+          ORT_THROW_IF_ERROR(GetVectorInt64FromTensorProto(axes, *axes_tp));
         }
       } else {
         const onnxruntime::NodeAttributes& attrs = node.GetAttributes();
@@ -247,11 +280,60 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       if (HasUnknownShapeOnAxes(inputs[0], axes))
         return false;
     }
+
+    if (node.OpType() == "Split") {
+      const onnxruntime::NodeAttributes& attrs = node.GetAttributes();
+      auto axis = std::vector<int64_t>(1);
+      auto it = attrs.find("axis");
+      if (it != attrs.end()) {
+        axis[0] = it->second.i();
+      }
+      // check if we have symbolic dimension on axis, as TVM split cannot handle that
+      if (HasUnknownShapeOnAxes(inputs[0], axis))
+        return false;
+    }
+
+    if (node.OpType() == "ReduceSum") {
+      if (inputs.size() > 1) {
+        std::vector<int64_t> axes;
+        // ReduceSum-13 changes axes to input, nuphar can only handle axes from initializers
+        bool is_axes_dynamic = inputs.size() > 1 && !graph_viewer.IsConstantInitializer(inputs[1]->Name(), true);
+        if (is_axes_dynamic)
+          return false;
+      }
+    }
+
+    if (IsAliasNode(node)) {
+      // for AliasNode as final output, skip them to avoid potential copy
+      for (auto iter = node.OutputEdgesBegin(); iter != node.OutputEdgesEnd(); ++iter) {
+        if (!is_supported_func(iter->GetNode())) {
+          return false;
+        }
+      }
+    }
+
+    if (node.OpType() == "Transpose") {
+      // When there's symbolic dim in last dim of Transpose output
+      // reject it since it was not able to vectorize inlined ops
+      const auto output_shape = node.OutputDefs()[0]->Shape();
+      const auto output_rank = output_shape->dim_size();
+      if (output_rank > 0 && output_shape->dim(output_rank - 1).has_dim_param()) {
+        return false;
+      }
+    }
+    if (node.OpType() == "MatMulInteger" && inputs.size() > 2) {
+      return false;  // do not support MatMulInteger with zero points
+    }
     return true;
   };
   GraphPartitioner graph_partitioner(is_supported_func);
 
-  ORT_ENFORCE(graph_partitioner.Partition(graph_viewer, results).IsOK());
+  ORT_ENFORCE(graph_partitioner.Partition(graph_viewer, per_model_fused_count_, results).IsOK());
+
+  // reset per_model_fused_count_ for main graph, since there might be multiple sessions for subgraphs,
+  // this is the time all graph cut should be finished as ORT handles main graph last
+  if (!graph_viewer.IsSubgraph())
+    per_model_fused_count_ = 0;
 
   // for any node being fused in results, save initializer tensors
   // because IExecutionProvider::Compile would be called without OpKernelInfo
@@ -263,6 +345,8 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
       node->ForEachDef(
           [this, &all_initialized_tensors, &graph_viewer](const NodeArg& def, bool is_input) {
+            if (!is_input)
+              return;
             auto iter = all_initialized_tensors.find(def.Name());
             if (iter != all_initialized_tensors.end()) {
               if (graph_viewer.IsConstantInitializer(def.Name(), true)) {
@@ -295,10 +379,10 @@ Status NupharExecutionProvider::SaveInitializer(
 
     const TensorShape& shape = TensorShape::ReinterpretBaseType(shape_dims);
     auto data_type = OrtTypeInfo::ElementTypeFromProto(proto->data_type());
-    auto t = onnxruntime::make_unique<Tensor>(
+    auto t = std::make_unique<Tensor>(
         data_type,
         shape,
-        GetAllocator(0, OrtMemTypeDefault)->Alloc(shape.Size() * data_type->Size()),
+        GetAllocator(0, OrtMemTypeDefault)->Alloc(SafeInt<size_t>(shape.Size()) * data_type->Size()),
         GetAllocator(0, OrtMemTypeDefault)->Info());
 
 #define CASE_UNPACK_TENSOR(V, T)                                       \
@@ -349,7 +433,7 @@ Status NupharExecutionProvider::Compile(
     info.create_state_func =
         [&, node](ComputeContext* ctx, FunctionState* state) {
           std::unique_ptr<NupharKernelState> s =
-              onnxruntime::make_unique<NupharKernelState>(
+              std::make_unique<NupharKernelState>(
                   *node,
                   *ctx,
                   *this);
@@ -392,25 +476,27 @@ LIST_NUPHAR_OPS()
 #undef NUPHAR_OP
 #undef NUPHAR_VERSIONED_OP
 
-class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 6, 8, Cast);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 9, Cast);
-class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 1, 10, Gather);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 11, Gather);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 11, GatherElements);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 6, 12, Cast);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 13, Cast);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 1, 12, Gather);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 13, Gather);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 11, 12, GatherElements);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 13, GatherElements);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 10, MatMulInteger);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kMSDomain, 1, MatMulInteger16);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 9, 10, Scan);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 11, Scan);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 9, 10, Scatter);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 11, Scatter);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 11, ScatterElements);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 11, 12, ScatterElements);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 13, ScatterElements);
 
 static void RegisterStandaloneNupharKernels(KernelRegistry& kernel_registry) {
 #define NUPHAR_OP(name, ver, types) \
-  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, ver, name)>());
+  ORT_ENFORCE(kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, ver, name)>()).IsOK());
 
 #define NUPHAR_VERSIONED_OP(name, start_ver, end_ver, types) \
-  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, start_ver, end_ver, name)>());
+  ORT_ENFORCE(kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, start_ver, end_ver, name)>()).IsOK());
 
   LIST_NUPHAR_OPS()
 
@@ -418,18 +504,20 @@ static void RegisterStandaloneNupharKernels(KernelRegistry& kernel_registry) {
 #undef NUPHAR_VERSIONED_OP
 
   // ops that have multiple type constraints
-  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 6, 8, Cast)>());
-  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 9, Cast)>());
-  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 1, 10, Gather)>());
-  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 11, Gather)>());
-  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 11, GatherElements)>());
-  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 10, MatMulInteger)>());
-  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kMSDomain, 1, MatMulInteger16)>());
-  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 9, 10, Scan)>());
-  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 11, Scan)>());
-  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 9, 10, Scatter)>());
-  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 11, Scatter)>());
-  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 11, ScatterElements)>());
+  ORT_ENFORCE(kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 6, 12, Cast)>()).IsOK());
+  ORT_ENFORCE(kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 13, Cast)>()).IsOK());
+  ORT_ENFORCE(kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 1, 12, Gather)>()).IsOK());
+  ORT_ENFORCE(kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 13, Gather)>()).IsOK());
+  ORT_ENFORCE(kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 11, 12, GatherElements)>()).IsOK());
+  ORT_ENFORCE(kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 13, GatherElements)>()).IsOK());
+  ORT_ENFORCE(kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 10, MatMulInteger)>()).IsOK());
+  ORT_ENFORCE(kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kMSDomain, 1, MatMulInteger16)>()).IsOK());
+  ORT_ENFORCE(kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 9, 10, Scan)>()).IsOK());
+  ORT_ENFORCE(kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 11, Scan)>()).IsOK());
+  ORT_ENFORCE(kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 9, 10, Scatter)>()).IsOK());
+  ORT_ENFORCE(kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 11, Scatter)>()).IsOK());
+  ORT_ENFORCE(kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 11, 12, ScatterElements)>()).IsOK());
+  ORT_ENFORCE(kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kNupharExecutionProvider, kOnnxDomain, 13, ScatterElements)>()).IsOK());
 }
 
 std::shared_ptr<KernelRegistry> NupharExecutionProvider::GetKernelRegistryInternal() const {

@@ -28,7 +28,7 @@ struct NupharCodeGenHandle : codegen::CodeGenHandle {
   std::shared_ptr<tvm_codegen::TVMScheduleBuilder> schedule_builder;  // keep
   // maybe add a layout
   tvm_codegen::WeightLayoutRegistry* layout_registry;
-  bool enable_per_node_parallelized;  // TODO: change to config
+  int64_t parallel_min_workloads;
 
   bool allow_unaligned_buffers;  // move to another place
 

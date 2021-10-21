@@ -1,230 +1,302 @@
-# Docker containers for ONNX Runtime
+# Dockerfiles
+**Execution Providers**
+- CPU: [Dockerfile](Dockerfile.source), [Instructions](#cpu)
+- CUDA/cuDNN: [Dockerfile](Dockerfile.cuda), [Instructions](#cuda)
+- MIGraphX: [Dockerfile](Dockerfile.migraphx), [Instructions](#migraphx)
+- NUPHAR: [Dockerfile](Dockerfile.nuphar), [Instructions](#nuphar)
+- OpenVINO: [Dockerfile](Dockerfile.openvino), [Instructions](#openvino)
+- TensorRT: [Dockerfile](Dockerfile.tensorrt), [Instructions](#tensorrt)
+- VitisAI: [Dockerfile](Dockerfile.vitisai)
 
-#### Build Flavors: Dockerfiles
+**Platforms**
+- ARM 32v7: [Dockerfile](Dockerfile.arm32v7), [Instructions](#arm-3264)
+- ARM 64: [Dockerfile](Dockerfile.arm64), [Instructions](#arm-3264) 
+- NVIDIA Jetson TX1/TX2/Nano/Xavier: [Dockerfile](Dockerfile.jetson), [Instructions](#nvidia-jetson-tx1tx2nanoxavier)
 
-- [Arm 32v7](Dockerfile.arm32v7)
-- [Build from source (CPU)](Dockerfile.source)
-- [CUDA + CUDNN](Dockerfile.cuda)
-- [nGraph](Dockerfile.ngraph)
-- [TensorRT](Dockerfile.tensorrt)
-- [OpenVINO](Dockerfile.openvino)
-- [ONNX Runtime Server](Dockerfile.server)
-- [Nuphar](Dockerfile.nuphar)
+**Other**
+- ORT Training (torch-ort): [Dockerfiles](https://github.com/pytorch/ort/tree/main/docker)
+- ONNX-Ecosystem (CPU + Converters): [Dockerfile](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/Dockerfile), [Instructions](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem)
 
-#### Published Microsoft Container Registry (MCR) Images
 
-Use `docker pull` with any of the images and tags below to pull an image and try for yourself. Note that the build from source (CPU), CUDA, and TensorRT images include additional dependencies like miniconda for compatibility with AzureML image deployment.
 
-**Example**: Run `docker pull mcr.microsoft.com/azureml/onnxruntime:latest-cuda` to pull the latest released docker image with ONNX Runtime GPU, CUDA, and CUDNN support.
+# Instructions
 
-| Build Flavor      | Base Image                            | ONNX Runtime Docker Image tags                   | Latest                  |
-|-------------------|---------------------------------------|--------------------------------------------------|-------------------------|
-| Source (CPU)      | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0, :v0.5.0                                 | :latest                 |
-| CUDA (GPU)        | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0-cuda10.0-cudnn7, :v0.5.0-cuda10.1-cudnn7 | :latest-cuda            |
-| TensorRT (x86)    | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0-tensorrt19.03, :v0.5.0-tensorrt19.06     | :latest-tensorrt        |
-| OpenVino (VAD-M)  | mcr.microsoft.com/azureml/onnxruntime | :v0.5.0-openvino-r1.1-vadm                       | :latest-openvino-vadm   |
-| OpenVino (MYRIAD) | mcr.microsoft.com/azureml/onnxruntime | :v0.5.0-openvino-r1.1-myriad                     | :latest-openvino-myriad |
-| Server            | mcr.microsoft.com/onnxruntime/server  | :v0.4.0, :v0.5.0                                 | :latest                 |
+## CPU
+**Ubuntu 18.04, CPU, Python Bindings**
 
-## Build from Source
-#### Linux 16.04, CPU, Python Bindings
+1. Update submodules
+```
+git submodule update --init
+```
 
-1. Build the docker image from the Dockerfile in this repository.
+2. Build the docker image from the Dockerfile in this repository.
   ```
-  # If you have a Linux machine, preface this command with "sudo"
-
-  docker build -t onnxruntime-source -f Dockerfile.source .
+  docker build -t onnxruntime-source -f Dockerfile.source ..
   ```
 
-2. Run the Docker image
+3. Run the Docker image
 
   ```
-  # If you have a Linux machine, preface this command with "sudo"
-
   docker run -it onnxruntime-source
   ```
 
 ## CUDA
-#### Linux 16.04, CUDA 10.0, CuDNN 7
+**Ubuntu 18.04, CUDA 10.2, CuDNN 8**
 
-1. Build the docker image from the Dockerfile in this repository.
+1. Update submodules
+```
+git submodule update --init
+```
+
+2. Build the docker image from the Dockerfile in this repository.
   ```
-  # If you have a Linux machine, preface this command with "sudo"
-
-  docker build -t onnxruntime-cuda -f Dockerfile.cuda .
-  ```
-
-2. Run the Docker image
-
-  ```
-  # If you have a Linux machine, preface this command with "sudo"
-
-  docker run -it onnxruntime-cuda
+  docker build -t onnxruntime-cuda -f Dockerfile.cuda ..
   ```
 
-## nGraph (Public Preview)
-#### Linux 16.04, Python Bindings
-
-1. Build the docker image from the Dockerfile in this repository.
-  ```
-  # If you have a Linux machine, preface this command with "sudo"
-
-  docker build -t onnxruntime-ngraph -f Dockerfile.ngraph .
-  ```
-
-2. Run the Docker image
+3. Run the Docker image
 
   ```
-  # If you have a Linux machine, preface this command with "sudo"
+  docker run --gpus all -it onnxruntime-cuda
+  or
+  nvidia-docker run -it onnxruntime-cuda
 
-  docker run -it onnxruntime-ngraph
   ```
 
 ## TensorRT
-#### Linux 16.04, TensorRT 5.0.2
+**Ubuntu 18.04, CUDA 11.0, TensorRT 7.1.3.4**
 
-1. Build the docker image from the Dockerfile in this repository.
+1. Update submodules
+```
+git submodule update --init
+```
+
+2. Build the docker image from the Dockerfile in this repository.
   ```
-  # If you have a Linux machine, preface this command with "sudo"
-
   docker build -t onnxruntime-trt -f Dockerfile.tensorrt .
   ```
 
-2. Run the Docker image
+3. Run the Docker image
 
   ```
-  # If you have a Linux machine, preface this command with "sudo"
-
   docker run -it onnxruntime-trt
   ```
 
-## OpenVINO (Public Preview)
-#### Linux 16.04, Python Bindings
+## OpenVINO
+*Public Preview*
+
+**Ubuntu 18.04, Python & C# Bindings**
+
+### **1. Using pre-built container images for Python API**
+
+The unified container image from [Dockerhub](https://hub.docker.com/repository/docker/openvino/onnxruntime_ep_ubuntu18) can be used to run an application on any of the target accelerators. In order to select the target accelerator, the application should explicitly specifiy the choice using the `device_type`  configuration option for OpenVINO Execution provider. Refer to [OpenVINO EP runtime configuration documentation](https://www.onnxruntime.ai/docs/reference/execution-providers/OpenVINO-ExecutionProvider.html#summary-of-options) for details on specifying this option in the application code. 
+If the `device_type` runtime config option is not explicitly specified, CPU will be chosen as the hardware target execution.
+### **2. Building from Dockerfile**
 
 1. Build the onnxruntime image for one of the accelerators supported below.
 
    Retrieve your docker image in one of the following ways.
 
-    -  To build your docker image, download the OpenVINO online installer version 2019 R1.1 for Linux from [this link](https://software.intel.com/en-us/openvino-toolkit/choose-download) and copy the OpenVINO tar file to the same directory before building the Docker image. The online installer size is 16MB and the components needed for the accelerators are mentioned in the dockerfile. Providing the docker build argument DEVICE enables the onnxruntime build for that particular device. You can also provide arguments ONNXRUNTIME_REPO and ONNXRUNTIME_BRANCH to test that particular repo and branch. Default repository is http://github.com/microsoft/onnxruntime and default branch is master.
+    -  Choose Dockerfile.openvino for Python API or Dockerfile.openvino-csharp for C# API as <Dockerfile> for building an OpenVINO 2021.3 based Docker image. Providing the docker build argument DEVICE enables the onnxruntime build for that particular device. You can also provide arguments ONNXRUNTIME_REPO and ONNXRUNTIME_BRANCH to test that particular repo and branch. Default repository is http://github.com/microsoft/onnxruntime and default branch is master.
        ```
-       docker build -t onnxruntime --build-arg DEVICE=$DEVICE .
+       docker build --rm -t onnxruntime --build-arg DEVICE=$DEVICE -f <Dockerfile> .
        ```
     - Pull the official image from DockerHub.
 
-
 2. DEVICE: Specifies the hardware target for building OpenVINO Execution Provider. Below are the options for different Intel target devices.
 
-	| Device Option | Target Device |
-	| --------- | -------- |
-	| <code>CPU_FP32</code> | Intel<sup></sup> CPUs |
-	| <code>GPU_FP32</code> |Intel<sup></sup> Integrated Graphics |
-	| <code>GPU_FP16</code> | Intel<sup></sup> Integrated Graphics |
-	| <code>MYRIAD_FP16</code> | Intel<sup></sup> Movidius<sup>TM</sup> USB sticks |
-	| <code>VAD-M_FP16</code> | Intel<sup></sup> Vision Accelerator Design based on Movidius<sup>TM</sup> MyriadX VPUs |
+  | Device Option | Target Device |
+  | --------- | -------- |
+  | <code>CPU_FP32</code> | Intel<sup></sup> CPUs |
+  | <code>GPU_FP32</code> |Intel<sup></sup> Integrated Graphics |
+  | <code>GPU_FP16</code> | Intel<sup></sup> Integrated Graphics |
+  | <code>MYRIAD_FP16</code> | Intel<sup></sup> Movidius<sup>TM</sup> USB sticks |
+  | <code>VAD-M_FP16</code> | Intel<sup></sup> Vision Accelerator Design based on Movidius<sup>TM</sup> MyriadX VPUs |
+  | <code>HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...</code> | All Intel<sup>®</sup> silicons mentioned above |
+  | <code>MULTI:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...</code> | All Intel<sup>®</sup> silicons mentioned above | 
 
-## CPU
+  Specifying Hardware Target for HETERO or Multi-Device Build:
 
-1. Retrieve your docker image in one of the following ways.
+  HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>..
+  MULTI:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>..
+  The <DEVICE_TYPE> can be any of these devices from this list ['CPU','GPU','MYRIAD','HDDL']
 
-   - Build the docker image from the DockerFile in this repository.
+  A minimum of two DEVICE_TYPE'S should be specified for a valid HETERO or Multi-Device Build.
+
+  Example:
+  HETERO:MYRIAD,CPU  HETERO:HDDL,GPU,CPU  MULTI:MYRIAD,GPU,CPU
+
+*This is the hardware accelerator target that is enabled by **default** in the container image. After building the container image for one default target, the application may explicitly choose a different target at run time with the same container by using the [Dynamic device selction API](https://github.com/microsoft/onnxruntime/blob/master/docs/execution_providers/OpenVINO-ExecutionProvider.md#dynamic-device-selection).*
+
+
+### OpenVINO on CPU
+
+1. Build the docker image from the DockerFile in this repository.
 
      ```
-     docker build -t onnxruntime-cpu --build-arg DEVICE=CPU_FP32 --network host .
-     ```
-   - Pull the official image from DockerHub.
-     ```
-     # Will be available with next release
+     docker build --rm -t onnxruntime-cpu --build-arg DEVICE=CPU_FP32 -f <Dockerfile> .
      ```
 2. Run the docker image
     ```
-     docker run -it onnxruntime-cpu
+     docker run -it --rm --device-cgroup-rule='c 189:* rmw' -v /dev/bus/usb:/dev/bus/usb onnxruntime-cpu:latest
     ```
 
-## GPU
+### OpenVINO on GPU
 
-1. Retrieve your docker image in one of the following ways.
-   - Build the docker image from the DockerFile in this repository.
+1. Build the docker image from the DockerFile in this repository.
      ```
-      docker build -t onnxruntime-gpu --build-arg DEVICE=GPU_FP32 --network host .
+     docker build --rm -t onnxruntime-gpu --build-arg DEVICE=GPU_FP32 -f <Dockerfile> .
      ```
-   - Pull the official image from DockerHub.
-     ```
-       # Will be available with next release
-     ```
-
 2. Run the docker image
     ```
-    docker run -it --device /dev/dri:/dev/dri onnxruntime-gpu:latest
+    docker run -it --rm --device-cgroup-rule='c 189:* rmw' -v /dev/bus/usb:/dev/bus/usb --device /dev/dri:/dev/dri onnxruntime-gpu:latest
     ```
-## Myriad VPU Accelerator
+### OpenVINO on Myriad VPU Accelerator
 
-1. Retrieve your docker image in one of the following ways.
-   - Build the docker image from the DockerFile in this repository.
+1. Build the docker image from the DockerFile in this repository.
      ```
-      docker build -t onnxruntime-myriad --build-arg DEVICE=MYRIAD_FP16 --network host .
-     ```
-   - Pull the official image from DockerHub.
-     ```
-      # Will be available with next release
+      docker build --rm -t onnxruntime-myriad --build-arg DEVICE=MYRIAD_FP16 -f <Dockerfile> .
      ```
 2. Install the Myriad rules drivers on the host machine according to the reference in [here](https://docs.openvinotoolkit.org/latest/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
+
 3. Run the docker image by mounting the device drivers
     ```
-    docker run -it --network host --privileged -v /dev:/dev  onnxruntime-myriad:latest
+    docker run -it --rm --device-cgroup-rule='c 189:* rmw' -v /dev/bus/usb:/dev/bus/usb onnxruntime-myriad:latest
 
     ```
-=======
-## VAD-M Accelerator Version
 
-1. Retrieve your docker image in one of the following ways.
-   - Build the docker image from the DockerFile in this repository.
+### OpenVINO on VAD-M Accelerator Version
+
+1. Download OpenVINO **Full package** for version **2021.4** for Linux on host machine from [this link](https://software.intel.com/en-us/openvino-toolkit/choose-download) and install it with the help of instructions from [this link](https://docs.openvinotoolkit.org/latest/_docs_install_guides_installing_openvino_linux.html)
+
+2. Install the drivers on the host machine according to the reference in [here](https://docs.openvinotoolkit.org/latest/_docs_install_guides_installing_openvino_linux_ivad_vpu.html)
+
+3. Build the docker image from the DockerFile in this repository.
      ```
-      docker build -t onnxruntime-vadr --build-arg DEVICE=VAD-M_FP16 --network host .
+      docker build --rm -t onnxruntime-vadm --build-arg DEVICE=VAD-M_FP16 -f <Dockerfile> .
      ```
-   - Pull the official image from DockerHub.
+4. Run hddldaemon on the host in a separate terminal session using the following steps:
+    - Initialize the OpenVINO environment.
+      ```
+        source <openvino_install_directory>/bin/setupvars.sh
+      ```
+    - Edit the hddl_service.config file from $HDDL_INSTALL_DIR/config/hddl_service.config and change the field “bypass_device_number” to 8.
+    - Restart the hddl daemon for the changes to take effect.
      ```
-      # Will be available with next release
+      $HDDL_INSTALL_DIR/bin/hddldaemon
      ```
-2. Install the HDDL drivers on the host machine according to the reference in [here](https://docs.openvinotoolkit.org/latest/_docs_install_guides_installing_openvino_linux_ivad_vpu.html)
-3. Run the docker image by mounting the device drivers
+    - Note that if OpenVINO was installed with root permissions, this file has to be changed with the same permissions.
+5. Run the docker image by mounting the device drivers
     ```
-    docker run -it --device --mount type=bind,source=/var/tmp,destination=/var/tmp --device /dev/ion:/dev/ion  onnxruntime-hddl:latest
-
+    docker run -itu root:root --rm --device-cgroup-rule='c 189:* rmw' -v /dev/bus/usb:/dev/bus/usb --mount type=bind,source=/var/tmp,destination=/var/tmp --device /dev/ion:/dev/ion  onnxruntime-vadm:latest
     ```
-## ONNX Runtime Server (Public Preview)
-#### Linux 16.04
 
-1. Build the docker image from the Dockerfile in this repository
-  ```
-  docker build -t {docker_image_name} -f Dockerfile.server .
+### OpenVINO on HETERO or Multi-Device Build
+
+1. Build the docker image from the DockerFile in this repository.
+
+     for HETERO:
+     ```
+      docker build --rm -t onnxruntime-HETERO --build-arg DEVICE=HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>... -f <Dockerfile> .
+     ```
+
+     for MULTI:
+     ```
+      docker build --rm -t onnxruntime-MULTI --build-arg DEVICE=MULTI:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>... -f <Dockerfile> .
+     ```
+
+2. Install the required rules, drivers and other packages as required from the steps above for each of the DEVICE_TYPE accordingly that would be added for the HETERO or MULTI Device build type.
+
+3. Run the docker image as mentioned in the above steps
+
+## ARM 32/64
+
+The build instructions are similar to x86 CPU. But if you want to build them on a x86 machine, you need to install qemu-user-static system package (outside of docker instances) first. Then
+	
+1. Update submodules
+```
+git submodule update --init
+```
+
+2. Build the docker image from the Dockerfile in this repository.
+  ```bash
+  docker build -t onnxruntime-source -f Dockerfile.arm64 ..
   ```
 
-2. Run the ONNXRuntime server with the image created in step 1
+3. Run the Docker image
 
-  ```
-  docker run -v {localModelAbsoluteFolder}:{dockerModelAbsoluteFolder} -p {your_local_port}:8001 {imageName} --model_path {dockerModelAbsolutePath}
-  ```
-3. Send HTTP requests to the container running ONNX Runtime Server
-
-  Send HTTP requests to the docker container through the binding local port. Here is the full [usage document](https://github.com/Microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Server_Usage.md).
-  ```
-  curl  -X POST -d "@request.json" -H "Content-Type: application/json" http://0.0.0.0:{your_local_port}/v1/models/mymodel/versions/3:predict  
+  ```bash
+  docker run -it onnxruntime-source
   ```
 
-## Nuphar (Public Preview)
-#### Linux 16.04, Python Bindings
+For ARM32, please use Dockerfile.arm32v7 instead of Dockerfile.arm64.
+	
+## NVIDIA Jetson TX1/TX2/Nano/Xavier:
+
+These instructions are for [JetPack SDK 4.4](https://developer.nvidia.com/embedded/jetpack).
+The Dockerfile.jetson is using [NVIDIA L4T 32.4.3](https://developer.nvidia.com/embedded/linux-tegra) as base image.
+Versions different from these may require modifications to these instructions.
+Instructions assume you are on Jetson host in the root of onnxruntime git project clone(`https://github.com/microsoft/onnxruntime`)
+
+Two-step installation is required:
+
+1. Build Python 'wheel' for ONNX Runtime on host Jetson system; Pre-built Python wheels are also available at [Nvidia Jetson Zoo](https://elinux.org/Jetson_Zoo#ONNX_Runtime).
+2. Build Docker image using ONNX Runtime wheel from step 1. You can also install the wheel on the host directly.
+
+Here are the build commands for each step:
+
+1.1 Install ONNX Runtime build dependencies on Jetpack 4.4 host:
+```
+   sudo apt install -y --no-install-recommends \
+    	build-essential software-properties-common cmake libopenblas-dev \
+	libpython3.6-dev python3-pip python3-dev
+```
+1.2 Build ONNXRuntime Python wheel:
+```
+   ./build.sh --update --config Release --build --build_wheel \
+   --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/lib/aarch64-linux-gnu
+```
+Note: You may add --use_tensorrt and --tensorrt_home options if you wish to use NVIDIA TensorRT (support is experimental), as well as any other options supported by [build.sh script](build.sh).
+
+2. After the Python wheel is successfully built, use 'find' command for Docker to install the wheel inside new image:
+```
+   find . -name '*.whl' -print -exec sudo -H DOCKER_BUILDKIT=1 nvidia-docker build --build-arg WHEEL_FILE={} -f ./dockerfiles/Dockerfile.jetson . \;
+```
+Note: Resulting Docker image will have ONNX Runtime installed in /usr, and ONNX Runtime wheel copied to /onnxruntime directory.
+Nothing else from ONNX Runtime source tree will be copied/installed to the image.
+
+Note: When running the container you built in Docker, please either use 'nvidia-docker' command instead of 'docker', or use Docker command-line options to make sure NVIDIA runtime will be used and appropiate files mounted from host. Otherwise, CUDA libraries won't be found. You can also [set NVIDIA runtime as default in Docker](https://github.com/dusty-nv/jetson-containers#docker-default-runtime).
+
+## NUPHAR
+*Public Preview*
+
+**Ubuntu 16.04, Python Bindings**
+
+1. Update submodules
+```
+git submodule update --init
+```
+
+2. Build the docker image from the Dockerfile in this repository.
+  ```
+  docker build -t onnxruntime-nuphar -f Dockerfile.nuphar .
+  ```
+
+3. Run the Docker image
+
+  ```
+  docker run -it onnxruntime-nuphar
+  ```
+
+## MIGraphX 
+**Ubuntu 16.04, rocm3.3, AMDMIGraphX v0.7**
 
 1. Build the docker image from the Dockerfile in this repository.
   ```
-  # If you have a Linux machine, preface this command with "sudo"
-
-  docker build -t onnxruntime-nuphar -f Dockerfile.nuphar .
+  docker build -t onnxruntime-migraphx -f Dockerfile.migraphx .
   ```
 
 2. Run the Docker image
 
   ```
-  # If you have a Linux machine, preface this command with "sudo"
-
-  docker run -it onnxruntime-nuphar
+  docker run -it --device=/dev/kfd --device=/dev/dri --group-add video onnxruntime-migraphx
   ```

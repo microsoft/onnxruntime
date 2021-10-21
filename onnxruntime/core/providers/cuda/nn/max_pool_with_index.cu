@@ -88,6 +88,7 @@ __global__ void MaxPoolWithIndexKernel(
 
 template <typename T>
 void MaxPoolWithIndex(
+    cudaStream_t stream,
     const TensorShape& input_shape,
     const TensorShape& output_shape,
     const std::vector<int64_t>& kernel_shape,
@@ -98,7 +99,6 @@ void MaxPoolWithIndex(
     const T* p_input,
     T* p_output,
     int64_t* p_indices) {
-  size_t input_dim_count = input_shape.NumDimensions();
 
   int64_t batchs = input_shape[0];
   int64_t channels = input_shape[1];
@@ -131,7 +131,7 @@ void MaxPoolWithIndex(
   fast_divmod fdm_d(static_cast<int>(pooled_depth));
 
   int blocksPerGrid = (int)((output_size + GridDim::maxThreadsPerBlock - 1) / GridDim::maxThreadsPerBlock);
-  MaxPoolWithIndexKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock>>>(
+  MaxPoolWithIndexKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       batchs,
       channels,
       height,
@@ -165,6 +165,7 @@ void MaxPoolWithIndex(
 
 #define INSTANTIATEMAXPOOLWITHINDEX(T)          \
   template void MaxPoolWithIndex<T>(            \
+      cudaStream_t stream,                \
       const TensorShape& input_shape,           \
       const TensorShape& output_shape,          \
       const std::vector<int64_t>& kernel_shape, \
@@ -179,6 +180,8 @@ void MaxPoolWithIndex(
 INSTANTIATEMAXPOOLWITHINDEX(float)
 INSTANTIATEMAXPOOLWITHINDEX(double)
 INSTANTIATEMAXPOOLWITHINDEX(half)
+INSTANTIATEMAXPOOLWITHINDEX(int8_t)
+INSTANTIATEMAXPOOLWITHINDEX(uint8_t)
 
 }  // namespace cuda
 }  // namespace onnxruntime

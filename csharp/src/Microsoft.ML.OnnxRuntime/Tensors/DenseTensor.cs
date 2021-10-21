@@ -93,6 +93,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
 
         /// <summary>
         /// Gets the value at the specied index, where index is a linearized version of n-dimension indices using strides.
+        /// For a scalar, use index = 0
         /// </summary>
         /// <param name="index">An integer index computed as a dot-product of indices.</param>
         /// <returns>The value at the specified position in this Tensor.</returns>
@@ -103,6 +104,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
 
         /// <summary>
         /// Sets the value at the specied index, where index is a linearized version of n-dimension indices using strides.
+        /// For a scalar, use index = 0
         /// </summary>
         /// <param name="index">An integer index computed as a dot-product of indices.</param>
         /// <param name="value">The new value to set at the specified position in this Tensor.</param>
@@ -111,6 +113,12 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
             Buffer.Span[index] = value;
         }
 
+        /// <summary>
+        /// Overrides Tensor.CopyTo(). Copies the content of the Tensor
+        /// to the specified array starting with arrayIndex
+        /// </summary>
+        /// <param name="array">destination array</param>
+        /// <param name="arrayIndex">start index</param>
         protected override void CopyTo(T[] array, int arrayIndex)
         {
             if (array == null)
@@ -125,6 +133,11 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
             Buffer.Span.CopyTo(array.AsSpan(arrayIndex));
         }
 
+        /// <summary>
+        /// Determines the index of a specific item in the Tensor&lt;T&gt;.
+        /// </summary>
+        /// <param name="item">Object to locate</param>
+        /// <returns>The index of item if found in the tensor; otherwise, -1</returns>
         protected override int IndexOf(T item)
         {
             // TODO: use Span.IndexOf when/if it removes the IEquatable type constraint
@@ -170,11 +183,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         /// <returns>A new tensor that reinterprets backing Buffer of this tensor with different dimensions.</returns>
         public override Tensor<T> Reshape(ReadOnlySpan<int> dimensions)
         {
-            if (dimensions.Length == 0)
-            {
-                throw new ArgumentException("Dimensions must contain elements.", nameof(dimensions));
-            }
-
+ 
             var newSize = ArrayUtilities.GetProduct(dimensions);
 
             if (newSize != Length)

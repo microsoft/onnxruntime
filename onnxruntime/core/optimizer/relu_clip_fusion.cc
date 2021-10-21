@@ -9,7 +9,7 @@
 
 namespace onnxruntime {
 
-Status FuseReluClip::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
+Status FuseReluClip::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger&) const {
   const auto& next_node = *node.OutputNodesBegin();
 
   // Clip opset 6 has min and max as attributes. they're inputs from opset 11 on.
@@ -56,7 +56,7 @@ Status FuseReluClip::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
 
       data_type = initializer->data_type();
       // construct an initializer to gracefully handle typed or raw data in the TensorProto
-      Initializer i(*initializer);
+      Initializer i(*initializer, graph.ModelPath());
       switch (data_type) {
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
           if (*i.data<float>() < 0.f) {
@@ -65,6 +65,11 @@ Status FuseReluClip::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
           break;
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
           if (math::halfToFloat(i.data<MLFloat16>()->val) < 0.f) {
+            replace_min = true;
+          }
+          break;
+        case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
+          if (i.data<BFloat16>()->ToFloat() < 0.f) {
             replace_min = true;
           }
           break;
@@ -109,13 +114,12 @@ Status FuseReluClip::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
   return Status::OK();
 }
 
-bool FuseReluClip::SatisfyCondition(const Graph& graph, const Node& node) const {
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6})) {
+bool FuseReluClip::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6, 13, 14})) {
     return false;
   }
 
-  if (!graph_utils::IsSingleInSingleOutNode(node) ||
-      graph.IsNodeOutputsInGraphOutputs(node)) {
+  if (node.GetOutputEdgesCount() != 1) {
     return false;
   }
 
@@ -123,8 +127,12 @@ bool FuseReluClip::SatisfyCondition(const Graph& graph, const Node& node) const 
   // as Clip will apply the minimum. If the Clip 'min' value is < 0 we need
   // to update it to 0 to apply what the Relu would have done. We do that in Apply.
   const auto& next_node = *node.OutputNodesBegin();
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Clip", {6, 11}) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Clip", {6, 11, 12, 13}) ||
       next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
+    return false;
+  }
+
+  if (!graph_utils::CanRemoveNode(graph, node, logger)) {
     return false;
   }
 

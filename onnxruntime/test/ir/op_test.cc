@@ -8,6 +8,7 @@
 #include "core/graph/schema_registry.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
+#include "test/test_environment.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -25,13 +26,16 @@ TEST(FormalParamTest, Success) {
   OpSchema::FormalParameter p("input", "desc: integer input", "tensor(int32)");
   EXPECT_EQ("input", p.GetName());
   EXPECT_EQ("tensor(int32)", p.GetTypeStr());
+#ifndef __ONNX_NO_DOC_STRINGS
   EXPECT_EQ("desc: integer input", p.GetDescription());
+#endif
   // TODO: change onnx to make formal parameter construction self-contain.
   //EXPECT_EQ(Utils::DataTypeUtils::ToType("tensor(int32)"), *p.GetTypes().begin());
 }
 
+#ifndef DISABLE_ML_OPS
 TEST(FeatureVectorizerTest, TraditionalMlOpTest) {
-  Model model("traditionalMl");
+  Model model("traditionalMl", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   // Case: A traditional ml graph.
@@ -81,6 +85,7 @@ TEST(FeatureVectorizerTest, TraditionalMlOpTest) {
   delete output_arg1;
   delete output_arg4;
 }
+#endif
 
 TEST(OpRegistrationTest, OpRegTest) {
   OPERATOR_SCHEMA(__TestOpReg)
@@ -90,104 +95,28 @@ TEST(OpRegistrationTest, OpRegTest) {
       .Output(0, "output_1", "docstr for output_1.", "tensor(int32)");
   const OpSchema* op_schema = OpSchemaRegistry::Schema("__TestOpReg");
   EXPECT_TRUE(nullptr != op_schema);
-  EXPECT_EQ(op_schema->inputs().size(), 2);
+  EXPECT_EQ(op_schema->inputs().size(), 2u);
   EXPECT_EQ(op_schema->inputs()[0].GetName(), "input_1");
-  EXPECT_EQ(op_schema->inputs()[0].GetTypes().size(), 1);
+  EXPECT_EQ(op_schema->inputs()[0].GetTypes().size(), 1u);
   EXPECT_EQ(**op_schema->inputs()[0].GetTypes().find(Utils::DataTypeUtils::ToType("tensor(int32)")), "tensor(int32)");
   EXPECT_EQ(op_schema->inputs()[1].GetName(), "input_2");
-  EXPECT_EQ(op_schema->inputs()[1].GetTypes().size(), 1);
+  EXPECT_EQ(op_schema->inputs()[1].GetTypes().size(), 1u);
   EXPECT_EQ(**op_schema->inputs()[1].GetTypes().find(Utils::DataTypeUtils::ToType("tensor(int32)")), "tensor(int32)");
-  EXPECT_EQ(op_schema->outputs().size(), 1);
+  EXPECT_EQ(op_schema->outputs().size(), 1u);
   EXPECT_EQ(op_schema->outputs()[0].GetName(), "output_1");
-  EXPECT_EQ(op_schema->outputs()[0].GetTypes().size(), 1);
+  EXPECT_EQ(op_schema->outputs()[0].GetTypes().size(), 1u);
   EXPECT_EQ(**op_schema->outputs()[0].GetTypes().find(Utils::DataTypeUtils::ToType("tensor(int32)")), "tensor(int32)");
 }
 
-ONNX_NAMESPACE::OpSchema CreateTestSchema(const char* name, const char* domain, int sinceVersion) {
+static ONNX_NAMESPACE::OpSchema CreateTestSchema(const char* name, const char* domain, int sinceVersion) {
   return ONNX_NAMESPACE::OpSchema().SetName(name).SinceVersion(sinceVersion).SetDomain(domain).Output(0, "output_1", "docstr for output", "tensor(int32)");
 }
 
-TEST(OpRegistrationTest, OpsetRegTest) {
-  std::shared_ptr<onnxruntime::OnnxRuntimeOpSchemaRegistry> registry = std::make_shared<OnnxRuntimeOpSchemaRegistry>();
-
-  // Register op-set version 1 with baseline version 0
+TEST(OnnxRuntimeOpSchemaRegistry, OpsetRegTest_WrongDomain) {
   std::vector<ONNX_NAMESPACE::OpSchema> schema = {CreateTestSchema("Op1", "Domain1", 1), CreateTestSchema("Op2", "Domain1", 1)};
-  EXPECT_TRUE(registry->RegisterOpSet(schema, "Domain1", 0, 1).IsOK());
-
-  // Get the schema
-  EXPECT_TRUE(registry->GetSchema("Op1", 1, "Domain1")->Name() == "Op1");
-  EXPECT_TRUE(registry->GetSchema("Op2", 1, "Domain1")->Name() == "Op2");
-
-  // Getting schema with wrong name, domain, and version will fail
-  EXPECT_TRUE(registry->GetSchema("Op1", 1, "WrongDomain") == nullptr);
-  EXPECT_TRUE(registry->GetSchema("WrongOp", 1, "Domain1") == nullptr);
-  EXPECT_TRUE(registry->GetSchema("Op1", 2, "Domain1") == nullptr);
-  EXPECT_TRUE(registry->GetSchema("Op1", 0, "Domain1") == nullptr);
-
-  // Registering a new op-set in the same domain will fail.  This (currently) requires the caller to
-  // use multiple registry instances and a registry manager.
-  std::vector<ONNX_NAMESPACE::OpSchema> schemaV2 = {CreateTestSchema("Op1", "Domain1", 2)};
-  EXPECT_FALSE(registry->RegisterOpSet(schemaV2, "Domain1", 1, 2).IsOK());
-
   // Registering an op-set with schema in a different domain than the op-set will fail
   std::shared_ptr<onnxruntime::OnnxRuntimeOpSchemaRegistry> temp_reg = std::make_shared<OnnxRuntimeOpSchemaRegistry>();
-  EXPECT_FALSE(temp_reg->RegisterOpSet(schema, "WrongDomain", 0, 1).IsOK());
-
-  // Registering a second op-set in a different domain should succeed
-  std::vector<ONNX_NAMESPACE::OpSchema> schemaDomain2 = {CreateTestSchema("Op2", "Domain2", 1)};
-  EXPECT_TRUE(registry->RegisterOpSet(schemaDomain2, "Domain2", 0, 1).IsOK());
-  EXPECT_TRUE(registry->GetSchema("Op1", 1, "Domain1")->Name() == "Op1");
-  EXPECT_TRUE(registry->GetSchema("Op2", 1, "Domain2")->Name() == "Op2");
-
-  // Overriding existing op-set schema will fail
-  std::vector<ONNX_NAMESPACE::OpSchema> schemaOverride = {CreateTestSchema("Op1", "Domain1", 1)};
-  EXPECT_FALSE(registry->RegisterOpSet(schema, "Domain1", 0, 1).IsOK());
-
-  // Create a second registry, combined with the first through a manager
-  std::shared_ptr<onnxruntime::OnnxRuntimeOpSchemaRegistry> registry2 = std::make_shared<OnnxRuntimeOpSchemaRegistry>();
-  SchemaRegistryManager manager;
-  manager.RegisterRegistry(registry);
-  manager.RegisterRegistry(registry2);
-
-  // Register the second version of the same op-set on the second registry, overriding one operator
-  EXPECT_TRUE(registry2->RegisterOpSet(schemaV2, "Domain1", 1, 2).IsOK());
-  EXPECT_TRUE(manager.GetSchema("Op1", 1, "Domain1")->since_version() == 1);
-  EXPECT_TRUE(manager.GetSchema("Op1", 2, "Domain1")->since_version() == 2);
-  EXPECT_TRUE(manager.GetSchema("Op2", 1, "Domain1")->since_version() == 1);
-
-  // Op2 is provided only in opset v1, and in the first registry.  The absence of Op2 in the second
-  // registry will trigger the first registry to be queried using V1 rather than V2 here.
-  EXPECT_TRUE(manager.GetSchema("Op2", 2, "Domain1")->since_version() == 1);
-
-  // Add a new operator set which is verion 5, with a baseline of version 4, meaning that
-  // there is a gap at version 3.
-  std::shared_ptr<onnxruntime::OnnxRuntimeOpSchemaRegistry> registryV5 = std::make_shared<OnnxRuntimeOpSchemaRegistry>();
-  manager.RegisterRegistry(registryV5);
-  std::vector<ONNX_NAMESPACE::OpSchema> schemaV5 = {
-      CreateTestSchema("Op3", "Domain1", 4),
-      CreateTestSchema("Op4", "Domain1", 5),
-      CreateTestSchema("Op5", "Domain1", 1)};
-  EXPECT_TRUE(registryV5->RegisterOpSet(schemaV5, "Domain1", 4, 5).IsOK());
-
-  // Query the new version 5 op.  This will be missing for earlier versions
-  EXPECT_TRUE(manager.GetSchema("Op4", 5, "Domain1")->since_version() == 5);
-  EXPECT_TRUE(manager.GetSchema("Op4", 4, "Domain1") == nullptr);
-
-  // The only schema with SinceVersion < 3 which can be  queried as version 5 are those which are registered on
-  // the v5 registry itself.  Those schema may be queried for any version between their sinceVersion and the
-  // opset's version.
-  EXPECT_TRUE(manager.GetSchema("Op1", 5, "Domain1") == nullptr);
-  EXPECT_TRUE(manager.GetSchema("Op3", 5, "Domain1")->since_version() == 4);
-  EXPECT_TRUE(manager.GetSchema("Op3", 4, "Domain1")->since_version() == 4);
-
-  // Note that "Op5" has SinceVersion equal to 1, but a V1 operator set was already registered
-  // without this operator.  This would normally be invalid, and the registry with the missing
-  // operator could trigger the operator lookup to fail.  Version 1 is a special case to allow
-  // for experimental operators, and is accomplished by not reducing the targetted version to
-  // zero in OnnxRuntimeOpSchemaRegistry::GetSchemaAndHistory.
-  // TODO - Consider making the registration algorithm robust to this invalid usage in general
-  EXPECT_TRUE(manager.GetSchema("Op5", 5, "Domain1")->since_version() == 1);
-  EXPECT_TRUE(manager.GetSchema("Op5", 1, "Domain1")->since_version() == 1);
+  ASSERT_FALSE(temp_reg->RegisterOpSet(schema, "WrongDomain", 0, 1).IsOK());
 }
 
 TEST(OpRegistrationTest, TypeConstraintTest) {
@@ -199,22 +128,22 @@ TEST(OpRegistrationTest, TypeConstraintTest) {
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to floats.");
   const OpSchema* op_schema = OpSchemaRegistry::Schema("__TestTypeConstraint");
   EXPECT_TRUE(nullptr != op_schema);
-  EXPECT_EQ(op_schema->inputs().size(), 2);
+  EXPECT_EQ(op_schema->inputs().size(), 2u);
   EXPECT_EQ(op_schema->inputs()[0].GetName(), "input_1");
-  EXPECT_EQ(op_schema->inputs()[0].GetTypes().size(), 3);
+  EXPECT_EQ(op_schema->inputs()[0].GetTypes().size(), 3u);
   EXPECT_EQ(**op_schema->inputs()[0].GetTypes().find(Utils::DataTypeUtils::ToType("tensor(float16)")), "tensor(float16)");
   EXPECT_EQ(**op_schema->inputs()[0].GetTypes().find(Utils::DataTypeUtils::ToType("tensor(float)")), "tensor(float)");
   EXPECT_EQ(**op_schema->inputs()[0].GetTypes().find(Utils::DataTypeUtils::ToType("tensor(double)")), "tensor(double)");
 
   EXPECT_EQ(op_schema->inputs()[1].GetName(), "input_2");
-  EXPECT_EQ(op_schema->inputs()[1].GetTypes().size(), 3);
+  EXPECT_EQ(op_schema->inputs()[1].GetTypes().size(), 3u);
   EXPECT_EQ(**op_schema->inputs()[1].GetTypes().find(Utils::DataTypeUtils::ToType("tensor(float16)")), "tensor(float16)");
   EXPECT_EQ(**op_schema->inputs()[1].GetTypes().find(Utils::DataTypeUtils::ToType("tensor(float)")), "tensor(float)");
   EXPECT_EQ(**op_schema->inputs()[1].GetTypes().find(Utils::DataTypeUtils::ToType("tensor(double)")), "tensor(double)");
 
-  EXPECT_EQ(op_schema->outputs().size(), 1);
+  EXPECT_EQ(op_schema->outputs().size(), 1u);
   EXPECT_EQ(op_schema->outputs()[0].GetName(), "output_1");
-  EXPECT_EQ(op_schema->outputs()[0].GetTypes().size(), 3);
+  EXPECT_EQ(op_schema->outputs()[0].GetTypes().size(), 3u);
   EXPECT_EQ(**op_schema->outputs()[0].GetTypes().find(Utils::DataTypeUtils::ToType("tensor(float16)")), "tensor(float16)");
   EXPECT_EQ(**op_schema->outputs()[0].GetTypes().find(Utils::DataTypeUtils::ToType("tensor(float)")), "tensor(float)");
   EXPECT_EQ(**op_schema->outputs()[0].GetTypes().find(Utils::DataTypeUtils::ToType("tensor(double)")), "tensor(double)");
@@ -228,7 +157,7 @@ TEST(OpRegistrationTest, AttributeDefaultValueTest) {
       .Attr("my_attr_string", "attr with default value of \"99\".", AttrType::AttributeProto_AttributeType_STRING, std::string("99"));
   const OpSchema* op_schema = OpSchemaRegistry::Schema("__TestAttrDefaultValue");
   EXPECT_TRUE(nullptr != op_schema);
-  EXPECT_EQ(op_schema->attributes().size(), 3);
+  EXPECT_EQ(op_schema->attributes().size(), 3u);
 
   auto attr_int = op_schema->attributes().find("my_attr_int")->second;
   EXPECT_EQ(attr_int.name, "my_attr_int");
@@ -263,7 +192,7 @@ TEST(OpRegistrationTest, AttributeDefaultValueListTest) {
       .Attr("my_attr_strings", "attr with default value of [\"98\", \"99\", \"100\"].", AttrType::AttributeProto_AttributeType_STRINGS, std::vector<std::string>{"98", "99", "100"});
   const OpSchema* op_schema = OpSchemaRegistry::Schema("__TestAttrDefaultValueList");
   EXPECT_TRUE(nullptr != op_schema);
-  EXPECT_EQ(op_schema->attributes().size(), 3);
+  EXPECT_EQ(op_schema->attributes().size(), 3u);
 
   auto attr_ints = op_schema->attributes().find("my_attr_ints")->second;
   EXPECT_EQ(attr_ints.name, "my_attr_ints");

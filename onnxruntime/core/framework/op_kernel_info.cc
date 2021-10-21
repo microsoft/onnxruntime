@@ -79,7 +79,7 @@ bool OpKernelInfo::TryGetConstantInput(int input_index, const Tensor** constant_
   return true;
 }
 
-common::Status OpKernelInfo::GetFusedFuncs(ComputeFunc* compute, CreateFunctionStateFunc* create, DestroyFunctionStateFunc* release) const {
-  return funcs_mgr_.GetFuncs(node_.Name(), compute, create, release);
+common::Status OpKernelInfo::GetFusedFuncs(NodeComputeInfo*& compute_info) const {
+  return funcs_mgr_.GetFuncs(node_.Name(), compute_info);
 }
 }  // namespace onnxruntime

@@ -1,22 +1,41 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#pragma once
 
-#include "core/common/common.h"
-#include "core/framework/op_kernel.h"
-#include "core/util/math_cpuonly.h"
-#include "core/util/gemmlowp_common.h"
+#include "matmul_integer_base.h"
 
 namespace onnxruntime {
 
-template <typename T1, typename T2, typename T3>
-class QLinearMatMul final : public OpKernel {
+// Allow subclassing for test only
+class QLinearMatMul : public MatMulIntegerBase {
  public:
-  QLinearMatMul(const OpKernelInfo& info) : OpKernel(info) {
-  }
+  QLinearMatMul(const OpKernelInfo& info) : MatMulIntegerBase(info) {}
 
   Status Compute(OpKernelContext* context) const override;
 
+  /**
+   * @brief Give each input a name, should be consistent with doc spec in
+   * Operators.md
+  */
+  enum InputTensors : int {
+    IN_A = 0,
+    IN_A_SCALE = 1,
+    IN_A_ZERO_POINT = 2,
+    IN_B = 3,
+    IN_B_SCALE = 4,
+    IN_B_ZERO_POINT = 5,
+    IN_Y_SCALE = 6,
+    IN_Y_ZERO_POINT = 7
+  };
+
+  enum OutputTensors : int {
+    OUT_Y = 0
+  };
+
+ protected:
+  int GetBIdx() const override {
+    return IN_B;
+  }
 };
+
 }  // namespace onnxruntime

@@ -7,6 +7,8 @@ namespace onnxruntime {
 namespace profiling {
 using namespace std::chrono;
 
+std::atomic<size_t> Profiler::global_max_num_events_{1000 * 1000};
+
 #ifdef ENABLE_STATIC_PROFILER_INSTANCE
 Profiler* Profiler::instance_ = nullptr;
 
@@ -17,8 +19,14 @@ profiling::Profiler::~Profiler() {
 profiling::Profiler::~Profiler() {}
 #endif
 
-::onnxruntime::TimePoint profiling::Profiler::StartTime() const {
-  return std::chrono::high_resolution_clock::now();
+::onnxruntime::TimePoint profiling::Profiler::Start() {
+  ORT_ENFORCE(enabled_);
+  auto start_time = std::chrono::high_resolution_clock::now();
+  auto ts = TimeDiffMicroSeconds(profiling_start_time_, start_time);
+  for (const auto& ep_profiler : ep_profilers_) {
+    ep_profiler->Start(ts);
+  } 
+  return start_time;
 }
 
 void Profiler::Initialize(const logging::Logger* session_logger) {
@@ -39,15 +47,23 @@ void Profiler::StartProfiling(const logging::Logger* custom_logger) {
   enabled_ = true;
   profile_with_logger_ = true;
   custom_logger_ = custom_logger;
-  profiling_start_time_ = StartTime();
+  profiling_start_time_ = std::chrono::high_resolution_clock::now();
+  for (const auto& ep_profiler : ep_profilers_) {
+    ep_profiler->StartProfiling();
+  }
 }
 
 template <typename T>
 void Profiler::StartProfiling(const std::basic_string<T>& file_name) {
   enabled_ = true;
+#if !defined(__wasm__)
   profile_stream_.open(file_name, std::ios::out | std::ios::trunc);
+#endif
   profile_stream_file_ = ToMBString(file_name);
-  profiling_start_time_ = StartTime();
+  profiling_start_time_ = std::chrono::high_resolution_clock::now();
+  for (const auto& ep_profiler : ep_profilers_) {
+    ep_profiler->StartProfiling();
+  }
 }
 
 template void Profiler::StartProfiling<char>(const std::basic_string<char>& file_name);
@@ -57,7 +73,7 @@ template void Profiler::StartProfiling<wchar_t>(const std::basic_string<wchar_t>
 
 void Profiler::EndTimeAndRecordEvent(EventCategory category,
                                      const std::string& event_name,
-                                     TimePoint& start_time,
+                                     const TimePoint& start_time,
                                      const std::initializer_list<std::pair<std::string, std::string>>& event_args,
                                      bool /*sync_gpu*/) {
   long long dur = TimeDiffMicroSeconds(start_time);
@@ -80,6 +96,10 @@ void Profiler::EndTimeAndRecordEvent(EventCategory category,
       }
     }
   }
+
+  for (const auto& ep_profiler : ep_profilers_) {
+    ep_profiler->Stop(ts);
+  }
 }
 
 std::string Profiler::EndProfiling() {
@@ -98,6 +118,10 @@ std::string Profiler::EndProfiling() {
   std::lock_guard<OrtMutex> lock(mutex_);
   profile_stream_ << "[\n";
 
+  for (const auto& ep_profiler : ep_profilers_) {
+    ep_profiler->EndProfiling(profiling_start_time_, events_);
+  }
+
   for (size_t i = 0; i < events_.size(); ++i) {
     auto& rec = events_[i];
     profile_stream_ << R"({"cat" : ")" << event_categor_names_[rec.cat] << "\",";
@@ -111,7 +135,11 @@ std::string Profiler::EndProfiling() {
     bool is_first_arg = true;
     for (std::pair<std::string, std::string> event_arg : rec.args) {
       if (!is_first_arg) profile_stream_ << ",";
-      profile_stream_ << "\"" << event_arg.first << "\" : \"" << event_arg.second << "\"";
+      if (!event_arg.second.empty() && event_arg.second[0] == '{') {
+        profile_stream_ << "\"" << event_arg.first << "\" : " << event_arg.second << "";
+      } else {
+        profile_stream_ << "\"" << event_arg.first << "\" : \"" << event_arg.second << "\"";
+      }
       is_first_arg = false;
     }
     profile_stream_ << "}";
@@ -122,7 +150,9 @@ std::string Profiler::EndProfiling() {
     }
   }
   profile_stream_ << "]\n";
+#if !defined(__wasm__)
   profile_stream_.close();
+#endif
   enabled_ = false;  // will not collect profile after writing.
   return profile_stream_file_;
 }

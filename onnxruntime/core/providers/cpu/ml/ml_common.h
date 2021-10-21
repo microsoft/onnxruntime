@@ -3,8 +3,12 @@
 
 #pragma once
 #include "core/common/common.h"
+#include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
+#include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
+#include "core/mlas/inc/mlas.h"
+#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
 namespace ml {  // name space for onnx.ml operators
@@ -181,16 +185,15 @@ static inline float ErfInv(float x) {
 }
 
 //https://www.csie.ntu.edu.tw/~cjlin/papers/svmprob/svmprob.pdf
-static inline void multiclass_probability(int64_t classcount, const std::vector<float>& r, std::vector<float>& p) {
+static inline void multiclass_probability(int64_t classcount,
+                                          const gsl::span<const float>& r,
+                                          const gsl::span<float>& p) {
   int64_t sized2 = classcount * classcount;
   std::vector<float> Q;
   std::vector<float> Qp;
-  for (int64_t k = 0; k < sized2; k++) {
-    Q.push_back(0);
-  }
-  for (int64_t k = 0; k < classcount; k++) {
-    Qp.push_back(0);
-  }
+  Q.assign(sized2, 0.f);
+  Qp.assign(classcount, 0.f);
+
   float eps = 0.005f / static_cast<float>(classcount);
   for (int64_t i = 0; i < classcount; i++) {
     p[i] = 1.0f / static_cast<float>(classcount);  // Valid if k = 1
@@ -203,6 +206,7 @@ static inline void multiclass_probability(int64_t classcount, const std::vector<
       Q[i * classcount + j] = -r[j * classcount + i] * r[i * classcount + j];
     }
   }
+
   for (int64_t loop = 0; loop < 100; loop++) {
     // stopping condition, recalculate QP,pQP for numerical accuracy
     float pQp = 0;
@@ -213,6 +217,7 @@ static inline void multiclass_probability(int64_t classcount, const std::vector<
       }
       pQp += p[i] * Qp[i];
     }
+
     float max_error = 0;
     for (int64_t i = 0; i < classcount; i++) {
       float error = std::fabs(Qp[i] - pQp);
@@ -220,7 +225,9 @@ static inline void multiclass_probability(int64_t classcount, const std::vector<
         max_error = error;
       }
     }
-    if (max_error < eps) break;
+
+    if (max_error < eps)
+      break;
 
     for (int64_t i = 0; i < classcount; i++) {
       float diff = (-Qp[i] + pQp) / Q[i * classcount + i];
@@ -250,110 +257,277 @@ static inline float sigmoid_probability(float score, float proba, float probb) {
   return 1 - ComputeLogistic(val);  // ref: https://github.com/arnaudsj/libsvm/blob/eaaefac5ebd32d0e07902e1ae740e038eaaf0826/svm.cpp#L1818
 }
 
-static inline void ComputeSoftmax(std::vector<float>& values) {
-  std::vector<float> newscores;
-  // compute exp with negative number to be numerically stable
-  float v_max = -std::numeric_limits<float>::max();
-  for (float value : values) {
-    if (value > v_max)
-      v_max = value;
-  }
-  float this_sum = 0.f;
-  for (float value : values) {
-    float val2 = std::exp(value - v_max);
-    this_sum += val2;
-    newscores.push_back(val2);
-  }
-  for (int64_t k = 0; k < static_cast<int64_t>(values.size()); k++) {
-    values[k] = newscores[k] / this_sum;
-  }
-}
+template <typename T>
+static inline void ComputeSoftmax(const gsl::span<T>& values) {
+  // TODO: Replace this with usage of code in Softmax operator
 
-//this function skips zero values (since exp(0) is non zero)
-static inline void ComputeSoftmaxZero(std::vector<float>& values) {
-  std::vector<float> newscores;
   // compute exp with negative number to be numerically stable
   float v_max = -std::numeric_limits<float>::max();
-  for (float value : values) {
-    if (value > v_max)
-      v_max = value;
+  for (auto it = values.cbegin(); it != values.cend(); ++it) {
+    if (static_cast<float>(*it) > v_max)
+      v_max = static_cast<float>(*it);
   }
-  float exp_neg_v_max = std::exp(-v_max);
   float this_sum = 0.f;
-  for (float value : values) {
-    if (value > 0.0000001f || value < -0.0000001f) {
-      float val2 = std::exp(value - v_max);
-      this_sum += val2;
-      newscores.push_back(val2);
-    } else {
-      newscores.push_back(value * exp_neg_v_max);
-    }
+  for (auto it = values.begin(); it != values.end(); ++it) {
+    *it = std::exp(static_cast<float>(*it) - v_max);
+    this_sum += static_cast<float>(*it);
   }
-  for (int64_t k = 0; k < static_cast<int64_t>(values.size()); k++) {
-    values[k] = newscores[k] / this_sum;
-  }
+  for (auto it = values.begin(); it != values.end(); ++it)
+    *it = static_cast<float>(*it) / this_sum;
 }
 
 template <typename T>
-void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transform, int64_t write_index, Tensor* Z,
-                  int add_second_class) {
+static inline void ComputeSoftmax(std::vector<T>& values) {
+  auto span = gsl::make_span(values);
+  ComputeSoftmax(span);
+}
+
+//this function skips zero values (since exp(0) is non zero)
+template <typename T>
+static inline void ComputeSoftmaxZero(const gsl::span<T>& values) {
+  // compute exp with negative number to be numerically stable
+  float v_max = -std::numeric_limits<float>::max();
+  for (auto it = values.cbegin(); it != values.cend(); ++it) {
+    if (static_cast<float>(*it) > v_max)
+      v_max = static_cast<float>(*it);
+  }
+  float exp_neg_v_max = std::exp(-v_max);
+  float this_sum = 0.f;
+  for (auto it = values.begin(); it != values.end(); ++it) {
+    if (static_cast<float>(*it) > 0.0000001f || static_cast<float>(*it) < -0.0000001f) {
+      *it = std::exp(static_cast<float>(*it) - v_max);
+      this_sum += static_cast<float>(*it);
+    } else {
+      *it = static_cast<float>(*it) * exp_neg_v_max;
+    }
+  }
+  for (auto it = values.begin(); it != values.end(); ++it)
+    *it = *it / this_sum;
+}
+
+template <typename T>
+static inline void ComputeSoftmaxZero(std::vector<T>& values) {
+  auto span = gsl::make_span(values);
+  ComputeSoftmaxZero(span);
+}
+
+template <typename T, typename IT>
+static void write_scores(std::vector<IT>& scores, POST_EVAL_TRANSFORM post_transform,
+                         T* Z, int add_second_class) {
   if (scores.size() >= 2) {
     switch (post_transform) {
       case POST_EVAL_TRANSFORM::PROBIT:
-        for (float& score : scores)
-          score = ComputeProbit(score);
+        for (auto it = scores.cbegin(); it != scores.cend(); ++it, ++Z)
+          *Z = static_cast<T>(ComputeProbit(static_cast<float>(*it)));
         break;
       case POST_EVAL_TRANSFORM::LOGISTIC:
-        for (float& score : scores)
-          score = ComputeLogistic(score);
+        for (auto it = scores.cbegin(); it != scores.cend(); ++it, ++Z)
+          *Z = static_cast<T>(ComputeLogistic(static_cast<float>(*it)));
         break;
       case POST_EVAL_TRANSFORM::SOFTMAX:
         ComputeSoftmax(scores);
+        for (auto it = scores.begin(); it != scores.end(); ++it, ++Z)
+          *Z = static_cast<T>(*it);
         break;
       case POST_EVAL_TRANSFORM::SOFTMAX_ZERO:
         ComputeSoftmaxZero(scores);
+        for (auto it = scores.begin(); it != scores.end(); ++it, ++Z)
+          *Z = static_cast<T>(*it);
         break;
       default:
       case POST_EVAL_TRANSFORM::NONE:
+        for (auto it = scores.begin(); it != scores.end(); ++it, ++Z)
+          *Z = static_cast<T>(*it);
         break;
     }
   } else if (scores.size() == 1) {  //binary case
     if (post_transform == POST_EVAL_TRANSFORM::PROBIT) {
-      scores[0] = ComputeProbit(scores[0]);
+      scores[0] = static_cast<T>(ComputeProbit(static_cast<float>(scores[0])));
+      *Z = scores[0];
     } else {
       switch (add_second_class) {
-        case 0:
-        case 1:
+        case 0:  //0=all positive weights, winning class is positive
           scores.push_back(scores[0]);
-          scores[0] = 1.f - scores[0];
+          scores[0] = 1.f - scores[0];  //put opposite score in positive slot
+          *Z = scores[0];
+          *(Z + 1) = scores[1];
           break;
-        case 2:  //2 = mixed weights, winning class is positive
+        case 1:  //1 = all positive weights, winning class is negative
+          scores.push_back(scores[0]);
+          scores[0] = 1.f - scores[0];  //put opposite score in positive slot
+          *Z = scores[0];
+          *(Z + 1) = scores[1];
+          break;
+        case 2:
+        case 3:  //2 = mixed weights, winning class is positive
           if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
-            scores.push_back(ComputeLogistic(scores[0]));  //ml_logit(scores[k]);
-            scores[0] = ComputeLogistic(-scores[0]);
+            scores.resize(2);
+            scores[1] = static_cast<T>(ComputeLogistic(static_cast<float>(scores[0])));
+            scores[0] = static_cast<T>(ComputeLogistic(static_cast<float>(-scores[0])));
           } else {
             scores.push_back(scores[0]);
             scores[0] = -scores[0];
           }
+          *Z = scores[0];
+          *(Z + 1) = scores[1];
           break;
-        case 3:  //3 = mixed weights, winning class is negative
-          if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
-            scores.push_back(ComputeLogistic(scores[0]));  //ml_logit(scores[k]);
-            scores[0] = ComputeLogistic(-scores[0]);
-          } else {
-            scores.push_back(-scores[0]);
-          }
+        default:
+          *Z = scores[0];
           break;
       }
     }
   }
+}
+
+template <typename T>
+static void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transform, int64_t write_index, Tensor* Z,
+                         int add_second_class) {
   T* out_p = Z->template MutableData<T>() + write_index;
   size_t len;
   if (!IAllocator::CalcMemSizeForArray(scores.size(), sizeof(T), &len)) {
     ORT_THROW("length overflow");
   }
-  memcpy(out_p, scores.data(), len);
+  write_scores(scores, post_transform, out_p, add_second_class);
 }
 
+// TODO: Update TreeEnsemble* ops to use this instead of write_scores if possible.
+//       Attempted to parallelize the calculations if the number of scores to process was large, but no clear benefit
+//       was seen from testing with the arbitrary values of 1000 scores per threads.
+template <typename T>
+void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, int64_t batch_size,
+                                   POST_EVAL_TRANSFORM post_transform,
+                                   int add_second_class, bool have_space_for_second_class,
+                                   concurrency::ThreadPool* threadpool) {
+  if (batch_size < 1)
+    return;
+
+  SafeInt<int32_t> num_batches(num_batches_in);
+  SafeInt<int32_t> num_scores = num_batches * batch_size;
+  SafeInt<int32_t> expected_num_scores = num_scores * (batch_size == 1 && add_second_class >= 0 ? 2 : 1);
+  ORT_ENFORCE(scores.size() == static_cast<size_t>(expected_num_scores));
+
+  // convert from span to pointer for efficiency. we've checked scores.size() matches num_scores so don't need the
+  // extra checking/overhead from using operator[] for each access
+  T* s = scores.data();
+  const T* s_end = s + static_cast<int32_t>(num_scores);
+
+  if (batch_size > 1) {
+    switch (post_transform) {
+      case POST_EVAL_TRANSFORM::PROBIT: {
+        while (s < s_end) {
+          *s = ComputeProbit(*s);
+          ++s;
+        }
+        break;
+      }
+      case POST_EVAL_TRANSFORM::LOGISTIC: {
+        MlasComputeLogistic(s, s, scores.size());
+        break;
+      }
+      case POST_EVAL_TRANSFORM::SOFTMAX: {
+        bool use_mlas = true;
+        // if there are less than 8 items in each batch it may be slower to use mlas.
+        // currently MlasComputeSoftmax adds threads on 16K blocks of work.
+        // for smaller batches it takes more threads to counter some of the overhead.
+        switch (batch_size) {
+          case 1:
+            use_mlas = false;  // mlas is mildly slower
+            break;
+          case 2:
+            use_mlas = num_scores >= 32 * 1024;
+            break;
+          case 3:
+          case 4:
+            use_mlas = num_scores >= 16 * 1024;
+            break;
+          default:
+            // toss up if num_scores is low (<200), but the more scores to process the larger the win by mlas
+            break;
+        }
+
+        if (use_mlas) {
+          MlasComputeSoftmax(s, s, num_batches, batch_size, false, threadpool);
+        } else {
+          while (s < s_end) {
+            gsl::span<float> scores_for_batch(s, s + batch_size);
+            ComputeSoftmax(scores_for_batch);
+            s += batch_size;
+          }
+        }
+
+        break;
+      }
+      case POST_EVAL_TRANSFORM::SOFTMAX_ZERO: {
+        while (s < s_end) {
+          gsl::span<float> scores_for_batch(s, s + batch_size);
+          ComputeSoftmaxZero(scores_for_batch);
+          s += batch_size;
+        }
+        break;
+      }
+      case POST_EVAL_TRANSFORM::NONE:
+      default:
+        break;
+    }
+  } else {  // binary case
+    if (post_transform == POST_EVAL_TRANSFORM::PROBIT) {
+      while (s < s_end) {
+        *s = ComputeProbit(*s);
+        ++s;
+      }
+    } else if (add_second_class >= 0) {
+      // in this case we have a buffer that holds 2x scores. the actual scores are at the start of the buffer,
+      // and for each score we need 2 entries.
+      // process the scores from the back to the front so we don't need a separate buffer.
+      std::function<void(const float score, float* output)> update_scores;
+
+      switch (add_second_class) {
+        case 0:
+        case 1:
+          update_scores = [](const float score, float* output) {
+            *output++ = 1.f - score;
+            *output = score;
+          };
+          break;
+
+        case 2:  //2 = mixed weights, winning class is positive
+        case 3:  //3 = mixed weights, winning class is negative
+          if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
+            update_scores = [](const float score, float* output) {
+              *output++ = ComputeLogistic(-score);
+              *output = ComputeLogistic(score);
+            };
+          } else {
+            update_scores = [](const float score, float* output) {
+              *output++ = -score;
+              *output = score;
+            };
+          }
+          break;
+
+        default:
+          ORT_THROW("Unexpected value for 'add_second_class' of ", add_second_class);
+      }
+
+      if (have_space_for_second_class) {
+        // forward iteration as there's a gap between each score to write into
+        float* cur_score = scores.data();
+        for (int i = 0; i < num_batches; ++i) {
+          update_scores(*cur_score, cur_score);
+          cur_score += 2;
+        }
+      } else {
+        // reverse iteration as the scores are packed together and each score needs to be expanded to two
+        const float* cur_in = s_end;
+        float* cur_out = &*scores.end();
+        while (cur_in > s) {
+          --cur_in;
+          cur_out -= 2;
+          update_scores(*cur_in, cur_out);
+        }
+      }
+    }
+  }
+}
 }  // namespace ml
 }  // namespace onnxruntime

@@ -11,16 +11,16 @@
 namespace onnxruntime {
 namespace ml {
 
-template <typename T>
 class LinearRegressor final : public OpKernel {
  public:
   LinearRegressor(const OpKernelInfo& info);
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  int64_t targets_;
+  int64_t num_targets_;
   std::vector<float> coefficients_;
   std::vector<float> intercepts_;
+  bool use_intercepts_;
   POST_EVAL_TRANSFORM post_transform_;
 };
 

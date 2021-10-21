@@ -7,6 +7,7 @@
 #include "core/framework/alloc_kind.h"
 #include "core/framework/data_types.h"
 #include "core/framework/execution_plan_base.h"
+#include "core/graph/graph.h"
 
 namespace onnxruntime {
 // Every ml-value has a unique name and is assigned a unique integral number.
@@ -16,13 +17,16 @@ namespace onnxruntime {
 // the ExecutionFrame).
 using OrtValueIndex = int;
 using OrtValueName = std::string;
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE) 
+// pair of start and end program counters,according to the execution plan
+using IntervalT = std::pair<size_t, size_t>;
+#endif
 
 class SessionState;
 
-// AllocPlanPerValue: (a simplified form of AllocationPlanPerValue above)
 // Captures information required to allocate/reuse buffer for a ml-value
 struct AllocPlanPerValue {
-  AllocKind alloc_kind{AllocKind::kAllocate};
+  AllocKind alloc_kind{AllocKind::kNotSet};
   MLDataType value_type{nullptr};
   OrtMemoryInfo location;
   // reused_buffer is valid only if alloc_kind == kReuse. It indicates
@@ -31,9 +35,45 @@ struct AllocPlanPerValue {
   // if the value is used in async kernel, a fence object would be created
   // note the fence object would be shared between MLValues reusing the same buffer
   bool create_fence_if_async{false};
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE) 
+  IntervalT life_interval{0, 0};
+  IntervalT allocate_interval{0, 0};
+  OrtValueIndex inplace_reuse{-1}; //No in-place reuse
+#endif
+
+  class ProgramCounter {
+   public:
+    ProgramCounter() = default;
+    void AddStart(size_t start) {
+      ORT_ENFORCE(starts_.size() == ends_.size(), "Previous entry was not terminated.");
+      ORT_ENFORCE(starts_.empty() || start > ends_.back(), "Invalid 'start'. Value is smaller than previous 'end'.");
+      starts_.push_back(start);
+    }
+
+    void AddEnd(size_t end) {
+      ORT_ENFORCE(starts_.size() == ends_.size() + 1, "No matching 'start' entry.");
+      ORT_ENFORCE(end >= starts_.back(), "Invalid 'end'. Value is larger than 'start'.");
+      ends_.push_back(end);
+    }
+
+    // return true if there are entries, and the number of start/end pairs match.
+    // validity of the individual start/end values is checked when they are added.
+    bool HasValidEntries() const {
+      return !starts_.empty() && starts_.size() == ends_.size();
+    }
+
+    const std::vector<size_t>& Starts() const { return starts_; }
+    const std::vector<size_t>& Ends() const { return ends_; }
+
+   private:
+    std::vector<size_t> starts_;
+    std::vector<size_t> ends_;
+  };
+
+  ProgramCounter program_counter;
 
  public:
-  AllocPlanPerValue() : location(CPU, OrtArenaAllocator) {}
+  AllocPlanPerValue() : location(CPU, OrtInvalidAllocator) {}
 };
 
 // SequentialExecutionPlan: This is the data that is produced by a static
@@ -45,6 +85,12 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
 
   // The following vector is indexed by OrtValueIndex
   std::vector<AllocPlanPerValue> allocation_plan;
+
+  // The following vector contains any initializer tensors that must be allocated sequentially.
+  std::vector<OrtValueIndex> initializer_allocation_order;
+
+  // The following vector contains any activation tensors that must be allocated sequentially.
+  std::vector<OrtValueIndex> activation_allocation_order;
 
   // The following indicates the order in which nodes should be executed and the
   // ml-values to be free after each node's execution:

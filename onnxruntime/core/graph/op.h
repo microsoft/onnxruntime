@@ -5,15 +5,13 @@
 
 #include <functional>
 #include <unordered_map>
-#ifdef __GNUC__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wignored-qualifiers"
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#endif
+#if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/schema.h"
-#ifdef __GNUC__
-#pragma GCC diagnostic pop
+#else
+#include "onnx/defs/data_type_utils.h"
 #endif
+#include "onnx/onnx_pb.h"
+#include "onnx/onnx-operators_pb.h"
 #include "core/common/status.h"
 #include "core/graph/constants.h"
 

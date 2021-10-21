@@ -21,6 +21,8 @@ static void RunTest(const vector<T>& input,
   test.AddInput("X", dims, input);
   test.AddOutput("Y", dims, output);
 
+  // output 'norm' so if a test fails we know which one
+  std::cout << "norm=" << norm << "\n";
   test.Run(expect_result, expect_error_message);
 }
 
@@ -120,6 +122,23 @@ TEST(Normalizer, SingleDimensionFloat) {
   RunTests(input, dims, max_output, l1_output, l2_output);
 }
 
+TEST(Normalizer, TwoDimensionFloat) {
+  std::vector<int64_t> dims = {2, 3};
+  std::vector<float> input = {-1.0856306f, 0.99734545f, 0.2829785f,
+                              -1.50629471f, -0.57860025f, 1.65143654f};
+
+  std::vector<float> max_output{-1.0885202f, 1.f, 0.2837317f,
+                                -0.91211176f, -0.35036176f, 1.f};
+
+  std::vector<float> l1_output{-0.45885524f, 0.42154038f, 0.11960436f,
+                               -0.40314806f, -0.15485784f, 0.44199413f};
+
+  std::vector<float> l2_output{-0.7232126f, 0.6643998f, 0.18851127f,
+                               -0.65239084f, -0.25059736f, 0.7152532f};
+
+  RunTests(input, dims, max_output, l1_output, l2_output);
+}
+
 TEST(Normalizer, TwoDimensionDouble) {
   std::vector<int64_t> dims = {2, 3};
   std::vector<double> input = {-1.0856306, 0.99734545, 0.2829785,
@@ -137,42 +156,28 @@ TEST(Normalizer, TwoDimensionDouble) {
   RunTests(input, dims, max_output, l1_output, l2_output);
 }
 
-TEST(Normalizer, ThreeDimensionInt32) {
-  std::vector<int64_t> dims = {2, 3, 4};
-  std::vector<int32_t> input = {-242, -42, 126, -86,
-                                -67, -9, 149, -63,
-                                -44, -43, 220, 218,
+#if defined(_M_AMD64) || defined(__x86_64__)
+TEST(Normalizer, TwoDimensionInt) {
+  std::vector<int64_t> dims = {3, 2};
+  std::vector<int32_t> input = {-242, -42,
+                                126, -86,
+                                -67, -9};
 
-                                100, 38, 73, 149,
-                                -93, 117, -125, -63,
-                                90, -142, -14, -86};
+  std::vector<float> max_output{5.7619047f, 1.f,
+                                1.f, -0.6825397f,
+                                7.4444447f, 1.f};
 
-  std::vector<float> max_output{5.5f, 4.6666665f, 0.57272726f, -0.39449543f,
-                                1.5227273f, 1.f, 0.67727274f, -0.28899083f,
-                                1.f, 4.7777777f, 1.f, 1.f,
+  std::vector<float> l1_output{-0.85211265f, -0.14788732f,
+                               0.5943396f, -0.4056604f,
+                               -0.8815789f, -0.11842106f};
 
-                                1.f, 0.32478634f, 1.f, 1.f,
-                                -0.93f, 1.f, -1.7123288f, -0.42281878f,
-                                0.9f, -1.2136753f, -0.19178082f, -0.5771812f};
-
-  std::vector<float> l1_output{-0.6855524f, -0.44680852f, 0.25454545f, -0.23433243f,
-                               -0.1898017f, -0.09574468f, 0.3010101f, -0.17166212f,
-                               -0.12464589f, -0.4574468f, 0.44444445f, 0.59400547f,
-
-                               0.3533569f, 0.12794612f, 0.3443396f, 0.5f,
-                               -0.3286219f, 0.3939394f, -0.5896226f, -0.21140939f,
-                               0.3180212f, -0.4781145f, -0.06603774f, -0.2885906f};
-
-  std::vector<float> l2_output{-0.94928247f, -0.6910363f, 0.4284698f, -0.3543899f,
-                               -0.26281786f, -0.1480792f, 0.5066825f, -0.25961122f,
-                               -0.17259681f, -0.7074895f, 0.74812186f, 0.89833724f,
-
-                               0.6114293f, 0.2022622f, 0.5019584f, 0.8132732f,
-                               -0.56862926f, 0.62275463f, -0.85951775f, -0.34386718f,
-                               0.55028635f, -0.7558219f, -0.09626599f, -0.469406f};
+  std::vector<float> l2_output{-0.98527145f, -0.17099753f,
+                               0.82594985f, -0.56374353f,
+                               -0.9910982f, -0.13313259f};
 
   RunTests(input, dims, max_output, l1_output, l2_output);
 }
+#endif
 
 TEST(Normalizer, InvalidNorm) {
   std::vector<int64_t> dims = {3};

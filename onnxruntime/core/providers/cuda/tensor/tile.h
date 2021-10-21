@@ -1,15 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/common.h"
-#include "core/framework/op_kernel.h"
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/shared_library/provider_api.h"
+#include "core/providers/cuda/cuda_kernel.h"
+#include "core/providers/cpu/tensor/tile.h"
 
 namespace onnxruntime {
 namespace cuda {
-template <typename T>
+
 struct Tile final : CudaKernel {
-  Tile(const OpKernelInfo& info) : CudaKernel(info) {
+  explicit Tile(const OpKernelInfo& info) : CudaKernel(info) {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;

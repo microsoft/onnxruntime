@@ -12,12 +12,21 @@ namespace onnxruntime {
 template <typename T>
 class Hardmax final : public OpKernel {
  public:
-  Hardmax(const OpKernelInfo& info) : OpKernel{info}, axis_{1} {
+  Hardmax(const OpKernelInfo& info) : OpKernel{info} {
+    const auto& node = info.node();
+    opset_ = node.SinceVersion();
+
     int64_t axis;
     Status status = info.GetAttr<int64_t>("axis", &axis);
 
     if (status.IsOK()) {
       axis_ = gsl::narrow_cast<int>(axis);
+    } else {
+      if (opset_ < 13) {
+        axis_ = 1;  // opset-12 and below, the default axis value is 1
+      } else {
+        axis_ = -1;  // opset-13, the default axis value is -1
+      }
     }
   }
 
@@ -25,5 +34,6 @@ class Hardmax final : public OpKernel {
 
  private:
   int axis_;
+  int opset_;
 };
 }  // namespace onnxruntime

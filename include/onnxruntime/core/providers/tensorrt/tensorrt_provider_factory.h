@@ -12,4 +12,3 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtSessio
 #ifdef __cplusplus
 }
 #endif
-

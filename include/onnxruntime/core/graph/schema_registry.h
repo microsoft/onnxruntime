@@ -2,23 +2,19 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <mutex>
+#include <deque>
+#include <map>
+#include <sstream>
+
+#include "onnx/onnx_pb.h"
+#include "onnx/onnx-operators_pb.h"
+#include "onnx/defs/schema.h"
+
 #include "core/graph/constants.h"
 #include "core/common/common.h"
 #include "core/common/status.h"
 #include "core/platform/ort_mutex.h"
-
-#ifdef __GNUC__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wignored-qualifiers"
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#endif
-#include "onnx/defs/schema.h"
-#ifdef __GNUC__
-#pragma GCC diagnostic pop
-#endif
-#include <mutex>
-#include <deque>
-#include "sstream"
 
 namespace onnxruntime {
 using OpName_Domain_Version_Schema_Map = std::unordered_map<
@@ -138,6 +134,10 @@ class SchemaRegistryManager : public onnxruntime::IOnnxRuntimeOpSchemaCollection
   */
   DomainToVersionMap GetLatestOpsetVersions(bool is_onnx_only) const override;
 
+  /** Gets the last released opset versions.
+  @param is_onnx_only If true, return ONNX schemas only. If false, return the schemas for all domains.
+  */
+  DomainToVersionMap GetLastReleasedOpsetVersions(bool is_onnx_only) const ;
   /**
   Gets the OpSchema and its history.
   Searches custom schema registries starting with the last one added. \
@@ -155,6 +155,8 @@ class SchemaRegistryManager : public onnxruntime::IOnnxRuntimeOpSchemaCollection
                            int* earliest_opset_where_unchanged) const override;
 
  private:
+  void GetDomainToVersionMapForRegistries(DomainToVersionMap& domain_version_map, bool is_onnx_only) const;
+
   std::deque<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>> registries;
 };
 

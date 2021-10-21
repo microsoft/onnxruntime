@@ -108,7 +108,7 @@ class FuseExecutionProviderX : public CPUExecutionProvider {
 
     for (auto& group : groups) {
       if (group.size() > 1) {
-        std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
+        std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
         std::set<const onnxruntime::NodeArg*> fused_inputs, fused_outputs;
         for (auto index : group) {
           sub_graph->nodes.push_back(index);
@@ -131,7 +131,7 @@ class FuseExecutionProviderX : public CPUExecutionProvider {
           }
         }
 
-        auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
+        auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
         meta_def->name = "TVMFuse";
         meta_def->domain = "FuseTest";
         for (auto input : fused_inputs) {
@@ -144,13 +144,13 @@ class FuseExecutionProviderX : public CPUExecutionProvider {
 
         meta_def->since_version = 1;
         meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
-        sub_graph->SetMetaDef(meta_def);
+        sub_graph->SetMetaDef(std::move(meta_def));
         //TODO:set fuse kernel func;
         result.push_back(
-            onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
+            std::make_unique<ComputeCapability>(std::move(sub_graph)));
       }
     }
-    return std::move(result);
+    return result;
   }
 
   common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
@@ -251,7 +251,7 @@ class FuseExecutionProviderX : public CPUExecutionProvider {
         tvm::TVMRetValue rvalue;
         try {
           evaluate_func_.CallPacked(tvm_args, &rvalue);
-        } catch (std::exception ex) {
+        } catch (std::exception&) {
           return Status(common::ONNXRUNTIME, common::FAIL);  // TODO: Translate exception to error code
         }
         if (rvalue.type_code() != kNull) {
@@ -310,9 +310,9 @@ TEST(TVMTest, CodeGen_Demo_for_Fuse_Mul) {
 
   so.session_logid = "InferenceSessionTests.NoTimeout";
 
-  InferenceSession session_object{so, &DefaultLoggingManager()};
+  InferenceSession session_object{so, GetEnvironment()};
   CPUExecutionProviderInfo info;
-  auto tvm_xp = onnxruntime::make_unique<FuseExecutionProviderX>(info);
+  auto tvm_xp = std::make_unique<FuseExecutionProviderX>(info);
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(tvm_xp)).IsOK());
   EXPECT_TRUE(session_object.Load(MODEL_URI).IsOK());
   EXPECT_TRUE(session_object.Initialize().IsOK());

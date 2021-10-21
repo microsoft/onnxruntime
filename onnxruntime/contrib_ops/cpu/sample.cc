@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "sample.h"
-#include "onnx/defs/schema.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -13,5 +12,5 @@ ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
     float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).MayInplace(0, 0),
     contrib::SampleOp<float>);
-} // namespace contrib
+}  // namespace contrib
 }  // namespace onnxruntime

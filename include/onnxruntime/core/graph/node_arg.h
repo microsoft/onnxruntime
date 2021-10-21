@@ -3,7 +3,11 @@
 
 #pragma once
 
-#include "core/graph/onnx_protobuf.h"
+#include "onnx/onnx_pb.h"
+
+#include "core/graph/basic_types.h"
+#include "core/common/status.h"
+#include "core/common/logging/logging.h"
 
 namespace onnxruntime {
 
@@ -39,14 +43,15 @@ class NodeArg {
           const ONNX_NAMESPACE::TypeProto* p_arg_type);
 
   NodeArg(NodeArg&&) = default;
+  NodeArg& operator=(NodeArg&& other) = default;
 
   /** Gets the name. */
   const std::string& Name() const noexcept;
 
   /** Gets the data type. */
-  ONNX_NAMESPACE::DataType Type() const noexcept;
+  const std::string* Type() const noexcept;
 
-  /** Gets the TypeProto 
+  /** Gets the TypeProto
   @returns TypeProto if type is set. nullptr otherwise. */
   const ONNX_NAMESPACE::TypeProto* TypeAsProto() const noexcept;
 
@@ -54,18 +59,35 @@ class NodeArg {
   @returns TensorShapeProto if shape is set. nullptr if there's no shape specified. */
   const ONNX_NAMESPACE::TensorShapeProto* Shape() const;
 
+  /** Return an indicator.
+  @returns true if NodeArg is a normal tensor with a non-empty shape or a scalar with an empty shape. Otherwise, returns false. */
+  bool HasTensorOrScalarShape() const;
+
+#if !defined(ORT_MINIMAL_BUILD)
   /** Sets the shape.
   @remarks Shape can only be set if the TypeProto was provided to the ctor, or #SetType has been called,
   as the shape information is stored as part of TypeProto. */
   void SetShape(const ONNX_NAMESPACE::TensorShapeProto& shape);
 
+  /** Clears shape info.
+  @remarks If there is a mismatch during shape inferencing that can't be resolved the shape info may be removed. */
+  void ClearShape();
+
   /** Validate and merge type [and shape] info from input_type.
-  @returns Success unless there is existing type or shape info that can't be cleanly updated. */
-  common::Status UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type);
+  @param strict If true, the shape update will fail if there are incompatible values.
+                If false, will be lenient and merge only shape info that can be validly processed.
+  @param override_types If true, resolve the two inputs or two outputs type when different
+  @returns Success unless there is existing type or shape info that can't be successfully updated. */
+  common::Status UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type, bool strict, bool override_types, const logging::Logger& logger);
 
   /** Validate and merge type [and shape] info from node_arg.
-  @returns Success unless there is existing type or shape info that can't be cleanly updated. */
-  common::Status UpdateTypeAndShape(const NodeArg& node_arg);
+  @param strict If true, the shape update will fail if there are incompatible values.
+                If false, will be lenient and merge only shape info that can be validly processed.
+  @param override_types If true, resolve the two inputs or two outputs type when different
+  @returns Success unless there is existing type or shape info that can't be successfully updated. */
+  common::Status UpdateTypeAndShape(const NodeArg& node_arg, bool strict, bool override_types, const logging::Logger& logger);
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   /** Gets this NodeArg as a ValueInfoProto. */
   const NodeArgInfo& ToProto() const noexcept { return node_arg_info_; }
@@ -78,13 +100,15 @@ class NodeArg {
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(NodeArg);
   friend class Graph;
 
-  void SetType(ONNX_NAMESPACE::DataType p_type);
-  void SetType(const ONNX_NAMESPACE::TypeProto& type_proto);
+  NodeArg(NodeArgInfo&& node_arg_info);
 
-  NodeArg& operator=(NodeArg&& other) = delete;
+#if !defined(ORT_MINIMAL_BUILD)
+  void SetType(const std::string* p_type);
+  void SetType(const ONNX_NAMESPACE::TypeProto& type_proto);
+#endif
 
   // Node arg PType.
-  ONNX_NAMESPACE::DataType type_;
+  const std::string* type_;
 
   // Node arg name, type and shape.
   NodeArgInfo node_arg_info_;

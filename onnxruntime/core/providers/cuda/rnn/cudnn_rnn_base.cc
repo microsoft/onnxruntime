@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/shared_library/provider_api.h"
 #include "cudnn_rnn_base.h"
 #include "rnn_impl.h"
-#include "core/providers/cpu/rnn/rnn_helpers.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -34,7 +34,7 @@ void CudnnRnnBase<T>::SetWeightBias(const cudnnHandle_t handle,
 
   cudnnGetFilterNdDescriptor(filter_desc, 3, &dt, &tf, &numDims, matDims.data());
   int count = matDims[0] * matDims[1] * matDims[2];
-  cudaMemcpyAsync(mem_offset, pos + offset, count * sizeof(T), cudaMemcpyDeviceToDevice);
+  CUDA_CALL_THROW(cudaMemcpyAsync(mem_offset, pos + offset, count * sizeof(T), cudaMemcpyDeviceToDevice, Stream()));
   offset += count;
 }
 template <typename T>
@@ -91,10 +91,16 @@ Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, cons
 
   std::vector<int64_t> fake_dims_x({1, input_size, 1});
   CudnnTensor fake_x_desc;
-  fake_x_desc.Set(fake_dims_x, CudnnTensor::GetDataType<CudaT>());
+  ORT_RETURN_IF_ERROR(fake_x_desc.Set(fake_dims_x, CudnnTensor::GetDataType<CudaT>()));
 
   // Prepare the weight data
   reorganized_w_data = GetScratchBuffer<void>(w_size * sizeof(T));
+
+  // In many cases, this allocation is bigger than needed, leaving part of
+  // the buffer unintialized. non-zero garbage data leads to wrong result
+  // in call to cudnnRNNForwardInference()
+  // TODO! refine allocation size for each case.
+  cudaMemset(reorganized_w_data.get(), 0, w_size * sizeof(T));
 
   const T* W_data = W->template Data<T>();
   const T* R_data = R->template Data<T>();
@@ -119,8 +125,14 @@ Status CudnnRnnBase<T>::CacheCudnnRnnWeights(const OpKernelInfo& info) {
 
   if (get_W && get_R) {
     CudnnRNN tmp_rnn_desc;
-    ORT_RETURN_IF_ERROR(tmp_rnn_desc.Set(CudnnHandle(), hidden_size_, RNN_NUM_LAYERS, cudnn_dropout_desc_,
-                                         cudnn_direction_mode_, rnn_mode_, CudnnTensor::GetDataType<CudaT>()));
+    ORT_RETURN_IF_ERROR(tmp_rnn_desc.Set(CudnnHandle(),
+                                         hidden_size_,
+                                         RNN_NUM_LAYERS,
+                                         cudnn_dropout_desc_,
+                                         cudnn_direction_mode_,
+                                         rnn_mode_,
+                                         CudnnTensor::GetDataType<CudaT>(),
+                                         GetDeviceProp()));
     if (get_B) {
       ORT_RETURN_IF_ERROR(ReorganizeWeights(W, R, B, w_data_cache_, w_desc_cache_, tmp_rnn_desc));
     } else {
@@ -164,9 +176,9 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   std::vector<int64_t> dims_y({batch_size, hidden_size_ * num_directions_, 1});
 
   CudnnTensor x_desc_temp;
-  x_desc_temp.Set(dims_x, CudnnTensor::GetDataType<CudaT>());
+  ORT_RETURN_IF_ERROR(x_desc_temp.Set(dims_x, CudnnTensor::GetDataType<CudaT>()));
   CudnnTensor y_desc_temp;
-  y_desc_temp.Set(dims_y, CudnnTensor::GetDataType<CudaT>());
+  ORT_RETURN_IF_ERROR(y_desc_temp.Set(dims_y, CudnnTensor::GetDataType<CudaT>()));
   std::vector<cudnnTensorDescriptor_t> x_desc(seq_length, x_desc_temp);
   std::vector<cudnnTensorDescriptor_t> y_desc(seq_length, y_desc_temp);
 
@@ -184,7 +196,8 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (reverse_) {
     // reverse input data
     x_reversed_data = GetScratchBuffer<T>(seq_length * batch_size * input_size);
-    ReverseBySequence(gsl::narrow_cast<int32_t>(seq_length),
+    ReverseBySequence(Stream(),
+                      gsl::narrow_cast<int32_t>(seq_length),
                       gsl::narrow_cast<int32_t>(batch_size),
                       gsl::narrow_cast<int32_t>(input_size),
                       reinterpret_cast<const CudaT*>(x_data),
@@ -211,8 +224,14 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   const int32_t* sequence_lens_data = (sequence_lens == nullptr) ? nullptr : sequence_lens->template Data<int32_t>();
 
   CudnnRNN rnn_desc;
-  ORT_RETURN_IF_ERROR(rnn_desc.Set(CudnnHandle(), hidden_size_, RNN_NUM_LAYERS, cudnn_dropout_desc_,
-                                   cudnn_direction_mode_, rnn_mode_, CudnnTensor::GetDataType<CudaT>()));
+  ORT_RETURN_IF_ERROR(rnn_desc.Set(CudnnHandle(),
+                                   hidden_size_,
+                                   RNN_NUM_LAYERS,
+                                   cudnn_dropout_desc_,
+                                   cudnn_direction_mode_,
+                                   rnn_mode_,
+                                   CudnnTensor::GetDataType<CudaT>(),
+                                   GetDeviceProp()));
 
   // Prepare the weight data
   IAllocatorUniquePtr<void> w_data;
@@ -221,7 +240,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
     const Tensor& W = *ctx->Input<Tensor>(RNN_Input_Index::W);
     const Tensor& R = *ctx->Input<Tensor>(RNN_Input_Index::R);
     const Tensor* B = ctx->Input<Tensor>(RNN_Input_Index::B);
-    ReorganizeWeights(&W, &R, B, w_data, w_desc, rnn_desc);
+    ORT_RETURN_IF_ERROR(ReorganizeWeights(&W, &R, B, w_data, w_desc, rnn_desc));
   }
 
   // CUDNN_RNN_DATA_LAYOUT_SEQ_MAJOR_UNPACKED works with CUDNN_RNN_PADDED_IO_ENABLED, so that it will auto fill 0 for the shorter sequences
@@ -277,14 +296,14 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
       }
     }
 
-    CudnnDataTensor x_desc;
-    x_desc.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, input_size, seq_len_array.data());
-    CudnnDataTensor y_desc;
-    y_desc.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, hidden_size_ * num_directions_, seq_len_array.data());
+    CudnnDataTensor x_desc1;
+    ORT_RETURN_IF_ERROR(x_desc1.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, input_size, seq_len_array.data()));
+    CudnnDataTensor y_desc1;
+    ORT_RETURN_IF_ERROR(y_desc1.Set(CudnnTensor::GetDataType<CudaT>(), seq_length, batch_size, hidden_size_ * num_directions_, seq_len_array.data()));
 
     CUDNN_RETURN_IF_ERROR(cudnnRNNForwardInferenceEx(CudnnHandle(),
                                                      rnn_desc,
-                                                     x_desc,
+                                                     x_desc1,
                                                      x_data_input,
                                                      hx_desc,
                                                      hx_data,
@@ -292,7 +311,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                      cx_data,
                                                      weight_cached_ ? w_desc_cache_ : w_desc,
                                                      weight_cached_ ? w_data_cache_.get() : w_data.get(),
-                                                     y_desc,
+                                                     y_desc1,
                                                      y_data,
                                                      y_h_desc,
                                                      y_h_data,
@@ -319,14 +338,16 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
     y_reorganized_data = GetScratchBuffer<T>(output_size);
     if (reverse_) {
       //reverse output data
-      ReverseBySequence(gsl::narrow_cast<int32_t>(seq_length),
+      ReverseBySequence(Stream(),
+                        gsl::narrow_cast<int32_t>(seq_length),
                         gsl::narrow_cast<int32_t>(batch_size),
                         gsl::narrow_cast<int32_t>(hidden_size_),
                         reinterpret_cast<CudaT*>(y_data),
                         reinterpret_cast<CudaT*>(y_reorganized_data.get()),
                         output_size);
     } else {
-      ReorderBidirectionalDataInSequence(gsl::narrow_cast<int32_t>(seq_length),
+      ReorderBidirectionalDataInSequence(Stream(),
+                                         gsl::narrow_cast<int32_t>(seq_length),
                                          gsl::narrow_cast<int32_t>(batch_size),
                                          gsl::narrow_cast<int32_t>(hidden_size_),
                                          reinterpret_cast<CudaT*>(y_data),
@@ -336,7 +357,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
 
     if (Y != nullptr) {
       // User specified this optional output, so need to copy the reversed data to orignial place
-      cudaMemcpyAsync(y_data, y_reorganized_data.get(), output_size * sizeof(T), cudaMemcpyDeviceToDevice);
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(y_data, y_reorganized_data.get(), output_size * sizeof(T), cudaMemcpyDeviceToDevice, Stream()));
     } else {
       y_data = y_reorganized_data.get();
     }
@@ -350,8 +371,9 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   if ((CUDNN_RNN_RELU == rnn_mode_ || CUDNN_RNN_TANH == rnn_mode_) && sequence_lens_data != nullptr && y_h_data != nullptr && y_data != nullptr) {
     CudaAsyncBuffer<int32_t> sequence_lens_buffer(this, batch_size);
     memcpy(sequence_lens_buffer.CpuPtr(), sequence_lens_data, batch_size * sizeof(int32_t));
-    sequence_lens_buffer.CopyToGpu();
-    RnnMaskImpl(gsl::narrow_cast<int32_t>(num_directions_),
+    ORT_RETURN_IF_ERROR(sequence_lens_buffer.CopyToGpu());
+    RnnMaskImpl(Stream(),
+                gsl::narrow_cast<int32_t>(num_directions_),
                 gsl::narrow_cast<int32_t>(seq_length),
                 gsl::narrow_cast<int32_t>(batch_size),
                 gsl::narrow_cast<int32_t>(hidden_size_),
@@ -373,8 +395,9 @@ void CudnnRnnBase<T>::SetZeroSequences(const int64_t zero_seq_index_cache_size,
   typedef typename ToCudaType<T>::MappedType CudaT;
   CudaAsyncBuffer<int32_t> zero_seq_index_cache_async_buffer(this, zero_seq_index_cache_size);
   memcpy(zero_seq_index_cache_async_buffer.CpuPtr(), zero_seq_index_cache.data(), zero_seq_index_cache_size * sizeof(int32_t));
-  zero_seq_index_cache_async_buffer.CopyToGpu();
-  MaskZeroSequences(gsl::narrow_cast<int32_t>(hidden_size_),
+  ORT_THROW_IF_ERROR(zero_seq_index_cache_async_buffer.CopyToGpu());
+  MaskZeroSequences(Stream(),
+                    gsl::narrow_cast<int32_t>(hidden_size_),
                     reinterpret_cast<CudaT*>(y_data),
                     reinterpret_cast<CudaT*>(y_h_data),
                     reinterpret_cast<CudaT*>(y_c_data),

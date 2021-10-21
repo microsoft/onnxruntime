@@ -5,10 +5,22 @@
 
 #include <map>
 #include "gsl/gsl"
-#include "core/framework/utils.h"
 #include "core/providers/common.h"
+#include "core/providers/op_kernel_type_control.h"
+#include "core/providers/op_kernel_type_control_utils.h"
 
 namespace onnxruntime {
+
+namespace op_kernel_type_control {
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Unique, Input, 0,
+    float, int64_t, int8_t, std::string);
+}
+
+using UniqueDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Unique, Input, 0);
+using EnabledUniqueDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Unique, Input, 0);
 
 /*
 ONNX_OPERATOR_SET_SCHEMA(
@@ -66,31 +78,32 @@ ONNX_OPERATOR_SET_SCHEMA(
         .TypeConstraint(
             "T",
             OpSchema::all_tensor_types(),
-            "Input can be of any tensor type.")    
+            "Input can be of any tensor type.")
 */
 ONNX_CPU_OPERATOR_KERNEL(
     Unique,
     11,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    KernelDefBuilder().TypeConstraint("T",
+                                      BuildKernelDefConstraintsFromTypeList<UniqueDataTypes>(),
+                                      BuildKernelDefConstraintsFromTypeList<EnabledUniqueDataTypes>()),
     Unique);
 
 Status Unique::Compute(OpKernelContext* context) const {
   const Tensor& input = *context->Input<Tensor>(0);
 
   Status status;
-  auto data_type = input.DataType();
-
   // arbitrary set of types to support initially
-  if (data_type == DataTypeImpl::GetType<float>())
+  // Note: The non-string implementations can probably be based on data type size.
+  if (input.IsDataType<float>())
     status = ComputeImpl<float>(*context);
-  else if (data_type == DataTypeImpl::GetType<int64_t>())
+  else if (input.IsDataType<int64_t>())
     status = ComputeImpl<int64_t>(*context);
-  else if (data_type == DataTypeImpl::GetType<int8_t>())
+  else if (input.IsDataType<int8_t>())
     status = ComputeImpl<int8_t>(*context);
-  else if (data_type == DataTypeImpl::GetType<std::string>())
+  else if (input.IsDataTypeString())
     status = ComputeImpl<std::string>(*context);
   else
-    status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported tensor type of ", data_type);
+    status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported tensor type of ", input.DataType());
 
   return status;
 }
@@ -139,10 +152,10 @@ static void CreateFlattenedOutput(OpKernelContext& context,
                                   const std::vector<int64_t>& inverse_index,         // unsorted
                                   bool sorted) {
   int64_t num_unique = static_cast<int64_t>(indices.size());
-  Tensor& Y = *context.Output(0, TensorShape({num_unique}));
-  Tensor* indices_out = context.Output(1, TensorShape({num_unique}));
-  Tensor* inverse_indices = context.Output(2, TensorShape({static_cast<int64_t>(inverse_index.size())}));
-  Tensor* counts = context.Output(3, TensorShape({num_unique}));
+  Tensor& Y = *context.Output(0, {num_unique});
+  Tensor* indices_out = context.Output(1, {num_unique});
+  Tensor* inverse_indices = context.Output(2, {static_cast<int64_t>(inverse_index.size())});
+  Tensor* counts = context.Output(3, {num_unique});
 
   auto Y_data = Y.MutableDataAsSpan<T>();
   gsl::span<int64_t> indices_data = indices_out != nullptr ? indices_out->MutableDataAsSpan<int64_t>()
@@ -216,9 +229,9 @@ static void CreateOutput(OpKernelContext& context,
   }
 
   Tensor& Y = *context.Output(0, TensorShape(std::move(Y_dims)));
-  Tensor* indices_out = context.Output(1, TensorShape({num_unique}));
-  Tensor* inverse_indices = context.Output(2, TensorShape({static_cast<int64_t>(inverse_index.size())}));
-  Tensor* counts = context.Output(3, TensorShape({num_unique}));
+  Tensor* indices_out = context.Output(1, {num_unique});
+  Tensor* inverse_indices = context.Output(2, {static_cast<int64_t>(inverse_index.size())});
+  Tensor* counts = context.Output(3, {num_unique});
 
   auto Y_data = Y.MutableDataAsSpan<T>();
   gsl::span<int64_t> indices_data = indices_out != nullptr ? indices_out->MutableDataAsSpan<int64_t>()
@@ -288,6 +301,10 @@ static void CreateOutput(OpKernelContext& context,
 
 template <typename T>
 Status Unique::ComputeImpl(OpKernelContext& context) const {
+  if (!utils::HasType<EnabledUniqueDataTypes, T>()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Data type is not supported in this build.");
+  }
+
   const Tensor& input = *context.Input<Tensor>(0);
   auto data = input.DataAsSpan<T>();
 

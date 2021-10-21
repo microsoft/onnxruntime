@@ -2,27 +2,22 @@
 // Licensed under the MIT License.
 
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/framework/allocator.h"
 #include "core/providers/cpu/cpu_provider_factory.h"
-#include "test_fixture.h"
+#include <gtest/gtest.h>
 
-const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-const OrtApi* Ort::g_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 
-using namespace onnxruntime;
-
-TEST_F(CApiTest, allocation_info) {
+TEST(CApiTest, allocation_info) {
   OrtMemoryInfo *info1, *info2;
-  ORT_THROW_ON_ERROR(g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &info1));
-  ORT_THROW_ON_ERROR(g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &info2));
+  Ort::ThrowOnError(Ort::GetApi().CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &info1));
+  Ort::ThrowOnError(Ort::GetApi().CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &info2));
   int result;
-  ORT_THROW_ON_ERROR(g_ort->CompareMemoryInfo(info1, info2, &result));
+  Ort::ThrowOnError(Ort::GetApi().CompareMemoryInfo(info1, info2, &result));
   ASSERT_EQ(0, result);
-  g_ort->ReleaseMemoryInfo(info1);
-  g_ort->ReleaseMemoryInfo(info2);
+  Ort::GetApi().ReleaseMemoryInfo(info1);
+  Ort::GetApi().ReleaseMemoryInfo(info2);
 }
 
-TEST_F(CApiTest, DefaultAllocator) {
+TEST(CApiTest, DefaultAllocator) {
   Ort::AllocatorWithDefaultOptions default_allocator;
   char* p = (char*)default_allocator.Alloc(100);
   ASSERT_NE(p, nullptr);
@@ -31,6 +26,6 @@ TEST_F(CApiTest, DefaultAllocator) {
   const OrtMemoryInfo* info1 = default_allocator.GetInfo();
   const OrtMemoryInfo* info2 = static_cast<OrtAllocator*>(default_allocator)->Info(default_allocator);
   int result;
-  ORT_THROW_ON_ERROR(g_ort->CompareMemoryInfo(info1, info2, &result));
+  Ort::ThrowOnError(Ort::GetApi().CompareMemoryInfo(info1, info2, &result));
   ASSERT_EQ(0, result);
 }

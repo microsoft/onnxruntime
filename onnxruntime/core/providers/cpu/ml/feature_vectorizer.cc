@@ -41,7 +41,7 @@ Status FeatureVectorizer::Compute(OpKernelContext* context) const {
   int64_t N = X.Shape().NumDimensions() == 1 ? 1 : x_dims[0];
 
   // initialize all the output to 0.f
-  Tensor* Y = context->Output(0, TensorShape({N, total_dimensions_}));
+  Tensor* Y = context->Output(0, {N, total_dimensions_});
   auto Y_data = Y->template MutableData<float>();
 
   auto out = gsl::make_span(Y_data, Y->Shape().Size());
@@ -59,21 +59,20 @@ Status FeatureVectorizer::Compute(OpKernelContext* context) const {
 
     auto feature_size = input_dimensions_[index];
 
-    auto data_type = input_tensor.DataType();
     auto cur_out = out.begin() + feature_offset;
 
-    if (data_type == DataTypeImpl::GetType<float>()) {
+    if (input_tensor.IsDataType<float>()) {
       // straight copy for float to float
       VectorizeTensor<float>(input_tensor, feature_size, total_dimensions_, cur_out);
-    } else if (data_type == DataTypeImpl::GetType<int32_t>()) {
+    } else if (input_tensor.IsDataType<int32_t>()) {
       VectorizeTensor<int32_t>(input_tensor, feature_size, total_dimensions_, cur_out);
-    } else if (data_type == DataTypeImpl::GetType<int64_t>()) {
+    } else if (input_tensor.IsDataType<int64_t>()) {
       VectorizeTensor<int64_t>(input_tensor, feature_size, total_dimensions_, cur_out);
-    } else if (data_type == DataTypeImpl::GetType<double>()) {
+    } else if (input_tensor.IsDataType<double>()) {
       VectorizeTensor<double>(input_tensor, feature_size, total_dimensions_, cur_out);
     } else {
       // should never happen. graph validation should have failed
-      ORT_THROW("Invalid input type:", data_type);
+      ORT_THROW("Invalid input type:", input_tensor.DataType());
     }
 
     // move to start of next feature

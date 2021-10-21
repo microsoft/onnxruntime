@@ -49,13 +49,18 @@ bool GraphPartitioner::IsNodeSupported(const Node& node) const {
           }
         }
       });
-      return std::move(symbolic_dimensions);
+      return symbolic_dimensions;
     };
+    // if there are any output symbols not in input symbols, fallback to CPU
     auto input_sym = get_symbolic_dimensions(node, true);
     auto output_sym = get_symbolic_dimensions(node, false);
-    if (input_sym != output_sym && output_sym.size() > 0)
+    if (std::count_if(output_sym.begin(),
+                      output_sym.end(),
+                      [&input_sym](const std::string& name) {
+                        return input_sym.count(name) == 0;
+                      })) {
       return false;
-
+    }
     return true;
   }
 
@@ -135,6 +140,7 @@ bool GraphPartitioner::ForcePartition(
 
 // Partition the graph (fusing ops) based on the dependency and whether ops are supported:
 Status GraphPartitioner::Partition(const onnxruntime::GraphViewer& graph,
+                                   int& fused_count,
                                    std::vector<std::unique_ptr<ComputeCapability>>& result) {
   // call partition
   ORT_RETURN_IF_ERROR(Evaluate(graph, /*distinguish_subgraph*/ true));
@@ -156,7 +162,7 @@ Status GraphPartitioner::Partition(const onnxruntime::GraphViewer& graph,
 
   // create results
   for (const auto& iter : partitions_) {
-    std::unique_ptr<IndexedSubGraph> partition = onnxruntime::make_unique<IndexedSubGraph>();
+    std::unique_ptr<IndexedSubGraph> partition = std::make_unique<IndexedSubGraph>();
 
     for (auto& n : iter.second.nodes) {
       partition->nodes.push_back(n);
@@ -165,9 +171,9 @@ Status GraphPartitioner::Partition(const onnxruntime::GraphViewer& graph,
     if (codegen::CodeGenSettings::Instance().HasOption(kNupharDumpPartition)) {
       std::ostringstream stream;
       if (graph.IsSubgraph()) {
-        stream << "[NUPHAR_DUMP_PARTITION] ## Subgraph ## " << std::endl;
+        stream << "[NUPHAR_DUMP_PARTITION] ## Subgraph ## Fused graph ID " << fused_count << std::endl;
       } else {
-        stream << "[NUPHAR_DUMP_PARTITION]" << std::endl;
+        stream << "[NUPHAR_DUMP_PARTITION] ## Fused graph ID " << fused_count << std::endl;
       }
       stream << "Partition of size " << iter.second.nodes.size() << " [";
       for (const auto& node_index : partition->nodes) {
@@ -181,6 +187,7 @@ Status GraphPartitioner::Partition(const onnxruntime::GraphViewer& graph,
     result.emplace_back(
         ToCapacity(
             graph,
+            fused_count++,
             partition));
   }
 

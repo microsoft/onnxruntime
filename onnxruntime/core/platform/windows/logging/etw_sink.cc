@@ -22,6 +22,29 @@
 #include <TraceLoggingProvider.h>
 #include <evntrace.h>
 
+//See: https://developercommunity.visualstudio.com/content/problem/85934/traceloggingproviderh-is-incompatible-with-utf-8.html
+#ifdef _TlgPragmaUtf8Begin
+#undef _TlgPragmaUtf8Begin
+#define _TlgPragmaUtf8Begin
+#endif
+
+#ifdef _TlgPragmaUtf8End
+#undef _TlgPragmaUtf8End
+#define _TlgPragmaUtf8End
+#endif
+
+// Different versions of TraceLoggingProvider.h contain different macro variable names for the utf8 begin and end,
+// and we need to cover the lower case version as well.
+#ifdef _tlgPragmaUtf8Begin
+#undef _tlgPragmaUtf8Begin
+#define _tlgPragmaUtf8Begin
+#endif
+
+#ifdef _tlgPragmaUtf8End
+#undef _tlgPragmaUtf8End
+#define _tlgPragmaUtf8End
+#endif
+
 namespace onnxruntime {
 namespace logging {
 
@@ -43,7 +66,7 @@ class EtwRegistrationManager {
     const HRESULT etw_status = ::TraceLoggingRegister(etw_provider_handle);
 
     if (FAILED(etw_status)) {
-      throw std::runtime_error("ETW registration failed. Logging will be broken: " + std::to_string(etw_status));
+      ORT_THROW("ETW registration failed. Logging will be broken: " + std::to_string(etw_status));
     }
 
     // return an instance that is just used to unregister as the program exits
@@ -119,7 +142,7 @@ void EtwSink::SendImpl(const Timestamp& timestamp, const std::string& logger_id,
         TRACE_LOG_WRITE(TRACE_LEVEL_CRITICAL);
         break;
       default:
-        throw std::logic_error("Unexpected Severity of " + static_cast<int>(severity));
+        ORT_THROW("Unexpected Severity of " + std::to_string(static_cast<int>(severity)));
     }
   }
 

@@ -276,14 +276,13 @@ ONNX_NAMESPACE::OpSchema GetFetchSparseShapeSchema() {
 
 TEST_F(OpaqueTypeTests, RunModel) {
   SessionOptions so;
-  so.enable_sequential_execution = true;
   so.session_logid = "SparseTensorTest";
   so.session_log_verbosity_level = 1;
 
   // Both the session and the model need custom registries
   // so we construct it here before the model
   std::shared_ptr<CustomRegistry> registry = std::make_shared<CustomRegistry>();
-  InferenceSession session_object{so, &DefaultLoggingManager()};
+  InferenceSession session_object{so, GetEnvironment()};
   EXPECT_TRUE(session_object.RegisterCustomRegistry(registry).IsOK());
 
   auto ops_schema = GetConstructSparseTensorSchema();
@@ -299,7 +298,8 @@ TEST_F(OpaqueTypeTests, RunModel) {
   IOnnxRuntimeOpSchemaRegistryList custom_schema_registries_ = {registry->GetOpschemaRegistry()};
   std::unordered_map<std::string, int> domain_to_version = {{onnxruntime::kMLDomain, 8}};
 
-  Model model("SparseTensorTest", false, ModelMetaData(), custom_schema_registries_, domain_to_version);
+  Model model("SparseTensorTest", false, ModelMetaData(), PathString(), custom_schema_registries_, domain_to_version,
+              {}, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   std::vector<onnxruntime::NodeArg*> inputs;
@@ -391,10 +391,10 @@ TEST_F(OpaqueTypeTests, RunModel) {
   std::vector<OrtValue> fetches;
 
   EXPECT_TRUE(session_object.Run(run_options, feeds, output_names, &fetches).IsOK());
-  ASSERT_EQ(1, fetches.size());
+  ASSERT_EQ(1u, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
   // Should get the original shape back in the form of a tensor
-  EXPECT_EQ(1, rtensor.Shape().NumDimensions());
+  EXPECT_EQ(1u, rtensor.Shape().NumDimensions());
   EXPECT_EQ(5, *rtensor.template Data<int64_t>());
 }
 

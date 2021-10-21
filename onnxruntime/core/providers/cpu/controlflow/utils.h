@@ -7,17 +7,36 @@
 #include <string>
 #include <vector>
 
-#include "core/common/common.h"
 #include "core/framework/feeds_fetches_manager.h"
+#ifdef SHARED_PROVIDER
+#include "core/framework/ort_value.h"
+#else
+#include "core/framework/op_kernel.h"
+#endif
 
 namespace onnxruntime {
-class Graph;
+
+// Creates a scalar MLValue based on given value and allocator.
+template <typename T>
+OrtValue MakeScalarMLValue(const AllocatorPtr& allocator, T value, bool is_1d) {
+  std::vector<int64_t> dims;
+  if (is_1d) {
+    dims.push_back(1);
+  }
+  TensorShape shape(std::move(dims));
+  auto* data_type = DataTypeImpl::GetType<T>();
+  OrtValue ort_value;
+  Tensor::InitOrtValue(data_type, shape, allocator, ort_value);
+  *ort_value.GetMutable<Tensor>()->MutableData<T>() = value;
+  return ort_value;
+}
 
 namespace controlflow {
 
 /** Interface for control flow kernels    */
-class IControlFlowKernel {
+class IControlFlowKernel : public OpKernel {
  public:
+  explicit IControlFlowKernel(const OpKernelInfo& info) : OpKernel(info) {}
   /** Setup information that is re-used each time to execute the subgraph.
   @param session_state SessionState for graph containing the control flow node
   @param attribute_name Control flow node's attribute name that contained the subgraph 

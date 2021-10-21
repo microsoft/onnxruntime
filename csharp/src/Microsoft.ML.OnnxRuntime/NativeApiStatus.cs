@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 using System;
-using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -10,9 +9,9 @@ namespace Microsoft.ML.OnnxRuntime
     {
         private static string GetErrorMessage(IntPtr /*(ONNXStatus*)*/status)
         {
+            // nativeString belongs to status, no need for separate release
             IntPtr nativeString = NativeMethods.OrtGetErrorMessage(status);
-            string str = Marshal.PtrToStringAnsi(nativeString); //assumes charset = ANSI
-            return str;
+            return NativeOnnxValueHelper.StringFromNativeUtf8(nativeString);
         }
 
         /// <summary>
@@ -25,10 +24,16 @@ namespace Microsoft.ML.OnnxRuntime
         {
             if (nativeStatus != IntPtr.Zero)
             {
-                ErrorCode statusCode = NativeMethods.OrtGetErrorCode(nativeStatus);
-                string errorMessage = GetErrorMessage(nativeStatus);
-                NativeMethods.OrtReleaseStatus(nativeStatus);
-                throw new OnnxRuntimeException(statusCode, errorMessage);
+                try
+                {
+                    ErrorCode statusCode = NativeMethods.OrtGetErrorCode(nativeStatus);
+                    string errorMessage = GetErrorMessage(nativeStatus);
+                    throw new OnnxRuntimeException(statusCode, errorMessage);
+                }
+                finally
+                {
+                    NativeMethods.OrtReleaseStatus(nativeStatus);
+                }
             }
         }
     }

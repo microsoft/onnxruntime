@@ -61,9 +61,10 @@ Status CastMap::Compute(OpKernelContext* context) const {
   // input map value is either string or float
   bool float_input = false;
 
-  if (input_type == DataTypeImpl::GetType<std::map<int64_t, float>>()) {
+  utils::ContainerChecker c_checker(input_type);
+  if (c_checker.IsMapOf<int64_t, float>()) {
     float_input = true;
-  } else if (input_type != DataTypeImpl::GetType<std::map<int64_t, std::string>>()) {
+  } else if (!c_checker.IsMapOf<int64_t, std::string>()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input type of value: ",
                            input_type,
                            " Expected std::map<int64_t, float> or std::map<int64_t, std::string>");
@@ -104,7 +105,7 @@ Status CastMap::ComputeImpl(OpKernelContext& context, TTo pad_value) const {
   int64_t num_dims = map_form_ == PACK_MAP::DENSE ? gsl::narrow_cast<int64_t>(X.size()) : max_map_;
 
   // create a span for the output
-  Tensor* Y = context.Output(0, TensorShape({1, num_dims}));
+  Tensor* Y = context.Output(0, {1, num_dims});
   auto out = gsl::make_span(Y->template MutableData<TTo>(), Y->Shape().Size());
   auto out_iter = out.begin();
 

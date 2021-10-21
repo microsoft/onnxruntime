@@ -6,31 +6,40 @@
 #include <random>
 #include "command_args_parser.h"
 #include "performance_runner.h"
+#include <google/protobuf/stubs/common.h>
 
 using namespace onnxruntime;
-
-const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-const OrtApi* Ort::g_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+const OrtApi* g_ort = NULL;
 
 #ifdef _WIN32
 int real_main(int argc, wchar_t* argv[]) {
 #else
 int real_main(int argc, char* argv[]) {
 #endif
+  g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   perftest::PerformanceTestConfig test_config;
   if (!perftest::CommandLineParser::ParseArguments(test_config, argc, argv)) {
     perftest::CommandLineParser::ShowUsage();
     return -1;
   }
   Ort::Env env{nullptr};
-  try {
-    OrtLoggingLevel logging_level = test_config.run_config.f_verbose
-                                        ? ORT_LOGGING_LEVEL_VERBOSE
-                                        : ORT_LOGGING_LEVEL_WARNING;
-    env = Ort::Env(logging_level, "Default");
-  } catch (const Ort::Exception& e) {
-    fprintf(stderr, "Error creating environment: %s \n", e.what());
-    return -1;
+  {
+    bool failed = false;
+    ORT_TRY {
+      OrtLoggingLevel logging_level = test_config.run_config.f_verbose
+                                          ? ORT_LOGGING_LEVEL_VERBOSE
+                                          : ORT_LOGGING_LEVEL_WARNING;
+      env = Ort::Env(logging_level, "Default");
+    }
+    ORT_CATCH(const Ort::Exception& e) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        fprintf(stderr, "Error creating environment: %s \n", e.what());
+        failed = true;
+      });
+    }
+
+    if (failed)
+      return -1;
   }
   std::random_device rd;
   perftest::PerformanceRunner perf_runner(env, test_config, rd);
@@ -51,11 +60,17 @@ int wmain(int argc, wchar_t* argv[]) {
 int main(int argc, char* argv[]) {
 #endif
   int retval = -1;
-  try {
+  ORT_TRY {
     retval = real_main(argc, argv);
-  } catch (std::exception& ex) {
-    fprintf(stderr, "%s\n", ex.what());
-    retval = -1;
   }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      fprintf(stderr, "%s\n", ex.what());
+      retval = -1;
+    });
+  }
+
+  ::google::protobuf::ShutdownProtobufLibrary();
+
   return retval;
 }

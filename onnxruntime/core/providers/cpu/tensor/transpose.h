@@ -3,20 +3,35 @@
 
 #pragma once
 
-#include "gsl/gsl"
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#endif
+
+#include "gsl/gsl"
 #include <sstream>
 
 namespace onnxruntime {
+
+/** Tells if the transpose is equivalent to a reshape:
+ empty dimensions can change place, not empty dimensions must be in
+ the same order in the permuted tenosr.
+*/
+bool IsTransposeReshape(const std::vector<size_t>& perm, const std::vector<int64_t>& input_dims);
+
+// Public function for element-wise transpose, primarily to unit test any out of bounds access
+Status DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
+                          const std::vector<size_t>& stride, const uint8_t* source, uint8_t* target,
+                          size_t element_size);
 
 class TransposeBase {
  public:
   /**
   Transpose the input Tensor into the output Tensor using the provided permutations.
-  Both Tensors must have the same data type. 
+  Both Tensors must have the same data type. `input_shape_override` overrides the shape of `input` for compute purposes.
   */
-  static Status DoTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output);
+  static Status DoTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
+                            const TensorShape* input_shape_override = nullptr);
 
  protected:
   TransposeBase(const OpKernelInfo& info) {
