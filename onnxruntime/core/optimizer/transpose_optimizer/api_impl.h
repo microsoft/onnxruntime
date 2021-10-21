@@ -13,7 +13,8 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 /// <summary>
-/// Creates concrete implementation of api for transpose optimizer
+/// Creates concrete implementation of api for transpose optimizer. IMPORTANT: graph must have up-to-date edges,
+///   node_arg-to-producer, and node_arg-to-consumer relationships. Otherwise call Resolve() before this.
 /// </summary>
 /// <param name="graph">ORT Graph to wrap with API</param>
 /// <param name="cpu_allocator">Allocator used for reshaping/transposing tensors</param>
