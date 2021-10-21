@@ -1872,8 +1872,6 @@ TEST(CApiTest, TestExternalThreadPoolHooks) {
   {
     Ort::Session session(*ort_env, MODEL_URI, session_options);
   }
-  std::cout << external_creation_hook_called << std::endl;
-  std::cout << external_joining_hook_called << std::endl;
   ASSERT_TRUE(external_creation_hook_called == thread_count-1);
   ASSERT_TRUE(external_joining_hook_called == thread_count-1);
 }
