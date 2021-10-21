@@ -94,7 +94,10 @@ def call_python_forward_function(
                 first_tensor_output = arg
                 break
 
-            # Context can be None because not all autograd.Function's are differentiable. For example,
+            # Context can be None because not all autograd.Function's are differentiable. The function
+            # https://github.com/pytorch/pytorch/blob/d701357d921ef167d42c125e65b6f7da6be3ad0f/torch/csrc/autograd/custom_function.cpp#L209?
+            # means if all output of forward function are not differentiable, then grad_fn will be None (not be set).
+            # For example,
             #  class Bar(torch.autograd.Function):
             #      # A non-differentiable autograd Function whose forard output
             #      # doesn't have grad_fn attribute.
