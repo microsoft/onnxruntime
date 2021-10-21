@@ -805,8 +805,8 @@ static bool HandleShape(HandlerArgs& args) {
     if (end < 0) {
       end += rank;
     }
-    size_t start_idx = std::clamp(start, 0I64, rank_int);
-    size_t end_idx = std::clamp(end, 0I64, rank_int);
+    size_t start_idx = gsl::narrow_cast<size_t>(std::clamp(start, 0I64, rank_int));
+    size_t end_idx = gsl::narrow_cast<size_t>(std::clamp(end, 0I64, rank_int));
     for (size_t i = start_idx; i < end_idx; ++i) {
       new_perm.push_back(args.perm[i]);
     }
@@ -1139,7 +1139,7 @@ static bool HandleQuantizeDequantizeLinear(HandlerArgs& args) {
         return false;
       }
 
-      args.node.SetAttributeInt("axis", args.perm[gsl::narrow_cast<int64_t>(axis)]);
+      args.node.SetAttributeInt("axis", args.perm[gsl::narrow_cast<size_t>(axis)]);
     }
   }
 
@@ -1159,7 +1159,7 @@ static bool HandleArgMinMax(HandlerArgs& args) {
   if (!NormalizeAndValidateAxis(axis, rank)) {
     return false;
   }
-  int64_t new_axis = args.perm[gsl::narrow_cast<int64_t>(axis)];
+  int64_t new_axis = args.perm[gsl::narrow_cast<size_t>(axis)];
   std::vector<int64_t> new_axes {new_axis};
   args.node.SetAttributeInt("axis", new_axis);
 
@@ -1303,7 +1303,7 @@ static bool HandleTile(HandlerArgs& args) {
     const std::vector<int64_t>& repeats = repeats_const->DataInt64();
     std::vector<int64_t> new_repeats;
     for (int64_t p : args.perm_inv) {
-      new_repeats.push_back(repeats[gsl::narrow_cast<int64_t>(p)]);
+      new_repeats.push_back(repeats[gsl::narrow_cast<size_t>(p)]);
     }
 
     std::string_view new_repeats_const = args.ctx.graph.AddInitializerInt64(perm_shape, new_repeats);
