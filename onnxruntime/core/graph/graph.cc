@@ -3050,6 +3050,11 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   auto nodes = builder.CreateVector(nodes_vec);
   auto node_edges = builder.CreateVector(node_edges_vec);
 
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+  flatbuffers::Offset<RuntimeOptimizationRecordContainer::FbsRuntimeOptimizationRecordContainer> runtime_optimizations;
+  ORT_RETURN_IF_ERROR(runtime_optimizations_.SaveToOrtFormat(builder, runtime_optimizations));
+#endif
+
   fbs::GraphBuilder gb(builder);
   gb.add_initializers(initializers);
   gb.add_node_args(node_args);
@@ -3060,6 +3065,9 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   gb.add_outputs(outputs);
 #if !defined(DISABLE_SPARSE_TENSORS)
   gb.add_sparse_initializers(sparse_initializers);
+#endif
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+  gb.add_runtime_optimizations(runtime_optimizations);
 #endif
   fbs_graph = gb.Finish();
   return Status::OK();
@@ -4104,6 +4112,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
   // 4. Deserialize the NodeEdges
   //        We need all the Node instances to exist as the EdgeEnd has a Node* for the other end of the edge
   // 5. Deserialize the Inputs/Outputs/outer_scope_node_args
+  // 6. Deserialize the runtime optimizations, if enabled
 
   // Initializers
   auto fbs_initializers = fbs_graph.initializers();
@@ -4225,6 +4234,13 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Gr
   ComputeOverridableInitializers();
 
   ORT_RETURN_IF_ERROR(add_node_args(fbs_graph.outputs(), graph_outputs_));
+
+#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+  // runtime optimizations
+  if (const auto* fbs_runtime_optimizations = fbs_graph.runtime_optimizations()) {
+    ORT_RETURN_IF_ERROR(runtime_optimizations_.LoadFromOrtFormat(*fbs_runtime_optimizations));
+  }
+#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
 
   return Status::OK();
 }

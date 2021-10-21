@@ -180,6 +180,28 @@ table Attribute{
   graphs:[Graph];
 }
 
+// runtime optimizations
+table NodesToOptimizeIndexes{
+  node_indexes:[uint32];
+  num_inputs:uint32;
+  num_outputs:uint32;
+  has_variadic_input:bool;
+  has_variadic_output:bool;
+  num_variadic_inputs:uint32;
+  num_variadic_outputs:uint32;
+}
+
+table RuntimeOptimizationRecord{
+  action_id:string;
+  nodes_to_optimize_indexes:NodesToOptimizeIndexes;
+  produced_node_kernel_def_hashes:[uint64];
+}
+
+table RuntimeOptimizationRecordContainerEntry{
+  optimizer_name:string (key);
+  runtime_optimization_records:[RuntimeOptimizationRecord];
+}
+
 table Graph{
   initializers:[Tensor];
 
@@ -192,6 +214,8 @@ table Graph{
   inputs:[string];
   outputs:[string];
   sparse_initializers:[SparseTensor];
+
+  runtime_optimizations:[RuntimeOptimizationRecordContainerEntry];
 }
 
 table StringStringEntry {
