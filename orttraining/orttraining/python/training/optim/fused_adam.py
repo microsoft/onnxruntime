@@ -80,8 +80,8 @@ class FusedAdam(torch.optim.Optimizer):
         # Skip buffer
         self._dummy_overflow_buf = torch.cuda.IntTensor([0])
 
-        from onnxruntime.training.ortmodule.torch_cpp_extensions import adam_optimizer
-        self._multi_tensor_adam = adam_optimizer.multi_tensor_adam
+        from onnxruntime.training.ortmodule.torch_cpp_extensions import fused_ops
+        self._multi_tensor_adam = fused_ops.multi_tensor_adam
         self._multi_tensor_applier = MultiTensorApply(2048 * 32)
 
     def zero_grad(self):
