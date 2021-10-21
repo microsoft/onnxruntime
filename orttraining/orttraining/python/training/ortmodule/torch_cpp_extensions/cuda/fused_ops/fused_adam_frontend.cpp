@@ -67,14 +67,16 @@ void unscale_fp16_grads_into_fp32_grads(std::vector<at::Tensor>& all_fp16_params
     }
 
     if (fp16_grads_needing_unscale.size() > 0) {
-        std::vector<std::vector<at::Tensor>> tensor_lists {fp16_grads_needing_unscale, new_fp32_grads};
-        multi_tensor_scale_cuda(fixed_chunk_size, is_overflow_buffer, tensor_lists, inv_scale);
+        std::vector<std::vector<at::Tensor>> tensor_lists;
+        tensor_lists.emplace_back(fp16_grads_needing_unscale);
+        tensor_lists.emplace_back(new_fp32_grads);
     }
 
     if (fp16_grads_needing_unscale_with_stash.size() > 0) {
-        std::vector<std::vector<at::Tensor>> tensor_lists {
-            fp16_grads_needing_unscale_with_stash, 
-            preexisting_fp32_grads ,preexisting_fp32_grads };
+        std::vector<std::vector<at::Tensor>> tensor_lists;
+        tensor_lists.emplace_back(fp16_grads_needing_unscale_with_stash);
+        tensor_lists.emplace_back(preexisting_fp32_grads);
+        tensor_lists.emplace_back(preexisting_fp32_grads);
         multi_tensor_axpby_cuda(fixed_chunk_size, is_overflow_buffer, tensor_lists, inv_scale, float(1.0), 0);
     }
 };
