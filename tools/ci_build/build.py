@@ -403,9 +403,6 @@ def parse_arguments():
         help="Path to OpenCL SDK. "
         "e.g. --dnnl_opencl_root \"C:/Program Files (x86)/IntelSWTools/sw_dev_tools/OpenCL/sdk\"")
     parser.add_argument(
-        "--use_featurizers", action='store_true',
-        help="Build with ML Featurizer support.")
-    parser.add_argument(
         "--use_openvino", nargs="?", const="CPU_FP32",
         type=_openvino_verify_device_type,
         help="Build with OpenVINO for specific hardware.")
@@ -724,7 +721,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-DPython_EXECUTABLE=" + sys.executable,
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_ROCM_VERSION=" + (args.rocm_version if args.use_rocm else ""),
-        "-Donnxruntime_USE_FEATURIZERS=" + ("ON" if args.use_featurizers else "OFF"),
         "-Donnxruntime_USE_MIMALLOC_STL_ALLOCATOR=" + (
             "ON" if args.use_mimalloc == "stl" or args.use_mimalloc == "all" else "OFF"),
         "-Donnxruntime_USE_MIMALLOC_ARENA_ALLOCATOR=" + (
@@ -1706,7 +1702,7 @@ def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, cuda_version, use_rocm, rocm_version, use_dnnl,
         use_tensorrt, use_openvino, use_nuphar, use_vitisai, use_acl, use_armnn, use_dml,
         wheel_name_suffix, enable_training, nightly_build=False, default_training_package_device=False,
-        featurizers_build=False, use_ninja=False, build_eager_mode=False):
+        use_ninja=False, build_eager_mode=False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows() and not use_ninja:
@@ -1720,8 +1716,6 @@ def build_python_wheel(
             args.append('--nightly_build')
         if default_training_package_device:
             args.append('--default_training_package_device')
-        if featurizers_build:
-            args.append("--use_featurizers")
         if wheel_name_suffix:
             args.append('--wheel_name_suffix={}'.format(wheel_name_suffix))
         if enable_training:
@@ -2308,7 +2302,6 @@ def main():
                 args.enable_training,
                 nightly_build=nightly_build,
                 default_training_package_device=default_training_package_device,
-                featurizers_build=args.use_featurizers,
                 use_ninja=(args.cmake_generator == 'Ninja'),
                 build_eager_mode=args.build_eager_mode
             )
