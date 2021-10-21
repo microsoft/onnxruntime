@@ -77,9 +77,7 @@ jobs:
       #     Pattern: '*.dylib,*.node'
 
       - script: |
-         npm pack
-         cp $(Build.SourcesDirectory)/js/node/onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
-         cp -R $(Build.SourcesDirectory)/js/node/prebuilds $(Build.ArtifactStagingDirectory)/prebuilds
+         cp -R $(Build.SourcesDirectory)/js/node/bin $(Build.ArtifactStagingDirectory)/bin
         workingDirectory: '$(Build.SourcesDirectory)/js/node'
         displayName: 'Create NPM Package'
 
