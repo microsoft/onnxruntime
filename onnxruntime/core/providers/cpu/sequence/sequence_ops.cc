@@ -222,14 +222,14 @@ Status SequenceInsert::Compute(OpKernelContext* context) const {
   tensors.reserve(num_tensors_input_seq + 1);
   for (int i = 0; i < num_tensors_input_seq; ++i) {
     if (i == input_seq_idx) {
-      CreateCopyAndAppendCpuTensor(*X, context, tensors);
-      CreateCopyAndAppendCpuTensor(S->Get(i), context, tensors);
+      ORT_RETURN_IF_ERROR(CreateCopyAndAppendCpuTensor(*X, context, tensors));
+      ORT_RETURN_IF_ERROR(CreateCopyAndAppendCpuTensor(S->Get(i), context, tensors));
     } else {
-      CreateCopyAndAppendCpuTensor(S->Get(i), context, tensors);
+      ORT_RETURN_IF_ERROR(CreateCopyAndAppendCpuTensor(S->Get(i), context, tensors));
     }
   }
   if (input_seq_idx == num_tensors_input_seq) {
-    CreateCopyAndAppendCpuTensor(*X, context, tensors);
+    ORT_RETURN_IF_ERROR(CreateCopyAndAppendCpuTensor(*X, context, tensors));
   }
 
   Y->SetType(S->DataType());
@@ -276,7 +276,7 @@ Status SequenceErase::Compute(OpKernelContext* context) const {
     if (i == input_seq_idx) {
       continue;
     }
-    CreateCopyAndAppendCpuTensor(S->Get(i), context, tensors);
+    ORT_RETURN_IF_ERROR(CreateCopyAndAppendCpuTensor(S->Get(i), context, tensors));
   }
   Y->SetElements(std::move(tensors));
   return Status::OK();
@@ -302,8 +302,8 @@ Status SequenceConstruct::Compute(OpKernelContext* context) const {
   for (int input_idx = 0; input_idx < num_inputs; ++input_idx) {
     const auto* X = context->Input<Tensor>(input_idx);
     if (input_idx > 0 && X->DataType() != first_dtype) {
-      ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                      "Violation of the requirment that all input tensors must have the same data type.");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Violation of the requirment that all input tensors must have the same data type.");
     }
   }
 
@@ -313,7 +313,7 @@ Status SequenceConstruct::Compute(OpKernelContext* context) const {
   tensors.reserve(num_inputs);
   for (int input_idx = 0; input_idx < num_inputs; ++input_idx) {
     const auto* X = context->Input<Tensor>(input_idx);
-    CreateCopyAndAppendCpuTensor(*X, context, tensors);
+    ORT_RETURN_IF_ERROR(CreateCopyAndAppendCpuTensor(*X, context, tensors));
   }
   Y->SetElements(std::move(tensors));
   return Status::OK();

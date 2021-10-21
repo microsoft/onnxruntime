@@ -47,9 +47,6 @@
 	path = server/external/spdlog
 	url = https://github.com/gabime/spdlog.git
 	branch = master
-[submodule "cmake/external/FeaturizersLibrary"]
-	path = cmake/external/FeaturizersLibrary
-	url = https://github.com/microsoft/FeaturizersLibrary.git
 [submodule "cmake/external/libprotobuf-mutator"]
 	path = cmake/external/libprotobuf-mutator
 	url = https://github.com/google/libprotobuf-mutator.git

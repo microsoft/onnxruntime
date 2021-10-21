@@ -89,7 +89,7 @@ Status SplitTraining::ComputeInternal(OpKernelContext* ctx) const {
                                   output_table,
                                   input_shape.Size()));
       } else {
-        output_ptr.CopyToGpu();
+        ORT_RETURN_IF_ERROR(output_ptr.CopyToGpu());
         ORT_RETURN_IF_ERROR(SplitSameSplitDimImpl(Stream(),
                                   element_size,
                                   block_size_including_axis_dim,
@@ -101,13 +101,13 @@ Status SplitTraining::ComputeInternal(OpKernelContext* ctx) const {
                                   input_shape.Size()));
       }
     } else {
-      output_ptr.CopyToGpu();
+      ORT_RETURN_IF_ERROR(output_ptr.CopyToGpu());
       CudaAsyncBuffer<int64_t> split_sizes_gpu(this, split_sizes);
       CudaAsyncBuffer<int64_t> split_sizes_range_gpu(this, split_sizes_range);
       CudaAsyncBuffer<int64_t> axis_dimension_input_output_mapping_gpu(this, axis_dimension_input_output_mapping);
-      split_sizes_gpu.CopyToGpu();
-      split_sizes_range_gpu.CopyToGpu();
-      axis_dimension_input_output_mapping_gpu.CopyToGpu();
+      ORT_RETURN_IF_ERROR(split_sizes_gpu.CopyToGpu());
+      ORT_RETURN_IF_ERROR(split_sizes_range_gpu.CopyToGpu());
+      ORT_RETURN_IF_ERROR(axis_dimension_input_output_mapping_gpu.CopyToGpu());
   
       ORT_RETURN_IF_ERROR(SplitImpl(Stream(),
                                   element_size,
