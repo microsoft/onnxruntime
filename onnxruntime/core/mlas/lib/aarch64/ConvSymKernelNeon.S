@@ -100,7 +100,7 @@ Return Value:
         mov     x9, x3                  // save kernel size
         mov     x16,x4                  // save input channels
         ldr     x11,[x8], #8 // Bias
-        ldr     x12,[x8], #8 // Scale
+        ldr     x12,[x8], #16 // Scale, and skip Min, Max
         cmp     x7, 2                   // if OutputCount < 2
         add     x5, x2, x5              // c1 = c0 + ldc
         add     x4, x4, 7               // kc = (kc + 7) & ~7
@@ -319,8 +319,6 @@ Return Value:
         B.HI    .LConvSym.KernelSizeLoop
 
 .LConvSym.Requantize:
-        LD1R    {v10.4s},[x8], #4 // #.LConvSymPostProcessParams_Min]
-        LD1R    {v6.4s},[x8], #4 // #.LConvSymPostProcessParams_Max]
         LD1R    {v9.4s},[x8], #4 // #.LConvSymPostProcessParams_ZeroPoint]
         tst     w10,#.LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
         beq     .LConvSym.BroadcastScaleValue
@@ -352,14 +350,6 @@ Return Value:
         FMUL v1.4s,v1.4s,v5.4s
         FMUL v2.4s,v2.4s,v4.4s
         FMUL v3.4s,v3.4s,v5.4s
-        FMIN v0.4s,v0.4s,v6.4s         // clamp max value
-        FMIN v1.4s,v1.4s,v6.4s
-        FMIN v2.4s,v2.4s,v6.4s
-        FMIN v3.4s,v3.4s,v6.4s
-        FMAX v0.4s,v0.4s,v10.4s        // clamp min value
-        FMAX v1.4s,v1.4s,v10.4s
-        FMAX v2.4s,v2.4s,v10.4s
-        FMAX v3.4s,v3.4s,v10.4s
         SUBS    x6, x6, 8
         fcvtns   v0.4s,v0.4s          // convert to int
         fcvtns   v1.4s,v1.4s
@@ -369,10 +359,10 @@ Return Value:
         add     v1.4s,v1.4s,v9.4s
         add     v2.4s,v2.4s,v9.4s
         add     v3.4s,v3.4s,v9.4s
-        UQXTN   v0.4h,v0.4s                 // shorten to int16
-        UQXTN   v2.4h,v2.4s
-        UQXTN2  v0.8h,v1.4s
-        UQXTN2  v2.8h,v3.4s
+        SQXTUN   v0.4h,v0.4s                 // shorten to uint16
+        SQXTUN   v2.4h,v2.4s
+        SQXTUN2  v0.8h,v1.4s
+        SQXTUN2  v2.8h,v3.4s
         UQXTN   v0.8b,v0.8h                 // shorten to int8
         UQXTN2  v0.16b,v2.8h
         B.LO    .LConvSym.PartialStore
