@@ -20,6 +20,7 @@ class DecoderAttention final : public CudaKernel {
   int num_heads_;
   bool static_kv_;
   bool use_past_;
+  bool has_layer_state_;
 };
 
 }  // namespace cuda
