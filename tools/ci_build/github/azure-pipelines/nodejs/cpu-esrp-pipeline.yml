@@ -219,6 +219,10 @@ jobs:
   workspace:
     clean: all
   timeoutInMinutes: 120
+  dependsOn:
+  - Windows_CI_x64
+  - Mac_CI_x64
+  - Linux_CI_x64
   pool: $(AgentPoolLinux)
   steps:    
     - template: ../templates/set-version-number-variables-step.yml
