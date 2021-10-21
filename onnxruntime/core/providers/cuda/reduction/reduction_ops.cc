@@ -8,8 +8,9 @@
 #include "core/providers/cuda/math/binary_elementwise_ops_impl.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
+#ifdef ENABLE_TRAINING
 #include "orttraining/training_ops/cpu/aten_ops/aten_op.h"
-#include "core/providers/cuda/nvtx_profile.h"
+#endif
 
 using namespace onnxruntime::common;
 namespace onnxruntime {
@@ -724,6 +725,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
     return Status::OK();
   }
 
+#ifdef ENABLE_TRAINING
   // Use ATenOp for ReduceSum if possible.
   const TensorShape& input_shape = X->Shape();
   if (contrib::IsATenOperatorExecutorInitialized() && cudnn_reduce_op == CUDNN_REDUCE_TENSOR_ADD && !calculate_log_ &&
@@ -735,6 +737,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
     ORT_RETURN_IF_ERROR(contrib::ExecuteReduceSumATenOp(ctx, axes, keepdims_));
     return Status::OK();
   }
+#endif
 
   PrepareReduceMetadata prepare_reduce_metadata;
   ORT_RETURN_IF_ERROR(PrepareForReduce(X, keepdims_, axes, prepare_reduce_metadata));

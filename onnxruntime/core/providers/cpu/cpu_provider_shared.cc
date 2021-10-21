@@ -90,10 +90,6 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   Status ValidateInputs(const Tensor* depth, const Tensor* values) override { return onnxruntime::ValidateInputs(depth, values); }
   Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis, int64_t& prefix_dim_size, int64_t& suffix_dim_size, std::vector<int64_t>& output_shape) override { return onnxruntime::PrepareOutputShape(indices, depth_val, axis, prefix_dim_size, suffix_dim_size, output_shape); }
 
-  // From aten_op.h (direct)
-  bool contrib__IsATenOperatorExecutorInitialized() override { return contrib::IsATenOperatorExecutorInitialized(); }
-  Status contrib__ExecuteReduceSumATenOp(OpKernelContext* p_ctx, const std::vector<int64_t>& axes, bool keepdims) override { return contrib::ExecuteReduceSumATenOp(p_ctx, axes, keepdims); }
-
   // From cpu/tensor/slice.h (direct)
   Status SliceBase__PrepareForCompute(const std::vector<int64_t>& raw_starts,
                                       const std::vector<int64_t>& raw_ends,
@@ -180,6 +176,10 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   void contrib__GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, std::vector<int64_t>& new_shape, std::vector<size_t>& permutations) override { contrib::GetPermutationAndShape(ncd_to_ndc, tensor_shape, new_shape, permutations); }
   Status contrib__PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) override { return contrib::PrepareForTrainingCompute(input_shape, num_outputs, axis, before_dims, after_dims_including_split_axis, after_dims_excluding_split, split_sizes); }
   Status contrib__YieldOp__Compute(const contrib::YieldOp* p, OpKernelContext* context) override { return p->YieldOp::Compute(context); }
+
+  // From aten_op.h (direct)
+  bool contrib__IsATenOperatorExecutorInitialized() override { return contrib::IsATenOperatorExecutorInitialized(); }
+  Status contrib__ExecuteReduceSumATenOp(OpKernelContext* p_ctx, const std::vector<int64_t>& axes, bool keepdims) override { return contrib::ExecuteReduceSumATenOp(p_ctx, axes, keepdims); }
 #endif
 #endif
 };
