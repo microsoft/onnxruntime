@@ -694,6 +694,12 @@ public class InferenceTest {
   }
 
   @Test
+  @EnabledIfSystemProperty(named = "USE_ROCM", matches = "1")
+  public void testROCM() throws OrtException {
+    runProvider(OrtProvider.ROCM);
+  }
+
+  @Test
   @EnabledIfSystemProperty(named = "USE_TENSORRT", matches = "1")
   public void testTensorRT() throws OrtException {
     runProvider(OrtProvider.TENSOR_RT);
@@ -1248,6 +1254,28 @@ public class InferenceTest {
   }
 
   @Test
+  public void testModelInputUINT8() throws OrtException {
+    String modelPath = getResourcePath("/test_types_UINT8.pb").toString();
+
+    try (OrtEnvironment env = OrtEnvironment.getEnvironment("testModelInputUINT8");
+        SessionOptions options = new SessionOptions();
+        OrtSession session = env.createSession(modelPath, options)) {
+      String inputName = session.getInputNames().iterator().next();
+      Map<String, OnnxTensor> container = new HashMap<>();
+      byte[] flatInput = new byte[] {1, 2, -3, Byte.MIN_VALUE, Byte.MAX_VALUE};
+      ByteBuffer data = ByteBuffer.wrap(flatInput);
+      long[] shape = new long[] {1, 5};
+      OnnxTensor ov = OnnxTensor.createTensor(env, data, shape, OnnxJavaType.UINT8);
+      container.put(inputName, ov);
+      try (OrtSession.Result res = session.run(container)) {
+        byte[] resultArray = TestHelpers.flattenByte(res.get(0).getValue());
+        assertArrayEquals(flatInput, resultArray);
+      }
+      OnnxValue.close(container);
+    }
+  }
+
+  @Test
   public void testModelInputINT16() throws OrtException {
     // model takes 1x5 input of fixed type, echoes back
     String modelPath = getResourcePath("/test_types_INT16.pb").toString();
@@ -1573,7 +1601,7 @@ public class InferenceTest {
           options.addArmNN(false);
           break;
         case ROCM:
-          options.addROCM(0, 4 * 1024 * 1024);
+          options.addROCM();
           break;
         case CORE_ML:
           options.addCoreML();

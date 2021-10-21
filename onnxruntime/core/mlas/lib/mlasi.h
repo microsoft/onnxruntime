@@ -660,8 +660,21 @@ extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchSse41;
 extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchAvx2;
 extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8U8DispatchAvx2;
 extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchNeon;
+extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmS8S8DispatchNeon;
 extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchUdot;
+extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchWasmSimd;
 extern const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchDefault;
+
+//
+// Symmetric quantized integer convolution dispatch structure.
+//
+
+struct MLAS_CONV_SYM_DISPATCH;
+
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx2;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvxVnni;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Core;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Vnni;
 
 //
 // Quantized depthwise convolution kernels.
@@ -705,9 +718,16 @@ struct MLAS_PLATFORM {
 
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER)
     MLAS_GEMM_FLOAT_KERNEL* GemmFloatKernel;
+#endif
+
+#if defined(MLAS_TARGET_AMD64_IX86)
     const MLAS_GEMM_U8X8_DISPATCH* GemmU8S8Dispatch;
     const MLAS_GEMM_U8X8_DISPATCH* GemmU8U8Dispatch;
+#elif defined(MLAS_TARGET_ARM64)
+    const MLAS_GEMM_U8X8_DISPATCH* GemmU8X8Dispatch;
 #endif
+
+    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch{nullptr};
 
 #if defined(MLAS_TARGET_AMD64)
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1Routine;
@@ -744,9 +764,6 @@ struct MLAS_PLATFORM {
     static constexpr int32_t MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
 #endif
 
-#if defined(MLAS_TARGET_ARM64)
-    const MLAS_GEMM_U8X8_DISPATCH* GemmU8X8Dispatch;
-#endif
 };
 
 extern MLAS_PLATFORM MlasPlatform;
@@ -905,7 +922,7 @@ MlasConvDepthwiseFloat_CHW(
 #if defined(MLAS_TARGET_ARM)
 #define MLAS_NEON_INTRINSICS
 #define MLAS_NEON32_INTRINSICS
-#elif defined(MLAS_TARGET_ARM64)
+#elif defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_ARM64EC)
 #define MLAS_NEON_INTRINSICS
 #define MLAS_NEON64_INTRINSICS
 #elif defined(MLAS_TARGET_POWER)
@@ -1332,7 +1349,7 @@ MlasStoreLowHalfFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector)
 #elif defined(MLAS_SSE2_INTRINSICS)
     _mm_storel_pi((__m64*)Buffer, Vector);
 #elif defined(MLAS_VSX_INTRINSICS)
-    *((int64_t*)Buffer) = ((__vector int64_t)Vector)[0];
+    *((long long*)Buffer) = ((__vector long long)Vector)[0];
 #else
     MlasStoreLaneFloat32x4<0>(&Buffer[0], Vector);
     MlasStoreLaneFloat32x4<1>(&Buffer[1], Vector);
@@ -1554,6 +1571,8 @@ MlasGreaterThanFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
     return _mm_cmpgt_ps(Vector1, Vector2);
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_f32x4_gt(Vector1, Vector2);
+#elif defined(MLAS_VSX_INTRINSICS)
+    return MLAS_FLOAT32X4(vec_cmpgt(Vector1, Vector2));
 #else
     return Vector1 > Vector2;
 #endif
@@ -1627,7 +1646,7 @@ MlasMaximumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_max_ps(Vector1, Vector2);
 #elif defined(MLAS_VSX_INTRINSICS)
-    return vec_sel(Vector2, Vector1, vec_cmpgt(Vector1, Vector2));
+    return vec_sel(vec_sel(vec_sel(Vector2, Vector1, vec_cmpgt(Vector1, Vector2)), Vector1, vec_cmpne(Vector1, Vector1)), Vector2, vec_cmpne(Vector2, Vector2));
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_f32x4_max(Vector1, Vector2);
 #else
@@ -1644,7 +1663,7 @@ MlasMinimumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_min_ps(Vector1, Vector2);
 #elif defined(MLAS_VSX_INTRINSICS)
-    return vec_sel(Vector2, Vector1, vec_cmpgt(Vector2, Vector1));
+    return vec_sel(vec_sel(vec_sel(Vector2, Vector1, vec_cmpgt(Vector2, Vector1)), Vector1, vec_cmpne(Vector1, Vector1)), Vector2, vec_cmpne(Vector2, Vector2));
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_f32x4_min(Vector1, Vector2);
 #else
@@ -1680,7 +1699,7 @@ MlasReduceAddFloat32x4(MLAS_FLOAT32X4 Vector)
     VectorLow = vpadd_f32(VectorLow, VectorHigh);
     return vget_lane_f32(VectorLow, 0);
 #elif defined(MLAS_VSX_INTRINSICS)
-    Vector = MlasAddFloat32x4(Vector, MLAS_FLOAT32X4(vec_splat((__vector int64_t)Vector, 1)));
+    Vector = MlasAddFloat32x4(Vector, MLAS_FLOAT32X4(vec_splat((__vector long long)Vector, 1)));
     Vector = MlasAddFloat32x4(Vector, vec_splat(Vector, 1));
     return Vector[0];
 #else
@@ -1703,7 +1722,7 @@ MlasReduceMaximumFloat32x4(MLAS_FLOAT32X4 Vector)
     VectorLow = vpmax_f32(VectorLow, VectorHigh);
     return vget_lane_f32(VectorLow, 0);
 #elif defined(MLAS_VSX_INTRINSICS)
-    Vector = MlasMaximumFloat32x4(Vector, MLAS_FLOAT32X4(vec_splat((__vector int64_t)Vector, 1)));
+    Vector = MlasMaximumFloat32x4(Vector, MLAS_FLOAT32X4(vec_splat((__vector long long)Vector, 1)));
     Vector = MlasMaximumFloat32x4(Vector, vec_splat(Vector, 1));
     return Vector[0];
 #else
@@ -1726,7 +1745,7 @@ MlasReduceMinimumFloat32x4(MLAS_FLOAT32X4 Vector)
     VectorLow = vpmin_f32(VectorLow, VectorHigh);
     return vget_lane_f32(VectorLow, 0);
 #elif defined(MLAS_VSX_INTRINSICS)
-    Vector = MlasMinimumFloat32x4(Vector, MLAS_FLOAT32X4(vec_splat((__vector int64_t)Vector, 1)));
+    Vector = MlasMinimumFloat32x4(Vector, MLAS_FLOAT32X4(vec_splat((__vector long long)Vector, 1)));
     Vector = MlasMinimumFloat32x4(Vector, vec_splat(Vector, 1));
     return Vector[0];
 #else

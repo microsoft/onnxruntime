@@ -9,17 +9,18 @@
 namespace onnxruntime {
 namespace contrib {
 
-void QLinearLookupTableTransform(const uint8_t* x, const uint8_t* table, uint8_t* y, size_t n) {
+template <typename TOutput>
+void QLinearLookupTableTransform(const uint8_t* x, const TOutput* table, TOutput* y, size_t n) {
   for (; n >= 4; n -= 4) {
     const size_t x_value0 = x[0];
     const size_t x_value1 = x[1];
     const size_t x_value2 = x[2];
     const size_t x_value3 = x[3];
     x += 4;
-    const uint8_t table_value0 = table[x_value0];
-    const uint8_t table_value1 = table[x_value1];
-    const uint8_t table_value2 = table[x_value2];
-    const uint8_t table_value3 = table[x_value3];
+    const TOutput table_value0 = table[x_value0];
+    const TOutput table_value1 = table[x_value1];
+    const TOutput table_value2 = table[x_value2];
+    const TOutput table_value3 = table[x_value3];
 
     y[0] = table_value0;
     y[1] = table_value1;
@@ -29,10 +30,13 @@ void QLinearLookupTableTransform(const uint8_t* x, const uint8_t* table, uint8_t
   }
   for (; n != 0; --n) {
     const size_t x_value0 = *x++;
-    const uint8_t table_value0 = table[x_value0];
+    const TOutput table_value0 = table[x_value0];
     *y++ = table_value0;
   }
 }
+
+template void QLinearLookupTableTransform(const uint8_t* x, const uint8_t* table, uint8_t* y, size_t n);
+template void QLinearLookupTableTransform(const uint8_t* x, const float* table, float* y, size_t n);
 
 template <typename T>
 void QlinearBuildLookupTable(uint8_t* table,

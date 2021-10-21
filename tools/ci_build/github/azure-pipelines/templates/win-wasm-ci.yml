@@ -1,0 +1,110 @@
+parameters:
+- name: CommitOverride
+  type: boolean
+  default: false
+
+- name: BuildConfig
+  type: string
+  default: 'Debug'
+
+- name: ExtraBuildArgs
+  type: string
+  default: ''
+
+jobs:
+- job: build_WASM
+  pool: 'Win-CPU-2019'
+
+  variables:
+    EnvSetupScript: setup_env.bat
+    buildArch: x64
+    CommonBuildArgs: '--config ${{ parameters.BuildConfig }} --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --build_wasm --emsdk_version releases-upstream-823d37b15d1ab61bc9ac0665ceef6951d3703842-64bit ${{ parameters.ExtraBuildArgs }}'
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  steps:
+  - checkout: self
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      artifact: '__commit'
+      path: $(Pipeline.Workspace)
+    displayName: 'Get commit SHA'
+    condition: eq('${{ parameters.CommitOverride }}', 'true')
+  - script: |
+     set /p __commit__=<$(Pipeline.Workspace)\__commit.txt
+     git fetch origin +%__commit__%:refs/remotes/origin/%__commit__%
+     git checkout --force %__commit__%
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'Read commit SHA and checkout'
+    condition: eq('${{ parameters.CommitOverride }}', 'true')
+  - script: |
+     git submodule sync --recursive
+     git submodule update --init --recursive
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'Checkout submodules'
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.7'
+      addToPath: true
+      architecture: $(buildArch)
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '16.x'
+  - task: BatchScript@1
+    displayName: 'setup env'
+    inputs:
+      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+      modifyEnvironment: true
+      workingFolder: '$(Build.BinariesDirectory)'
+  - script: |
+     python -m pip install -q setuptools wheel numpy ninja
+    workingDirectory: '$(Build.BinariesDirectory)'
+    displayName: 'Install python modules'
+  - task: PythonScript@0
+    displayName: 'Build and test'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+      arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm'
+      workingDirectory: '$(Build.BinariesDirectory)'
+  - task: PythonScript@0
+    displayName: 'Build and test (threads)'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+      arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_threads --path_to_protoc_exe $(Build.BinariesDirectory)\wasm\host_protoc\Release\protoc.exe --enable_wasm_threads'
+      workingDirectory: '$(Build.BinariesDirectory)'
+  - task: PythonScript@0
+    displayName: 'Build and test (simd + threads)'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+      arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_simd_threads --path_to_protoc_exe $(Build.BinariesDirectory)\wasm\host_protoc\Release\protoc.exe --enable_wasm_simd --enable_wasm_threads'
+      workingDirectory: '$(Build.BinariesDirectory)'
+  - task: PythonScript@0
+    displayName: 'Build and test (simd)'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+      arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_simd --path_to_protoc_exe $(Build.BinariesDirectory)\wasm\host_protoc\Release\protoc.exe --enable_wasm_simd'
+      workingDirectory: '$(Build.BinariesDirectory)'
+  - script: |
+      copy $(Build.BinariesDirectory)\wasm\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
+      copy $(Build.BinariesDirectory)\wasm_threads\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
+      copy $(Build.BinariesDirectory)\wasm_simd_threads\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
+      copy $(Build.BinariesDirectory)\wasm_simd\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
+    displayName: 'Create Artifacts'
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline Artifact'
+    inputs:
+      artifactName: '${{ parameters.BuildConfig }}_wasm'
+      targetPath: '$(Build.ArtifactStagingDirectory)'
+  - task: PublishTestResults@2
+    displayName: 'Publish unit test results'
+    inputs:
+      testResultsFiles: '**/*.results.xml'
+      searchFolder: '$(Build.BinariesDirectory)'
+      testRunTitle: 'Unit Test Run'
+    condition: and(succeededOrFailed(), eq('${{ parameters.BuildConfig }}', 'Debug'))
+  - template: component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()

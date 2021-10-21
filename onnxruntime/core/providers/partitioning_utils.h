@@ -80,13 +80,13 @@ Create the supported partitions for the execution provider.
 
 @returns ComputeCapability instances for all partitions assigned to the execution provider.
 */
-std::vector<std::unique_ptr<ComputeCapability>> CreateSupportedPartitions(
-    const GraphViewer& graph_viewer,
-    const std::unordered_set<const Node*>& supported_nodes,
-    const std::unordered_set<std::string>& stop_ops,
-    const GenerateMetadefNameFn& generate_metadef_name,
-    const std::string& execution_provider_name,
-    bool debug_output = false);
+std::vector<std::unique_ptr<ComputeCapability>>
+CreateSupportedPartitions(const GraphViewer& graph_viewer,
+                          const std::unordered_set<const Node*>& supported_nodes,
+                          const std::unordered_set<std::string>& stop_ops,
+                          const GenerateMetadefNameFn& generate_metadef_name,
+                          const std::string& execution_provider_name,
+                          bool debug_output = false);
 
 /**
 Create a ComputeCapability instance from the group of nodes.

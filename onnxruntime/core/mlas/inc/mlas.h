@@ -47,7 +47,10 @@ Abstract:
 #if defined(_M_ARM64) || defined(__aarch64__)
 #define MLAS_TARGET_ARM64
 #endif
-#if defined(_M_ARM) || defined(_M_ARM64EC) || defined(__arm__)
+#if defined(_M_ARM64EC)
+#define MLAS_TARGET_ARM64EC
+#endif
+#if defined(_M_ARM) || defined(__arm__)
 #define MLAS_TARGET_ARM
 #endif
 #if defined(__VSX__)
@@ -118,6 +121,7 @@ enum MLAS_ACTIVATION_KIND {
     MlasTanhActivation,
     MlasLogisticActivation,
     MlasClipActivation,
+    MlasHardSigmoidActivation,
 };
 
 struct MLAS_ACTIVATION {
@@ -130,6 +134,10 @@ struct MLAS_ACTIVATION {
             float minimum;
             float maximum;
         } Clip;
+        struct {
+            float alpha;
+            float beta;
+        } HardSigmoid;
         float Values[2];
     } Parameters;
 };
@@ -324,7 +332,6 @@ MlasGemm(
                   M, N, K, &DataParams, 1, ThreadPool);
 }
 
-
 /**
  * @brief Supply matrices data information to double precision gemm functions
  */
@@ -365,7 +372,6 @@ MlasGemmBatch(
     size_t BatchSize,
     MLAS_THREADPOOL* ThreadPool
     );
-
 
 /**
  * @brief  Double precision matrix/matrix multiply operation (DGEMM)
@@ -527,6 +533,7 @@ struct MLAS_GEMM_U8X8_SHAPE_PARAMS {
     size_t N = 0;
     size_t K = 0;
     bool BIsSigned = false;
+    bool IsAccumulateMode = false;
 };
 
 struct MLAS_GEMM_U8X8_DATA_PARAMS {
@@ -542,7 +549,6 @@ struct MLAS_GEMM_U8X8_DATA_PARAMS {
     size_t ldc = 0;
     const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor = nullptr;
 };
-
 
 void
 MLASCALL
@@ -699,6 +705,59 @@ MlasConvDepthwise(
     size_t Channels,
     size_t OutputCount,
     size_t KernelSize
+    );
+
+//
+// Symmetric quantized integer convolution routines.
+//
+
+size_t
+MlasConvSymPackWSize(
+    size_t GroupCount,
+    size_t InputChannels,
+    size_t OutputChannels,
+    size_t KernelSize
+    );
+
+void
+MlasConvSymPackW(
+    size_t GroupCount,
+    size_t InputChannels,
+    size_t OutputChannels,
+    size_t KernelSize,
+    const int8_t* W,
+    int8_t* PackedW,
+    size_t PackedWSize
+    );
+
+int32_t
+MlasConvSymFixupInputZeroPoint(
+    uint8_t zero_point_value
+    );
+
+struct MLAS_CONV_SYM_PARAMS {
+    const uint8_t* InputDirect;
+    const uint8_t* const* InputIndirection;
+    const void* Filter;
+    uint8_t* Output;
+    size_t InputChannels;
+    size_t OutputChannels;
+    size_t OutputCount;
+    size_t KernelSize;
+    const int32_t* Bias;
+    const float* Scale;
+    bool PerChannelScale;
+    uint8_t OutputZeroPoint;
+};
+
+void
+MlasConvSym(
+    const MLAS_CONV_SYM_PARAMS& Params
+    );
+
+void
+MlasConvSymDepthwise(
+    const MLAS_CONV_SYM_PARAMS& Params
     );
 
 //
@@ -966,8 +1025,8 @@ MlasQuantizeLinear(
 /**
  * @brief Requantize a block of the intermediate buffer to the output buffer,
  *        optionally adding the supplied bias
- * 
- * @param Input                     Input matrix 
+ *
+ * @param Input                     Input matrix
  * @param InputLeadingDimension     Input matrix leading dimension
  * @param Output                    Output matrix
  * @param OutputLeadingDimension    Output matrix leading dimension

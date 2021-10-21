@@ -8,6 +8,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.BiasDropout">com.microsoft.BiasDropout</a>
   * <a href="#com.microsoft.BiasGelu">com.microsoft.BiasGelu</a>
   * <a href="#com.microsoft.BiasSoftmax">com.microsoft.BiasSoftmax</a>
+  * <a href="#com.microsoft.BifurcationDetector">com.microsoft.BifurcationDetector</a>
   * <a href="#com.microsoft.CDist">com.microsoft.CDist</a>
   * <a href="#com.microsoft.ComplexMul">com.microsoft.ComplexMul</a>
   * <a href="#com.microsoft.ComplexMulConj">com.microsoft.ComplexMulConj</a>
@@ -40,6 +41,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.OptionalHasElement">com.microsoft.OptionalHasElement</a>
   * <a href="#com.microsoft.Pad">com.microsoft.Pad</a>
   * <a href="#com.microsoft.QAttention">com.microsoft.QAttention</a>
+  * <a href="#com.microsoft.QGemm">com.microsoft.QGemm</a>
   * <a href="#com.microsoft.QLinearAdd">com.microsoft.QLinearAdd</a>
   * <a href="#com.microsoft.QLinearAveragePool">com.microsoft.QLinearAveragePool</a>
   * <a href="#com.microsoft.QLinearConcat">com.microsoft.QLinearConcat</a>
@@ -113,7 +115,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>3D output tensor with shape (batch_size, append_length, hidden_size)</dd>
+<dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
 <dt><tt>present</tt> (optional) : T</dt>
 <dd>present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)</dd>
 </dl>
@@ -358,7 +360,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>data</tt> : T</dt>
 <dd>The input data as Tensor.</dd>
 <dt><tt>bias</tt> : T</dt>
-<dd>The bias input, a vector with the same shape as last dim of data</dd>
+<dd>The bias input, a vector with the same shape as last dim of data OR same shape with data</dd>
 <dt><tt>residual</tt> (optional) : T</dt>
 <dd>The residual input, must have the same shape as data</dd>
 <dt><tt>ratio</tt> (optional) : T1</dt>
@@ -459,6 +461,62 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.BifurcationDetector"></a><a name="com.microsoft.bifurcationdetector">**com.microsoft.BifurcationDetector**</a>
+
+  Component for aggressive decoding. Find the bifurcation index of predicted tokens, between source tokens,
+  starting from previous suffix match index, and predicted tokens.
+  Concat predicted tokens, starting from bifurcation index, to the back
+  of current tokens. This forms the output tokens.
+  Detect suffix match index in source tokens, between source tokens and output tokens.
+  Detection is based on finding the appearances of last n-gram in output tokens
+  in source tokens.
+  A match is considered found if source tokens contain a single matching n-gram.
+  Return the index of the start of the n-gram in source tokens.
+  No matching if found if src tokens contain multiple or zero matching n-grams. Return -1.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>max_ngram_size</tt> : int</dt>
+<dd>The maximum NGram size for suffix matching.</dd>
+<dt><tt>min_ngram_size</tt> : int</dt>
+<dd>The minimum NGram size for suffix matching.</dd>
+</dl>
+
+#### Inputs (3 - 4)
+
+<dl>
+<dt><tt>src_tokens</tt> : T</dt>
+<dd>Encoder input ids.</dd>
+<dt><tt>cur_tokens</tt> : T</dt>
+<dd>Decoder input ids.</dd>
+<dt><tt>prev_suffix_match_idx</tt> : T</dt>
+<dd>Previous suffix match index</dd>
+<dt><tt>pred_tokens</tt> (optional) : T</dt>
+<dd>Predicted token ids from aggressive decoding</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>tokens</tt> : T</dt>
+<dd>Decoder input ids after merging predicted tokens</dd>
+<dt><tt>suffix_match_idx</tt> : T</dt>
+<dd>new suffix match index</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(int64)</dt>
+<dd>Constrain to integer types.</dd>
 </dl>
 
 
@@ -1891,6 +1949,73 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>T4</tt> : tensor(int32)</dt>
 <dd>Constrain mask index to integer types</dd>
+</dl>
+
+
+### <a name="com.microsoft.QGemm"></a><a name="com.microsoft.qgemm">**com.microsoft.QGemm**</a>
+
+  Quantized Gemm
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>alpha</tt> : float</dt>
+<dd>Scalar multiplier for the product of input tensors A * B.</dd>
+<dt><tt>transA</tt> : int</dt>
+<dd>Whether A should be transposed</dd>
+<dt><tt>transB</tt> : int</dt>
+<dd>Whether B should be transposed</dd>
+</dl>
+
+#### Inputs (6 - 9)
+
+<dl>
+<dt><tt>A</tt> : TA</dt>
+<dd>Input tensor A. The shape of A should be (M, K) if transA is 0, or (K, M) if transA is non-zero.</dd>
+<dt><tt>a_scale</tt> : T</dt>
+<dd>Scale of quantized input 'A'. It is a scalar,which means a per-tensor quantization.</dd>
+<dt><tt>a_zero_point</tt> : TA</dt>
+<dd>Zero point tensor for input 'A'. It is a scalar.</dd>
+<dt><tt>B</tt> : TB</dt>
+<dd>Input tensor B. The shape of B should be (K, N) if transB is 0, or (N, K) if transB is non-zero.</dd>
+<dt><tt>b_scale</tt> : T</dt>
+<dd>Scale of quantized input 'B'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number of elements should be equal to the number of columns of input 'B'.</dd>
+<dt><tt>b_zero_point</tt> : TB</dt>
+<dd>Zero point tensor for input 'B'. It's optional and default value is 0.  It could be a scalar or a 1-D tensor, which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number of elements should be equal to the number of columns of input 'B'.</dd>
+<dt><tt>C</tt> (optional) : TC</dt>
+<dd>Optional input tensor C. If not specified, the computation is done as if C is a scalar 0. The shape of C should be unidirectional broadcastable to (M, N). Its type is int32_t and must be quantized with zero_point = 0 and scale = alpha / beta * a_scale * b_scale.</dd>
+<dt><tt>y_scale</tt> (optional) : T</dt>
+<dd>Scale of output 'Y'. It is a scalar, which means a per-tensor quantization. It is optional. The output is full precision(float32) if it is not provided. Or the output is quantized.</dd>
+<dt><tt>y_zero_point</tt> (optional) : TYZ</dt>
+<dd>Zero point tensor for output 'Y'. It is a scalar, which means a per-tensor quantization. It is optional. The output is full precision(float32) if it is not provided. Or the output is quantized.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : TY</dt>
+<dd>Output tensor of shape (M, N).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float)</dt>
+<dd>Constrain scale types to float tensors.</dd>
+<dt><tt>TA</tt> : tensor(uint8), tensor(int8)</dt>
+<dd>Constrain input A and its zero point types to 8 bit tensors.</dd>
+<dt><tt>TB</tt> : tensor(uint8), tensor(int8)</dt>
+<dd>Constrain input B and its zero point types to 8 bit tensors.</dd>
+<dt><tt>TC</tt> : tensor(int32)</dt>
+<dd>Constrain input C to 32 bit integer tensors.</dd>
+<dt><tt>TYZ</tt> : tensor(uint8), tensor(int8)</dt>
+<dd>Constrain output zero point types to 8 bit tensors.</dd>
+<dt><tt>TY</tt> : tensor(float), tensor(uint8), tensor(int8)</dt>
+<dd>Constrain output type to float32 or 8 bit tensors.</dd>
 </dl>
 
 

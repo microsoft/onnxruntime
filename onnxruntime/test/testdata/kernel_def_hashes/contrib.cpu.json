@@ -68,6 +68,10 @@
         12457646955212583504
     ],
     [
+        "BifurcationDetector com.microsoft CPUExecutionProvider",
+        12148442056374193608
+    ],
+    [
         "CDist com.microsoft CPUExecutionProvider",
         889036143745127232
     ],
@@ -260,7 +264,15 @@
         1734858160766311432
     ],
     [
-        "QEmbedLayerNormalization com.microsoft CPUExecutionProvider",
-        9235385557940152248
+      "QEmbedLayerNormalization com.microsoft CPUExecutionProvider",
+      9235385557940152248
+    ],
+    [
+      "QGemm com.microsoft CPUExecutionProvider",
+      13737193491843065240
+    ],
+    [
+      "GridSample com.microsoft CPUExecutionProvider",
+      15019666093341768288
     ]
 ]

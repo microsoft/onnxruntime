@@ -4,23 +4,27 @@
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/coreml/builders/helper.h"
-#include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
+#ifdef __APPLE__
+#include "core/providers/coreml/builders/model_builder.h"
+#include "builder_utils.h"
+#endif
 
 #include "base_op_builder.h"
-#include "builder_utils.h"
 
 namespace onnxruntime {
 namespace coreml {
 
 class ConvOpBuilder : public BaseOpBuilder {
   // Add operator related
+#ifdef __APPLE__
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+#endif
 
   // Operator support related
  private:
@@ -30,6 +34,7 @@ class ConvOpBuilder : public BaseOpBuilder {
 
 // Add operator related
 
+#ifdef __APPLE__
 void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   const auto& input_defs = node.InputDefs();
 
@@ -139,13 +144,13 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   }
 
   // Add weight
-  CreateCoreMLWeight(*coreml_conv->mutable_weights(), weight_tensor);
+  ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_conv->mutable_weights(), weight_tensor));
 
   // Add bias if present
   if (input_defs.size() > 2) {
     coreml_conv->set_hasbias(true);
     const auto& bias_tensor = *model_builder.GetInitializerTensors().at(input_defs[2]->Name());
-    CreateCoreMLWeight(*coreml_conv->mutable_bias(), bias_tensor);
+    ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_conv->mutable_bias(), bias_tensor));
   }
 
   if (is_1d_conv) {
@@ -170,6 +175,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
   return Status::OK();
 }
+#endif
 
 // Operator support related
 

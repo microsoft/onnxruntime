@@ -2,7 +2,7 @@ jobs:
 - job: Android_CI
   pool:
     vmImage: 'macOS-10.15'
-  timeoutInMinutes: 150
+  timeoutInMinutes: 180
   steps:
   # Onnx has no 3.9 python package available yet, need to use python 3.8 to avoid build onnx package
   # pythonVersion can be updated in Azure pipeline settings
@@ -18,10 +18,18 @@ jobs:
   - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
     displayName: Setup gradle wrapper to use gradle 6.8.3
 
+  # We build the host protoc to <ORT_ROOT>/protobuf_install
+  - script: |
+      /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
+        $(Build.SourcesDirectory) \
+        $(Build.BinariesDirectory)/protobuf \
+        $(Build.SourcesDirectory)/protobuf_install
+    displayName: Build Host Protoc
+
   - script: |
       python3 tools/python/run_android_emulator.py \
         --android-sdk-root ${ANDROID_SDK_ROOT} \
-        --create-avd --system-image "system-images;android-29;google_apis;x86_64" \
+        --create-avd --system-image "system-images;android-30;google_apis;x86_64" \
         --start --emulator-extra-args="-partition-size 4096" \
         --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
     displayName: Start Android emulator
@@ -41,10 +49,11 @@ jobs:
         --android_sdk_path $ANDROID_HOME \
         --android_ndk_path $ANDROID_NDK_HOME \
         --android_abi=x86_64 \
-        --android_api=29 \
+        --android_api=30 \
         --skip_submodule_sync \
         --parallel \
         --cmake_generator=Ninja \
+        --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
         --build_java
     displayName: CPU EP, Build and Test on Android Emulator
 
@@ -73,12 +82,12 @@ jobs:
 - job: Update_Dashboard
   workspace:
     clean: all
-  pool:
-    vmImage: 'ubuntu-latest'
+  variables:
+  - name: skipComponentGovernanceDetection
+    value: true
+  pool: 'Linux-CPU-2019'
+  condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
   dependsOn: Android_CI
-  # disable update dashboard of Android Code coverage until Azure CI machine cannot access database issue is resolved
-  # condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
-  condition: false
   steps:
   - task: DownloadPipelineArtifact@0
     displayName: 'Download code coverage report'
@@ -86,23 +95,11 @@ jobs:
       artifactName: 'coverage_rpt.txt'
       targetPath: '$(Build.BinariesDirectory)'
 
-  - task: UsePythonVersion@0
+  - task: AzureCLI@2
+    displayName: 'Post Android Code Coverage To DashBoard'
     inputs:
-      versionSpec: '3.x'
-
-  - task: CmdLine@2
-    inputs:
-      script: |
-        python3 -m pip install mysql-connector-python
-
-  - task: PythonScript@0
-    displayName: Post Android Code Coverage To DashBoard
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/post_code_coverage_to_dashboard.py'
-      arguments: >
-        --commit_hash=$(Build.SourceVersion)
-        --report_url="https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)"
-        --report_file="$(Build.BinariesDirectory)/coverage_rpt.txt"
-        --branch $(Build.SourceBranchName) --arch $(Agent.OSArchitecture) --os "android" --build_config nnapi
-    env:
-      DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
+      azureSubscription: AIInfraBuild
+      scriptType: bash
+      scriptPath: $(Build.SourcesDirectory)/tools/ci_build/github/linux/upload_code_coverage_data.sh
+      arguments: '"$(Build.BinariesDirectory)/coverage_rpt.txt" "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" arm android nnapi'
+      workingDirectory: '$(Build.BinariesDirectory)'

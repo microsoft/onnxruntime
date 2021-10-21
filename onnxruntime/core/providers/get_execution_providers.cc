@@ -90,6 +90,14 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #endif
         },
         {
+            kCoreMLExecutionProvider,
+#ifdef USE_COREML
+            true,
+#else
+            false,
+#endif
+        },
+        {
             kArmNNExecutionProvider,
 #ifdef USE_ARMNN
             true,

@@ -23,7 +23,7 @@ struct ProviderHostCPU {
   virtual Status NonMaxSuppressionBase__PrepareCompute(OpKernelContext* ctx, PrepareContext& pc) = 0;
   virtual Status NonMaxSuppressionBase__GetThresholdsFromInputs(const PrepareContext& pc, int64_t& max_output_boxes_per_class, float& iou_threshold, float& score_threshold) = 0;
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 
   // From cpu/tensor/size.h
   virtual Status Size__Compute(const Size* p, OpKernelContext* context) = 0;
@@ -123,13 +123,12 @@ struct ProviderHostCPU {
   virtual Status embed_layer_norm__CheckInputs(const OpKernelContext* context) = 0;
   virtual Status bias_gelu_helper__CheckInputs(const OpKernelContext* context) = 0;
   virtual Status LongformerAttentionBase__CheckInputs(const contrib::LongformerAttentionBase* p, const TensorShape& input_shape, const TensorShape& weights_shape, const TensorShape& bias_shape, const TensorShape& mask_shape, const TensorShape& global_weights_shape, const TensorShape& global_bias_shape, const TensorShape& global_shape) = 0;
-  virtual Status AttentionBase__CheckInputs(const contrib::AttentionBase* p, const TensorShape& input_shape, const TensorShape& weights_shape, const TensorShape& bias_shape, const Tensor*& mask_index, const Tensor* past, const int max_threads_per_block) = 0;
+  virtual Status AttentionBase__CheckInputs(const contrib::AttentionBase* p, const TensorShape& input_shape, const TensorShape& weights_shape, const TensorShape& bias_shape, const Tensor*& mask_index, const Tensor* past, const Tensor *extra_add_qk, const int max_threads_per_block) = 0;
   virtual Tensor* AttentionBase__GetPresent(const contrib::AttentionBase* p, OpKernelContext* context, const Tensor* past, int batch_size, int head_size, int sequence_length, int& past_sequence_length) = 0;
 #endif
 
 #ifdef ENABLE_TRAINING
-  virtual void ATenOpBase__Init(contrib::ATenOpBase* p, const OpKernelInfo& info, bool is_backward) = 0;
-  virtual Status ATenOpBase__Compute(const contrib::ATenOpBase* p, OpKernelContext* p_ctx) = 0;
+  virtual Status ATenOp__Compute(const contrib::ATenOp* p, OpKernelContext* p_ctx) = 0;
   virtual void contrib__record_event_in_tensor(const Tensor& event_id_tensor) = 0;
   virtual void contrib__wait_event_in_tensor(const Tensor& event_id_tensor) = 0;
   virtual Status contrib__Group__Compute(const contrib::Group* p, OpKernelContext* context) = 0;
@@ -147,7 +146,7 @@ struct ProviderHostCPU {
 
 extern ProviderHostCPU& g_host_cpu;
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 namespace GatherElements {
 inline Status ValidateInputShapes(const TensorShape& input_data_shape,
                                   const TensorShape& indices_shape,
@@ -207,7 +206,7 @@ inline void GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_sh
 inline Status PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) { return g_host_cpu.contrib__PrepareForTrainingCompute(input_shape, num_outputs, axis, before_dims, after_dims_including_split_axis, after_dims_excluding_split, split_sizes); }
 }  // namespace contrib
 #endif  // ENABLE_TRAINING
-#endif  // USE_CUDA
+#endif  // USE_CUDA || USE_ROCM
 #endif
 
 }  // namespace onnxruntime

@@ -10,22 +10,28 @@
 
 import unittest
 import os
-import onnx
-import onnxruntime
 import pytest
-from onnx import helper, TensorProto, ModelProto, load_model
-from onnx.helper import make_node, make_tensor_value_info
-import numpy as np
-from onnx import numpy_helper
-import sys
+from onnx import TensorProto, load_model
+from model_loader import get_test_data_path, get_fusion_test_model
 
-from onnxruntime.transformers.optimizer import optimize_model, optimize_by_onnxruntime
-from onnxruntime.transformers.onnx_model import OnnxModel
+from parity_utilities import find_transformers_source
+if find_transformers_source():
+    from optimizer import optimize_model
+    from onnx_model import OnnxModel
+    from onnx_exporter import export_onnx_model_from_tf, export_onnx_model_from_pt
+    from huggingface_models import MODELS
+    from benchmark_helper import Precision
+else:
+    from onnxruntime.transformers.optimizer import optimize_model
+    from onnxruntime.transformers.onnx_model import OnnxModel
+    from onnxruntime.transformers.onnx_exporter import export_onnx_model_from_tf, export_onnx_model_from_pt
+    from onnxruntime.transformers.huggingface_models import MODELS
+    from onnxruntime.transformers.benchmark_helper import Precision
 
 BERT_TEST_MODELS = {
-    "bert_keras_0": ('models', 'TFBertForSequenceClassification_1.onnx'), # bert_mrpc_tensorflow2.1_opset10
-    "bert_keras_squad": ('models', 'TFBertForQuestionAnswering.onnx'), # bert_squad_tensorflow2.1_keras2onnx_opset11
-    "gpt2_past": ('models', 'gpt2_past.onnx'), # gpt2_pytorch1.5_opset11
+    "bert_keras_0": ('models', 'TFBertForSequenceClassification_1.onnx'),  # bert_mrpc_tensorflow2.1_opset10
+    "bert_keras_squad": ('models', 'TFBertForQuestionAnswering.onnx'),  # bert_squad_tensorflow2.1_keras2onnx_opset11
+    "gpt2_past": ('models', 'gpt2_past.onnx'),  # gpt2_pytorch1.5_opset11
     "gpt2_past_mask": ('FUSION', 'gpt2_past_mask_one_layer.onnx'),
     "multiple_embed": ('FUSION', 'embed_layer_norm_multiple.onnx'),
     "bert_tf2onnx_0": ('models', 'bert_tf2onnx_0.onnx')
@@ -35,10 +41,9 @@ BERT_TEST_MODELS = {
 def _get_test_model_path(name):
     sub_dir, file = BERT_TEST_MODELS[name]
     if sub_dir == "FUSION":
-        #return os.path.join('..', '..', '..', '..', 'test', 'testdata', 'transform', 'fusion', file)
-        return os.path.join('./', 'testdata', 'transform', 'fusion', file)
+        return get_fusion_test_model(file)
     else:
-        return os.path.join('./', 'transformers', 'test_data', sub_dir, file)
+        return get_test_data_path(sub_dir, file)
 
 
 class TestBertOptimization(unittest.TestCase):
@@ -48,7 +53,8 @@ class TestBertOptimization(unittest.TestCase):
                 print(f"Counters is not expected in test: {test_name}")
                 for op, counter in expected_node_count.items():
                     print("{}: {} expected={}".format(op, len(bert_model.get_nodes_by_op_type(op)), counter))
-            self.assertEqual(len(bert_model.get_nodes_by_op_type(op_type)), count)
+
+                self.assertEqual(len(bert_model.get_nodes_by_op_type(op_type)), count)
 
     # add test function for huggingface pytorch model
     def _test_optimizer_on_huggingface_model(self,
@@ -63,9 +69,6 @@ class TestBertOptimization(unittest.TestCase):
         # expect fusion result list have the following keys
         # EmbedLayerNormalization, Attention, Gelu, FastGelu, BiasGelu, LayerNormalization, SkipLayerNormalization
         model_fusion_statistics = {}
-        from onnx_exporter import export_onnx_model_from_pt
-        from huggingface_models import MODELS
-        from benchmark_helper import Precision
 
         input_names = MODELS[model_name][0]
 
@@ -94,9 +97,6 @@ class TestBertOptimization(unittest.TestCase):
         # expect fusion result list have the following keys
         # EmbedLayerNormalization, Attention, Gelu, FastGelu, BiasGelu, LayerNormalization, SkipLayerNormalization
         model_fusion_statistics = {}
-        from onnx_exporter import export_onnx_model_from_tf
-        from huggingface_models import MODELS
-        from benchmark_helper import Precision
         print("testing mode ", model_name)
         print("testing input number = ", inputs_count)
         input_names = MODELS[model_name][0]
@@ -160,7 +160,7 @@ class TestBertOptimization(unittest.TestCase):
     def test_gpt2_past_fp16(self):
         input_model_path = _get_test_model_path('gpt2_past')
         model = OnnxModel(load_model(input_model_path, format=None, load_external_data=True))
-        model.convert_model_float32_to_float16(cast_input_output=False)
+        model.convert_float_to_float16(keep_io_types=False, use_symbolic_shape_infer=False)
         for input in model.graph().input[1:]:
             self.assertEqual(input.type.tensor_type.elem_type, TensorProto.FLOAT16)
         for output in model.graph().output:
@@ -194,6 +194,20 @@ class TestBertOptimization(unittest.TestCase):
         }
         self.verify_node_count(model, expected_node_count, 'test_multiple_embed')
 
+    def test_embed_layer_norm_fusion(self):
+        onnx_files = []
+        for i in [3, 8, 9]:
+            onnx_files.append(f"embed_layer_norm_format{i}.onnx")
+            onnx_files.append(f"embed_layer_norm_format{i}_opset13.onnx")
+        onnx_files.append('embed_layer_norm_format3_no_cast.onnx')
+        onnx_files.append('embed_layer_norm_format3_no_cast_opset13.onnx')
+
+        for file in onnx_files:
+            input_model_path = get_fusion_test_model(file)
+            model = optimize_model(input_model_path, 'bert')
+            expected_node_count = {'EmbedLayerNormalization': 1, 'Attention': 1, 'ReduceSum': 0}
+            self.verify_node_count(model, expected_node_count, file)
+
     # def test_bert_tf2onnx_0(self):
     #     input = _get_test_model_path('bert_tf2onnx_0')
     #     model = optimize_model(input, 'bert_tf', num_heads=2, hidden_size=8)
@@ -209,9 +223,15 @@ class TestBertOptimization(unittest.TestCase):
     #     self.verify_node_count(model, expected_node_count, 'test_bert_tf2onnx_0')
 
     @pytest.mark.slow
-    def test_huggingface_bert_fusion(self):
+    def test_huggingface_bert_fusion_1(self):
         self._test_optimizer_on_huggingface_model("bert-base-uncased", [1, 12, 0, 0, 12, 0, 24], inputs_count=1)
+
+    @pytest.mark.slow
+    def test_huggingface_bert_fusion_2(self):
         self._test_optimizer_on_huggingface_model("bert-base-uncased", [1, 12, 0, 0, 12, 0, 24], inputs_count=2)
+
+    @pytest.mark.slow
+    def test_huggingface_bert_fusion_3(self):
         self._test_optimizer_on_huggingface_model("bert-base-uncased", [1, 12, 0, 0, 12, 0, 24], inputs_count=3)
 
     @pytest.mark.slow
@@ -269,9 +289,15 @@ class TestBertOptimization(unittest.TestCase):
         self._test_optimizer_on_huggingface_model("facebook/bart-base", [0, 0, 0, 0, 12, 2, 30])
 
     @pytest.mark.slow
-    def test_huggingface_bert_base_cased_from_tf2onnx(self):
+    def test_huggingface_bert_base_cased_from_tf2onnx_1(self):
         self._test_optimizer_on_tf_model("bert-base-cased", [0, 12, 0, 0, 0, 0, 25], 1)
+
+    @pytest.mark.slow
+    def test_huggingface_bert_base_cased_from_tf2onnx_2(self):
         self._test_optimizer_on_tf_model("bert-base-cased", [0, 12, 0, 0, 0, 0, 25], 2)
+
+    @pytest.mark.slow
+    def test_huggingface_bert_base_cased_from_tf2onnx_3(self):
         self._test_optimizer_on_tf_model("bert-base-cased", [0, 12, 0, 0, 0, 0, 25], 3)
 
     @pytest.mark.slow

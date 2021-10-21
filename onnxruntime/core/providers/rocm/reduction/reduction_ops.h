@@ -16,10 +16,10 @@ namespace ReductionOps {
 // `input_shape_override` is the input shape for compute purposes (if provided)
 
 template <typename T, miopenReduceTensorIndices_t ReduceTensorIndices = MIOPEN_REDUCE_TENSOR_NO_INDICES>
-Tensor ReduceCompute(ROCMExecutionProvider& rocm_ep, miopenReduceTensorOp_t miopen_reduce_op, AllocatorPtr allocator,
-                     const Tensor& input, const std::vector<int64_t>& axes,
-                     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
-                     bool fast_reduction, const TensorShape* input_shape_override = nullptr);
+std::unique_ptr<Tensor> ReduceCompute(ROCMExecutionProvider& rocm_ep, miopenReduceTensorOp_t miopen_reduce_op, AllocatorPtr allocator,
+                                      const Tensor& input, const std::vector<int64_t>& axes,
+                                      bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
+                                      bool fast_reduction, const TensorShape* input_shape_override = nullptr);
 
 }  // namespace ReductionOps
 
@@ -140,7 +140,9 @@ class ReduceMax final : public ReduceKernel<true> {
 template <typename T>
 class ReduceMean final : public ReduceKernel<true> {
  public:
-  ReduceMean(const OpKernelInfo& info) : ReduceKernel<true>(info) {}
+  ReduceMean(const OpKernelInfo& info) : ReduceKernel<true>(info) {
+    fast_reduction_ = true;
+  }
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
     return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_AVG);
@@ -184,6 +186,7 @@ class ReduceLogSum final : public ReduceKernel<true> {
  public:
   ReduceLogSum(const OpKernelInfo& info) : ReduceKernel<true>(info) {
     ReduceKernel<true>::calculate_log_ = true;
+    fast_reduction_ = true;
   }
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
@@ -196,6 +199,7 @@ class ReduceSumSquare final : public ReduceKernel<true> {
  public:
   ReduceSumSquare(const OpKernelInfo& info) : ReduceKernel<true>(info) {
     ReduceKernel<true>::calculate_sqt_ = true;
+    fast_reduction_ = true;
   }
 
   Status ComputeInternal(OpKernelContext* ctx) const override {

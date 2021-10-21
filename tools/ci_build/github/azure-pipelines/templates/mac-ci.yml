@@ -13,13 +13,13 @@ jobs:
 - job: ${{ parameters.JobName }}
   workspace:
     clean: all
-  timeoutInMinutes:  120
+  timeoutInMinutes:  150
   pool:
     vmImage: 'macOS-10.15'
   variables:
     BuildCommand: ${{ parameters.BuildCommand }}
     ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
-    MACOSX_DEPLOYMENT_TARGET: '10.13'
+    MACOSX_DEPLOYMENT_TARGET: '10.14'
   steps:
     - checkout: self
       ${{ if ne(parameters.SubmoduleCheckoutMode, '') }}:

@@ -94,6 +94,27 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         ]
         self._check_shapes(graph, inferred.graph, expected_shapes)
 
+    def test_gather_indices(self):
+        graph = helper.make_graph([
+            helper.make_node("Constant", [], ["data"], "constant",
+                             value=helper.make_tensor('input', TensorProto.FLOAT,
+                             [5], [0.0, 1.0, 2.0, 3.0, 4.0])),
+            helper.make_node("Gather", ["data", "indices"], ["output"], axis=0),
+        ], "Gather_Test", [
+            helper.make_tensor_value_info('indices', TensorProto.INT64, ['b']),
+        ], [
+            helper.make_tensor_value_info('output', TensorProto.FLOAT, ['b']),
+        ])
+        model = helper.make_model(graph, producer_name='Gather_Test_Model')
+        model.opset_import[0].version = 13
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        expected_shapes = [
+            helper.make_tensor_value_info('data', TensorProto.FLOAT, [5]),
+            helper.make_tensor_value_info('output', TensorProto.FLOAT, ['b'])
+        ]
+        self._check_shapes(graph, inferred.graph, expected_shapes)
+
     def test_embed_layer_norm(self):
         hidden_size = 32
         initializers = [
@@ -160,6 +181,64 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             helper.make_tensor_value_info('loss', TensorProto.FLOAT, [])
         ]
         self._check_shapes(graph, inferred.graph, expected_shapes)
+
+    def _test_einsum_one_input_impl(self, input_0_shape, output_0_shape, eqn):
+        nodes = [
+            helper.make_node("Einsum", ["input_0"], ["output_0"], "einsum_0", equation=eqn),
+        ]
+        inputs = [
+            helper.make_tensor_value_info('input_0', TensorProto.FLOAT, input_0_shape),
+        ]
+        outputs = [
+            helper.make_tensor_value_info('output_0', TensorProto.FLOAT, None),
+        ]
+        graph = helper.make_graph(nodes, "Einsum_Test", inputs, outputs, [])
+        model = helper.make_model(graph)
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        expected_shapes = [
+            helper.make_tensor_value_info('output_0', TensorProto.FLOAT, output_0_shape)
+        ]
+        self._check_shapes(graph, inferred.graph, expected_shapes)
+
+    def _test_einsum_two_inputs_impl(self, input_0_shape, input_1_shape, output_0_shape, eqn):
+        nodes = [
+            helper.make_node("Einsum", ["input_0", "input_1"], ["output_0"], "einsum_0", equation=eqn),
+        ]
+        inputs = [
+            helper.make_tensor_value_info('input_0', TensorProto.FLOAT, input_0_shape),
+            helper.make_tensor_value_info('input_1', TensorProto.FLOAT, input_1_shape),
+        ]
+        outputs = [
+            helper.make_tensor_value_info('output_0', TensorProto.FLOAT, None),
+        ]
+        graph = helper.make_graph(nodes, "Einsum_Test", inputs, outputs, [])
+        model = helper.make_model(graph)
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        expected_shapes = [
+            helper.make_tensor_value_info('output_0', TensorProto.FLOAT, output_0_shape)
+        ]
+        self._check_shapes(graph, inferred.graph, expected_shapes)
+
+    def test_einsum_matmul(self):
+        self._test_einsum_two_inputs_impl([1, 'b', 8], [2, 12, 'n'], [1, 'b', 12, 'n'], "abc, cde -> abde")
+
+    def test_einsum_batch_matmul(self):
+        self._test_einsum_two_inputs_impl([5, 2, 3], [5, 3, 4], [5, 2, 4], "bij, bjk -> bik")
+
+    def test_einsum_inner_prod(self):
+        self._test_einsum_two_inputs_impl([5], [5], [], "i, i")
+
+    def test_einsum_batch_diagonal(self):
+       self._test_einsum_one_input_impl([3, 5, 5], [3, 5], "...ii ->...i")
+
+    def test_einsum_sum(self):
+        self._test_einsum_one_input_impl(['a', 'b'], ['a'], "ij -> i")
+
+    def test_einsum_transpose(self):
+        self._test_einsum_one_input_impl(['a', 'b'], ['b', 'a'], "ij -> ji")
+        
 
 class TestSymbolicShapeInferenceForSlice(unittest.TestCase):
     def check_slice_of_concat(self, input_dims, start, end, step, expected_output_dim):

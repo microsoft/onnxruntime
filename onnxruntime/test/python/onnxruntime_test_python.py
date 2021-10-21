@@ -184,10 +184,12 @@ class TestInferenceSession(unittest.TestCase):
 
                 option['gpu_external_alloc'] = '0'
                 option['gpu_external_free'] = '0'
+                option['gpu_external_empty_cache'] = '0'
                 sess.set_providers(['CUDAExecutionProvider'], [option])
                 options = sess.get_provider_options()
                 self.assertEqual(options['CUDAExecutionProvider']['gpu_external_alloc'], '0')
                 self.assertEqual(options['CUDAExecutionProvider']['gpu_external_free'], '0')
+                self.assertEqual(options['CUDAExecutionProvider']['gpu_external_empty_cache'], '0')
                 #
                 # Note: Tests that throw an exception leave an empty session due to how set_providers currently works,
                 #       so run them last. Each set_providers call will attempt to re-create a session, so it's
@@ -597,10 +599,10 @@ class TestInferenceSession(unittest.TestCase):
         with open(profile_file) as f:
             lines = f.readlines()
             self.assertTrue('[' in lines[0])
-            for i in range(1, 8):
+            for i in range(1, len(lines)-1):
                 for tag in tags:
                     self.assertTrue(tag in lines[i])
-            self.assertTrue(']' in lines[8])
+            self.assertTrue(']' in lines[-1])
 
     def testProfilerGetStartTimeNs(self):
         def getSingleSessionProfilingStartTime():
@@ -1065,20 +1067,29 @@ class TestInferenceSession(unittest.TestCase):
         check_failure([("a", {1: 2})], [{3: 4}])
 
     def testRegisterCustomEPsLibrary(self):
-        # exclude for macos and linux
-        if not sys.platform.startswith("win"):
+        from onnxruntime.capi import _pybind_state as C
+        available_eps = C.get_available_providers()
+        #skip amd gpu build
+        if 'kRocmExecutionProvider' in available_eps:
+            return
+        if sys.platform.startswith("win"):
+            shared_library = 'test_execution_provider.dll'
+
+        elif sys.platform.startswith("darwin"):
+            # exclude for macos
             return
 
-        shared_library = 'test_execution_provider.dll'
+        else:
+            shared_library = './libtest_execution_provider.so'
+        
         if not os.path.exists(shared_library):
             raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
-        
+
         this = os.path.dirname(__file__)
         custom_op_model = os.path.join(this, "testdata", "custom_execution_provider_library", "test_model.onnx")
         if not os.path.exists(custom_op_model):
             raise FileNotFoundError("Unable to find '{0}'".format(custom_op_model))
 
-        from onnxruntime.capi import _pybind_state as C
         session_options = C.get_default_session_options()
         sess = C.InferenceSession(session_options, custom_op_model, True, True)
         sess.initialize_session(['my_ep'], 

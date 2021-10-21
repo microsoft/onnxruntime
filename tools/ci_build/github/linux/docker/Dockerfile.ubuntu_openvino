@@ -1,20 +1,18 @@
-ARG OS_VERSION=18.04
-FROM ubuntu:${OS_VERSION}
+FROM ubuntu:20.04
 
-ARG PYTHON_VERSION=3.5
 ARG OPENVINO_VERSION=2021.4
 
 ADD scripts /tmp/scripts
-RUN /tmp/scripts/install_ubuntu.sh -p $PYTHON_VERSION -d EdgeDevice && \
+RUN /tmp/scripts/install_ubuntu.sh -p 3.8 -d EdgeDevice && \
     /tmp/scripts/install_os_deps.sh -d EdgeDevice && \
-    /tmp/scripts/install_python_deps.sh -p $PYTHON_VERSION -d EdgeDevice
+    /tmp/scripts/install_python_deps.sh -p 3.8 -d EdgeDevice
 
 RUN apt update && apt install -y libnuma1 ocl-icd-libopencl1 && \
     rm -rf /var/lib/apt/lists/* /tmp/scripts
 
 WORKDIR /root
 
-ENV INTEL_OPENVINO_DIR /opt/intel/openvino_${OPENVINO_VERSION}.582
+ENV INTEL_OPENVINO_DIR /opt/intel/openvino_${OPENVINO_VERSION}.689
 ENV LD_LIBRARY_PATH $INTEL_OPENVINO_DIR/deployment_tools/inference_engine/lib/intel64:$INTEL_OPENVINO_DIR/deployment_tools/ngraph/lib:$INTEL_OPENVINO_DIR/deployment_tools/inference_engine/external/tbb/lib:/usr/local/openblas/lib:$LD_LIBRARY_PATH
 ENV InferenceEngine_DIR $INTEL_OPENVINO_DIR/deployment_tools/inference_engine/share
 ENV ngraph_DIR $INTEL_OPENVINO_DIR/deployment_tools/ngraph/cmake
@@ -28,7 +26,7 @@ RUN wget https://apt.repos.intel.com/openvino/2021/GPG-PUB-KEY-INTEL-OPENVINO-20
     cd /etc/apt/sources.list.d && \
     echo "deb https://apt.repos.intel.com/openvino/2021 all main">intel-openvino-2021.list && \
     apt update && \ 
-    apt install -y intel-openvino-dev-ubuntu18-2021.4.582 && \
+    apt install -y intel-openvino-dev-ubuntu18-2021.4.689 && \
     cd ${INTEL_OPENVINO_DIR}/install_dependencies && ./install_openvino_dependencies.sh -y
 
 RUN wget https://github.com/intel/compute-runtime/releases/download/19.41.14441/intel-gmmlib_19.3.2_amd64.deb && \
@@ -39,8 +37,8 @@ RUN wget https://github.com/intel/compute-runtime/releases/download/19.41.14441/
     sudo dpkg -i *.deb && rm -rf *.deb
 
 RUN mkdir -p /opt/cmake/bin && \
-    wget https://github.com/Kitware/CMake/releases/download/v3.20.2/cmake-3.20.2-Linux-x86_64.tar.gz && \
-    tar -xf cmake-3.20.2-Linux-x86_64.tar.gz --strip 1 -C /opt/cmake && rm -rf /cmake-3.20.2-Linux-x86_64.tar.gz && \
+    wget https://github.com/Kitware/CMake/releases/download/v3.21.0/cmake-3.21.0-linux-x86_64.tar.gz && \
+    tar -xf cmake-3.21.0-linux-x86_64.tar.gz --strip 1 -C /opt/cmake && rm -rf /cmake-3.21.0-linux-x86_64.tar.gz && \
     ln -sf /opt/cmake/bin/* /usr/bin
 
 ARG BUILD_UID=1000

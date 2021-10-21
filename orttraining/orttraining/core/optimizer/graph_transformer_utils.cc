@@ -38,7 +38,6 @@
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
-#include "core/optimizer/shape_to_initializer.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
@@ -75,18 +74,18 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
     case TransformerLevel::Level1: {
       rule_transformer =
           std::make_unique<RuleBasedGraphTransformer>(optimizer_utils::GenerateRuleBasedTransformerName(level),
-                                                              compatible_eps);
-      rule_transformer->Register(std::make_unique<InsertMaxPoolOutput>());
-      rule_transformer->Register(std::make_unique<BatchNormReplacement>());
-      rule_transformer->Register(std::make_unique<UnsqueezeElimination>());
-      rule_transformer->Register(std::make_unique<ExpandElimination>());
-      rule_transformer->Register(std::make_unique<CastElimination>());
-      rule_transformer->Register(std::make_unique<NoopElimination>());
-      rule_transformer->Register(std::make_unique<DivMulFusion>());
-      rule_transformer->Register(std::make_unique<EliminateDropout>());
-      rule_transformer->Register(std::make_unique<GemmTransposeFusion>());
-      rule_transformer->Register(std::make_unique<NotWhereFusion>());
-      rule_transformer->Register(std::make_unique<InsertSoftmaxCrossEntropyLossOutput>());
+                                                      compatible_eps);
+      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<InsertMaxPoolOutput>()));
+      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<BatchNormReplacement>()));
+      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<UnsqueezeElimination>()));
+      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<ExpandElimination>()));
+      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<CastElimination>()));
+      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<NoopElimination>()));
+      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<DivMulFusion>()));
+      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<EliminateDropout>()));
+      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<GemmTransposeFusion>()));
+      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<NotWhereFusion>()));
+      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<InsertSoftmaxCrossEntropyLossOutput>()));
 
       // Remove duplicate nodes. Must be applied before any recompute transformations.
       transformers.emplace_back(std::make_unique<CommonSubexpressionEliminationApplyOnce>(compatible_eps));
@@ -127,17 +126,17 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       if (config.propagate_cast_ops_config.level >= 0) {
         std::unordered_set<std::string> cuda_execution_provider = {onnxruntime::kCudaExecutionProvider, onnxruntime::kRocmExecutionProvider};
         transformers.emplace_back(std::make_unique<PropagateCastOps>(config.propagate_cast_ops_config.strategy,
-                                                                             static_cast<size_t>(config.propagate_cast_ops_config.level),
-                                                                             config.propagate_cast_ops_config.allow,
-                                                                             cuda_execution_provider));
+                                                                     static_cast<size_t>(config.propagate_cast_ops_config.level),
+                                                                     config.propagate_cast_ops_config.allow,
+                                                                     cuda_execution_provider));
       }
     } break;
 
     case TransformerLevel::Level2: {
       rule_transformer =
           std::make_unique<RuleBasedGraphTransformer>(optimizer_utils::GenerateRuleBasedTransformerName(level),
-                                                              compatible_eps);
-      rule_transformer->Register(std::make_unique<ConcatReplacement>());
+                                                      compatible_eps);
+      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<ConcatReplacement>()));
     } break;
 
     case TransformerLevel::Level3: {

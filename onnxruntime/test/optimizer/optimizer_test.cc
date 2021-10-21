@@ -8,13 +8,14 @@
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/framework/data_types.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/op_kernel.h"
 #include "core/util/math.h"
 #include "core/platform/env.h"
 #include "test/framework/test_utils.h"
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
+#include "asserts.h"
 #include "gtest/gtest.h"
 
 using namespace std;
@@ -57,7 +58,7 @@ TEST(OptimizerTest, Basic) {
   std::vector<NodeArg*> tmp_inputs{inputs[0].get(), inputs[1].get()};
   std::vector<NodeArg*> tmp_outputs{outputs[0].get()};
   graph.AddNode("a", "Add", "a", tmp_inputs, tmp_outputs);
-  graph.Resolve();
+  ASSERT_STATUS_OK(graph.Resolve());
 
   std::vector<const Node*> nodes;
   for (auto& node : graph.Nodes()) {
@@ -66,12 +67,19 @@ TEST(OptimizerTest, Basic) {
 
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
       std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+#if !defined(DISABLE_SPARSE_TENSORS)
   OptimizerExecutionFrame::Info info(nodes, initialized_tensor_set,
                                      graph.ModelPath(),
                                      *cpu_execution_provider.get(),
                                      [&graph](const std::string& name) -> bool {
                                        return graph.IsSparseInitializer(name);
                                      });
+#else
+  OptimizerExecutionFrame::Info info(nodes, initialized_tensor_set,
+                                     graph.ModelPath(),
+                                     *cpu_execution_provider.get(),
+                                     [](std::string const& ) { return false; });
+#endif  //!defined(DISABLE_SPARSE_TENSORS)
 
   std::vector<int> fetch_mlvalue_idxs{info.GetMLValueIndex("out")};
   OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
@@ -90,7 +98,7 @@ TEST(OptimizerTest, Basic) {
     ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
 
     std::vector<OrtValue> fetches;
-    frame.GetOutputs(fetches);
+    ASSERT_STATUS_OK(frame.GetOutputs(fetches));
     auto& tensor = fetches[0].Get<Tensor>();
     const std::vector<int32_t> found(tensor.template Data<int32_t>(), tensor.template Data<int32_t>() + tensor_dim);
     std::vector<int32_t> expected;

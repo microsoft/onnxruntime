@@ -213,7 +213,7 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     // Finalize the session state
     SessionOptions so;
     // disable allocating initialized tensor memory from the arena(by default it will be allocated by the arena)
-    so.config_options.AddConfigEntry(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "1");
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "1"));
     ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm, so));
 
     // Fetch the CPU arena-allocator from the session state
@@ -477,7 +477,7 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
 
   ExecutionProviders execution_providers;
   auto cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
-  execution_providers.Add(kCpuExecutionProvider, std::move(cpu_execution_provider));
+  ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(cpu_execution_provider)));
 
   DataTransferManager dtm;
   profiling::Profiler profiler;
@@ -538,7 +538,7 @@ TEST(SessionStateTest, SharedInitalizersWithPrePackingTest) {
 
   ExecutionProviders execution_providers;
   auto cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
-  execution_providers.Add(kCpuExecutionProvider, std::move(cpu_execution_provider));
+  ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(cpu_execution_provider)));
 
   DataTransferManager dtm;
   profiling::Profiler profiler;
@@ -626,16 +626,11 @@ TEST(SessionStateTest, SharedInitalizersWithPrePackingTest) {
     // Enable shared initializer
     OrtMemoryInfo mem_info(CPU, OrtDeviceAllocator);
     std::vector<float> float_data(1, 1);
-    std::unique_ptr<Tensor> tensor =
-        std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape(std::vector<int64_t>{1}), reinterpret_cast<void*>(float_data.data()), mem_info, 0);
-
     auto value = std::make_unique<OrtValue>();
-    auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-    value->Init(tensor.release(),
-                ml_tensor,
-                ml_tensor->GetDeleteFunc());
+    Tensor::InitOrtValue(DataTypeImpl::GetType<float>(),
+                         TensorShape(std::vector<int64_t>{1}), reinterpret_cast<void*>(float_data.data()), mem_info, *value);
 
-    sess_options.AddInitializer("node_0_input_1", value.get());
+    ASSERT_STATUS_OK(sess_options.AddInitializer("node_0_input_1", value.get()));
 
     // First session/model
     Model model_1("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
@@ -701,16 +696,11 @@ TEST(SessionStateTest, SharedInitalizersWithPrePackingTest) {
     // Enable shared initializer
     OrtMemoryInfo mem_info(CPU, OrtDeviceAllocator);
     std::vector<float> float_data(1, 1);
-    std::unique_ptr<Tensor> tensor =
-        std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape(std::vector<int64_t>{1}), reinterpret_cast<void*>(float_data.data()), mem_info, 0);
-
     auto value = std::make_unique<OrtValue>();
-    auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-    value->Init(tensor.release(),
-                ml_tensor,
-                ml_tensor->GetDeleteFunc());
+    Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape(std::vector<int64_t>{1}),
+                         reinterpret_cast<void*>(float_data.data()), mem_info, *value);
 
-    sess_options.AddInitializer("node_0_input_1", value.get());
+    ASSERT_STATUS_OK(sess_options.AddInitializer("node_0_input_1", value.get()));
 
     // Enable pre-packed weights container
     PrepackedWeightsContainer prepacked_weights_container;

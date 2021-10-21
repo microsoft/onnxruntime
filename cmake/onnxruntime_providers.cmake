@@ -45,10 +45,6 @@ file(GLOB_RECURSE onnxruntime_rocm_generated_contrib_ops_cu_srcs CONFIGURE_DEPEN
   "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime/contrib_ops/rocm/*.cuh"
 )
 
-file(GLOB onnxruntime_cpu_featurizers_cc_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu/*.h"
-  "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu/*.cc"
-)
 
 file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.h"
@@ -66,7 +62,11 @@ if(onnxruntime_USE_CUDA)
   set(PROVIDERS_CUDA onnxruntime_providers_cuda)
 endif()
 if(onnxruntime_USE_COREML)
-  set(PROVIDERS_COREML onnxruntime_providers_coreml onnxruntime_coreml_proto)
+  if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set(PROVIDERS_COREML onnxruntime_providers_coreml onnxruntime_coreml_proto)
+  else()
+    set(PROVIDERS_COREML onnxruntime_providers_coreml)
+  endif()
 endif()
 if(onnxruntime_USE_NNAPI_BUILTIN)
   set(PROVIDERS_NNAPI onnxruntime_providers_nnapi)
@@ -104,10 +104,6 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_contrib_ops_srcs})
 endif()
 
-if (onnxruntime_USE_FEATURIZERS)
-  source_group(TREE ${ONNXRUNTIME_ROOT}/ FILES ${onnxruntime_cpu_featurizers_cc_srcs})
-  list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_featurizers_cc_srcs})
-endif()
 
 if (onnxruntime_ENABLE_TRAINING_OPS)
   file(GLOB_RECURSE onnxruntime_cpu_training_ops_srcs CONFIGURE_DEPENDS
@@ -175,7 +171,7 @@ onnxruntime_add_static_library(onnxruntime_providers ${onnxruntime_providers_src
 
 if (MSVC)
    target_compile_options(onnxruntime_providers PRIVATE "/bigobj")
-   if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+   if(onnxruntime_DEV_MODE AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
       target_compile_options(onnxruntime_providers PRIVATE "/wd4244")
    endif()
 endif()
@@ -183,12 +179,6 @@ onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxr
 
 if (onnxruntime_BUILD_MS_EXPERIMENTAL_OPS)
   target_compile_definitions(onnxruntime_providers PRIVATE BUILD_MS_EXPERIMENTAL_OPS=1)
-endif()
-
-if (onnxruntime_USE_FEATURIZERS)
-  add_dependencies(onnxruntime_providers onnxruntime_featurizers)
-  onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_featurizers)
-  target_link_libraries(onnxruntime_providers onnxruntime_featurizers)
 endif()
 
 if(HAS_DEPRECATED_COPY)
@@ -225,8 +215,6 @@ if (onnxruntime_ENABLE_TRAINING)
   # DLPack is a header-only dependency
   set(DLPACK_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/external/dlpack/include)
   target_include_directories(onnxruntime_providers PRIVATE ${DLPACK_INCLUDE_DIR})
-
-  target_link_libraries(onnxruntime_providers PRIVATE nlohmann_json::nlohmann_json)
 endif()
 
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cpu  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
@@ -338,15 +326,17 @@ if (onnxruntime_USE_CUDA)
   foreach(ORT_FLAG ${ORT_WARNING_FLAGS})
       target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler \"${ORT_FLAG}\">")
   endforeach()
-  if (UNIX)
-    target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-reorder>"
-            "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")
-    target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"
-            "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
-  else()
-    #mutex.cuh(91): warning C4834: discarding return value of function with 'nodiscard' attribute
-    target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4834>")
-    target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4127>")
+  if (onnxruntime_DEV_MODE)
+	  if (UNIX)
+		target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-reorder>"
+				"$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")
+		target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"
+				"$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
+	  else()
+		#mutex.cuh(91): warning C4834: discarding return value of function with 'nodiscard' attribute
+		target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4834>")
+		target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4127>")
+	  endif()
   endif()
   onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
   if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
@@ -358,11 +348,16 @@ if (onnxruntime_USE_CUDA)
   endif()
 
   add_dependencies(onnxruntime_providers_cuda onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES} ${onnxruntime_tvm_dependencies})
-  target_link_libraries(onnxruntime_providers_cuda PRIVATE cublas cudnn curand cufft ${ONNXRUNTIME_PROVIDERS_SHARED})
-  target_include_directories(onnxruntime_providers_cuda PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${onnxruntime_CUDNN_HOME}/include ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+  target_link_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDA_HOME}/extras/CUPTI/lib64)
+  target_link_libraries(onnxruntime_providers_cuda PRIVATE cublas cudnn curand cufft cupti ${ONNXRUNTIME_PROVIDERS_SHARED})
+  target_include_directories(onnxruntime_providers_cuda PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${onnxruntime_CUDNN_HOME}/include ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} ${onnxruntime_CUDA_HOME}/extras/CUPTI/include)
   # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
   set_target_properties(onnxruntime_providers_cuda PROPERTIES LINKER_LANGUAGE CUDA)
   set_target_properties(onnxruntime_providers_cuda PROPERTIES FOLDER "ONNXRuntime")
+
+  if (onnxruntime_ENABLE_NVTX_PROFILE)
+    target_link_libraries(onnxruntime_providers_cuda PRIVATE nvToolsExt)
+  endif()
 
   if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11)
     target_include_directories(onnxruntime_providers_cuda PRIVATE ${PROJECT_SOURCE_DIR}/external/cub)
@@ -440,11 +435,11 @@ if (onnxruntime_USE_DNNL)
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dnnl_cc_srcs})
   onnxruntime_add_shared_library_module(onnxruntime_providers_dnnl ${onnxruntime_providers_dnnl_cc_srcs})
   target_link_directories(onnxruntime_providers_dnnl PRIVATE ${DNNL_LIB_DIR})
-  onnxruntime_add_include_to_target(onnxruntime_providers_dnnl onnxruntime_common onnx) # onnx needed for stl_backports.h
+
   add_dependencies(onnxruntime_providers_dnnl onnxruntime_providers_shared project_dnnl ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  target_include_directories(onnxruntime_providers_dnnl PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS} ${DNNL_INCLUDE_DIR} ${DNNL_OCL_INCLUDE_DIR})
+  target_include_directories(onnxruntime_providers_dnnl PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${DNNL_INCLUDE_DIR} ${DNNL_OCL_INCLUDE_DIR})
   # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
-  target_link_libraries(onnxruntime_providers_dnnl PRIVATE dnnl ${ONNXRUNTIME_PROVIDERS_SHARED})
+  target_link_libraries(onnxruntime_providers_dnnl PRIVATE dnnl ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11)
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/dnnl  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_dnnl PROPERTIES FOLDER "ONNXRuntime")
   set_target_properties(onnxruntime_providers_dnnl PROPERTIES LINKER_LANGUAGE CXX)
@@ -503,6 +498,9 @@ if (onnxruntime_USE_TENSORRT)
   set(CXX_VERSION_DEFINED TRUE)
   add_subdirectory(${ONNXRUNTIME_ROOT}/../cmake/external/onnx-tensorrt)
   set(CMAKE_CXX_FLAGS ${OLD_CMAKE_CXX_FLAGS})
+  if ( CMAKE_COMPILER_IS_GNUCC )
+    set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
+  endif()
   if (WIN32)
     set(CMAKE_CUDA_FLAGS ${OLD_CMAKE_CUDA_FLAGS})
     unset(PROTOBUF_LIBRARY)
@@ -641,11 +639,7 @@ if (onnxruntime_USE_OPENVINO)
     unset(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO)
   endif()
 
-  if (OPENVINO_VERSION VERSION_EQUAL "2020.3")
-    list(APPEND OPENVINO_LIB_LIST ${InferenceEngine_LIBRARIES} ${NGRAPH_LIBRARIES} ${PYTHON_LIBRARIES})
-  else()
-    list(APPEND OPENVINO_LIB_LIST ${InferenceEngine_LIBRARIES} ${NGRAPH_LIBRARIES} ngraph::onnx_importer ${PYTHON_LIBRARIES})
-  endif()
+  list(APPEND OPENVINO_LIB_LIST ${InferenceEngine_LIBRARIES} ${NGRAPH_LIBRARIES} ngraph::onnx_importer ${PYTHON_LIBRARIES})
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_openvino_cc_srcs})
   onnxruntime_add_shared_library_module(onnxruntime_providers_openvino ${onnxruntime_providers_openvino_cc_srcs})
@@ -653,6 +647,9 @@ if (onnxruntime_USE_OPENVINO)
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/openvino  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_openvino PROPERTIES LINKER_LANGUAGE CXX)
   set_target_properties(onnxruntime_providers_openvino PROPERTIES FOLDER "ONNXRuntime")
+  if(NOT MSVC)
+    target_compile_options(onnxruntime_providers_openvino PRIVATE "-Wno-parentheses")
+  endif()
   add_dependencies(onnxruntime_providers_openvino onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS} ${OPENVINO_INCLUDE_DIR_LIST} ${PYTHON_INCLUDE_DIRS})
   target_link_libraries(onnxruntime_providers_openvino ${ONNXRUNTIME_PROVIDERS_SHARED} ${OPENVINO_LIB_LIST})
@@ -690,21 +687,23 @@ if (onnxruntime_USE_COREML)
   add_compile_definitions(USE_COREML=1)
 
   # Compile CoreML proto definition to ${CMAKE_CURRENT_BINARY_DIR}/coreml
-  set(COREML_PROTO_ROOT ${PROJECT_SOURCE_DIR}/external/coremltools/mlmodel/format)
-  file(GLOB coreml_proto_srcs
-    "${COREML_PROTO_ROOT}/*.proto"
-  )
-  onnxruntime_add_static_library(onnxruntime_coreml_proto ${coreml_proto_srcs})
-  target_include_directories(onnxruntime_coreml_proto PUBLIC $<TARGET_PROPERTY:${PROTOBUF_LIB},INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}")
-  target_compile_definitions(onnxruntime_coreml_proto PUBLIC $<TARGET_PROPERTY:${PROTOBUF_LIB},INTERFACE_COMPILE_DEFINITIONS>)
-  set_target_properties(onnxruntime_coreml_proto PROPERTIES COMPILE_FLAGS "-fvisibility=hidden")
-  set_target_properties(onnxruntime_coreml_proto PROPERTIES COMPILE_FLAGS "-fvisibility-inlines-hidden")
-  set(_src_sub_dir "coreml/")
-  onnxruntime_protobuf_generate(
-    APPEND_PATH
-    GEN_SRC_SUB_DIR ${_src_sub_dir}
-    IMPORT_DIRS ${COREML_PROTO_ROOT}
-    TARGET onnxruntime_coreml_proto)
+  if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set(COREML_PROTO_ROOT ${PROJECT_SOURCE_DIR}/external/coremltools/mlmodel/format)
+    file(GLOB coreml_proto_srcs
+      "${COREML_PROTO_ROOT}/*.proto"
+    )
+    onnxruntime_add_static_library(onnxruntime_coreml_proto ${coreml_proto_srcs})
+    target_include_directories(onnxruntime_coreml_proto PUBLIC $<TARGET_PROPERTY:${PROTOBUF_LIB},INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}")
+    target_compile_definitions(onnxruntime_coreml_proto PUBLIC $<TARGET_PROPERTY:${PROTOBUF_LIB},INTERFACE_COMPILE_DEFINITIONS>)
+    set_target_properties(onnxruntime_coreml_proto PROPERTIES COMPILE_FLAGS "-fvisibility=hidden")
+    set_target_properties(onnxruntime_coreml_proto PROPERTIES COMPILE_FLAGS "-fvisibility-inlines-hidden")
+    set(_src_sub_dir "coreml/")
+    onnxruntime_protobuf_generate(
+      APPEND_PATH
+      GEN_SRC_SUB_DIR ${_src_sub_dir}
+      IMPORT_DIRS ${COREML_PROTO_ROOT}
+      TARGET onnxruntime_coreml_proto)
+  endif()
 
   # These are shared utils,
   # TODO, move this to a separated lib when used by EPs other than NNAPI and CoreML
@@ -725,15 +724,23 @@ if (onnxruntime_USE_COREML)
     "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/*.cc"
   )
+  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    list(REMOVE_ITEM onnxruntime_providers_coreml_cc_srcs_nested
+    "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/model_builder.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/model_builder.cc"
+    )
+  endif()
 
   # Add CoreML objective c++ source code
-  file(GLOB
-    onnxruntime_providers_coreml_objcc_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/model.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/model.mm"
-    "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/host_utils.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/host_utils.mm"
-  )
+  if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    file(GLOB
+      onnxruntime_providers_coreml_objcc_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/model.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/model.mm"
+      "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/host_utils.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/host_utils.mm"
+    )
+  endif()
 
   set(onnxruntime_providers_coreml_cc_srcs
     ${onnxruntime_providers_coreml_cc_srcs_top}
@@ -744,9 +751,12 @@ if (onnxruntime_USE_COREML)
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_coreml_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_coreml ${onnxruntime_providers_coreml_cc_srcs} ${onnxruntime_providers_coreml_objcc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_coreml onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
-  onnxruntime_add_include_to_target(onnxruntime_providers_coreml onnxruntime_coreml_proto)
-  target_link_libraries(onnxruntime_providers_coreml PRIVATE onnxruntime_coreml_proto "-framework Foundation" "-framework CoreML")
-  add_dependencies(onnxruntime_providers_coreml onnx onnxruntime_coreml_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    onnxruntime_add_include_to_target(onnxruntime_providers_coreml onnxruntime_coreml_proto)
+    target_link_libraries(onnxruntime_providers_coreml PRIVATE onnxruntime_coreml_proto "-framework Foundation" "-framework CoreML")
+    add_dependencies(onnxruntime_providers_coreml onnxruntime_coreml_proto)
+  endif()
+  add_dependencies(onnxruntime_providers_coreml onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_coreml PROPERTIES CXX_STANDARD_REQUIRED ON)
   set_target_properties(onnxruntime_providers_coreml PROPERTIES FOLDER "ONNXRuntime")
   target_include_directories(onnxruntime_providers_coreml PRIVATE ${ONNXRUNTIME_ROOT} ${coreml_INCLUDE_DIRS})
@@ -998,6 +1008,12 @@ if (onnxruntime_USE_ROCM)
     "${ONNXRUNTIME_ROOT}/core/providers/rocm/*.cc"
   )
 
+  # The shared_library files are in a separate list since they use precompiled headers, and the above files have them disabled.
+  file(GLOB_RECURSE onnxruntime_providers_rocm_shared_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
+  )
+
   file(GLOB_RECURSE onnxruntime_providers_rocm_cu_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/rocm/*.cu"
     "${ONNXRUNTIME_ROOT}/core/providers/rocm/*.cuh"
@@ -1013,8 +1029,8 @@ if (onnxruntime_USE_ROCM)
     "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime/core/providers/rocm/*.cuh"
   )
 
-  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_rocm_cc_srcs} ${onnxruntime_providers_rocm_cu_srcs})
-  set(onnxruntime_providers_rocm_src ${onnxruntime_providers_rocm_cc_srcs} ${onnxruntime_providers_rocm_cu_srcs})
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_rocm_cc_srcs} ${onnxruntime_providers_rocm_shared_srcs} ${onnxruntime_providers_rocm_cu_srcs})
+  set(onnxruntime_providers_rocm_src ${onnxruntime_providers_rocm_cc_srcs} ${onnxruntime_providers_rocm_shared_srcs} ${onnxruntime_providers_rocm_cu_srcs})
   list(APPEND onnxruntime_providers_rocm_src ${onnxruntime_providers_rocm_generated_cc_srcs} ${onnxruntime_providers_rocm_generated_cu_srcs})
 
   # disable contrib ops conditionally
@@ -1025,7 +1041,7 @@ if (onnxruntime_USE_ROCM)
     list(APPEND onnxruntime_providers_rocm_src ${onnxruntime_rocm_generated_contrib_ops_cc_srcs} ${onnxruntime_rocm_generated_contrib_ops_cu_srcs})
   endif()
 
-  if (onnxruntime_ENABLE_TRAINING)
+  if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
     file(GLOB_RECURSE onnxruntime_rocm_training_ops_cc_srcs CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/training_ops/rocm/*.h"
       "${ORTTRAINING_SOURCE_DIR}/training_ops/rocm/*.cc"
@@ -1048,10 +1064,8 @@ if (onnxruntime_USE_ROCM)
 
     # NCCL is not support in Windows build
     if (WIN32 OR NOT onnxruntime_USE_NCCL)
-      list(REMOVE_ITEM onnxruntime_rocm_training_ops_cc_srcs
-      "${ORTTRAINING_SOURCE_DIR}/training_ops/rocm/collective/nccl_common.cc"
-      )
-      list(REMOVE_ITEM onnxruntime_rocm_training_ops_cc_srcs
+      list(REMOVE_ITEM onnxruntime_rocm_generated_training_ops_cc_srcs
+      "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining/orttraining/training_ops/rocm/collective/nccl_common.cc"
       "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining/orttraining/training_ops/rocm/collective/nccl_kernels.cc"
       "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining/orttraining/training_ops/rocm/collective/megatron.cc"
       )
@@ -1078,32 +1092,56 @@ if (onnxruntime_USE_ROCM)
   # Generate GPU code for GFX9 Generation
   list(APPEND HIP_CLANG_FLAGS --amdgpu-target=gfx906 --amdgpu-target=gfx908)
 
-  hip_add_library(onnxruntime_providers_rocm ${onnxruntime_providers_rocm_src})
+  #onnxruntime_add_shared_library_module(onnxruntime_providers_rocm ${onnxruntime_providers_rocm_src})
+  hip_add_library(onnxruntime_providers_rocm MODULE ${onnxruntime_providers_rocm_src})
+  onnxruntime_configure_target(onnxruntime_providers_rocm)
 
-  target_link_libraries(onnxruntime_providers_rocm PRIVATE  ${ONNXRUNTIME_ROCM_LIBS})
-  set_target_properties(onnxruntime_providers_rocm PROPERTIES FOLDER "ONNXRuntime")
-  target_compile_options(onnxruntime_providers_rocm PRIVATE -Wno-sign-compare -D__HIP_PLATFORM_HCC__=1)
-  check_cxx_compiler_flag(-Wno-unused-parameter HAS_NO_UNUSED_PARAMETER)
-  if (HAS_NO_UNUSED_PARAMETER)
+  if(NOT MSVC)
+    target_compile_options(onnxruntime_providers_rocm PRIVATE -Wno-sign-compare -D__HIP_PLATFORM_HCC__=1)
     target_compile_options(onnxruntime_providers_rocm PRIVATE -Wno-unused-parameter)
-  endif()
-  check_cxx_compiler_flag(-Wno-undefined-var-template HAS_NO_UNDEFINED_VAR_TEMPLATE)
-  if (HAS_NO_UNDEFINED_VAR_TEMPLATE)
     target_compile_options(onnxruntime_providers_rocm PRIVATE -Wno-undefined-var-template)
   endif()
-  # During transition to separate hipFFT repo, put hipfft/include early
-  target_include_directories(onnxruntime_providers_rocm PRIVATE ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hipcub/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include)
-  target_include_directories(onnxruntime_providers_rocm PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${MPI_CXX_INCLUDE_DIRS} ${ONNXRUNTIME_ROOT}/../cmake/external/eigen)
 
-  if (onnxruntime_ENABLE_TRAINING)
-    target_include_directories(onnxruntime_providers_rocm PRIVATE ${ORTTRAINING_ROOT} ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
+  onnxruntime_add_include_to_target(onnxruntime_providers_rocm onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
+  if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+    onnxruntime_add_include_to_target(onnxruntime_providers_rocm onnxruntime_training)
+    target_link_libraries(onnxruntime_providers_rocm PRIVATE onnxruntime_training)
     if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       onnxruntime_add_include_to_target(onnxruntime_providers_rocm Python::Module)
     endif()
   endif()
 
-  onnxruntime_add_include_to_target(onnxruntime_providers_rocm onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
-  add_dependencies(onnxruntime_providers_rocm ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/hip  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  add_dependencies(onnxruntime_providers_rocm onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  target_link_libraries(onnxruntime_providers_rocm PRIVATE ${ONNXRUNTIME_ROCM_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED})
+  # During transition to separate hipFFT repo, put hipfft/include early
+  target_include_directories(onnxruntime_providers_rocm PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${eigen_INCLUDE_DIRS} PUBLIC ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hipcub/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include)
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/rocm  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_rocm PROPERTIES LINKER_LANGUAGE CXX)
+  set_target_properties(onnxruntime_providers_rocm PROPERTIES FOLDER "ONNXRuntime")
+
+  if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+    target_include_directories(onnxruntime_providers_rocm PRIVATE ${ORTTRAINING_ROOT} ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining ${MPI_CXX_INCLUDE_DIRS})
+    if(onnxruntime_USE_MPI)
+      target_link_libraries(onnxruntime_providers_rocm PRIVATE ${MPI_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
+    endif()
+
+    # RCCL is enabled by default for ROCM builds
+    #if (onnxruntime_USE_NCCL)
+    #  target_include_directories(onnxruntime_providers_rocm PRIVATE ${NCCL_INCLUDE_DIRS})
+    #  target_link_libraries(onnxruntime_providers_rocm PRIVATE ${NCCL_LIBRARIES})
+    #endif()
+  endif()
+
+  if(UNIX)
+    set_property(TARGET onnxruntime_providers_rocm APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/rocm/version_script.lds -Xlinker --gc-sections")
+    target_link_libraries(onnxruntime_providers_rocm PRIVATE nsync_cpp)
+  else()
+    message(FATAL_ERROR "onnxruntime_providers_rocm unknown platform, need to specify shared library exports for it")
+  endif()
+
+  install(TARGETS onnxruntime_providers_rocm
+          ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
+
 endif()

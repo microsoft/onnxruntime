@@ -297,19 +297,16 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
 
   // TODO support other data types
   const uint8_t* src = nullptr;
-  std::unique_ptr<uint8_t[]> unpacked_tensor;
-  size_t tensor_byte_size;
+  std::vector<uint8_t> unpacked_tensor;
 
   switch (tensor.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      src = reinterpret_cast<const uint8_t*>(GetTensorFloatData(tensor));
-      break;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       ORT_RETURN_IF_ERROR(
           onnxruntime::utils::UnpackInitializerData(tensor, model_builder.GetGraphViewer().ModelPath(),
-                                                    unpacked_tensor, tensor_byte_size));
-      src = unpacked_tensor.get();
+                                                    unpacked_tensor));
+      src = unpacked_tensor.data();
       break;
     }
     default:
@@ -389,18 +386,15 @@ static Status AddInitializerTransposed(ModelBuilder& model_builder,
 
   // TODO support other data types
   const uint8_t* src = nullptr;
-  std::unique_ptr<uint8_t[]> unpacked_tensor;
-  size_t tensor_byte_size;
+  std::vector<uint8_t> unpacked_tensor;
   switch (tensor.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      src = reinterpret_cast<const uint8_t*>(GetTensorFloatData(tensor));
-      break;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       ORT_RETURN_IF_ERROR(
           onnxruntime::utils::UnpackInitializerData(tensor, model_builder.GetGraphViewer().ModelPath(),
-                                                    unpacked_tensor, tensor_byte_size));
-      src = unpacked_tensor.get();
+                                                    unpacked_tensor));
+      src = unpacked_tensor.data();
       break;
     }
     default:
@@ -527,10 +521,9 @@ static Status GetBinaryOpQuantizationScaleAndZeroPoint(
     float& a_scale, float& b_scale, float& y_scale,
     int32_t& a_zero_point, int32_t& b_zero_point, int32_t& y_zero_point) {
   const auto& initializers = model_builder.GetInitializerTensors();
-  a_scale = GetQuantizationScale(initializers, node, 1);
-  b_scale = GetQuantizationScale(initializers, node, 4);
-  y_scale = GetQuantizationScale(initializers, node, 6);
-
+  ORT_RETURN_IF_ERROR(GetQuantizationScale(initializers, node, 1, a_scale));
+  ORT_RETURN_IF_ERROR(GetQuantizationScale(initializers, node, 4, b_scale));
+  ORT_RETURN_IF_ERROR(GetQuantizationScale(initializers, node, 6, y_scale));
   ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 2, a_zero_point));
   ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 5, b_zero_point));
   ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 7, y_zero_point));
@@ -593,10 +586,11 @@ static Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
   w_zero_point = 0;
 
   // We need to copy the 1d scales array for per-channel quantization
-  const auto* scales = GetTensorFloatData(scale_tensor);
-  size_t scales_size = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
-  vector<float> scales_vec(scales_size, 0.0f);
-  memcpy(scales_vec.data(), scales, sizeof(float) * scales_size);
+  std::vector<uint8_t> unpacked_tensor;
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(scale_tensor, unpacked_tensor));
+  const float* scales = reinterpret_cast<const float*>(unpacked_tensor.data());
+  const size_t scales_size = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
+  vector<float> scales_vec(scales, scales + scales_size);
   w_scales = onnxruntime::make_optional(std::move(scales_vec));
   return Status::OK();
 }
@@ -701,7 +695,7 @@ Status GetQuantizedInputScaleAndZeroPoint(const InitializedTensorSet& initialize
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported op: ", op_type);
   }
 
-  scale = GetQuantizationScale(initializers, node, scale_idx);
+  ORT_RETURN_IF_ERROR(GetQuantizationScale(initializers, node, scale_idx, scale));
   zero_point = 0;
   if (node.InputDefs().size() > zero_point_idx) {
     ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, zero_point_idx, zero_point));
@@ -1057,7 +1051,9 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   }
 
   const auto& shape_tensor = *initializers.at(node.InputDefs()[1]->Name());
-  const int64_t* raw_shape = GetTensorInt64Data(shape_tensor);
+  std::vector<uint8_t> unpacked_tensor;
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(shape_tensor, unpacked_tensor));
+  const int64_t* raw_shape = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
   const auto size = SafeInt<uint32_t>(shape_tensor.dims()[0]);
 
   Shape input_shape = shaper[input];
@@ -1113,10 +1109,21 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   a.reserve(size);
   b.reserve(size);
 
-  const float* scale_data = GetTensorFloatData(scale_tensor);
-  const float* bias_data = GetTensorFloatData(bias_tensor);
-  const float* mean_data = GetTensorFloatData(mean_tensor);
-  const float* var_data = GetTensorFloatData(var_tensor);
+  std::vector<uint8_t> unpacked_scale_tensor;
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(scale_tensor, unpacked_scale_tensor));
+  const float* scale_data = reinterpret_cast<const float*>(unpacked_scale_tensor.data());
+
+  std::vector<uint8_t> unpacked_bias_tensor;
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(bias_tensor, unpacked_bias_tensor));
+  const float* bias_data = reinterpret_cast<const float*>(unpacked_bias_tensor.data());
+
+  std::vector<uint8_t> unpacked_mean_tensor;
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(mean_tensor, unpacked_mean_tensor));
+  const float* mean_data = reinterpret_cast<const float*>(unpacked_mean_tensor.data());
+
+  std::vector<uint8_t> unpacked_var_tensor;
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(var_tensor, unpacked_var_tensor));
+  const float* var_data = reinterpret_cast<const float*>(unpacked_var_tensor.data());
 
   for (int64_t i = 0; i < size; i++) {
     a.push_back(scale_data[i] / sqrt(var_data[i] + eps));
@@ -1277,18 +1284,21 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
 
   // Get output scale and zero point if this is QLinearAveragePool
-  float y_scale = 0.0f;
-  int32_t y_zero_point = 0;
+  // Otherwise we will use the scale and zero point of the input
+  const OperandType& input_operand_type = operand_types.at(input);
+  float y_scale = input_operand_type.operandType.scale;
+  int32_t y_zero_point = input_operand_type.operandType.zeroPoint;
   if (is_qlinear_average_pool) {
     const auto& initializers = model_builder.GetInitializerTensors();
-    float x_scale = GetQuantizationScale(initializers, node, 1 /* idx */);
+    float x_scale = 0.0f;
+    ORT_RETURN_IF_ERROR(GetQuantizationScale(initializers, node, 1 /* idx */, x_scale));
     int32_t x_zero_point = 0;
     ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 2 /* idx */, x_zero_point));
 
     // Verify if the scale and zero point values from onnx input and nnapi input match
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
 
-    y_scale = GetQuantizationScale(initializers, node, 3 /* idx */);
+    ORT_RETURN_IF_ERROR(GetQuantizationScale(initializers, node, 3 /* idx */, y_scale));
     if (node.InputDefs().size() > 4)
       ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 4 /* idx */, y_zero_point));
   }
@@ -1508,9 +1518,11 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     for (auto dim : bias_tensor.dims())
       bias_dimen.push_back(SafeInt<uint32_t>(dim));
 
-    const void* buffer = GetTensorInt32Data(bias_tensor);
+    std::vector<uint8_t> unpacked_tensor;
+    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(bias_tensor, unpacked_tensor));
     OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, x_scale * w_scale);
-    ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer, bias_operand_type));
+    ORT_RETURN_IF_ERROR(
+        model_builder.AddOperandFromPersistMemoryBuffer(bias, unpacked_tensor.data(), bias_operand_type));
   }
 
   const auto auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
@@ -1954,7 +1966,8 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   int32_t y_zero_point = 0;
   if (is_qlinear_sigmoid) {
     const auto& initializers = model_builder.GetInitializerTensors();
-    float x_scale = GetQuantizationScale(initializers, node, 1);
+    float x_scale = 0.0f;
+    ORT_RETURN_IF_ERROR(GetQuantizationScale(initializers, node, 1, x_scale));
     int32_t x_zero_point = 0;
     ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 2, x_zero_point));
 
@@ -2076,7 +2089,7 @@ class SqueezeOpBuilder : public BaseOpBuilder {
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
-  static vector<int32_t> GetAxes(ModelBuilder& model_builder, const Node& node);
+  static Status GetAxes(ModelBuilder& model_builder, const Node& node, vector<int32_t>& axes);
 };
 
 void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
@@ -2085,15 +2098,17 @@ void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   }
 }
 
-/* static */ vector<int32_t> SqueezeOpBuilder::GetAxes(ModelBuilder& model_builder, const Node& node) {
-  vector<int32_t> axes;
+/* static */ Status SqueezeOpBuilder::GetAxes(ModelBuilder& model_builder,
+                                              const Node& node, vector<int32_t>& axes) {
   // Squeeze opset 13 use input as axes
   if (node.SinceVersion() > 12) {
     // If axes is not supplied, return an empty axes as default to squeeze all
     if (node.InputDefs().size() > 1) {
       const auto& initializers(model_builder.GetInitializerTensors());
       const auto& axes_tensor = *initializers.at(node.InputDefs()[1]->Name());
-      const int64_t* raw_axes = GetTensorInt64Data(axes_tensor);
+      std::vector<uint8_t> unpacked_tensor;
+      ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(axes_tensor, unpacked_tensor));
+      const int64_t* raw_axes = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
       const auto size = SafeInt<uint32_t>(axes_tensor.dims()[0]);
       axes.resize(size);
       for (uint32_t i = 0; i < size; i++) {
@@ -2106,7 +2121,7 @@ void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
     axes = helper.Get("axes", vector<int32_t>());
   }
 
-  return axes;
+  return Status::OK();
 }
 
 Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
@@ -2116,7 +2131,9 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
     ORT_RETURN_IF_ERROR(GetNCHWInput(model_builder, node, 0, input));
   }
 
-  return AddSqueezeOp(model_builder, node.Name(), input, node.OutputDefs()[0]->Name(), GetAxes(model_builder, node));
+  vector<int32_t> axes;
+  ORT_RETURN_IF_ERROR(GetAxes(model_builder, node, axes));
+  return AddSqueezeOp(model_builder, node.Name(), input, node.OutputDefs()[0]->Name(), axes);
 }
 
 #pragma endregion
@@ -2149,7 +2166,8 @@ Status QuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builde
   const auto& output = node.OutputDefs()[0]->Name();
   bool output_is_nhwc = model_builder.IsOperandNHWC(input);
 
-  float scale = GetQuantizationScale(model_builder.GetInitializerTensors(), node, 1);
+  float scale = 0.0f;
+  ORT_RETURN_IF_ERROR(GetQuantizationScale(model_builder.GetInitializerTensors(), node, 1, scale));
   int32_t zero_point = 0;
   Type output_type = Type::TENSOR_QUANT8_ASYMM;
 
@@ -2196,7 +2214,8 @@ Status DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
   const auto& output = node.OutputDefs()[0]->Name();
   bool output_is_nhwc = model_builder.IsOperandNHWC(input);
 
-  float scale = GetQuantizationScale(model_builder.GetInitializerTensors(), node, 1);
+  float scale = 0.0;
+  ORT_RETURN_IF_ERROR(GetQuantizationScale(model_builder.GetInitializerTensors(), node, 1, scale));
   int32_t zero_point = 0;
   if (input_defs.size() == 3) {  // Get zero point
     ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(model_builder.GetInitializerTensors(), node, 2, zero_point));
@@ -2388,7 +2407,9 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   if (input_defs.size() == 3) {  // we are using scales
     const auto& scales_name = input_defs[2]->Name();
     const auto& scales_tensor = *initializers.at(scales_name);
-    const float* scales_data = GetTensorFloatData(scales_tensor);
+    std::vector<uint8_t> unpacked_tensor;
+    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(scales_tensor, unpacked_tensor));
+    const float* scales_data = reinterpret_cast<const float*>(unpacked_tensor.data());
     float scale_h = scales_data[2];
     float scale_w = scales_data[3];
     ORT_RETURN_IF_ERROR(
@@ -2396,7 +2417,9 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   } else {  // we are using sizes
     const auto& sizes_name = input_defs[3]->Name();
     const auto& sizes_tensor = *initializers.at(sizes_name);
-    const int64_t* sizes_data = GetTensorInt64Data(sizes_tensor);
+    std::vector<uint8_t> unpacked_tensor;
+    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(sizes_tensor, unpacked_tensor));
+    const int64_t* sizes_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
     ORT_RETURN_IF_ERROR(
         shaper.ResizeUsingOutputSizes(input, SafeInt<uint32_t>(sizes_data[2]), SafeInt<uint32_t>(sizes_data[3]), use_nchw, output));
   }
@@ -2615,18 +2638,18 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
       const auto& initializers(model_builder.GetInitializerTensors());
 
       const auto& tensor = *initializers.at(input_name);
-      std::unique_ptr<uint8_t[]> unpacked_tensor;
-      size_t tensor_byte_size;
+      std::vector<uint8_t> unpacked_tensor;
       ORT_RETURN_IF_ERROR(
           onnxruntime::utils::UnpackInitializerData(tensor, model_builder.GetGraphViewer().ModelPath(),
-                                                    unpacked_tensor, tensor_byte_size));
+                                                    unpacked_tensor));
+      size_t tensor_byte_size = unpacked_tensor.size();
       const auto data_type = tensor.data_type();
       if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-        const int64_t* tensor_data = reinterpret_cast<const int64_t*>(unpacked_tensor.get());
+        const int64_t* tensor_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
         size_t size = tensor_byte_size / sizeof(int64_t);
         data.insert(data.end(), tensor_data, tensor_data + size);
       } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
-        const int32_t* tensor_data = reinterpret_cast<const int32_t*>(unpacked_tensor.get());
+        const int32_t* tensor_data = reinterpret_cast<const int32_t*>(unpacked_tensor.data());
         size_t size = tensor_byte_size / sizeof(int32_t);
         data.insert(data.end(), tensor_data, tensor_data + size);
       } else {

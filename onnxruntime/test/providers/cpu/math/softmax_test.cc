@@ -98,7 +98,7 @@ TEST(SoftmaxOperator, ThreeDimsAxis0) {
       0.017545262f, 0.0135920765f, 0.027506188f, 0.010684152f, 0.0049549243f,
       0.01401341f, 0.011721271f, 0.027815264f, 0.021463264f, 0.014014485f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 0, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // Axis=0 is not supported by TensorRT
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 0, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});  // Axis=0 is not supported by TensorRT
 }
 
 TEST(SoftmaxOperator, ThreeDimsAxis1) {
@@ -124,7 +124,7 @@ TEST(SoftmaxOperator, ThreeDimsAxis1) {
       0.050680935f, 0.03926183f, 0.079453886f, 0.030862054f, 0.014312706f,
       0.040478885f, 0.033857856f, 0.080346674f, 0.06199841f, 0.040481992f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 1, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 1, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
 }
 
 TEST(SoftmaxOperator, ThreeDimsAxis1_opset13) {
@@ -275,7 +275,7 @@ TEST(SoftmaxOperator, InvalidAxis_opset13) {
           // In opset-13, Softmax is composed as afunction of several other ops,
           // and hence it breaks differently to the test above but the most important thing
           // is that it breaks and this is the right behavior
-          "[ShapeInferenceError] axis must be in [-rank, rank-1]. input rank was 2");
+          "[ShapeInferenceError]");
 }
 TEST(SoftmaxOperator, DimWithZero) {
   std::vector<float> x_vals = {};

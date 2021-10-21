@@ -355,8 +355,8 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
     sample_inputs_copy = copy.deepcopy(sample_inputs)
 
     # Enable contrib ops export from PyTorch
-    from onnxruntime.training import register_custom_ops_pytorch_exporter
-    register_custom_ops_pytorch_exporter.register_custom_op()
+    from onnxruntime.tools import pytorch_export_contrib_ops
+    pytorch_export_contrib_ops.register()
 
     torch.onnx._export(model, tuple(sample_inputs_copy), f,
                        input_names=input_names,
@@ -392,7 +392,7 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                enable_grad_norm_clip=True,
                                                frozen_weights=[], opset_version=DEFAULT_OPSET_VERSION,
                                                use_deterministic_compute=False,
-                                               use_invertible_layernorm_grad=False,
+                                               use_memory_efficient_gradient=False,
                                                enable_adasum=False,
                                                optimized_model_filepath=""):
     output_name = model.graph.output[0].name
@@ -406,7 +406,7 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.deepspeed_zero_stage = deepspeed_zero_stage
     ort_parameters.enable_grad_norm_clip = enable_grad_norm_clip
     ort_parameters.set_gradients_as_graph_outputs = False
-    ort_parameters.use_invertible_layernorm_grad = use_invertible_layernorm_grad
+    ort_parameters.use_memory_efficient_gradient = use_memory_efficient_gradient
     ort_parameters.enable_adasum = enable_adasum
     output_types = {}
     for output in model.graph.output:
@@ -551,7 +551,7 @@ class ORTTrainer():
                  global_step=0, get_lr_this_step=None, loss_scaler=None, deepspeed_zero_stage=0,
                  enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION,
                  _enable_internal_postprocess=True, _extra_postprocess=None, _use_deterministic_compute=False,
-                 use_invertible_layernorm_grad=False, run_symbolic_shape_infer=False, enable_adasum=False,
+                 use_memory_efficient_gradient=False, run_symbolic_shape_infer=False, enable_adasum=False,
                  optimized_model_filepath=""):
         super(ORTTrainer, self).__init__()
         """
@@ -618,7 +618,7 @@ class ORTTrainer():
                Defaults to True
             _extra_postprocess: a callable to postprocess the ONNX model that is converted from PyTorch.
                Defaults to None
-            use_invertible_layernorm_grad: use invertible layernorm grad
+            use_memory_efficient_gradient: use memory aware gradient builder.
                Defaults to False
             run_symbolic_shape_infer: run symbolic shape inference
                Defaults to False
@@ -684,7 +684,7 @@ class ORTTrainer():
         self.opset_version_ = _opset_version
         self.state_dict_ = None
         self._use_deterministic_compute = _use_deterministic_compute
-        self.use_invertible_layernorm_grad = use_invertible_layernorm_grad
+        self.use_memory_efficient_gradient = use_memory_efficient_gradient
         self.run_symbolic_shape_infer = run_symbolic_shape_infer
         self.enable_adasum = enable_adasum
         self.optimized_model_filepath = optimized_model_filepath
@@ -718,7 +718,7 @@ class ORTTrainer():
                 enable_grad_norm_clip=self.enable_grad_norm_clip_,
                 frozen_weights=self.frozen_weights_, opset_version=self.opset_version_,
                 use_deterministic_compute=self._use_deterministic_compute,
-                use_invertible_layernorm_grad=self.use_invertible_layernorm_grad,
+                use_memory_efficient_gradient=self.use_memory_efficient_gradient,
                 enable_adasum=self.enable_adasum,
                 optimized_model_filepath=self.optimized_model_filepath)
 

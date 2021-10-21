@@ -5,6 +5,7 @@
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/cerr_sink.h"
+#include "core/common/optional.h"
 #include "core/framework/allocator.h"
 #include "core/framework/session_options.h"
 #include "core/session/environment.h"
@@ -122,6 +123,10 @@ struct OrtStatus {
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #endif
+#ifdef USE_ROCM
+#include "core/providers/rocm/rocm_provider_factory.h"
+#include "core/providers/rocm/rocm_execution_provider_info.h"
+#endif
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #endif
@@ -160,7 +165,6 @@ extern std::string nuphar_settings;
 #include "core/providers/dml/dml_provider_factory.h"
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
 #ifdef USE_CUDA
 namespace onnxruntime {
 ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
@@ -171,26 +175,23 @@ extern OrtCudnnConvAlgoSearch cudnn_conv_algo_search;
 // TODO remove deprecated global config
 extern bool do_copy_in_default_stream;
 extern onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocator_info;
+extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 }  // namespace python
 }  // namespace onnxruntime
 #endif
 
 #ifdef USE_ROCM
-#include "core/providers/rocm/rocm_execution_provider.h"
-#include "core/providers/rocm/rocm_allocator.h"
-#include "core/providers/rocm/rocm_provider_factory_creator.h"
 namespace onnxruntime {
+ProviderInfo_ROCM* TryGetProviderInfo_ROCM();
+ProviderInfo_ROCM& GetProviderInfo_ROCM();
 namespace python {
-extern onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info;
-}
-}  // namespace onnxruntime
-#endif
-
 // TODO remove deprecated global config
-namespace onnxruntime {
-namespace python {
+extern bool miopen_conv_exhaustive_search;
+// TODO remove deprecated global config
+extern bool do_copy_in_default_stream;
+extern onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info;
 extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
-}
+}  // namespace python
 }  // namespace onnxruntime
 #endif
 
@@ -202,6 +203,10 @@ namespace onnxruntime {
 class SparseTensor;
 #endif
 namespace python {
+
+using ExecutionProviderRegistrationFn = std::function<void(InferenceSession*, 
+                                                           const std::vector<std::string>&,
+                                                           const ProviderOptionsMap&)>;
 
 // TODO remove deprecated global config
 extern OrtDevice::DeviceId cuda_device_id;
@@ -389,6 +394,7 @@ Environment& GetEnv();
 // Initialize an InferenceSession.
 // Any provider_options should have entries in matching order to provider_types.
 void InitializeSession(InferenceSession* sess,
+                       ExecutionProviderRegistrationFn ep_registration_fn,
                        const std::vector<std::string>& provider_types = {},
                        const ProviderOptionsVector& provider_options = {},
                        const std::unordered_set<std::string>& disabled_optimizer_names = {});
@@ -448,7 +454,10 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISA
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(uint32_t flags);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(
+    uint32_t flags, const optional<std::string>& partitioning_stop_ops_list);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CoreML(uint32_t flags);
 
+constexpr const char* kDefaultExecutionProviderEntry = "GetProvider"; 
 }  // namespace onnxruntime

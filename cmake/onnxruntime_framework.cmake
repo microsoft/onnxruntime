@@ -57,6 +57,11 @@ if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
     target_include_directories(onnxruntime_framework PUBLIC ${MPI_CXX_INCLUDE_DIRS})
   endif()
 endif()
+if (onnxruntime_ENABLE_TRAINING)
+  # DLPack is a header-only dependency
+  set(DLPACK_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/external/dlpack/include)
+  target_include_directories(onnxruntime_framework PRIVATE ${DLPACK_INCLUDE_DIR})
+endif()
 onnxruntime_add_include_to_target(onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
 set_target_properties(onnxruntime_framework PROPERTIES FOLDER "ONNXRuntime")
 # need onnx to build to create headers that this project includes
@@ -70,9 +75,15 @@ if (UNIX AND NOT APPLE AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_BUI
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-rpath='$ORIGIN'")
 endif()
 
-if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
-  target_compile_definitions(onnxruntime_framework PRIVATE DEBUG_NODE_INPUTS_OUTPUTS)
+if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB)
+  find_package (SQLite3)
+  if (SQLITE3_FOUND)
+    include_directories(${SQLite3_INCLUDE_DIR})
+    target_link_libraries (onnxruntime_framework ${SQLite3_LIBRARY})
+  else()
+    message( FATAL_ERROR "Could not locate SQLite3 package." )
+  endif (SQLITE3_FOUND)
+  target_compile_definitions(onnxruntime_framework PRIVATE DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB)
 endif()
-
 
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/framework  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)

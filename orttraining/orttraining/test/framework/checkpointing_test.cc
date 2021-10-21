@@ -10,7 +10,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/data_transfer.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/tensor.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/platform/path_lib.h"
@@ -112,7 +112,7 @@ TEST(CheckpointingTest, SaveAndLoad) {
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("test_model.onnx"))};
 
   DataTransferManager data_transfer{};
-  data_transfer.RegisterDataTransfer(std::make_unique<CPUDataTransfer>());
+  ASSERT_STATUS_OK(data_transfer.RegisterDataTransfer(std::make_unique<CPUDataTransfer>()));
 
   ASSERT_STATUS_OK(SaveModelCheckpoint(
       checkpoint_path, data_transfer, name_to_ort_value, properties));

@@ -5,9 +5,6 @@
 #include "default_providers.h"
 #include "providers.h"
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
-#ifdef USE_ROCM
-#include "core/providers/rocm/rocm_provider_factory_creator.h"
-#endif
 #ifdef USE_COREML
 #include "core/providers/coreml/coreml_provider_factory.h"
 #endif
@@ -43,6 +40,16 @@ std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
       0};
   if (auto factory = CreateExecutionProviderFactory_Tensorrt(&params))
     return factory->CreateProvider();
+#endif
+  return nullptr;
+}
+
+std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const OrtTensorRTProviderOptions* params) {
+#ifdef USE_TENSORRT
+  if (auto factory = CreateExecutionProviderFactory_Tensorrt(params))
+    return factory->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(params);
 #endif
   return nullptr;
 }
@@ -97,7 +104,7 @@ std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider() {
 // For any non - Android system, NNAPI will only be used for ort model converter
 // Make it unavailable here, you can still manually append NNAPI EP to session for model conversion
 #if defined(USE_NNAPI) && defined(__ANDROID__)
-  return CreateExecutionProviderFactory_Nnapi(0)->CreateProvider();
+  return CreateExecutionProviderFactory_Nnapi(0, {})->CreateProvider();
 #else
   return nullptr;
 #endif
@@ -131,14 +138,18 @@ std::unique_ptr<IExecutionProvider> DefaultArmNNExecutionProvider(bool enable_ar
 
 std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider() {
 #ifdef USE_ROCM
-  return CreateExecutionProviderFactory_ROCM(ROCMExecutionProviderInfo{})->CreateProvider();
-#else
-  return nullptr;
+  OrtROCMProviderOptions provider_options{};
+  provider_options.do_copy_in_default_stream = true;
+  if (auto factory = CreateExecutionProviderFactory_Rocm(&provider_options))
+    return factory->CreateProvider();
 #endif
+  return nullptr;
 }
 
 std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider() {
-#if defined(USE_COREML)
+// For any non - macOS system, CoreML will only be used for ort model converter
+// Make it unavailable here, you can still manually append CoreML EP to session for model conversion
+#if defined(USE_COREML) && defined(__APPLE__)
   // We want to run UT on CPU only to get output value without losing precision
   uint32_t coreml_flags = 0;
   coreml_flags |= COREML_FLAG_USE_CPU_ONLY;

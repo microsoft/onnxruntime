@@ -21,7 +21,7 @@
 
 #ifdef ENABLE_NVTX_PROFILE
 // This header is for profile using Nvidia's visual profilier.
-#include "core/profile/profile.h"
+#include "core/providers/cuda/nvtx_profile.h"
 #include "core/profile/context.h"
 #endif
 
@@ -144,7 +144,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
   size_t total_output_sizes = 0;
 
   if (is_profiler_enabled) {
-    tp = session_state.Profiler().StartTime();
+    tp = session_state.Profiler().Start();
   }
 
   ExecutionFrame& frame = state_.GetExecutionFrame(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
@@ -165,8 +165,8 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
 #ifdef CONCURRENCY_VISUALIZER
   // need unique name for the series. number of nodes should be good enough for a subgraph
   char series_name[MaxSeriesNameLengthInChars] = "MainGraph";
-  if (graph_viewer->IsSubgraph()) {
-    auto s = graph_viewer->ParentNode()->Name().substr(0, MaxSeriesNameLengthInChars - 1);
+  if (graph_viewer.IsSubgraph()) {
+    auto s = graph_viewer.ParentNode()->Name().substr(0, MaxSeriesNameLengthInChars - 1);
     std::copy(s.cbegin(), s.cend(), series_name);
   }
 
@@ -183,6 +183,11 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
       "Batch-" + tag + " Backward",
       profile::Color::Black);
 #endif
+
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+    utils::NodeDumpContext dump_context { session_state.GetGraphExecutionCounter(), 0 };
+#endif
+
 
   for (size_t program_counter = state_.GetProgramCounterStart();
        program_counter < state_.GetProgramCounterEnd();
@@ -233,9 +238,25 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
     // construct OpKernelContext
     // TODO: log kernel inputs?
     OpKernelContextInternal op_kernel_context(session_state, frame, *p_op_kernel, logger, false);
+
+    // Cache lookup. Currently we only cache single-output nodes,
+    // to keep memory overhead impact in check. Hence we only look in cache
+    // if the current node has one output.
+    bool reuse_cached_value = false;
+    std::string cached_arg_name;
+    if (cache_ != nullptr) {
+      if (p_op_kernel->Node().OutputDefs().size() == 1) {
+        cached_arg_name = p_op_kernel->Node().OutputDefs()[0]->Name();
+        if (cache_.get()->count(cached_arg_name)) {  // found arg in cache_
+          VLOGS(logger, 1) << "Found OrtValue in cache for arg: " << cached_arg_name;
+          reuse_cached_value = true;
+        }
+      }
+    }
+
     // TODO: log kernel outputs?
     if (is_profiler_enabled) {
-      sync_time_begin = session_state.Profiler().StartTime();
+      sync_time_begin = session_state.Profiler().Start();
     }
 
     // sync before compute
@@ -271,7 +292,8 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
       }
     }
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    utils::DumpNodeInputs(op_kernel_context, p_op_kernel->Node(), session_state);
+    dump_context.program_counter = program_counter; 
+    utils::DumpNodeInputs(dump_context, op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
 
     const std::string node_name_for_profiling = [&]() -> std::string {
@@ -289,7 +311,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
       // call compute on the kernel
       VLOGS(logger, 1) << "Computing kernel: " << node_name_for_profiling;
 
-      kernel_begin_time = session_state.Profiler().StartTime();
+      kernel_begin_time = session_state.Profiler().Start();
 
       // Calculate total input sizes for this operation.
       CalculateTotalInputSizes(&op_kernel_context, p_op_kernel,
@@ -312,7 +334,11 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
           ORT_RETURN_IF_ERROR(utils::VerifyInputTensorsAllocatedContiguously(&op_kernel_context));
         }
 #endif
-        compute_status = p_op_kernel->Compute(&op_kernel_context);
+        if (!reuse_cached_value) {
+          compute_status = p_op_kernel->Compute(&op_kernel_context);
+        } else {
+          compute_status = op_kernel_context.SetOutputMLValue(0, cache_.get()->at(cached_arg_name));
+        }
       }
       ORT_CATCH(const std::exception& ex) {
         ORT_HANDLE_EXCEPTION([&]() {
@@ -373,7 +399,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
                                                           concurrency::ThreadPool::StopProfiling(
                                                               session_state.GetThreadPool())},
                                                      });
-      sync_time_begin = session_state.Profiler().StartTime();
+      sync_time_begin = session_state.Profiler().Start();
     }
 
     // sync after compute for outputs
@@ -420,7 +446,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
     }
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    utils::DumpNodeOutputs(op_kernel_context, p_op_kernel->Node(), session_state);
+    utils::DumpNodeOutputs(dump_context, op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
 
     // free ml-values corresponding to this node
@@ -480,6 +506,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
     session_state.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", tp);
   }
 
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   for (auto i : frame.GetStaticMemorySizeInfo()) {
     LOGS(logger, INFO) << "[Memory] ExecutionFrame statically allocates "
                        << i.second << " bytes for " << i.first << std::endl;
@@ -489,6 +516,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
     LOGS(logger, INFO) << "[Memory] ExecutionFrame dynamically allocates "
                        << i.second << " bytes for " << i.first << std::endl;
   }
+#endif
 
   return Status::OK();
 }
