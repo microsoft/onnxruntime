@@ -9,9 +9,6 @@
 import types
 import warnings
 from ._modifier import FP16OptimizerModifier
-import torch
-import nvtx
-from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_interop_utils
 
 class ApexAMPModifier(FP16OptimizerModifier):
     def __init__(self, optimizer, **kwargs) -> None:
@@ -19,7 +16,7 @@ class ApexAMPModifier(FP16OptimizerModifier):
         pass
 
     def can_be_modified(self):
-        return self.check_requirements(["_post_amp_backward", "step"],
+        return self.check_requirements(["_post_amp_backward", "zero_grad"],
                                        require_apex=True, require_torch_non_finite_check=False)
 
     def override_function(m_self):
@@ -115,6 +112,5 @@ class ApexAMPModifier(FP16OptimizerModifier):
             # Clear the master grads that are independent of model grads
             for param in stash.all_fp32_from_fp16_params:
                 param.grad = None
-            stash._fp32_from_fp16_param_grad_buffers = None
 
         m_self._optimizer.zero_grad = types.MethodType(_zero_grad, m_self._optimizer)
