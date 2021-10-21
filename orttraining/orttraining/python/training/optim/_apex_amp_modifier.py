@@ -66,9 +66,9 @@ class ApexAMPModifier(FP16OptimizerModifier):
 
             #### THIS IS THE FASTER IMPLEMENTATION ####
             fused_ops.unscale_fp16_grads_into_fp32_grads(stash.all_fp16_params,
-                                                            stash.all_fp32_from_fp16_params,
-                                                            scaler._overflow_buf, 
-                                                            scaler._loss_scale)
+                                                         stash.all_fp32_from_fp16_params,
+                                                         scaler._overflow_buf, 
+                                                         scaler._loss_scale)
             #### END OF THE FASTER IMPLEMENTATION ####
 
             # fp32 params can be treated as they would be in the "no_master_weights" case.
