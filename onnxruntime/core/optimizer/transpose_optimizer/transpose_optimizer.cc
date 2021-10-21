@@ -805,8 +805,8 @@ static bool HandleShape(HandlerArgs& args) {
     if (end < 0) {
       end += rank;
     }
-    size_t start_idx = gsl::narrow_cast<size_t>(std::clamp(start, 0I64, rank_int));
-    size_t end_idx = gsl::narrow_cast<size_t>(std::clamp(end, 0I64, rank_int));
+    size_t start_idx = gsl::narrow_cast<size_t>(std::clamp<int64_t>(start, 0, rank_int));
+    size_t end_idx = gsl::narrow_cast<size_t>(std::clamp<int64_t>(end, 0, rank_int));
     for (size_t i = start_idx; i < end_idx; ++i) {
       new_perm.push_back(args.perm[i]);
     }

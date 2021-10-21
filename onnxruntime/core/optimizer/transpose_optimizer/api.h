@@ -78,8 +78,8 @@ class Tensor {
   virtual std::vector<int64_t> DataInt64() const = 0;
 
   /// <summary>
-  /// Retrieves int64 data from the tensor. Only valid if dtype is INT64. Used for reading initializers specifying
-  /// axes/pads.
+  /// Retrieves int32 data from the tensor. Only valid if dtype is INT32. Used for reading initializers specifying
+  /// axes for Slice op.
   /// </summary>
   /// <returns>Flattened tensor data</returns>
   virtual std::vector<int32_t> DataInt32() const = 0;
@@ -141,7 +141,7 @@ class Node {
   /// <returns>Op computed by the node</returns>
   virtual const std::string_view OpType() const = 0;
 
-  /// <returns>Domain containing the op</returns>
+  /// <returns>Domain containing the op. Empty string signifies an unset (default) onnx domain.</returns>
   virtual const std::string_view Domain() const = 0;
 
   /// <returns>Names of input values. Empty string may be included for optional inputs.</returns>
@@ -207,7 +207,7 @@ class Node {
   /// Convenience method. Returns whether node is of the specified op type and domain
   /// </summary>
   /// <param name="op_type">Op type</param>
-  /// <param name="domain">Domain ("" by default)</param>
+  /// <param name="domain">Domain. Empty string signifies an unset (default) onnx domain.</param>
   /// <returns></returns>
   virtual bool IsOp(const std::string_view op_type, const std::string_view domain = "") const {
     return OpType() == op_type && Domain() == domain;
@@ -266,7 +266,7 @@ struct ValueConsumers {
 /// </summary>
 class Graph {
  public:
-  /// <param name="domain">Domain</param>
+  /// <param name="domain">Domain. Empty string signifies an unset (default) onnx domain.</param>
   /// <returns>Opset of domain declared in model, or nullopt if domain is not present</returns>
   virtual std::optional<int64_t> Opset(const std::string_view domain = "") const = 0;
 
@@ -277,7 +277,7 @@ class Graph {
   /// Checks whether the value name refers to a constant initializer and if so, returns a Tensor corresponding to it.
   /// </summary>
   /// <param name="name">Value name. Must be nonempty.</param>
-  /// <returns>Tensor corresponding to the constant initializer</returns>
+  /// <returns>Tensor corresponding to the constant initializer or nullptr</returns>
   virtual std::unique_ptr<Tensor> GetConstant(const std::string_view name) const = 0;
 
   /// <summary>
@@ -326,14 +326,15 @@ class Graph {
 
   /// <summary>
   /// Creates a new node in the graph with the specified op type. Node name and output names are automatically
-  /// generated. Outputs of created node have unspecified shapes/dtypes
+  /// generated. Outputs of created node have unspecified shapes/dtypes. They will be populated afterwards using
+  /// CopyValueInfo.
   /// </summary>
   /// <param name="op_type">The new node's op type</param>
   /// <param name="inputs">Inputs for the node. "" for missing optional inputs.</param>
   /// <param name="num_outputs">
   /// Number of outputs for the node. Names automatically generated. Optional outputs not supported.
   /// </param>
-  /// <param name="domain">The new node's domain ("" by default)</param>
+  /// <param name="domain">The new node's domain. Empty string signifies an unset (default) onnx domain.</param>
   /// <returns>The new node</returns>
   virtual std::unique_ptr<Node> AddNode(const std::string_view op_type, const std::vector<std::string_view>& inputs,
                                         size_t num_outputs = 1, const std::string_view domain = "") = 0;
@@ -433,8 +434,8 @@ bool Optimize(api::Graph& graph, bool allow_extended_ops);
 
 /* Layout Transformation Tools
  * These methods change the channel ordering of layout sensitive ops (like Conv). They work by replacing the op with
- * the an op taking the new ordering (usually a com.microsoft op) and surrounding it with transposes to keep the
- * model correct. Then (if any replacements were made), they call Optimize on the graph.
+ * an op taking the new ordering (usually a com.microsoft op) and surrounding it with transposes to keep the model
+ * correct. Then (if any replacements were made), they call Optimize on the graph.
  *
  * To use, create a LayoutHandler function for each op. Then provide the handler map to ChannelLastToChannelFirst or
  * ChannelFirstToChannelLast. If the parameters of these convenience methods are too restrictive, you can swap the
