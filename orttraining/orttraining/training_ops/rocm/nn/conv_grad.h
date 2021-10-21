@@ -10,7 +10,6 @@
 namespace onnxruntime {
 namespace rocm {
 
-// cuDNN only takes 4D or 5D x tensor.
 constexpr int MAX_DIM = 3;
 
 struct ConvParams {
@@ -23,7 +22,6 @@ struct ConvParams {
   int stride[MAX_DIM];
   int dilation[MAX_DIM];
   int64_t groups;
-  int algo_mode;
 };
 
 struct ConvArgs {
@@ -34,7 +32,7 @@ struct ConvArgs {
   miopenHandle_t handle;
   ConvParams params;
   MiopenTensor x_tensor, y_tensor, b_tensor;
-  MiopenFilterDescriptor w_desc;
+  MiopenTensorDescriptor w_desc;
   MiopenConvolutionDescriptor conv_desc;
   const void* x_data;
   const void* w_data;
@@ -50,9 +48,6 @@ class ConvGrad final : public RocmKernel {
   using HipT = typename ToHipType<T>::MappedType;
 
   ConvGrad(const OpKernelInfo& info) : RocmKernel(info), conv_attrs_(info) {
-#if (defined(CUDA_VERSION) && (CUDA_VERSION < 10000) || (defined(__ROCM_ARCH__) && (__ROCM_ARCH__ < 700)))
-    ORT_THROW("ConvGrad ROCM kernel is not yet tested on __ROCM_ARCH__ lower than 700");
-#endif
     auto pads_size = conv_attrs_.pads.size();
     ORT_ENFORCE(pads_size % 2 == 0);
   }
