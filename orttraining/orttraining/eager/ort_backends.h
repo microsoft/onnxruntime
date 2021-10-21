@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <torch/extension.h>
+#include "ort_eager_common.h"
 #include <core/framework/ort_value.h>
 #include "core/common/status.h"
 #include <core/framework/provider_options.h>
@@ -23,6 +23,8 @@ public:
                                  const onnxruntime::ProviderOptions& provider_options);
 
   onnxruntime::ORTInvoker& GetInvoker(const at::Device device);
+
+  OrtDevice GetOrtDeviceInfo(size_t torch_device_index);
 
 private:
   std::map<at::DeviceIndex, std::unique_ptr<onnxruntime::ORTInvoker>> backends_;

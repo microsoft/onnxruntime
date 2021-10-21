@@ -128,8 +128,6 @@ class FgemmPackedContext<float, true> {
       data[i].beta = beta;
     }
     MlasGemmBatch(TransA, TransB, M, N, K, data.data(), BatchSize, threadpool);
-
-    MlasGemm(TransA, M, N, K, alpha, A, lda, PackedB, beta, C, ldc, threadpool);
   }
 
  private:

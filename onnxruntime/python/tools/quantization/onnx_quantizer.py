@@ -43,7 +43,8 @@ class ONNXQuantizer:
         self.fuse_dynamic_quant = False
         self.enable_subgraph_quantization = 'EnableSubgraph' in self.extra_options and self.extra_options['EnableSubgraph']
         self.q_matmul_const_b_only = 'MatMulConstBOnly' in self.extra_options and self.extra_options['MatMulConstBOnly']
-        self.is_weight_symmetric = True if 'WeightSymmetric' not in self.extra_options else self.extra_options['WeightSymmetric']
+        is_weight_int8 = weight_qType == QuantType.QInt8
+        self.is_weight_symmetric = is_weight_int8 if 'WeightSymmetric' not in self.extra_options else self.extra_options['WeightSymmetric']
         self.is_activation_symmetric = False if 'ActivationSymmetric' not in self.extra_options else self.extra_options['ActivationSymmetric']
 
         self.input_qType = onnx_proto.TensorProto.INT8 if input_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
@@ -494,14 +495,16 @@ class ONNXQuantizer:
     def _get_quantize_input_nodes(self, node, input_index, qType, given_scale_name=None, given_zp_name=None):
         '''
         Given an input for a node (which is not a initializer), this function
-            - add nodes to compute zero point and scale for this input if they don't exist.
-            - add new QuantizeLinear node to quantize the input.
-            parameter node: node being quantized in NodeProto format.
-            parameter input_index: index of input in node.input.
-            parameter qType: type to quantize to.
-            parameter given_scale_name: if those inputs need to be quanitzed using this scale tensor.
-            parameter given_zp_name: if those inputs to be quantized using this zeropoint tensor.
-            return: List of newly created nodes in NodeProto format.
+
+        - add nodes to compute zero point and scale for this input if they don't exist.
+        - add new QuantizeLinear node to quantize the input.
+
+        :param node: node being quantized in NodeProto format.
+        :param input_index: index of input in node.input.
+        :param qType: type to quantize to.
+        :param given_scale_name: if those inputs need to be quanitzed using this scale tensor.
+        :param given_zp_name: if those inputs to be quantized using this zeropoint tensor.
+        :return: List of newly created nodes in NodeProto format.
         '''
         input_name = node.input[input_index]
         output_name = input_name + "_quantized"
@@ -742,7 +745,7 @@ class ONNXQuantizer:
             per_channel_data = weights.take(i, channel_axis)
             rmin, rmax, zero_point, scale, quantized_per_channel_data = quantize_data(
                 per_channel_data.flatten().tolist(), weight_qType,
-                self.is_weight_symmetric, self.reduce_range and reduce_range)
+                self.is_weight_symmetric or weight_qType == onnx_proto.TensorProto.INT8, self.reduce_range and reduce_range)
             rmin_list.append(rmin)
             rmax_list.append(rmax)
             zero_point_list.append(zero_point)

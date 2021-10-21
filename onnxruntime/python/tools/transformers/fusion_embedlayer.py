@@ -111,7 +111,9 @@ class FusionEmbedLayerNoMask(Fusion):
         """
         path1 = self.model.match_parent_path(position_embedding_gather, ['Expand', 'Shape'], [1, 1])
         if path1 is None:
-            return False
+            path1 = self.model.match_parent_path(position_embedding_gather, ['Expand', 'Where', 'Reshape', 'Shape'], [1, 1, 2, 0])
+            if path1 is None:
+                return False
 
         expand, shape = path1
         if shape.input[0] != input_ids:
@@ -307,18 +309,18 @@ class FusionEmbedLayerNoMask(Fusion):
         # In normal case, word embeding table is the largest, and segment embedding table is the smallest, while postion embedding table is in between.
         # TODO: use other information (like initializer names) to identify different embedding weights automatically.
         if word_embedding_table.shape[0] <= position_embedding_table.shape[0]:
-            logger.warn(
+            logger.warning(
                 f"word_embedding_table ({word_embedding_gather.input[0]}) size {word_embedding_table.shape[0]} <= position_embedding_table ({position_embedding_gather.input[0]}) size {position_embedding_table.shape[0]}"
             )
 
         if segment_ids:
             if word_embedding_table.shape[0] <= segment_embedding_table.shape[0]:
-                logger.warn(
+                logger.warning(
                     f"word_embedding_table ({word_embedding_gather.input[0]}) size {word_embedding_table.shape[0]} <= segment_embedding_table ({segment_embedding_gather.input[0]}) size {segment_embedding_table.shape[0]}"
                 )
 
             if position_embedding_table.shape[0] <= segment_embedding_table.shape[0]:
-                logger.warn(
+                logger.warning(
                     f"position_embedding_table ({position_embedding_gather.input[0]}) size {position_embedding_table.shape[0]} <= segment_embedding_table ({segment_embedding_gather.input[0]}) size {segment_embedding_table.shape[0]}"
                 )
 

@@ -57,7 +57,7 @@ Attributes (auto_pad, ceil_mode, count_include_pad, kernel_shap, pads, and strid
 void DnnlPoolGrad::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto dnnl_engine = sp.GetEngine();
 
-  auto dy_mem = sp.GetMemory(node.Input(IN_DY).Name());
+  auto dy_mem = sp.GetMemory(node.Input(IN_DY));
   auto dy_md = dy_mem.get_desc();
   auto dy_dims = dy_mem.get_desc().dims();
 
@@ -67,7 +67,7 @@ void DnnlPoolGrad::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   bool maxpoolgrad_optype = (node.OpType() == "MaxPoolGrad");
 
   if (maxpoolgrad_optype) {
-    indices_mem = sp.GetMemory(node.Input(IN_INDICES).Name());
+    indices_mem = sp.GetMemory(node.Input(IN_INDICES));
     indices_md = indices_mem.get_desc();
     indices_dims = indices_mem.get_desc().dims();
   }

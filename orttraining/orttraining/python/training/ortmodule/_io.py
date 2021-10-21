@@ -11,7 +11,7 @@ import warnings
 import gc
 
 from ._fallback import _FallbackManager, ORTModuleIOError, ORTModuleONNXModelException, wrap_exception
-
+from ._utils import warn_of_constant_inputs
 
 class _OutputIdentityOp(torch.autograd.Function):
     '''Internal class used to prepend Identity ops in model's outputs
@@ -141,6 +141,9 @@ def _combine_input_buffers_initializers(params, onnx_input_names, input_info, bu
         # The exporter handles input lists by expanding them so that each
         # element of the list is its own input.
         # ORTModule must match this behavior by also expanding the inputs.
+        if current_input is None or isinstance(current_input, str):
+            # Drop all None and string inputs
+            return
         if isinstance(current_input, abc.Sequence):
             # If the input is a sequence (like a list), expand the list so that
             # each element of the list is an input by itself
@@ -151,7 +154,7 @@ def _combine_input_buffers_initializers(params, onnx_input_names, input_info, bu
             # each element of the dict is an input by itself
             for _, val in current_input.items():
                 _expand_inputs(val, non_none_inputs)
-        elif current_input is not None:
+        else:
             # else just collect all the non none inputs within non_none_inputs
             non_none_inputs.append(current_input)
 
@@ -314,8 +317,13 @@ def _extract_schema(data):
     """Extract the data schema by replacing every torch.Tensor value with _TensorStub"""
 
     if data is None:
-        return None
+        return data
+    elif isinstance(data, str):
+        warn_of_constant_inputs(data)
+        return data
     elif _PrimitiveType.is_primitive_type(data):
+        if isinstance(data, bool):
+            warn_of_constant_inputs(data)
         return _TensorStub(dtype=_PrimitiveType.get_primitive_dtype(data), shape_dims=0)
     # Depth first traversal to iterate over the data to replace every tensor with a stub
     elif isinstance(data, torch.Tensor):
@@ -324,7 +332,7 @@ def _extract_schema(data):
     # Instead of replacing the tensor with a stub in the original user input, build the stubbed_schema
     # from scratch from the user input.
     stubbed_schema = None
-    if isinstance(data, abc.Sequence) and not isinstance(data, str):
+    if isinstance(data, abc.Sequence):
         sequence_type = type(data)
         stubbed_schema = [_extract_schema(val) for val in data]
         try:
@@ -431,8 +439,8 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, schema, input
     def _add_input(name, input, onnx_graph, onnx_graph_input_names):
         """Returns number of expanded non none inputs that _add_input processed"""
 
-        if input is None:
-            # Drop all None inputs and return 0.
+        if input is None or isinstance(input, str):
+            # Drop all None and string inputs and return 0.
             return 0
 
         num_expanded_non_none_inputs = 0
