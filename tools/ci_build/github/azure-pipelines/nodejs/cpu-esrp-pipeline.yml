@@ -131,13 +131,6 @@ jobs:
       artifactName: 'drop-win32_x64'
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
-  # Put an unzipped version there to check if all the binaries are signed.
-  - script: |
-      7z x $(Build.ArtifactStagingDirectory)\prebuilds\onnxruntime-*.tar.gz
-      7z x $(Build.ArtifactStagingDirectory)\onnxruntime-*.tar
-    displayName: 'Unzip package to test'
-    workingDirectory: '$(Build.ArtifactStagingDirectory)'
-
   - task: DeleteFiles@1
     displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
     condition: and(succeeded(), eq(variables['BuildConfig'], 'RelWithDebInfo'))
