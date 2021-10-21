@@ -1840,3 +1840,42 @@ TEST(CApiTest, TestConfigureTensorRTProviderOptions) {
   ASSERT_TRUE(stat(engine_cache_path, &buffer) == 0);
 }
 #endif
+
+namespace TestExternalThreadingHooks {
+
+std::vector<std::thread> threads;
+int32_t external_creation_hook_called{};
+int32_t external_joining_hook_called{};
+
+void* CreateTestingThread(ThreadWorkLoopFn work_loop, void* param) {
+  external_creation_hook_called += 1;
+  threads.push_back(std::thread(work_loop, param));
+  return (void*)threads.back().native_handle();
+}
+
+void JoinTestingThread(void* handle) {
+  for (auto& t : threads) {
+    if ((void*)t.native_handle() == handle) {
+      external_joining_hook_called += 1;
+      t.join();
+    }
+  }
+}
+
+TEST(CApiTest, TestExternalThreadPoolHooks) {
+  const int32_t thread_count = 3;
+  external_creation_hook_called = external_joining_hook_called = 0;
+  Ort::SessionOptions session_options;
+  session_options.SetIntraOpNumThreads(thread_count);
+  session_options.SetCreateThreadFn(CreateTestingThread);
+  session_options.SetJoinThreadFn(JoinTestingThread);
+  {
+    Ort::Session session(*ort_env, MODEL_URI, session_options);
+  }
+  std::cout << external_creation_hook_called << std::endl;
+  std::cout << external_joining_hook_called << std::endl;
+  ASSERT_TRUE(external_creation_hook_called == thread_count-1);
+  ASSERT_TRUE(external_joining_hook_called == thread_count-1);
+}
+
+}  // namespace TestExternalThreadingHooks
