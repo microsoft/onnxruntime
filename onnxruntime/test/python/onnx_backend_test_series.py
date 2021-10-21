@@ -119,7 +119,7 @@ def create_backend_test(testname=None):
                 '^test_resize_downsample_sizes_linear_pytorch_half_pixel_cpu',
                 '^test_resize_downsample_sizes_nearest_cpu',
                 '^test_resize_upsample_sizes_nearest_cpu',
-                '^test_nonmaxsuppression'
+                '^test_roialign_cpu'
             ]
 
         filters = current_failing_tests + \
