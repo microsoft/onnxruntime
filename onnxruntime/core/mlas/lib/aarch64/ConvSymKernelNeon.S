@@ -99,8 +99,8 @@ Return Value:
 
         mov     x9, x3                  // save kernel size
         mov     x16,x4                  // save input channels
-        ldr     x11,[x8], #8 // Bias
-        ldr     x12,[x8], #16 // Scale, and skip Min, Max
+        ldr     x11,[x8,#.LConvSymPostProcessParams_Bias]
+        ldr     x12,[x8,#.LConvSymPostProcessParams_Scale]
         cmp     x7, 2                   // if OutputCount < 2
         add     x5, x2, x5              // c1 = c0 + ldc
         add     x4, x4, 7               // kc = (kc + 7) & ~7
@@ -120,6 +120,7 @@ Return Value:
         mov     v29.16b,v28.16b
         mov     v31.16b,v30.16b
         mov     w17, #128
+        ldr     w18, [x8, #.LConvSymPostProcessParams_ZeroPoint]
 
 // Nested loops, inner loop: input channel; outter loop: kernel size
 // Each inner iteration processes 8 input channels, 2 output pixels, 8 output channels.
@@ -319,7 +320,7 @@ Return Value:
         B.HI    .LConvSym.KernelSizeLoop
 
 .LConvSym.Requantize:
-        LD1R    {v9.8h},[x8] // #.LConvSymPostProcessParams_ZeroPoint]
+        dup    v9.8h,w18
         tst     w10,#.LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
         beq     .LConvSym.BroadcastScaleValue
         LD1     {v4.4s,v5.4s}, [x12]   // load scale vector
