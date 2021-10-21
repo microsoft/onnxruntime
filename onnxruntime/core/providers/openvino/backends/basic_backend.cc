@@ -106,7 +106,8 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   try {
     #if defined(IO_BUFFER_ENABLED)
       if ((global_context.device_type.find("GPU") != std::string::npos)  && 
-          (global_context_.context != nullptr)) {
+          (global_context_.context != nullptr) && 
+          (openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph)) {
           LOGS_DEFAULT(INFO) << log_tag << "IO Buffering Enabled";    
           cl_context ctx = static_cast<cl_context>(global_context_.context); 
           remote_context_ = InferenceEngine::gpu::make_shared_context(global_context_.ie_core, "GPU", ctx);
@@ -223,7 +224,8 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
       try {
         #if defined(IO_BUFFER_ENABLED)
         if ((global_context.device_type.find("GPU") != std::string::npos)  && 
-            (global_context_.context != nullptr)) {
+            (global_context_.context != nullptr) && 
+            (openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph)) {
           LOGS_DEFAULT(INFO) << log_tag << "IO Buffering Enabled";    
           cl_context ctx = static_cast<cl_context>(global_context_.context); 
           remote_context_ = InferenceEngine::gpu::make_shared_context(global_context_.ie_core, "GPU", ctx);
@@ -296,24 +298,23 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* 
 //Wait for Remote Aynchronous inference completion
 void BasicBackend::StartRemoteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context, std::shared_ptr<InferenceEngine::InferRequest> infer_request) {
   
+  //Iterate through the Inputs to set remote input blob
   auto graph_input_info = exe_network_.GetInputsInfo();
-
   for (auto input_info_iter = graph_input_info.begin();
        input_info_iter != graph_input_info.end(); ++input_info_iter) {
 
-    // Get OpenVINO's input Buffer
     std::string input_name = input_info_iter->first;
     // Kernel Context Input Buffer
     const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context_.input_names.at(input_name));
-    std::cout << "remote context enabled\n";
+    // If the ORTValue wraps a device pointer
     auto device_type = ort.GetTensorDeviceType(tensor);
     if (device_type == OrtDevice::GPU) {
-      // Copy input data into OpenVINO's input buffer
+      //Get the shared buffer pointer
       const void *tensor_data = ort.GetTensorData<void *>(tensor);
-      // Shared Buffer 
       const cl::Buffer* shared_buffer_const = static_cast<const cl::Buffer*>(tensor_data);
+      cl::Buffer* shared_buffer = const_cast<cl::Buffer *>(shared_buffer_const);
       try {
-        cl::Buffer* shared_buffer = const_cast<cl::Buffer *>(shared_buffer_const);
+        //Create an Input Remote Blob
         InferenceEngine::Blob::Ptr graph_input_blob = InferenceEngine::gpu::make_shared_blob(input_info_iter->second->getTensorDesc(), remote_context_, *shared_buffer);
         infer_request->SetBlob(input_name, graph_input_blob);
         } catch (const Exception& e) {
@@ -331,10 +332,37 @@ void BasicBackend::StartRemoteAsyncInference(Ort::CustomOpApi& ort, OrtKernelCon
       } catch (...) {
       ORT_THROW(log_tag + " Cannot access IE Blob for input: " + input_name);
       }
+      //Set the Tensor Data
       auto precision = input_info_iter->second->getPrecision();
       size_t batch_slice = 0;
       FillInputBlob(graph_input_blob, batch_slice, input_name, ort, context, precision, subgraph_context_);
-    } 
+    }
+  }
+
+  //Set the output blob as remote blob
+  auto graph_output_info = exe_network_.GetOutputsInfo();
+  for (auto output_info_iter = graph_output_info.begin();
+       output_info_iter != graph_output_info.end(); ++output_info_iter) {
+    // Get Ort Output Tensor
+    auto output_name = output_info_iter->first;
+    size_t batch_size = 1;
+    auto tensor = GetOutputTensor(ort, context, batch_size, infer_request, output_name, subgraph_context_.output_names);
+    auto device_type = ort.GetTensorDeviceType(tensor);
+    // Check if ORT Value wraps a device pointer
+    if (device_type == OrtDevice::GPU) {
+      const void *tensor_data = ort.GetTensorData<void *>(tensor);
+      const cl::Buffer* shared_buffer_const = static_cast<const cl::Buffer*>(tensor_data);
+      cl::Buffer* shared_buffer = const_cast<cl::Buffer *>(shared_buffer_const);
+      try {
+        // Create a shared Blob, set the Infer Request Output Blob
+        InferenceEngine::Blob::Ptr graph_output_blob = InferenceEngine::gpu::make_shared_blob(output_info_iter->second->getTensorDesc(), remote_context_, *shared_buffer);
+        infer_request->SetBlob(output_name, graph_output_blob);
+        } catch (const Exception& e) {
+          ORT_THROW(log_tag + " Cannot set Remote Blob for output: " + output_name + e.what());
+        } catch (...) {
+          ORT_THROW(log_tag + " Cannot set Remote Blob for output: " + output_name);
+        }
+    }
   }
   // Start Async inference
   try {
@@ -375,11 +403,13 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContex
     size_t batch_size = 1;
     auto output_tensor = GetOutputTensor(ort, context, batch_size, infer_request, output_name, subgraph_context_.output_names);
     auto device_type = ort.GetTensorDeviceType(output_tensor);
+    //If Output ORT Value is of type CPU then fill in the output tensor from the blob
     if (device_type == OrtDevice::CPU) {
       auto precision = output_info_iter->second->getPrecision();
       size_t batch_slice = 0;
       FillOutputBlob(graph_output_blob, output_tensor, ort, precision, batch_slice);
     }
+    //Else if Output ORT Value if of type GPU just pass on the device pointer. 
   }
 
   if (!const_outputs_map_.empty()) {
@@ -391,7 +421,7 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContex
       if (device_type == OrtDevice::CPU) {
         FillOutputsWithConstantData(ort, node, output_tensor);
       } else if (device_type == OrtDevice::GPU) {
-        ORT_THROW(log_tag + "IO Buffering is not supported");
+        ORT_THROW(log_tag + "IO Buffering is not supported for constant subgraphs");
       }
     }
   }
@@ -431,7 +461,8 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
       }
       #ifdef IO_BUFFER_ENABLED
       if ((global_context_.device_type.find("GPU") != std::string::npos)  && 
-          (global_context_.context != nullptr)) {
+          (global_context_.context != nullptr) && 
+          (openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph)) {
         StartRemoteAsyncInference(ort, context, infer_request);
       } else {
         StartAsyncInference(ort, context, infer_request);
