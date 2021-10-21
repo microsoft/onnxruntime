@@ -45,10 +45,6 @@ file(GLOB_RECURSE onnxruntime_rocm_generated_contrib_ops_cu_srcs CONFIGURE_DEPEN
   "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime/contrib_ops/rocm/*.cuh"
 )
 
-file(GLOB onnxruntime_cpu_featurizers_cc_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu/*.h"
-  "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu/*.cc"
-)
 
 file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.h"
@@ -108,10 +104,6 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_contrib_ops_srcs})
 endif()
 
-if (onnxruntime_USE_FEATURIZERS)
-  source_group(TREE ${ONNXRUNTIME_ROOT}/ FILES ${onnxruntime_cpu_featurizers_cc_srcs})
-  list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_featurizers_cc_srcs})
-endif()
 
 if (onnxruntime_ENABLE_TRAINING_OPS)
   file(GLOB_RECURSE onnxruntime_cpu_training_ops_srcs CONFIGURE_DEPENDS
@@ -187,12 +179,6 @@ onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxr
 
 if (onnxruntime_BUILD_MS_EXPERIMENTAL_OPS)
   target_compile_definitions(onnxruntime_providers PRIVATE BUILD_MS_EXPERIMENTAL_OPS=1)
-endif()
-
-if (onnxruntime_USE_FEATURIZERS)
-  add_dependencies(onnxruntime_providers onnxruntime_featurizers)
-  onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_featurizers)
-  target_link_libraries(onnxruntime_providers onnxruntime_featurizers)
 endif()
 
 if(HAS_DEPRECATED_COPY)

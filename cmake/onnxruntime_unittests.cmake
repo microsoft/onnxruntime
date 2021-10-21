@@ -270,12 +270,6 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
       "${TEST_SRC_DIR}/contrib_ops/math/*.cc")
   endif()
 
-  if(onnxruntime_USE_FEATURIZERS)
-    list(APPEND onnxruntime_test_providers_src_patterns
-      "${TEST_SRC_DIR}/featurizers_ops/*.h"
-      "${TEST_SRC_DIR}/featurizers_ops/*.cc")
-  endif()
-
 else()
   set(onnxruntime_test_providers_src_patterns
     "${TEST_SRC_DIR}/framework/test_utils.cc"
@@ -430,12 +424,6 @@ endif()
 
 if(onnxruntime_USE_RKNPU)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rknpu)
-endif()
-
-if(onnxruntime_USE_FEATURIZERS)
-   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_featurizers)
-   list(APPEND onnxruntime_test_providers_libs onnxruntime_featurizers re2)
-   list(APPEND TEST_INC_DIR ${RE2_INCLUDE_DIR})
 endif()
 
 if(onnxruntime_USE_DML)
@@ -694,9 +682,7 @@ endif()
 if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
   target_compile_definitions(onnxruntime_test_all PRIVATE DEBUG_NODE_INPUTS_OUTPUTS)
 endif()
-if (onnxruntime_USE_FEATURIZERS)
-  target_include_directories(onnxruntime_test_all PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/external/FeaturizersLibrary/src)
-endif()
+
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   target_link_libraries(onnxruntime_test_all PRIVATE onnxruntime_language_interop onnxruntime_pyop)
 endif()
