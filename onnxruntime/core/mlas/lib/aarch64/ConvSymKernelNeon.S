@@ -164,15 +164,15 @@ Return Value:
         subs     x14,x4,16               // input channel - 16
         blo     .LConvSym.8InputChannels     // less than 16 deep, no unroll
 
-        ldp     d4,d5,[x1]
         dup     v2.8b, w17
         ldp     d0,d6,[x13],16
+        ldp     d1,d7,[x15],16
+        ldp     d4,d5,[x1]
+        ldp     d8,d9,[x1,64]
         eor     v0.8b, v0.8b, v2.8b
         eor     v6.8b, v6.8b, v2.8b
-        ldp     d1,d7,[x15],16
         eor     v1.8b, v1.8b, v2.8b
         eor     v7.8b, v7.8b, v2.8b
-        ldp     d8,d9,[x1,64]
 
         subs    x14,x14,16              // input channel - 16
         blo     .LConvSym.BlockLoopEpilogue  // need 32 input channel for full unrolled loop
@@ -237,18 +237,18 @@ Return Value:
         SMLAL   v13.8h, v8.8b, v7.8b
         SUBS    x14, x14, 16
         SMLAL   v14.8h, v9.8b, v6.8b
-        LDP     d0, d6, [x13], 16       // Read A0
         dup     v2.8b, w17
-        eor     v0.8b, v0.8b, v2.8b
-        eor     v6.8b, v6.8b, v2.8b
+        LDP     d0, d6, [x13], 16       // Read A0
         SMLAL   v15.8h, v9.8b, v7.8b
 
         SADALP  v28.4s, v12.8h
         LDP     d1, d7, [x15], 16       // Read A1
-        eor     v1.8b, v1.8b, v2.8b
-        eor     v7.8b, v7.8b, v2.8b
+        eor     v0.8b, v0.8b, v2.8b
+        eor     v6.8b, v6.8b, v2.8b
         SADALP  v29.4s, v13.8h
         SADALP  v30.4s, v14.8h
+        eor     v1.8b, v1.8b, v2.8b
+        eor     v7.8b, v7.8b, v2.8b
         LDP     d8, d9, [x1, 64]        // Read B
         SADALP  v31.4s, v15.8h
         B.HS    .LConvSym.Blockloop
@@ -378,13 +378,13 @@ Return Value:
         ret
 
 .LConvSym.8InputChannels:
-        LDR     d0, [x13]
         dup     v2.8b, w17
-        eor     v0.8b, v0.8b, v2.8b
-        LDP     d4, d5, [x1]
+        LDR     d0, [x13]
         LDR     d1, [x15]
-        eor     v1.8b, v1.8b, v2.8b
+        LDP     d4, d5, [x1]
         LDP     d6, d7, [x1, 16]
+        eor     v0.8b, v0.8b, v2.8b
+        eor     v1.8b, v1.8b, v2.8b
         SMULL   v2.8h, v4.8b, v0.8b
         SMULL   v3.8h, v4.8b, v1.8b
         SMULL   v10.8h, v5.8b, v0.8b
