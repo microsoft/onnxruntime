@@ -640,7 +640,6 @@ if (onnxruntime_USE_OPENVINO)
   endif()
 
   if ((DEFINED ENV{OPENCL_LIBS}) AND (DEFINED ENV{OPENCL_INCS}))
-    message("IO BUFFER ENABLED")
     add_definitions(-DIO_BUFFER_ENABLED=1)
   endif()
 
