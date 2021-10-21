@@ -664,7 +664,7 @@ TEST(QDQTransformerTests, Resize) {
 
       // add Resize
       auto* resize_output = builder.MakeIntermediate();
-      Node& resize_node = builder.AddNode("Resize", {dq_output, roi, scales, sizes}, {resize_output});
+      builder.AddNode("Resize", {dq_output, roi, scales, sizes}, {resize_output});
 
       // add Q
       builder.AddQuantizeLinearNode<uint8_t>(resize_output, .003f, 1, output_arg);
