@@ -319,7 +319,7 @@ Return Value:
         B.HI    .LConvSym.KernelSizeLoop
 
 .LConvSym.Requantize:
-        LD1R    {v9.4s},[x8], #4 // #.LConvSymPostProcessParams_ZeroPoint]
+        LD1R    {v9.8h},[x8] // #.LConvSymPostProcessParams_ZeroPoint]
         tst     w10,#.LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
         beq     .LConvSym.BroadcastScaleValue
         LD1     {v4.4s,v5.4s}, [x12]   // load scale vector
@@ -355,16 +355,14 @@ Return Value:
         fcvtns   v1.4s,v1.4s
         fcvtns   v2.4s,v2.4s
         fcvtns   v3.4s,v3.4s
-        add     v0.4s,v0.4s,v9.4s           // add zero point
-        add     v1.4s,v1.4s,v9.4s
-        add     v2.4s,v2.4s,v9.4s
-        add     v3.4s,v3.4s,v9.4s
-        SQXTUN   v0.4h,v0.4s                 // shorten to uint16
-        SQXTUN   v2.4h,v2.4s
-        SQXTUN2  v0.8h,v1.4s
-        SQXTUN2  v2.8h,v3.4s
-        UQXTN   v0.8b,v0.8h                 // shorten to int8
-        UQXTN2  v0.16b,v2.8h
+        sqxtn   v0.4h,v0.4s
+        sqxtn2  v0.8h,v1.4s
+        sqxtn   v2.4h,v2.4s
+        sqxtn2  v2.8h,v3.4s
+        sqadd   v0.8h,v0.8h,v9.8h
+        sqadd   v2.8h,v2.8h,v9.8h
+        sqxtun   v0.8b,v0.8h                 // shorten to int8
+        sqxtun2  v0.16b,v2.8h
         B.LO    .LConvSym.PartialStore
 
         ST1     {v0.d}[1],[x5]              // full 2x8 store to c 
