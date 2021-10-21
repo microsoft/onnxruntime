@@ -12,7 +12,7 @@ This End-to-End test app for iOS will test ORT Mobile C/C++ API framework using 
 The iOS End-to-End Test App will use CocoaPods to install the Onnx Runtime C/C++ framework, and run basic End-to-End tests of Onnx Runtime C and C++ API.
 
 ### Model used
-- [sigmoid ONNX model](https://github.com/onnx/onnx/blob/master/onnx/backend/test/data/node/test_sigmoid/model.onnx) converted to ORT format
+- [sigmoid ONNX model](https://github.com/onnx/onnx/blob/f9b0cc99344869c246b8f4011b8586a39841284c/onnx/backend/test/data/node/test_sigmoid/model.onnx) converted to ORT format
 
     Here's the [document](https://onnxruntime.ai/docs/tutorials/mobile/model-conversion.html) about how you can convert an ONNX model into ORT format.
 

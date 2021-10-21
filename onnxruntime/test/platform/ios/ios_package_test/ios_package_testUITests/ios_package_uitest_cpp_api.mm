@@ -88,20 +88,20 @@ void testSigmoid(const char* modelPath, bool useCoreML) {
   // Put teardown code here. This method is called after the invocation of each test method in the class.
 }
 
-- (const std::string)getFilePath {
+- (NSString*)getFilePath {
   NSBundle* bundle = [NSBundle bundleForClass:[self class]];
   NSString* ns_model_path = [bundle pathForResource:@"sigmoid" ofType:@"ort"];
   XCTAssertNotNil(ns_model_path);
-  return ns_model_path.UTF8String;
+  return ns_model_path;
 }
 
 - (void)testCppAPI_Basic {
-  testSigmoid([self getFilePath].c_str(), false /* useCoreML */);
+  testSigmoid([self getFilePath].UTF8String, false /* useCoreML */);
 }
 
 #if COREML_EP_AVAILABLE
 - (void)testCppAPI_Basic_CoreML {
-  testSigmoid([self getFilePath].c_str(), true /* useCoreML */);
+  testSigmoid([self getFilePath].UTF8String, true /* useCoreML */);
 }
 #endif
 
