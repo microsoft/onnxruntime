@@ -9,6 +9,7 @@ import {ShapeUtil} from '../../../util';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, TextureType} from '../types';
+import {transpose, TransposeAttributes} from './transpose';
 
 export interface SoftmaxAttributes extends AttributeWithCacheKey {
   readonly axis: number;
@@ -41,6 +42,75 @@ export const softmax: OperatorImplementation<SoftmaxAttributes> =
       const N = ShapeUtil.sizeToDimension(inputShape, axis);
       const D = ShapeUtil.sizeFromDimension(inputShape, axis);
 
+      const output = computeSoftmax(inferenceHandler, inputs, attributes, N, D);
+      return output;
+    };
+
+export const parseSoftmaxAttributes: OperatorInitialization<SoftmaxAttributes> =
+    (node: Graph.Node): SoftmaxAttributes => createAttributeWithCacheKey({axis: node.attributes.getInt('axis', 1)});
+
+export const parseSoftmaxAttributesV13: OperatorInitialization<SoftmaxAttributes> =
+    (node: Graph.Node): SoftmaxAttributes => createAttributeWithCacheKey({axis: node.attributes.getInt('axis', -1)});
+
+// The "semantic" meaning of axis has changed in opset-13.
+// Please compare: https://github.com/onnx/onnx/blob/master/docs/Operators.md#Softmax
+// with https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Softmax-11 for detailed explanations
+// To account for the opset-13 behavior, our plan will be to transpose the "axis" dim to the innermost dim
+// and perform softmax and then reverse the transpose. We can skip the transposing aspect if the axis is already
+// the innermost dim
+export const softmaxV13: OperatorImplementation<SoftmaxAttributes> =
+    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: SoftmaxAttributes): Tensor[] => {
+      validateInputs(inputs);
+
+      const inputShape = inputs[0].dims.slice();
+      const axis = ShapeUtil.normalizeAxis(attributes.axis, inputShape.length);
+      const rank = inputShape.length;
+
+      const isTransposeRequired = (axis !== rank - 1) ? true : false;
+      const transposedInputShape: number[] = [];
+      let perm: number[] = [];
+      let transposedInputs: Tensor[] = [];
+
+      if (isTransposeRequired) {
+        perm = Array.from({length: rank}).map((_, i) => i);
+
+        // swap the innermost dim with the dim corresponding to axis
+        perm[axis] = rank - 1;
+        perm[rank - 1] = axis;
+
+        for (const p of perm) {
+          transposedInputShape.push(inputShape[p]);
+        }
+
+        const transposeAttribute: TransposeAttributes = createAttributeWithCacheKey({perm});
+        transposedInputs = transpose(inferenceHandler, inputs, transposeAttribute);
+      }
+
+      const N = isTransposeRequired ? ShapeUtil.sizeToDimension(transposedInputShape, rank - 1) :
+                                      ShapeUtil.sizeToDimension(inputShape, rank - 1);
+      const D = isTransposeRequired ? ShapeUtil.sizeFromDimension(transposedInputShape, rank - 1) :
+                                      ShapeUtil.sizeFromDimension(inputShape, rank - 1);
+
+      const output =
+          computeSoftmax(inferenceHandler, isTransposeRequired ? transposedInputs : inputs, attributes, N, D);
+
+      if (isTransposeRequired) {
+        const reversedPerm: number[] = Array.from({length: rank});
+        for (let i = 0, end = rank; i < end; ++i) {
+          reversedPerm[perm[i]] = i;
+        }
+        const transposeAttribute: TransposeAttributes = createAttributeWithCacheKey({perm: reversedPerm});
+        const reversedOutput = transpose(inferenceHandler, output, transposeAttribute);
+        return reversedOutput;
+      } else {
+        return output;
+      }
+    };
+
+const computeSoftmax =
+    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: SoftmaxAttributes,
+     // eslint-disable-next-line @typescript-eslint/naming-convention
+     N: number, D: number): Tensor[] => {
       const computeMaxProgramInfo = createComputeMaxProgramInfo(inferenceHandler, inputs[0], N, D, [N]);
       const max = inferenceHandler.run(
           {...softmaxComputeMaxProgramMetadata, cacheHint: attributes.cacheKey, get: () => computeMaxProgramInfo},
@@ -59,9 +129,6 @@ export const softmax: OperatorImplementation<SoftmaxAttributes> =
           [inputs[0], max, scale]);
       return [output];
     };
-
-export const parseSoftmaxAttributes: OperatorInitialization<SoftmaxAttributes> =
-    (node: Graph.Node): SoftmaxAttributes => createAttributeWithCacheKey({axis: node.attributes.getInt('axis', 1)});
 
 /**
  * Create a texture that contains the maximum value of each of the 'N' rows
