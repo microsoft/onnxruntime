@@ -53,15 +53,27 @@ jobs:
         args: '-derivedDataPath $(build.BinariesDirectory)/DerivedData'
         workingDirectory: $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
 
-    - script: |
-        set -e -x
-        cd $(Build.SourcesDirectory)/java/src/test/android
-        appcenter test run xcuitest \
-          --app "AI-Frameworks/ORT-Mobile-iOS" \
-          --devices 462764b5 \
-          --test-series "master" \
-          --locale "en_US" \
-          --build-dir $(build.BinariesDirectory)/DerivedData/Build/Products/Debug-iphoneos \
-          --token $(AppCenterAPIToken)
-      workingDirectory: $(Build.SourcesDirectory)/java/src/test/android
+    - task: AppCenterTest@1
       displayName: Run E2E tests on App Center
+      inputs:
+        artifactsDirectory: '$(Build.ArtifactStagingDirectory)/AppCenterTest'
+        frameworkOption: 'xcuitest'
+        xcUITestBuildDirectory: '$(build.BinariesDirectory)/DerivedData/Build/Products/Debug-iphoneos'
+        credentialsOption: 'serviceEndpoint'
+        serverEndpoint: 'onnxruntime App Center Connection'
+        appSlug: 'AI-Frameworks/ORT-Mobile-iOS'
+        devices: '462764b5'
+        localeOption: 'en_US'
+
+    # - script: |
+    #     set -e -x
+    #     cd $(Build.SourcesDirectory)/java/src/test/android
+    #     appcenter test run xcuitest \
+    #       --app "AI-Frameworks/ORT-Mobile-iOS" \
+    #       --devices 462764b5 \
+    #       --test-series "master" \
+    #       --locale "en_US" \
+    #       --build-dir $(build.BinariesDirectory)/DerivedData/Build/Products/Debug-iphoneos \
+    #       --token $(AppCenterAPIToken)
+    #   workingDirectory: $(Build.SourcesDirectory)/java/src/test/android
+    #   displayName: Run E2E tests on App Center
