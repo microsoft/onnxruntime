@@ -716,13 +716,14 @@ TODO:
       .Input(1, "key", "3D input tensor with shape (total_sequence_length, batch_size, hidden_size)", "T")
       .Input(2, "weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "T")
       .Input(3, "bias", "1D input tensor with shape (3 * hidden_size)", "T")
-      .Input(4, "key_padding_mask", "2D input tensor with shape (batch_size, total_sequence_length)", "T", OpSchema::Optional)
+      .Input(4, "key_padding_mask", "2D input tensor with shape (batch_size, total_sequence_length)", "B", OpSchema::Optional)
       .Input(5, "key_cache", "input tensor with shape (batch_size, num_heads, sequence_length or total_sequence_length, head_size)", "T", OpSchema::Optional)   // self & cross
       .Input(6, "value_cache", "input tensor with shape (batch_size, num_heads, sequence_length or total_sequence_length, head_size)", "T", OpSchema::Optional)   // self & cross
       .Output(0, "output", "3D output tensor with shape (sequence_length, batch_size, hidden_size)", "T")
       .Output(1, "new_key_cache", "output tensor with shape (batch_size, num_heads, new sequence_length, head_size)", "T", OpSchema::Optional) // self & cross
       .Output(2, "new_value_cache", "output tensor with shape (batch_size, num_heads, new sequence_length, head_size)", "T", OpSchema::Optional) // self & cross
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float and float16 tensors.")
+      .TypeConstraint("B", {"tensor(bool)"}, "Constrain key_padding_mask to bool tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         DecoderAttentionTypeAndShapeInference(ctx);
       });

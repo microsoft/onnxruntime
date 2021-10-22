@@ -130,7 +130,7 @@ bool QkvToContext(
     const int64_t max_sequence_length = mask_dimension == 4 ? mask_index_dims->at(3) : 0;
 
     T* persistent_softmax_workspace = scratch1; // replace Q*K' in place with masked score if persistent softmax is selected.
-    if (!ComputeSoftmaxWithRawMask<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, mask_index, extra_add_qk, scratch1, scratch2, 
+    if (!ComputeSoftmaxWithRawMask<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, mask_index, extra_add_qk, scratch1, scratch2,
                                       is_unidirectional, rsqrt_head_size, mask_dimension, static_cast<int>(max_sequence_length),
                                       use_persistent_softmax, persistent_softmax_workspace)) {
       return false;
@@ -179,7 +179,7 @@ bool LaunchAttentionKernel(
     const void* extra_add_qk,
     void* present) {
 
-  
+
   // For testing, environment variable ORT_TRANSFORMER_OPTIONS=1 could enable persistent softmax
   const TransformerOptions* options = TransformerOptions::GetInstance();
   bool use_persistent_softmax = options->IsPrecisionMode() && !options->DisablePersistentSoftmax();
@@ -189,15 +189,125 @@ bool LaunchAttentionKernel(
                         batch_size, sequence_length, num_heads, head_size, element_size,
                         reinterpret_cast<const half*>(input), reinterpret_cast<half*>(output), reinterpret_cast<half*>(workspace),
                         mask_index, mask_index_dims, is_unidirectional,
-                        past_sequence_length, reinterpret_cast<const half*>(past), reinterpret_cast<const half*>(extra_add_qk), 
+                        past_sequence_length, reinterpret_cast<const half*>(past), reinterpret_cast<const half*>(extra_add_qk),
                         reinterpret_cast<half*>(present), use_persistent_softmax);
   } else {
     return QkvToContext(prop, cublas, stream,
                         batch_size, sequence_length, num_heads, head_size, element_size,
                         reinterpret_cast<const float*>(input), reinterpret_cast<float*>(output), reinterpret_cast<float*>(workspace),
                         mask_index, mask_index_dims, is_unidirectional,
-                        past_sequence_length, reinterpret_cast<const float*>(past), reinterpret_cast<const float*>(extra_add_qk), 
+                        past_sequence_length, reinterpret_cast<const float*>(past), reinterpret_cast<const float*>(extra_add_qk),
                         reinterpret_cast<float*>(present), use_persistent_softmax);
+  }
+}
+
+
+// bugbug: need refactor
+template <typename T>
+bool DecoderQkvToContext(
+  const cudaDeviceProp& prop,
+  cudaStream_t stream,
+  cublasHandle_t& cublas,
+  const size_t element_size,
+  int batch_size,
+  int sequence_length,
+  int kv_sequence_length,
+  int num_heads,
+  int head_size,
+  bool static_kv,
+  bool use_past,
+  bool has_layer_state,
+  const T* gemm_buffer,
+  const T* gemm_query_buffer,
+  const T* gemm_kv_buffer,
+  const bool* key_padding_mask,
+  const T* key_cache,
+  const T* value_cache,
+  T* qkv_buffer,
+  T* output,
+  T* new_key_cache,
+  T* new_value_cache)
+{
+
+
+}
+
+
+bool LaunchDecoderAttentionKernel(
+  const cudaDeviceProp& prop,
+  cudaStream_t stream,
+  cublasHandle_t& cublas,
+  const size_t element_size,
+  int batch_size,
+  int sequence_length,
+  int kv_sequence_length,
+  int num_heads,
+  int head_size,
+  bool static_kv,
+  bool use_past,
+  bool has_layer_state,
+  const void* gemm_buffer,
+  const void* gemm_query_buffer,
+  const void* gemm_kv_buffer,
+  const bool* key_padding_mask,
+  const void* key_cache,
+  const void* value_cache,
+  void* qkv_buffer,
+  void* output,
+  void* new_key_cache,
+  void* new_value_cache)
+{
+
+  if (element_size == 2) {
+    return DecoderQkvToContext(
+      prop,
+      stream,
+      cublas,
+      element_size,
+      batch_size,
+      sequence_length,
+      kv_sequence_length,
+      num_heads,
+      head_size,
+      static_kv,
+      use_past,
+      has_layer_state,
+      reinterpret_cast<const half*>(gemm_buffer),
+      reinterpret_cast<const half*>(gemm_query_buffer),
+      reinterpret_cast<const half*>(gemm_kv_buffer),
+      key_padding_mask,
+      reinterpret_cast<const half*>(key_cache),
+      reinterpret_cast<const half*>(value_cache),
+      reinterpret_cast<half*>(qkv_buffer),
+      reinterpret_cast<half*>(output),
+      reinterpret_cast<half*>(new_key_cache),
+      reinterpret_cast<half*>(new_value_cache)
+    );
+  } else {
+    return DecoderQkvToContext(
+      prop,
+      stream,
+      cublas,
+      element_size,
+      batch_size,
+      sequence_length,
+      kv_sequence_length,
+      num_heads,
+      head_size,
+      static_kv,
+      use_past,
+      has_layer_state,
+      reinterpret_cast<const float*>(gemm_buffer),
+      reinterpret_cast<const float*>(gemm_query_buffer),
+      reinterpret_cast<const float*>(gemm_kv_buffer),
+      key_padding_mask,
+      reinterpret_cast<const float*>(key_cache),
+      reinterpret_cast<const float*>(value_cache),
+      reinterpret_cast<float*>(qkv_buffer),
+      reinterpret_cast<float*>(output),
+      reinterpret_cast<float*>(new_key_cache),
+      reinterpret_cast<float*>(new_value_cache)
+    );
   }
 }
 
