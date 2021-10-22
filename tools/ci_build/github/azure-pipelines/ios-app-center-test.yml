@@ -22,7 +22,7 @@ jobs:
         configuration: 'Debug'
         workspace: './ios_package_test.xcworkspace'
         scheme: 'ios_package_test'
-        args: '-destination 'platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)''
+        args: '-destination platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)'
         workingDirectory: $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
 
     # - task: Xcode@5
