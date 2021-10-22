@@ -5,11 +5,17 @@ jobs:
   timeoutInMinutes: 60
   steps:
     - task: InstallAppleCertificate@2
+      displayName: 'Install ORT Mobile Test Signing Certificate'
       inputs:
         certSecureFile: '$(certName)'
         certPwd: '$(certPwd)'
         keychain: 'temp'
         deleteCert: true
+
+    - task: InstallAppleProvisioningProfile@1
+      displayName: 'Install ORT Mobile Test Provisioning Profile'
+      inputs:
+        provProfileSecureFile: 'ort_mobile_test.mobileprovision'
 
     - task: CocoaPods@0
       inputs:
@@ -27,26 +33,27 @@ jobs:
     #       -scheme ios_package_test \
     #       -destination 'platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)'
 
+    # - task: Xcode@5
+    #   inputs:
+    #     actions: 'build-for-testing'
+    #     configuration: 'Debug'
+    #     xcWorkspacePath: '$(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/ios_package_test.xcworkspace'
+    #     sdk: 'iphonesimulator'
+    #     scheme: 'ios_package_test'
+    #     workingDirectory: $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
+
     - task: Xcode@5
       inputs:
         actions: 'build-for-testing'
         configuration: 'Debug'
         xcWorkspacePath: '$(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/ios_package_test.xcworkspace'
-        sdk: 'iphonesimulator'
+        sdk: 'iphoneos'
         scheme: 'ios_package_test'
+        signingOption: 'manual'
+        signingIdentity: '$(APPLE_CERTIFICATE_SIGNING_IDENTITY).'
+        provisioningProfileUuid: '$(APPLE_PROV_PROFILE_UUID)'
+        args: '-derivedDataPath $(build.BinariesDirectory)/DerivedData'
         workingDirectory: $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
-
-    # - task: Xcode@5
-    #   inputs:
-    #     actions: 'build-for-testing'
-    #     configuration: 'Debug'
-    #     workspace: './ios_package_test.xcworkspace'
-    #     sdk: 'iphoneos'
-    #     scheme: 'ios_package_test'
-    #     signingOption: 'manual'
-    #     signingIdentity: 'Apple Development: Guoyu Wang (69VJ8CLFPM)'
-    #     args: '-derivedDataPath $(build.BinariesDirectory)/DerivedData'
-    #     workingDirectory: $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
 
   # - script: |
   #     cd $(Build.SourcesDirectory)/java/src/test/android
