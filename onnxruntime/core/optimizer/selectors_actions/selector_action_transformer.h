@@ -119,6 +119,7 @@ class SelectorActionTransformer : public GraphTransformer {
   Status MatchAndProcess(Graph& graph, Node& node, bool& modified, const logging::Logger& logger) const;
 
   std::unordered_map<std::string, const SelectorAndAction*> op_type_to_selector_and_action_;
+  // If set, save runtime optimization to graph. Otherwise, apply optimization to graph nodes.
   optional<RuntimeOptimizationSaveContext> runtime_optimization_save_context_;
 #else
   // apply any saved optimizations
