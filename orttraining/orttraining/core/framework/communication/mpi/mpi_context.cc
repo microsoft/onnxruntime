@@ -4,11 +4,11 @@
 #define SHARED_PROVIDER_TODO 0
 
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
+#include "core/common/safeint.h"
 #ifndef _WIN32
 #include <chrono>
 #include <thread>
 #include <pthread.h>
-#include <SafeInt.h>
 #endif
 
 namespace onnxruntime {
