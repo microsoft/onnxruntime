@@ -18,14 +18,10 @@ jobs:
         provProfileSecureFile: 'iOS_Team_Provisioning_Profile.mobileprovision'
 
     - task: CocoaPods@0
+      displayName: 'Install Pods'
       inputs:
         forceRepoUpdate: false
         workingDirectory: $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
-
-    - bash: |
-        cd $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
-        ls -la
-        ls -la
 
     # - script: |
     #     cd $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
@@ -44,6 +40,7 @@ jobs:
     #     workingDirectory: $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
 
     - task: Xcode@5
+      displayName: 'Build iphone arm64 tests'
       inputs:
         actions: 'build-for-testing'
         configuration: 'Debug'
@@ -57,6 +54,7 @@ jobs:
         workingDirectory: $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
 
     - script: |
+        set -e -x
         cd $(Build.SourcesDirectory)/java/src/test/android
         appcenter test run xcuitest \
           --app "gwang-05tf/ObjC_iOS_Test" \
