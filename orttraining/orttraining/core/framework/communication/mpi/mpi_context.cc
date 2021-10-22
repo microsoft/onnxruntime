@@ -8,6 +8,7 @@
 #include <chrono>
 #include <thread>
 #include <pthread.h>
+#include <SafeInt.h>
 #endif
 
 namespace onnxruntime {
