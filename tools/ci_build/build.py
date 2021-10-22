@@ -454,7 +454,7 @@ def parse_arguments():
         help="Enable operator implemented in language other than cpp")
     parser.add_argument(
         "--cmake_generator",
-        choices=['Visual Studio 15 2017', 'Visual Studio 16 2019', 'Ninja'],
+        choices=['Visual Studio 15 2017', 'Visual Studio 16 2019', 'Visual Studio 17 2022', 'Ninja'],
         default='Visual Studio 16 2019' if is_windows() else None,
         help="Specify the generator that CMake invokes. "
         "This is only supported on Windows")
