@@ -538,13 +538,20 @@ inline static void TransposeFirstInput(OptimizerCtx& ctx, api::Node& node, const
 static const std::string_view TransposeOutput(OptimizerCtx& ctx, api::Node& node, size_t i,
                                               const std::vector<int64_t>& perm,
                                               const std::vector<int64_t>& perm_inv) {
-  // Make transpose without input, then add it to avoid cyclic reference.
-  auto transpose_ptr = MakeTranspose(ctx.graph, "", perm);
-  api::Node& transpose = *transpose_ptr;
-  ctx.graph.MoveOutput(node, i, transpose, 0);
+  // Make transpose without input initially, then add it to avoid cyclic reference.
+
+  // X -> Node -> Y,   Transpose
+  auto transpose = MakeTranspose(ctx.graph, "", perm);
+
+  // X -> Node -> *Y',   Transpose -> Y      *shape/dtype not set
+  ctx.graph.MoveOutput(node, i, *transpose, 0);
   const std::string_view new_output = node.Outputs()[i];
-  transpose.SetInput(0, new_output);
-  const std::string_view old_output = transpose.Outputs()[0];
+
+  // X -> Node -> *Y',   Y' -> Transpose -> Y      *shape/dtype not set
+  transpose->SetInput(0, new_output);
+
+  // Copy shape info from Y back to Y' and update it.
+  const std::string_view old_output = transpose->Outputs()[0];
   ctx.graph.CopyValueInfo(old_output, new_output);
   ctx.graph.GetValueInfo(new_output)->PermuteDims(perm_inv);
   return old_output;
@@ -1574,12 +1581,22 @@ bool ProcessTranspose(OptimizerCtx& ctx, api::Node& transpose, api::Node& node,
     return false;
   }
 
+  // Transpose and MaxPool should be optimized any time there is a transpose as input and a handler is available.
+  // Inclusion of MaxPool is a hack because it has higher perf in the NHWC variant when supported.
   if (!ctx.skip_cost_check && !node.IsOp("Transpose") && !node.IsOp("MaxPool")) {
+    // We require the input cost (number of transposes before the op) and the total cost to strictly decrease.
+    // Strict decrease of the input cost ensures the optimization is stable, since the total cost decrease is just an
+    // estimate (the transpose after the op may or may not cancel with a subsequent transpose). We don't want
+    // repeated runs of the optimizer to have a transpose toggle between two inputs of a binary op.
     int cost = EstimateTransposeInputsCost(ctx.graph, node, perm, input_indices);
+
     if (cost < 0 && info->transposes_outputs) {
+      // If the output will be transposed and won't ultimately cancel, factor in that cost.
       bool has_output_leading_to_transpose = false;
       auto outputs = node.Outputs();
       int out_cost = 0;
+      // Having multiple outputs is rare. When it happens (Split), the total size of the outputs isn't much larger
+      // than the largest input. Cost is rank currently, so just use the largest cost (rank) over all outputs.
       for (auto out : outputs) {
         out_cost = std::max(out_cost, EstimateValueRank(ctx.graph, out));
         if (outputs_leading_to_transpose.find(std::string(out)) != outputs_leading_to_transpose.end()) {
@@ -1596,11 +1613,13 @@ bool ProcessTranspose(OptimizerCtx& ctx, api::Node& transpose, api::Node& node,
       return false;
     }
   }
+
   std::vector<int64_t> perm_inv = InvertPerm(perm);
   HandlerArgs args = {ctx, transpose, node, perm, perm_inv, input_indices};
   return info->handler_fn(args);
 }
 
+// Returns nullopt if graph opset is unsupported.
 std::optional<OptimizerCtx> MakeOptimizerContext(api::Graph& graph, bool allow_extended_ops) {
   auto opset = graph.Opset();
   if (opset == std::nullopt || *opset > kMaxSupportedOpset || *opset < kMinSupportedOpset) {
@@ -1616,22 +1635,29 @@ std::optional<OptimizerCtx> MakeOptimizerContext(api::Graph& graph, bool allow_e
   return ctx;
 }
 
+// Performs optimization. General algorithm: iterate over nodes in topological order. If a node has a transpose
+// as input, push it through if the transpose cost does not increase and is likely to decrease.
 bool OptimizeImpl(OptimizerCtx& ctx) {
   
   const std::vector<std::unique_ptr<api::Node>> nodes = ctx.graph.Nodes();
 
   std::unordered_set<std::string> outputs_leading_to_transpose;
 
+  // First iterate over sorted nodes in reverse order to find which outputs have paths through supported ops to
+  // transpose nodes. We pull push transposes towards these outputs.
   for (size_t i = 0; i < nodes.size(); ++i) {
+
     api::Node& node = *nodes[nodes.size() - i - 1];
     if (node.IsOp("Transpose")) {
       outputs_leading_to_transpose.insert(std::string(node.Inputs()[0]));
       continue;
     }
+
     auto outputs = node.Outputs();
     for (auto out : outputs) {
       if (outputs_leading_to_transpose.find(std::string(out)) != outputs_leading_to_transpose.end()) {
         const HandlerInfo* info = GetHandler(node, ctx.allow_extended_ops);
+        // Determine if node is supported and produces transposed outputs when pushed.
         if (info != nullptr && info->transposes_outputs) {
           auto input_indices = info->transposible_inputs_fn(ctx, node);
           auto inputs = node.Inputs();
@@ -1644,9 +1670,11 @@ bool OptimizeImpl(OptimizerCtx& ctx) {
   }
 
   bool changed = false;
+  // Optimize graph. Nodes will be modified during iteration, but nodes are never deleted before we reach them.
+  // New transpose nodes are inserted, but always as an input to an existing node.
   for (size_t i = 0; i < nodes.size(); ++i) {
     api::Node& node = *nodes[i];
-    const std::vector<std::string_view> &inputs = node.Inputs();
+    std::vector<std::string_view> inputs = node.Inputs();
     for (size_t j = 0; j < inputs.size(); ++j) {
       const std::string_view inp = inputs[j];
       if (inp == "") {
@@ -1659,7 +1687,8 @@ bool OptimizeImpl(OptimizerCtx& ctx) {
           std::vector<int64_t> perm_inv = InvertPerm(*perm);
           if (ProcessTranspose(ctx, *transpose, node, *perm, j, outputs_leading_to_transpose)) {
             changed = true;
-            break;
+            // Subsequent inputs may have changed.
+            inputs = node.Inputs();
           }
         }
       }
@@ -1676,38 +1705,48 @@ bool Optimize(api::Graph& graph, bool allow_extended_ops) {
   return OptimizeImpl(*ctx);
 }
 
+// Iterate over nodes in order and call handlers on matching nodes. Transpose inputs/outputs and update op type and
+// domain as requested.
 static bool ChangeLayout(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler>& layout_handler_map,
                          bool last_to_first, bool allow_extended_ops) {
   auto ctx = MakeOptimizerContext(graph, allow_extended_ops);
   if (ctx == std::nullopt) {
     return false;
   }
+
   const std::vector<std::unique_ptr<api::Node>> nodes = graph.Nodes();
   bool changed = false;
+
   for (size_t i = 0; i < nodes.size(); ++i) {
     api::Node* node = &(*nodes[i]);
+
     auto match = layout_handler_map.find(node->OpType());
     if (match != layout_handler_map.end()) {
       std::unique_ptr<api::Node> new_node;
       LayoutHandler handler = match->second;
       LayoutHandlerResult result = handler(graph, *node);
       if (!result.should_change_layout) {
+        // Handler indicates to skip node
         continue;
       }
-      size_t rank = result.rank;
+
       if (result.new_op_type != std::nullopt || result.new_domain != std::nullopt) {
+        // New replacement node will be needed
         std::string_view new_op_type;
         if (result.new_op_type != std::nullopt) {
           new_op_type = *result.new_op_type;
         } else {
           new_op_type = node->OpType();
         }
+
         std::string_view new_domain;
         if (result.new_domain != std::nullopt) {
           new_domain = *result.new_domain;
         } else {
           new_domain = node->Domain();
         }
+
+        // Replace the node
         auto inputs = node->Inputs();
         auto outputs = node->Outputs();
         new_node = graph.AddNode(new_op_type, inputs, outputs.size(), new_domain);
@@ -1720,11 +1759,14 @@ static bool ChangeLayout(api::Graph& graph, std::unordered_map<std::string_view,
         graph.RemoveNode(*node);
         node = &(*new_node);
       }
-      auto perm = ChannelLastToFirstPerm(rank);
+
+      // Finally transpose inputs/outputs
+      auto perm = ChannelLastToFirstPerm(result.rank);
       auto perm_inv = InvertPerm(perm);
       if (last_to_first) {
         std::swap(perm, perm_inv);
       }
+
       TransposeFirstInput(*ctx, *node, perm_inv);
       TransposeOutputs(*ctx, *node, perm);
       changed = true;
@@ -1736,11 +1778,15 @@ static bool ChangeLayout(api::Graph& graph, std::unordered_map<std::string_view,
   return changed;
 }
 
-bool ChannelLastToChannelFirst(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler>& layout_handler_map, bool allow_extended_ops) {
+bool ChannelLastToChannelFirst(api::Graph& graph, 
+                               std::unordered_map<std::string_view, LayoutHandler>& layout_handler_map,
+                               bool allow_extended_ops) {
   return ChangeLayout(graph, layout_handler_map, /*last_to_first*/ true, allow_extended_ops);
 }
 
-bool ChannelFirstToChannelLast(api::Graph& graph, std::unordered_map<std::string_view, LayoutHandler>& layout_handler_map, bool allow_extended_ops) {
+bool ChannelFirstToChannelLast(api::Graph& graph,
+                               std::unordered_map<std::string_view, LayoutHandler>& layout_handler_map,
+                               bool allow_extended_ops) {
   return ChangeLayout(graph, layout_handler_map, /*last_to_first*/ false, allow_extended_ops);
 }
 
