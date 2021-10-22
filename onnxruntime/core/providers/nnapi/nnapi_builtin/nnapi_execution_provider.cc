@@ -73,11 +73,21 @@ std::unique_ptr<ConstNodesToOptimize> GetQDQNodeGroup(const onnxruntime::GraphVi
   qdq_node_group = nnapi_selector_action_transformer.Match(graph_viewer.GetGraph(), node);
 
   if (qdq_node_group != nullptr) {
-    std::cout << "[Compile] - QDQ Node Group found: " << node.OpType() << " with matched node's name: " << node.Name() << "\n"
+    std::cout << "QDQ Node Group found: " << node.OpType() << " with matched node's name: " << node.Name() << "\n"
               << std::endl;
   }
 
   return qdq_node_group;
+}
+
+std::vector<std::unique_ptr<ConstNodesToOptimize>> GetQDQNodeGroups(const onnxruntime::GraphViewer& graph_viewer) {
+  std::vector<std::unique_ptr<ConstNodesToOptimize>> qdq_node_groups;
+  for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
+    const auto* node = graph_viewer.GetNode(index);
+    auto qdq_node_group = GetQDQNodeGroup(graph_viewer, *node);
+    qdq_node_groups.emplace_back(std::move(qdq_node_group));
+  }
+  return qdq_node_groups;
 }
 
 }  // namespace
@@ -151,12 +161,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   }
 
   // TODO: Pre-Partition: add selector -> select qdq structure pairs -> obtain qdq_node_groups
-  std::vector<std::unique_ptr<ConstNodesToOptimize>> qdq_node_groups;
-  for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
-    const auto* node = graph_viewer.GetNode(index);
-    auto qdq_node_group = GetQDQNodeGroup(graph_viewer, *node);
-    qdq_node_groups.emplace_back(std::move(qdq_node_group));
-  }
+  auto qdq_node_groups = GetQDQNodeGroups(graph_viewer);
 
   const auto excluded_nodes = utils::CreateExcludedNodeSet(graph_viewer, partitioning_stop_ops_);
   const bool check_excluded_nodes = !excluded_nodes.empty();
