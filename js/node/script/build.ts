@@ -15,7 +15,7 @@ if (CONFIG !== 'Debug' && CONFIG !== 'Release' && CONFIG !== 'RelWithDebInfo') {
   throw new Error(`unrecognized config: ${CONFIG}`);
 }
 // --arch=x64|ia32|arm64|arm
-const ARCH: 'x64'|'ia32'|'arm64'|'arm' = buildArgs['arch'] || 'x64';
+const ARCH: 'x64'|'ia32'|'arm64'|'arm' = buildArgs.arch || 'x64';
 if (ARCH !== 'x64' && ARCH !== 'ia32' && ARCH !== 'arm64' && ARCH !== 'arm') {
   throw new Error(`unrecognized architecture: ${ARCH}`);
 }
