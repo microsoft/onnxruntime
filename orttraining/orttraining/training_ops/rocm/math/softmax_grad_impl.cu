@@ -17,8 +17,9 @@
 /* Modifications Copyright (c) Microsoft. */
 
 // The code below is mostly copied from Pytorch PersistentSoftmax.cuh
-#include "hip/hip_runtime.h"
+
 #include "orttraining/training_ops/rocm/math/softmax_grad.h"
+
 #include "core/providers/rocm/cu_inc/common.cuh"
 #include "core/providers/rocm/math/softmax_impl.cuh"
 
