@@ -56,15 +56,14 @@ jobs:
         args: '-derivedDataPath $(build.BinariesDirectory)/DerivedData'
         workingDirectory: $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
 
-  # - script: |
-  #     cd $(Build.SourcesDirectory)/java/src/test/android
-  #     appcenter test run espresso \
-  #       --app "gwang-05tf/AppCenter-Espresso-E2E-Example" \
-  #       --devices 581708da \
-  #       --app-path ./app/build/outputs/apk/debug/app-debug.apk \
-  #       --test-series "master" \
-  #       --locale "en_US" \
-  #       --build-dir ./app/build/outputs/apk/androidTest/debug \
-  #       --token $(AppCenterAPIToken)
-  #   workingDirectory: $(Build.BinariesDirectory)
-  #   displayName: Run E2E tests on App Center
+  - script: |
+      cd $(Build.SourcesDirectory)/java/src/test/android
+      appcenter test run xcuitest \
+        --app "gwang-05tf/ObjC_iOS_Test" \
+        --devices bb484696 \
+        --test-series "master" \
+        --locale "en_US" \
+        --build-dir $(build.BinariesDirectory)/DerivedData/Build/Products/Debug-iphoneos \
+        --token $(AppCenterAPIToken)
+    workingDirectory: $(Build.SourcesDirectory)/java/src/test/android
+    displayName: Run E2E tests on App Center
