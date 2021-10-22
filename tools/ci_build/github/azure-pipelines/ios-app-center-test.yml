@@ -57,8 +57,8 @@ jobs:
         set -e -x
         cd $(Build.SourcesDirectory)/java/src/test/android
         appcenter test run xcuitest \
-          --app "gwang-05tf/ObjC_iOS_Test" \
-          --devices bb484696 \
+          --app "AI-Frameworks/ORT-Mobile-iOS" \
+          --devices 462764b5 \
           --test-series "master" \
           --locale "en_US" \
           --build-dir $(build.BinariesDirectory)/DerivedData/Build/Products/Debug-iphoneos \
