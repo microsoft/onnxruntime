@@ -587,6 +587,10 @@ if (MSVC)
     SET(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /guard:cf")
     SET(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} /guard:cf")
   endif()
+
+  # When building on Windows, compilation fails (usually in Debug) because the number of sections exceed
+  # the object file format limit. /bigobj increases the number of sections that an object file can contain.
+  string(APPEND CMAKE_CXX_FLAGS " /bigobj")
 else()
   if (NOT APPLE)
     set(onnxruntime_target_platform ${CMAKE_SYSTEM_PROCESSOR})
