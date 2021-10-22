@@ -196,6 +196,35 @@ __global__ void TransposeQKVLarge(const int H, const T* input, T* output) {
   }
 }
 
+//bugbug: thread and block config optimized?
+template <typename T>
+__global__ void TransposeQKV2(const int H, const T* input, T* output) {
+  // Input:  SxBx3xNxH
+  // Output: 3xBxNxSxH
+
+  int n = threadIdx.y;
+  int s = blockIdx.x;
+  int b = blockIdx.y;
+  int m = blockIdx.z;  // matrix id
+
+  const int num_heads = blockDim.y;
+
+  const int sequence_length = gridDim.x;
+  const int batch_size = gridDim.y;
+  const int chunk_num = gridDim.z;
+
+  const int NH = num_heads * H;
+  const int BNH = NH * batch_size;
+  const int NHS = NH * sequence_length;
+  const int in_offset = n * H + m * NH + b * chunk_num * NH + s * BNH * chunk_num;
+  const int out_offset = s * H + n * sequence_length * H + b * NHS + m * NHS * batch_size;
+
+  const int i = threadIdx.x;
+  if (i < H) {
+    output[out_offset + i] = input[in_offset + i];
+  }
+}
+
 bool LaunchTransQkv(cudaStream_t stream,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
                     const int max_threads_per_block, const float* input, float* output) {
@@ -258,6 +287,46 @@ bool LaunchTransQkv(cudaStream_t stream,
       const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
       TransposeQKVLarge<half><<<grid, block, 0, stream>>>(head_size, input, output);
     }
+  }
+  return CUDA_CALL(cudaPeekAtLastError());
+}
+
+bool LaunchTransQkv2(cudaStream_t stream,
+                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
+                     const int matrix_num, const float* input, float* output) {
+  const dim3 grid(sequence_length, batch_size, matrix_num);
+  if (0 == (head_size & 1)) {
+    const int H = head_size / 2;
+    const float2* input2 = reinterpret_cast<const float2*>(input);
+    float2* output2 = reinterpret_cast<float2*>(output);
+    const dim3 block(H, num_heads, 1);
+    TransposeQKV2<float2><<<grid, block, 0, stream>>>(H, input2, output2);
+  } else {
+    const dim3 block(head_size, num_heads, 1);
+    TransposeQKV2<float><<<grid, block, 0, stream>>>(head_size, input, output);
+  }
+  return CUDA_CALL(cudaPeekAtLastError());
+}
+
+bool LaunchTransQkv2(cudaStream_t stream,
+                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
+                     const int matrix_num, const half* input, half* output) {
+  const dim3 grid(sequence_length, batch_size, matrix_num);
+  if (0 == (head_size % 4)) {
+    const int H = head_size / 4;
+    const float2* input2 = reinterpret_cast<const float2*>(input);
+    float2* output2 = reinterpret_cast<float2*>(output);
+    const dim3 block(H, num_heads, 1);
+    TransposeQKV2<float2><<<grid, block, 0, stream>>>(H, input2, output2);
+  } else if (0 == (head_size & 1)) {
+    const int H = head_size / 2;
+    const half2* input2 = reinterpret_cast<const half2*>(input);
+    half2* output2 = reinterpret_cast<half2*>(output);
+    const dim3 block(H, num_heads, 1);
+    TransposeQKV2<half2><<<grid, block, 0, stream>>>(H, input2, output2);
+  } else {  // this should be an "odd" case. probably not worth catching it in the half2 kernel..
+    const dim3 block(head_size, num_heads, 1);
+    TransposeQKV2<half><<<grid, block, 0, stream>>>(head_size, input, output);
   }
   return CUDA_CALL(cudaPeekAtLastError());
 }

@@ -55,6 +55,15 @@ bool LaunchTransQkv(cudaStream_t stream,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
                     const int max_threads_per_block, const half* input, half* output);
 
+// LaunchTransQkv2: (S,B,X,N,H) -> (X,B,N,S,H)
+bool LaunchTransQkv2(cudaStream_t stream,
+                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
+                     const int matrix_num, const float* input, float* output);
+
+bool LaunchTransQkv2(cudaStream_t stream,
+                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
+                     const int matrix_num, const half* input, half* output);
+
 bool LaunchConcatPastToPresent(cudaStream_t stream,
                                const int all_sequence_length,
                                const int sequence_length,
