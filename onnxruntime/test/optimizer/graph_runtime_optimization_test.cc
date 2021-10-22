@@ -108,7 +108,7 @@ TEST(GraphRuntimeOptimizationTest, TestTransformerSavesRuntimeOptimization) {
 
   // check that graph nodes are not updated
   {
-    auto ops = CountOpsInGraph(graph);
+    const auto ops = CountOpsInGraph(graph);
     EXPECT_EQ(ops, original_ops);
   }
 
