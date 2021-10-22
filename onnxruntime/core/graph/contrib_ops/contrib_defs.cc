@@ -2607,6 +2607,121 @@ Example 4:
         }
       });
 
+  static const char* EfficientNMS_TRT_ver1_doc =
+      R"DOC(Efficient NMS TensorRT Plugin.)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(EfficientNMS_TRT)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(1)
+      .SetDoc(EfficientNMS_TRT_ver1_doc)
+      .Input(0, "boxes", "The boxes input tensor.", "T")
+      .Input(1, "scores", "The scores input tensor.", "T")
+      .Input(2, "anchors", "The anchors input tensor.", "T", OpSchema::Optional)
+      .Output(0, "num_detections", "The num_detections output tensor.", "tensor(int32)")
+      .Output(1, "detection_boxes", "The detection_boxes output tensor.", "T")
+      .Output(2, "detection_scores", "The detection_scores output tensor.", "T")
+      .Output(3, "detection_classes", "The detection_classes output tensor.", "tensor(int32)")
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
+      .Attr("background_class", "Background class ID.", AttributeProto::INT, static_cast<int64_t>(-1))
+      .Attr("box_coding", "Encoding type for the boxes or anchors inputs.", AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("iou_threshold", "Box IOU threshold value.", AttributeProto::FLOAT, 0.f)
+      .Attr("max_output_boxes", "Max detections to output.", AttributeProto::INT, static_cast<int64_t>(1))
+      .Attr("plugin_version", "Version number of the TRT plugin.", AttributeProto::STRING, std::string("1"))
+      .Attr("score_activation", "Activation function to apply to the scores input.", AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("score_threshold", "Score threshold value.", AttributeProto::FLOAT, 0.f)
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          // Type inference
+          using namespace ONNX_NAMESPACE;
+          ONNX_NAMESPACE::updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::INT32);
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          propagateElemTypeFromInputToOutput(ctx, 0, 2);
+          ONNX_NAMESPACE::updateOutputElemType(ctx, 3, ONNX_NAMESPACE::TensorProto::INT32);
+
+          // Shape Inference
+          if (!hasInputShape(ctx, 0)) {
+            return;
+          }
+          int64_t max_output_boxes = 1;
+          auto max_output_boxes_proto = ctx.getAttribute("max_output_boxes");
+          if (max_output_boxes_proto) {
+            max_output_boxes = max_output_boxes_proto->i();
+          }
+          if (max_output_boxes < 1) {
+            fail_shape_inference("Attribute 'max_output_boxes' must be >= 1.")
+          }
+
+          Dim batch_size;
+          unifyInputDim(ctx, 0, 0, batch_size);
+
+          ONNX_NAMESPACE::TensorShapeProto num_detections_shape;
+          *num_detections_shape.add_dim() = batch_size;
+          num_detections_shape.add_dim()->set_dim_value(1);
+          updateOutputShape(ctx, 0, num_detections_shape);
+
+          ONNX_NAMESPACE::TensorShapeProto detection_boxes_shape;
+          *detection_boxes_shape.add_dim() = batch_size;
+          detection_boxes_shape.add_dim()->set_dim_value(max_output_boxes);
+          detection_boxes_shape.add_dim()->set_dim_value(4);
+          updateOutputShape(ctx, 1, detection_boxes_shape);
+
+          ONNX_NAMESPACE::TensorShapeProto detection_scores_shape;
+          *detection_scores_shape.add_dim() = batch_size;
+          detection_scores_shape.add_dim()->set_dim_value(max_output_boxes);
+          updateOutputShape(ctx, 2, detection_scores_shape);
+
+          ONNX_NAMESPACE::TensorShapeProto detection_classes_shape;
+          *detection_classes_shape.add_dim() = batch_size;
+          detection_classes_shape.add_dim()->set_dim_value(max_output_boxes);
+          updateOutputShape(ctx, 3, detection_classes_shape);
+      });
+
+  static const char* PyramidROIAlign_TRT_ver1_doc =
+      R"DOC(Pyramid ROI Align TensorRT Plugin.)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(PyramidROIAlign_TRT)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(1)
+      .SetDoc(PyramidROIAlign_TRT_ver1_doc)
+      .Input(0, "boxes", "The boxes input tensor.", "T")
+      .Input(1, "feature_map_0", "The first feature map input tensor.", "T")
+      .Input(2, "feature_map_1", "The second feature map input tensor.", "T")
+      .Input(3, "feature_map_2", "The third feature map input tensor.", "T")
+      .Input(4, "feature_map_3", "The fourth feature map input tensor.", "T")
+      .Output(0, "patches", "The cropped patches output tensor.", "T")
+      .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors.")
+      .Attr("pooled_size", "Pooled size.", AttributeProto::INT, static_cast<int64_t>(1))
+      .Attr("plugin_version", "Version number of the TRT plugin.", AttributeProto::STRING, std::string("1"))
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          // Type inference
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+          // Shape Inference
+          if (!hasInputShape(ctx, 0)) {
+            return;
+          }
+          int64_t pooled_size = 1;
+          auto pooled_size_proto = ctx.getAttribute("pooled_size");
+          if (pooled_size_proto) {
+            pooled_size = pooled_size_proto->i();
+          }
+          if (pooled_size < 1) {
+            fail_shape_inference("Attribute 'pooled_size' must be >= 1.")
+          }
+
+          Dim batch_size, number_boxes, channels;
+          unifyInputDim(ctx, 0, 0, batch_size);
+          unifyInputDim(ctx, 0, 1, number_boxes);
+          unifyInputDim(ctx, 1, 1, channels);
+
+          ONNX_NAMESPACE::TensorShapeProto output_shape;
+          *output_shape.add_dim() = batch_size;
+          *output_shape.add_dim() = number_boxes;
+          *output_shape.add_dim() = channels;
+          output_shape.add_dim()->set_dim_value(pooled_size);
+          output_shape.add_dim()->set_dim_value(pooled_size);
+          updateOutputShape(ctx, 0, output_shape);
+      });
+
   static const char* Gelu_ver1_doc =
       R"DOC(Gaussian Error Linear Unit.
 A high-performing neural network activation function.The GELU nonlinearity is
