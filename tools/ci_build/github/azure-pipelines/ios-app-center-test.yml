@@ -25,6 +25,7 @@ jobs:
     - bash: |
         cd $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
         ls -la
+        ls -la
 
     # - script: |
     #     cd $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
@@ -51,7 +52,7 @@ jobs:
         scheme: 'ios_package_test'
         signingOption: 'manual'
         signingIdentity: '$(APPLE_CERTIFICATE_SIGNING_IDENTITY)'
-        provisioningProfileUuid: '$(APPLE_PROV_PROFILE_UUID)'
+        provisioningProfileName: 'iOS Team Provisioning Profile'
         args: '-derivedDataPath $(build.BinariesDirectory)/DerivedData'
         workingDirectory: $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
 

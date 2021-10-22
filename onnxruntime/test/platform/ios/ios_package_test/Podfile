@@ -10,3 +10,11 @@ target 'ios_package_test' do
   end
 
 end
+
+# This is to prevent the pods to be code signed if enabled
+post_install do |installer|
+  installer.pods_project.build_configurations.each do |config|
+      config.build_settings['CODE_SIGNING_REQUIRED'] = "NO"
+      config.build_settings['CODE_SIGNING_ALLOWED'] = "NO"
+  end
+end
