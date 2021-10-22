@@ -23,6 +23,7 @@ jobs:
         workspace: './ios_package_test.xcworkspace'
         sdk: 'iphoneos'
         scheme: 'ios_package_test'
+        signingOption: 'manual'
         signingIdentity: 'Apple Development: Guoyu Wang (69VJ8CLFPM)'
         args: '-derivedDataPath $(build.BinariesDirectory)/DerivedData'
         workingDirectory: $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
