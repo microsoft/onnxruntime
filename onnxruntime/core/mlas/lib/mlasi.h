@@ -1854,9 +1854,6 @@ MlasStoreAlignedFloat64x2(double* Buffer, MLAS_FLOAT64X2 Vector)
 #if defined(MLAS_SSE2_INTRINSICS)
     _mm_store_pd(Buffer, Vector);
 #elif defined(MLAS_VSX_INTRINSICS)
-    // Workaround for bad GCC warning that these parameters are set but not used.
-    MLAS_UNREFERENCED_PARAMETER(Buffer);
-    MLAS_UNREFERENCED_PARAMETER(Vector);
     vec_st(Vector, 0, Buffer);
 #endif
 }
