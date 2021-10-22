@@ -31,7 +31,7 @@ jobs:
       inputs:
         actions: 'build-for-testing'
         configuration: 'Debug'
-        xcWorkspacePath: './ios_package_test.xcworkspace'
+        xcWorkspacePath: '$(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/ios_package_test.xcworkspace'
         sdk: 'iphonesimulator'
         scheme: 'ios_package_test'
         workingDirectory: $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
