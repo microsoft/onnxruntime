@@ -6,7 +6,7 @@ target 'ios_package_test' do
 
   target 'ios_package_testUITests' do
     inherit! :search_paths
-    pod 'onnxruntime-mobile-c', :podspec  => './onnxruntime-mobile-c.podspec'
+    pod 'onnxruntime-mobile-c'
   end
 
 end
