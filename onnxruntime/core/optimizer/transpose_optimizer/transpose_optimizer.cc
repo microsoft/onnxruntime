@@ -1687,6 +1687,7 @@ bool OptimizeImpl(OptimizerCtx& ctx) {
           std::vector<int64_t> perm_inv = InvertPerm(*perm);
           if (ProcessTranspose(ctx, *transpose, node, *perm, j, outputs_leading_to_transpose)) {
             changed = true;
+            // Subsequent inputs may have changed and node may have been removed.
             break;
           }
         }
