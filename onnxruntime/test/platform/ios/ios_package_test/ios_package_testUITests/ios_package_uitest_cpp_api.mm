@@ -99,6 +99,10 @@ void testSigmoid(const char* modelPath, bool useCoreML) {
   testSigmoid([self getFilePath].UTF8String, false /* useCoreML */);
 }
 
+- (void)testFailure {
+  XCTAssert(FALSE);
+}
+
 #if COREML_EP_AVAILABLE
 - (void)testCppAPI_Basic_CoreML {
   testSigmoid([self getFilePath].UTF8String, true /* useCoreML */);
