@@ -9,6 +9,7 @@
 #include <atomic>
 #include <mutex>
 #include <algorithm>
+#include <thread>
 
 #include <gtest/gtest.h>
 

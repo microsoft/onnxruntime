@@ -46,7 +46,8 @@ using PIDType = pid_t;
 using FileOffsetType = off_t;
 #endif
 
-typedef void* (*CreateThreadFunc)(void*,void*);
+typedef unsigned (*WorkLoop)(void*);
+typedef void* (*CreateThreadFunc)(WorkLoop, void*);
 typedef void (*JoinThreadFunc)(void*);
 
 class EnvThread {
