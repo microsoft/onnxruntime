@@ -16,6 +16,10 @@ jobs:
         forceRepoUpdate: false
         workingDirectory: $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
 
+    - bash: |
+        cd $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
+        ls -la
+
     # - script: |
     #     cd $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
     #     xcrun xcodebuild test \
@@ -27,7 +31,7 @@ jobs:
       inputs:
         actions: 'build-for-testing'
         configuration: 'Debug'
-        xcWorkspacePath: 'ios_package_test.xcworkspace'
+        xcWorkspacePath: './ios_package_test.xcworkspace'
         sdk: 'iphonesimulator'
         scheme: 'ios_package_test'
         workingDirectory: $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
