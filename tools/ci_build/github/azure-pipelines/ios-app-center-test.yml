@@ -15,7 +15,7 @@ jobs:
     - task: InstallAppleProvisioningProfile@1
       displayName: 'Install ORT Mobile Test Provisioning Profile'
       inputs:
-        provProfileSecureFile: 'ort_mobile_test.mobileprovision'
+        provProfileSecureFile: 'iOS_Team_Provisioning_Profile.mobileprovision'
 
     - task: CocoaPods@0
       inputs:
