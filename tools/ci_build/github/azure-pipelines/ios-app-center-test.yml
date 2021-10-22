@@ -18,15 +18,24 @@ jobs:
 
     - task: Xcode@5
       inputs:
-        actions: 'build-for-testing'
+        actions: 'test'
         configuration: 'Debug'
         workspace: './ios_package_test.xcworkspace'
-        sdk: 'iphoneos'
         scheme: 'ios_package_test'
-        signingOption: 'manual'
-        signingIdentity: 'Apple Development: Guoyu Wang (69VJ8CLFPM)'
-        args: '-derivedDataPath $(build.BinariesDirectory)/DerivedData'
+        args: '-destination 'platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)''
         workingDirectory: $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
+
+    # - task: Xcode@5
+    #   inputs:
+    #     actions: 'build-for-testing'
+    #     configuration: 'Debug'
+    #     workspace: './ios_package_test.xcworkspace'
+    #     sdk: 'iphoneos'
+    #     scheme: 'ios_package_test'
+    #     signingOption: 'manual'
+    #     signingIdentity: 'Apple Development: Guoyu Wang (69VJ8CLFPM)'
+    #     args: '-derivedDataPath $(build.BinariesDirectory)/DerivedData'
+    #     workingDirectory: $(Build.SourcesDirectory)/onnxruntime/test/platform/ios/ios_package_test/
 
   # - script: |
   #     cd $(Build.SourcesDirectory)/java/src/test/android
