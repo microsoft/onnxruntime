@@ -22,7 +22,7 @@ To update the ORT file format schema and generated files:
     ```
 
 # ORT FB format version history
-See `onnxruntime/core/session/inference_session.cc:IsOrtModelVersionSupported()` for version array and `kOrtModelVersion` for currently supported version.
+In [ort_format_version.h](../ort_format_version.h), see `IsOrtModelVersionSupported()` for version array and `kOrtModelVersion` for currently supported version.
 
 ## Version 1. History begins
 Initial support for FlatBuffers that includes Model support. Graph support including Attributes, Tensors, Tensor Sequences, Maps and Sequences. Constant initializers are also supported. Constant nodes are converted to constant initializers in the ORT format.

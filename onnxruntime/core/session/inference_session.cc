@@ -14,6 +14,8 @@
 #include "core/common/denormal.h"
 #include "core/common/logging/logging.h"
 #include "core/common/parse_string.h"
+#include "core/flatbuffers/flatbuffers_utils.h"
+#include "core/flatbuffers/ort_format_version.h"
 #include "core/framework/bfc_arena.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/error_code_helper.h"
@@ -43,7 +45,6 @@
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
-#include "core/flatbuffers/flatbuffers_utils.h"
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
 #endif
@@ -169,31 +170,6 @@ Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger&
 }  // namespace
 
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
-
-// The current model versions for saving the ort format models
-// This version is NOT onnxruntime version
-// Only update this version when there is a file format change which will break the compatibilites
-// Once this model version is updated, the kSupportedOrtModelVersions in IsOrtModelVersionSupported
-// below will also need to be updated.
-// See onnxruntime/core/flatbuffers/schema/README.md for more details on versioning.
-// Version 1 - history begins
-// Version 2 - add serialization/deserialization of sparse_initializer
-// Version 3 - add `graph_doc_string` to Model
-// Version 4 - update kernel def hashing to not depend on ordering of type constraint types (NOT BACKWARDS COMPATIBLE)
-static constexpr const char* kOrtModelVersion = "4";
-
-#if defined(ENABLE_ORT_FORMAT_LOAD)
-// Check if the given ort model version is supported in this build
-static bool IsOrtModelVersionSupported(const std::string& ort_model_version) {
-  // The ort model versions we will support in this build
-  // This may contain more versions than the kOrtModelVersion, based on the compatibilities
-  static const std::unordered_set<std::string> kSupportedOrtModelVersions{
-      std::string(kOrtModelVersion),
-  };
-
-  return kSupportedOrtModelVersions.find(ort_model_version) != kSupportedOrtModelVersions.cend();
-}
-#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
 
 static Status FinalizeSessionOptions(const SessionOptions& user_provided_session_options,
                                      const ONNX_NAMESPACE::ModelProto& model_proto,
